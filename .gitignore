@@ -1,0 +1,6 @@
+/.idea/
+Cargo.lock
+/target/
+libs/**/Cargo.lock
+libs/**/target/
+**/*.rs.bk
