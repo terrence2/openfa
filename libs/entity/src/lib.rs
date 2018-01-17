@@ -12,15 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use] extern crate error_chain;
+#[macro_use]
+extern crate error_chain;
 
 use std::mem;
 use std::collections::HashMap;
 
 mod errors {
-    error_chain! {}
+    error_chain!{}
 }
-use ::errors::{Result, ResultExt};
+use errors::{Result, ResultExt};
 
 pub struct Type {
     tag: TypeTag,
@@ -30,13 +31,21 @@ pub struct Type {
 impl Type {
     pub fn new(data: &str) -> Result<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
-        ensure!(lines[0] == "[brent's_relocatable_format]", "not an type file");
+        ensure!(
+            lines[0] == "[brent's_relocatable_format]",
+            "not an type file"
+        );
 
         // Extract all pointer sections.
         let mut pointers = HashMap::new();
-        let pointer_names = lines.iter().filter(|&l| l.starts_with(":")).map(|&l| l).collect::<Vec<&str>>();
+        let pointer_names = lines
+            .iter()
+            .filter(|&l| l.starts_with(":"))
+            .map(|&l| l)
+            .collect::<Vec<&str>>();
         for pointer_name in pointer_names {
-            let pointer_data = lines.iter()
+            let pointer_data = lines
+                .iter()
                 .map(|&l| l)
                 .skip_while(|&l| l != pointer_name)
                 .skip(1)
@@ -48,14 +57,16 @@ impl Type {
             pointers.insert(pointer_name, pointer_data);
         }
 
-        let obj_section = lines.iter()
+        let obj_section = lines
+            .iter()
             .skip_while(|&l| l.find("START OF OBJ_TYPE").is_none())
             .take_while(|&l| l.find("END OF OBJ_TYPE").is_none())
             .map(|&l| l.trim())
             .filter(|&l| l.len() != 0 && !l.starts_with(";"))
             .collect::<Vec<&str>>();
 
-        let tag = TypeTag::new(Type::byte(obj_section[0]).chain_err(|| "obj section 0")?).chain_err(|| "type tag")?;
+        let tag = TypeTag::new(Type::byte(obj_section[0]).chain_err(|| "obj section 0")?)
+            .chain_err(|| "type tag")?;
 
         let object = ObjectType::new(obj_section, &pointers).chain_err(|| "ObjectType::new")?;
         return Ok(Type { tag, object });
@@ -93,7 +104,7 @@ impl Type {
         ensure!(parts[0] == "dword", "expected dword type");
         return Ok(match parts[1].parse::<u32>() {
             Ok(n) => n,
-            Err(_) => Self::hex(parts[1]).chain_err(|| "parse i16")?
+            Err(_) => Self::hex(parts[1]).chain_err(|| "parse i16")?,
         });
     }
 
@@ -103,14 +114,22 @@ impl Type {
         ensure!(parts[0] == "string", "expected string type");
         ensure!(parts[1].starts_with("\""), "expected string to be quoted");
         ensure!(parts[1].ends_with("\""), "expected string to be quoted");
-        let unquoted = parts[1].chars().skip(1).take(parts[1].len() - 2).collect::<String>();
+        let unquoted = parts[1]
+            .chars()
+            .skip(1)
+            .take(parts[1].len() - 2)
+            .collect::<String>();
         return Ok(unquoted);
     }
 }
 
 // placeholder
 pub struct Shape {}
-impl Shape { fn new(_: &str) -> Result<Self> { Ok(Shape{}) } }
+impl Shape {
+    fn new(_: &str) -> Result<Self> {
+        Ok(Shape {})
+    }
+}
 pub struct Sound {}
 
 #[derive(Debug)]
@@ -155,7 +174,7 @@ impl ProcKind {
             "_EJECTProc" => ProcKind::EJECT,
             "_STRIPProc" => ProcKind::STRIP,
             "_CATGUYProc" => ProcKind::CATGUY,
-            _ => bail!("Unexpected proc kind: {}", parts[1])
+            _ => bail!("Unexpected proc kind: {}", parts[1]),
         });
     }
 }
@@ -238,8 +257,8 @@ impl ObjectType {
         fn name_at(i: usize, pointers: &HashMap<&str, Vec<&str>>) -> Result<String> {
             return match pointers[":ot_names"].get(i) {
                 None => bail!("expected a name at position {}", i),
-                Some(s) => Ok(Type::string(s).chain_err(|| "parse name")?)
-            }
+                Some(s) => Ok(Type::string(s).chain_err(|| "parse name")?),
+            };
         }
 
         return Ok(ObjectType {
@@ -251,7 +270,9 @@ impl ObjectType {
             unk4: Type::dword(lines[4]).chain_err(|| "line 4")?,
             unk5: Type::word(lines[5]).chain_err(|| "line 5")?,
             shape: pointers.get(":shape").and_then(|l| Shape::new(l[0]).ok()),
-            shadow_shape: pointers.get(":shadowShape").and_then(|l| Shape::new(l[0]).ok()),
+            shadow_shape: pointers
+                .get(":shadowShape")
+                .and_then(|l| Shape::new(l[0]).ok()),
             unk8: Type::dword(lines[8]).chain_err(|| "line 8")?,
             unk9: Type::dword(lines[9]).chain_err(|| "line 9")?,
             unk10: Type::word(lines[10]).chain_err(|| "line 10")?,
@@ -297,10 +318,10 @@ impl ObjectType {
             util_proc: ProcKind::new(lines[49]).chain_err(|| "line 49")?,
 
             //;---------------- sound info ----------------
-            loop_sound: Sound{},
-            second_sound: Sound{},
-            engine_on_sound: Sound{},
-            engine_off_sound: Sound{},
+            loop_sound: Sound {},
+            second_sound: Sound {},
+            engine_on_sound: Sound {},
+            engine_off_sound: Sound {},
             unk54: Type::byte(lines[54]).chain_err(|| "line 54")?,
             unk55: Type::word(lines[55]).chain_err(|| "line 55")?,
             unk56: Type::word(lines[56]).chain_err(|| "line 56")?,
@@ -333,7 +354,7 @@ pub struct NpcType {
     // byte 1
     unk7: u8,
     // ptr hards
-    unk8: Vec<HardPoint>
+    unk8: Vec<HardPoint>,
 }
 
 pub struct HardPoint {}
