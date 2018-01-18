@@ -13,6 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #[macro_use]
+extern crate bitflags;
+#[macro_use]
 extern crate error_chain;
 
 use std::mem;
@@ -150,6 +152,68 @@ impl TypeTag {
     }
 }
 
+bitflags! {
+    struct ObjectFlags : u32 {
+        const Unk0     = 0b0000_1000_0000_0000_0000_0000_0000_0000;
+        const Unk1     = 0b0000_0100_0000_0000_0000_0000_0000_0000;
+        const Unk2     = 0b0000_0010_0000_0000_0000_0000_0000_0000;
+        const Unk3     = 0b0000_0001_0000_0000_0000_0000_0000_0000;
+        const Flyable  = 0b0000_0000_0000_0000_0100_0000_0000_0000;
+        const Unk4     = 0b0000_0000_0000_0000_0010_0000_0000_0000;
+        const Unk5     = 0b0000_0000_0000_0000_0000_1000_0000_0000;
+        const Unk6     = 0b0000_0000_0000_0000_0000_0010_0000_0000;
+        const Unk7     = 0b0000_0000_0000_0000_0000_0001_0000_0000;
+        const Unk8     = 0b0000_0000_0000_0000_0000_0000_1000_0000;
+        const Unk9     = 0b0000_0000_0000_0000_0000_0000_0100_0000;
+        const Unk10    = 0b0000_0000_0000_0000_0000_0000_0010_0000;
+        const Unk11    = 0b0000_0000_0000_0000_0000_0000_0001_0000;
+        const Unk12    = 0b0000_0000_0000_0000_0000_0000_0000_0010;
+        const Unk13    = 0b0000_0000_0000_0000_0000_0000_0000_0001;
+    }
+}
+
+impl ObjectFlags {
+    fn new(f: u32) -> ObjectFlags {
+        unsafe { mem::transmute(f) }
+    }
+
+    fn as_u32(&self) -> u32 {
+        unsafe { mem::transmute(self.clone()) }
+    }
+}
+
+#[derive(Debug)]
+enum ObjectKind {
+    Fighter    = 0b1000_0000_0000_0000,
+    Bomber     = 0b0100_0000_0000_0000,
+    Ship       = 0b0010_0000_0000_0000,
+    SAM        = 0b0001_0000_0000_0000,
+    AAA        = 0b0000_1000_0000_0000,
+    Tank       = 0b0000_0100_0000_0000,
+    Vehicle    = 0b0000_0010_0000_0000,
+    Structure1  = 0b0000_0001_0000_0000,
+    Projectile = 0b0000_0000_1000_0000,
+    Structure2 = 0b0000_0000_0100_0000,
+}
+
+impl ObjectKind {
+    fn new(x: u16) -> Result<Self> {
+        return match x {
+            0b1000_0000_0000_0000 => Ok(ObjectKind::Fighter),
+            0b0100_0000_0000_0000 => Ok(ObjectKind::Bomber),
+            0b0010_0000_0000_0000 => Ok(ObjectKind::Ship),
+            0b0001_0000_0000_0000 => Ok(ObjectKind::SAM),
+            0b0000_1000_0000_0000 => Ok(ObjectKind::AAA),
+            0b0000_0100_0000_0000 => Ok(ObjectKind::Tank),
+            0b0000_0010_0000_0000 => Ok(ObjectKind::Vehicle),
+            0b0000_0001_0000_0000 => Ok(ObjectKind::Structure1),
+            0b0000_0000_1000_0000 => Ok(ObjectKind::Projectile),
+            0b0000_0000_0100_0000 => Ok(ObjectKind::Structure2),
+            _ => bail!("unknown ObjectKind {}", x)
+        };
+    }
+}
+
 pub enum ProcKind {
     OBJ,
     PLANE,
@@ -181,44 +245,40 @@ impl ProcKind {
 
 pub struct ObjectType {
     //;---------------- general info ----------------
-    unk1: i16,
-    unk2: i16,
+    unk_type_size: i16,
+    unk_instance_size: i16,
     short_name: String,
     long_name: String,
     file_name: String,
-    unk4: u32,
-    unk5: i16,
+    flags: ObjectFlags,
+    kind: ObjectKind,
     shape: Option<Shape>,
     shadow_shape: Option<Shape>,
     unk8: u32,
     unk9: u32,
-    unk10: i16,
-    unk11: i16,
-    unk12: i16,
+    unk_damage_debris_pos: [i16; 3],
     unk13: u32,
     unk14: u32,
-    unk15: i16,
-    unk16: i16,
-    unk17: i16,
-    unk18: u32,
-    unk19: u32,
-    unk20: i16,
-    unk21: i16,
+    unk_destination_debris_pos: [i16; 3],
+    unk_damage_type: u32,
+    year_available: u32,
+    unk_max_visual_distance: i16,
+    unk_camera_distance: i16,
     unk22: i16,
-    unk23: i16,
-    unk24: i16,
-    unk25: i16,
+    unk_laser_signature: i16,
+    unk_ir_signature: i16,
+    unk_radar_signature: i16,
     unk26: i16,
-    unk27: i16,
-    unk28: i16,
-    unk29: i16,
-    unk30: i16,
-    unk31: i16,
-    unk32: i16,
-    unk33: u8,
-    unk34: u8,
-    unk35: u32,
-    unk36: i16,
+    unk_health: i16,
+    unk_damage_on_planes: i16,
+    unk_damage_on_ships: i16,
+    unk_damage_on_structures: i16,
+    unk_damage_on_armor: i16,
+    unk_damage_on_other: i16,
+    unk_explosion_type: u8,
+    unk_crater_size_ft: u8,
+    unk_empty_weight: u32,
+    unk_command_buffer_size: i16,
 
     //;---------------- movement info ----------------
     unk37: i16,
@@ -262,46 +322,51 @@ impl ObjectType {
         }
 
         return Ok(ObjectType {
-            unk1: Type::word(lines[1]).chain_err(|| "line 1")?,
-            unk2: Type::word(lines[2]).chain_err(|| "line 2")?,
+            unk_type_size: Type::word(lines[1]).chain_err(|| "line 1")?,
+            unk_instance_size: Type::word(lines[2]).chain_err(|| "line 2")?,
             short_name: name_at(0, pointers).chain_err(|| "name at 0")?,
             long_name: name_at(1, pointers).chain_err(|| "name at 1")?,
             file_name: name_at(2, pointers).chain_err(|| "name at 2")?,
-            unk4: Type::dword(lines[4]).chain_err(|| "line 4")?,
-            unk5: Type::word(lines[5]).chain_err(|| "line 5")?,
+            flags: ObjectFlags::new(Type::dword(lines[4]).chain_err(|| "line 4")?),
+            kind: ObjectKind::new(Type::word(lines[5]).chain_err(|| "line 5")? as u16).chain_err(|| "kind")?,
             shape: pointers.get(":shape").and_then(|l| Shape::new(l[0]).ok()),
             shadow_shape: pointers
                 .get(":shadowShape")
                 .and_then(|l| Shape::new(l[0]).ok()),
             unk8: Type::dword(lines[8]).chain_err(|| "line 8")?,
             unk9: Type::dword(lines[9]).chain_err(|| "line 9")?,
-            unk10: Type::word(lines[10]).chain_err(|| "line 10")?,
-            unk11: Type::word(lines[11]).chain_err(|| "line 11")?,
-            unk12: Type::word(lines[12]).chain_err(|| "line 12")?,
+            unk_damage_debris_pos:
+            [
+                Type::word(lines[10]).chain_err(|| "line 10")?,
+                Type::word(lines[11]).chain_err(|| "line 11")?,
+                Type::word(lines[12]).chain_err(|| "line 12")?,
+            ],
             unk13: Type::dword(lines[13]).chain_err(|| "line 13")?,
             unk14: Type::dword(lines[14]).chain_err(|| "line 14")?,
-            unk15: Type::word(lines[15]).chain_err(|| "line 15")?,
-            unk16: Type::word(lines[16]).chain_err(|| "line 16")?,
-            unk17: Type::word(lines[17]).chain_err(|| "line 17")?,
-            unk18: Type::dword(lines[18]).chain_err(|| "line 18")?,
-            unk19: Type::dword(lines[19]).chain_err(|| "line 19")?,
-            unk20: Type::word(lines[20]).chain_err(|| "line 20")?,
-            unk21: Type::word(lines[21]).chain_err(|| "line 21")?,
+            unk_destination_debris_pos: [
+                Type::word(lines[15]).chain_err(|| "line 15")?,
+                Type::word(lines[16]).chain_err(|| "line 16")?,
+                Type::word(lines[17]).chain_err(|| "line 17")?,
+            ],
+            unk_damage_type: Type::dword(lines[18]).chain_err(|| "line 18")?,
+            year_available: Type::dword(lines[19]).chain_err(|| "line 19")?,
+            unk_max_visual_distance: Type::word(lines[20]).chain_err(|| "line 20")?,
+            unk_camera_distance: Type::word(lines[21]).chain_err(|| "line 21")?,
             unk22: Type::word(lines[22]).chain_err(|| "line 22")?,
-            unk23: Type::word(lines[23]).chain_err(|| "line 23")?,
-            unk24: Type::word(lines[24]).chain_err(|| "line 24")?,
-            unk25: Type::word(lines[25]).chain_err(|| "line 25")?,
+            unk_laser_signature: Type::word(lines[23]).chain_err(|| "line 23")?,
+            unk_ir_signature: Type::word(lines[24]).chain_err(|| "line 24")?,
+            unk_radar_signature: Type::word(lines[25]).chain_err(|| "line 25")?,
             unk26: Type::word(lines[26]).chain_err(|| "line 26")?,
-            unk27: Type::word(lines[27]).chain_err(|| "line 27")?,
-            unk28: Type::word(lines[28]).chain_err(|| "line 28")?,
-            unk29: Type::word(lines[29]).chain_err(|| "line 29")?,
-            unk30: Type::word(lines[30]).chain_err(|| "line 30")?,
-            unk31: Type::word(lines[31]).chain_err(|| "line 31")?,
-            unk32: Type::word(lines[32]).chain_err(|| "line 32")?,
-            unk33: Type::byte(lines[33]).chain_err(|| "line 33")?,
-            unk34: Type::byte(lines[34]).chain_err(|| "line 34")?,
-            unk35: Type::dword(lines[35]).chain_err(|| "line 35")?,
-            unk36: Type::word(lines[36]).chain_err(|| "line 36")?,
+            unk_health: Type::word(lines[27]).chain_err(|| "line 27")?,
+            unk_damage_on_planes: Type::word(lines[28]).chain_err(|| "line 28")?,
+            unk_damage_on_ships: Type::word(lines[29]).chain_err(|| "line 29")?,
+            unk_damage_on_structures: Type::word(lines[30]).chain_err(|| "line 30")?,
+            unk_damage_on_armor: Type::word(lines[31]).chain_err(|| "line 31")?,
+            unk_damage_on_other: Type::word(lines[32]).chain_err(|| "line 32")?,
+            unk_explosion_type: Type::byte(lines[33]).chain_err(|| "line 33")?,
+            unk_crater_size_ft: Type::byte(lines[34]).chain_err(|| "line 34")?,
+            unk_empty_weight: Type::dword(lines[35]).chain_err(|| "line 35")?,
+            unk_command_buffer_size: Type::word(lines[36]).chain_err(|| "line 36")?,
             //;---------------- movement info ----------------
             unk37: Type::word(lines[37]).chain_err(|| "line 37")?,
             unk38: Type::word(lines[38]).chain_err(|| "line 38")?,
@@ -378,7 +443,9 @@ mod tests {
             println!("At: {}", path);
             let t = Type::new(&contents).unwrap();
             assert_eq!(format!("./test_data/{}", t.object.file_name), path);
-            rv.push(format!("{:?} <> {}", t.object.long_name, path));
+            rv.push(format!("{:?} <> {} <> {}",
+                            t.object.unk_explosion_type,
+                            t.object.long_name, path));
         }
         rv.sort();
         for v in rv {
