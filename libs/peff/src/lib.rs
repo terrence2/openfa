@@ -29,14 +29,14 @@ use std::collections::HashMap;
 
 pub struct PE {
     // Maps from vaddr (as we may see in CODE) to the function name to thunk to.
-    thunks: Option<HashMap<u32, Thunk>>,
+    pub thunks: Option<HashMap<u32, Thunk>>,
 
     // A list of offsets in CODE containing a 32bit address that needs to be relocated in memory.
     // The base is always 0, so just add the address of CODE.
-    relocs: Vec<u32>,
+    pub relocs: Vec<u32>,
 
     // The code itself, copied out of the source.
-    code: Vec<u8>
+    pub code: Vec<u8>
 }
 
 pub struct Thunk {
