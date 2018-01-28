@@ -64,6 +64,19 @@ impl Shape {
         return format!("{}{}", hd.format(), rm.format());
     }
 
+    pub fn code_ellipsize(buf: &[u8], offset: usize, len: usize, cut_to: usize, c: Color) -> String {
+        assert!(len > cut_to);
+        assert!(cut_to > 4);
+        assert_eq!(cut_to % 2, 0);
+        let h = cut_to / 2;
+        let rngl = &buf[offset..offset + h];
+        let rngr = &buf[offset + len - h..offset + len];
+        let hd = Span::new(&format_hex_bytes(offset, &rngl[0..2])).background(c);
+        let l = Span::new(&format_hex_bytes(0, &rngl[2..])).foreground(c);
+        let r = Span::new(&format_hex_bytes(0, rngr)).foreground(c);
+        return format!("{}{}{}", hd.format(), l.format(), r.format());
+    }
+
     pub fn data(buf: &[u8], offset: usize, len: usize, c: Color) -> String {
         let rng = &buf[offset..(offset + len)];
         let rm = Span::new(&format_hex_bytes(offset, &rng[0..])).foreground(c);
@@ -91,6 +104,24 @@ impl Shape {
             } else if code[0] == 0x00F2 {
                 if show {
                     out += &Self::code(&pe.code, offset, 4, Color::Purple);
+                }
+                offset += 4;
+            } else if code[0] == 0x00DA {
+                // DA 00 00 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 4, Color::Purple);
+                }
+                offset += 4;
+            } else if code[0] == 0x00CA {
+                // CA 00 00 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
+                }
+                offset += 4;
+            } else if code[0] == 0x00B8 {
+                // B8 00 01 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
                 }
                 offset += 4;
             } else if code[0] == 0x0042 {
@@ -137,17 +168,17 @@ impl Shape {
                 }
                 offset += 6;
             } else if code[0] == 0x0082 {
-                offset += 2;
-                let as_u32: &[u32] = unsafe { mem::transmute(&pe.code[offset..]) };
-                let n_coords = as_u32[0] as usize;
+                let n_coords = code[1] as usize;
+                //let unused = code[2];
                 offset += 4;
+                let sz = 3;
                 //if show {
-                    let length = 2 + 2 + 2 + n_coords * 6;
-                    out += &Self::code(&pe.code, offset - 6, length, Color::Green);
+                    let length = 2 + 2 + n_coords * sz;
+                    out += &Self::code_ellipsize(&pe.code, offset - 4, length, 18, Color::Green);
                 //}
                 for i in 0..n_coords {
                     verts.push([code[offset + 0] as i16, code[offset + 1] as i16, code[offset + 2] as i16]);
-                    offset += 6;
+                    offset += sz;
                 }
             } else {
                 for &reloc in pe.relocs.iter() {
