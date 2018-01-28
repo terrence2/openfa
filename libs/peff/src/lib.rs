@@ -39,6 +39,7 @@ pub struct PE {
     pub code: Vec<u8>
 }
 
+#[derive(Debug, Clone)]
 pub struct Thunk {
     name: String,  // The name of this import.
     ordinal: u32,  // The ordinal of this import.

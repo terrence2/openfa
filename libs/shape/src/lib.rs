@@ -15,38 +15,28 @@
 #[macro_use]
 extern crate error_chain;
 extern crate peff;
+extern crate ansi;
 
 mod errors {
     error_chain!{}
 }
 use errors::{Error, ErrorKind, Result, ResultExt};
 
-use std::{mem, str};
+use std::{cmp, mem, str};
+use std::collections::HashSet;
+use ansi::{Span, Color};
 
 pub struct Shape {
     pub vertices: Vec<[u16; 3]>
 }
 
-pub struct Header {
-    pub magic: u16,
-    pub unk1: u16,
-    pub unk2: u16,
-    pub unk3: u16,
-    pub unk4: u16,
-    pub unk5: u16,
-    pub unk6: u16,
-    pub unk7: u16,
-    pub unk8: u16,
-    pub unk9: u16
-}
-
-fn format_hex_bytes(buf: &[u8]) -> String {
+fn format_hex_bytes(offset: usize, buf: &[u8]) -> String {
     let mut out = Vec::new();
     for (i, &b) in buf.iter().enumerate() {
         out.push(format!("{:02X} ", b));
-        if (i + 1) % 16 == 0 {
-            out.push(" ".to_owned());
-        }
+//        if (offset + i + 1) % 16 == 0 {
+//            out.push(" ".to_owned());
+//        }
     }
     return out.drain(..).collect::<String>();
 }
@@ -67,67 +57,150 @@ impl Shape {
         return Ok(&buf[2..2 + header]);
     }
 
-    pub fn new(path: &str, data: &[u8]) -> Result<String> {
-//        let mut vertices = Vec::new();
+    pub fn code(buf: &[u8], offset: usize, len: usize, c: Color) -> String {
+        let rng = &buf[offset..(offset + len)];
+        let hd = Span::new(&format_hex_bytes(offset, &rng[0..2])).background(c);
+        let rm = Span::new(&format_hex_bytes(offset + 2, &rng[2..])).foreground(c);
+        return format!("{}{}", hd.format(), rm.format());
+    }
+
+    pub fn data(buf: &[u8], offset: usize, len: usize, c: Color) -> String {
+        let rng = &buf[offset..(offset + len)];
+        let rm = Span::new(&format_hex_bytes(offset, &rng[0..])).foreground(c);
+        return rm.format();
+    }
+
+    pub fn new(path: &str, data: &[u8]) -> Result<(Vec<[i16;3]>, String)> {
+        let mut verts = Vec::new();
 
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
         let mut offset = 0;
+        let mut cnt = 0;
+        let mut out = "".to_owned();
+        let show = false;
+        let mut pics = Vec::new();
+        let mut unk1 = 0;
 
-        let header_ptr: *const Header = pe.code.as_ptr() as *const Header;
-        let header: &Header = unsafe { &*header_ptr };
-        offset += mem::size_of::<Header>();
+        loop {
+            let code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
+            if code[0] == 0xFFFF {
+                if show {
+                    out += &Self::code(&pe.code, offset, 14, Color::Blue);
+                }
+                offset += 14;
+            } else if code[0] == 0x00F2 {
+                if show {
+                    out += &Self::code(&pe.code, offset, 4, Color::Purple);
+                }
+                offset += 4;
+            } else if code[0] == 0x0042 {
+                let s = Self::read_name(&pe.code[offset + 2..]).unwrap();
+                if show {
+                    out += &Self::code(&pe.code, offset, 2 + s.len() + 1, Color::Yellow);
+                }
+                offset += 2 + s.len() + 1;
+            } else if code[0] == 0x00E2 {
+                // E2 00  5F 7A 73 75 35 37 2E 50 49 43 00 00 00 00
+                pics.push(Self::read_name(&pe.code[offset + 2..]).unwrap());
+                if show {
+                    out += &Self::code(&pe.code, offset, 16, Color::Yellow);
+                }
+                offset += 16;
+            } else if code[0] == 0x007A {
+                if show {
+                    out += &Self::code(&pe.code, offset, 10, Color::Green);
+                }
+                offset += 10;
+            } else if code[0] == 0x00CE {
+                //CE 00  00 5E  00 00 00 0D  00 00 00 11  00 00 00 00  00 AC FF FF  00 AC FF FF  00 22  00 00 00 54  00 00  00 AC FF FF  00 22  00 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 40, Color::Cyan);
+                }
+                offset += 40;
+            } else if code[0] == 0x0078 {
+                // 78 00 00 00 BC 01 82 00 90 01 00 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 12, Color::Blue);
+                }
+                offset += 12;
+            } else if code[0] == 0x00C8 {
+                // C8 00 E6 00 10 00 33 11
+                // C8 00 E6 00 21 00 61 0F
+                if show {
+                    out += &Self::code(&pe.code, offset, 8, Color::Purple);
+                }
+                offset += 8;
+            } else if code[0] == 0x00A6 {
+                // A6 00 5B 0F 01 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 6, Color::Cyan);
+                }
+                offset += 6;
+            } else if code[0] == 0x0082 {
+                offset += 2;
+                let as_u32: &[u32] = unsafe { mem::transmute(&pe.code[offset..]) };
+                let n_coords = as_u32[0] as usize;
+                offset += 4;
+                //if show {
+                    let length = 2 + 2 + 2 + n_coords * 6;
+                    out += &Self::code(&pe.code, offset - 6, length, Color::Green);
+                //}
+                for i in 0..n_coords {
+                    verts.push([code[offset + 0] as i16, code[offset + 1] as i16, code[offset + 2] as i16]);
+                    offset += 6;
+                }
+            } else {
+                for &reloc in pe.relocs.iter() {
+                    let base = reloc as i64 - offset as i64;
+                    if base >= 4 {
+                        out += &Self::data(&pe.code, offset, base as usize, Color::White);
+                        out += &Self::data(&pe.code, offset + base as usize, 4, Color::Red);
+                        offset += base as usize + 4;
+                    }
+                }
+                let remainder = cmp::min(1500, pe.code.len() - offset);
+                out += &format_hex_bytes(offset, &pe.code[offset..offset+remainder]);
+//                let buffer = &pe.code[offset..offset + remainder];
+//                let fmt = format_hex_bytes(offset, buffer);
 
-        let source = Self::read_name(&pe.code[offset..]).unwrap();
-        offset += source.len() + 1;
 
-        let rem = &pe.code[offset..];
-        //return Ok(format!("{:04X}| {} - {} - {}", header.unk3, format_hex_bytes(&rem[0..50]), source, path));
-        return Ok(format!("{} - {} - {}", format_hex_bytes(&rem[0..50]), source, path));
+                //out += &;
+                out += "... - ";
+                out += path;
+                break;
+            }
+            cnt += 1;
+        }
 
-
-
-        //if pe.code[14] != 0xf2 {
-//            println!("{:?} - {} - {}", pe.relocs, format_hex_bytes(&pe.code[0..20]), path);
-        //}
-//        if pe.thunks.is_some() {
-//            println!("{}", path);
+        // Ensure we still haven't hit any relocs.
+//        for &reloc in pe.relocs.iter() {
+//            assert!(reloc > offset as u32);
 //        }
-        //println!("{}", pe.relocs.first().unwrap_or(&0u32));
 
-//        let words: &[u16] = unsafe { mem::transmute(&pe.code[0..]) };
-//        assert!(words[0] == 0xFFFF);
-//        vertices.push([words[1], words[2], words[3]]);
-//        vertices.push([words[4], words[5], words[6]]);
+        let mut num_thunk = 0;
+        if let Some(thunks) = pe.thunks.clone() {
+            num_thunk = thunks.len();
+        }
+
+        let is_s = if path.contains("_S.SH") { "t" } else { "f" };
+        return Ok((verts, format!("{:04X}| {} => {:?}", unk1, out, pe.thunks)));
 
 
-//        //println!("{} - {}", pe.code.len(), path);
-//        //println!("{:?}", pe.code);
-//        let bytes: &[u8] = &pe.code;
-//        let mut ip = 0usize;
-//        while ip < bytes.len() {
-//            let word: u16 = unsafe { *(bytes[ip..].as_ptr() as *const u16) };
-//            match word {
-//                0x82 => {
-//                    ip += 2;
-//                    let dwords: &[u32] = unsafe { mem::transmute(&bytes[ip..]) };
-//                    let cnt = dwords[0];
-//                    ip += 4;
-//                    println!("found {} verts at offset {} in {}, prefix {:?}", cnt, ip * 2, path, &pe.code[0..ip*2]);
-//                    let words: &[u16] = unsafe { mem::transmute(&bytes[ip..]) };
-//                    for i in 0..cnt {
-//                        let x = words[ip];
-//                        let y = words[ip + 1];
-//                        let z = words[ip + 2];
-//                        ip += 3;
-//                        vertices.push([x, y, z]);
-//                    }
-//                    break;
-//                },
-//                _ => ip += 1
-//            }
-//        }
-
-//        return Ok(Shape{ vertices });
+//        let header_ptr: *const Header = pe.code.as_ptr() as *const Header;
+//        let header: &Header = unsafe { &*header_ptr };
+//        let header_span = Span::new(&format_hex_bytes(0, &pe.code[0..mem::size_of::<Header>()])).foreground(Color::Blue);
+//        offset += mem::size_of::<Header>();
+//
+//        let source = Self::read_name(&pe.code[offset..]).unwrap();
+//        let source_span = Span::new(&format_hex_bytes(offset, &pe.code[offset..(offset + source.len() + 1)])).foreground(Color::Yellow);
+//        offset += source.len() + 1;
+//
+//        let rem = &pe.code[offset..];
+//        return Ok(format!("{:02}| {}{}{} - {}", source.len(),
+//                          header_span.format(),
+//                          source_span.format(),
+//                          format_hex_bytes(offset, &rem[0..50]),
+//                          path));
     }
 }
 
@@ -144,16 +217,17 @@ mod tests {
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
-            println!("AT: {}", path);
+            //println!("AT: {}", path);
 
-            if path == "./test_data/F4J_D.SH" {
+            //if path == "./test_data/MIG21.SH" {
+            if true {
 
                 let mut fp = fs::File::open(entry.path()).unwrap();
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
 
-                let foo = Shape::new(&path, &data).unwrap();
-                rv.push(foo);
+                let (_verts, desc) = Shape::new(&path, &data).unwrap();
+                rv.push(desc);
 
             }
 
@@ -163,8 +237,12 @@ mod tests {
             //                t.object.long_name, path));
         }
         rv.sort();
+
+        let mut set = HashSet::new();
         for v in rv {
+            set.insert((&v[0..2]).to_owned());
             println!("{}", v);
         }
+        println!("{:?}", set);
     }
 }

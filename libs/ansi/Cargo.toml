@@ -1,9 +1,6 @@
 [package]
-name = "shape"
+name = "ansi"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-error-chain = "0.11"
-peff = { path = "../peff/" }
-ansi = { path = "../ansi/" }
