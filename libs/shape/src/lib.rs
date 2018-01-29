@@ -91,8 +91,10 @@ impl Shape {
         let mut cnt = 0;
         let mut out = "".to_owned();
         let show = false;
+        let show_sub = false;
         let mut pics = Vec::new();
-        let mut unk1 = 0;
+        let mut n_coords = 0;
+        let mut unk = 0;
 
         loop {
             let code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
@@ -168,40 +170,89 @@ impl Shape {
                 }
                 offset += 6;
             } else if code[0] == 0x0082 {
-                let n_coords = code[1] as usize;
+                n_coords = code[1] as usize;
                 //let unused = code[2];
-                offset += 4;
-                let sz = 3;
-                //if show {
-                    let length = 2 + 2 + n_coords * sz;
-                    out += &Self::code_ellipsize(&pe.code, offset - 4, length, 18, Color::Green);
-                //}
+                let hdr_cnt= 2;
+                let coord_sz= 6;
+                let length = 2 + hdr_cnt * 2 + n_coords * coord_sz;
+                if offset + length >= code.len() {
+                    return Ok((verts, "FAILURE".to_owned()));
+                }
+                if show {
+                    //out += &Self::code_ellipsize(&pe.code, offset - 4, length, 18, Color::Green);
+                    out += &Self::code(&pe.code, offset, length, Color::Green);
+                }
+                offset += 2 + hdr_cnt * 2;
                 for i in 0..n_coords {
                     verts.push([code[offset + 0] as i16, code[offset + 1] as i16, code[offset + 2] as i16]);
-                    offset += sz;
+                    offset += coord_sz;
                 }
-            } else {
-                for &reloc in pe.relocs.iter() {
-                    let base = reloc as i64 - offset as i64;
-                    if base >= 4 {
-                        out += &Self::data(&pe.code, offset, base as usize, Color::White);
-                        out += &Self::data(&pe.code, offset + base as usize, 4, Color::Red);
-                        offset += base as usize + 4;
+
+                // switch to a second vm after verts that works per-byte.
+                loop {
+                    let code2 = &pe.code[offset..];
+                    if code2[0] == 0xF6 {
+                        if show_sub {
+                            out += &Self::code(code2, 0, 7, Color::Blue);
+                        }
+                        offset += 7;
+                    } else if code2[0] == 0xBC {
+                        // BC 9E 08 00 08 00
+                        if show_sub {
+                            out += &Self::code(code2, 0, 6, Color::Purple);
+                        }
+                        offset += 6;
+                    } else if code2[0] == 0xFC {
+                        let unk0 = code2[1];
+                        let flags = code2[2];
+                        let i = if (flags & 2) == 0 { 0x11 } else { 0x0e } as usize;
+                        let index_count = code2[i] as usize;
+                        let have_shorts = (flags & 1) != 0;
+                        let mut length = i + 1 + index_count;
+                        if have_shorts {
+                            length += index_count * 2;
+                        }
+                        if show_sub {
+                            out += &Self::code(code2, 0, length, Color::Cyan);
+                        }
+                        offset += length;
+                    } else if code2[0] == 0x6C {
+                        // 6C 00 06 00 00 00 05 00 36 06 38 9B 06
+                        if show_sub {
+                            out += &Self::code(&pe.code, offset, 13, Color::Red);
+                        }
+                        offset += 13;
+                    } else {
+                        unk = 1;
+                        break;
                     }
                 }
-                let remainder = cmp::min(1500, pe.code.len() - offset);
-                out += &format_hex_bytes(offset, &pe.code[offset..offset+remainder]);
-//                let buffer = &pe.code[offset..offset + remainder];
-//                let fmt = format_hex_bytes(offset, buffer);
-
-
-                //out += &;
-                out += "... - ";
-                out += path;
+                // We need to get back into word mode somehow.
+                // 06 00 00 93 03 00 46 EC 07 00 1E 40 CA FF 05 00 6E 29 38 99 29
+                //break;
+            } else {
                 break;
             }
             cnt += 1;
         }
+
+        for &reloc in pe.relocs.iter() {
+            let base = reloc as i64 - offset as i64;
+            if base >= 4 {
+                out += &Self::data(&pe.code, offset, base as usize, Color::White);
+                out += &Self::data(&pe.code, offset + base as usize, 4, Color::Red);
+                offset += base as usize + 4;
+            }
+        }
+        let remainder = cmp::min(1500, pe.code.len() - offset);
+        out += &format_hex_bytes(offset, &pe.code[offset..offset+remainder]);
+        //                let buffer = &pe.code[offset..offset + remainder];
+    //                let fmt = format_hex_bytes(offset, buffer);
+
+
+        //out += &;
+        out += "... - ";
+        out += path;
 
         // Ensure we still haven't hit any relocs.
 //        for &reloc in pe.relocs.iter() {
@@ -214,7 +265,7 @@ impl Shape {
         }
 
         let is_s = if path.contains("_S.SH") { "t" } else { "f" };
-        return Ok((verts, format!("{:04X}| {} => {:?}", unk1, out, pe.thunks)));
+        return Ok((verts, format!("{:04X}| {} => {:?}", unk, out, pe.thunks)));
 
 
 //        let header_ptr: *const Header = pe.code.as_ptr() as *const Header;
@@ -248,7 +299,7 @@ mod tests {
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
-            //println!("AT: {}", path);
+            println!("AT: {}", path);
 
             //if path == "./test_data/MIG21.SH" {
             if true {
