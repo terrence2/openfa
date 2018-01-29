@@ -83,7 +83,7 @@ impl Shape {
         return rm.format();
     }
 
-    pub fn new(path: &str, data: &[u8]) -> Result<(Vec<[i16;3]>, String)> {
+    pub fn new(path: &str, data: &[u8]) -> Result<(Vec<[f32; 3]>, String)> {
         let mut verts = Vec::new();
 
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
@@ -178,13 +178,17 @@ impl Shape {
                 if offset + length >= code.len() {
                     return Ok((verts, "FAILURE".to_owned()));
                 }
-                if show {
+                //if show {
                     //out += &Self::code_ellipsize(&pe.code, offset - 4, length, 18, Color::Green);
                     out += &Self::code(&pe.code, offset, length, Color::Green);
-                }
+                //}
                 offset += 2 + hdr_cnt * 2;
+                fn s2f(s: u16) -> f32 { (s as i16) as f32 }
                 for i in 0..n_coords {
-                    verts.push([code[offset + 0] as i16, code[offset + 1] as i16, code[offset + 2] as i16]);
+                    let x = s2f(code[offset + 0]);
+                    let y = s2f(code[offset + 1]);
+                    let z = s2f(code[offset + 2]);
+                    verts.push([x, y, z]);
                     offset += coord_sz;
                 }
 
