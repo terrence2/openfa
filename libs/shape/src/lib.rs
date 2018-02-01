@@ -23,7 +23,7 @@ mod errors {
 use errors::{Error, ErrorKind, Result, ResultExt};
 
 use std::{cmp, mem, str};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use ansi::{Span, Color};
 
 pub struct Shape {
@@ -45,16 +45,6 @@ impl Shape {
     fn read_name(n: &[u8]) -> Result<String> {
         let end_offset: usize = n.iter().position(|&c| c == 0).unwrap();
         return Ok(str::from_utf8(&n[..end_offset]).chain_err(|| "names should be utf8 encoded")?.to_owned());
-    }
-
-    // Read a 16 bit prefix and then read that many byres.
-    fn read_prefix16_bytes(buf: &[u8]) -> Result<&[u8]> {
-        let header_buf: &[u16] = unsafe { mem::transmute(buf) };
-        let header = header_buf[0] as usize;
-        if header + 2 > buf.len() {
-            bail!("too short");
-        }
-        return Ok(&buf[2..2 + header]);
     }
 
     pub fn code(buf: &[u8], offset: usize, len: usize, c: Color) -> String {
@@ -108,6 +98,26 @@ impl Shape {
                     out += &Self::code(&pe.code, offset, 4, Color::Purple);
                 }
                 offset += 4;
+            } else if code[0] == 0x0046 {
+                if show {
+                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
+                }
+                offset += 2;
+            } else if code[0] == 0x004E {
+                if show {
+                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
+                }
+                offset += 2;
+            } else if code[0] == 0x00EE {
+                if show {
+                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
+                }
+                offset += 2;
+            } else if code[0] == 0x00B2 {
+                if show {
+                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
+                }
+                offset += 2;
             } else if code[0] == 0x00DA {
                 // DA 00 00 00
                 if show {
@@ -116,6 +126,12 @@ impl Shape {
                 offset += 4;
             } else if code[0] == 0x00CA {
                 // CA 00 00 00
+                if show {
+                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
+                }
+                offset += 4;
+            } else if code[0] == 0x0048 {
+                // 48 00 F5 1B
                 if show {
                     out += &Self::code(&pe.code, offset, 4, Color::Cyan);
                 }
@@ -169,7 +185,14 @@ impl Shape {
                     out += &Self::code(&pe.code, offset, 6, Color::Cyan);
                 }
                 offset += 6;
+            } else if code[0] == 0x00AC {
+                // AC 00 04 07
+                if show {
+                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
+                }
+                offset += 4;
             } else if code[0] == 0x0082 {
+                unk = 1;
                 n_coords = code[1] as usize;
                 //let unused = code[2];
                 let hdr_cnt= 2;
@@ -178,10 +201,10 @@ impl Shape {
                 if offset + length >= code.len() {
                     return Ok((verts, "FAILURE".to_owned()));
                 }
-                //if show {
+                if show {
                     //out += &Self::code_ellipsize(&pe.code, offset - 4, length, 18, Color::Green);
                     out += &Self::code(&pe.code, offset, length, Color::Green);
-                //}
+                }
                 offset += 2 + hdr_cnt * 2;
                 fn s2f(s: u16) -> f32 { (s as i16) as f32 }
                 for i in 0..n_coords {
@@ -227,7 +250,7 @@ impl Shape {
                         }
                         offset += 13;
                     } else {
-                        unk = 1;
+                        unk = 2;
                         break;
                     }
                 }
@@ -241,10 +264,22 @@ impl Shape {
         }
 
         for &reloc in pe.relocs.iter() {
-            let base = reloc as i64 - offset as i64;
+            let base = (reloc as i64 - offset as i64) as usize;
             if base >= 4 {
-                out += &Self::data(&pe.code, offset, base as usize, Color::White);
-                out += &Self::data(&pe.code, offset + base as usize, 4, Color::Red);
+                out += &Self::data(&pe.code, offset, base, Color::White);
+                let dwords: &[u32] = unsafe { mem::transmute(&pe.code[offset + base..]) };
+                let thunk_id = dwords[0];
+                if let Some(thunks) = pe.thunks.clone() {
+                    if thunks.contains_key(&thunk_id) {
+                        let sym = Span::new(&thunks[&thunk_id].name).foreground(Color::Red);
+                        out += &format!("{}", sym.format());
+                    } else {
+                        out += &Self::data(&pe.code, offset + base, 4, Color::Red);
+                    }
+                } else {
+                    out += &Self::data(&pe.code, offset + base, 4, Color::Red);
+                }
+
                 offset += base as usize + 4;
             }
         }
@@ -303,7 +338,7 @@ mod tests {
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
-            println!("AT: {}", path);
+            //println!("AT: {}", path);
 
             //if path == "./test_data/MIG21.SH" {
             if true {
