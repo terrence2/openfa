@@ -75,7 +75,7 @@ fn main() {
     }
 }
 
-fn load_file(path: &Path) -> Vec<[i16;3]> {
+fn load_file(path: &Path) -> Vec<[f32; 3]> {
     let mut fp = fs::File::open(path).unwrap();
     let mut data = Vec::new();
     fp.read_to_end(&mut data).unwrap();
@@ -83,13 +83,12 @@ fn load_file(path: &Path) -> Vec<[i16;3]> {
     return verts;
 }
 
-fn add_shape(window: &mut Window, verts: &Vec<[i16;3]>) -> Vec<SceneNode> {
-    const SCALE: f32 = 1f32 / 32767f32 * 10f32;
+fn add_shape(window: &mut Window, verts: &Vec<[f32; 3]>) -> Vec<SceneNode> {
     let mut nodes = Vec::new();
     for v in verts.iter() {
-        let mut node = window.add_sphere(0.05);
-        node.set_color(1.0, 0.0, 0.0);
-        node.append_translation(&Translation3::new(v[0] as f32 * SCALE, v[1] as f32 * SCALE, v[2] as f32 * SCALE));
+        let mut node = window.add_sphere(0.5);
+        node.set_color(1.0, 1.0, 1.0);
+        node.append_translation(&Translation3::new(v[0], v[1], v[2]));
         nodes.push(node);
     }
     return nodes;

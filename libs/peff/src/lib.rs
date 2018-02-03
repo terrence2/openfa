@@ -41,9 +41,9 @@ pub struct PE {
 
 #[derive(Debug, Clone)]
 pub struct Thunk {
-    name: String,  // The name of this import.
-    ordinal: u32,  // The ordinal of this import.
-    vaddr: u32,  // Virtual address of the thunk of this symbol.
+    pub name: String,  // The name of this import.
+    pub ordinal: u32,  // The ordinal of this import.
+    pub vaddr: u32,  // Virtual address of the thunk of this symbol.
 }
 
 impl PE {
