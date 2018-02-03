@@ -22,7 +22,9 @@ mod errors {
 }
 use errors::{Error, ErrorKind, Result, ResultExt};
 
-use std::{cmp, mem, str};
+use std::path::{Path, PathBuf};
+use std::io::prelude::*;
+use std::{cmp, fs, mem, str};
 use std::collections::{HashMap, HashSet};
 use ansi::{Span, Color};
 
@@ -39,6 +41,77 @@ fn format_hex_bytes(offset: usize, buf: &[u8]) -> String {
 //        }
     }
     return out.drain(..).collect::<String>();
+}
+
+fn n2h(n: u8) -> char {
+    match n {
+        0 => '0',
+        1 => '1',
+        2 => '2',
+        3 => '3',
+        4 => '4',
+        5 => '5',
+        6 => '6',
+        7 => '7',
+        8 => '8',
+        9 => '9',
+        10 => 'A',
+        11 => 'B',
+        12 => 'C',
+        13 => 'D',
+        14 => 'E',
+        15 => 'F',
+        _ => panic!("expected a nibble, got: {}", n)
+    }
+}
+
+fn b2h(b: u8, v: &mut Vec<char>) {
+    v.push(n2h(b >> 4));
+    v.push(n2h(b & 0xF));
+    v.push(' ');
+}
+
+fn hex(buf: &[u8], v: &mut Vec<char>) {
+    for &b in buf {
+        b2h(b, v);
+    }
+}
+
+enum SectionKind {
+    Main(u16),
+    Sub(u8),
+    Unknown,
+    RelocatedCall(String),
+    RelocatedRef,
+    RelocationTarget(usize)
+}
+
+struct Section {
+    kind: SectionKind,
+    offset: usize,
+    length: usize,
+}
+
+impl Section {
+    fn new(kind: u16, offset: usize, length: usize) -> Self {
+        Section { kind: SectionKind::Main(kind), offset, length }
+    }
+
+    fn sub(kind: u8, offset: usize, length: usize) -> Self {
+        Section { kind: SectionKind::Sub(kind), offset, length }
+    }
+
+    fn unknown(offset: usize, length: usize) -> Self {
+        Section { kind: SectionKind::Unknown, offset, length }
+    }
+
+    fn relocated_call(to: &str, offset: usize) -> Self {
+        Section { kind: SectionKind::RelocatedCall(to.to_owned()), offset, length: 4 }
+    }
+
+    fn relocated_ref(offset: usize) -> Self {
+        Section { kind: SectionKind::RelocatedRef, offset, length: 4 }
+    }
 }
 
 impl Shape {
@@ -79,132 +152,90 @@ impl Shape {
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
         let mut offset = 0;
         let mut cnt = 0;
-        let mut out = "".to_owned();
         let show = false;
         let show_sub = false;
         let mut pics = Vec::new();
         let mut n_coords = 0;
         let mut unk = 0;
 
+        let mut sections = Vec::new();
+
         loop {
             let code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
             if code[0] == 0xFFFF {
-                if show {
-                    out += &Self::code(&pe.code, offset, 14, Color::Blue);
-                }
+                sections.push(Section::new(0xFFFF, offset, 14));
                 offset += 14;
+            } else if code[0] == 0x00F0 {
+                break;
             } else if code[0] == 0x00F2 {
-                if show {
-                    out += &Self::code(&pe.code, offset, 4, Color::Purple);
-                }
+                sections.push(Section::new(0x00F2, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0046 {
-                if show {
-                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
-                }
+                sections.push(Section::new(0x0046, offset, 2));
                 offset += 2;
             } else if code[0] == 0x004E {
-                if show {
-                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
-                }
+                sections.push(Section::new(0x004E, offset, 2));
                 offset += 2;
             } else if code[0] == 0x00EE {
-                if show {
-                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
-                }
+                sections.push(Section::new(0x00EE, offset, 2));
                 offset += 2;
             } else if code[0] == 0x00B2 {
-                if show {
-                    out += &Self::code(&pe.code, offset, 2, Color::Purple);
-                }
+                sections.push(Section::new(0x00B2, offset, 2));
                 offset += 2;
             } else if code[0] == 0x00DA {
-                // DA 00 00 00
-                if show {
-                    out += &Self::code(&pe.code, offset, 4, Color::Purple);
-                }
+                sections.push(Section::new(0x00DA, offset, 4));
                 offset += 4;
             } else if code[0] == 0x00CA {
-                // CA 00 00 00
-                if show {
-                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
-                }
+                sections.push(Section::new(0x00CA, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0048 {
-                // 48 00 F5 1B
-                if show {
-                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
-                }
+                sections.push(Section::new(0x0048, offset, 4));
                 offset += 4;
             } else if code[0] == 0x00B8 {
-                // B8 00 01 00
-                if show {
-                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
-                }
+                sections.push(Section::new(0x00B8, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0042 {
                 let s = Self::read_name(&pe.code[offset + 2..]).unwrap();
-                if show {
-                    out += &Self::code(&pe.code, offset, 2 + s.len() + 1, Color::Yellow);
-                }
+                sections.push(Section::new(0x0042, offset, s.len() + 3));
                 offset += 2 + s.len() + 1;
             } else if code[0] == 0x00E2 {
-                // E2 00  5F 7A 73 75 35 37 2E 50 49 43 00 00 00 00
                 pics.push(Self::read_name(&pe.code[offset + 2..]).unwrap());
-                if show {
-                    out += &Self::code(&pe.code, offset, 16, Color::Yellow);
-                }
+                sections.push(Section::new(0x00E2, offset, 16));
                 offset += 16;
             } else if code[0] == 0x007A {
-                if show {
-                    out += &Self::code(&pe.code, offset, 10, Color::Green);
-                }
+                sections.push(Section::new(0x007A, offset, 10));
                 offset += 10;
             } else if code[0] == 0x00CE {
                 //CE 00  00 5E  00 00 00 0D  00 00 00 11  00 00 00 00  00 AC FF FF  00 AC FF FF  00 22  00 00 00 54  00 00  00 AC FF FF  00 22  00 00
-                if show {
-                    out += &Self::code(&pe.code, offset, 40, Color::Cyan);
-                }
+                sections.push(Section::new(0x00CE, offset, 40));
                 offset += 40;
             } else if code[0] == 0x0078 {
                 // 78 00 00 00 BC 01 82 00 90 01 00 00
-                if show {
-                    out += &Self::code(&pe.code, offset, 12, Color::Blue);
-                }
+                sections.push(Section::new(0x0078, offset, 12));
                 offset += 12;
             } else if code[0] == 0x00C8 {
                 // C8 00 E6 00 10 00 33 11
                 // C8 00 E6 00 21 00 61 0F
-                if show {
-                    out += &Self::code(&pe.code, offset, 8, Color::Purple);
-                }
+                sections.push(Section::new(0x00C8, offset, 8));
                 offset += 8;
             } else if code[0] == 0x00A6 {
                 // A6 00 5B 0F 01 00
-                if show {
-                    out += &Self::code(&pe.code, offset, 6, Color::Cyan);
-                }
+                sections.push(Section::new(0x00A6, offset, 6));
                 offset += 6;
             } else if code[0] == 0x00AC {
                 // AC 00 04 07
-                if show {
-                    out += &Self::code(&pe.code, offset, 4, Color::Cyan);
-                }
+                sections.push(Section::new(0x00AC, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0082 {
                 unk = 1;
                 n_coords = code[1] as usize;
-                //let unused = code[2];
                 let hdr_cnt= 2;
                 let coord_sz= 6;
                 let length = 2 + hdr_cnt * 2 + n_coords * coord_sz;
                 if offset + length >= code.len() {
-                    return Ok((verts, "FAILURE".to_owned()));
+                    return Ok((verts, format!("FAILURE on {}", path)));
                 }
-                if show {
-                    //out += &Self::code_ellipsize(&pe.code, offset - 4, length, 18, Color::Green);
-                    out += &Self::code(&pe.code, offset, length, Color::Green);
-                }
+                sections.push(Section ::new(0x0082, offset, length));
                 offset += 2 + hdr_cnt * 2;
                 fn s2f(s: u16) -> f32 { (s as i16) as f32 }
                 for i in 0..n_coords {
@@ -219,15 +250,11 @@ impl Shape {
                 loop {
                     let code2 = &pe.code[offset..];
                     if code2[0] == 0xF6 {
-                        if show_sub {
-                            out += &Self::code(code2, 0, 7, Color::Blue);
-                        }
+                        sections.push(Section ::sub(0xF6, offset, 7));
                         offset += 7;
                     } else if code2[0] == 0xBC {
                         // BC 9E 08 00 08 00
-                        if show_sub {
-                            out += &Self::code(code2, 0, 6, Color::Purple);
-                        }
+                        sections.push(Section ::sub(0xBC, offset, 6));
                         offset += 6;
                     } else if code2[0] == 0xFC {
                         let unk0 = code2[1];
@@ -239,15 +266,11 @@ impl Shape {
                         if have_shorts {
                             length += index_count * 2;
                         }
-                        if show_sub {
-                            out += &Self::code(code2, 0, length, Color::Cyan);
-                        }
+                        sections.push(Section ::sub(0xFC, offset, length));
                         offset += length;
                     } else if code2[0] == 0x6C {
                         // 6C 00 06 00 00 00 05 00 36 06 38 9B 06
-                        if show_sub {
-                            out += &Self::code(&pe.code, offset, 13, Color::Red);
-                        }
+                        sections.push(Section ::sub(0x6C, offset, 13));
                         offset += 13;
                     } else {
                         unk = 2;
@@ -263,66 +286,60 @@ impl Shape {
             cnt += 1;
         }
 
-        for &reloc in pe.relocs.iter() {
-            let base = (reloc as i64 - offset as i64) as usize;
-            if base >= 4 {
-                out += &Self::data(&pe.code, offset, base, Color::White);
-                let dwords: &[u32] = unsafe { mem::transmute(&pe.code[offset + base..]) };
-                let thunk_id = dwords[0];
-                if let Some(thunks) = pe.thunks.clone() {
-                    if thunks.contains_key(&thunk_id) {
-                        let sym = Span::new(&thunks[&thunk_id].name).foreground(Color::Red);
-                        out += &format!("{}", sym.format());
-                    } else {
-                        out += &Self::data(&pe.code, offset + base, 4, Color::Red);
-                    }
-                } else {
-                    out += &Self::data(&pe.code, offset + base, 4, Color::Red);
-                }
+        sections.push(Section::unknown(offset, pe.code.len() - offset));
 
-                offset += base as usize + 4;
+        for &reloc in pe.relocs.iter() {
+            assert!((reloc as usize) + 4 <= pe.code.len());
+            let dwords: &[u32] = unsafe { mem::transmute(&pe.code[reloc as usize..]) };
+            let thunk_id = dwords[0];
+            if let Some(thunks) = pe.thunks.clone() {
+                if thunks.contains_key(&thunk_id) {
+                    sections.push(Section::relocated_call(&thunks[&thunk_id].name, reloc as usize));
+                } else {
+                    sections.push(Section::relocated_ref(reloc as usize));
+                }
             }
         }
-        let remainder = cmp::min(1500, pe.code.len() - offset);
-        out += &format_hex_bytes(offset, &pe.code[offset..offset+remainder]);
+//        let remainder = cmp::min(1500, pe.code.len() - offset);
+//        out += &format_hex_bytes(offset, &pe.code[offset..offset+remainder]);
         //                let buffer = &pe.code[offset..offset + remainder];
-    //                let fmt = format_hex_bytes(offset, buffer);
-
-
-        //out += &;
-        out += "... - ";
-        out += path;
-
-        // Ensure we still haven't hit any relocs.
-//        for &reloc in pe.relocs.iter() {
-//            assert!(reloc > offset as u32);
-//        }
+        //                let fmt = format_hex_bytes(offset, buffer);
 
         let mut num_thunk = 0;
         if let Some(thunks) = pe.thunks.clone() {
             num_thunk = thunks.len();
         }
 
-        let is_s = if path.contains("_S.SH") { "t" } else { "f" };
+        let out = format_sections(&pe.code, &mut sections);
         return Ok((verts, format!("{:04X}| {} => {:?}", unk, out, pe.thunks)));
-
-
-//        let header_ptr: *const Header = pe.code.as_ptr() as *const Header;
-//        let header: &Header = unsafe { &*header_ptr };
-//        let header_span = Span::new(&format_hex_bytes(0, &pe.code[0..mem::size_of::<Header>()])).foreground(Color::Blue);
-//        offset += mem::size_of::<Header>();
-//
-//        let source = Self::read_name(&pe.code[offset..]).unwrap();
-//        let source_span = Span::new(&format_hex_bytes(offset, &pe.code[offset..(offset + source.len() + 1)])).foreground(Color::Yellow);
-//        offset += source.len() + 1;
-//
-//        let rem = &pe.code[offset..];
-//        return Ok(format!("{:02}| {}{}{} - {}", source.len(),
-//                          header_span.format(),
-//                          source_span.format(),
-//                          format_hex_bytes(offset, &rem[0..50]),
-//                          path));
     }
+}
+
+fn format_sections(code: &[u8], sections: &mut Vec<Section>) -> String {
+    sections.sort_by(|a, b| { a.offset.cmp(&b.offset) });
+    for (i, section_a) in sections.iter().enumerate() {
+        for (j, section_b) in sections.iter().enumerate() {
+            if j > i {
+                assert!(section_a.offset < section_b.offset);
+                assert!(section_a.offset + section_a.length <= section_b.offset ||
+                        section_a.offset + section_a.length >= section_b.offset + section_b.length);
+            }
+        }
+    }
+
+    let mut acc = Vec::new();
+    for i in 0..sections.len() {
+        let start = sections[i].offset;
+        let j = i + 1;
+        if j == sections.len() || sections[i].offset + sections[i].length <= sections[j].offset {
+            hex(&code[start..start + 2], &mut acc);
+            hex(&code[start + 2..start + sections[i].length], &mut acc);
+        } else {
+
+        }
+    }
+
+    return acc.iter().collect::<String>();
 }
 
 #[cfg(test)]
