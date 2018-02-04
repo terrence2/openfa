@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::io::prelude::*;
 use std::{cmp, fs, mem, str};
 use std::collections::{HashMap, HashSet};
-use ansi::{Span, Color};
+use ansi::{Escape, Color};
 
 pub struct Shape {
     pub vertices: Vec<[u16; 3]>
@@ -77,15 +77,17 @@ fn hex(buf: &[u8], v: &mut Vec<char>) {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum SectionKind {
     Main(u16),
     Sub(u8),
     Unknown,
     RelocatedCall(String),
     RelocatedRef,
-    RelocationTarget(usize)
+    RelocationTarget
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct Section {
     kind: SectionKind,
     offset: usize,
@@ -105,45 +107,66 @@ impl Section {
         Section { kind: SectionKind::Unknown, offset, length }
     }
 
-    fn relocated_call(to: &str, offset: usize) -> Self {
-        Section { kind: SectionKind::RelocatedCall(to.to_owned()), offset, length: 4 }
+    fn color(&self) -> Color {
+        match self.kind {
+            SectionKind::Main(k) => {
+                match k {
+                    0xFFFF => Color::Blue,
+                    0x00F0 => Color::Magenta,
+                    0x00F2 => Color::Blue,
+                    0x0046 => Color::Magenta,
+                    0x004E => Color::Blue,
+                    0x00EE => Color::Magenta,
+                    0x00B2 => Color::Blue,
+                    0x00DA => Color::Magenta,
+                    0x00CA => Color::Blue,
+                    0x0048 => Color::Magenta,
+                    0x00B8 => Color::Blue,
+                    0x0042 => Color::Yellow,
+                    0x00E2 => Color::Yellow,
+                    0x007A => Color::Blue,
+                    0x00CE => Color::Magenta,
+                    0x0078 => Color::Blue,
+                    0x00C8 => Color::Magenta,
+                    0x00A6 => Color::Blue,
+                    0x00AC => Color::Magenta,
+                    0x0082 => Color::Green,
+                    _ => Color::Red,
+                }
+            },
+            SectionKind::Sub(k) => {
+                match k {
+                    0xF6 => Color::Cyan,
+                    0xBC => Color::Cyan,
+                    0xFC => Color::Cyan, // Variable Length
+                    0x6C => Color::Cyan,
+                    _ => Color::Red,
+                }
+            },
+            SectionKind::Unknown => Color::White,
+            _ => Color::Red,
+        }
     }
+}
 
-    fn relocated_ref(offset: usize) -> Self {
-        Section { kind: SectionKind::RelocatedRef, offset, length: 4 }
-    }
+#[derive(Debug, PartialEq, Eq)]
+enum TagKind {
+    RelocatedCall(String),
+    RelocatedRef,
+    RelocationTarget,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Tag {
+    kind: TagKind,
+    offset: usize,
+    length: usize,
 }
 
 impl Shape {
     fn read_name(n: &[u8]) -> Result<String> {
         let end_offset: usize = n.iter().position(|&c| c == 0).unwrap();
         return Ok(str::from_utf8(&n[..end_offset]).chain_err(|| "names should be utf8 encoded")?.to_owned());
-    }
-
-    pub fn code(buf: &[u8], offset: usize, len: usize, c: Color) -> String {
-        let rng = &buf[offset..(offset + len)];
-        let hd = Span::new(&format_hex_bytes(offset, &rng[0..2])).background(c);
-        let rm = Span::new(&format_hex_bytes(offset + 2, &rng[2..])).foreground(c);
-        return format!("{}{}", hd.format(), rm.format());
-    }
-
-    pub fn code_ellipsize(buf: &[u8], offset: usize, len: usize, cut_to: usize, c: Color) -> String {
-        assert!(len > cut_to);
-        assert!(cut_to > 4);
-        assert_eq!(cut_to % 2, 0);
-        let h = cut_to / 2;
-        let rngl = &buf[offset..offset + h];
-        let rngr = &buf[offset + len - h..offset + len];
-        let hd = Span::new(&format_hex_bytes(offset, &rngl[0..2])).background(c);
-        let l = Span::new(&format_hex_bytes(0, &rngl[2..])).foreground(c);
-        let r = Span::new(&format_hex_bytes(0, rngr)).foreground(c);
-        return format!("{}{}{}", hd.format(), l.format(), r.format());
-    }
-
-    pub fn data(buf: &[u8], offset: usize, len: usize, c: Color) -> String {
-        let rng = &buf[offset..(offset + len)];
-        let rm = Span::new(&format_hex_bytes(offset, &rng[0..])).foreground(c);
-        return rm.format();
     }
 
     pub fn new(path: &str, data: &[u8]) -> Result<(Vec<[f32; 3]>, String)> {
@@ -159,6 +182,7 @@ impl Shape {
         let mut unk = 0;
 
         let mut sections = Vec::new();
+        let mut tags = Vec::new();
 
         loop {
             let code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
@@ -291,53 +315,82 @@ impl Shape {
         for &reloc in pe.relocs.iter() {
             assert!((reloc as usize) + 4 <= pe.code.len());
             let dwords: &[u32] = unsafe { mem::transmute(&pe.code[reloc as usize..]) };
-            let thunk_id = dwords[0];
+            let thunk_ptr = dwords[0];
             if let Some(thunks) = pe.thunks.clone() {
-                if thunks.contains_key(&thunk_id) {
-                    sections.push(Section::relocated_call(&thunks[&thunk_id].name, reloc as usize));
+                if thunks.contains_key(&thunk_ptr) {
+                    // This relocation is for a pointer into the thunk table; store the name so
+                    // that we can print the name instead of the address.
+                    // println!("Relocating {:X} in code to {}", thunk_ptr, &thunks[&thunk_ptr].name);
+                    tags.push(Tag {kind: TagKind::RelocatedCall(thunks[&thunk_ptr].name.clone()), offset: reloc as usize, length: 4});
                 } else {
-                    sections.push(Section::relocated_ref(reloc as usize));
+                    // This relocation is to somewhere in code; mark both it and the target word
+                    // of the pointer that is stored at the reloc position.
+                    tags.push(Tag {kind: TagKind::RelocatedRef, offset: reloc as usize, length: 4});
+
+                    assert!(thunk_ptr > pe.code_vaddr, "thunked ptr before code");
+                    assert!(thunk_ptr <= pe.code_vaddr + pe.code.len() as u32 - 4, "thunked ptr after code");
+                    let code_offset = thunk_ptr - pe.code_vaddr;
+                    let value_to_relocate_arr: &[u16] = unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
+                    let value_to_relocate = value_to_relocate_arr[0];
+                    //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
+                    tags.push(Tag {kind: TagKind::RelocationTarget, offset: code_offset as usize, length: 2});
                 }
             }
         }
-//        let remainder = cmp::min(1500, pe.code.len() - offset);
-//        out += &format_hex_bytes(offset, &pe.code[offset..offset+remainder]);
-        //                let buffer = &pe.code[offset..offset + remainder];
-        //                let fmt = format_hex_bytes(offset, buffer);
 
-        let mut num_thunk = 0;
-        if let Some(thunks) = pe.thunks.clone() {
-            num_thunk = thunks.len();
-        }
-
-        let out = format_sections(&pe.code, &mut sections);
-        return Ok((verts, format!("{:04X}| {} => {:?}", unk, out, pe.thunks)));
+        let mut out = format_sections(&pe.code, &sections, &mut tags);
+//        for (key, value) in pe.thunks.unwrap().iter() {
+//            out += &format!("\n  {:X} <- {:?}", key, value);
+//        }
+        return Ok((verts, out + " - " + path));
     }
 }
 
-fn format_sections(code: &[u8], sections: &mut Vec<Section>) -> String {
-    sections.sort_by(|a, b| { a.offset.cmp(&b.offset) });
-    for (i, section_a) in sections.iter().enumerate() {
-        for (j, section_b) in sections.iter().enumerate() {
+fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>) -> String {
+    // Assert that sections tightly abut.
+    let mut next_offset = 0;
+    for section in sections {
+        assert_eq!(section.offset, next_offset);
+        next_offset = section.offset + section.length;
+    }
+
+    // Assert that there are no tags overlapping.
+    tags.sort_by(|a, b| { a.offset.cmp(&b.offset) });
+    tags.dedup();
+    for (i, tag_a) in tags.iter().enumerate() {
+        for (j, tag_b) in tags.iter().enumerate() {
             if j > i {
-                assert!(section_a.offset < section_b.offset);
-                assert!(section_a.offset + section_a.length <= section_b.offset ||
-                        section_a.offset + section_a.length >= section_b.offset + section_b.length);
+                // println!("{:?}@{}+{}; {:?}@{}+{}", tag_a.kind, tag_a.offset, tag_a.length, tag_b.kind, tag_b.offset, tag_b.length);
+                assert!(tag_a.offset <= tag_b.offset);
+                assert!(tag_a.offset + tag_a.length <= tag_b.offset ||
+                        tag_a.offset + tag_a.length >= tag_b.offset + tag_b.length);
             }
         }
     }
 
-    let mut acc = Vec::new();
-    for i in 0..sections.len() {
-        let start = sections[i].offset;
-        let j = i + 1;
-        if j == sections.len() || sections[i].offset + sections[i].length <= sections[j].offset {
-            hex(&code[start..start + 2], &mut acc);
-            hex(&code[start + 2..start + sections[i].length], &mut acc);
-        } else {
+    let mut acc: Vec<char> = Vec::new();
+    let mut acc_s = String::new();
 
+    for section in sections {
+        Escape::new().color(section.color()).put(&mut acc);
+        b2h(code[section.offset + 0], &mut acc);
+        b2h(code[section.offset + 1], &mut acc);
+        for &b in &code[section.offset + 2..section.offset + section.length] {
+            b2h(b, &mut acc);
         }
     }
+
+
+//    for i in 0..sections.len() {
+//        let start = sections[i].offset;
+//        let j = i + 1;
+//        if j == sections.len() || sections[i].offset + sections[i].length <= sections[j].offset {
+//            hex(&code[start..start + 2], &mut acc);
+//            hex(&code[start + 2..start + sections[i].length], &mut acc);
+//        } else {
+//
+//        }
+//    }
 
     return acc.iter().collect::<String>();
 }

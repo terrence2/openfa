@@ -36,7 +36,10 @@ pub struct PE {
     pub relocs: Vec<u32>,
 
     // The code itself, copied out of the source.
-    pub code: Vec<u8>
+    pub code: Vec<u8>,
+
+    // The data length for assertion checks.
+    pub code_vaddr: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -75,9 +78,9 @@ impl PE {
         ensure!(opt.size_of_uninitialized_data == 0, "expected no uninitialized data");
         ensure!(opt.address_of_entry_point == 0, "expected entry to be at zero");
         ensure!(opt.base_of_code == 4096, "expected code to live at page 1");
-        //opt.size_of_code
-        //opt.size_of_initialize_data
-        //opt.base_of_data
+        // opt.size_of_code
+        // opt.size_of_initialize_data
+        // opt.base_of_data
 
         let win_offset = pe_offset + 4 + mem::size_of::<COFFHeader>() + mem::size_of::<OptionalHeader>();
         let win_ptr: *const WindowsHeader = data[win_offset..].as_ptr() as *const _;
@@ -128,6 +131,7 @@ impl PE {
             };
             ensure!(SectionFlags::from_u32(section.characteristics) == expect_flags, "unexpected section flags");
 
+            // println!("Section {} starting at offset {:X} loaded at vaddr {:X}", name, section.pointer_to_raw_data, section.virtual_address);
             let start = section.pointer_to_raw_data as usize;
             let end = start + section.virtual_size as usize;
             let section_data = &data[start..end];
@@ -151,7 +155,7 @@ impl PE {
         let (_, reloc_data) = sections[".reloc"];
         let relocs = PE::_parse_relocs(reloc_data, code_section).chain_err(|| "parse relocs")?;
 
-        return Ok(PE { thunks, relocs, code: code.to_owned() });
+        return Ok(PE { thunks, relocs, code: code.to_owned(), code_vaddr: code_section.virtual_address});
     }
 
     fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<HashMap<u32, Thunk>> {
@@ -186,7 +190,7 @@ impl PE {
             ensure!(lut_table[ordinal] >> 31 == 0, "only rva luts are supported");
             let name_table_rva = lut_table[ordinal] & 0x7FFF_FFFF;
             ensure!(name_table_rva > section.virtual_address, "import name table not in idata");
-            ensure!(name_table_rva < section.virtual_address + section.virtual_size, "import name table in idata");
+            ensure!(name_table_rva < section.virtual_address + section.virtual_size, "import name table not in idata");
             let name_table_offset = name_table_rva as usize - section.virtual_address as usize;
             let hint_ptr: *const u16 = idata[name_table_offset..].as_ptr() as *const _;
             let hint: u16 = unsafe { *hint_ptr };

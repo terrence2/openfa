@@ -16,82 +16,82 @@ use std::collections::HashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
-    #[allow(dead_code)]
     Black = 30,
-    #[allow(dead_code)]
     Red = 31,
-    #[allow(dead_code)]
     Green = 32,
-    #[allow(dead_code)]
     Yellow = 33,
-    #[allow(dead_code)]
     Blue = 34,
-    #[allow(dead_code)]
-    Purple = 35,
-    #[allow(dead_code)]
+    Magenta = 35,
     Cyan = 36,
-    #[allow(dead_code)]
     White = 37,
+    BrightBlack = 90,
+    BrightRed = 91,
+    BrightGreen = 92,
+    BrightYellow = 93,
+    BrightBlue = 94,
+    BrightMagenta = 95,
+    BrightCyan = 96,
+    BrightWhite = 97,
+    BlackBG = 40,
+    RedBG = 41,
+    GreenBG = 42,
+    YellowBG = 43,
+    BlueBG = 44,
+    MagentaBG = 45,
+    CyanBG = 46,
+    WhiteBG = 47,
+    BrightBlackBG = 100,
+    BrightRedBG = 101,
+    BrightGreenBG = 102,
+    BrightYellowBG = 103,
+    BrightBlueBG = 104,
+    BrightMagentaBG = 105,
+    BrightCyanBG = 106,
+    BrightWhiteBG = 107,
 }
 
 impl Color {
-    fn encode_foreground(&self) -> u8 {
-        return self.clone() as u8;
-    }
-
-    fn encode_background(self) -> u8 {
-        self.encode_foreground() + 10
+    fn put(&self, v: &mut Vec<char>) {
+        for c in format!("{}", *self as isize).chars() {
+            v.push(c);
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Style {
-    Bold = 1,
-    Dimmed = 2,
-    Italic = 3,
-    Underline = 4,
-    Blink = 5,
-    Reverse = 7,
-    Hidden = 8,
-    StrikeThrough = 9,
+    Bold = '1' as isize,
+    Dimmed = '2' as isize,
+    Italic = '3' as isize,
+    Underline = '4' as isize,
+    Blink = '5' as isize,
+    Reverse = '7' as isize,
+    Hidden = '8' as isize,
+    StrikeThrough = '9' as isize,
 }
 
 impl Style {
-    fn encode(&self) -> u8 {
-        return self.clone() as u8;
+    fn put(self, v: &mut Vec<char>) {
+        v.push(self as u8 as char);
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Span {
-    pub content: String,
-    foreground: Option<Color>,
-    background: Option<Color>,
+pub struct Escape {
+    color: Option<Color>,
     styles: HashSet<Style>,
 }
 
-impl Span {
-    pub fn new(content: &str) -> Self {
-        Span {
-            content: content.to_owned(),
-            foreground: None,
-            background: None,
+impl Escape {
+    pub fn new() -> Self {
+        Escape {
+            color: None,
             styles: HashSet::new(),
         }
     }
 
-    pub fn width(&self) -> usize {
-        return self.content.chars().count();
-    }
-
-    pub fn foreground(mut self, clr: Color) -> Self {
-        self.foreground = Some(clr);
-        return self;
-    }
-
-    #[allow(dead_code)]
-    pub fn background(mut self, clr: Color) -> Self {
-        self.background = Some(clr);
+    pub fn color(mut self, clr: Color) -> Self {
+        self.color= Some(clr);
         return self;
     }
 
@@ -144,39 +144,30 @@ impl Span {
     }
 
     #[allow(dead_code)]
-    pub fn get_reset_style(escape_for_readline: bool) -> String {
-        return Self::make_readline_safe("\x1B[0m", escape_for_readline);
-    }
-
-    pub fn format(&self) -> String {
-        let style = self.format_style(false);
-        return style + &self.content + &Self::get_reset_style(false);
-    }
-
-    pub fn format_style(&self, escape_for_readline: bool) -> String {
-        if self.foreground.is_none() && self.background.is_none() && self.styles.len() == 0 {
-            return "".to_owned();
+    pub fn put_reset(v: &mut Vec<char>) {
+        for c in "\x1B[0m".chars() {
+            v.push(c);
         }
-        let mut style = self.styles
-            .iter()
-            .map(|s| format!("{}", s.encode()))
-            .collect::<Vec<String>>();
-        style.append(&mut self.background
-            .iter()
-            .map(|c| format!("{}", c.encode_background()))
-            .collect::<Vec<String>>());
-        style.append(&mut self.foreground
-            .iter()
-            .map(|c| format!("{}", c.encode_foreground()))
-            .collect::<Vec<String>>());
-        return Self::make_readline_safe(&("\x1B[".to_owned() + &style.join(";") + "m"),
-                                        escape_for_readline);
     }
 
-    pub fn make_readline_safe(s: &str, escape_for_readline: bool) -> String {
-        match escape_for_readline {
-            true => "\\[".to_owned() + s + "\\]",
-            false => s.to_owned(),
+    pub fn put(&self, v: &mut Vec<char>) {
+        if self.color.is_none() && self.styles.len() == 0 {
+            return;
         }
+//        let mut style = self.styles
+//            .iter()
+//            .map(|s| format!("{}", s.encode()))
+//            .collect::<Vec<String>>();
+        v.push('\x1B');
+        v.push('[');
+        let mut have_chars = false;
+        if let Some(c) = self.color {
+            if have_chars {
+                v.push(';');
+            }
+            c.put(v);
+            have_chars = true;
+        }
+        v.push('m');
     }
 }
