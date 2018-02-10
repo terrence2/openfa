@@ -32,17 +32,6 @@ pub struct Shape {
     pub vertices: Vec<[u16; 3]>
 }
 
-fn format_hex_bytes(offset: usize, buf: &[u8]) -> String {
-    let mut out = Vec::new();
-    for (i, &b) in buf.iter().enumerate() {
-        out.push(format!("{:02X} ", b));
-//        if (offset + i + 1) % 16 == 0 {
-//            out.push(" ".to_owned());
-//        }
-    }
-    return out.drain(..).collect::<String>();
-}
-
 fn n2h(n: u8) -> char {
     match n {
         0 => '0',
@@ -68,6 +57,17 @@ fn n2h(n: u8) -> char {
 fn b2h(b: u8, v: &mut Vec<char>) {
     v.push(n2h(b >> 4));
     v.push(n2h(b & 0xF));
+}
+
+fn b2b(b: u8, v: &mut Vec<char>) {
+    for i in 0..8 {
+        let off = -(i - 7);
+        if (b >> off) & 0b1 == 1 {
+            v.push('1');
+        } else {
+            v.push('0');
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -143,8 +143,12 @@ impl Section {
     }
 
     fn show(&self) -> bool {
+        return true;
         if let SectionKind::Unknown = self.kind {
             return true;
+        }
+        if let SectionKind::Sub(_) = self.kind {
+            return false;
         }
         return false;
     }
@@ -194,30 +198,30 @@ impl Shape {
             } else if code[0] == 0x00F2 {
                 sections.push(Section::new(0x00F2, offset, 4));
                 offset += 4;
-            } else if code[0] == 0x0046 {
-                sections.push(Section::new(0x0046, offset, 2));
-                offset += 2;
-            } else if code[0] == 0x004E {
-                sections.push(Section::new(0x004E, offset, 2));
-                offset += 2;
-            } else if code[0] == 0x00EE {
-                sections.push(Section::new(0x00EE, offset, 2));
-                offset += 2;
-            } else if code[0] == 0x00B2 {
-                sections.push(Section::new(0x00B2, offset, 2));
-                offset += 2;
+//            } else if code[0] == 0x0046 {
+//                sections.push(Section::new(0x0046, offset, 2));
+//                offset += 2;
+//            } else if code[0] == 0x004E {
+//                sections.push(Section::new(0x004E, offset, 2));
+//                offset += 2;
+//            } else if code[0] == 0x00EE {
+//                sections.push(Section::new(0x00EE, offset, 2));
+//                offset += 2;
+//            } else if code[0] == 0x00B2 {
+//                sections.push(Section::new(0x00B2, offset, 2));
+//                offset += 2;
             } else if code[0] == 0x00DA {
                 sections.push(Section::new(0x00DA, offset, 4));
                 offset += 4;
             } else if code[0] == 0x00CA {
                 sections.push(Section::new(0x00CA, offset, 4));
                 offset += 4;
-            } else if code[0] == 0x0048 {
-                sections.push(Section::new(0x0048, offset, 4));
-                offset += 4;
-            } else if code[0] == 0x00B8 {
-                sections.push(Section::new(0x00B8, offset, 4));
-                offset += 4;
+//            } else if code[0] == 0x0048 {
+//                sections.push(Section::new(0x0048, offset, 4));
+//                offset += 4;
+//            } else if code[0] == 0x00B8 {
+//                sections.push(Section::new(0x00B8, offset, 4));
+//                offset += 4;
             } else if code[0] == 0x0042 {
                 let s = Self::read_name(&pe.code[offset + 2..]).unwrap();
                 sections.push(Section::new(0x0042, offset, s.len() + 3));
@@ -254,31 +258,25 @@ impl Shape {
                 n_coords = code[1] as usize;
                 let hdr_cnt= 2;
                 let coord_sz= 6;
-                let length = 2 + hdr_cnt * 2 + n_coords * coord_sz;
-                if offset + length >= code.len() {
-                    return Ok((verts, format!("FAILURE on {}", path)));
-                }
+                let length = 2 + hdr_cnt * 2 + n_coords * 6;
                 sections.push(Section ::new(0x0082, offset, length));
-                offset += 2 + hdr_cnt * 2;
+                //let mut off = 3;
                 fn s2f(s: u16) -> f32 { (s as i16) as f32 }
                 for i in 0..n_coords {
-                    let x = s2f(code[offset + 0]);
-                    let y = s2f(code[offset + 1]);
-                    let z = s2f(code[offset + 2]);
+                    let x = s2f(code[3 + i * 3 + 0]);
+                    let y = s2f(code[3 + i * 3 + 1]);
+                    let z = s2f(code[3 + i * 3 + 2]);
                     verts.push([x, y, z]);
-                    offset += coord_sz;
+                    //off += 3;
                 }
+                offset += length;
 
                 // switch to a second vm after verts that works per-byte.
                 loop {
                     let code2 = &pe.code[offset..];
-                    if code2[0] == 0xF6 {
-                        sections.push(Section ::sub(0xF6, offset, 7));
-                        offset += 7;
-                    } else if code2[0] == 0xBC {
-                        // BC 9E 08 00 08 00
-                        sections.push(Section ::sub(0xBC, offset, 6));
-                        offset += 6;
+                    if code2[0] == 0x1E && code2[1] == 0x1E {
+                        //offset += 2;
+                        break;
                     } else if code2[0] == 0xFC {
                         let unk0 = code2[1];
                         let flags = code2[2];
@@ -289,16 +287,39 @@ impl Shape {
                         if have_shorts {
                             length += index_count * 2;
                         }
-                        sections.push(Section ::sub(0xFC, offset, length));
+                        sections.push(Section::sub(0xFC, offset, length));
                         offset += length;
+                    } else if code2[0] == 0x40 && code2[1] == 0x00 {
+                        // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
+                        let cnt = code2[2] as usize;
+                        let length = 4 + cnt * 2;
+                        sections.push(Section::sub(0x40, offset, length));
+                        offset += length;
+                    } else if code2[0] == 0xF6 {
+                        sections.push(Section::sub(0xF6, offset, 7));
+                        offset += 7;
+                    /*
+//                    } else if code2[0] == 0xBC {
+//                        // BC 9E 08 00 08 00
+//                        sections.push(Section ::sub(0xBC, offset, 6));
+//                        offset += 6;
                     } else if code2[0] == 0x6C {
                         // 6C 00 06 00 00 00 05 00 36 06 38 9B 06
                         sections.push(Section::sub(0x6C, offset, 13));
                         offset += 13;
+                    } else if code2[0] == 0x0C {
+                        // 0C 00 00 7F F5 FF E0 0F B5 FF
+                        sections.push(Section::sub(0x06, offset, 10));
+                        offset += 10;
                     } else if code2[0] == 0x06 {
-                        // 06 00 5A 45 FD FF 7E 6B FF FF E6 FB F9 FF 05 00 07 03 38 53 03
-                        sections.push(Section::sub(0x06, offset, 21));
-                        offset += 21;
+                        // 06 00 00 72 F7 FF E3 CB 08 00 22 E6 F0 FF
+                        sections.push(Section::sub(0x06, offset, 14));
+                        offset += 14;
+                    } else if code2[0] == 0x05 {
+                        // 05 00 22 02 38 57 05 0C
+                        sections.push(Section::sub(0x06, offset, 8));
+                        offset += 8;
+                    */
                     } else {
                         break;
                     }
