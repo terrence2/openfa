@@ -37,8 +37,10 @@ fn main() {
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        let (_verts, desc) = Shape::new("", &data).unwrap();
-        println!("{}", desc);
+        let (_verts, mut desc) = Shape::new("", &data).unwrap();
+        for line in desc {
+            println!("{}", line);
+        }
     }
 }
 
