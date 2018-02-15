@@ -490,6 +490,17 @@ impl Shape {
                         sections.push(Section::sub(0xFC, offset, length));
                         offset += length;
                         //println!("FLAGS: {:08b} => off: {}, ctn: {}, have_tc: {}, tc_size: {} => length: {}", flags, index_count_offset, index_count, have_tc, tc_size, length);
+                    } else if code2[0] == 0xBC {
+                        let flags = code2[2];
+                        let length = match flags {
+                            0x96 => 8,
+                            0x72 => 6,
+                            0x68 => 10,
+                            0x08 => 6,
+                            _ => { break; }
+                        };
+                        sections.push(Section::sub(0xBC, offset, length));
+                        offset += length;
                     } else if code2[0] == 0x40 && code2[1] == 0x00 {
                         // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
                         let cnt = code2[2] as usize;
@@ -709,8 +720,10 @@ fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>) ->
     return out;
 }
 
+const COLORIZE: bool = true;
+
 fn tgt<'a>(x: &'a mut Vec<char>, y: &'a mut Vec<char>) -> &'a mut Vec<char> {
-    if true {
+    if COLORIZE {
         return x;
     }
     return y;
