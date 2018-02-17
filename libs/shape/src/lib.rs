@@ -231,30 +231,30 @@ impl Shape {
             } else if code[0] == 0x00F2 {
                 sections.push(Section::new(0x00F2, offset, 4));
                 offset += 4;
-//            } else if code[0] == 0x0046 {
-//                sections.push(Section::new(0x0046, offset, 2));
-//                offset += 2;
+            } else if code[0] == 0x0046 {
+                sections.push(Section::new(0x0046, offset, 2));
+                offset += 2;
 //            } else if code[0] == 0x004E {
 //                sections.push(Section::new(0x004E, offset, 2));
 //                offset += 2;
 //            } else if code[0] == 0x00EE {
 //                sections.push(Section::new(0x00EE, offset, 2));
 //                offset += 2;
-//            } else if code[0] == 0x00B2 {
-//                sections.push(Section::new(0x00B2, offset, 2));
-//                offset += 2;
+            } else if code[0] == 0x00B2 {
+                sections.push(Section::new(0x00B2, offset, 2));
+                offset += 2;
 //            } else if code[0] == 0x00DA {
 //                sections.push(Section::new(0x00DA, offset, 4));
 //                offset += 4;
             } else if code[0] == 0x00CA {
                 sections.push(Section::new(0x00CA, offset, 4));
                 offset += 4;
-//            } else if code[0] == 0x0048 {
-//                sections.push(Section::new(0x0048, offset, 4));
-//                offset += 4;
-//            } else if code[0] == 0x00B8 {
-//                sections.push(Section::new(0x00B8, offset, 4));
-//                offset += 4;
+            } else if code[0] == 0x0048 {
+                sections.push(Section::new(0x0048, offset, 4));
+                offset += 4;
+            } else if code[0] == 0x00B8 {
+                sections.push(Section::new(0x00B8, offset, 4));
+                offset += 4;
             } else if code[0] == 0x0042 {
                 // println!("offset: {}", offset);
                 if offset == 884 {
@@ -532,17 +532,21 @@ impl Shape {
                         sections.push(Section::sub(0xFC, offset, length));
                         offset += length;
                         //println!("FLAGS: {:08b} => off: {}, ctn: {}, have_tc: {}, tc_size: {} => length: {}", flags, index_count_offset, index_count, have_tc, tc_size, length);
-//                    } else if code2[0] == 0xBC {
-//                        let flags = code2[2];
-//                        let length = match flags {
-//                            0x96 => 8,
-//                            0x72 => 6,
-//                            0x68 => 10,
-//                            0x08 => 6,
-//                            _ => { break; }
-//                        };
-//                        sections.push(Section::sub(0xBC, offset, length));
-//                        offset += length;
+                    } else if code2[0] == 0xBC {
+                        let flags = code2[2];
+                        let length = match flags {
+                            0x96 => 8,
+                            0x72 => 6,
+                            0x68 => 10,
+                            0x08 => 6,
+                            _ => { break; }
+                        };
+                        sections.push(Section::sub(0xBC, offset, length));
+                        offset += length;
+//                    } else if code2[0] == 0xB8 {
+//                        // B8 00 01 00
+//                        sections.push(Section::sub(0xB8, offset, 4));
+//                        offset += 4;
                     } else if code2[0] == 0x40 && code2[1] == 0x00 {
                         // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
                         let cnt = code2[2] as usize;
