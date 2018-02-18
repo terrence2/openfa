@@ -31,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 use ansi::{Escape, Color};
 
 pub struct Shape {
-    pub vertices: Vec<[u16; 3]>
+    pub vertices: Vec<[f32; 3]>
 }
 
 fn n2h(n: u8) -> char {
@@ -128,6 +128,7 @@ impl Section {
             SectionKind::Sub(k) => {
                 match k {
                     0xFC => Color::Cyan, // Variable Length
+                    0xF0 => Color::BrightGreen, // Variable Length
                     0x40 => Color::Magenta,
                     0x48 => Color::Magenta,
                     0x6C => Color::Magenta,
@@ -135,6 +136,7 @@ impl Section {
                     0x06 => Color::Magenta,
                     0x10 => Color::Magenta,
                     0x12 => Color::Magenta,
+                    0x1E => Color::Green,
                     0xF6 => Color::Blue,
                     _ => Color::Red,
                 }
@@ -192,24 +194,26 @@ impl Shape {
         return Ok(str::from_utf8(&n[..end_offset]).chain_err(|| "names should be utf8 encoded")?.to_owned());
     }
 
-    pub fn new(path: &str, data: &[u8]) -> Result<(Vec<[f32; 3]>, Vec<String>)> {
+    pub fn new(path: &str, data: &[u8], mode: ShowMode) -> Result<(Shape, Vec<String>)> {
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
 
-        let (verts, sections) = Self::_read_sections(&pe, path, data).chain_err(|| "read sections")?;
+        let (shape, sections) = Self::_read_sections(&pe, path, data).chain_err(|| "read sections")?;
+        if sections.last().unwrap().kind != SectionKind::Unknown {
+            return Ok((shape, vec!["".to_owned()]));
+        }
 
         let mut tags = Self::_apply_tags(&pe, &sections).chain_err(|| "apply tags")?;
 
-
-        let mut out = format_sections(&pe.code, &sections, &mut tags);
+        let mut out = format_sections(&pe.code, &sections, &mut tags, mode);
         let mut out2 = out.drain(..).map(|v| v + &format!(" - {}", path)).collect::<Vec<String>>();
         //out.push(path.to_owned());
 //        for (key, value) in pe.thunks.unwrap().iter() {
 //            out += &format!("\n  {:X} <- {:?}", key, value);
 //        }
-        return Ok((verts, out2));
+        return Ok((shape, out2));
     }
 
-    fn _read_sections(pe: &peff::PE, path: &str, data: &[u8]) -> Result<(Vec<[f32; 3]>, Vec<Section>)> {
+    fn _read_sections(pe: &peff::PE, path: &str, data: &[u8]) -> Result<(Shape, Vec<Section>)> {
         let mut verts = Vec::new();
 
         let mut offset = 0;
@@ -220,14 +224,16 @@ impl Shape {
         let mut sections = Vec::new();
 
         loop {
-            //println!("offset: {}", offset);
             if offset >= pe.code.len() { break; }
             let code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
+            //println!("offset: {} => {:4X}", offset, code[0]);
             if code[0] == 0xFFFF {
                 sections.push(Section::new(0xFFFF, offset, 14));
                 offset += 14;
-            } else if code[0] == 0x00F0 {
-                break;
+            } else if pe.code.len() - offset == 22 {
+                // FF 26 00 F5 FF 10 00 D0 FF 23 00 00 00 01 02 03 02 01 02 03 02 01
+                sections.push(Section::new(0x00FF, offset, 22));
+                offset += 22;
             } else if code[0] == 0x00F2 {
                 sections.push(Section::new(0x00F2, offset, 4));
                 offset += 4;
@@ -313,10 +319,18 @@ impl Shape {
                         break;
                     }
                     let code2 = &pe.code[offset..];
-                    if code2[0] == 0x1E {
+                    if code2[0] == 0x1E && code2[1] == 0x00 {
+                        sections.push(Section::sub(0x1E, offset, 6));
+                        offset += 6;
+                    } else if code2[0] == 0x1E {
                         sections.push(Section::sub(0x1E, offset, 1));
                         offset += 1;
-                        //break;
+//                    } else if code2[0] == 0xFF {
+//                        let length = pe.code.len() - offset;
+//                        assert!(length < 512);
+//                        sections.push(Section::sub(0xFF, offset, length));
+//                        offset += length;
+//                        break;
                     } else if code2[0] == 0xFC {
                         /*
                         // FC 0b0000_0000_0010_0100  00 FC                                       00
@@ -543,10 +557,28 @@ impl Shape {
                         };
                         sections.push(Section::sub(0xBC, offset, length));
                         offset += length;
-//                    } else if code2[0] == 0xB8 {
-//                        // B8 00 01 00
-//                        sections.push(Section::sub(0xB8, offset, 4));
-//                        offset += 4;
+                    } else if code2[0] == 0xF0 && code2[1] == 0x00 {
+                        // Push the entire contents to disk so that when this scan inevitably fails we can disassemble to find out why.
+                        let mut buffer = fs::File::create("/tmp/F0.bin").unwrap();
+                        buffer.write(&code2[2..]).unwrap();
+                        // Find the next ret (note: this appears to be basically x86 bytecode).
+                        let mut end = 2;
+                        while code2[end] != 0xC3 {
+                            if code2[end] == 0x68 { // push dword
+                                end += 5;
+                            } else if code2[end] == 0x81 { // op reg imm32
+                                end += 6;
+                            } else {
+                                end += 1;
+                            }
+                        }
+                        let length = end + 1;
+                        sections.push(Section::sub(0xF0, offset, length));
+                        offset += length;
+                    } else if code2[0] == 0xB8 && code2[1] == 0x00 {
+                        // B8 00 01 00
+                        sections.push(Section::sub(0xB8, offset, 4));
+                        offset += 4;
                     } else if code2[0] == 0x40 && code2[1] == 0x00 {
                         // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
                         let cnt = code2[2] as usize;
@@ -562,10 +594,6 @@ impl Shape {
                     } else if code2[0] == 0xE0 {
                         sections.push(Section::sub(0xE0, offset, 4));
                         offset += 4;
-//                    } else if code2[0] == 0xBC {
-//                        // BC 9E 08 00 08 00
-//                        sections.push(Section::sub(0xBC, offset, 6));
-//                        offset += 6;
                     } else if code2[0] == 0xF6 {
                         sections.push(Section::sub(0xF6, offset, 7));
                         offset += 7;
@@ -579,7 +607,7 @@ impl Shape {
                         // 12 00 4B 00 1E
                         // 12 00 DD 00 1E
                         // 12 00 F9 00 1E
-                        let length = if code2[2] == 3 { 7 } else { 5 };
+                        let length = if code2[2] == 3 { 7 } else { 4 };
                         sections.push(Section::sub(0x12, offset, length));
                         offset += length;
                     } else if code2[0] == 0x06 && code2[1] == 0x00 {
@@ -602,6 +630,10 @@ impl Shape {
                         // 6C 00 06 00 00 00 05 00 36 06 38 9B 06
                         sections.push(Section::sub(0x6C, offset, 13));
                         offset += 13;
+                    } else if code2[0] == 0xC4 && code2[1] == 0x00 {
+                        // C4 00 00 00 2F 00 0E 00 00 00 00 00 00 00 17 08
+                        sections.push(Section::sub(0x6C, offset, 16));
+                        offset += 16;
                     } else if code2[0] == 0xE2 && code2[1] == 0x00 {
                         // Weird that this is repeated... is it always the same as the pic in the header?
                         pics.push(Self::read_name(&code2[2..]).chain_err(|| "read name")?);
@@ -627,11 +659,11 @@ impl Shape {
                 length: pe.code.len() - last.offset,
             };
             sections.push(replace);
-        } else {
-            sections.push(Section::unknown(offset, cmp::min(64, pe.code.len() - offset)));
+        } else if pe.code.len() > offset {
+            sections.push(Section::unknown(offset, cmp::min(1024, pe.code.len() - offset)));
         }
 
-        return Ok((verts, sections));
+        return Ok((Shape {vertices: verts}, sections));
     }
 
     fn _apply_tags(pe: &peff::PE, sections: &Vec<Section>) -> Result<Vec<Tag>> {
@@ -665,7 +697,7 @@ impl Shape {
     }
 }
 
-enum ShowMode {
+pub enum ShowMode {
     AllOneLine,
     AllPerLine,
     UnknownFacet,
@@ -673,9 +705,8 @@ enum ShowMode {
     Unknown,
     Custom,
 }
-const SHOW_MODE: ShowMode = ShowMode::UnknownMinus;
 
-fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>) -> Vec<String> {
+fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>, mode: ShowMode) -> Vec<String> {
     // Assert that sections tightly abut.
     let mut next_offset = 0;
     for section in sections {
@@ -700,7 +731,7 @@ fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>) ->
     let mut out = Vec::new();
 
     // Simple view of all sections concatenated.
-    match SHOW_MODE {
+    match mode {
         ShowMode::AllOneLine => {
             let mut line: Vec<char> = Vec::new();
             for section in sections {
@@ -729,6 +760,12 @@ fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>) ->
                 if let SectionKind::Unknown = section.kind {
                     let mut line: Vec<char> = Vec::new();
                     accumulate_section(code, section, tags, &mut line);
+                    if i > 2 {
+                        accumulate_section(code, &sections[i - 3], tags, &mut line);
+                    }
+                    if i > 1 {
+                        accumulate_section(code, &sections[i - 2], tags, &mut line);
+                    }
                     if i > 0 {
                         accumulate_section(code, &sections[i - 1], tags, &mut line);
                     }
@@ -823,6 +860,9 @@ fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>
 }
 
 fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &mut Vec<char>) {
+    if section.length == 0 {
+        return;
+    }
     if !section.show() {
         return;
     }
@@ -853,6 +893,8 @@ fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &mut V
     b2h(code[section.offset + 0], v);
     v.push(' ');
     b2h(code[section.offset + 1], v);
+//    v.push('_');
+//    v.push('_');
     Escape::new().put(tgt(v, n));
     Escape::new().fg(section.color()).put(tgt(v, n));
     let mut off = section.offset + 2;
@@ -913,7 +955,7 @@ mod tests {
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
-            println!("AT: {}", path);
+            //println!("AT: {}", path);
 
             //if path == "./test_data/MIG21.SH" {
             if true {
@@ -922,7 +964,7 @@ mod tests {
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
 
-                match Shape::new(&path, &data) {
+                match Shape::new(&path, &data, ShowMode::UnknownMinus) {
                     Ok((_verts, mut desc)) => {
                         rv.append(&mut desc);
                     },

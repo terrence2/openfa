@@ -40,8 +40,11 @@ fn main() {
         .get_matches();
 
     let files = get_files(matches.value_of("INPUT").unwrap());
-    let mut offset = 0;
+    run_kiss(files);
+}
 
+fn run_kiss(files: Vec<PathBuf>) {
+    let mut offset = 0;
     let mut window = Window::new("Kiss3d: shape");
     let mut nodes = add_shape(&mut window, &load_file(&files[offset]));
 
@@ -57,17 +60,17 @@ fn main() {
                     offset += 1;
                     offset %= files.len();
                     remove_shape(&mut window, nodes);
-                    let verts = &load_file(&files[offset]);
-                    nodes = add_shape(&mut window, verts);
-                    println!("showing {:?} w/ {} verts", files[offset], verts.len());
+                    let shape = &load_file(&files[offset]);
+                    nodes = add_shape(&mut window, &shape);
+                    println!("showing {:?} w/ {} verts", files[offset], shape.vertices.len());
                 },
                 WindowEvent::Key(Key::PageUp, _, Action::Press, _) => {
                     offset -= 1;
                     while offset < 0 { offset += files.len(); }
                     remove_shape(&mut window, nodes);
-                    let verts = &load_file(&files[offset]);
-                    nodes = add_shape(&mut window, &load_file(&files[offset]));
-                    println!("showing {:?} w/ {} verts", files[offset], verts.len());
+                    let shape = &load_file(&files[offset]);
+                    nodes = add_shape(&mut window, &shape);
+                    println!("showing {:?} w/ {} verts", files[offset], shape.vertices.len());
                 },
                 _ => {},
             }
@@ -75,17 +78,17 @@ fn main() {
     }
 }
 
-fn load_file(path: &Path) -> Vec<[f32; 3]> {
+fn load_file(path: &Path) -> Shape {
     let mut fp = fs::File::open(path).unwrap();
     let mut data = Vec::new();
     fp.read_to_end(&mut data).unwrap();
-    let (verts, _desc) = Shape::new(path.to_str().unwrap(), &data).unwrap();
-    return verts;
+    let (shape, _desc) = Shape::new(path.to_str().unwrap(), &data).unwrap();
+    return shape;
 }
 
-fn add_shape(window: &mut Window, verts: &Vec<[f32; 3]>) -> Vec<SceneNode> {
+fn add_shape(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
     let mut nodes = Vec::new();
-    for v in verts.iter() {
+    for v in shape.vertices.iter() {
         let mut node = window.add_sphere(0.5);
         node.set_color(1.0, 1.0, 1.0);
         node.append_translation(&Translation3::new(v[0], v[1], v[2]));
