@@ -78,7 +78,6 @@ fn b2b(b: u8, v: &mut Vec<char>) {
 #[derive(Debug, PartialEq, Eq)]
 enum SectionKind {
     Main(u16),
-    Sub(u8),
     Unknown,
     Invalid,
 }
@@ -95,10 +94,6 @@ impl Section {
         Section { kind: SectionKind::Main(kind), offset, length }
     }
 
-    fn sub(kind: u8, offset: usize, length: usize) -> Self {
-        Section { kind: SectionKind::Sub(kind), offset, length }
-    }
-
     fn unknown(offset: usize, length: usize) -> Self {
         Section { kind: SectionKind::Unknown, offset, length }
     }
@@ -108,7 +103,7 @@ impl Section {
             SectionKind::Main(k) => {
                 match k {
                     0xFFFF => Color::Blue,
-                    0x00F0 => Color::Magenta,
+                    0x00F0 => Color::BrightGreen,
                     0x00F2 => Color::Blue,
                     0x00DA => Color::Magenta,
                     0x00CA => Color::Blue,
@@ -122,22 +117,8 @@ impl Section {
                     0x00A6 => Color::Blue,
                     0x00AC => Color::Magenta,
                     0x0082 => Color::Green,
-                    _ => Color::Red,
-                }
-            },
-            SectionKind::Sub(k) => {
-                match k {
-                    0xFC => Color::Cyan, // Variable Length
-                    0xF0 => Color::BrightGreen, // Variable Length
-                    0x40 => Color::Magenta,
-                    0x48 => Color::Magenta,
-                    0x6C => Color::Magenta,
-                    0x0C => Color::Magenta,
-                    0x06 => Color::Magenta,
-                    0x10 => Color::Magenta,
-                    0x12 => Color::Magenta,
-                    0x1E => Color::Green,
-                    0xF6 => Color::Blue,
+                    0x1E1E => Color::Red,
+                    0x00FC => Color::Cyan,
                     _ => Color::Red,
                 }
             },
@@ -150,9 +131,6 @@ impl Section {
         return true;
         if let SectionKind::Unknown = self.kind {
             return true;
-        }
-        if let SectionKind::Sub(_) = self.kind {
-            return false;
         }
         return false;
     }
@@ -188,6 +166,16 @@ struct Tag {
     length: usize,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ShowMode {
+    AllOneLine,
+    AllPerLine,
+    UnknownFacet,
+    UnknownMinus,
+    Unknown,
+    Custom,
+}
+
 impl Shape {
     fn read_name(n: &[u8]) -> Result<String> {
         let end_offset: usize = n.iter().position(|&c| c == 0).chain_err(|| "no terminator")?;
@@ -198,7 +186,7 @@ impl Shape {
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
 
         let (shape, sections) = Self::_read_sections(&pe, path, data).chain_err(|| "read sections")?;
-        if sections.last().unwrap().kind != SectionKind::Unknown {
+        if mode == ShowMode::UnknownMinus && sections.last().unwrap().kind != SectionKind::Unknown && sections.last().unwrap().kind != SectionKind::Invalid {
             return Ok((shape, vec!["".to_owned()]));
         }
 
@@ -311,339 +299,278 @@ impl Shape {
                     verts.push([x, y, z]);
                 }
                 offset += length;
+//            } else if code[0] == 0x001E {
+//                sections.push(Section::new(0x001E, offset, 6));
+//                offset += 6;
+            } else if code[0] & 0xFF == 0x1E {
+                sections.push(Section::new(0x1E1E, offset, 1));
+                offset += 1;
+            } else if code[0] & 0xFF == 0xFC {
+                /*
+                // FC 0b0000_0000_0010_0100  00 FC                                       00
+                // FC 0b0000_0001_0000_0000  9F 00                                       04   16 16 22 22
+                // FC 0b0000_0001_0000_0010  9F 00                                       04   19 19 2A 2A
+                // FC 0b0000_0100_0000_0011  00 00                                       03   26 29 26                B8   B4    C3   CA    B9   B3
+                // FC 0b0100_0001_0000_0000  6D 00 11 08 91 7F 93 06 1D 00 FB FF 30 01   03   02 01 0B
+                // FC 0b0100_0001_0000_0010  5B 00 00 00 00 00 FD 7F 02 FE F3            04   13 24 23 05
+                // FC 0b0100_0001_0000_0110  9F 00 00 00 BE 0E 23 7F 00 0A 1E            04   4D00 4000 0701 0801
+                // FC 0b0100_0001_0000_1010  A0 00 D1 7F A8 06 00 00 E3 FB 00            03   03 0A 09
+                // FC 0b0100_0100_0000_0000  00 00 9F B9 E7 6A 00 00 5E FF F4 FF C5 FF   04   0E 0B 0A 0F           0000 2101  0000 4A01  8E00 4A01  8E00 2101
+                // FC 0b0100_0100_0000_0000  00 00 B4 93 F1 C4 21 22 CB FF 16 00 E9 00   03   00 01 02              4C00 6C02  4C00 8202  0000 6C02
+                // FC 0b0100_0100_0000_0001  00 00 00 00 00 00 03 80 00 00 DA FF 66 FF   04   00 01 02 03             04   07    2E   2D    54   2D    7E   07
+                // FC 0b0100_0100_0000_0010  00 00 00 00 00 00 03 80 01 FA D9            04   06 07 08 09           0C00 E500  0C00 2A01  5B00 2A01  5A00 E500
+                // FC 0b0100_0100_0000_0011  00 00 00 00 00 00 03 80 00 02 FA            04   04 06 07 05             C0   39    F6   39    F6   22    C0   22
+                // FC 0b0100_0100_0000_0100  00 00 03 80 00 00 00 00 AF 00 C7 FF 2D 01   04   FE00 FF00 0001 0101   0400 2C01  4C00 2C01  4C00 BB00  0400 BB00
+                // FC 0b0100_0100_0000_0101  00 00 00 00 FD 7F 00 00 DB 00 DC FF 2D 01   04   0701 0601 0301 0201     61   80    61   38    04   38    04   80
+                // FC 0b0100_0100_0000_0111  00 00 00 00 3F 77 7E 2E FD 07 30            04   0101 0201 FA00 FF00    46 82 46 67 00 66 00 84
+                // FC 0b0100_0100_0000_1001  00 00 00 00 FD 7F 00 00 CB FE 00 00 6A 02   04   6E 20 6D 6F             00   D2    76   D2    76   5C    00   5C
+                // FC 0b0100_0100_0000_1011  00 00 00 00 62 73 9E C8 00 07 F7            04   03 06 07 00             35   1C    35   02    00   02    00   1C
+                // FC 0b0100_1001_0000_0000  5D 00 00 00 00 00 FD 7F 91 00 D4 FF A4 00   04   00 04 07 05
+                // FC 0b0100_1001_0000_0010  52 00 0A 60 F8 AF 70 1B 01 FF 1A            04   04 06 02 01
+                // FC 0b0100_1100_0000_0000  00 00 00 00 00 00 FD 7F D9 FE BF FF 67 00   04   1B 1A 19 1C           0000 0C04  8C00 0C04  8C00 9B03  0000 9B03
+                // FC 0b0100_1100_0000_0001  00 00 00 00 00 00 03 80 7F 00 7C FF 97 FF   04   7A 72 79 82             A6   7B    F0   7C    F0   BC    A6   BC
+                // FC 0b0100_1100_0000_0010  00 00 00 00 00 00 03 80 01 E2 AA            04   04 02 01 05           0400 A601  8000 A601  8000 4901  0400 4901
+                // FC 0b0100_1100_0000_0011  00 00 00 00 00 00 03 80 00 01 01            04   3B 3A 3D 3C             5B   05    34   05    34   23    5B   23
+                // FC 0b0100_1100_0000_0110  6B 00 3E 70 00 00 81 3D 09 F7 32            04   0301 EB00 EA00 0201   2900 7F01 2900 8801 2100 8801 2100 7F01
+                // FC 0b0100_1100_0000_0111  00 00 00 00 FD 7F 00 00 00 13 26            04   7200 0001 0101 7300   C2 E5 C2 FF FC FF FC E6
+                // FC 0b0100_1100_0000_1011  00 00 00 00 7A 72 3D 39 00 09 09            04   03 02 01 00           00 24 00 3C 35 3C 35 24
+                // FC 0b0101_0001_0000_0000  90 00 00 00 FD 7F 00 00 85 02 FF FF 7D FD   04   DF E0 E1 E2
+                // FC 0b0101_0001_0000_0010  90 00 00 00 FD 7F 00 00 77 00 6A            04   99 9A 9B 9C
+                // FC 0b0101_0001_0000_0100  AF 00 00 00 FD 7F 00 00 55 00 00 00 D7 01   04   FD00 FE00 FF00 0001
+                // FC 0b0101_0001_0000_1000  44 00 D0 9D B6 3B 5A 38 4D 00 1A 00 61 FF   04   03 05 06 00
+                // FC 0b0101_0001_0000_1010  91 00 22 E2 74 7C 00 00 FF 18 00            04   04 05 01 00
+                // FC 0b0101_0001_0000_1100  92 00 F9 7F 0D 02 00 00 CD FF 3E 00 71 FF   04   1601 1701 1801 1101
+                // FC 0b0101_0100_0000_0000  00 00 00 00 FD 7F 00 00 19 02 00 00 5C 00   04   43 47 48 44           9500 0202  9500 6F01  0300 7001  0300 0202
+                // FC 0b0101_0100_0000_0001  00 00 00 00 FD 7F 00 00 30 02 00 00 CD FE   04   6C 6D 6B 6A             FA   75    97   75    97   D6    FA   D7
+                // FC 0b0101_0100_0000_0010  00 00 00 00 FD 7F 00 00 C3 FF 09            04   0F 10 11 12           FC00 5A01 9900 5B01 9900 BC01 FC00 BC01
+                // FC 0b0101_0100_0000_0011  00 00 00 00 FD 7F 00 00 A1 00 4E            04   32 33 31 30           3A 30 00 32 00 AA 3A AA
+                // FC 0b0101_0100_0000_0111  00 00 FD 7F 00 00 00 00 30 67 DF            04   1D01 1E01 1F01 2001   2F 29 1D 2A 1D 1E 2F 1E
+                // FC 0b0101_0100_0000_1000  00 00 00 00 FD 7F 00 00 39 00 18 00 77 FF   05   0A 5C 59 68 3F        3E00 5B01  0C00 7601  0000 9701  0D00 9701  5E00 9701
+                // FC 0b0101_0100_0000_1001  00 00 00 00 00 00 FD 7F C9 FF B7 FF 4E 01   04   00 01 02 03             DE   03    DE   1B    F4   1B    F4   03
+                // FC 0b0101_0100_0000_1010  00 00 31 80 3D F9 00 00 B4 84 81            04   3D 3C 38 37           0000 5101  0000 8501  7800 8501  8A00 5101
+                // FC 0b0101_0100_0000_1011  00 00 00 00 FD 7F 00 00 00 EE 8F            04   0C 0D 02 01             CB   4F    99   50    99   97    CB   97
+                // FC 0b0101_0100_0000_1100  00 00 59 80 FF F6 37 02 B6 FF 84 FF 0C 01   04   3A00 2A01 2B01 3B00   7E00 1C01 0000 1C01 0000 5001 7E00 5001
+                // FC 0b0101_0100_0000_1101  00 00 1C EE 45 81 00 00 AB FF 38 00 71 FF   04   0301 0201 0401 0501   7D 78 88 78 88 54 7D 54
+                // FC 0b0101_1001_0000_0000  A0 00 00 00 66 82 9B 18 00 00 F0 FF 21 FF   04   05 09 0D 0E
+                // FC 0b0101_1001_0000_0010  A0 00 00 00 33 80 F2 06 00 F8 87            04   26 2D 38 33
+                // FC 0b0101_1001_0000_0100  90 00 00 00 FD 7F 00 00 21 FF FF FF 64 03   04   0501 0601 0701 0801
+                // FC 0b0101_1001_0000_0110  9E 00 00 00 03 80 00 00 1C 7F D6            04   0901 0A01 0B01 0C01
+                // FC 0b0101_1001_0000_1000  5D 00 00 00 00 00 FD 7F 00 00 E4 FF AC 00   04   03 06 09 04
+                // FC 0b0101_1001_0000_1010  59 00 69 02 F7 7F B7 00 21 E4 56            05   09 0A 0B 0C 0D        1E FC 59 0A 59 00 88 FD F7 7F
+                // FC 0b0101_1100_0000_0000  00 00 00 00 FD 7F 00 00 41 03 00 00 80 FD   04   5A 5B 57 56           6300 0A01  0000 0A01  0000 7701  6300 7701
+                // FC 0b0101_1100_0000_0001  00 00 00 00 9E 7D 7B E7 00 00 F5 FF 30 FF   04   00 01 02 03             01   17    2B   19    2B   02    01   03
+                // FC 0b0101_1100_0000_0010  00 00 00 00 50 6B C1 45 00 F4 EC            04   39 38 3B 3A           3D00 1101  0000 1101  0000 2C01  3D00 2C01
+                // FC 0b0101_1100_0000_0011  00 00 FD 7F 00 00 00 00 0B F7 CE            04   17 00 0D 1F             93   64    93   93    FB   93    FB   64
+                // FC 0b0101_1100_0000_0100  00 00 00 00 00 00 FD 7F 14 FD 07 00 91 03   04   0201 0301 0401 0501   FE00 EC00 EE00 EC00 EE00 0C01 FE00 0C01
+                // FC 0b0101_1100_0000_0101  00 00 00 00 00 00 FD 7F 72 FF 0B 00 1D 00   04   1601 1501 1801 1701   F0 12 E0 12 E0 32 F0 32
+                // FC 0b0101_1100_0000_0110  00 00 00 00 00 00 03 80 1F 78 DC            04   1601 1501 1401 1301   F600 2402 F600 6202 DB00 6202 DB00 2402
+                // FC 0b0101_1100_0000_0111  00 00 00 00 FD 7F 00 00 1F 6B CE            04   1901 1C01 1B01 1A01   01 2B 01 39 26 39 26 2B
+                // FC 0b0101_1100_0000_1000  00 00 00 00 00 00 FD 7F 00 00 B8 FF BD 00   04   00 01 02 03           9600 2A01 F500 2A01 F500 B000 9600 B000
+                // FC 0b0101_1100_0000_1001  00 00 00 00 00 00 03 80 00 00 B8 FF 46 FF   04   04 05 06 07             96   AF    F5   AF    F5   35    96   35
+                // FC 0b0101_1100_0000_1010  00 00 03 80 00 00 00 00 AB E4 AA            04   07 06 0A 0B           0000 FA02 8900 FA02 8900 8002 0000 8002
+                // FC 0b0101_1100_0000_1011  00 00 00 00 FD 7F 00 00 00 2E A6            04   0A 08 01 00           00 02 00 69 6E 69 6E 02
+                // FC 0b0101_1100_0000_1100  00 00 A5 55 00 00 1C 5F A0 FF 6F FF 6D 00   04   0201 0301 0401 0501   C100 6801 F600 A401 ED00 A801 BE00 7301
+                // FC 0b0101_1100_0000_1101  00 00 5B AA 00 00 1C 5F 60 00 6F FF 6D 00   04   FE00 FF00 0001 0101   AD 96 AA A1 D9 D6 E2 D2
+                // FC 0b0101_1100_0000_1111  00 00 00 00 00 00 03 80 02 F3 2D            04   0001 FF00 FE00 FD00   95 31 95 38 60 38 60 31
+                // FC 0b0110_0001_0000_0000  96 00 DC 01 DD FD F5 7F F8 FF 0E 00 77 FF   04   18 19 1A 1B
+                // FC 0b0110_0001_0000_0010  44 00 75 54 8A 5F 09 F5 06 FD F5            03   09 0A 08
+                // FC 0b0110_0001_0000_0110  6E 00 00 00 FD 7F 00 00 F7 FD 01            04   0501 0401 0301 0201
+                // FC 0b0110_0011_0000_0000  6D 00 00 00 0D 80 C9 FC 50 FF F0 FF 18 00   04   0A 09 06 07
+                // FC 0b0110_0011_0000_0010  78 00 00 00 2D 71 3C C4 FC 12 08            04   19 10 0F 14
+                // FC 0b0110_0011_0000_0110  96 00 FD 7F 00 00 00 00 00 FF FD            04   2601 0800 0700 0600
+                // FC 0b0110_0100_0000_0010  00 00 25 80 F0 04 D8 FC FE 01 E9            04   00 01 02 03           B100 0801 C100 1101 D500 0901 B700 F800
+                // FC 0b0110_0100_0000_0011  00 00 00 00 03 80 00 00 0D 0A D9            04   0B 29 28 27           CB 34 9A 33 97 25 C9 1C
+                // FC 0b0110_1100_0000_0001  00 00 00 00 00 00 FD 7F 02 00 04 00 5D FF   04   2D 2C 2B 2A           33 17 33 2C 00 2C 00 17
+                // FC 0b0110_1100_0000_0010  00 00 03 80 00 00 00 00 02 09 C7            04   1D 1C 20 1E           D500 FA00 D500 0A01 5600 0B01 5600 FA00    # 12 00 03 00 38 32 00
+                // FC 0b0110_1100_0000_0011  00 00 00 00 03 80 00 00 09 01 02            04   0b 0a 09 08           52 55 52 35 9a 36 9a 55
+                // FC 0b1100_1101_0000_0010  6B 00 FD 7F CD FF D9 FF 00 0A A5            04   A8 A9 8E AA           DC00 7101 C200 7601 9B00 3401 BB00 2801
+                // FC 0b1100_1101_0000_0011  6E 00 00 00 FD 7F 00 00 00 07 F8            04   00 01 02 03           EB A7 D9 A7 D9 E8 EB EA
+                // FC 0b1100_1101_0000_0111  6C 00 00 00 03 80 00 00 00 F5 32            04   0201 FC00 F900 0301   AF D8 AF 89 A9 7F A8 E4
+                // FC 0b1101_1101_0000_1000  9E 00 00 00 00 00 03 80 A1 00 5A FF 36 FF   04   12 13 14 15           0000 0101 3B00 0101 3B00 5C01 0000 5C01
+                // FC 0b1101_1101_0000_1001  98 00 D6 75 BC 0E BD 2F 0E 00 59 00 0A FF   04   A1 A0 A2 A3           10 4D 10 69 0C 69 08 4D
+                // FC 0b1101_1101_0000_1010  9B 00 03 80 00 00 00 00 F8 10 FB            05   29 1B 17 16 2A        8600 1501 8600 1E01 8600 2701 AA00 2701 AD00 1501
+                // FC 0b1101_1101_0000_1011  96 00 74 00 FD 7F FE FF 11 EE D1            05   0D 0E 0F 07 06        00 62  07 62  07 35  00 1C  00 49
+                // FC 0b1101_1101_0000_1100  9F 00 03 80 00 00 00 00 B9 FF 5A FF 56 00   04   F900 F800 0001 0101   E200 0C01 E200 6701 BE00 6701 BE00 0C01
+                // FC 0b1101_1101_0000_1101  9F 00 03 80 00 00 00 00 28 00 5A FF 56 00   04   FB00 FA00 0201 0301   24 4E 24 A9 00 A9 00 4E
+                // FC 0b1110_1101_0000_0010  5A 00 7F 00 F1 7F 93 FC 03 01 F8            04   03 04 05 00           EC00 DB00 DC00 D900 DC00 FD00 ED00 0001
+                // FC 0b1110_1101_0000_0011  44 00 00 00 0F 80 97 FC 10 FB 18            03   03 02 04              CB 08 CB 70 B9 08
+                // FC 0b1110_1110_0000_0010  94 00 32 A9 0A 5E A3 01 FB 06 F1            03   0B 69 68              4700 6D01 D700 7101 D700 6401
+                // FC 0b1110_1110_0000_0011  68 00 80 A5 80 A5 00 00 25 FF 01            04   7D 02 06 7E           5E 0A 61 0A 61 24 5E 24
+                // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
+                // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
+                */
+                let flags_word = (code[0] & 0xFF00) | (code[1] & 0x00FF);
+                //let flags_word = ((code2[1] as u16) << 8) | (code2[2] as u16);
+                assert_eq!(flags_word & 0x00F0, 0u16);
+                let flags = FacetFlags::from_u16(flags_word);
+                let material_size = if flags.contains(FacetFlags::HAVE_MATERIAL){
+                    if flags.contains(FacetFlags::USE_SHORT_MATERIAL) { 11 } else { 14 }
+                } else {
+                    2
+                };
+                let index_size = if flags.contains(FacetFlags::USE_SHORT_INDICES) { 2 } else { 1 };
+                let have_tc = flags.contains(FacetFlags::HAVE_TEXCOORDS);
+                let tc_size = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) { 1 } else { 2 };
 
-                // switch to a second vm after verts that works per-byte.
+                let index_count = pe.code[offset + 3 + material_size] as usize;
+                let mut length = 3 + material_size + 1 + index_count * index_size;
+                if have_tc {
+                    length += index_count * 2 * tc_size;
+                }
+
+                sections.push(Section::new(0xFC, offset, length));
+                offset += length;
+                //println!("FLAGS: {:08b} => off: {}, ctn: {}, have_tc: {}, tc_size: {} => length: {}", flags, index_count_offset, index_count, have_tc, tc_size, length);
+            } else if code[0] & 0xFF == 0x00BC {
+                let flags = code[1] & 0xFF;
+                let length = match flags {
+                    0x96 => 8,
+                    0x72 => 6,
+                    0x68 => 10,
+                    0x08 => 6,
+                    _ => { break; }
+                };
+                sections.push(Section::new(0xBC, offset, length));
+                offset += length;
+            } else if code[0] == 0x00F0 {
+                let buf = &pe.code[offset + 2..];
+
+                // Push the entire contents to disk so that when this scan inevitably fails we can disassemble to find out why.
+                let mut buffer = fs::File::create("/tmp/F0.bin").unwrap();
+                buffer.write(buf).unwrap();
+
+                // Find the next ret opcode that is followed by a known section header.
+                let mut end = 0;
                 loop {
-                    //println!("OFF: {}", offset);
-                    if offset >= pe.code.len() {
+                    if end >= buf.len() {
                         break;
                     }
-                    let code2 = &pe.code[offset..];
-                    if code2[0] == 0x1E && code2[1] == 0x00 {
-                        sections.push(Section::sub(0x1E, offset, 6));
-                        offset += 6;
-                    } else if code2[0] == 0x1E {
-                        sections.push(Section::sub(0x1E, offset, 1));
-                        offset += 1;
-//                    } else if code2[0] == 0xFF {
-//                        let length = pe.code.len() - offset;
-//                        assert!(length < 512);
-//                        sections.push(Section::sub(0xFF, offset, length));
-//                        offset += length;
-//                        break;
-                    } else if code2[0] == 0xFC {
+                    if buf[end] == 0xC3 {
+                        end += 1;
+                        let next_code: &[u16] = unsafe { mem::transmute(&pe.code[offset + 2 + end..]) };
                         /*
-                        // FC 0b0000_0000_0010_0100  00 FC                                       00
-                        // FC 0b0000_0001_0000_0000  9F 00                                       04   16 16 22 22
-                        // FC 0b0000_0001_0000_0010  9F 00                                       04   19 19 2A 2A
-                        // FC 0b0000_0100_0000_0011  00 00                                       03   26 29 26                B8   B4    C3   CA    B9   B3
-                        // FC 0b0100_0001_0000_0000  6D 00 11 08 91 7F 93 06 1D 00 FB FF 30 01   03   02 01 0B
-                        // FC 0b0100_0001_0000_0010  5B 00 00 00 00 00 FD 7F 02 FE F3            04   13 24 23 05
-                        // FC 0b0100_0001_0000_0110  9F 00 00 00 BE 0E 23 7F 00 0A 1E            04   4D00 4000 0701 0801
-                        // FC 0b0100_0001_0000_1010  A0 00 D1 7F A8 06 00 00 E3 FB 00            03   03 0A 09
-                        // FC 0b0100_0100_0000_0000  00 00 9F B9 E7 6A 00 00 5E FF F4 FF C5 FF   04   0E 0B 0A 0F           0000 2101  0000 4A01  8E00 4A01  8E00 2101
-                        // FC 0b0100_0100_0000_0000  00 00 B4 93 F1 C4 21 22 CB FF 16 00 E9 00   03   00 01 02              4C00 6C02  4C00 8202  0000 6C02
-                        // FC 0b0100_0100_0000_0001  00 00 00 00 00 00 03 80 00 00 DA FF 66 FF   04   00 01 02 03             04   07    2E   2D    54   2D    7E   07
-                        // FC 0b0100_0100_0000_0010  00 00 00 00 00 00 03 80 01 FA D9            04   06 07 08 09           0C00 E500  0C00 2A01  5B00 2A01  5A00 E500
-                        // FC 0b0100_0100_0000_0011  00 00 00 00 00 00 03 80 00 02 FA            04   04 06 07 05             C0   39    F6   39    F6   22    C0   22
-                        // FC 0b0100_0100_0000_0100  00 00 03 80 00 00 00 00 AF 00 C7 FF 2D 01   04   FE00 FF00 0001 0101   0400 2C01  4C00 2C01  4C00 BB00  0400 BB00
-                        // FC 0b0100_0100_0000_0101  00 00 00 00 FD 7F 00 00 DB 00 DC FF 2D 01   04   0701 0601 0301 0201     61   80    61   38    04   38    04   80
-                        // FC 0b0100_0100_0000_0111  00 00 00 00 3F 77 7E 2E FD 07 30            04   0101 0201 FA00 FF00    46 82 46 67 00 66 00 84
-                        // FC 0b0100_0100_0000_1001  00 00 00 00 FD 7F 00 00 CB FE 00 00 6A 02   04   6E 20 6D 6F             00   D2    76   D2    76   5C    00   5C
-                        // FC 0b0100_0100_0000_1011  00 00 00 00 62 73 9E C8 00 07 F7            04   03 06 07 00             35   1C    35   02    00   02    00   1C
-                        // FC 0b0100_1001_0000_0000  5D 00 00 00 00 00 FD 7F 91 00 D4 FF A4 00   04   00 04 07 05
-                        // FC 0b0100_1001_0000_0010  52 00 0A 60 F8 AF 70 1B 01 FF 1A            04   04 06 02 01
-                        // FC 0b0100_1100_0000_0000  00 00 00 00 00 00 FD 7F D9 FE BF FF 67 00   04   1B 1A 19 1C           0000 0C04  8C00 0C04  8C00 9B03  0000 9B03
-                        // FC 0b0100_1100_0000_0001  00 00 00 00 00 00 03 80 7F 00 7C FF 97 FF   04   7A 72 79 82             A6   7B    F0   7C    F0   BC    A6   BC
-                        // FC 0b0100_1100_0000_0010  00 00 00 00 00 00 03 80 01 E2 AA            04   04 02 01 05           0400 A601  8000 A601  8000 4901  0400 4901
-                        // FC 0b0100_1100_0000_0011  00 00 00 00 00 00 03 80 00 01 01            04   3B 3A 3D 3C             5B   05    34   05    34   23    5B   23
-                        // FC 0b0100_1100_0000_0110  6B 00 3E 70 00 00 81 3D 09 F7 32            04   0301 EB00 EA00 0201   2900 7F01 2900 8801 2100 8801 2100 7F01
-                        // FC 0b0100_1100_0000_0111  00 00 00 00 FD 7F 00 00 00 13 26            04   7200 0001 0101 7300   C2 E5 C2 FF FC FF FC E6
-                        // FC 0b0100_1100_0000_1011  00 00 00 00 7A 72 3D 39 00 09 09            04   03 02 01 00           00 24 00 3C 35 3C 35 24
-                        // FC 0b0101_0001_0000_0000  90 00 00 00 FD 7F 00 00 85 02 FF FF 7D FD   04   DF E0 E1 E2
-                        // FC 0b0101_0001_0000_0010  90 00 00 00 FD 7F 00 00 77 00 6A            04   99 9A 9B 9C
-                        // FC 0b0101_0001_0000_0100  AF 00 00 00 FD 7F 00 00 55 00 00 00 D7 01   04   FD00 FE00 FF00 0001
-                        // FC 0b0101_0001_0000_1000  44 00 D0 9D B6 3B 5A 38 4D 00 1A 00 61 FF   04   03 05 06 00
-                        // FC 0b0101_0001_0000_1010  91 00 22 E2 74 7C 00 00 FF 18 00            04   04 05 01 00
-                        // FC 0b0101_0001_0000_1100  92 00 F9 7F 0D 02 00 00 CD FF 3E 00 71 FF   04   1601 1701 1801 1101
-                        // FC 0b0101_0100_0000_0000  00 00 00 00 FD 7F 00 00 19 02 00 00 5C 00   04   43 47 48 44           9500 0202  9500 6F01  0300 7001  0300 0202
-                        // FC 0b0101_0100_0000_0001  00 00 00 00 FD 7F 00 00 30 02 00 00 CD FE   04   6C 6D 6B 6A             FA   75    97   75    97   D6    FA   D7
-                        // FC 0b0101_0100_0000_0010  00 00 00 00 FD 7F 00 00 C3 FF 09            04   0F 10 11 12           FC00 5A01 9900 5B01 9900 BC01 FC00 BC01
-                        // FC 0b0101_0100_0000_0011  00 00 00 00 FD 7F 00 00 A1 00 4E            04   32 33 31 30           3A 30 00 32 00 AA 3A AA
-                        // FC 0b0101_0100_0000_0111  00 00 FD 7F 00 00 00 00 30 67 DF            04   1D01 1E01 1F01 2001   2F 29 1D 2A 1D 1E 2F 1E
-                        // FC 0b0101_0100_0000_1000  00 00 00 00 FD 7F 00 00 39 00 18 00 77 FF   05   0A 5C 59 68 3F        3E00 5B01  0C00 7601  0000 9701  0D00 9701  5E00 9701
-                        // FC 0b0101_0100_0000_1001  00 00 00 00 00 00 FD 7F C9 FF B7 FF 4E 01   04   00 01 02 03             DE   03    DE   1B    F4   1B    F4   03
-                        // FC 0b0101_0100_0000_1010  00 00 31 80 3D F9 00 00 B4 84 81            04   3D 3C 38 37           0000 5101  0000 8501  7800 8501  8A00 5101
-                        // FC 0b0101_0100_0000_1011  00 00 00 00 FD 7F 00 00 00 EE 8F            04   0C 0D 02 01             CB   4F    99   50    99   97    CB   97
-                        // FC 0b0101_0100_0000_1100  00 00 59 80 FF F6 37 02 B6 FF 84 FF 0C 01   04   3A00 2A01 2B01 3B00   7E00 1C01 0000 1C01 0000 5001 7E00 5001
-                        // FC 0b0101_0100_0000_1101  00 00 1C EE 45 81 00 00 AB FF 38 00 71 FF   04   0301 0201 0401 0501   7D 78 88 78 88 54 7D 54
-                        // FC 0b0101_1001_0000_0000  A0 00 00 00 66 82 9B 18 00 00 F0 FF 21 FF   04   05 09 0D 0E
-                        // FC 0b0101_1001_0000_0010  A0 00 00 00 33 80 F2 06 00 F8 87            04   26 2D 38 33
-                        // FC 0b0101_1001_0000_0100  90 00 00 00 FD 7F 00 00 21 FF FF FF 64 03   04   0501 0601 0701 0801
-                        // FC 0b0101_1001_0000_0110  9E 00 00 00 03 80 00 00 1C 7F D6            04   0901 0A01 0B01 0C01
-                        // FC 0b0101_1001_0000_1000  5D 00 00 00 00 00 FD 7F 00 00 E4 FF AC 00   04   03 06 09 04
-                        // FC 0b0101_1001_0000_1010  59 00 69 02 F7 7F B7 00 21 E4 56            05   09 0A 0B 0C 0D        1E FC 59 0A 59 00 88 FD F7 7F
-                        // FC 0b0101_1100_0000_0000  00 00 00 00 FD 7F 00 00 41 03 00 00 80 FD   04   5A 5B 57 56           6300 0A01  0000 0A01  0000 7701  6300 7701
-                        // FC 0b0101_1100_0000_0001  00 00 00 00 9E 7D 7B E7 00 00 F5 FF 30 FF   04   00 01 02 03             01   17    2B   19    2B   02    01   03
-                        // FC 0b0101_1100_0000_0010  00 00 00 00 50 6B C1 45 00 F4 EC            04   39 38 3B 3A           3D00 1101  0000 1101  0000 2C01  3D00 2C01
-                        // FC 0b0101_1100_0000_0011  00 00 FD 7F 00 00 00 00 0B F7 CE            04   17 00 0D 1F             93   64    93   93    FB   93    FB   64
-                        // FC 0b0101_1100_0000_0100  00 00 00 00 00 00 FD 7F 14 FD 07 00 91 03   04   0201 0301 0401 0501   FE00 EC00 EE00 EC00 EE00 0C01 FE00 0C01
-                        // FC 0b0101_1100_0000_0101  00 00 00 00 00 00 FD 7F 72 FF 0B 00 1D 00   04   1601 1501 1801 1701   F0 12 E0 12 E0 32 F0 32
-                        // FC 0b0101_1100_0000_0110  00 00 00 00 00 00 03 80 1F 78 DC            04   1601 1501 1401 1301   F600 2402 F600 6202 DB00 6202 DB00 2402
-                        // FC 0b0101_1100_0000_0111  00 00 00 00 FD 7F 00 00 1F 6B CE            04   1901 1C01 1B01 1A01   01 2B 01 39 26 39 26 2B
-                        // FC 0b0101_1100_0000_1000  00 00 00 00 00 00 FD 7F 00 00 B8 FF BD 00   04   00 01 02 03           9600 2A01 F500 2A01 F500 B000 9600 B000
-                        // FC 0b0101_1100_0000_1001  00 00 00 00 00 00 03 80 00 00 B8 FF 46 FF   04   04 05 06 07             96   AF    F5   AF    F5   35    96   35
-                        // FC 0b0101_1100_0000_1010  00 00 03 80 00 00 00 00 AB E4 AA            04   07 06 0A 0B           0000 FA02 8900 FA02 8900 8002 0000 8002
-                        // FC 0b0101_1100_0000_1011  00 00 00 00 FD 7F 00 00 00 2E A6            04   0A 08 01 00           00 02 00 69 6E 69 6E 02
-                        // FC 0b0101_1100_0000_1100  00 00 A5 55 00 00 1C 5F A0 FF 6F FF 6D 00   04   0201 0301 0401 0501   C100 6801 F600 A401 ED00 A801 BE00 7301
-                        // FC 0b0101_1100_0000_1101  00 00 5B AA 00 00 1C 5F 60 00 6F FF 6D 00   04   FE00 FF00 0001 0101   AD 96 AA A1 D9 D6 E2 D2
-                        // FC 0b0101_1100_0000_1111  00 00 00 00 00 00 03 80 02 F3 2D            04   0001 FF00 FE00 FD00   95 31 95 38 60 38 60 31
-                        // FC 0b0110_0001_0000_0000  96 00 DC 01 DD FD F5 7F F8 FF 0E 00 77 FF   04   18 19 1A 1B
-                        // FC 0b0110_0001_0000_0010  44 00 75 54 8A 5F 09 F5 06 FD F5            03   09 0A 08
-                        // FC 0b0110_0001_0000_0110  6E 00 00 00 FD 7F 00 00 F7 FD 01            04   0501 0401 0301 0201
-                        // FC 0b0110_0011_0000_0000  6D 00 00 00 0D 80 C9 FC 50 FF F0 FF 18 00   04   0A 09 06 07
-                        // FC 0b0110_0011_0000_0010  78 00 00 00 2D 71 3C C4 FC 12 08            04   19 10 0F 14
-                        // FC 0b0110_0011_0000_0110  96 00 FD 7F 00 00 00 00 00 FF FD            04   2601 0800 0700 0600
-                        // FC 0b0110_0100_0000_0010  00 00 25 80 F0 04 D8 FC FE 01 E9            04   00 01 02 03           B100 0801 C100 1101 D500 0901 B700 F800
-                        // FC 0b0110_0100_0000_0011  00 00 00 00 03 80 00 00 0D 0A D9            04   0B 29 28 27           CB 34 9A 33 97 25 C9 1C
-                        // FC 0b0110_1100_0000_0001  00 00 00 00 00 00 FD 7F 02 00 04 00 5D FF   04   2D 2C 2B 2A           33 17 33 2C 00 2C 00 17
-                        // FC 0b0110_1100_0000_0010  00 00 03 80 00 00 00 00 02 09 C7            04   1D 1C 20 1E           D500 FA00 D500 0A01 5600 0B01 5600 FA00    # 12 00 03 00 38 32 00
-                        // FC 0b0110_1100_0000_0011  00 00 00 00 03 80 00 00 09 01 02            04   0b 0a 09 08           52 55 52 35 9a 36 9a 55
-                        // FC 0b1100_1101_0000_0010  6B 00 FD 7F CD FF D9 FF 00 0A A5            04   A8 A9 8E AA           DC00 7101 C200 7601 9B00 3401 BB00 2801
-                        // FC 0b1100_1101_0000_0011  6E 00 00 00 FD 7F 00 00 00 07 F8            04   00 01 02 03           EB A7 D9 A7 D9 E8 EB EA
-                        // FC 0b1100_1101_0000_0111  6C 00 00 00 03 80 00 00 00 F5 32            04   0201 FC00 F900 0301   AF D8 AF 89 A9 7F A8 E4
-                        // FC 0b1101_1101_0000_1000  9E 00 00 00 00 00 03 80 A1 00 5A FF 36 FF   04   12 13 14 15           0000 0101 3B00 0101 3B00 5C01 0000 5C01
-                        // FC 0b1101_1101_0000_1001  98 00 D6 75 BC 0E BD 2F 0E 00 59 00 0A FF   04   A1 A0 A2 A3           10 4D 10 69 0C 69 08 4D
-                        // FC 0b1101_1101_0000_1010  9B 00 03 80 00 00 00 00 F8 10 FB            05   29 1B 17 16 2A        8600 1501 8600 1E01 8600 2701 AA00 2701 AD00 1501
-                        // FC 0b1101_1101_0000_1011  96 00 74 00 FD 7F FE FF 11 EE D1            05   0D 0E 0F 07 06        00 62  07 62  07 35  00 1C  00 49
-                        // FC 0b1101_1101_0000_1100  9F 00 03 80 00 00 00 00 B9 FF 5A FF 56 00   04   F900 F800 0001 0101   E200 0C01 E200 6701 BE00 6701 BE00 0C01
-                        // FC 0b1101_1101_0000_1101  9F 00 03 80 00 00 00 00 28 00 5A FF 56 00   04   FB00 FA00 0201 0301   24 4E 24 A9 00 A9 00 4E
-                        // FC 0b1110_1101_0000_0010  5A 00 7F 00 F1 7F 93 FC 03 01 F8            04   03 04 05 00           EC00 DB00 DC00 D900 DC00 FD00 ED00 0001
-                        // FC 0b1110_1101_0000_0011  44 00 00 00 0F 80 97 FC 10 FB 18            03   03 02 04              CB 08 CB 70 B9 08
-                        // FC 0b1110_1110_0000_0010  94 00 32 A9 0A 5E A3 01 FB 06 F1            03   0B 69 68              4700 6D01 D700 7101 D700 6401
-                        // FC 0b1110_1110_0000_0011  68 00 80 A5 80 A5 00 00 25 FF 01            04   7D 02 06 7E           5E 0A 61 0A 61 24 5E 24
-                        // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
-                        // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
-                        let mut index_count_offset = 0;
-                        let mut index_size = 1;
-                        let mut have_tc = false;
-                        let mut tc_size = 1;
-                        let flags = ((code2[1] as u16) << 8) | (code2[2] as u16);
-                        match flags {
-                            0b0000_0000_0010_0100 => { index_count_offset = 0x5 },  // has zero indexes -- empty facet is 0x0020 ?
-                            0b0100_0001_0000_1010 => { index_count_offset = 0xe; },
-                            0b0100_0100_0000_0111 => { index_count_offset = 0xe; index_size = 2;  have_tc = true; },
-                            0b0110_0011_0000_0000 => { index_count_offset = 0x11; }
-                            0b0110_0001_0000_0110 => { index_count_offset = 0xe; index_size = 2; },
-                            0b0100_0001_0000_0110 => { index_count_offset = 0xe; index_size = 2; },
-                            0b1110_1110_0000_0111 => { index_count_offset = 0xe; index_size = 2;  have_tc = true; },
-                            0b1110_1110_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b1110_1110_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b1110_1110_0000_0110 => { index_count_offset = 0xe; index_size = 2;  have_tc = true; tc_size = 2; },
-                            0b0110_0011_0000_0110 => { index_count_offset = 0xe; index_size = 2; },
-                            0b0110_0011_0000_0010 => { index_count_offset = 0xe },
-                            0b0000_0001_0000_0000 => { index_count_offset = 0x5 },
-                            0b0000_0001_0000_0010 => { index_count_offset = 0x5 },
-                            0b0000_0100_0000_0011 => { index_count_offset = 0x5;                  have_tc = true; },
-                            0b0100_0001_0000_0000 => { index_count_offset = 0x11 },
-                            0b0100_0001_0000_0010 => { index_count_offset = 0xe },
-                            0b0100_0100_0000_0000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b0100_0100_0000_0001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0100_0100_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0100_0100_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0100_0100_0000_0100 => { index_count_offset = 0x11; index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0100_0100_0000_0101 => { index_count_offset = 0x11; index_size = 2; have_tc = true; },
-                            0b0100_0100_0000_1001 => { index_count_offset = 0x11;                 have_tc = true; },  // bigendian TCs?
-                            0b0100_0100_0000_1011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0100_1001_0000_0000 => { index_count_offset = 0x11 },
-                            0b0100_1001_0000_0010 => { index_count_offset = 0xe },
-                            0b0100_1100_0000_1011 => { index_count_offset = 0xe;                  have_tc = true; }
-                            0b0100_1100_0000_0000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b0100_1100_0000_0001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0100_1100_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0100_1100_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0101_0001_0000_1010 => { index_count_offset = 0xe },
-                            0b0101_0100_0000_0000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b0101_0100_0000_0001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0101_0100_0000_1000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b0101_0100_0000_1001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0101_0100_0000_1010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0101_0100_0000_1011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0101_1001_0000_0000 => { index_count_offset = 0x11 },
-                            0b0101_1001_0000_0010 => { index_count_offset = 0xe },
-                            0b0101_1001_0000_1010 => { index_count_offset = 0xe;                  have_tc = true; }
-                            0b0101_1100_0000_0000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_0001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0101_1100_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0101_1100_0000_1001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0101_1100_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_1000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_1010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_1011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0101_0001_0000_1000 => { index_count_offset = 0x11 },
-                            0b0110_0001_0000_0000 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b0110_0001_0000_0010 => { index_count_offset = 0xe },
-                            0b0110_0100_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0110_1100_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0110_1100_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0110_0100_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0110_1100_0000_0001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b1100_1101_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b1101_1101_0000_1000 => { index_count_offset = 0x11;                 have_tc = true; tc_size = 2; },
-                            0b1101_1101_0000_1011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b1110_1101_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b1110_1101_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0101_0001_0000_0000 => { index_count_offset = 0x11; },
-                            0b0101_0100_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b0101_0100_0000_0011 => { index_count_offset = 0xe;                  have_tc = true; },
-                            0b0101_0100_0000_1101 => { index_count_offset = 0x11; index_size = 2; have_tc = true; },
-                            0b0101_1001_0000_1000 => { index_count_offset = 0x11; },
-                            0b0101_1100_0000_0101 => { index_count_offset = 0x11; index_size = 2; have_tc = true; },
-                            0b0101_1100_0000_1101 => { index_count_offset = 0x11; index_size = 2; have_tc = true; },
-                            0b1100_1101_0000_0010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b1101_1101_0000_1001 => { index_count_offset = 0x11;                 have_tc = true; },
-                            0b1101_1101_0000_1010 => { index_count_offset = 0xe;                  have_tc = true; tc_size = 2; },
-                            0b1101_1101_0000_1100 => { index_count_offset = 0x11; index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0100_1100_0000_0111 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; },
-                            0b0101_0001_0000_0010 => { index_count_offset = 0xe; },
-                            0b0101_0001_0000_0100 => { index_count_offset = 0x11; index_size = 2; },
-                            0b0101_0001_0000_1100 => { index_count_offset = 0x11; index_size = 2; },
-                            0b0101_1001_0000_0100 => { index_count_offset = 0x11; index_size = 2; },
-                            0b0101_1100_0000_0100 => { index_count_offset = 0x11; index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_1100 => { index_count_offset = 0x11; index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_1111 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; },
-                            0b1101_1101_0000_1101 => { index_count_offset = 0x11; index_size = 2; have_tc = true; },
-                            0b0100_1100_0000_0110 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0101_0100_0000_1100 => { index_count_offset = 0x11; index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0101_1100_0000_0111 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; },
-                            0b1100_1101_0000_0111 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; },
-                            0b0101_1100_0000_0110 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; tc_size = 2; },
-                            0b0101_1001_0000_0110 => { index_count_offset = 0xe;  index_size = 2; },
-                            0b0101_0100_0000_0111 => { index_count_offset = 0xe;  index_size = 2; have_tc = true; },
-                            _ => { break; }
-                        }
-                        let material_size = index_count_offset - 3;
+                        UNKNOWN
+                        0x0000
+                        0x0566
+                        0x05EB
+                        0xE850
+
+                        MAYBE SECTION?
+                        0x0066
+
+                        KNOWN Sections
+                        0x0010
+                        0x0012
+                        0x0048**
+                        0x0082
+                        0x00B8
+                        0x00C4
+                        0x00C8
+                        0x00D0
+                        0x00E2
+                        0x0006
+                        0x00F0
+
+                        KNOWN with mod
+                        0xXXFC
+                        0xXX1E
                         */
 
-                        let flags_word = ((code2[1] as u16) << 8) | (code2[2] as u16);
-                        assert_eq!(flags_word & 0x00F0, 0u16);
-                        let flags = FacetFlags::from_u16(flags_word);
-                        let material_size = if flags.contains(FacetFlags::HAVE_MATERIAL){
-                            if flags.contains(FacetFlags::USE_SHORT_MATERIAL) { 11 } else { 14 }
+                        if next_code[0] == 0x0048 || next_code[0] == 0x0000 || next_code[0] == 0x0566 || next_code[0] == 0x05EB || next_code[0] == 0xE850 {
+                            end += 2;
                         } else {
-                            2
-                        };
-                        let index_size = if flags.contains(FacetFlags::USE_SHORT_INDICES) { 2 } else { 1 };
-                        let have_tc = flags.contains(FacetFlags::HAVE_TEXCOORDS);
-                        let tc_size = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) { 1 } else { 2 };
-
-                        let index_count = code2[3 + material_size] as usize;
-                        let mut length = 3 + material_size + 1 + index_count * index_size;
-                        if have_tc {
-                            length += index_count * 2 * tc_size;
+                            println!("0x{:04X}", next_code[0]);
+                            break;
                         }
+                    }
 
-                        sections.push(Section::sub(0xFC, offset, length));
-                        offset += length;
-                        //println!("FLAGS: {:08b} => off: {}, ctn: {}, have_tc: {}, tc_size: {} => length: {}", flags, index_count_offset, index_count, have_tc, tc_size, length);
-                    } else if code2[0] == 0xBC {
-                        let flags = code2[2];
-                        let length = match flags {
-                            0x96 => 8,
-                            0x72 => 6,
-                            0x68 => 10,
-                            0x08 => 6,
-                            _ => { break; }
-                        };
-                        sections.push(Section::sub(0xBC, offset, length));
-                        offset += length;
-                    } else if code2[0] == 0xF0 && code2[1] == 0x00 {
-                        // Push the entire contents to disk so that when this scan inevitably fails we can disassemble to find out why.
-                        let mut buffer = fs::File::create("/tmp/F0.bin").unwrap();
-                        buffer.write(&code2[2..]).unwrap();
-                        // Find the next ret (note: this appears to be basically x86 bytecode).
-                        let mut end = 2;
-                        while code2[end] != 0xC3 {
-                            if code2[end] == 0x68 { // push dword
-                                end += 5;
-                            } else if code2[end] == 0x81 { // op reg imm32
-                                end += 6;
-                            } else {
-                                end += 1;
-                            }
-                        }
-                        let length = end + 1;
-                        sections.push(Section::sub(0xF0, offset, length));
-                        offset += length;
-                    } else if code2[0] == 0xB8 && code2[1] == 0x00 {
-                        // B8 00 01 00
-                        sections.push(Section::sub(0xB8, offset, 4));
-                        offset += 4;
-                    } else if code2[0] == 0x40 && code2[1] == 0x00 {
-                        // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
-                        let cnt = code2[2] as usize;
-                        let length = 4 + cnt * 2;
-                        sections.push(Section::sub(0x40, offset, length));
-                        offset += length;
-                    } else if code2[0] == 0x48 {
-                        sections.push(Section::sub(0x48, offset, 4));
-                        offset += 4;
-                    } else if code2[0] == 0xD0 {
-                        sections.push(Section::sub(0xD0, offset, 4));
-                        offset += 4;
-                    } else if code2[0] == 0xE0 {
-                        sections.push(Section::sub(0xE0, offset, 4));
-                        offset += 4;
-                    } else if code2[0] == 0xF6 {
-                        sections.push(Section::sub(0xF6, offset, 7));
-                        offset += 7;
-                    } else if code2[0] == 0x12 && code2[1] == 0x00 {
-                        // 12 00 03 00 38 20 05
-                        // 12 00 03 00 38 FB 01
-                        // 12 00 03 00 38 FB 01
-                        // 12 00 03 00 38 FB 02
-                        // 12 00 03 00 38 FE 00
-                        // 12 00 20 00 1E
-                        // 12 00 4B 00 1E
-                        // 12 00 DD 00 1E
-                        // 12 00 F9 00 1E
-                        let length = if code2[2] == 3 { 7 } else { 4 };
-                        sections.push(Section::sub(0x12, offset, length));
-                        offset += length;
-                    } else if code2[0] == 0x06 && code2[1] == 0x00 {
-                        // 06 00 6F 4B 00 00 B8 46 00 00 6F 4B F2 FF 05 00 61 08 38 71 08
-                        sections.push(Section::sub(0x06, offset, 21));
-                        offset += 21;
-                    } else if code2[0] == 0x0C && code2[1] == 0x00 {
-                        // 0C 00 05 56 D3 FF C5 5E E4 FF 05 00 41 02 38 B6 02
-                        sections.push(Section::sub(0x0C, offset, 17));
-                        offset += 17;
-                    } else if code2[0] == 0x0E && code2[1] == 0x00 {
-                        // 0E 00 06 FF 00 00 04 80 F3 FF 05 00 BB 03 38 05 08
-                        sections.push(Section::sub(0x0E, offset, 17));
-                        offset += 17;
-                    } else if code2[0] == 0x10 && code2[1] == 0x00 {
-                        // 10 00 07 5F 0F 00 43 AA FD FF 05 00 1F 00 38 2E 04
-                        sections.push(Section::sub(0x10, offset, 17));
-                        offset += 17;
-                    } else if code2[0] == 0x6C && code2[1] == 0x00 {
-                        // 6C 00 06 00 00 00 05 00 36 06 38 9B 06
-                        sections.push(Section::sub(0x6C, offset, 13));
-                        offset += 13;
-                    } else if code2[0] == 0xC4 && code2[1] == 0x00 {
-                        // C4 00 00 00 2F 00 0E 00 00 00 00 00 00 00 17 08
-                        sections.push(Section::sub(0x6C, offset, 16));
-                        offset += 16;
-                    } else if code2[0] == 0xE2 && code2[1] == 0x00 {
-                        // Weird that this is repeated... is it always the same as the pic in the header?
-                        pics.push(Self::read_name(&code2[2..]).chain_err(|| "read name")?);
-                        sections.push(Section::new(0x00E2, offset, 16));
-                        offset += 16;
+                    if buf[end] == 0x68 { // push dword
+                        end += 5;
+                    } else if buf[end] == 0x81 { // op reg imm32
+                        end += 6;
                     } else {
-                        //panic!("unknown shape geometry section: 0x{:02X}{:02X} in {}", code2[0], code2[1], path);
-                        break;
+                        end += 1;
                     }
                 }
+                let length = 2 + end;
+                sections.push(Section::new(0xF0, offset, length));
+                offset += length;
+            } else if code[0] == 0x00B8 {
+                // B8 00 01 00
+                sections.push(Section::new(0xB8, offset, 4));
+                offset += 4;
+            } else if code[0] == 0x00DA {
+                sections.push(Section::new(0xDA, offset, 4));
+                offset += 4;
+            } else if code[0] == 0x0066 {
+                sections.push(Section::new(0x66, offset, 10));
+                offset += 10;
+            } else if code[0] == 0x0040 {
+                // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
+                let cnt = code[1] as usize;
+                let length = 4 + cnt * 2;
+                sections.push(Section::new(0x40, offset, length));
+                offset += length;
+//            } else if code[0] == 0x0048 {
+//                // 48 F5 B4 0C C0 11 84 05 84 05 00 00 20 00 10 F7 20 F7 C0 12 58 01 58 01 00 00 20 00 10 F7 20 F7 C0 19 B0 F9 B8 F9 00 00 14 00 A0 F9 B4 F9 C0 1A B0 F9 B8 F9 00 00 14 00 D8 F8 E4 F8 C0 1B B0 F9 C0 F9 00 00 14 00 0C F8 14 F8 C0 1C B0 F9 B8 F9 00 00 14 00 4C F7 54 F7 C0 1D B0 F9 B8 F9
+//                // 48 F5 B4 0C C0 11 8C 0A 8C 0A 00 00 1C 00 30 F6 4C F6 C0 12 8C 0A 8C 0A 00 00 1C 00 D4 F5 F0 F5 C0 19 0C F9 0C F9 00 00 1C 00 64 05 7C 05 C0 1A 0C F9 0C F9 00 00 1C 00 D0 09 E8 09 C0 1B F0 F2 F0 F2 00 00 1C 00 78 0B 90 0B C0 1C 10 F6 10 F6 00 00 1C 00 78 0B 90 0B C0 1D E4 EF E4 EF
+//                sections.push(Section::new(0x48, offset, 4));
+//                offset += 4;
+            } else if code[0] == 0x00D0 {
+                sections.push(Section::new(0xD0, offset, 4));
+                offset += 4;
+            } else if code[0] == 0x00E0 {
+                sections.push(Section::new(0xE0, offset, 4));
+                offset += 4;
+            } else if code[0] & 0xFF == 0x00F6 {
+                sections.push(Section::new(0xF6, offset, 7));
+                offset += 7;
+            } else if code[0] & 0xFF == 0x0038 {
+                sections.push(Section::new(0x38, offset, 3));
+                offset += 3;
+            } else if code[0] == 0x0012 {
+                // 12 00 03 00 38 20 05
+                // 12 00 03 00 38 FB 01
+                // 12 00 03 00 38 FB 01
+                // 12 00 03 00 38 FB 02
+                // 12 00 03 00 38 FE 00
+                // 12 00 20 00 1E
+                // 12 00 4B 00 1E
+                // 12 00 DD 00 1E
+                // 12 00 F9 00 1E
+                //let length = if (code[1] >> 8) == 3 { 7 } else { 4 };
+                let length = 4;
+                sections.push(Section::new(0x0012, offset, length));
+                offset += length;
+            } else if code[0] == 0x0006 {
+                // 06 00 6F 4B 00 00 B8 46 00 00 6F 4B F2 FF 05 00 61 08 38 71 08
+                sections.push(Section::new(0x06, offset, 21));
+                offset += 21;
+            } else if code[0] == 0x000C {
+                // 0C 00 05 56 D3 FF C5 5E E4 FF 05 00 41 02 38 B6 02
+                sections.push(Section::new(0x0C, offset, 17));
+                offset += 17;
+            } else if code[0] == 0x000E {
+                // 0E 00 06 FF 00 00 04 80 F3 FF 05 00 BB 03 38 05 08
+                sections.push(Section::new(0x0E, offset, 17));
+                offset += 17;
+            } else if code[0] == 0x0010 {
+                // 10 00 07 5F 0F 00 43 AA FD FF 05 00 1F 00 38 2E 04
+                sections.push(Section::new(0x10, offset, 17));
+                offset += 17;
+            } else if code[0] == 0x006C {
+                // 6C 00 06 00 00 00 05 00 36 06 38 9B 06
+                sections.push(Section::new(0x6C, offset, 13));
+                offset += 13;
+            } else if code[0] == 0x00C4 {
+                // C4 00 00 00 2F 00 0E 00 00 00 00 00 00 00 17 08
+                sections.push(Section::new(0x6C, offset, 16));
+                offset += 16;
+            } else if code[0] == 0x00E2 {
+                // Weird that this is repeated... is it always the same as the pic in the header?
+                pics.push(Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?);
+                sections.push(Section::new(0x00E2, offset, 16));
+                offset += 16;
             } else {
                 break;
             }
@@ -695,15 +622,6 @@ impl Shape {
         }
         return Ok(tags);
     }
-}
-
-pub enum ShowMode {
-    AllOneLine,
-    AllPerLine,
-    UnknownFacet,
-    UnknownMinus,
-    Unknown,
-    Custom,
 }
 
 fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>, mode: ShowMode) -> Vec<String> {
@@ -790,7 +708,7 @@ fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>, mo
             for (i, section) in sections.iter().enumerate() {
                 let mut line: Vec<char> = Vec::new();
                 if i > 0 {
-                    if let SectionKind::Sub(k) = sections[i - 1].kind {
+                    if let SectionKind::Main(k) = sections[i - 1].kind {
                         if k != 0xFC { continue; }
                         if let SectionKind::Unknown = sections[i].kind {
                             line.push('0');
