@@ -31,7 +31,25 @@ use std::collections::{HashMap, HashSet};
 use ansi::{Escape, Color};
 
 pub struct Shape {
-    pub vertices: Vec<[f32; 3]>
+    pub vertices: Vec<[f32; 3]>,
+    pub meshes: Vec<Mesh>
+}
+
+impl Shape {
+    fn empty() -> Shape {
+        Shape { vertices: Vec::new(), meshes: Vec::new() }
+    }
+}
+
+pub struct Mesh {
+    pub facets: Vec<Facet>,
+}
+
+#[derive(Debug)]
+pub struct Facet {
+    pub flags: FacetFlags,
+    pub indices: Vec<u16>,
+    //pub texcoords: Vec<[f32; 2]>,
 }
 
 fn n2h(n: u8) -> char {
@@ -137,7 +155,7 @@ impl Section {
 }
 
 bitflags! {
-    struct FacetFlags : u16 {
+    pub struct FacetFlags : u16 {
         const HAVE_MATERIAL      = 0b0100_0000_0000_0000;
         const HAVE_TEXCOORDS     = 0b0000_0100_0000_0000;
         const USE_SHORT_INDICES  = 0b0000_0000_0000_0100;
@@ -202,7 +220,7 @@ impl Shape {
     }
 
     fn _read_sections(pe: &peff::PE, path: &str, data: &[u8]) -> Result<(Shape, Vec<Section>)> {
-        let mut verts = Vec::new();
+        let mut shape = Shape::empty();
 
         let mut offset = 0;
         let mut cnt = 0;
@@ -228,18 +246,9 @@ impl Shape {
             } else if code[0] == 0x0046 {
                 sections.push(Section::new(0x0046, offset, 2));
                 offset += 2;
-//            } else if code[0] == 0x004E {
-//                sections.push(Section::new(0x004E, offset, 2));
-//                offset += 2;
-//            } else if code[0] == 0x00EE {
-//                sections.push(Section::new(0x00EE, offset, 2));
-//                offset += 2;
             } else if code[0] == 0x00B2 {
                 sections.push(Section::new(0x00B2, offset, 2));
                 offset += 2;
-//            } else if code[0] == 0x00DA {
-//                sections.push(Section::new(0x00DA, offset, 4));
-//                offset += 4;
             } else if code[0] == 0x00CA {
                 sections.push(Section::new(0x00CA, offset, 4));
                 offset += 4;
@@ -250,10 +259,6 @@ impl Shape {
                 sections.push(Section::new(0x00B8, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0042 {
-                // println!("offset: {}", offset);
-                if offset == 884 {
-                    break;
-                }
                 let s = Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?;
                 sections.push(Section::new(0x0042, offset, s.len() + 3));
                 offset += 2 + s.len() + 1;
@@ -286,6 +291,9 @@ impl Shape {
                 sections.push(Section::new(0x00AC, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0082 {
+                // Even though 82 adds more verts to the shape's pile of verts, it also
+                // indicates a new independent(?) collections of facets.
+                shape.meshes.push(Mesh { facets: Vec::new() });
                 n_coords = code[1] as usize;
                 let hdr_cnt = 2;
                 let coord_sz = 6;
@@ -296,7 +304,7 @@ impl Shape {
                     let x = s2f(code[3 + i * 3 + 0]);
                     let y = s2f(code[3 + i * 3 + 1]);
                     let z = s2f(code[3 + i * 3 + 2]);
-                    verts.push([x, y, z]);
+                    shape.vertices.push([x, y, z]);
                 }
                 offset += length;
 //            } else if code[0] == 0x001E {
@@ -418,6 +426,20 @@ impl Shape {
                     length += index_count * 2 * tc_size;
                 }
 
+                let mut facet = Facet { flags, indices: Vec::new() };
+                let index_base = &pe.code[offset + 3 + material_size + 1..];
+                if flags.contains(FacetFlags::USE_SHORT_INDICES) {
+                    let indices: &[u16] = unsafe { mem::transmute(index_base) };
+                    for i in 0..index_count {
+                        facet.indices.push(indices[i]);
+                    }
+                } else {
+                    for i in 0..index_count {
+                        facet.indices.push(index_base[i] as u16);
+                    }
+                }
+                shape.meshes.last_mut().unwrap().facets.push(facet);
+
                 sections.push(Section::new(0xFC, offset, length));
                 offset += length;
                 //println!("FLAGS: {:08b} => off: {}, ctn: {}, have_tc: {}, tc_size: {} => length: {}", flags, index_count_offset, index_count, have_tc, tc_size, length);
@@ -479,7 +501,7 @@ impl Shape {
                         if next_code[0] == 0x0048 || next_code[0] == 0x0000 || next_code[0] == 0x0566 || next_code[0] == 0x05EB || next_code[0] == 0xE850 {
                             end += 2;
                         } else {
-                            println!("0x{:04X}", next_code[0]);
+                            // println!("0x{:04X}", next_code[0]);
                             break;
                         }
                     }
@@ -512,8 +534,6 @@ impl Shape {
                 sections.push(Section::new(0x40, offset, length));
                 offset += length;
 //            } else if code[0] == 0x0048 {
-//                // 48 F5 B4 0C C0 11 84 05 84 05 00 00 20 00 10 F7 20 F7 C0 12 58 01 58 01 00 00 20 00 10 F7 20 F7 C0 19 B0 F9 B8 F9 00 00 14 00 A0 F9 B4 F9 C0 1A B0 F9 B8 F9 00 00 14 00 D8 F8 E4 F8 C0 1B B0 F9 C0 F9 00 00 14 00 0C F8 14 F8 C0 1C B0 F9 B8 F9 00 00 14 00 4C F7 54 F7 C0 1D B0 F9 B8 F9
-//                // 48 F5 B4 0C C0 11 8C 0A 8C 0A 00 00 1C 00 30 F6 4C F6 C0 12 8C 0A 8C 0A 00 00 1C 00 D4 F5 F0 F5 C0 19 0C F9 0C F9 00 00 1C 00 64 05 7C 05 C0 1A 0C F9 0C F9 00 00 1C 00 D0 09 E8 09 C0 1B F0 F2 F0 F2 00 00 1C 00 78 0B 90 0B C0 1C 10 F6 10 F6 00 00 1C 00 78 0B 90 0B C0 1D E4 EF E4 EF
 //                sections.push(Section::new(0x48, offset, 4));
 //                offset += 4;
             } else if code[0] == 0x00D0 {
@@ -590,7 +610,7 @@ impl Shape {
             sections.push(Section::unknown(offset, cmp::min(1024, pe.code.len() - offset)));
         }
 
-        return Ok((Shape {vertices: verts}, sections));
+        return Ok((shape, sections));
     }
 
     fn _apply_tags(pe: &peff::PE, sections: &Vec<Section>) -> Result<Vec<Tag>> {
