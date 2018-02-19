@@ -21,13 +21,14 @@ extern crate shape;
 use clap::{Arg, App, SubCommand};
 use glfw::{Action, Key, WindowEvent};
 use shape::{Shape, ShowMode};
-use std::{fs};
+use std::{cell, fs, rc};
 use std::path::{Path, PathBuf};
 use std::io::prelude::*;
-use na::{Vector3, UnitQuaternion, Translation3};
+use na::{Point3, Vector3, UnitQuaternion, Translation3};
 use kiss3d::window::Window;
 use kiss3d::light::Light;
 use kiss3d::scene::SceneNode;
+use kiss3d::resource::Mesh;
 
 fn main() {
     let matches = App::new("OpenFA shape explorer")
@@ -56,6 +57,7 @@ impl ViewState {
     fn new(files: Vec<PathBuf>, window: &mut Window) -> ViewState {
         let shape = Self::_load_shape(&files[0]);
         let vertex_nodes = Self::_push_shape_vertices(window, &shape);
+        let mesh_nodes = Self::_push_shape_meshes(window, &shape);
         let mut state = ViewState {
             files,
             offset: 0,
@@ -64,7 +66,7 @@ impl ViewState {
             active_mesh: 0,
             active_face: 0,
         };
-        state.show_active_mesh();
+        state.set_vertex_colors();
         return state;
     }
 
@@ -84,6 +86,46 @@ impl ViewState {
             vertex_nodes.push(node);
         }
         return vertex_nodes;
+    }
+
+    fn _push_shape_meshes(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
+        let mut nodes = Vec::new();
+        for mesh in shape.meshes.iter() {
+            let mut vert_buf = Vec::new();
+            for v in shape.vertices.iter() {
+                vert_buf.push(Point3::new(v[0], v[1], v[2]));
+            }
+
+            let mut index_buf = Vec::new();
+            for facet in mesh.facets.iter() {
+                assert!(facet.indices.len() >= 3);
+                for base in 2..facet.indices.len() {
+                    let i = facet.indices[0] as u32;
+                    let j = facet.indices[base - 1] as u32;
+                    let k = facet.indices[base - 0] as u32;
+                    index_buf.push(Point3::new(k, j, i));
+                }
+            }
+
+            if index_buf.len() > 0 {
+                let m = rc::Rc::new(cell::RefCell::new(Mesh::new(vert_buf, index_buf, None, None, false)));
+                let node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
+                nodes.push(node);
+            }
+
+            /*
+            fn new(coords: Vec<Point3<GLfloat>>,
+                   faces: Vec<Point3<GLuint>>,
+                   normals: Option<Vec<Vector3<GLfloat>>>,
+                   uvs: Option<Vec<Point2<GLfloat>>>,
+                   dynamic_draw: bool)
+                   -> Mesh
+            [−]
+            */
+
+        }
+
+        return nodes;
     }
 
     fn _remove_shape(&mut self, window: &mut Window) {
@@ -121,7 +163,7 @@ impl ViewState {
         self.active_mesh += 1;
         self.active_mesh %= self.shape.meshes.len();
         self.active_face = 0;
-        self.show_active_mesh();
+        self.set_vertex_colors();
         println!("Showing mesh {} with {} faces", self.active_mesh,
                  self.shape.meshes[self.active_mesh].facets.len());
     }
@@ -133,7 +175,7 @@ impl ViewState {
             self.active_mesh = self.shape.meshes.len() - 1;
         }
         self.active_face = 0;
-        self.show_active_mesh();
+        self.set_vertex_colors();
         println!("Showing mesh {} with {} faces", self.active_mesh,
                  self.shape.meshes[self.active_mesh].facets.len());
     }
@@ -141,7 +183,7 @@ impl ViewState {
     fn next_facet(&mut self) {
         self.active_face += 1;
         self.active_face %= self.shape.meshes[self.active_mesh].facets.len();
-        self.show_active_mesh();
+        self.set_vertex_colors();
         println!("Highlighting facet {} with {} indices: {:?}", self.active_face,
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices.len(),
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices);
@@ -153,17 +195,28 @@ impl ViewState {
         } else {
             self.active_face = self.shape.meshes[self.active_mesh].facets.len() - 1;
         }
-        self.show_active_mesh();
+        self.set_vertex_colors();
         println!("Highlighting facet {} with {} indices: {:?}", self.active_face,
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices.len(),
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices);
     }
 
-    fn show_active_mesh(&mut self) {
+    fn set_vertex_colors(&mut self) {
         let active_facet = &self.shape.meshes[self.active_mesh].facets[self.active_face];
         for (i, mut node) in self.vertex_nodes.iter_mut().enumerate() {
             let c = if active_facet.indices.contains(&(i as u16)) {
-                [1.0, 0.0, 1.0]
+                let offset = active_facet.indices.iter().enumerate().find(|&(offset, v)| *v == (i as u16)).unwrap().0;
+                if offset == 0 {
+                    [1.0, 0.0, 0.0]
+                } else if offset == 1 {
+                    [0.0, 1.0, 0.0]
+                } else if offset == 2 {
+                    [0.0, 0.0, 1.0]
+                } else if offset == 3 {
+                    [1.0, 0.5, 0.0]
+                } else {
+                    [1.0, 0.0, 1.0]
+                }
             } else {
                 [0.1, 0.1, 0.1]
             };
