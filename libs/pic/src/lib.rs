@@ -30,9 +30,12 @@
 //           00 00 00 00 00 00
 // 00000030  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 
+extern crate failure;
 extern crate image;
 
-use image::ImageBuffer;
+use std::mem;
+//use image::{ImageBuffer, ImageRgba8};
+use failure::Error;
 
 #[repr(C)]
 #[repr(packed)]
@@ -51,14 +54,68 @@ struct Header {
     padding: [u8; 22]
 }
 
-pub fn decode_pic(data: &[u8]) -> Result<ImageBuffer> {
-    panic!("do the thing")
+fn n2h(n: u8) -> char {
+    match n {
+        0 => '0',
+        1 => '1',
+        2 => '2',
+        3 => '3',
+        4 => '4',
+        5 => '5',
+        6 => '6',
+        7 => '7',
+        8 => '8',
+        9 => '9',
+        10 => 'A',
+        11 => 'B',
+        12 => 'C',
+        13 => 'D',
+        14 => 'E',
+        15 => 'F',
+        _ => panic!("expected a nibble, got: {}", n)
+    }
+}
+
+fn b2h(b: u8, v: &mut Vec<char>) {
+    v.push(n2h(b >> 4));
+    v.push(n2h(b & 0xF));
+}
+
+pub fn decode_pic(data: &[u8]) -> Result<(), Error> {
+    let header_ptr: *const Header = data[0..].as_ptr() as *const _;
+    let header: &Header = unsafe { &*header_ptr };
+
+    let mut v = Vec::new();
+    for &b in &data[mem::size_of::<Header>()..] {
+        b2h(b, &mut v);
+        v.push(' ');
+    }
+    let s = v.iter().collect::<String>();
+    println!("{:4}x{:4}: {}", header.width, header.height, s);
+    return Ok(());
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::prelude::*;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn show_all_type1() {
+        let mut rv: Vec<String> = Vec::new();
+        let paths = fs::read_dir("./test_data").unwrap();
+        for i in paths {
+            let entry = i.unwrap();
+            let path = format!("{}", entry.path().display());
+
+            let mut fp = fs::File::open(entry.path()).unwrap();
+            let mut data = Vec::new();
+            fp.read_to_end(&mut data).unwrap();
+
+            if data[0] == 1u8 {
+                decode_pic(&data);
+            }
+        }
     }
 }
