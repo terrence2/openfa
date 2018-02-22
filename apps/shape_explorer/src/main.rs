@@ -49,6 +49,7 @@ struct ViewState {
     offset: usize,
     shape: Shape,
     vertex_nodes: Vec<SceneNode>,
+    mesh_nodes: Vec<SceneNode>,
     active_mesh: usize,
     active_face: usize,
 }
@@ -63,6 +64,7 @@ impl ViewState {
             offset: 0,
             shape,
             vertex_nodes,
+            mesh_nodes,
             active_mesh: 0,
             active_face: 0,
         };
@@ -132,6 +134,9 @@ impl ViewState {
         for mut node in self.vertex_nodes.iter_mut() {
             window.remove(&mut node);
         }
+        for mut node in self.mesh_nodes.iter_mut() {
+            window.remove(&mut node);
+        }
     }
 
     fn next_shape(&mut self, window: &mut Window) {
@@ -156,25 +161,32 @@ impl ViewState {
         self.active_face = 0;
         self.shape = Self::_load_shape(&self.files[self.offset]);
         self.vertex_nodes = Self::_push_shape_vertices(window, &self.shape);
+        self.mesh_nodes = Self::_push_shape_meshes(window, &self.shape);
         println!("showing {:?} w/ {} verts in {} meshes", self.files[self.offset], self.shape.vertices.len(), self.shape.meshes.len());
     }
 
-    fn next_mesh(&mut self) {
+    fn next_mesh(&mut self, window: &mut Window) {
         self.active_mesh += 1;
         self.active_mesh %= self.shape.meshes.len();
         self.active_face = 0;
+        for (i, node) in self.mesh_nodes.iter_mut().enumerate() {
+            node.set_visible(i == self.active_mesh);
+        }
         self.set_vertex_colors();
         println!("Showing mesh {} with {} faces", self.active_mesh,
                  self.shape.meshes[self.active_mesh].facets.len());
     }
 
-    fn prev_mesh(&mut self) {
+    fn prev_mesh(&mut self, window: &mut Window) {
         if self.active_mesh > 0 {
             self.active_mesh -= 1;
         } else {
             self.active_mesh = self.shape.meshes.len() - 1;
         }
         self.active_face = 0;
+        for (i, node) in self.mesh_nodes.iter_mut().enumerate() {
+            node.set_visible(i == self.active_mesh);
+        }
         self.set_vertex_colors();
         println!("Showing mesh {} with {} faces", self.active_mesh,
                  self.shape.meshes[self.active_mesh].facets.len());
@@ -184,7 +196,8 @@ impl ViewState {
         self.active_face += 1;
         self.active_face %= self.shape.meshes[self.active_mesh].facets.len();
         self.set_vertex_colors();
-        println!("Highlighting facet {} with {} indices: {:?}", self.active_face,
+        println!("Highlighting facet {} with flags: {:016b} and {} indices: {:?}", self.active_face,
+                 self.shape.meshes[self.active_mesh].facets[self.active_face].flags.to_u16(),
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices.len(),
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices);
     }
@@ -196,7 +209,8 @@ impl ViewState {
             self.active_face = self.shape.meshes[self.active_mesh].facets.len() - 1;
         }
         self.set_vertex_colors();
-        println!("Highlighting facet {} with {} indices: {:?}", self.active_face,
+        println!("Highlighting facet {} with flags: {:016b} and {} indices: {:?}", self.active_face,
+                 self.shape.meshes[self.active_mesh].facets[self.active_face].flags.to_u16(),
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices.len(),
                  self.shape.meshes[self.active_mesh].facets[self.active_face].indices);
     }
@@ -204,22 +218,21 @@ impl ViewState {
     fn set_vertex_colors(&mut self) {
         let active_facet = &self.shape.meshes[self.active_mesh].facets[self.active_face];
         for (i, mut node) in self.vertex_nodes.iter_mut().enumerate() {
-            let c = if active_facet.indices.contains(&(i as u16)) {
-                let offset = active_facet.indices.iter().enumerate().find(|&(offset, v)| *v == (i as u16)).unwrap().0;
-                if offset == 0 {
-                    [1.0, 0.0, 0.0]
-                } else if offset == 1 {
-                    [0.0, 1.0, 0.0]
-                } else if offset == 2 {
-                    [0.0, 0.0, 1.0]
-                } else if offset == 3 {
-                    [1.0, 0.5, 0.0]
-                } else {
-                    [1.0, 0.0, 1.0]
+            let mut c = [0.1, 0.1, 0.1];
+            let mut s = 0.5;
+            for (j, &index) in active_facet.indices.iter().enumerate() {
+                if i == (index as usize) {
+                    s = 1.0;
+                    c = match j {
+                        0 => [1.0, 0.0, 0.0],
+                        1 => [0.0, 1.0, 0.0],
+                        2 => [0.0, 0.0, 1.0],
+                        3 => [1.0, 0.5, 0.0],
+                        _ => [1.0, 0.0, 1.0],
+                    }
                 }
-            } else {
-                [0.1, 0.1, 0.1]
-            };
+            }
+            node.set_local_scale(s, s, s);
             node.set_color(c[0], c[1], c[2]);
         }
     }
@@ -242,10 +255,10 @@ fn run_loop(files: Vec<PathBuf>) {
                     state.prev_shape(&mut window);
                 },
                 WindowEvent::Key(Key::Right, _, Action::Press, _) => {
-                    state.next_mesh();
+                    state.next_mesh(&mut window);
                 },
                 WindowEvent::Key(Key::Left, _, Action::Press, _) => {
-                    state.prev_mesh();
+                    state.prev_mesh(&mut window);
                 },
                 WindowEvent::Key(Key::Up, _, Action::Press, _) => {
                     state.next_facet();

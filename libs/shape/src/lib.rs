@@ -168,6 +168,10 @@ impl FacetFlags {
     fn from_u16(flags: u16) -> FacetFlags {
         unsafe { mem::transmute(flags) }
     }
+
+    pub fn to_u16(&self) -> u16 {
+        unsafe { mem::transmute(*self) }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
