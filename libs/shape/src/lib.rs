@@ -17,7 +17,7 @@ extern crate bitflags;
 #[macro_use]
 extern crate error_chain;
 extern crate peff;
-extern crate ansi;
+extern crate reverse;
 
 mod errors {
     error_chain!{}
@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::io::prelude::*;
 use std::{cmp, fs, mem, str};
 use std::collections::{HashMap, HashSet};
-use ansi::{Escape, Color};
+use reverse::{b2h, Escape, Color};
 
 pub struct Shape {
     pub vertices: Vec<[f32; 3]>,
@@ -50,33 +50,6 @@ pub struct Facet {
     pub flags: FacetFlags,
     pub indices: Vec<u16>,
     //pub texcoords: Vec<[f32; 2]>,
-}
-
-fn n2h(n: u8) -> char {
-    match n {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'A',
-        11 => 'B',
-        12 => 'C',
-        13 => 'D',
-        14 => 'E',
-        15 => 'F',
-        _ => panic!("expected a nibble, got: {}", n)
-    }
-}
-
-fn b2h(b: u8, v: &mut Vec<char>) {
-    v.push(n2h(b >> 4));
-    v.push(n2h(b & 0xF));
 }
 
 fn b2b(b: u8, v: &mut Vec<char>) {

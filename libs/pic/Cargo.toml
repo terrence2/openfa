@@ -6,3 +6,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 failure = "0.1"
 image = "0.18"
+memmap = "0.6"
+reverse = { path = "../reverse" }

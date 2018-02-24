@@ -15,7 +15,32 @@
 #[macro_use]
 extern crate bitflags;
 
-use std::collections::HashSet;
+pub fn n2h(n: u8) -> char {
+    match n {
+        0 => '0',
+        1 => '1',
+        2 => '2',
+        3 => '3',
+        4 => '4',
+        5 => '5',
+        6 => '6',
+        7 => '7',
+        8 => '8',
+        9 => '9',
+        10 => 'A',
+        11 => 'B',
+        12 => 'C',
+        13 => 'D',
+        14 => 'E',
+        15 => 'F',
+        _ => panic!("expected a nibble, got: {}", n)
+    }
+}
+
+pub fn b2h(b: u8, v: &mut Vec<char>) {
+    v.push(n2h(b >> 4));
+    v.push(n2h(b & 0xF));
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
@@ -189,20 +214,18 @@ impl Escape {
         }
         v.push('\x1B');
         v.push('[');
-        let mut have_chars = self.styles.put(v);
+        let have_chars = self.styles.put(v);
         if let Some(c) = self.foreground {
             if have_chars {
                 v.push(';');
             }
             c.put(v);
-            have_chars = true;
         }
         if let Some(c) = self.background {
             if have_chars {
                 v.push(';');
             }
             c.put_bg(v);
-            have_chars = true;
         }
         v.push('m');
     }

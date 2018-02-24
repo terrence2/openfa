@@ -30,68 +30,130 @@
 //           00 00 00 00 00 00
 // 00000030  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 
+extern crate memmap;
 extern crate failure;
 extern crate image;
+extern crate reverse;
 
+use reverse::b2h;
 use std::mem;
 //use image::{ImageBuffer, ImageRgba8};
 use failure::Error;
+use memmap::MmapOptions;
+use std::io::Write;
+use std::fs::File;
+
 
 #[repr(C)]
 #[repr(packed)]
 struct Header {
-    format: u16,
-    width: u32,
-    height: u32,
-    always_64: u32,
-    pixels_size: u32,
-    palette_offset: u32,
-    palette_size: u32,
-    unknown0: u32,
-    unknown1: u32,
-    rowheads_offset: u32,
-    rowheads_size: u32,
-    padding: [u8; 22]
+    _format: u16,
+    _width: u32,
+    _height: u32,
+    _always_64: u32,
+    _pixels_size: u32,
+    _palette_offset: u32,
+    _palette_size: u32,
+    _unknown_offset: u32,
+    _unknown_size: u32,
+    _rowheads_offset: u32,
+    _rowheads_size: u32,
+    _padding: [u8; 22]
 }
 
-fn n2h(n: u8) -> char {
-    match n {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'A',
-        11 => 'B',
-        12 => 'C',
-        13 => 'D',
-        14 => 'E',
-        15 => 'F',
-        _ => panic!("expected a nibble, got: {}", n)
-    }
+impl Header {
+    fn width(&self) -> u32 { self._width }
+    fn height(&self) -> u32 { self._height }
+    fn pixels_size(&self) -> usize { self._pixels_size as usize }
+    fn palette_offset(&self) -> usize { self._palette_offset as usize }
+    fn palette_size(&self) -> usize { self._palette_size as usize }
+    fn rowheads_offset(&self) -> usize { self._rowheads_offset as usize }
+    fn rowheads_size(&self) -> usize { self._rowheads_size as usize }
+    fn unknown_offset(&self) -> usize { self._unknown_offset as usize }
+    fn unknown_size(&self) -> usize { self._unknown_size as usize }
 }
 
-fn b2h(b: u8, v: &mut Vec<char>) {
-    v.push(n2h(b >> 4));
-    v.push(n2h(b & 0xF));
+#[repr(C)]
+#[repr(packed)]
+struct Element {
+    _row: u16,
+    _start: u16,
+    _end: u16,
+    _index: u32
 }
 
-pub fn decode_pic(data: &[u8]) -> Result<(), Error> {
+impl Element {
+    fn row(&self) -> usize { self._row as usize }
+    fn start(&self) -> usize { self._start as usize }
+    fn end(&self) -> usize { self._end as usize }
+    fn index(&self) -> usize { self._index as usize }
+}
+
+
+pub fn decode_pic(path: &str, data: &[u8]) -> Result<(), Error> {
     let header_ptr: *const Header = data[0..].as_ptr() as *const _;
     let header: &Header = unsafe { &*header_ptr };
 
     let mut v = Vec::new();
-    for &b in &data[mem::size_of::<Header>()..] {
+//    for &b in &data[0..mem::size_of::<Header>()] {
+//        b2h(b, &mut v);
+//        v.push(' ');
+//    }
+//    for &b in &data[mem::size_of::<Header>()..mem::size_of::<Header>() + header.pixels_size() as usize] {
+//        b2h(b, &mut v);
+//        v.push(' ');
+//    }
+//    v.push(' ');
+//    v.push(' ');
+//    v.push(' ');
+//    v.push(' ');
+//    v.push(' ');
+//    for &b in &data[mem::size_of::<Header>() + header.pixels_size() as usize..] {
+//        b2h(b, &mut v);
+//        v.push(' ');
+//    }
+    // palette
+//    for &b in &data[header.palette_offset()..header.palette_offset() + header.palette_size()] {
+//        b2h(b, &mut v);
+//        v.push(' ');
+//    }
+    assert!(header.unknown_offset() > 0);
+    assert!(header.unknown_offset() < data.len());
+    assert!(header.unknown_offset() + header.unknown_size() <= data.len());
+    assert!(header.unknown_size() % mem::size_of::<Element>() == 0);
+    //assert!(header.pixels_size() % 3 == 0);
+
+    let mut prior_row = 0;
+    let mut prior_index = 0;
+    let element_cnt = header.unknown_size() / mem::size_of::<Element>();
+    for i in 0..element_cnt {
+        let element_ptr: *const Element = data[header.unknown_offset() + i * mem::size_of::<Element>()..].as_ptr() as *const _;
+        let element: &Element = unsafe { &*element_ptr };
+        assert!(element.row() >= prior_row);
+        prior_row = element.row();
+        assert!(element.index() < header.pixels_size());
+        assert!(element.start() < header.width() as usize);
+        assert!(element.end() < header.width() as usize);
+        assert!(element.start() <= element.end());
+        
+
+    }
+
+
+    for (i, &b) in data[header.unknown_offset()..header.unknown_offset() + header.unknown_size()].iter().enumerate() {
         b2h(b, &mut v);
         v.push(' ');
+        if (i + 11) % 10 == 0 {
+            v.push(' ');
+        }
     }
     let s = v.iter().collect::<String>();
-    println!("{:4}x{:4}: {}", header.width, header.height, s);
+
+    assert!(data.len() >= mem::size_of::<Header>() + header.pixels_size());
+
+    println!("{:32}: {:4}x{:<4}: {:7}pix, {:6}+{:<6} => {}", path, header.width(), header.height(),
+             header.width() * header.height(), header.pixels_size(), header.unknown_size(),
+             s);
     return Ok(());
 }
 
@@ -109,12 +171,19 @@ mod tests {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
 
-            let mut fp = fs::File::open(entry.path()).unwrap();
-            let mut data = Vec::new();
-            fp.read_to_end(&mut data).unwrap();
+            /*
+            let file = File::open("README.md")?;
+            let mmap = unsafe { MmapOptions::new().map(&file)? };
+            assert_eq!(b"# memmap", &mmap[0..8]);
+            */
 
-            if data[0] == 1u8 {
-                decode_pic(&data);
+            let mut fp = fs::File::open(entry.path()).unwrap();
+            let mmap = unsafe { MmapOptions::new().map(&fp).unwrap() };
+            //let mut data = Vec::new();
+            //fp.read_to_end(&mut data).unwrap();
+
+            if mmap[0] == 1u8 {
+                decode_pic(&path, &mmap);
             }
         }
     }
