@@ -14,14 +14,14 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
 extern crate image;
+extern crate pal;
 extern crate pic;
 
-use clap::{Arg, App, SubCommand};
-use image::{Pixel, Rgba};
+use clap::{Arg, App};
+use pal::Palette;
 use pic::decode_pic;
 use std::fs;
 use std::io::prelude::*;
-use std::path::{Path, PathBuf};
 
 fn main() {
     let matches = App::new("OpenFA pic tool")
@@ -34,18 +34,10 @@ fn main() {
             .required(true))
         .get_matches();
 
-    let mut fp = fs::File::open("PALETTE.PAL").unwrap();
+    let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL").unwrap();
     let mut palette_data = Vec::new();
     fp.read_to_end(&mut palette_data).unwrap();
-    let mut palette = Vec::new();
-    for i in 0..0x100 {
-        palette.push(Rgba { data: [
-            palette_data[i * 3 + 0] * 3,
-            palette_data[i * 3 + 1] * 3,
-            palette_data[i * 3 + 2] * 3,
-            255,
-        ]});
-    }
+    let palette = Palette::from_bytes(&palette_data).unwrap();
 
     for name in matches.values_of("INPUT").unwrap() {
         println!("Converting: {}", name);
@@ -53,11 +45,8 @@ fn main() {
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        decode_pic(&name, &palette, &data);
-
-//        let (_shape, mut desc) = Shape::new("", &data, ShowMode::AllOneLine).unwrap();
-//        for line in desc {
-//            println!("{}", line);
-//        }
+        let img = decode_pic(&name, &palette, &data).unwrap();
+        let ref mut fout = fs::File::create(name.to_owned() + ".png").unwrap();
+        img.save(fout, image::PNG).unwrap();
     }
 }

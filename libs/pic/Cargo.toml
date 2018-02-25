@@ -7,4 +7,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 clap = "2.29"
 failure = "0.1"
 image = "0.18"
+pal = { path = "../pal" }
 reverse = { path = "../reverse" }

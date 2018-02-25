@@ -60,11 +60,18 @@ mod tests {
     use std::io::prelude::*;
 
     #[test]
-    fn it_works() {
+    fn it_works_with_normal_palette() {
         let mut fp = fs::File::open("test_data/PALETTE.PAL").unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
         let pal = Palette::from_bytes(&data).unwrap();
         assert_eq!(pal.rgb(1).unwrap(), Rgb { data: [189, 0, 189] });
+    }
+
+    #[test]
+    fn it_can_be_empty() {
+        let empty = Vec::new();
+        let pal = Palette::from_bytes(&empty).unwrap();
+        assert_eq!(pal.color_count, 0);
     }
 }
