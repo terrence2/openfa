@@ -72,57 +72,11 @@ packed_struct!(Header {
 });
 
 packed_struct!(Span {
-    _0 => row: u16 as u32,
-    _1 => start: u16 as u32,
-    _2 => end: u16 as u32,
-    _3 => index: u32 as usize
+    _row   => row: u16 as u32,
+    _start => start: u16 as u32,
+    _end   => end: u16 as u32,
+    _index => index: u32 as usize
 });
-
-//#[repr(C)]
-//#[repr(packed)]
-//struct Header {
-//    _format: u16,
-//    _width: u32,
-//    _height: u32,
-//    _pixels_offset: u32,
-//    _pixels_size: u32,
-//    _palette_offset: u32,
-//    _palette_size: u32,
-//    _spans_offset: u32,
-//    _spans_size: u32,
-//    _rowheads_offset: u32,
-//    _rowheads_size: u32,
-//}
-//
-//impl Header {
-//    fn format(&self) -> u16 { self._format }
-//    fn width(&self) -> u32 { self._width }
-//    fn height(&self) -> u32 { self._height }
-//    fn pixels_offset(&self) -> usize { self._pixels_offset as usize }
-//    fn pixels_size(&self) -> usize { self._pixels_size as usize }
-//    fn palette_offset(&self) -> usize { self._palette_offset as usize }
-//    fn palette_size(&self) -> usize { self._palette_size as usize }
-//    fn spans_offset(&self) -> usize { self._spans_offset as usize }
-//    fn spans_size(&self) -> usize { self._spans_size as usize }
-//    fn rowheads_offset(&self) -> usize { self._rowheads_offset as usize }
-//    fn rowheads_size(&self) -> usize { self._rowheads_size as usize }
-//}
-
-//#[repr(C)]
-//#[repr(packed)]
-//struct Span {
-//    _row: u16,
-//    _start: u16,
-//    _end: u16,
-//    _index: u32,
-//}
-//
-//impl Span {
-//    fn row(&self) -> u32 { self._row as u32 }
-//    fn start(&self) -> u32 { self._start as u32 }
-//    fn end(&self) -> u32 { self._end as u32 }
-//    fn index(&self) -> usize { self._index as usize }
-//}
 
 
 pub fn decode_pic(path: &str, system_palette: &Palette, data: &[u8]) -> Result<DynamicImage, Error> {
