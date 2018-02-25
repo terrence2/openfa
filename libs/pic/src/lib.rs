@@ -72,6 +72,7 @@ struct Header {
 }
 
 impl Header {
+    fn format(&self) -> u16 { self._format }
     fn width(&self) -> u32 { self._width }
     fn height(&self) -> u32 { self._height }
     fn pixels_offset(&self) -> usize { self._pixels_offset as usize }

@@ -13,13 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
-extern crate shape;
+extern crate sh;
 
 use std::fs;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use clap::{Arg, App, SubCommand};
-use shape::{Shape, ShowMode};
+use sh::{Shape, ShowMode};
 
 fn main() {
     let matches = App::new("OpenFA shape tool")

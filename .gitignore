@@ -3,4 +3,8 @@ Cargo.lock
 /target/
 libs/**/Cargo.lock
 libs/**/target/
+libs/**/test_data/
+apps/**/Cargo.lock
+apps/**/target/
+apps/**/test_data/
 **/*.rs.bk
