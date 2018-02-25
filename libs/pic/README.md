@@ -26,9 +26,9 @@ struct Header {
 ### Overview
 Pixel data contains an array of one-byte indexes into a palette of RGB triplet pairs.
  
-The local palette appears to override the default PALETTE.PAL file. I've noticed that in some images
-the included palette is just wrong and we need to use PALETTE.PAL anyway. I think FA probably messes around
-with the palette at runtime, so more research is needed for some cases.
+The local palette appears to sit on top of the default PALETTE.PAL file. I think FA probably messes around
+with the palette at runtime, so more research is needed for some cases. There are also some pics that may
+not be palattized at all -- heightmaps perhaps?
 
 Rowheads is an odd duck: it's just an array of u32 with length equal to the number of rows where each offset
 is the index of the start offset of that row. I.e. a simple increment by the column count for each
