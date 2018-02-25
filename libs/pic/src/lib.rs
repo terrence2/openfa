@@ -18,10 +18,9 @@ extern crate image;
 extern crate pal;
 extern crate reverse;
 
-use reverse::b2h;
 use std::mem;
 use failure::Error;
-use image::{DynamicImage, ImageRgba8};
+use image::{DynamicImage, ImageRgb8, ImageRgba8};
 use pal::Palette;
 
 packed_struct!(Header {
@@ -45,62 +44,56 @@ packed_struct!(Span {
     _index => index: u32 as usize
 });
 
-
 pub fn decode_pic(path: &str, system_palette: &Palette, data: &[u8]) -> Result<DynamicImage, Error> {
     let header = Header::overlay(data)?;
-    let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
-    let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
-    let spans = &data[header.spans_offset()..header.spans_offset() + header.spans_size()];
-    let rowheads = &data[header.rowheads_offset()..header.rowheads_offset() + header.rowheads_size()];
-
-    let local_palette = Palette::from_bytes(&palette)?;
-
-    assert!(header.spans_offset() > 0);
-    assert!(header.spans_offset() < data.len());
-    assert!(header.spans_offset() + header.spans_size() <= data.len());
-    assert_eq!(header.spans_size() % mem::size_of::<Span>(), 0);
-
-    let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
-
-    let mut min_pix = 999999999usize;
-    let mut max_pix = 0usize;
-    let span_cnt = header.spans_size() / mem::size_of::<Span>() - 1;
-    for i in 0..span_cnt {
-        let span = Span::overlay(&data[header.spans_offset() + i * mem::size_of::<Span>()..])?;
-        assert!(span.row() < header.height());
-        assert!(span.index() < header.pixels_size());
-        assert!(span.start() < header.width());
-        assert!(span.end() < header.width());
-        assert!(span.start() <= span.end());
-        assert!(span.index() + ((span.end() - span.start()) as usize) < header.pixels_size());
-
-        //println!("At row {} from {} @ {} to {} @ {}", span.row(), span.start(), span.index(), span.end(), span.index() + (span.end() + 1 - span.start()) as usize);
-        for (j, column) in (span.start()..span.end() + 1).enumerate() {
-            let offset = span.index() + j;
-            let pix = pixels[offset] as usize;
-            if pix < min_pix {
-                min_pix = pix;
-            }
-            if pix > max_pix {
-                max_pix = pix;
-            }
+    if header.format() == 0 {
+        let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
+        let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
+        let local_palette = Palette::from_bytes(&palette)?;
+        let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
+        for (i, p) in imgbuf.pixels_mut().enumerate() {
+            let pix = pixels[i] as usize;
             let clr = if pix < local_palette.color_count {
-                local_palette.rgba(pix)?
+                local_palette.rgb(pix)?
             } else {
-                system_palette.rgba(pix)?
+                system_palette.rgb(pix)?
             };
-            imgbuf.put_pixel(column, span.row(), clr);
+            *p = clr;
         }
+        return Ok(ImageRgb8(imgbuf));
+    } else if header.format() == 1 {
+        let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
+        let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
+        let local_palette = Palette::from_bytes(&palette)?;
+        let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
+        let spans = &data[header.spans_offset()..header.spans_offset() + header.spans_size()];
+        assert_eq!(header.spans_size() % mem::size_of::<Span>(), 0);
+        let span_cnt = header.spans_size() / mem::size_of::<Span>() - 1;
+        for i in 0..span_cnt {
+            let span = Span::overlay(&data[header.spans_offset() + i * mem::size_of::<Span>()..])?;
+            assert!(span.row() < header.height());
+            assert!(span.index() < header.pixels_size());
+            assert!(span.start() < header.width());
+            assert!(span.end() < header.width());
+            assert!(span.start() <= span.end());
+            assert!(span.index() + ((span.end() - span.start()) as usize) < header.pixels_size());
+
+            for (j, column) in (span.start()..span.end() + 1).enumerate() {
+                let offset = span.index() + j;
+                let pix = pixels[offset] as usize;
+                let clr = if pix < local_palette.color_count {
+                    local_palette.rgba(pix)?
+                } else {
+                    system_palette.rgba(pix)?
+                };
+                imgbuf.put_pixel(column, span.row(), clr);
+            }
+        }
+        return Ok(ImageRgba8(imgbuf));
     }
 
-    println!("Range: {} -> {}", min_pix, max_pix);
-
-    assert!(data.len() >= mem::size_of::<Header>() + header.pixels_size());
-
-    println!("{:32}: {:6} {:4}x{:<4}: {:6} in {:>6} spans", path, header.palette_size(), header.width(), header.height(),
-             header.pixels_size(), header.spans_size() / 10 - 1);
-
-    return Ok(ImageRgba8(imgbuf));
+    // Otherwise it's just a normal jpeg.
+    return Ok(image::load_from_memory(data)?);
 }
 
 #[cfg(test)]
@@ -127,11 +120,11 @@ mod tests {
             let mut data = Vec::new();
             fp.read_to_end(&mut data).unwrap();
 
-            if data[0] == 1u8 {
+            //if data[0] == 1u8 {
                 let img = decode_pic(&path, &palette, &data).unwrap();
                 let ref mut fout = fs::File::create(path.to_owned() + ".png").unwrap();
                 img.save(fout, image::PNG).unwrap();
-            }
+            //}
         }
     }
 }
