@@ -12,7 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate failure;
+#[macro_use] extern crate packed_struct;
+#[macro_use] extern crate failure;
 extern crate image;
 extern crate pal;
 extern crate reverse;
@@ -22,40 +23,6 @@ use std::mem;
 use failure::Error;
 use image::{DynamicImage, ImageRgba8};
 use pal::Palette;
-
-macro_rules! _make_packed_struct_accessor {
-    ($field:ident, $field_name:ident, $field_ty:ty, $output_ty:ty) => {
-        fn $field_name(&self) -> $output_ty {
-            self.$field as $output_ty
-        }
-    };
-
-    ($field:ident, $field_name:ident, $field_ty:ty, ) => {
-        fn $field_name(&self) -> $field_ty {
-            self.$field as $field_ty
-        }
-    }
-}
-
-macro_rules! packed_struct {
-    ($name:ident {
-        $( $field:ident => $field_name:ident : $field_ty:ty $(as $field_name_ty:ty),* ),+
-    }) => {
-        #[repr(C)]
-        #[repr(packed)]
-        struct $name {
-            $(
-                $field: $field_ty
-            ),+
-        }
-
-        impl $name {
-            $(
-                _make_packed_struct_accessor!($field, $field_name, $field_ty, $($field_name_ty),*);
-            )+
-        }
-    }
-}
 
 packed_struct!(Header {
     _0 => format: u16,
@@ -80,9 +47,7 @@ packed_struct!(Span {
 
 
 pub fn decode_pic(path: &str, system_palette: &Palette, data: &[u8]) -> Result<DynamicImage, Error> {
-    let header_ptr: *const Header = data[0..].as_ptr() as *const _;
-    let header: &Header = unsafe { &*header_ptr };
-
+    let header = Header::overlay(data)?;
     let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
     let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
     let spans = &data[header.spans_offset()..header.spans_offset() + header.spans_size()];
@@ -101,8 +66,7 @@ pub fn decode_pic(path: &str, system_palette: &Palette, data: &[u8]) -> Result<D
     let mut max_pix = 0usize;
     let span_cnt = header.spans_size() / mem::size_of::<Span>() - 1;
     for i in 0..span_cnt {
-        let span_ptr: *const Span = data[header.spans_offset() + i * mem::size_of::<Span>()..].as_ptr() as *const _;
-        let span: &Span = unsafe { &*span_ptr };
+        let span = Span::overlay(&data[header.spans_offset() + i * mem::size_of::<Span>()..])?;
         assert!(span.row() < header.height());
         assert!(span.index() < header.pixels_size());
         assert!(span.start() < header.width());

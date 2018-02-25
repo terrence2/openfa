@@ -1,0 +1,7 @@
+[package]
+name = "packed_struct"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+failure = "0.1"
