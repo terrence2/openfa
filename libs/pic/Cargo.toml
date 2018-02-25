@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
+clap = "2.29"
 failure = "0.1"
 image = "0.18"
-memmap = "0.6"
 reverse = { path = "../reverse" }
