@@ -8,4 +8,6 @@ clap = "2.29"
 glfw = "0.15"
 kiss3d = "0.11"
 nalgebra = "0.13"
-shape = { path = "../../libs/shape/" }
+pal = { path = "../../libs/pal/" }
+pic = { path = "../../libs/pic/" }
+sh = { path = "../../libs/sh/" }

@@ -31,18 +31,31 @@ use std::collections::{HashMap, HashSet};
 use reverse::{b2h, Escape, Color};
 
 pub struct Shape {
-    pub vertices: Vec<[f32; 3]>,
-    pub meshes: Vec<Mesh>
+    pub meshes: Vec<Mesh>,
+    pub source: String
 }
 
 impl Shape {
     fn empty() -> Shape {
-        Shape { vertices: Vec::new(), meshes: Vec::new() }
+        Shape {
+            meshes: Vec::new(),
+            source: "".to_owned(),
+        }
     }
 }
 
 pub struct Mesh {
+    pub vertices: Vec<[f32; 3]>,
     pub facets: Vec<Facet>,
+}
+
+impl Mesh {
+    fn empty() -> Mesh {
+        Mesh {
+            vertices: Vec::new(),
+            facets: Vec::new()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -177,10 +190,10 @@ impl Shape {
         return Ok(str::from_utf8(&n[..end_offset]).chain_err(|| "names should be utf8 encoded")?.to_owned());
     }
 
-    pub fn new(path: &str, data: &[u8], mode: ShowMode) -> Result<(Shape, Vec<String>)> {
+    pub fn new(data: &[u8], path: &str, mode: ShowMode) -> Result<(Shape, Vec<String>)> {
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
 
-        let (shape, sections) = Self::_read_sections(&pe, path, data).chain_err(|| "read sections")?;
+        let (shape, sections) = Self::_read_sections(&pe, path).chain_err(|| "read sections")?;
         if mode == ShowMode::UnknownMinus && sections.last().unwrap().kind != SectionKind::Unknown && sections.last().unwrap().kind != SectionKind::Invalid {
             return Ok((shape, vec!["".to_owned()]));
         }
@@ -196,12 +209,12 @@ impl Shape {
         return Ok((shape, out2));
     }
 
-    fn _read_sections(pe: &peff::PE, path: &str, data: &[u8]) -> Result<(Shape, Vec<Section>)> {
+    fn _read_sections(pe: &peff::PE, path: &str) -> Result<(Shape, Vec<Section>)> {
         let mut shape = Shape::empty();
 
         let mut offset = 0;
         let mut cnt = 0;
-        let mut pics = Vec::new();
+        let mut current_pic = None;
         let mut n_coords = 0;
 
         let mut sections = Vec::new();
@@ -236,11 +249,11 @@ impl Shape {
                 sections.push(Section::new(0x00B8, offset, 4));
                 offset += 4;
             } else if code[0] == 0x0042 {
-                let s = Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?;
-                sections.push(Section::new(0x0042, offset, s.len() + 3));
-                offset += 2 + s.len() + 1;
+                shape.source = Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?;
+                sections.push(Section::new(0x0042, offset, shape.source.len() + 3));
+                offset += 2 + shape.source.len() + 1;
             } else if code[0] == 0x00E2 {
-                pics.push(Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?);
+                current_pic = Some(Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?);
                 sections.push(Section::new(0x00E2, offset, 16));
                 offset += 16;
             } else if code[0] == 0x007A {
@@ -270,7 +283,7 @@ impl Shape {
             } else if code[0] == 0x0082 {
                 // Even though 82 adds more verts to the shape's pile of verts, it also
                 // indicates a new independent(?) collections of facets.
-                shape.meshes.push(Mesh { facets: Vec::new() });
+                shape.meshes.push(Mesh::empty());
                 n_coords = code[1] as usize;
                 let hdr_cnt = 2;
                 let coord_sz = 6;
@@ -281,7 +294,7 @@ impl Shape {
                     let x = s2f(code[3 + i * 3 + 0]);
                     let y = s2f(code[3 + i * 3 + 1]);
                     let z = s2f(code[3 + i * 3 + 2]);
-                    shape.vertices.push([x, y, z]);
+                    shape.meshes.last_mut().unwrap().vertices.push([x, y, z]);
                 }
                 offset += length;
 //            } else if code[0] == 0x001E {
@@ -562,11 +575,6 @@ impl Shape {
             } else if code[0] == 0x00C4 {
                 // C4 00 00 00 2F 00 0E 00 00 00 00 00 00 00 17 08
                 sections.push(Section::new(0x6C, offset, 16));
-                offset += 16;
-            } else if code[0] == 0x00E2 {
-                // Weird that this is repeated... is it always the same as the pic in the header?
-                pics.push(Self::read_name(&pe.code[offset + 2..]).chain_err(|| "read name")?);
-                sections.push(Section::new(0x00E2, offset, 16));
                 offset += 16;
             } else {
                 break;
@@ -879,7 +887,7 @@ mod tests {
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
 
-                match Shape::new(&path, &data, ShowMode::UnknownMinus) {
+                match Shape::new(&data,&path, ShowMode::UnknownMinus) {
                     Ok((_verts, mut desc)) => {
                         rv.append(&mut desc);
                     },

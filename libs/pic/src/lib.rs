@@ -44,7 +44,7 @@ packed_struct!(Span {
     _index => index: u32 as usize
 });
 
-pub fn decode_pic(path: &str, system_palette: &Palette, data: &[u8]) -> Result<DynamicImage, Error> {
+pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage, Error> {
     let header = Header::overlay(data)?;
     if header.format() == 0 {
         let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
@@ -121,7 +121,7 @@ mod tests {
             fp.read_to_end(&mut data).unwrap();
 
             //if data[0] == 1u8 {
-                let img = decode_pic(&path, &palette, &data).unwrap();
+                let img = decode_pic(&palette, &data).unwrap();
                 let ref mut fout = fs::File::create(path.to_owned() + ".png").unwrap();
                 img.save(fout, image::PNG).unwrap();
             //}

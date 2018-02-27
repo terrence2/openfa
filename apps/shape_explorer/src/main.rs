@@ -16,14 +16,17 @@ extern crate clap;
 extern crate glfw;
 extern crate kiss3d;
 extern crate nalgebra as na;
-extern crate shape;
+extern crate pal;
+extern crate pic;
+extern crate sh;
 
 use clap::{Arg, App, SubCommand};
 use glfw::{Action, Key, WindowEvent};
-use shape::{Shape, ShowMode};
+use sh::{Shape, ShowMode};
 use std::{cell, fs, rc};
 use std::path::{Path, PathBuf};
 use std::io::prelude::*;
+use pal::Palette;
 use na::{Point3, Vector3, UnitQuaternion, Translation3};
 use kiss3d::window::Window;
 use kiss3d::light::Light;
@@ -48,7 +51,7 @@ struct ViewState {
     files: Vec<PathBuf>,
     offset: usize,
     shape: Shape,
-    vertex_nodes: Vec<SceneNode>,
+    //vertex_nodes: Vec<SceneNode>,
     mesh_nodes: Vec<SceneNode>,
     active_mesh: usize,
     active_face: usize,
@@ -57,13 +60,13 @@ struct ViewState {
 impl ViewState {
     fn new(files: Vec<PathBuf>, window: &mut Window) -> ViewState {
         let shape = Self::_load_shape(&files[0]);
-        let vertex_nodes = Self::_push_shape_vertices(window, &shape);
+        //let vertex_nodes = Self::_push_shape_vertices(window, &shape);
         let mesh_nodes = Self::_push_shape_meshes(window, &shape);
         let mut state = ViewState {
             files,
             offset: 0,
             shape,
-            vertex_nodes,
+            //vertex_nodes,
             mesh_nodes,
             active_mesh: 0,
             active_face: 0,
@@ -76,25 +79,32 @@ impl ViewState {
         let mut fp = fs::File::open(path).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
-        let (shape, _desc) = Shape::new(path.to_str().unwrap(), &data, ShowMode::Unknown).unwrap();
+        let (shape, _desc) = Shape::new(&data, path.to_str().unwrap(), ShowMode::Unknown).unwrap();
         return shape;
     }
 
-    fn _push_shape_vertices(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
-        let mut vertex_nodes = Vec::new();
-        for v in shape.vertices.iter() {
-            let mut node = window.add_sphere(0.5);
-            node.append_translation(&Translation3::new(v[0], v[1], v[2]));
-            vertex_nodes.push(node);
-        }
-        return vertex_nodes;
-    }
+//    fn _push_shape_vertices(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
+//        let mut vertex_nodes = Vec::new();
+//        for v in shape.vertices.iter() {
+//            let mut node = window.add_sphere(0.5);
+//            node.append_translation(&Translation3::new(v[0], v[1], v[2]));
+//            vertex_nodes.push(node);
+//        }
+//        return vertex_nodes;
+//    }
 
     fn _push_shape_meshes(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
         let mut nodes = Vec::new();
+
         for mesh in shape.meshes.iter() {
+            for v in mesh.vertices.iter() {
+                let mut node = window.add_sphere(0.5);
+                node.append_translation(&Translation3::new(v[0], v[1], v[2]));
+                nodes.push(node);
+            }
+
             let mut vert_buf = Vec::new();
-            for v in shape.vertices.iter() {
+            for v in mesh.vertices.iter() {
                 vert_buf.push(Point3::new(v[0], v[1], v[2]));
             }
 
@@ -114,26 +124,15 @@ impl ViewState {
                 let node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
                 nodes.push(node);
             }
-
-            /*
-            fn new(coords: Vec<Point3<GLfloat>>,
-                   faces: Vec<Point3<GLuint>>,
-                   normals: Option<Vec<Vector3<GLfloat>>>,
-                   uvs: Option<Vec<Point2<GLfloat>>>,
-                   dynamic_draw: bool)
-                   -> Mesh
-            [−]
-            */
-
         }
 
         return nodes;
     }
 
     fn _remove_shape(&mut self, window: &mut Window) {
-        for mut node in self.vertex_nodes.iter_mut() {
-            window.remove(&mut node);
-        }
+//        for mut node in self.vertex_nodes.iter_mut() {
+//            window.remove(&mut node);
+//        }
         for mut node in self.mesh_nodes.iter_mut() {
             window.remove(&mut node);
         }
@@ -160,9 +159,9 @@ impl ViewState {
         self.active_mesh = 0;
         self.active_face = 0;
         self.shape = Self::_load_shape(&self.files[self.offset]);
-        self.vertex_nodes = Self::_push_shape_vertices(window, &self.shape);
+//        self.vertex_nodes = Self::_push_shape_vertices(window, &self.shape);
         self.mesh_nodes = Self::_push_shape_meshes(window, &self.shape);
-        println!("showing {:?} w/ {} verts in {} meshes", self.files[self.offset], self.shape.vertices.len(), self.shape.meshes.len());
+//        println!("showing {:?} w/ {} verts in {} meshes", self.files[self.offset], self.shape.vertices.len(), self.shape.meshes.len());
     }
 
     fn next_mesh(&mut self, window: &mut Window) {
@@ -217,24 +216,24 @@ impl ViewState {
 
     fn set_vertex_colors(&mut self) {
         let active_facet = &self.shape.meshes[self.active_mesh].facets[self.active_face];
-        for (i, mut node) in self.vertex_nodes.iter_mut().enumerate() {
-            let mut c = [0.1, 0.1, 0.1];
-            let mut s = 0.5;
-            for (j, &index) in active_facet.indices.iter().enumerate() {
-                if i == (index as usize) {
-                    s = 1.0;
-                    c = match j {
-                        0 => [1.0, 0.0, 0.0],
-                        1 => [0.0, 1.0, 0.0],
-                        2 => [0.0, 0.0, 1.0],
-                        3 => [1.0, 0.5, 0.0],
-                        _ => [1.0, 0.0, 1.0],
-                    }
-                }
-            }
-            node.set_local_scale(s, s, s);
-            node.set_color(c[0], c[1], c[2]);
-        }
+//        for (i, mut node) in self.vertex_nodes.iter_mut().enumerate() {
+//            let mut c = [0.1, 0.1, 0.1];
+//            let mut s = 0.5;
+//            for (j, &index) in active_facet.indices.iter().enumerate() {
+//                if i == (index as usize) {
+//                    s = 1.0;
+//                    c = match j {
+//                        0 => [1.0, 0.0, 0.0],
+//                        1 => [0.0, 1.0, 0.0],
+//                        2 => [0.0, 0.0, 1.0],
+//                        3 => [1.0, 0.5, 0.0],
+//                        _ => [1.0, 0.0, 1.0],
+//                    }
+//                }
+//            }
+//            node.set_local_scale(s, s, s);
+//            node.set_color(c[0], c[1], c[2]);
+//        }
     }
 }
 
