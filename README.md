@@ -6,7 +6,7 @@ An attempt at an open-source re-implementation of the Janes Fighters Anthology's
 | Extension | Asset           | Status                               |
 | --------- |:--------------- | ------------------------------------ |
 | 11K       | Sound           | Trivial                              |
-| 5K        | Sound           | Trivail                              |
+| 5K        | Sound           | Trivial                              |
 | 8K        |                 |                                      |
 | AI        | AI Program      |                                      |
 | BI        | AI Binary       |                                      |
