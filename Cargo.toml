@@ -4,5 +4,7 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-shape = { path = "libs/shape/" }
+pal = { path = "libs/pal/" }
+pic = { path = "libs/pic/" }
+sh = { path = "libs/sh/" }
 entity = { path = "libs/entity/" }

@@ -96,34 +96,40 @@ impl ViewState {
     fn _push_shape_meshes(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
         let mut nodes = Vec::new();
 
-        for mesh in shape.meshes.iter() {
+        for (i, mesh) in shape.meshes.iter().enumerate() {
             for v in mesh.vertices.iter() {
                 let mut node = window.add_sphere(0.5);
                 node.append_translation(&Translation3::new(v[0], v[1], v[2]));
                 nodes.push(node);
             }
 
-            let mut vert_buf = Vec::new();
-            for v in mesh.vertices.iter() {
-                vert_buf.push(Point3::new(v[0], v[1], v[2]));
-            }
-
-            let mut index_buf = Vec::new();
             for facet in mesh.facets.iter() {
-                assert!(facet.indices.len() >= 3);
-                for base in 2..facet.indices.len() {
-                    let i = facet.indices[0] as u32;
-                    let j = facet.indices[base - 1] as u32;
-                    let k = facet.indices[base - 0] as u32;
-                    index_buf.push(Point3::new(k, j, i));
+                for index in facet.indices.iter() {
+                    println!("{}: {} of {}", i, index, mesh.vertices.len());
                 }
             }
 
-            if index_buf.len() > 0 {
-                let m = rc::Rc::new(cell::RefCell::new(Mesh::new(vert_buf, index_buf, None, None, false)));
-                let node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
-                nodes.push(node);
-            }
+//            let mut vert_buf = Vec::new();
+//            for v in mesh.vertices.iter() {
+//                vert_buf.push(Point3::new(v[0], v[1], v[2]));
+//            }
+//
+//            let mut index_buf = Vec::new();
+//            for facet in mesh.facets.iter() {
+//                assert!(facet.indices.len() >= 3);
+//                for base in 2..facet.indices.len() {
+//                    let i = facet.indices[0] as u32;
+//                    let j = facet.indices[base - 1] as u32;
+//                    let k = facet.indices[base - 0] as u32;
+//                    index_buf.push(Point3::new(k, j, i));
+//                }
+//            }
+//
+//            if index_buf.len() > 0 {
+//                let m = rc::Rc::new(cell::RefCell::new(Mesh::new(vert_buf, index_buf, None, None, false)));
+//                let node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
+//                nodes.push(node);
+//            }
         }
 
         return nodes;

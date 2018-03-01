@@ -30,6 +30,7 @@ use std::{cmp, fs, mem, str};
 use std::collections::{HashMap, HashSet};
 use reverse::{b2h, Escape, Color};
 
+
 pub struct Shape {
     pub meshes: Vec<Mesh>,
     pub source: String
