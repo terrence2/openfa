@@ -7,4 +7,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 pal = { path = "libs/pal/" }
 pic = { path = "libs/pic/" }
 sh = { path = "libs/sh/" }
+ot = { path = "libs/ot/" }
 entity = { path = "libs/entity/" }
