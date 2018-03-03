@@ -97,7 +97,10 @@ pub mod parse {
         let parts = line.split_whitespace().collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "expected 2 parts");
         ensure!(parts[0] == "byte", "expected byte type");
-        return Ok(parts[1].parse::<u8>()?);
+        return Ok(match parts[1].parse::<u8>() {
+            Ok(n) => n,
+            Err(_) => hex(parts[1])? as u8
+        });
     }
 
     pub fn word(line: &str) -> Result<i16, Error> {
