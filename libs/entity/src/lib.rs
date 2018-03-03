@@ -17,46 +17,75 @@ extern crate failure;
 
 use failure::Error;
 use std::mem;
-use std::collections::HashMap;
 
-pub fn find_pointers<'a>(lines: &Vec<&'a str>) -> Result<HashMap<&'a str, Vec<&'a str>>, Error> {
-    let mut pointers = HashMap::new();
-    let pointer_names = lines
-        .iter()
-        .filter(|&l| l.starts_with(":"))
-        .map(|&l| l)
-        .collect::<Vec<&str>>();
-    for pointer_name in pointer_names {
-        let pointer_data = lines
-            .iter()
-            .map(|&l| l)
-            .skip_while(|&l| l != pointer_name)
-            .skip(1)
-            .take_while(|&l| !l.starts_with(":"))
-            .map(|l| l.trim())
-            .filter(|l| l.len() != 0)
-            .filter(|l| !l.starts_with(";"))
-            .collect::<Vec<&str>>();
-        pointers.insert(pointer_name, pointer_data);
-    }
-    return Ok(pointers);
-}
-
-pub fn find_section<'a>(lines: &Vec<&'a str>, section_tag: &str) -> Result<Vec<&'a str>, Error> {
-    let start_pattern = format!("START OF {}", section_tag);
-    let end_pattern = format!("END OF {}", section_tag);
-    return Ok(
-        lines
-            .iter()
-            .skip_while(|&l| l.find(&start_pattern).is_none())
-            .take_while(|&l| l.find(&end_pattern).is_none())
-            .map(|&l| l.trim())
-            .filter(|&l| l.len() != 0 && !l.starts_with(";"))
-            .collect::<Vec<&str>>());
+// A resource that can be loaded by an entity.
+pub trait Resource {
+    fn from_file(filename: &str) -> Result<Self, Error>
+        where Self: std::marker::Sized;
 }
 
 pub mod parse {
-    use super::Error;
+    use super::Resource;
+    use failure::Error;
+    use std::collections::HashMap;
+
+    pub fn find_pointers<'a>(lines: &Vec<&'a str>) -> Result<HashMap<&'a str, Vec<&'a str>>, Error> {
+        let mut pointers = HashMap::new();
+        let pointer_names = lines
+            .iter()
+            .filter(|&l| l.starts_with(":"))
+            .map(|&l| l)
+            .collect::<Vec<&str>>();
+        for pointer_name in pointer_names {
+            let pointer_data = lines
+                .iter()
+                .map(|&l| l)
+                .skip_while(|&l| l != pointer_name)
+                .skip(1)
+                .take_while(|&l| !l.starts_with(":"))
+                .map(|l| l.trim())
+                .filter(|l| l.len() != 0)
+                .filter(|l| !l.starts_with(";"))
+                .collect::<Vec<&str>>();
+            pointers.insert(&pointer_name[1..], pointer_data);
+        }
+        return Ok(pointers);
+    }
+
+    pub fn find_section<'a>(lines: &Vec<&'a str>, section_tag: &str) -> Result<Vec<&'a str>, Error> {
+        let start_pattern = format!("START OF {}", section_tag);
+        let end_pattern = format!("END OF {}", section_tag);
+        return Ok(
+            lines
+                .iter()
+                .skip_while(|&l| l.find(&start_pattern).is_none())
+                .take_while(|&l| l.find(&end_pattern).is_none())
+                .map(|&l| l.trim())
+                .filter(|&l| l.len() != 0 && !l.starts_with(";"))
+                .collect::<Vec<&str>>());
+    }
+
+    pub fn follow_pointer<'a>(line: &'a str, pointers: &'a HashMap<&'a str, Vec<&'a str>>) -> Result<&'a Vec<&'a str>, Error> {
+        let name = ptr(line)?;
+        match pointers.get(name) {
+            Some(v) => return Ok(v),
+            None => bail!("no pointer {} in pointers", name)
+        }
+    }
+
+    pub fn maybe_load_resource<'a, T>(line: &'a str, pointers: &'a HashMap<&'a str, Vec<&'a str>>) -> Result<Option<T>, Error>
+        where T: Resource
+    {
+        let maybe_value = ptr(line).ok()
+            .and_then(|ptr_name| pointers.get(ptr_name))
+            .and_then(|values| values.get(0));
+        if let Some(value) = maybe_value {
+            let filename = string(value)?;
+            let resource = T::from_file(&filename)?;
+            return Ok(Some(resource));
+        }
+        return Ok(None);
+    }
 
     fn hex(n: &str) -> Result<u32, Error> {
         ensure!(n.is_ascii(), "non-ascii in number");
@@ -111,6 +140,13 @@ pub mod parse {
             .collect::<String>();
         return Ok(unquoted);
     }
+
+    pub fn ptr(line: &str) -> Result<&str, Error> {
+        let parts = line.split_whitespace().collect::<Vec<&str>>();
+        ensure!(parts.len() == 2, "expected 2 parts");
+        ensure!(parts[0] == "ptr", "expected ptr type");
+        return Ok(parts[1]);
+    }
 }
 
 #[derive(Debug)]
@@ -130,29 +166,6 @@ impl TypeTag {
         return Ok(unsafe { mem::transmute(n) });
     }
 }
-
-pub struct NpcType {
-    // dword $0
-    unk0: u32,
-    // dword 0
-    unk1: u32,
-    // byte 20
-    unk2: u8,
-    // byte 60
-    unk3: u8,
-    // byte 40
-    unk4: u8,
-    // word 32767
-    unk5: i16,
-    // word 0
-    unk6: i16,
-    // byte 1
-    unk7: u8,
-    // ptr hards
-    unk8: Vec<HardPoint>,
-}
-
-pub struct HardPoint {}
 
 #[cfg(test)]
 mod tests {

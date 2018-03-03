@@ -18,30 +18,40 @@ extern crate entity;
 #[macro_use]
 extern crate failure;
 
-use entity::{parse, TypeTag};
+use entity::{parse, Resource, TypeTag};
 use failure::Error;
 use std::mem;
 use std::collections::HashMap;
 
-
 pub struct Shape {}
-impl Shape {
-    fn new(_: &str) -> Result<Self, Error> {
+impl Resource for Shape {
+    fn from_file(_: &str) -> Result<Self, Error> {
         Ok(Shape {})
     }
 }
+pub struct HUD {}
+impl Resource for HUD {
+    fn from_file(_: &str) -> Result<Self, Error> {
+        Ok(HUD {})
+    }
+}
 pub struct Sound {}
+impl Resource for Sound {
+    fn from_file(_: &str) -> Result<Self, Error> {
+        Ok(Sound {})
+    }
+}
 
 #[derive(Debug)]
 enum ObjectKind {
-    Fighter    = 0b1000_0000_0000_0000,
-    Bomber     = 0b0100_0000_0000_0000,
-    Ship       = 0b0010_0000_0000_0000,
-    SAM        = 0b0001_0000_0000_0000,
-    AAA        = 0b0000_1000_0000_0000,
-    Tank       = 0b0000_0100_0000_0000,
-    Vehicle    = 0b0000_0010_0000_0000,
-    Structure1  = 0b0000_0001_0000_0000,
+    Fighter = 0b1000_0000_0000_0000,
+    Bomber = 0b0100_0000_0000_0000,
+    Ship = 0b0010_0000_0000_0000,
+    SAM = 0b0001_0000_0000_0000,
+    AAA = 0b0000_1000_0000_0000,
+    Tank = 0b0000_0100_0000_0000,
+    Vehicle = 0b0000_0010_0000_0000,
+    Structure1 = 0b0000_0001_0000_0000,
     Projectile = 0b0000_0000_1000_0000,
     Structure2 = 0b0000_0000_0100_0000,
 }
@@ -59,7 +69,7 @@ impl ObjectKind {
             0b0000_0001_0000_0000 => Ok(ObjectKind::Structure1),
             0b0000_0000_1000_0000 => Ok(ObjectKind::Projectile),
             0b0000_0000_0100_0000 => Ok(ObjectKind::Structure2),
-            _ => bail!("unknown ObjectKind {}", x)
+            _ => bail!("unknown ObjectKind {}", x),
         };
     }
 }
@@ -122,16 +132,16 @@ impl ObjectFlags {
 #[allow(dead_code)]
 pub struct ObjectType {
     //;---------------- general info ----------------
-    type_tag: TypeTag,
+    pub type_tag: TypeTag,
     unk_type_size: i16,
     unk_instance_size: i16,
-    short_name: String,
-    long_name: String,
-    file_name: String,
+    pub short_name: String,
+    pub long_name: String,
+    pub file_name: String,
     flags: ObjectFlags,
     kind: ObjectKind,
-    shape: Option<Shape>,
-    shadow_shape: Option<Shape>,
+    pub shape: Option<Shape>,
+    pub shadow_shape: Option<Shape>,
     unk8: u32,
     unk9: u32,
     unk_damage_debris_pos: [i16; 3],
@@ -174,10 +184,10 @@ pub struct ObjectType {
     util_proc: ProcKind,
 
     //;---------------- sound info ----------------
-    loop_sound: Sound,
-    second_sound: Sound,
-    engine_on_sound: Sound,
-    engine_off_sound: Sound,
+    loop_sound: Option<Sound>,
+    second_sound: Option<Sound>,
+    engine_on_sound: Option<Sound>,
+    engine_off_sound: Option<Sound>,
     unk_do_doppler: u8,
     unk_sound_radius: i16, // in feet?
     unk_max_doppler_pitch_up: i16,
@@ -185,44 +195,42 @@ pub struct ObjectType {
     min_doppler_speed: i16,
     max_doppler_speed: i16,
     unk_rear_view_pos: [i16; 3],
-    hud_name: String,
+    hud: Option<HUD>,
 }
 
 impl ObjectType {
-    fn name_at(i: usize, pointers: &HashMap<&str, Vec<&str>>) -> Result<String, Error> {
-        return match pointers[":ot_names"].get(i) {
-            None => bail!("expected a name at position {}", i),
-            Some(s) => Ok(parse::string(s)?),
-        };
+    pub fn from_str(data: &str) -> Result<Self, Error> {
+        let lines = data.lines().collect::<Vec<&str>>();
+        ensure!(
+            lines[0] == "[brent's_relocatable_format]",
+            "not a type file"
+        );
+        let pointers = parse::find_pointers(&lines)?;
+        return Self::from_lines(&lines, &pointers);
     }
 
-    pub fn from_str(data: &str) -> Result<Self, Error> {
-        let all_lines = data.lines().collect::<Vec<&str>>();
-        ensure!(
-            all_lines[0] == "[brent's_relocatable_format]",
-            "not an type file"
-        );
+    pub fn from_lines(
+        lines: &Vec<&str>,
+        pointers: &HashMap<&str, Vec<&str>>,
+    ) -> Result<Self, Error> {
+        let lines = parse::find_section(&lines, "OBJ_TYPE")?;
 
-        let pointers = entity::find_pointers(&all_lines)?;
-        let lines = entity::find_section(&all_lines, "OBJ_TYPE")?;
+        let ot_names = parse::follow_pointer(lines[3], pointers)?;
 
         return Ok(ObjectType {
             type_tag: TypeTag::new(parse::byte(lines[0])?)?,
             unk_type_size: parse::word(lines[1])?,
             unk_instance_size: parse::word(lines[2])?,
-            short_name: Self::name_at(0, &pointers)?,
-            long_name: Self::name_at(1, &pointers)?,
-            file_name: Self::name_at(2, &pointers)?,
+            short_name: parse::string(ot_names[0])?,
+            long_name: parse::string(ot_names[1])?,
+            file_name: parse::string(ot_names[2])?,
             flags: ObjectFlags::from_u32(parse::dword(lines[4])?),
             kind: ObjectKind::new(parse::word(lines[5])? as u16)?,
-            shape: pointers.get(":shape").and_then(|l| Shape::new(l[0]).ok()),
-            shadow_shape: pointers
-                .get(":shadowShape")
-                .and_then(|l| Shape::new(l[0]).ok()),
+            shape: parse::maybe_load_resource(lines[6], pointers)?,
+            shadow_shape: parse::maybe_load_resource(lines[7], pointers)?,
             unk8: parse::dword(lines[8])?,
             unk9: parse::dword(lines[9])?,
-            unk_damage_debris_pos:
-            [
+            unk_damage_debris_pos: [
                 parse::word(lines[10])?,
                 parse::word(lines[11])?,
                 parse::word(lines[12])?,
@@ -270,10 +278,10 @@ impl ObjectType {
             util_proc: ProcKind::new(lines[49])?,
 
             //;---------------- sound info ----------------
-            loop_sound: Sound {},
-            second_sound: Sound {},
-            engine_on_sound: Sound {},
-            engine_off_sound: Sound {},
+            loop_sound: parse::maybe_load_resource(lines[50], pointers)?,
+            second_sound: parse::maybe_load_resource(lines[51], pointers)?,
+            engine_on_sound: parse::maybe_load_resource(lines[52], pointers)?,
+            engine_off_sound: parse::maybe_load_resource(lines[53], pointers)?,
             unk_do_doppler: parse::byte(lines[54])?,
             unk_sound_radius: parse::word(lines[55])?,
             unk_max_doppler_pitch_up: parse::word(lines[56])?,
@@ -285,7 +293,7 @@ impl ObjectType {
                 parse::word(lines[61])?,
                 parse::word(lines[62])?,
             ],
-            hud_name: String::new(),
+            hud: parse::maybe_load_resource(lines[63], pointers)?,
         });
     }
 }
@@ -309,9 +317,10 @@ mod tests {
             println!("At: {}", path);
             let ot = ObjectType::from_str(&contents).unwrap();
             assert_eq!(format!("./test_data/{}", ot.file_name), path);
-            rv.push(format!("{:?} <> {} <> {}",
-                            ot.unk_explosion_type,
-                            ot.long_name, path));
+            rv.push(format!(
+                "{:?} <> {} <> {}",
+                ot.unk_explosion_type, ot.long_name, path
+            ));
         }
         rv.sort();
         for v in rv {
