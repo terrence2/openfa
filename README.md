@@ -14,14 +14,14 @@ An attempt at an open-source re-implementation of the Janes Fighters Anthology's
 | CAM       |                 |          |
 | CB8       |                 |          |
 | DLG       |                 |          |
-| ECM       |                 |          |
+| ECM       |                 | Todo     |
 | FBC       |                 |          |
 | FNT       |                 |          |
-| GAS       |                 |          |
+| GAS       |                 | Todo     |
 | HGR       |                 |          |
 | HUD       |                 |          |
 | INF       |                 |          |
-| JT        | proJectile Type | Todo     |
+| JT        | proJectile Type | Partial  |
 | LAY       |                 |          |
 | M         |                 |          |
 | MC        |                 |          |
@@ -29,13 +29,13 @@ An attempt at an open-source re-implementation of the Janes Fighters Anthology's
 | MNU       |                 |          |
 | MT        |                 |          |
 | MUS       |                 |          |
-| NT        | Npc Type        | Todo     |
-| OT        | Object Type     | Todo     |
+| NT        | Npc Type        | Partial  |
+| OT        | Object Type     | Partial  |
 | PAL       | Palette         | Complete |
 | PIC       | Picture         | Complete |
-| PT        | Plane Type      | Todo     |
+| PT        | Plane Type      | Partial  |
 | PTS       |                 |          |
-| SEE       |                 |          |
+| SEE       |                 | Todo     |
 | SEQ       |                 |          |
 | SH        | Shape           | Parsed   |
 | T2        |                 |          |
@@ -49,7 +49,7 @@ An attempt at an open-source re-implementation of the Janes Fighters Anthology's
 * Standard - a standard format of some sort that should be easy to support
 * Todo - we know how to write a parser, but have not yet
 * Parsed - we know how to parse the file, but have little or no understanding of what it does
-* Partial - we know what most fields in the file do, but research is still needed on esoteric features
+* Partial - we know what some-to-most fields in the file do, but research is still needed on esoteric features
 * Complete - we know what all parts of the file do and have implemented a reader for all features
 
 ### VDO Format
