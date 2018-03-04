@@ -119,7 +119,7 @@ impl Hardpoint {
 
 #[allow(dead_code)]
 pub struct NpcType {
-    obj: ObjectType,
+    pub obj: ObjectType,
 
     unk0: u32,
     behavior: Option<AI>,
