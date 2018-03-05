@@ -19,7 +19,7 @@ use std::fs;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use clap::{Arg, App, SubCommand};
-use sh::{Shape, ShowMode};
+use sh::{CpuShape, ShowMode};
 
 fn main() {
     let matches = App::new("OpenFA shape tool")
@@ -37,7 +37,7 @@ fn main() {
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        let (_shape, mut desc) = Shape::new(&data, name, ShowMode::AllPerLine).unwrap();
+        let (_shape, mut desc) = CpuShape::new(&data, name, ShowMode::AllPerLine).unwrap();
         for line in desc {
             println!("{}", line);
         }

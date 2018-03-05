@@ -42,6 +42,21 @@ pub fn b2h(b: u8, v: &mut Vec<char>) {
     v.push(n2h(b & 0xF));
 }
 
+pub fn b2b(b: u8, v: &mut Vec<char>) {
+    for i in 0..8 {
+        if i == 4 {
+            v.push('_');
+        }
+        let off = -(i - 7);
+        if (b >> off) & 0b1 == 1 {
+            v.push('1');
+        } else {
+            v.push('0');
+        }
+    }
+}
+
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
     Black = 30,
