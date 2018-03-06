@@ -608,6 +608,21 @@ impl Unk38 {
     }
 }
 
+pub struct TrailerUnknown {
+    pub data: Vec<u8>
+}
+
+impl TrailerUnknown {
+    fn from_bytes(data: &[u8]) -> Result<Self> {
+        return Ok(Self { data: data.to_owned() });
+    }
+
+    fn size(&self) -> usize {
+        return self.data.len();
+    }
+}
+
+
 macro_rules! opaque_instr {
     ($name:ident, $magic:expr, $size:expr) => {
         pub struct $name {
@@ -691,13 +706,16 @@ pub enum Instr {
     // Variable size.
     UnkBC(UnkBC),
     Unk40(Unk40),
-    X86Code(X86Code),
+    TrailerUnknown(TrailerUnknown),
 
     // Known quantities.
     TextureRef(TextureRef), // 0x00E2
     SourceRef(SourceRef),   // 0x0042
     VertexBuf(VertexBuf),   // 0x0082
     Facet(Facet),           // 0x__FC
+
+    // Wtf
+    X86Code(X86Code),
 }
 
 macro_rules! consume_instr {
@@ -734,7 +752,6 @@ impl CpuShape {
         let mut shape = CpuShape::empty();
 
         let mut offset = 0;
-        let mut cnt = 0;
         let mut n_coords = 0;
 
         let mut sections = Vec::new();
@@ -849,74 +866,12 @@ impl CpuShape {
             } else if code[0] == X86Code::MAGIC {
                 consume_instr!(X86Code, instr, pe, offset);
 
-//            } else if code[0] == 0xF0 {
-//                let buf = &pe.code[offset + 2..];
-//
-//                // Push the entire contents to disk so that when this scan inevitably fails we can disassemble to find out why.
-//                let mut buffer = fs::File::create("/tmp/F0.bin").unwrap();
-//                buffer.write(buf).unwrap();
-//
-//                // Find the next ret opcode that is followed by a known section header.
-//                let mut end = 0;
-//                loop {
-//                    if end >= buf.len() {
-//                        break;
-//                    }
-//                    if buf[end] == 0xC3 {
-//                        end += 1;
-//                        let next_code: &[u16] = unsafe { mem::transmute(&pe.code[offset + 2 + end..]) };
-//                        /*
-//                        UNKNOWN
-//                        0x0000
-//                        0x0566
-//                        0x05EB
-//                        0xE850
-//
-//                        MAYBE SECTION?
-//                        0x0066
-//
-//                        KNOWN Sections
-//                        0x0010
-//                        0x0012
-//                        0x0048**
-//                        0x0082
-//                        0x00B8
-//                        0x00C4
-//                        0x00C8
-//                        0x00D0
-//                        0x00E2
-//                        0x0006
-//                        0x00F0
-//
-//                        KNOWN with mod
-//                        0xXXFC
-//                        0xXX1E
-//                        */
-//
-//                        if next_code[0] == 0x0048 || next_code[0] == 0x0000 || next_code[0] == 0x0566 || next_code[0] == 0x05EB || next_code[0] == 0xE850 || next_code[0] == 0x8966 {
-//                            end += 2;
-//                        } else {
-//                            // println!("0x{:04X}", next_code[0]);
-//                            break;
-//                        }
-//                    }
-//
-//                    if buf[end] == 0x68 { // push dword
-//                        end += 5;
-//                    } else if buf[end] == 0x81 { // op reg imm32
-//                        end += 6;
-//                    } else {
-//                        end += 1;
-//                    }
-//                }
-//                let length = 2 + end;
-//                sections.push(Section::new(0xF0, offset, length));
-//                offset += length;
             } else {
-                //instr.push()
+                // Trailer / Unknown remaining.
+                consume_instr!(TrailerUnknown, instr, pe, offset);
+
                 break;
             }
-            cnt += 1;
         }
 
 //        if pe.code.len() < offset {
