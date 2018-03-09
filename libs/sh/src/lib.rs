@@ -35,16 +35,8 @@ use reverse::{b2h, b2b, Escape, Color};
 /// load path will go straight into GPU buffers.
 pub struct CpuShape {
 //    pub meshes: Vec<Mesh>,
-    pub source: String
-}
-
-impl CpuShape {
-    fn empty() -> Self {
-        Self {
-//            meshes: Vec::new(),
-            source: "".to_owned(),
-        }
-    }
+    pub source: String,
+    pub instrs: Vec<Instr>
 }
 
 //pub struct Mesh {
@@ -749,7 +741,6 @@ impl CpuShape {
     }
 
     fn _read_sections(pe: &peff::PE, path: &str) -> Result<(Self, Vec<Section>)> {
-        let mut shape = CpuShape::empty();
 
         let mut offset = 0;
         let mut n_coords = 0;
@@ -887,6 +878,7 @@ impl CpuShape {
 //            sections.push(Section::unknown(offset, cmp::min(1024, pe.code.len() - offset)));
 //        }
 
+        let mut shape = CpuShape { source: "".to_owned(), instrs: instr };
         return Ok((shape, sections));
     }
 
