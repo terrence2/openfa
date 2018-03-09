@@ -37,7 +37,7 @@ fn main() {
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        let shape = CpuShape::new(&data, name).unwrap();
+        let shape = CpuShape::new(&data).unwrap();
         for instr in shape.instrs {
             println!("{}", instr.show());
         }

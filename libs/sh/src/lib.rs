@@ -92,6 +92,10 @@ impl TextureRef {
     fn size(&self) -> usize {
         return Self::SIZE;
     }
+
+    fn show(&self) -> String {
+        format!("{}", "TextureRef")
+    }
 }
 
 pub struct SourceRef {
@@ -110,6 +114,10 @@ impl SourceRef {
 
     fn size(&self) -> usize {
         return 2 + self.source.len() + 1;
+    }
+
+    fn show(&self) -> String {
+        format!("{}", "SourceRef")
     }
 }
 
@@ -141,6 +149,10 @@ impl VertexBuf {
 
     fn size(&self) -> usize {
         return 6 + self.verts.len() * 6;
+    }
+
+    fn show(&self) -> String {
+        format!("{}", "VertexBuf")
     }
 }
 
@@ -293,6 +305,10 @@ impl Facet {
     fn size(&self) -> usize {
         return self.length;
     }
+
+    fn show(&self) -> String {
+        format!("{}", "Facet")
+    }
 }
 
 pub struct X86Code {
@@ -371,6 +387,10 @@ impl X86Code {
     fn size(&self) -> usize {
         return self.code.len() + 2;
     }
+
+    fn show(&self) -> String {
+        format!("{}", "X86Code")
+    }
 }
 
 pub struct UnkCE {
@@ -396,6 +416,10 @@ impl UnkCE {
 
     fn size(&self) -> usize {
         return Self::SIZE;
+    }
+
+    fn show(&self) -> String {
+        format!("{}", "UnkCE")
     }
 }
 
@@ -430,6 +454,10 @@ impl UnkBC {
     fn size(&self) -> usize {
         return self.length;
     }
+
+    fn show(&self) -> String {
+        format!("{}", "UnkBC")
+    }
 }
 
 pub struct Unk40 {
@@ -455,6 +483,10 @@ impl Unk40 {
     fn size(&self) -> usize {
         return self.length;
     }
+
+    fn show(&self) -> String {
+        format!("{}", "Unk40")
+    }
 }
 
 pub struct UnkF6 {
@@ -472,6 +504,10 @@ impl UnkF6 {
 
     fn size(&self) -> usize {
         return Self::SIZE;
+    }
+
+    fn show(&self) -> String {
+        format!("{}", "UnkF6")
     }
 }
 
@@ -491,6 +527,10 @@ impl Unk38 {
     fn size(&self) -> usize {
         return Self::SIZE;
     }
+
+    fn show(&self) -> String {
+        format!("{}", "Unk38")
+    }
 }
 
 pub struct TrailerUnknown {
@@ -504,6 +544,10 @@ impl TrailerUnknown {
 
     fn size(&self) -> usize {
         return self.data.len();
+    }
+
+    fn show(&self) -> String {
+        format!("{}", "Trailer")
     }
 }
 
@@ -526,6 +570,10 @@ macro_rules! opaque_instr {
 
             fn size(&self) -> usize {
                 return Self::SIZE;
+            }
+
+            fn show(&self) -> String {
+                format!("{}", stringify!($name))
             }
         }
     }
@@ -603,6 +651,47 @@ pub enum Instr {
     X86Code(X86Code),
 }
 
+impl Instr {
+    pub fn show(&self) -> String {
+        match self {
+            &Instr::Header(ref i) => i.show(),
+            &Instr::Unk46(ref i) => i.show(),
+            &Instr::UnkB2(ref i) => i.show(),
+            &Instr::Unk12(ref i) => i.show(),
+            &Instr::Unk48(ref i) => i.show(),
+            &Instr::UnkAC(ref i) => i.show(),
+            &Instr::UnkB8(ref i) => i.show(),
+            &Instr::UnkCA(ref i) => i.show(),
+            &Instr::UnkD0(ref i) => i.show(),
+            &Instr::UnkDA(ref i) => i.show(),
+            &Instr::UnkE0(ref i) => i.show(),
+            &Instr::UnkF2(ref i) => i.show(),
+            &Instr::UnkA6(ref i) => i.show(),
+            &Instr::UnkC8(ref i) => i.show(),
+            &Instr::Unk66(ref i) => i.show(),
+            &Instr::Unk7A(ref i) => i.show(),
+            &Instr::Unk78(ref i) => i.show(),
+            &Instr::UnkC4(ref i) => i.show(),
+            &Instr::Unk0C(ref i) => i.show(),
+            &Instr::Unk0E(ref i) => i.show(),
+            &Instr::Unk10(ref i) => i.show(),
+            &Instr::Unk6C(ref i) => i.show(),
+            &Instr::Unk06(ref i) => i.show(),
+            &Instr::UnkCE(ref i) => i.show(),
+            &Instr::UnkF6(ref i) => i.show(),
+            &Instr::Unk38(ref i) => i.show(),
+            &Instr::UnkBC(ref i) => i.show(),
+            &Instr::Unk40(ref i) => i.show(),
+            &Instr::TrailerUnknown(ref i) => i.show(),
+            &Instr::TextureRef(ref i) => i.show(),
+            &Instr::SourceRef(ref i) => i.show(),
+            &Instr::VertexBuf(ref i) => i.show(),
+            &Instr::Facet(ref i) => i.show(),
+            &Instr::X86Code(ref i) => i.show(),
+        }
+    }
+}
+
 macro_rules! consume_instr {
     ($name:ident, $instr:ident, $pe:ident, $offset:ident) => {
         let instr = $name::from_bytes(&$pe.code[$offset..])?;
@@ -612,16 +701,15 @@ macro_rules! consume_instr {
     }
 }
 
-
 impl CpuShape {
-    pub fn new(data: &[u8], path: &str) -> Result<Self> {
+    pub fn new(data: &[u8]) -> Result<Self> {
         let pe = peff::PE::parse(data).chain_err(|| "parse pe")?;
 
-        let shape = Self::_read_sections(&pe, path).chain_err(|| "read sections")?;
+        let shape = Self::_read_sections(&pe).chain_err(|| "read sections")?;
         return Ok(shape);
     }
 
-    fn _read_sections(pe: &peff::PE, path: &str) -> Result<Self> {
+    fn _read_sections(pe: &peff::PE) -> Result<Self> {
 
         let mut offset = 0;
         let mut n_coords = 0;
@@ -773,7 +861,7 @@ mod tests {
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
 
-                match CpuShape::new(&data,&path, ShowMode::UnknownMinus) {
+                match CpuShape::new(&data) {
                     Ok(shape) => {
                         //rv.append(&mut desc);
                     },
