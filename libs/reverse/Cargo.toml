@@ -6,3 +6,4 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 bitflags = "1.0"
 clap = "2.29"
+peff = { path = "../peff/" }

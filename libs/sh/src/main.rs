@@ -13,13 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
+extern crate reverse;
 extern crate sh;
 
 use std::fs;
 use std::io::prelude::*;
-use std::path::{Path, PathBuf};
-use clap::{Arg, App, SubCommand};
-use sh::{CpuShape, ShowMode};
+use clap::{Arg, App};
+use sh::CpuShape;
 
 fn main() {
     let matches = App::new("OpenFA shape tool")
@@ -37,9 +37,9 @@ fn main() {
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        let (_shape, mut desc) = CpuShape::new(&data, name, ShowMode::AllPerLine).unwrap();
-        for line in desc {
-            println!("{}", line);
+        let shape = CpuShape::new(&data, name).unwrap();
+        for instr in shape.instrs {
+            println!("{}", instr.show());
         }
     }
 }

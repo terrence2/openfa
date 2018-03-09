@@ -14,6 +14,9 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #[macro_use]
 extern crate bitflags;
+extern crate peff;
+
+use std::mem;
 
 pub fn n2h(n: u8) -> char {
     match n {
@@ -55,7 +58,6 @@ pub fn b2b(b: u8, v: &mut Vec<char>) {
         }
     }
 }
-
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
@@ -245,6 +247,358 @@ impl Escape {
         v.push('m');
     }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ShowMode {
+    AllOneLine,
+    AllPerLine,
+    UnknownFacet,
+    UnknownMinus,
+    Unknown,
+    Custom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TagKind {
+    RelocatedCall(String),
+    RelocatedRef,
+    RelocationTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tag {
+    pub kind: TagKind,
+    pub offset: usize,
+    pub length: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SectionKind {
+    Main(u16),
+    Unknown,
+    Invalid,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Section {
+    pub kind: SectionKind,
+    pub offset: usize,
+    pub length: usize,
+}
+
+impl Section {
+    pub fn new(kind: u16, offset: usize, length: usize) -> Self {
+        Section { kind: SectionKind::Main(kind), offset, length }
+    }
+
+    pub fn unknown(offset: usize, length: usize) -> Self {
+        Section { kind: SectionKind::Unknown, offset, length }
+    }
+
+    pub fn color(&self) -> Color {
+        match self.kind {
+            SectionKind::Main(k) => {
+                match k {
+                    0xFFFF => Color::Blue,
+                    0x00F0 => Color::BrightGreen,
+                    0x00F2 => Color::Blue,
+                    0x00DA => Color::Magenta,
+                    0x00CA => Color::Blue,
+                    0x00B8 => Color::Blue,
+                    0x0042 => Color::Yellow,
+                    0x00E2 => Color::Yellow,
+                    0x007A => Color::Blue,
+                    0x00CE => Color::Magenta,
+                    0x0078 => Color::Blue,
+                    0x00C8 => Color::Magenta,
+                    0x00A6 => Color::Blue,
+                    0x00AC => Color::Magenta,
+                    0x0082 => Color::Green,
+                    0x1E1E => Color::Red,
+                    0x00FC => Color::Cyan,
+                    _ => Color::Red,
+                }
+            },
+            SectionKind::Unknown => Color::BrightBlack,
+            _ => Color::Red,
+        }
+    }
+
+    pub fn show(&self) -> bool {
+        return true;
+        if let SectionKind::Unknown = self.kind {
+            return true;
+        }
+        return false;
+    }
+}
+
+pub fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>, mode: ShowMode) -> Vec<String> {
+    // Assert that sections tightly abut.
+    let mut next_offset = 0;
+    for section in sections {
+        //assert_eq!(section.offset, next_offset);
+        next_offset = section.offset + section.length;
+    }
+
+    // Assert that there are no tags overlapping.
+    tags.sort_by(|a, b| { a.offset.cmp(&b.offset) });
+    tags.dedup();
+    for (i, tag_a) in tags.iter().enumerate() {
+        for (j, tag_b) in tags.iter().enumerate() {
+            if j > i {
+                // println!("{:?}@{}+{}; {:?}@{}+{}", tag_a.kind, tag_a.offset, tag_a.length, tag_b.kind, tag_b.offset, tag_b.length);
+                assert!(tag_a.offset <= tag_b.offset);
+                assert!(tag_a.offset + tag_a.length <= tag_b.offset ||
+                    tag_a.offset + tag_a.length >= tag_b.offset + tag_b.length);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+
+    // Simple view of all sections concatenated.
+    match mode {
+        ShowMode::AllOneLine => {
+            let mut line: Vec<char> = Vec::new();
+            for section in sections {
+                accumulate_section(code, section, tags, &mut line);
+            }
+            out.push(line.iter().collect::<String>());
+        },
+        ShowMode::AllPerLine => {
+            for section in sections {
+                let mut line: Vec<char> = Vec::new();
+                accumulate_section(code, section, tags, &mut line);
+                out.push(line.iter().collect::<String>());
+            }
+        },
+        ShowMode::Unknown => {
+            for section in sections {
+                if let SectionKind::Unknown = section.kind {
+                    let mut line: Vec<char> = Vec::new();
+                    accumulate_section(code, section, tags, &mut line);
+                    out.push(line.iter().collect::<String>());
+                }
+            }
+        },
+        ShowMode::UnknownMinus => {
+            for (i, section) in sections.iter().enumerate() {
+                if let SectionKind::Unknown = section.kind {
+                    let mut line: Vec<char> = Vec::new();
+                    accumulate_section(code, section, tags, &mut line);
+                    if i > 2 {
+                        accumulate_section(code, &sections[i - 3], tags, &mut line);
+                    }
+                    if i > 1 {
+                        accumulate_section(code, &sections[i - 2], tags, &mut line);
+                    }
+                    if i > 0 {
+                        accumulate_section(code, &sections[i - 1], tags, &mut line);
+                    }
+                    out.push(line.iter().collect::<String>());
+                }
+            }
+        },
+        ShowMode::UnknownFacet => {
+            for section in sections {
+                if let SectionKind::Unknown = section.kind {
+                    if section.length > 0 && code[section.offset] == 0xFC {
+                        let mut line: Vec<char> = Vec::new();
+                        //accumulate_section(code, section, tags, &mut line);
+                        accumulate_facet_section(code, section, &mut line);
+                        out.push(line.iter().collect::<String>());
+                    }
+                }
+            }
+        },
+        ShowMode::Custom => {
+            // Grab sections that we care about and stuff them into lines.
+            for (i, section) in sections.iter().enumerate() {
+                let mut line: Vec<char> = Vec::new();
+                if i > 0 {
+                    if let SectionKind::Main(k) = sections[i - 1].kind {
+                        if k != 0xFC { continue; }
+                        if let SectionKind::Unknown = sections[i].kind {
+                            line.push('0');
+                            line.push('|');
+                            line.push(' ');
+                            if k == 0xFC {
+                                accumulate_facet_section(code, &sections[i - 1], &mut line);
+                            } else {
+                                accumulate_section(code, &sections[i - 1], tags, &mut line)
+                            }
+                            accumulate_section(code, &sections[i], tags, &mut line);
+                            out.push(line.iter().collect::<String>());
+                        } else {
+                            line.push('1');
+                            line.push('|');
+                            line.push(' ');
+                            if k == 0xFC {
+                                accumulate_facet_section(code, &sections[i - 1], &mut line);
+                            } else {
+                                accumulate_section(code, &sections[i - 1], tags, &mut line)
+                            }
+                            out.push(line.iter().collect::<String>());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return out;
+}
+
+fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &mut Vec<char>) {
+    if section.length == 0 {
+        return;
+    }
+    if !section.show() {
+        return;
+    }
+    if section.offset + section.length > code.len() {
+        println!("OVERFLOW at section: {:?}", section);
+        return;
+    }
+
+    let mut nul = Vec::new();
+    let n = &mut nul;
+
+    let section_tags = find_tags_in_section(section, tags);
+    if let Some(t) = section_tags.first() {
+        if t.offset == section.offset {
+            Escape::new().underline().put(tgt(v, n));
+        }
+    }
+
+    if section.length == 1 {
+        Escape::new().bg(section.color()).put(tgt(v, n));
+        b2h(code[section.offset + 0], v);
+        Escape::new().put(tgt(v, n));
+        v.push(' ');
+        return;
+    }
+
+    Escape::new().bg(section.color()).put(tgt(v, n));
+    b2h(code[section.offset + 0], v);
+    v.push(' ');
+    b2h(code[section.offset + 1], v);
+//    v.push('_');
+//    v.push('_');
+    Escape::new().put(tgt(v, n));
+    Escape::new().fg(section.color()).put(tgt(v, n));
+    let mut off = section.offset + 2;
+    for &b in &code[section.offset + 2..section.offset + section.length] {
+        // Push any tag closers.
+        for tag in section_tags.iter() {
+            if tag.offset + tag.length == off {
+                if let &TagKind::RelocatedCall(ref target) = &tag.kind {
+                    Escape::new().put(tgt(v, n));
+                    v.push('(');
+                    Escape::new().fg(Color::Red).put(tgt(v, n));
+                    for c in target.chars() {
+                        v.push(c)
+                    }
+                    Escape::new().put(tgt(v, n));
+                    v.push(')');
+                    v.push(' ');
+                }
+                Escape::new().put(tgt(v, n));
+                Escape::new().fg(section.color()).put(tgt(v, n));
+            }
+        }
+        v.push(' ');
+        // Push any tag openers.
+        for tag in section_tags.iter() {
+            if tag.offset == off {
+                match &tag.kind {
+                    &TagKind::RelocatedCall(_) => Escape::new().dimmed().put(tgt(v, n)),
+                    &TagKind::RelocatedRef => Escape::new().bg(Color::BrightRed).bold().put(tgt(v, n)),
+                    &TagKind::RelocationTarget => Escape::new().fg(Color::BrightMagenta).strike_through().put(tgt(v, n)),
+                };
+            }
+        }
+        b2h(b, v);
+        off += 1;
+    }
+    Escape::new().put(tgt(v, n));
+    v.push(' ');
+}
+
+const COLORIZE: bool = true;
+
+fn tgt<'a>(x: &'a mut Vec<char>, y: &'a mut Vec<char>) -> &'a mut Vec<char> {
+    if COLORIZE {
+        return x;
+    }
+    return y;
+}
+
+fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>) {
+    if section.offset + section.length >= code.len() {
+        println!("OVERFLOW at section: {:?}", section);
+        return;
+    }
+    let mut nul = Vec::new();
+    let n = &mut nul;
+
+    Escape::new().bg(section.color()).put(tgt(line, n));
+    b2h(code[section.offset + 0], line);
+    Escape::new().put(tgt(line, n));
+
+    Escape::new().fg(section.color()).put(tgt(line, n));
+    line.push(' ');
+    b2b(code[section.offset + 1], line);
+    line.push('_');
+    b2b(code[section.offset + 2], line);
+
+    for &b in &code[section.offset + 3..section.offset + section.length] {
+        line.push(' ');
+        b2h(b, line);
+    }
+
+    Escape::new().put(tgt(line, n));
+    line.push(' ');
+}
+
+fn find_tags_in_section(section: &Section, tags: &Vec<Tag>) -> Vec<Tag> {
+    return tags.iter()
+        .filter(|t| { t.offset >= section.offset && t.offset < section.offset + section.length })
+        .map(|t| { t.to_owned() })
+        .collect::<Vec<Tag>>();
+}
+
+pub fn apply_tags(pe: &peff::PE, sections: &Vec<Section>) -> Vec<Tag> {
+    let mut tags = Vec::new();
+    for &reloc in pe.relocs.iter() {
+        assert!((reloc as usize) + 4 <= pe.code.len());
+        let dwords: &[u32] = unsafe { mem::transmute(&pe.code[reloc as usize..]) };
+        let thunk_ptr = dwords[0];
+        if let Some(thunks) = pe.thunks.clone() {
+            if thunks.contains_key(&thunk_ptr) || thunks.contains_key(&(thunk_ptr - 2)) {
+                // This relocation is for a pointer into the thunk table; store the name so
+                // that we can print the name instead of the address.
+                //println!("Relocating {:X} in code to {}", thunk_ptr, &thunks[&thunk_ptr].name);
+                tags.push(Tag { kind: TagKind::RelocatedCall(thunks[&thunk_ptr].name.clone()), offset: reloc as usize, length: 4 });
+            } else {
+                // This relocation is to somewhere in code; mark both it and the target word
+                // of the pointer that is stored at the reloc position.
+                tags.push(Tag { kind: TagKind::RelocatedRef, offset: reloc as usize, length: 4 });
+
+                assert!(thunk_ptr > pe.code_vaddr, "thunked ptr before code");
+                assert!(thunk_ptr <= pe.code_vaddr + pe.code.len() as u32 - 4, "thunked ptr after code");
+                let code_offset = thunk_ptr - pe.code_vaddr;
+                let value_to_relocate_arr: &[u16] = unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
+                let value_to_relocate = value_to_relocate_arr[0];
+                //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
+                tags.push(Tag { kind: TagKind::RelocationTarget, offset: code_offset as usize, length: 2 });
+            }
+        }
+    }
+    return tags;
+}
+
 
 #[cfg(test)]
 mod tests {
