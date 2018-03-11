@@ -53,14 +53,17 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage,
         let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
-            let clr = if pix < local_palette.color_count {
-                local_palette.rgb(pix)?
+            let mut clr = if pix < local_palette.color_count {
+                local_palette.rgba(pix)?
             } else {
-                system_palette.rgb(pix)?
+                system_palette.rgba(pix)?
             };
+            if pix == 0xFF {
+                clr.data[3] = 0x00;
+            }
             *p = clr;
         }
-        return Ok(ImageRgb8(imgbuf));
+        return Ok(ImageRgba8(imgbuf));
     } else if header.format() == 1 {
         let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
         let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
@@ -114,6 +117,9 @@ mod tests {
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
+            if !path.ends_with("PIC") {
+                continue;
+            }
             println!("AT: {}", path);
 
             let mut fp = fs::File::open(entry.path()).unwrap();

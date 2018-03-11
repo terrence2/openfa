@@ -59,6 +59,15 @@ pub fn b2b(b: u8, v: &mut Vec<char>) {
     }
 }
 
+pub fn bs2s(bs: &[u8]) -> String {
+    let mut v = Vec::new();
+    for &b in bs.iter() {
+        b2h(b, &mut v);
+        v.push(' ');
+    }
+    return v.iter().collect::<String>();
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
     Black = 30,
@@ -450,7 +459,7 @@ pub fn format_sections(code: &[u8], sections: &Vec<Section>, tags: &mut Vec<Tag>
     return out;
 }
 
-fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &mut Vec<char>) {
+pub fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &mut Vec<char>) {
     if section.length == 0 {
         return;
     }
@@ -569,7 +578,7 @@ fn find_tags_in_section(section: &Section, tags: &Vec<Tag>) -> Vec<Tag> {
         .collect::<Vec<Tag>>();
 }
 
-pub fn apply_tags(pe: &peff::PE, sections: &Vec<Section>) -> Vec<Tag> {
+pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
     let mut tags = Vec::new();
     for &reloc in pe.relocs.iter() {
         assert!((reloc as usize) + 4 <= pe.code.len());

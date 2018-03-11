@@ -45,7 +45,7 @@ fn main() {
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        let img = decode_pic(&name, &palette, &data).unwrap();
+        let img = decode_pic(&palette, &data).unwrap();
         let ref mut fout = fs::File::create(name.to_owned() + ".png").unwrap();
         img.save(fout, image::PNG).unwrap();
     }

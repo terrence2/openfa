@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::io::prelude::*;
 use std::{cmp, fs, mem, str};
 use std::collections::{HashMap, HashSet};
-use reverse::{b2h, b2b, Escape, Color};
+use reverse::{bs2s, b2h, b2b, Escape, Color};
 
 
 /// A version of the shape for slicing/dicing on the CPU for exploration. The normal
@@ -94,7 +94,56 @@ impl TextureRef {
     }
 
     fn show(&self) -> String {
-        format!("{}", "TextureRef")
+        format!("TextureRef -> {}", self.filename)
+    }
+}
+
+// These are for code E0. They are used for nose and tail art and for the country
+// insignia on wings. Our PICs appear to be NOSE__.PIC, ROUND__.PIC, RIGHT__.PIC,
+// and LEFT__.PIC.
+#[derive(Debug)]
+pub enum TextureIndexKind {
+    TailLeft,
+    TailRight,
+    Nose,
+    WingLeft,
+    WingRight,
+}
+
+impl TextureIndexKind {
+    fn from_u16(kind: u16) -> Result<Self> {
+        match kind {
+            0 => Ok(TextureIndexKind::TailLeft),
+            1 => Ok(TextureIndexKind::TailRight),
+            2 => Ok(TextureIndexKind::Nose),
+            3 => Ok(TextureIndexKind::WingLeft),
+            4 => Ok(TextureIndexKind::WingRight),
+            _ => bail!("unknown texture index")
+        }
+    }
+}
+
+pub struct TextureIndex {
+    pub unk0: u8,
+    pub kind: TextureIndexKind
+}
+
+impl TextureIndex {
+    pub const MAGIC: u8 = 0xE0;
+    pub const SIZE: usize = 4;
+
+    fn from_bytes(data: &[u8]) -> Result<Self> {
+        assert_eq!(data[0], Self::MAGIC);
+        let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
+        return Ok(TextureIndex { unk0: data[1], kind: TextureIndexKind::from_u16(data2[0])? });
+    }
+
+    fn size(&self) -> usize {
+        return Self::SIZE;
+    }
+
+    fn show(&self) -> String {
+        format!("TextureIndexKind {}: {:?}", self.unk0, self.kind)
     }
 }
 
@@ -117,7 +166,7 @@ impl SourceRef {
     }
 
     fn show(&self) -> String {
-        format!("{}", "SourceRef")
+        format!("SourceRef {}: {}", self.unk0, self.source)
     }
 }
 
@@ -137,7 +186,6 @@ impl VertexBuf {
         let mut buf = VertexBuf { unk0: head[2], verts: Vec::new() };
         fn s2f(s: u16) -> f32 { (s as i16) as f32 }
         let nverts = head[0] as usize;
-        println!("NVERTS: {}", nverts);
         for i in 0..nverts {
             let x = s2f(words[i * 3 + 0]);
             let y = s2f(words[i * 3 + 1]);
@@ -152,16 +200,18 @@ impl VertexBuf {
     }
 
     fn show(&self) -> String {
-        format!("{}", "VertexBuf")
+        format!("VertexBuf {} => {} verts", self.unk0, self.verts.len())
     }
 }
 
 pub struct Facet {
     pub length: usize,
     pub flags: FacetFlags,
+    pub mat_desc: String,
     pub indices: Vec<u16>,
     pub max_index: u16,
     pub min_index: u16,
+    pub tex_coords: Vec<[u16;2]>,
 }
 
 impl Facet {
@@ -267,39 +317,70 @@ impl Facet {
         assert_eq!(flags_word & 0x00F0, 0u16);
         let flags = FacetFlags::from_u16(flags_word);
 
+        let mut off = 3;
+
+        // Material
         let material_size = if flags.contains(FacetFlags::HAVE_MATERIAL){
-            if flags.contains(FacetFlags::USE_SHORT_MATERIAL) { 11 } else { 14 }
+            if flags.contains(FacetFlags::USE_SHORT_MATERIAL) {
+                11
+            } else {
+                14
+            }
         } else {
             2
         };
-        let index_size = if flags.contains(FacetFlags::USE_SHORT_INDICES) { 2 } else { 1 };
-        let have_tc = flags.contains(FacetFlags::HAVE_TEXCOORDS);
-        let tc_size = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) { 1 } else { 2 };
+        let mat_desc = bs2s(&data[off..off + material_size]);
+        off += material_size;
 
-        let index_count = data[3 + material_size] as usize;
-        let mut length = 3 + material_size + 1 + index_count * index_size;
-        if have_tc {
-            length += index_count * 2 * tc_size;
+        // Index count.
+        let index_count = data[off] as usize;
+        off += 1;
+
+        // Indexes.
+        let mut indices = Vec::new();
+        let index_u8 = &data[off..];
+        let index_u16 : &[u16] = unsafe { mem::transmute(index_u8) };
+        for i in 0..index_count {
+            let index = if flags.contains(FacetFlags::USE_SHORT_INDICES) {
+                off += 2;
+                index_u16[i]
+            } else {
+                off += 1;
+                index_u8[i] as u16
+            };
+            indices.push(index);
         }
 
-        let mut facet = Facet { length, flags, indices: Vec::new(), max_index: 0, min_index: 0xFFFF };
-        let index_base = &data[3 + material_size + 1..];
-        if flags.contains(FacetFlags::USE_SHORT_INDICES) {
-            let indices: &[u16] = unsafe { mem::transmute(index_base) };
+        // Tex Coords
+        let mut tex_coords = Vec::new();
+        if flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+            let tc_u8 = &data[off..];
+            let tc_u16: &[u16] = unsafe { mem::transmute(tc_u8) };
             for i in 0..index_count {
-                facet.indices.push(indices[i]);
+                let (u, v) = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) {
+                    off += 2;
+                    (tc_u8[i * 2 + 0] as u16,
+                     tc_u8[i * 2 + 1] as u16)
+                } else {
+                    off += 4;
+                    (tc_u16[i * 2 + 0],
+                     tc_u16[i * 2 + 1])
+                };
+                tex_coords.push([u, v]);
             }
-        } else {
-            for i in 0..index_count {
-                facet.indices.push(index_base[i] as u16);
-            }
+
+            assert_eq!(tex_coords.len(), indices.len());
         }
-        facet.max_index = *facet.indices.iter().max().unwrap();
-        facet.min_index = *facet.indices.iter().min().unwrap();
 
-        return Ok(facet);
-
-        //println!("FLAGS: {:08b} => off: {}, ctn: {}, have_tc: {}, tc_size: {} => length: {}", flags, index_count_offset, index_count, have_tc, tc_size, length);
+        return Ok(Facet {
+            length: off,
+            flags,
+            mat_desc,
+            max_index: *indices.iter().max().unwrap(),
+            min_index: *indices.iter().min().unwrap(),
+            indices,
+            tex_coords,
+        });
     }
 
     fn size(&self) -> usize {
@@ -307,31 +388,83 @@ impl Facet {
     }
 
     fn show(&self) -> String {
-        format!("{}", "Facet")
+        format!("Facet {:016b} : {:?} : {:?}", self.flags, self.indices, self.tex_coords)
+    }
+}
+
+struct FakeX86State {
+    prefix_operand_override: bool
+}
+
+impl FakeX86State {
+    fn clean() -> Self {
+        FakeX86State {
+            prefix_operand_override: false
+        }
+    }
+}
+
+pub struct FakeX86 {
+}
+
+impl FakeX86 {
+    fn virtual_interpret(code: &[u8]) {
+        let mut state = FakeX86State::clean();
+        let mut ip = 0;
+        loop {
+            match code[ip] {
+                // PREFIX
+                0x66 => {
+                    state.prefix_operand_override = true;
+                    ip += 1;
+                },
+                // CMPW
+                0x83 => {
+                    // Check that this is set on all actual users.
+                    assert!(state.prefix_operand_override);
+                    let mods = code[ip + 1];
+                    let a1_ptr: &[u32] = unsafe { mem::transmute(&code[ip + 2..ip + 6]) };
+                    let a1: u32 = a1_ptr[0];
+                    let a2: u8 = code[ip + 7];
+                    ip += 2 + 4 + 1;
+                }
+                // JNE
+                0x75 => {
+
+                }
+                _ => {
+                    panic!("Unknown x86 opcode")
+                }
+            }
+        }
     }
 }
 
 pub struct X86Code {
-    code: Vec<u8>
+    pub code: Vec<u8>,
+    pub formatted: String,
 }
 
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0);
+    fn from_bytes(offset: usize, pe: &peff::PE) -> Result<Self> {
+        let section = &pe.code[offset..];
+        assert_eq!(section[0], Self::MAGIC);
+        assert_eq!(section[1], 0);
 
-        let buf = &data[2..];
+        let code = &section[2..];
         // Find the next ret opcode that is followed by a known section header.
         let mut end = 0;
+        let mut ip = 0;
+
         loop {
-            if end >= buf.len() {
-                break;
+            if ip >= code.len() {
+                panic!("we should ret well before here")
             }
-            if buf[end] == 0xC3 {
-                end += 1;
-                let next_code: &[u16] = unsafe { mem::transmute(&data[2 + end..]) };
+            if code[ip] == 0xC3 {
+                ip += 1;
+                let next_code: &[u16] = unsafe { mem::transmute(&section[2 + ip..]) };
                 /*
                 UNKNOWN
                 0x0000
@@ -364,23 +497,33 @@ impl X86Code {
                 // working for now, we're just going to fast-forward past anything that doesn't
                 // look quite right.
                 if next_code[0] == 0x0048 || next_code[0] == 0x0000 || next_code[0] == 0x0566 || next_code[0] == 0x05EB || next_code[0] == 0xE850 || next_code[0] == 0x8966 {
-                    end += 2;
+                    ip += 2;
                 } else {
                     // println!("0x{:04X}", next_code[0]);
+                    end = ip;
                     break;
                 }
             }
 
-            if buf[end] == 0x68 { // push dword
-                end += 5;
-            } else if buf[end] == 0x81 { // op reg imm32
-                end += 6;
+            if code[ip] == 0x68 { // push dword
+                ip += 5;
+            } else if code[ip] == 0x81 { // op reg imm32
+                ip += 6;
             } else {
-                end += 1;
+                ip += 1;
             }
         }
+
+        let sec = reverse::Section::new(0xF0, offset, end + 2);
+        let tags = reverse::get_all_tags(pe);
+        let mut v = Vec::new();
+        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
+        let fmt = v.iter().collect::<String>();
+
+
         return Ok(X86Code {
-            code: buf[0..end].to_owned()
+            code: code[0..end].to_owned(),
+            formatted: fmt
         });
     }
 
@@ -389,7 +532,8 @@ impl X86Code {
     }
 
     fn show(&self) -> String {
-        format!("{}", "X86Code")
+        //format!("X86Code: {}", bs2s(&self.code))
+        format!("X86Code: {}", self.formatted)
     }
 }
 
@@ -467,7 +611,7 @@ pub struct Unk40 {
 }
 
 impl Unk40 {
-    pub const MAGIC: u8 = 0xBC;
+    pub const MAGIC: u8 = 0x40;
 
     // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
     fn from_bytes(data: &[u8]) -> Result<Self> {
@@ -547,7 +691,9 @@ impl TrailerUnknown {
     }
 
     fn show(&self) -> String {
-        format!("{}", "Trailer")
+        use reverse::{format_sections, Section, ShowMode};
+        let out = format_sections(&self.data, &vec![Section::new(0x0000, 0, self.data.len())], &mut vec![], ShowMode::AllPerLine);
+        format!("Trailer/{} => {}", self.data.len(), out[0])
     }
 }
 
@@ -573,7 +719,7 @@ macro_rules! opaque_instr {
             }
 
             fn show(&self) -> String {
-                format!("{}", stringify!($name))
+                format!("{}: {}", stringify!($name), bs2s(&self.data))
             }
         }
     }
@@ -589,7 +735,6 @@ opaque_instr!(UnkB8, 0xB8, 4);
 opaque_instr!(UnkCA, 0xCA, 4);
 opaque_instr!(UnkD0, 0xD0, 4);
 opaque_instr!(UnkDA, 0xDA, 4);
-opaque_instr!(UnkE0, 0xE0, 4);
 opaque_instr!(UnkF2, 0xF2, 4);
 opaque_instr!(UnkA6, 0xA6, 6);
 opaque_instr!(UnkC8, 0xC8, 8);
@@ -617,7 +762,6 @@ pub enum Instr {
     UnkCA(UnkCA),
     UnkD0(UnkD0),
     UnkDA(UnkDA),
-    UnkE0(UnkE0),
     UnkF2(UnkF2),
     UnkA6(UnkA6),
     UnkC8(UnkC8),
@@ -642,7 +786,8 @@ pub enum Instr {
     TrailerUnknown(TrailerUnknown),
 
     // Known quantities.
-    TextureRef(TextureRef), // 0x00E2
+    TextureRef(TextureRef),     // 0x00E2
+    TextureIndex(TextureIndex), // 0x00E0
     SourceRef(SourceRef),   // 0x0042
     VertexBuf(VertexBuf),   // 0x0082
     Facet(Facet),           // 0x__FC
@@ -664,7 +809,6 @@ impl Instr {
             &Instr::UnkCA(ref i) => i.show(),
             &Instr::UnkD0(ref i) => i.show(),
             &Instr::UnkDA(ref i) => i.show(),
-            &Instr::UnkE0(ref i) => i.show(),
             &Instr::UnkF2(ref i) => i.show(),
             &Instr::UnkA6(ref i) => i.show(),
             &Instr::UnkC8(ref i) => i.show(),
@@ -683,6 +827,7 @@ impl Instr {
             &Instr::UnkBC(ref i) => i.show(),
             &Instr::Unk40(ref i) => i.show(),
             &Instr::TrailerUnknown(ref i) => i.show(),
+            &Instr::TextureIndex(ref i) => i.show(),
             &Instr::TextureRef(ref i) => i.show(),
             &Instr::SourceRef(ref i) => i.show(),
             &Instr::VertexBuf(ref i) => i.show(),
@@ -756,9 +901,6 @@ impl CpuShape {
             } else if code[0] == UnkDA::MAGIC {
                 consume_instr!(UnkDA, instr, pe, offset);
 
-            } else if code[0] == UnkE0::MAGIC {
-                consume_instr!(UnkE0, instr, pe, offset);
-
             } else if code[0] == UnkF2::MAGIC {
                 consume_instr!(UnkF2, instr, pe, offset);
 
@@ -813,6 +955,9 @@ impl CpuShape {
             } else if code[0] == TextureRef::MAGIC {
                 consume_instr!(TextureRef, instr, pe, offset);
 
+            } else if code[0] == TextureIndex::MAGIC {
+                consume_instr!(TextureIndex, instr, pe, offset);
+
             } else if code[0] == SourceRef::MAGIC {
                 consume_instr!(SourceRef, instr, pe, offset);
 
@@ -823,7 +968,11 @@ impl CpuShape {
                 consume_instr!(Facet, instr, pe, offset);
 
             } else if code[0] == X86Code::MAGIC {
-                consume_instr!(X86Code, instr, pe, offset);
+                //consume_instr!(X86Code, instr, pe, offset);
+                let x86 = X86Code::from_bytes(offset, pe)?;
+                let sz = x86.size();
+                instr.push(Instr::X86Code(x86));
+                offset += sz;
 
             } else {
                 // Trailer / Unknown remaining.
@@ -861,12 +1010,13 @@ mod tests {
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
 
-                match CpuShape::new(&data) {
-                    Ok(shape) => {
-                        //rv.append(&mut desc);
-                    },
-                    Err(_) => {
-                        rv.push(format!("SKIPPED {}", path));
+                let shape = CpuShape::new(&data).unwrap();
+                for (i, instr) in shape.instrs.iter().enumerate() {
+                    match instr {
+                        &Instr::TextureIndex(ref e0) => {
+                            println!("{}", instr.show());
+                        }
+                        _ => {}
                     }
                 }
             }

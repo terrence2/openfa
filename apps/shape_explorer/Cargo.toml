@@ -6,6 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 clap = "2.29"
 glfw = "0.15"
+image = "0.18"
 kiss3d = "0.11"
 nalgebra = "0.13"
 pal = { path = "../../libs/pal/" }

@@ -38,8 +38,16 @@ fn main() {
         fp.read_to_end(&mut data).unwrap();
 
         let shape = CpuShape::new(&data).unwrap();
-        for instr in shape.instrs {
-            println!("{}", instr.show());
+        for (i, instr) in shape.instrs.iter().enumerate() {
+            println!("{}: {}", i, instr.show());
+            match instr {
+                &sh::Instr::X86Code(ref bc) => {
+                    let filename = format!("/tmp/instr{}.bin", i);
+                    let mut buffer = fs::File::create(filename).unwrap();
+                    buffer.write(&bc.code).unwrap();
+                }
+                _ => {}
+            }
         }
     }
 }
