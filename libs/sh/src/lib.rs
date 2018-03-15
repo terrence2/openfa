@@ -392,54 +392,6 @@ impl Facet {
     }
 }
 
-struct FakeX86State {
-    prefix_operand_override: bool
-}
-
-impl FakeX86State {
-    fn clean() -> Self {
-        FakeX86State {
-            prefix_operand_override: false
-        }
-    }
-}
-
-pub struct FakeX86 {
-}
-
-impl FakeX86 {
-    fn virtual_interpret(code: &[u8]) {
-        let mut state = FakeX86State::clean();
-        let mut ip = 0;
-        loop {
-            match code[ip] {
-                // PREFIX
-                0x66 => {
-                    state.prefix_operand_override = true;
-                    ip += 1;
-                },
-                // CMPW
-                0x83 => {
-                    // Check that this is set on all actual users.
-                    assert!(state.prefix_operand_override);
-                    let mods = code[ip + 1];
-                    let a1_ptr: &[u32] = unsafe { mem::transmute(&code[ip + 2..ip + 6]) };
-                    let a1: u32 = a1_ptr[0];
-                    let a2: u8 = code[ip + 7];
-                    ip += 2 + 4 + 1;
-                }
-                // JNE
-                0x75 => {
-
-                }
-                _ => {
-                    panic!("Unknown x86 opcode")
-                }
-            }
-        }
-    }
-}
-
 pub struct X86Code {
     pub code: Vec<u8>,
     pub formatted: String,
