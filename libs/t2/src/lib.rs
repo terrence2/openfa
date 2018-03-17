@@ -12,17 +12,69 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use] extern crate failure;
-#[macro_use] extern crate packed_struct;
-extern crate reverse;
-extern crate image;
 
-use failure::Error;
-use reverse::bs2s;
-use std::{mem, str};
-use std::fs;
-use std::io::prelude::*;
-use std::collections::HashSet;
+// Each T2 file has the following format.
+//
+// magic:      [u8;4]  => "BIT2" in ascii
+// name/descr: [u8;80] => "The Baltics", "North/South Korea", etc.
+// pic_file:   [u8;16] => "bal.PIC"
+//
+// Followed by some numbers. I'm not sure if the pic_file portion is 15 bytes or 16 bytes. If it
+// is actually 15, that would make the next fields (typically) 0x2000, instead of 32. In any case,
+// we have to have an extra pad byte somewhere because the "pixels" are absolutely at 49 bytes
+// offset from a 16 byte pic file size. Weird alignment.
+// 0            4            8            12           16          20  21
+// 20 00 00 00  00 00 00 00  20 00 00 00  00 00 00 00  00 00 00 00 00  08 00 00
+//
+// 24  25       28  29       32  33     35      37           41           45
+// 00  20 00 00 00  20 00 00 00  95 00  03 00   00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
+//
+// unknown: [u8;41]
+// width: u32
+// height: u32
+// pixels: [[u8;3]; width * (height + 1)]
+//
+// Height "pixels" are stored bottom to top. There is one extra row containing random looking data.
+// I'm not sure if this is some arcane internal detail or vital extra global information. The data
+// stored in the extra row does appear to be mostly the same as the pixel format, so maybe it's just
+// scratch or overflow for the rendering process? Each height pixel contains 3 bytes, each a field
+// of sorts.
+//
+// Pixel format:
+//   kind: u8 =>  0xFF for water, or 0xDX or 0xCX for land. I'm not sure what the bottom nibble is.
+//                It is 2 for almost all maps. Some have 0-A here. Only the Vietnam map has 0xC in
+//                the top nibble. I'll need to map these and see if there are any correspondences.
+//   flags: u8 => appears to modify the section of land or water. Seems to correspond to terrain
+//                features or buildings. Water is mostly 0 near-shores and 1 when away from land.
+//                This is probably meant to control if we draw wave.sh on it or not. There are also
+//                3 to 7 for some maps, maybe naval bases? Land has a wider array of options, but
+//                still only 0-E. Only Vietnam has 0x10, and these are dots. Maybe AckAck or SAM
+//                emplacements?
+//    height: u8 => Seems to only go up to 40 or so at tallest. Not sure why more resolution was
+//                  not employed here. Seems a waste. Graphed out, whiteness seems to line up with
+//                  the taller points, so I'm pretty sure this is just a simple height-map.
+
+/* Header usage:
+Mostly D2. Some maps have D0 -> DA.
+Only Viet has C2->C7.
+Pakistan          D2
+Persian Gulf      D2
+Panama            D2
+North Vietnam     C2, C4, C5, C6, C7
+North/South Korea D2
+Iraq              D2
+Taiwan            D2
+Greece            D2
+Egypt             D0, D1, D2, D3, D4, D5, D6, D7, D8
+France            D0, D1, D2, D3, D4, D5, D6, D7, D8
+Cuba              D2
+Vladivostok       D0, D1, D2, D3, D4, D5, D6, D7, D8
+The Baltics       D2
+Falkland Islands  D2
+Kuril Islands     D0, D1, D2, D3, D4, D5, D6, D7, D8
+Ukraine           D0, D2, D3, D4, D6, D7, D8, D9
+t
+*/
 
 /* Flag byte usage on land
 // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 || 16
@@ -63,6 +115,18 @@ Falkland Islands   {3, 1, 0}
 Kuril Islands      {0, 1}
 Ukraine            {0, 1}
 */
+
+#[macro_use] extern crate failure;
+#[macro_use] extern crate packed_struct;
+extern crate reverse;
+extern crate image;
+
+use failure::Error;
+use reverse::bs2s;
+use std::{mem, str};
+use std::fs;
+use std::io::prelude::*;
+use std::collections::HashSet;
 
 pub struct Terrain {
     pub name: String,
@@ -179,6 +243,7 @@ impl Terrain {
 
         let mut foo = fl.iter().collect::<Vec<_>>();
         foo.sort();
+        let foo = foo.iter().map(|f| format!("{:2X}", f)).collect::<Vec<_>>();
 
         println!("{:30}| {:10}| cnt:{} => {:.4} ; {}x{} ; {}/{} | {:?}",
                  name, pic_file, cnt, sqrt, width, height, min, max, foo);// bs2s(&data[84+16+49..]));
