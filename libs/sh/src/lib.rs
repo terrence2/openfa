@@ -45,6 +45,7 @@ bitflags! {
         const USE_SHORT_INDICES  = 0b0000_0000_0000_0100;
         const USE_SHORT_MATERIAL = 0b0000_0000_0000_0010;
         const USE_BYTE_TEXCOORDS = 0b0000_0000_0000_0001;
+        const UNK_MATERIAL_RELATED = 0b0000_0001_0000_0000;
     }
 }
 
@@ -75,6 +76,7 @@ fn read_name(n: &[u8]) -> Result<String> {
 }
 
 pub struct TextureRef {
+    pub offset: usize,
     pub filename: String
 }
 
@@ -82,11 +84,12 @@ impl TextureRef {
     pub const MAGIC: u8 = 0xE2;
     pub const SIZE: usize = 16;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let filename = read_name(&data[2..Self::SIZE]).chain_err(|| "read name")?;
-        return Ok(TextureRef { filename });
+        return Ok(TextureRef { offset, filename });
     }
 
     fn size(&self) -> usize {
@@ -94,7 +97,7 @@ impl TextureRef {
     }
 
     fn show(&self) -> String {
-        format!("TextureRef -> {}", self.filename)
+        format!("TextureRef @ {:04X} -> {}", self.offset, self.filename)
     }
 }
 
@@ -124,6 +127,7 @@ impl TextureIndexKind {
 }
 
 pub struct TextureIndex {
+    pub offset: usize,
     pub unk0: u8,
     pub kind: TextureIndexKind
 }
@@ -132,10 +136,11 @@ impl TextureIndex {
     pub const MAGIC: u8 = 0xE0;
     pub const SIZE: usize = 4;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        return Ok(TextureIndex { unk0: data[1], kind: TextureIndexKind::from_u16(data2[0])? });
+        return Ok(TextureIndex { offset, unk0: data[1], kind: TextureIndexKind::from_u16(data2[0])? });
     }
 
     fn size(&self) -> usize {
@@ -143,11 +148,12 @@ impl TextureIndex {
     }
 
     fn show(&self) -> String {
-        format!("TextureIndexKind {}: {:?}", self.unk0, self.kind)
+        format!("TextureIndexKind @ {:04X}: {}, {:?}", self.offset, self.unk0, self.kind)
     }
 }
 
 pub struct SourceRef {
+    pub offset: usize,
     pub unk0: u8,
     pub source: String
 }
@@ -155,10 +161,11 @@ pub struct SourceRef {
 impl SourceRef {
     pub const MAGIC: u8 = 0x42;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let source = read_name(&data[2..]).chain_err(|| "read name")?;
-        return Ok(SourceRef { unk0: data[1], source });
+        return Ok(SourceRef { offset, unk0: data[1], source });
     }
 
     fn size(&self) -> usize {
@@ -166,24 +173,27 @@ impl SourceRef {
     }
 
     fn show(&self) -> String {
-        format!("SourceRef {}: {}", self.unk0, self.source)
+        format!("SourceRef @ {:04X}: {}, {}", self.offset, self.unk0, self.source)
     }
 }
 
 pub struct VertexBuf {
+    pub offset: usize,
     pub unk0: u16,
+    pub raw_verts: Vec<[u16; 3]>,
     pub verts: Vec<[f32; 3]>,
 }
 
 impl VertexBuf {
     pub const MAGIC: u8 = 0x82;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let head: &[u16] = unsafe { mem::transmute(&data[2..6]) };
         let words: &[u16] = unsafe { mem::transmute(&data[6..]) };
-        let mut buf = VertexBuf { unk0: head[2], verts: Vec::new() };
+        let mut buf = VertexBuf { offset, unk0: head[2], raw_verts: Vec::new(), verts: Vec::new() };
         fn s2f(s: u16) -> f32 { (s as i16) as f32 }
         let nverts = head[0] as usize;
         for i in 0..nverts {
@@ -191,6 +201,11 @@ impl VertexBuf {
             let y = s2f(words[i * 3 + 1]);
             let z = s2f(words[i * 3 + 2]);
             buf.verts.push([x, y, z]);
+
+            let x = words[i * 3 + 0];
+            let y = words[i * 3 + 1];
+            let z = words[i * 3 + 2];
+            buf.raw_verts.push([x, y, z]);
         }
         return Ok(buf);
     }
@@ -200,11 +215,17 @@ impl VertexBuf {
     }
 
     fn show(&self) -> String {
-        format!("VertexBuf {} => {} verts", self.unk0, self.verts.len())
+        let s = self.raw_verts.iter()
+            .map(|v| { format!("({:04X},{:04X},{:04X})", v[0], v[1], v[2]) })
+            .collect::<Vec<String>>()
+            .join(", ");
+        format!("VertexBuf @ {:04X}: {} ({:b}) => {}verts -> {}", self.offset, self.unk0,
+                self.unk0, self.verts.len(), s)
     }
 }
 
 pub struct Facet {
+    pub offset: usize,
     pub length: usize,
     pub flags: FacetFlags,
     pub mat_desc: String,
@@ -310,7 +331,8 @@ impl Facet {
     // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
     // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
     */
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
         let flags_word = ((data[1] as u16) << 8) | (data[2] as u16);
@@ -373,6 +395,7 @@ impl Facet {
         }
 
         return Ok(Facet {
+            offset,
             length: off,
             flags,
             mat_desc,
@@ -388,11 +411,15 @@ impl Facet {
     }
 
     fn show(&self) -> String {
-        format!("Facet {:016b} : {:?} : {:?}", self.flags, self.indices, self.tex_coords)
+        let ind = self.indices.iter().map(|i| format!("{:X}", i))
+            .collect::<Vec<String>>()
+            .join(", ");
+        format!("Facet @ {:04X} : {:016b} : [{}] : {:?}", self.offset, self.flags, ind, self.tex_coords)
     }
 }
 
 pub struct X86Code {
+    pub offset: usize,
     pub code: Vec<u8>,
     pub formatted: String,
 }
@@ -474,6 +501,7 @@ impl X86Code {
 
 
         return Ok(X86Code {
+            offset,
             code: code[0..end].to_owned(),
             formatted: fmt
         });
@@ -485,11 +513,12 @@ impl X86Code {
 
     fn show(&self) -> String {
         //format!("X86Code: {}", bs2s(&self.code))
-        format!("X86Code: {}", self.formatted)
+        format!("X86Code @ {:04X}: {}", self.offset, self.formatted)
     }
 }
 
 pub struct UnkCE {
+    pub offset: usize,
     pub data: [u8; 40 - 2]
 }
 
@@ -497,12 +526,14 @@ impl UnkCE {
     pub const MAGIC: u8 = 0xCE;
     pub const SIZE: usize = 40;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         // Note: no default for arrays larger than 32 elements.
         let s = &data[2..];
         return Ok(Self {
+                    offset,
                     data: [s[00], s[01], s[02], s[03], s[04], s[05], s[06], s[07], s[08], s[09],
                            s[10], s[11], s[12], s[13], s[14], s[15], s[16], s[17], s[18], s[19],
                            s[20], s[21], s[22], s[23], s[24], s[25], s[26], s[27], s[28], s[29],
@@ -515,11 +546,12 @@ impl UnkCE {
     }
 
     fn show(&self) -> String {
-        format!("{}", "UnkCE")
+        format!("UnkCE @ {:04X}: {}", self.offset, bs2s(&self.data))
     }
 }
 
 pub struct UnkBC {
+    pub offset: usize,
     flags: u8,
     unk0: u8,
     length: usize,
@@ -529,7 +561,8 @@ pub struct UnkBC {
 impl UnkBC {
     pub const MAGIC: u8 = 0xBC;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
         let flags = data[2];
@@ -543,7 +576,7 @@ impl UnkBC {
         };
         let data = data[4..length].to_owned();
         return Ok(UnkBC {
-           flags, unk0, length, data
+           offset, flags, unk0, length, data
         });
     }
 
@@ -552,11 +585,12 @@ impl UnkBC {
     }
 
     fn show(&self) -> String {
-        format!("{}", "UnkBC")
+        format!("UnkBC @ {:04X}: flags:{}, unk0:{}, len:{}, data:{}", self.offset, self.flags, self.unk0, self.length, bs2s(&self.data))
     }
 }
 
 pub struct Unk40 {
+    pub offset: usize,
     count: usize,
     length: usize,
     data: Vec<u16>,
@@ -566,14 +600,15 @@ impl Unk40 {
     pub const MAGIC: u8 = 0x40;
 
     // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let words: &[u16] = unsafe { mem::transmute(&data[2..]) };
         let count = words[0] as usize;
         let length = 4 + count * 2;
         let data = words[1..count + 1].to_owned();
-        return Ok(Unk40 { count, length, data });
+        return Ok(Unk40 { offset, count, length, data });
     }
 
     fn size(&self) -> usize {
@@ -581,11 +616,12 @@ impl Unk40 {
     }
 
     fn show(&self) -> String {
-        format!("{}", "Unk40")
+        format!("Unk40 @ {:04X}: cnt:{}, len:{}, data:{:?}", self.offset, self.count, self.length, self.data)
     }
 }
 
 pub struct UnkF6 {
+    pub offset: usize,
     pub data: [u8; 6]
 }
 
@@ -593,9 +629,10 @@ impl UnkF6 {
     pub const MAGIC: u8 = 0xF6;
     pub const SIZE: usize = 7;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
-        return Ok(Self { data: clone_into_array(&data[1..Self::SIZE]) });
+        return Ok(Self { offset, data: clone_into_array(&data[1..Self::SIZE]) });
     }
 
     fn size(&self) -> usize {
@@ -603,11 +640,12 @@ impl UnkF6 {
     }
 
     fn show(&self) -> String {
-        format!("{}", "UnkF6")
+        format!("UnkF6 @ {:04X}: {}", self.offset, bs2s(&self.data))
     }
 }
 
 pub struct Unk38 {
+    pub offset: usize,
     pub data: [u8; 2]
 }
 
@@ -615,9 +653,10 @@ impl Unk38 {
     pub const MAGIC: u8 = 0x38;
     pub const SIZE: usize = 3;
 
-    fn from_bytes(data: &[u8]) -> Result<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
-        return Ok(Self { data: clone_into_array(&data[1..Self::SIZE]) });
+        return Ok(Self { offset, data: clone_into_array(&data[1..Self::SIZE]) });
     }
 
     fn size(&self) -> usize {
@@ -625,17 +664,19 @@ impl Unk38 {
     }
 
     fn show(&self) -> String {
-        format!("{}", "Unk38")
+        format!("Unk38 @ {:04X}: {}", self.offset, bs2s(&self.data))
     }
 }
 
 pub struct TrailerUnknown {
+    pub offset: usize,
     pub data: Vec<u8>
 }
 
 impl TrailerUnknown {
-    fn from_bytes(data: &[u8]) -> Result<Self> {
-        return Ok(Self { data: data.to_owned() });
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
+        return Ok(Self { offset, data: data.to_owned() });
     }
 
     fn size(&self) -> usize {
@@ -645,7 +686,7 @@ impl TrailerUnknown {
     fn show(&self) -> String {
         use reverse::{format_sections, Section, ShowMode};
         let out = format_sections(&self.data, &vec![Section::new(0x0000, 0, self.data.len())], &mut vec![], ShowMode::AllPerLine);
-        format!("Trailer/{} => {}", self.data.len(), out[0])
+        format!("Trailer @ {:04X}: {}b => {}", self.offset, self.data.len(), out[0])
     }
 }
 
@@ -653,6 +694,7 @@ impl TrailerUnknown {
 macro_rules! opaque_instr {
     ($name:ident, $magic:expr, $size:expr) => {
         pub struct $name {
+            pub offset: usize,
             pub data: [u8; $size - 2]
         }
 
@@ -660,10 +702,11 @@ macro_rules! opaque_instr {
             pub const MAGIC: u8 = $magic;
             pub const SIZE: usize = $size;
 
-            fn from_bytes(data: &[u8]) -> Result<Self> {
+            fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+                let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
                 assert!(data[1] == 0 || data[1] == 0xFF);
-                return Ok(Self { data: clone_into_array(&data[2..Self::SIZE]) });
+                return Ok(Self { offset, data: clone_into_array(&data[2..Self::SIZE]) });
             }
 
             fn size(&self) -> usize {
@@ -671,7 +714,7 @@ macro_rules! opaque_instr {
             }
 
             fn show(&self) -> String {
-                format!("{}: {}", stringify!($name), bs2s(&self.data))
+                format!("{} @ {:04X}: {}", stringify!($name), self.offset, bs2s(&self.data))
             }
         }
     }
@@ -791,7 +834,7 @@ impl Instr {
 
 macro_rules! consume_instr {
     ($name:ident, $instr:ident, $pe:ident, $offset:ident) => {
-        let instr = $name::from_bytes(&$pe.code[$offset..])?;
+        let instr = $name::from_bytes($offset, &$pe.code)?;
         let sz = instr.size();
         $instr.push(Instr::$name(instr));
         $offset += sz;

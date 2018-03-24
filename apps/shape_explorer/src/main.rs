@@ -24,7 +24,7 @@ extern crate image;
 use image::GenericImage;
 use clap::{Arg, App, SubCommand};
 use glfw::{Action, Key, WindowEvent};
-use sh::{CpuShape, Instr};
+use sh::{CpuShape, FacetFlags, Instr};
 use std::{cmp, cell, fs, rc};
 use std::path::{Path, PathBuf};
 use std::io::prelude::*;
@@ -106,12 +106,15 @@ impl ViewState {
         let mut vert_buf: Vec<Point3<f32>> = Vec::new();
 
         for (i, instr) in self.shape.instrs.iter().enumerate() {
-            if i == self.instr_count - 1 {
-                println!("At: {} => {}", i, instr.show());
-            }
+//            if i < 990 {
+//                continue;
+//            }
             if i == self.instr_count {
                 break;
             }
+            //if i == self.instr_count - 1 {
+            println!("At: {} => {}", i, instr.show());
+            //}
             match instr {
                 &Instr::TextureRef(ref texture) => {
                     let cache_name = Path::new(&format!("/tmp/{}.png", texture.filename)).to_owned();
@@ -128,6 +131,9 @@ impl ViewState {
                     active_texture = Some((texture.filename.clone(), cache_name));
                 }
                 &Instr::VertexBuf(ref buf) => {
+//                    if i == 990 {
+//                        vert_buf.truncate(0);
+//                    }
                     for v in buf.verts.iter() {
                         vert_buf.push(Point3::new(v[0], v[1], v[2]));
                     }
@@ -280,59 +286,23 @@ impl ViewState {
     }
 
     fn prev_instr_10(&mut self, window: &mut Window) {
-        self.instr_count -= 10;
+        if self.instr_count >= 0 {
+            self.instr_count -= 10;
+        } else {
+            self.instr_count = 0;
+        }
         self.instr_count = cmp::max(self.instr_count, 0);
         self._redraw(window);
     }
 
-    fn next_mesh(&mut self, window: &mut Window) {
-//        self.active_mesh += 1;
-//        self.active_mesh %= self.shape.meshes.len();
-//        self.active_face = 0;
-//        for (i, node) in self.mesh_nodes.iter_mut().enumerate() {
-//            node.set_visible(i == self.active_mesh);
-//        }
-//        self.set_vertex_colors();
-//        println!("Showing mesh {} with {} faces", self.active_mesh,
-//                 self.shape.meshes[self.active_mesh].facets.len());
+    fn last_instr(&mut self, window: &mut Window) {
+        self.instr_count = self.shape.instrs.len();
+        self._redraw(window);
     }
-//
-    fn prev_mesh(&mut self, window: &mut Window) {
-//        if self.active_mesh > 0 {
-//            self.active_mesh -= 1;
-//        } else {
-//            self.active_mesh = self.shape.meshes.len() - 1;
-//        }
-//        self.active_face = 0;
-//        for (i, node) in self.mesh_nodes.iter_mut().enumerate() {
-//            node.set_visible(i == self.active_mesh);
-//        }
-//        self.set_vertex_colors();
-//        println!("Showing mesh {} with {} faces", self.active_mesh,
-//                 self.shape.meshes[self.active_mesh].facets.len());
-    }
-//
-    fn next_facet(&mut self) {
-//        self.active_face += 1;
-//        self.active_face %= self.shape.meshes[self.active_mesh].facets.len();
-//        self.set_vertex_colors();
-//        println!("Highlighting facet {} with flags: {:016b} and {} indices: {:?}", self.active_face,
-//                 self.shape.meshes[self.active_mesh].facets[self.active_face].flags.to_u16(),
-//                 self.shape.meshes[self.active_mesh].facets[self.active_face].indices.len(),
-//                 self.shape.meshes[self.active_mesh].facets[self.active_face].indices);
-    }
-//
-    fn prev_facet(&mut self) {
-//        if self.active_face > 0 {
-//            self.active_face -= 1;
-//        } else {
-//            self.active_face = self.shape.meshes[self.active_mesh].facets.len() - 1;
-//        }
-//        self.set_vertex_colors();
-//        println!("Highlighting facet {} with flags: {:016b} and {} indices: {:?}", self.active_face,
-//                 self.shape.meshes[self.active_mesh].facets[self.active_face].flags.to_u16(),
-//                 self.shape.meshes[self.active_mesh].facets[self.active_face].indices.len(),
-//                 self.shape.meshes[self.active_mesh].facets[self.active_face].indices);
+
+    fn first_instr(&mut self, window: &mut Window) {
+        self.instr_count = 0;
+        self._redraw(window);
     }
 
     fn set_vertex_colors(&mut self) {
@@ -391,6 +361,12 @@ fn run_loop(files: Vec<PathBuf>) {
                 },
                 WindowEvent::Key(Key::Left, _, Action::Repeat, _) => {
                     state.prev_instr(&mut window);
+                },
+                WindowEvent::Key(Key::End, _, Action::Press, _) => {
+                    state.last_instr(&mut window);
+                },
+                WindowEvent::Key(Key::Home, _, Action::Press, _) => {
+                    state.first_instr(&mut window);
                 },
                 _ => {},
             }
