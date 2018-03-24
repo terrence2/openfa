@@ -646,6 +646,7 @@ impl UnkF6 {
 
 pub struct Unk38 {
     pub offset: usize,
+    pub count: usize,
     pub data: [u8; 2]
 }
 
@@ -655,8 +656,10 @@ impl Unk38 {
 
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
+        let count_ref: &[u16] = unsafe { mem::transmute( &code[offset + 1..] ) };
+        let count = count_ref[0] as usize;
         assert_eq!(data[0], Self::MAGIC);
-        return Ok(Self { offset, data: clone_into_array(&data[1..Self::SIZE]) });
+        return Ok(Self { offset, count, data: clone_into_array(&data[1..Self::SIZE]) });
     }
 
     fn size(&self) -> usize {
@@ -667,6 +670,9 @@ impl Unk38 {
         format!("Unk38 @ {:04X}: {}", self.offset, bs2s(&self.data))
     }
 }
+
+// At: 6 => UnkC8 @ 0039: 62 01 19 00 D5 00
+// Offset + 0xD5 + sizeof(UnkC8) => start of next section.
 
 pub struct TrailerUnknown {
     pub offset: usize,

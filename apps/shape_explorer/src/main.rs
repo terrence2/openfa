@@ -105,6 +105,8 @@ impl ViewState {
 
         let mut vert_buf: Vec<Point3<f32>> = Vec::new();
 
+        let mut end_at_offset = usize::max_value();
+
         for (i, instr) in self.shape.instrs.iter().enumerate() {
 //            if i < 990 {
 //                continue;
@@ -131,6 +133,9 @@ impl ViewState {
                     active_texture = Some((texture.filename.clone(), cache_name));
                 }
                 &Instr::VertexBuf(ref buf) => {
+                    if end_at_offset == buf.offset {
+                        vert_buf.truncate(0);
+                    }
 //                    if i == 990 {
 //                        vert_buf.truncate(0);
 //                    }
@@ -175,6 +180,10 @@ impl ViewState {
                         &Some((ref name, ref path)) => node.set_texture_from_file(path, name)
                     }
                     nodes.push(node);
+                }
+                &Instr::Unk38(ref shape_end) => {
+                    end_at_offset = shape_end.offset + 5 + shape_end.count;
+                    println!("looking for next reset at offset: {:X} = {:X} + 5 + {:X}", end_at_offset, shape_end.offset, shape_end.count);
                 }
                 _ => {}
             }
@@ -286,7 +295,7 @@ impl ViewState {
     }
 
     fn prev_instr_10(&mut self, window: &mut Window) {
-        if self.instr_count >= 0 {
+        if self.instr_count >= 10 {
             self.instr_count -= 10;
         } else {
             self.instr_count = 0;
