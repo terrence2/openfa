@@ -25,10 +25,12 @@ mod errors {
 use errors::{Error, ErrorKind, Result, ResultExt};
 
 use std::path::{Path, PathBuf};
-use std::io::prelude::*;
 use std::{cmp, fs, mem, str};
 use std::collections::{HashMap, HashSet};
 use reverse::{bs2s, b2h, b2b, Escape, Color};
+
+use std::fs::File;
+use std::io::prelude::*;
 
 
 /// A version of the shape for slicing/dicing on the CPU for exploration. The normal
@@ -96,6 +98,10 @@ impl TextureRef {
         return Self::SIZE;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         format!("TextureRef @ {:04X} -> {}", self.offset, self.filename)
     }
@@ -147,6 +153,10 @@ impl TextureIndex {
         return Self::SIZE;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         format!("TextureIndexKind @ {:04X}: {}, {:?}", self.offset, self.unk0, self.kind)
     }
@@ -170,6 +180,10 @@ impl SourceRef {
 
     fn size(&self) -> usize {
         return 2 + self.source.len() + 1;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
     }
 
     fn show(&self) -> String {
@@ -212,6 +226,10 @@ impl VertexBuf {
 
     fn size(&self) -> usize {
         return 6 + self.verts.len() * 6;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
     }
 
     fn show(&self) -> String {
@@ -410,6 +428,10 @@ impl Facet {
         return self.length;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         let ind = self.indices.iter().map(|i| format!("{:X}", i))
             .collect::<Vec<String>>()
@@ -427,7 +449,7 @@ pub struct X86Code {
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
-    fn from_bytes(offset: usize, pe: &peff::PE) -> Result<Self> {
+    fn from_bytes(name: String, offset: usize, pe: &peff::PE) -> Result<Self> {
         let section = &pe.code[offset..];
         assert_eq!(section[0], Self::MAGIC);
         assert_eq!(section[1], 0);
@@ -475,7 +497,14 @@ impl X86Code {
                 // Our x86 virtual interpreter only supports a couple ops, so in order to get things
                 // working for now, we're just going to fast-forward past anything that doesn't
                 // look quite right.
-                if next_code[0] == 0x0048 || next_code[0] == 0x0000 || next_code[0] == 0x0566 || next_code[0] == 0x05EB || next_code[0] == 0xE850 || next_code[0] == 0x8966 {
+                if next_code[0] == 0x0048 ||
+                    next_code[0] == 0x0000 ||
+                    next_code[0] == 0x0566 ||
+                    next_code[0] == 0x05EB ||
+                    next_code[0] == 0xE850 ||
+                    next_code[0] == 0x8966 ||
+                    next_code[0] == 0x002E
+                {
                     ip += 2;
                 } else {
                     // println!("0x{:04X}", next_code[0]);
@@ -499,6 +528,9 @@ impl X86Code {
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
         let fmt = v.iter().collect::<String>();
 
+        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
+        let mut file = File::create(tmp_name).unwrap();
+        file.write_all(&code[0..end]).unwrap();
 
         return Ok(X86Code {
             offset,
@@ -509,6 +541,10 @@ impl X86Code {
 
     fn size(&self) -> usize {
         return self.code.len() + 2;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
     }
 
     fn show(&self) -> String {
@@ -543,6 +579,10 @@ impl UnkCE {
 
     fn size(&self) -> usize {
         return Self::SIZE;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
     }
 
     fn show(&self) -> String {
@@ -584,6 +624,10 @@ impl UnkBC {
         return self.length;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         format!("UnkBC @ {:04X}: flags:{}, unk0:{}, len:{}, data:{}", self.offset, self.flags, self.unk0, self.length, bs2s(&self.data))
     }
@@ -615,6 +659,10 @@ impl Unk40 {
         return self.length;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         format!("Unk40 @ {:04X}: cnt:{}, len:{}, data:{:?}", self.offset, self.count, self.length, self.data)
     }
@@ -639,40 +687,107 @@ impl UnkF6 {
         return Self::SIZE;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         format!("UnkF6 @ {:04X}: {}", self.offset, bs2s(&self.data))
     }
 }
 
-pub struct Unk38 {
+pub struct UnkJumpIfLowDetail {
     pub offset: usize,
-    pub count: usize,
+    pub offset_to_next: usize,
     pub data: [u8; 2]
 }
 
-impl Unk38 {
+// I think this probably means something like: fastforward to "next_offset" if
+// we are running in low-detail mode. Seems to skip nose art and a couple random
+// polys in F22, a big rock in ROCKB, and the textured polys in BUNK.
+//
+// This probably works with UNKC8 somehow: in BUNK
+impl UnkJumpIfLowDetail {
     pub const MAGIC: u8 = 0x38;
     pub const SIZE: usize = 3;
 
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
-        let count_ref: &[u16] = unsafe { mem::transmute( &code[offset + 1..] ) };
-        let count = count_ref[0] as usize;
         assert_eq!(data[0], Self::MAGIC);
-        return Ok(Self { offset, count, data: clone_into_array(&data[1..Self::SIZE]) });
+        let word_ref: &[u16] = unsafe { mem::transmute( &data[1..] ) };
+        let offset_to_next = word_ref[0] as usize;
+        return Ok(Self { offset, offset_to_next, data: clone_into_array(&data[1..Self::SIZE]) });
     }
 
     fn size(&self) -> usize {
         return Self::SIZE;
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        // Our start offset + our size + 1 + offset_to_next.
+        return self.offset + 4 + 2 + self.offset_to_next;
+    }
+
     fn show(&self) -> String {
-        format!("Unk38 @ {:04X}: {}", self.offset, bs2s(&self.data))
+        format!("UnkJumpIfLowDetail @ {:04X}: {:X} => {:X}", self.offset, self.offset_to_next, self.next_offset())
     }
 }
 
 // At: 6 => UnkC8 @ 0039: 62 01 19 00 D5 00
 // Offset + 0xD5 + sizeof(UnkC8) => start of next section.
+
+// At: 5 => UnkAC @ 0035: 74 01
+// Offset + 0x174 + sizeof(UnkAC) => points to after the normal version to the start of the destroyed version.
+
+// At: 1 => UnkF2 @ 000E: 7B 07
+// Seems to point to trailer: 0xe + 4 + 0x77B => 0x78D, which is the start of trailer.
+
+// In BUNKB
+// At: 7 => UnkA6 @ 0041: CF 00 01 00
+// 0x41 + 0xCF + 6 => 0x116 points past textured polys.
+
+pub struct UnkJumpIfNotShown {
+    pub offset: usize,
+    pub offset_to_next: usize,
+    pub data: [u8; 2]
+}
+
+impl UnkJumpIfNotShown {
+    pub const MAGIC: u8 = 0xF2;
+    pub const SIZE: usize = 4;
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
+        let data = &code[offset..];
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[u16] = unsafe { mem::transmute( &data[2..] ) };
+        let offset_to_next = word_ref[0] as usize;
+        return Ok(Self { offset, offset_to_next, data: clone_into_array(&data[2..Self::SIZE]) });
+    }
+
+    fn size(&self) -> usize {
+        return Self::SIZE;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        // Our start offset + our size + 1 + offset_to_next.
+        return self.offset + 4 + self.offset_to_next;
+    }
+
+    fn show(&self) -> String {
+        format!("UnkJumpIfNotShown @ {:04X}: {:X} => {:X}", self.offset, self.offset_to_next, self.next_offset())
+    }
+}
+
+// EE 00 E4 00 04 00 00 00 96 00 00 00 C7 00 1D 00 C7 00 1D 00 96 00 7A 00 00 00 00 00 06 00
 
 pub struct TrailerUnknown {
     pub offset: usize,
@@ -689,10 +804,14 @@ impl TrailerUnknown {
         return self.data.len();
     }
 
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
     fn show(&self) -> String {
         use reverse::{format_sections, Section, ShowMode};
         let out = format_sections(&self.data, &vec![Section::new(0x0000, 0, self.data.len())], &mut vec![], ShowMode::AllPerLine);
-        format!("Trailer @ {:04X}: {}b => {}", self.offset, self.data.len(), out[0])
+        format!("Trailer @ {:04X}: {:6}b => {}", self.offset, self.data.len(), out[0])
     }
 }
 
@@ -719,6 +838,10 @@ macro_rules! opaque_instr {
                 return Self::SIZE;
             }
 
+            fn at_offset(&self) -> usize {
+                self.offset
+            }
+
             fn show(&self) -> String {
                 format!("{} @ {:04X}: {}", stringify!($name), self.offset, bs2s(&self.data))
             }
@@ -729,6 +852,7 @@ macro_rules! opaque_instr {
 opaque_instr!(Header, 0xFF, 14);
 opaque_instr!(Unk46, 0x46, 2);
 opaque_instr!(UnkB2, 0xB2, 2);
+opaque_instr!(UnkEE, 0xEE, 2);
 opaque_instr!(Unk12, 0x12, 4);
 opaque_instr!(Unk48, 0x48, 4);
 opaque_instr!(UnkAC, 0xAC, 4);
@@ -736,7 +860,7 @@ opaque_instr!(UnkB8, 0xB8, 4);
 opaque_instr!(UnkCA, 0xCA, 4);
 opaque_instr!(UnkD0, 0xD0, 4);
 opaque_instr!(UnkDA, 0xDA, 4);
-opaque_instr!(UnkF2, 0xF2, 4);
+//opaque_instr!(UnkF2, 0xF2, 4);
 opaque_instr!(UnkA6, 0xA6, 6);
 opaque_instr!(UnkC8, 0xC8, 8);
 opaque_instr!(Unk66, 0x66, 10);
@@ -756,6 +880,7 @@ pub enum Instr {
     // Fixed size, with wasted 0 byte.
     Unk46(Unk46),
     UnkB2(UnkB2),
+    UnkEE(UnkEE),
     Unk12(Unk12),
     Unk48(Unk48),
     UnkAC(UnkAC),
@@ -763,7 +888,7 @@ pub enum Instr {
     UnkCA(UnkCA),
     UnkD0(UnkD0),
     UnkDA(UnkDA),
-    UnkF2(UnkF2),
+    UnkJumpIfNotShown(UnkJumpIfNotShown),
     UnkA6(UnkA6),
     UnkC8(UnkC8),
     Unk66(Unk66),
@@ -779,7 +904,7 @@ pub enum Instr {
 
     // Fixed size, without wasted 0 byte after header.
     UnkF6(UnkF6),
-    Unk38(Unk38),
+    UnkJumpIfLowDetail(UnkJumpIfLowDetail),
 
     // Variable size.
     UnkBC(UnkBC),
@@ -797,44 +922,55 @@ pub enum Instr {
     X86Code(X86Code),
 }
 
+macro_rules! impl_for_all_instr {
+    ($self:ident, $f:ident) => {
+        match $self {
+            &Instr::Header(ref i) => i.$f(),
+            &Instr::Unk46(ref i) => i.$f(),
+            &Instr::UnkB2(ref i) => i.$f(),
+            &Instr::UnkEE(ref i) => i.$f(),
+            &Instr::Unk12(ref i) => i.$f(),
+            &Instr::Unk48(ref i) => i.$f(),
+            &Instr::UnkAC(ref i) => i.$f(),
+            &Instr::UnkB8(ref i) => i.$f(),
+            &Instr::UnkCA(ref i) => i.$f(),
+            &Instr::UnkD0(ref i) => i.$f(),
+            &Instr::UnkDA(ref i) => i.$f(),
+            &Instr::UnkJumpIfNotShown(ref i) => i.$f(),
+            &Instr::UnkA6(ref i) => i.$f(),
+            &Instr::UnkC8(ref i) => i.$f(),
+            &Instr::Unk66(ref i) => i.$f(),
+            &Instr::Unk7A(ref i) => i.$f(),
+            &Instr::Unk78(ref i) => i.$f(),
+            &Instr::UnkC4(ref i) => i.$f(),
+            &Instr::Unk0C(ref i) => i.$f(),
+            &Instr::Unk0E(ref i) => i.$f(),
+            &Instr::Unk10(ref i) => i.$f(),
+            &Instr::Unk6C(ref i) => i.$f(),
+            &Instr::Unk06(ref i) => i.$f(),
+            &Instr::UnkCE(ref i) => i.$f(),
+            &Instr::UnkF6(ref i) => i.$f(),
+            &Instr::UnkJumpIfLowDetail(ref i) => i.$f(),
+            &Instr::UnkBC(ref i) => i.$f(),
+            &Instr::Unk40(ref i) => i.$f(),
+            &Instr::TrailerUnknown(ref i) => i.$f(),
+            &Instr::TextureIndex(ref i) => i.$f(),
+            &Instr::TextureRef(ref i) => i.$f(),
+            &Instr::SourceRef(ref i) => i.$f(),
+            &Instr::VertexBuf(ref i) => i.$f(),
+            &Instr::Facet(ref i) => i.$f(),
+            &Instr::X86Code(ref i) => i.$f(),
+         }
+    }
+}
+
 impl Instr {
     pub fn show(&self) -> String {
-        match self {
-            &Instr::Header(ref i) => i.show(),
-            &Instr::Unk46(ref i) => i.show(),
-            &Instr::UnkB2(ref i) => i.show(),
-            &Instr::Unk12(ref i) => i.show(),
-            &Instr::Unk48(ref i) => i.show(),
-            &Instr::UnkAC(ref i) => i.show(),
-            &Instr::UnkB8(ref i) => i.show(),
-            &Instr::UnkCA(ref i) => i.show(),
-            &Instr::UnkD0(ref i) => i.show(),
-            &Instr::UnkDA(ref i) => i.show(),
-            &Instr::UnkF2(ref i) => i.show(),
-            &Instr::UnkA6(ref i) => i.show(),
-            &Instr::UnkC8(ref i) => i.show(),
-            &Instr::Unk66(ref i) => i.show(),
-            &Instr::Unk7A(ref i) => i.show(),
-            &Instr::Unk78(ref i) => i.show(),
-            &Instr::UnkC4(ref i) => i.show(),
-            &Instr::Unk0C(ref i) => i.show(),
-            &Instr::Unk0E(ref i) => i.show(),
-            &Instr::Unk10(ref i) => i.show(),
-            &Instr::Unk6C(ref i) => i.show(),
-            &Instr::Unk06(ref i) => i.show(),
-            &Instr::UnkCE(ref i) => i.show(),
-            &Instr::UnkF6(ref i) => i.show(),
-            &Instr::Unk38(ref i) => i.show(),
-            &Instr::UnkBC(ref i) => i.show(),
-            &Instr::Unk40(ref i) => i.show(),
-            &Instr::TrailerUnknown(ref i) => i.show(),
-            &Instr::TextureIndex(ref i) => i.show(),
-            &Instr::TextureRef(ref i) => i.show(),
-            &Instr::SourceRef(ref i) => i.show(),
-            &Instr::VertexBuf(ref i) => i.show(),
-            &Instr::Facet(ref i) => i.show(),
-            &Instr::X86Code(ref i) => i.show(),
-        }
+        impl_for_all_instr!(self, show)
+    }
+
+    pub fn at_offset(&self) -> usize {
+        impl_for_all_instr!(self, at_offset)
     }
 }
 
@@ -860,7 +996,7 @@ impl CpuShape {
         let mut offset = 0;
         let mut n_coords = 0;
 
-        let mut instr = Vec::new();
+        let mut instrs = Vec::new();
 
         loop {
             assert!(offset < pe.code.len());
@@ -873,121 +1009,167 @@ impl CpuShape {
                 offset += 1;
 
             } else if code[0] == Header::MAGIC {
-                consume_instr!(Header, instr, pe, offset);
+                consume_instr!(Header, instrs, pe, offset);
 
             } else if code[0] == Unk46::MAGIC {
-                consume_instr!(Unk46, instr, pe, offset);
+                consume_instr!(Unk46, instrs, pe, offset);
 
             } else if code[0] == UnkB2::MAGIC {
-                consume_instr!(UnkB2, instr, pe, offset);
+                consume_instr!(UnkB2, instrs, pe, offset);
+
+            } else if code[0] == UnkEE::MAGIC {
+                consume_instr!(UnkEE, instrs, pe, offset);
 
             } else if code[0] == Unk12::MAGIC {
-                consume_instr!(Unk12, instr, pe, offset);
+                consume_instr!(Unk12, instrs, pe, offset);
 
             } else if code[0] == Unk48::MAGIC {
-                consume_instr!(Unk48, instr, pe, offset);
+                consume_instr!(Unk48, instrs, pe, offset);
 
             } else if code[0] == UnkAC::MAGIC {
-                consume_instr!(UnkAC, instr, pe, offset);
+                consume_instr!(UnkAC, instrs, pe, offset);
 
             } else if code[0] == UnkB8::MAGIC {
-                consume_instr!(UnkB8, instr, pe, offset);
+                consume_instr!(UnkB8, instrs, pe, offset);
 
             } else if code[0] == UnkCA::MAGIC {
-                consume_instr!(UnkCA, instr, pe, offset);
+                consume_instr!(UnkCA, instrs, pe, offset);
 
             } else if code[0] == UnkD0::MAGIC {
-                consume_instr!(UnkD0, instr, pe, offset);
+                consume_instr!(UnkD0, instrs, pe, offset);
 
             } else if code[0] == UnkDA::MAGIC {
-                consume_instr!(UnkDA, instr, pe, offset);
+                consume_instr!(UnkDA, instrs, pe, offset);
 
-            } else if code[0] == UnkF2::MAGIC {
-                consume_instr!(UnkF2, instr, pe, offset);
+            } else if code[0] == UnkJumpIfNotShown::MAGIC {
+                consume_instr!(UnkJumpIfNotShown, instrs, pe, offset);
 
             } else if code[0] == UnkA6::MAGIC {
-                consume_instr!(UnkA6, instr, pe, offset);
+                consume_instr!(UnkA6, instrs, pe, offset);
 
             } else if code[0] == UnkC8::MAGIC {
-                consume_instr!(UnkC8, instr, pe, offset);
+                consume_instr!(UnkC8, instrs, pe, offset);
 
             } else if code[0] == Unk66::MAGIC {
-                consume_instr!(Unk66, instr, pe, offset);
+                consume_instr!(Unk66, instrs, pe, offset);
 
             } else if code[0] == Unk78::MAGIC {
-                consume_instr!(Unk78, instr, pe, offset);
+                consume_instr!(Unk78, instrs, pe, offset);
 
             } else if code[0] == Unk7A::MAGIC {
-                consume_instr!(Unk7A, instr, pe, offset);
+                consume_instr!(Unk7A, instrs, pe, offset);
 
             } else if code[0] == UnkC4::MAGIC {
-                consume_instr!(UnkC4, instr, pe, offset);
+                consume_instr!(UnkC4, instrs, pe, offset);
 
             } else if code[0] == Unk0C::MAGIC {
-                consume_instr!(Unk0C, instr, pe, offset);
+                consume_instr!(Unk0C, instrs, pe, offset);
 
             } else if code[0] == Unk0E::MAGIC {
-                consume_instr!(Unk0E, instr, pe, offset);
+                consume_instr!(Unk0E, instrs, pe, offset);
 
             } else if code[0] == Unk10::MAGIC {
-                consume_instr!(Unk10, instr, pe, offset);
+                consume_instr!(Unk10, instrs, pe, offset);
 
             } else if code[0] == Unk6C::MAGIC {
-                consume_instr!(Unk6C, instr, pe, offset);
+                consume_instr!(Unk6C, instrs, pe, offset);
 
             } else if code[0] == Unk06::MAGIC {
-                consume_instr!(Unk06, instr, pe, offset);
+                consume_instr!(Unk06, instrs, pe, offset);
 
             } else if code[0] == UnkCE::MAGIC {
-                consume_instr!(UnkCE, instr, pe, offset);
+                consume_instr!(UnkCE, instrs, pe, offset);
 
             } else if code[0] == UnkBC::MAGIC {
-                consume_instr!(UnkBC, instr, pe, offset);
+                consume_instr!(UnkBC, instrs, pe, offset);
 
             } else if code[0] == UnkF6::MAGIC {
-                consume_instr!(UnkF6, instr, pe, offset);
+                consume_instr!(UnkF6, instrs, pe, offset);
 
-            } else if code[0] == Unk38::MAGIC {
-                consume_instr!(Unk38, instr, pe, offset);
+            } else if code[0] == UnkJumpIfLowDetail::MAGIC {
+                consume_instr!(UnkJumpIfLowDetail, instrs, pe, offset);
 
             } else if code[0] == Unk40::MAGIC {
-                consume_instr!(Unk40, instr, pe, offset);
+                consume_instr!(Unk40, instrs, pe, offset);
 
             } else if code[0] == TextureRef::MAGIC {
-                consume_instr!(TextureRef, instr, pe, offset);
+                consume_instr!(TextureRef, instrs, pe, offset);
 
             } else if code[0] == TextureIndex::MAGIC {
-                consume_instr!(TextureIndex, instr, pe, offset);
+                consume_instr!(TextureIndex, instrs, pe, offset);
 
             } else if code[0] == SourceRef::MAGIC {
-                consume_instr!(SourceRef, instr, pe, offset);
+                consume_instr!(SourceRef, instrs, pe, offset);
 
             } else if code[0] == VertexBuf::MAGIC {
-                consume_instr!(VertexBuf, instr, pe, offset);
+                consume_instr!(VertexBuf, instrs, pe, offset);
 
             } else if code[0] == Facet::MAGIC {
-                consume_instr!(Facet, instr, pe, offset);
+                consume_instr!(Facet, instrs, pe, offset);
 
             } else if code[0] == X86Code::MAGIC {
-                //consume_instr!(X86Code, instr, pe, offset);
-                let x86 = X86Code::from_bytes(offset, pe)?;
+                let mut name = "unknown_source".to_owned();
+                {
+                    if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, &instrs) {
+                        name = source.source.clone();
+                    }
+                }
+                //consume_instr!(X86Code, instrs, pe, offset);
+                let x86 = X86Code::from_bytes(name, offset, pe)?;
                 let sz = x86.size();
-                instr.push(Instr::X86Code(x86));
+                instrs.push(Instr::X86Code(x86));
                 offset += sz;
 
             } else {
                 // Trailer / Unknown remaining.
-                consume_instr!(TrailerUnknown, instr, pe, offset);
+                consume_instr!(TrailerUnknown, instrs, pe, offset);
 
                 break;
             }
         }
 
-        let mut shape = CpuShape { source: "".to_owned(), instrs: instr };
+        // Assertions.
+        {
+            let instr = find_first_instr(0xF2, &instrs);
+            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
+                let tgt = find_instr_at_offset(jmp.next_offset(), &instrs);
+                //assert!(tgt.is_some());
+            }
+        }
+
+        let mut shape = CpuShape { source: "".to_owned(), instrs: instrs };
         return Ok(shape);
     }
 }
 
+fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
+    for instr in instrs.iter() {
+        match kind {
+            0xF2 => {
+                if let &Instr::UnkJumpIfNotShown(ref _x) = instr {
+                    return Some(instr);
+                }
+            }
+            0x42 => {
+                if let &Instr::SourceRef(ref _x) = instr {
+                    return Some(instr);
+                }
+            }
+            _ => {}
+        }
+    }
+    return None;
+}
+
+fn find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
+    for instr in instrs.iter() {
+        if instr.at_offset() == offset {
+            return Some(instr);
+        }
+    }
+    return None;
+
+}
 
 #[cfg(test)]
 mod tests {
@@ -1012,14 +1194,6 @@ mod tests {
                 fp.read_to_end(&mut data).unwrap();
 
                 let shape = CpuShape::new(&data).unwrap();
-                for (i, instr) in shape.instrs.iter().enumerate() {
-                    match instr {
-                        &Instr::TextureIndex(ref e0) => {
-                            println!("{}", instr.show());
-                        }
-                        _ => {}
-                    }
-                }
             }
 
             //assert_eq!(format!("./test_data/{}", t.object.file_name), path);

@@ -19,13 +19,18 @@ extern crate sh;
 use std::fs;
 use std::io::prelude::*;
 use clap::{Arg, App};
-use sh::CpuShape;
+use sh::{Instr, CpuShape};
 
 fn main() {
     let matches = App::new("OpenFA shape tool")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("Slice up shape data for digestion.")
+        .arg(Arg::with_name("all")
+            .long("--all")
+            .short("-a")
+            .takes_value(false)
+            .required(false))
         .arg(Arg::with_name("INPUT")
             .help("The shape(s) to show")
             .multiple(true)
@@ -39,15 +44,43 @@ fn main() {
 
         let shape = CpuShape::new(&data).unwrap();
         for (i, instr) in shape.instrs.iter().enumerate() {
-            println!("{}: {}", i, instr.show());
+            if matches.is_present("all") {
+                println!("{}: {}", i, instr.show());
+                continue;
+            }
             match instr {
-                &sh::Instr::X86Code(ref bc) => {
-                    let filename = format!("/tmp/instr{}.bin", i);
-                    let mut buffer = fs::File::create(filename).unwrap();
-                    buffer.write(&bc.code).unwrap();
+//                &Instr::X86Code(ref bc) => {
+//                    let filename = format!("/tmp/instr{}.bin", i);
+//                    let mut buffer = fs::File::create(filename).unwrap();
+//                    buffer.write(&bc.code).unwrap();
+//                }
+//                &Instr::UnkJumpIfLowDetail(ref x) => {
+//                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
+//                    println!("{}, {}: {}", name, instr.show(),
+//                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
+//                }
+//                &Instr::UnkJumpIfNotShown(ref x) => {
+//                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
+//                    println!("{}, {}: {}", name, instr.show(),
+//                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
+//                }
+                &Instr::TrailerUnknown(ref x) => {
+                    if x.data[0] == 0xEE {
+
+                        println!("{:25}: {}", name, instr.show());
+                    }
                 }
                 _ => {}
             }
         }
     }
+}
+
+fn find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
+    for instr in instrs.iter() {
+        if instr.at_offset() == offset {
+            return Some(instr);
+        }
+    }
+    return None;
 }

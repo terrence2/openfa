@@ -107,12 +107,23 @@ impl ViewState {
 
         let mut end_at_offset = usize::max_value();
 
+        let skip_before = 0;
+        //let mut skip_before = 0x1C8;
+        //let mut skip_before = 0x544;
+
         for (i, instr) in self.shape.instrs.iter().enumerate() {
 //            if i < 990 {
 //                continue;
 //            }
             if i == self.instr_count {
                 break;
+            }
+            if instr.at_offset() < skip_before {
+                if let &Instr::TextureRef(ref texture) = instr {
+                    // let texture refs through
+                } else {
+                    continue;
+                }
             }
             //if i == self.instr_count - 1 {
             println!("At: {} => {}", i, instr.show());
@@ -181,10 +192,9 @@ impl ViewState {
                     }
                     nodes.push(node);
                 }
-                &Instr::Unk38(ref shape_end) => {
-                    end_at_offset = shape_end.offset + 5 + shape_end.count;
-                    println!("looking for next reset at offset: {:X} = {:X} + 5 + {:X}", end_at_offset, shape_end.offset, shape_end.count);
-                }
+//                &Instr::UnkJumpIfLowDetail(ref shape_end) => {
+//                    end_at_offset = shape_end.next_offset();
+//                }
                 _ => {}
             }
         }
