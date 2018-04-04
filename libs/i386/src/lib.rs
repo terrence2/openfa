@@ -21,7 +21,7 @@ extern crate reverse;
 use failure::Error;
 use reverse::bs2s;
 use std::collections::{HashMap, HashSet};
-use std::mem;
+use std::{fmt, mem};
 
 #[derive(Debug, Fail)]
 enum DisassemblyError {
@@ -54,14 +54,14 @@ enum DisassemblyError {
 enum FlagKind {
     ZF,
 //    CF,
-//    SF,
-//    OF,
+    SF,
+    OF,
 }
 
 #[derive(Clone, Copy, Debug)]
 enum ConditionCode {
     Check(FlagKind, bool),
-    //Compare(FlagKind, FlagKind),
+    Compare(FlagKind, FlagKind),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -280,7 +280,7 @@ impl Operand {
                 }
             }
             AddressingMethod::Z => {
-                Operand::Register(Self::register(state.op & 0b111))
+                Operand::Register(Self::maybe_toggle_reg_size(Self::register(state.op & 0b111), state.prefix.toggle_operand_size))
             }
             AddressingMethod::Imp => {
                 match desc.ty {
@@ -289,7 +289,6 @@ impl Operand {
                     _ => unreachable!()
                 }
             }
-            _ => unreachable!()
         })
     }
 
@@ -404,6 +403,15 @@ macro_rules! make_op {
                 $( make_operand!($meth0/$type0) ),*
             ]
         }
+    };
+
+    (J|$flag0:ident==$flag1:ident: $( $meth0:ident / $type0:ident ),* ) => {
+        OpCodeDef {
+            memonic: Memonic::Jcc(ConditionCode::Compare(FlagKind::$flag0, FlagKind::$flag1)),
+            operands: vec![
+                $( make_operand!($meth0/$type0) ),*
+            ]
+        }
     }
 }
 
@@ -460,9 +468,12 @@ lazy_static! {
     static ref OPCODE_TABLE: HashMap<(u8, u8), OpCodeDef> = {
         let mut out: HashMap<(u8, u8), OpCodeDef> = HashMap::new();
         let ops = [
+            (0x3D, 0, make_op!(Compare: Imp/eAX, I/v)),
             (0x58, 0, make_op!(Pop:     Z/v)),
             (0x68, 0, make_op!(Push:    I/vs)),
+            (0x74, 0, make_op!(J|ZF=1:  J/bs)),
             (0x75, 0, make_op!(J|ZF=0:  J/bs)),
+            (0x7D, 0, make_op!(J|SF==OF: J/bs)),
             (0x81, 0, make_op!(Add:     E/v, I/v)),
             //(0x81, 4, make_op!(And:     E/v, I/v)),
             //(0x83, 2, make_op!(Adc:     E/v, I/bs)),
@@ -470,6 +481,7 @@ lazy_static! {
             //(0x83, 3, make_op!(Sbb:     E/v, I/bs)),
             (0x89, 0, make_op!(Move:    E/v, G/v)),
             (0xA1, 0, make_op!(Move:    Imp/eAX, O/v)),
+            (0xB8, 0, make_op!(Move:    Z/v, I/v)),
             (0xC3, 0, make_op!(Return:)),
             (0xD1, 7, make_op!(Sar:     E/v, Imp/const1)),
             (0xE8, 0, make_op!(Call:    J/v)),
@@ -517,6 +529,7 @@ impl OpPrefix {
 pub struct Instr {
     memonic: Memonic,
     operands: Vec<Operand>,
+    raw: Vec<u8>
 }
 
 impl Instr {
@@ -529,7 +542,7 @@ impl Instr {
         while ip < code.len() {
             let instr = Self::decode_one(code, &mut ip)?;
             if verbose {
-                println!("  @{}: {:?}", ip, instr);
+                println!("  @{}: {}", ip, instr);
             }
             instrs.push(instr);
         }
@@ -567,6 +580,8 @@ impl Instr {
     }
 
     fn decode_one(code: &[u8], ip: &mut usize) -> Result<Instr, Error> {
+        let initial_ip = *ip;
+
         let prefix = OpPrefix::from_bytes(code, ip);
 
         let op = Self::read_op(code, ip)?;
@@ -578,7 +593,21 @@ impl Instr {
         for operand_desc in opcode_desc.operands.iter() {
             operands.push(Operand::from_bytes(code, ip, operand_desc, &mut decode_state)?);
         }
-        return Ok(Instr { memonic: opcode_desc.memonic, operands });
+        return Ok(Instr { memonic: opcode_desc.memonic, operands, raw: code[initial_ip..*ip].to_vec() });
+    }
+}
+
+impl fmt::Display for Instr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:23} {:?}(", bs2s(&self.raw), self.memonic)?;
+        for (i, op) in self.operands.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{:?}", op)?;
+        }
+        write!(f, ")")?;
+        return Ok(());
     }
 }
 
