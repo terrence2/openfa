@@ -4,4 +4,7 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
+clap = "*"
+failure = "*"
+lazy_static = "1.0"
 reverse = { path = "../reverse" }
