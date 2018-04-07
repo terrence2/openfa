@@ -15,17 +15,19 @@
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 
-mod errors {
-    error_chain!{
-        errors { NameError }
+use failure::Error;
+
+use std::{mem, str};
+use std::collections::HashMap;
+
+#[derive(Debug, Fail)]
+enum PEError {
+    #[fail(display = "name ran off end of file")]
+    NameUnending {
     }
 }
-use errors::{Error, ErrorKind, Result, ResultExt};
-
-use std::{cmp, mem, str};
-use std::collections::HashMap;
 
 pub struct PE {
     // Maps from vaddr (as we may see in CODE) to the function name to thunk to.
@@ -50,7 +52,7 @@ pub struct Thunk {
 }
 
 impl PE {
-    pub fn parse(data: &[u8]) -> Result<PE> {
+    pub fn parse(data: &[u8]) -> Result<PE, Error> {
         assert_eq!(mem::size_of::<COFFHeader>(), 20);
         assert_eq!(mem::size_of::<OptionalHeader>(), 28);
         assert_eq!(mem::size_of::<WindowsHeader>(), 68);
@@ -120,7 +122,7 @@ impl PE {
                 Some(last) => &section.name[..last],
                 None => &section.name[0..8],
             };
-            let name = str::from_utf8(name_raw).chain_err(|| "invalid section name")?;
+            let name = str::from_utf8(name_raw)?;
 
             let expect_flags = match name {
                 "CODE" => SectionFlags::IMAGE_SCN_CNT_CODE | SectionFlags::IMAGE_SCN_MEM_EXECUTE | SectionFlags::IMAGE_SCN_MEM_READ | SectionFlags::IMAGE_SCN_MEM_WRITE,
@@ -146,19 +148,19 @@ impl PE {
         let thunks = match sections.contains_key(".idata") {
             true => {
                 let (idata_section, idata) = sections[".idata"];
-                Some(PE::_parse_idata(idata_section, idata).chain_err(|| "parse idata")?)
+                Some(PE::_parse_idata(idata_section, idata)?)
             },
             false => None
         };
 
         let (code_section, code) = sections["CODE"];
         let (_, reloc_data) = sections[".reloc"];
-        let relocs = PE::_parse_relocs(reloc_data, code_section).chain_err(|| "parse relocs")?;
+        let relocs = PE::_parse_relocs(reloc_data, code_section)?;
 
         return Ok(PE { thunks, relocs, code: code.to_owned(), code_vaddr: code_section.virtual_address});
     }
 
-    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<HashMap<u32, Thunk>> {
+    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<HashMap<u32, Thunk>, Error> {
         ensure!(idata.len() > mem::size_of::<ImportDirectoryEntry>() * 2, "section data too short for directory");
 
         // Assert that there is exactly one entry by loading the second section and checking
@@ -174,7 +176,7 @@ impl PE {
         ensure!(dir.name_rva > section.virtual_address, "dll name not in section");
         ensure!(dir.name_rva < section.virtual_address + section.virtual_size, "dll name not in section");
         let dll_name_offset = dir.name_rva as usize - section.virtual_address as usize;
-        let dll_name = Self::read_name(&idata[dll_name_offset..]).chain_err(|| "dll name")?;
+        let dll_name = Self::read_name(&idata[dll_name_offset..])?;
         ensure!(dll_name == "main.dll", "expected the directory entry to be for main.dll");
 
         // Iterate the name/thunk tables in parallel, extracting vaddr and name mappings.
@@ -195,7 +197,7 @@ impl PE {
             let hint_ptr: *const u16 = idata[name_table_offset..].as_ptr() as *const _;
             let hint: u16 = unsafe { *hint_ptr };
             ensure!(hint == 0, "hint table entries are not supported");
-            let name = Self::read_name(&idata[name_table_offset + 2..]).chain_err(|| "read name")?;
+            let name = Self::read_name(&idata[name_table_offset + 2..])?;
             let vaddr = dir.thunk_table as usize + ordinal * mem::size_of::<u32>();
             let thunk = Thunk {
                 name,
@@ -208,12 +210,12 @@ impl PE {
         return Ok(thunks);
     }
 
-    fn read_name(n: &[u8]) -> Result<String> {
-        let end_offset: usize = n.iter().position(|&c| c == 0).ok_or::<Error>(ErrorKind::NameError.into()).chain_err(|| "find end")?;
-        return Ok(str::from_utf8(&n[..end_offset]).chain_err(|| "names should be utf8 encoded")?.to_owned());
+    fn read_name(n: &[u8]) -> Result<String, Error> {
+        let end_offset: usize = n.iter().position(|&c| c == 0).ok_or::<PEError>(PEError::NameUnending{})?;
+        return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
     }
 
-    fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Result<Vec<u32>> {
+    fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Result<Vec<u32>, Error> {
         let mut out = Vec::new();
         let mut offset = 0usize;
         let mut cnt = 0;

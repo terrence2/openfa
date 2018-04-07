@@ -7,5 +7,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 bitflags = "1.0"
 clap = "2.29"
 error-chain = "0.11"
-peff = { path = "../peff/" }
-reverse = { path = "../reverse/" }
+failure = "0.1"
+lazy_static = "1.0"
+i386 = { path = "../i386" }
+peff = { path = "../peff" }
+reverse = { path = "../reverse" }
