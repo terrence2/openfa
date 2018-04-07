@@ -71,12 +71,20 @@ lazy_static! {
          0xDA,
          0xE0,
          0xE2,
+         0xE4, // FIXME: WHAT IS THIS???
          0xEE,
          0xF0,
          0xF2,
          0xF6,
          0xFC,
          0xFF]
+            .iter()
+            .map(|&n| n)
+            .collect()
+    };
+
+    static ref ONE_BYTE_MAGIC: HashSet<u8> = {
+        [0x1E, 0x42, 0x66, 0xFC, 0xFF]
             .iter()
             .map(|&n| n)
             .collect()
@@ -510,13 +518,13 @@ impl X86Code {
         let mut instrs = Vec::new();
         let mut ip = 0;
         loop {
-            println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip+4]));
+            //println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip+4]));
             let maybe_instr = i386::Instr::decode_one(code, &mut ip);
 
             if let Err(ref e) = maybe_instr {
                 if let Some(&i386::DisassemblyError::UnknownOpcode { ip: ip, op: (op, ext) }) = e.downcast_ref::<i386::DisassemblyError>() {
                     println!("Unknown OpCode: {:2X} /{}", op, ext);
-                    let line1 = bs2s(&code[ip..]);
+                    let line1 = bs2s(&code[0..]);
                     let mut line2 = String::new();
                     for i in 0..(ip - 1) * 3 {
                         line2 += "-";
@@ -526,12 +534,12 @@ impl X86Code {
                 }
             }
             let instr = maybe_instr?;
+            let is_ret = instr.memonic == i386::Memonic::Return;
 
-            //println!("Error: {}", e);
-            println!("{}", instr);
+            //println!("{}", instr);
             instrs.push(instr);
             let words: &[u16] = unsafe { mem::transmute(&code[ip..]) };
-            if (ALL_OPCODES.contains(&code[ip]) && (code[ip + 1] == 0 || code[ip] == 0x42)) || code[ip] == 0x1E {
+            if is_ret && ALL_OPCODES.contains(&code[ip]) && (code[ip + 1] == 0 || ONE_BYTE_MAGIC.contains(&code[ip])) {
                 break;
             }
         }
@@ -541,6 +549,10 @@ impl X86Code {
         let mut v = Vec::new();
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
         let fmt = v.iter().collect::<String>();
+
+        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
+        let mut file = File::create(tmp_name).unwrap();
+        file.write_all(&code[0..ip]).unwrap();
 
         return Ok(X86Code {
             offset,
@@ -934,7 +946,7 @@ macro_rules! opaque_instr {
             fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
                 let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
-                assert!(data[1] == 0 || data[1] == 0xFF);
+                assert!(ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0);
                 return Ok(Self { offset, data: clone_into_array(&data[2..Self::SIZE]) });
             }
 
@@ -1093,7 +1105,8 @@ macro_rules! consume_instr {
 
 impl CpuShape {
     pub fn new(data: &[u8]) -> Result<Self, Error> {
-        let pe = peff::PE::parse(data)?;
+        let mut pe = peff::PE::parse(data)?;
+        pe.relocate(0xAA000000)?;
 
         let shape = Self::_read_sections(&pe)?;
         return Ok(shape);
@@ -1110,7 +1123,7 @@ impl CpuShape {
 
             let _code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
             let code: &[u8] = &pe.code[offset..];
-            println!("AT: {:02X}", code[0]);
+            //println!("AT: {:02X}", code[0]);
             //assert!(ALL_OPCODES.contains(&code[0]));
 
             if code[0] == 0x1E {

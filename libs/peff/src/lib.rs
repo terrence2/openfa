@@ -25,8 +25,7 @@ use std::collections::HashMap;
 #[derive(Debug, Fail)]
 enum PEError {
     #[fail(display = "name ran off end of file")]
-    NameUnending {
-    }
+    NameUnending {}
 }
 
 pub struct PE {
@@ -40,14 +39,19 @@ pub struct PE {
     // The code itself, copied out of the source.
     pub code: Vec<u8>,
 
-    // The data length for assertion checks.
+    // The assumed load address of the code.
     pub code_vaddr: u32,
+
+    // The actual load address of the code.
+    pub code_addr: u32,
 }
 
 #[derive(Debug, Clone)]
 pub struct Thunk {
-    pub name: String,  // The name of this import.
-    pub ordinal: u32,  // The ordinal of this import.
+    pub name: String,
+    // The name of this import.
+    pub ordinal: u32,
+    // The ordinal of this import.
     pub vaddr: u32,  // Virtual address of the thunk of this symbol.
 }
 
@@ -149,7 +153,7 @@ impl PE {
             true => {
                 let (idata_section, idata) = sections[".idata"];
                 Some(PE::_parse_idata(idata_section, idata)?)
-            },
+            }
             false => None
         };
 
@@ -157,7 +161,7 @@ impl PE {
         let (_, reloc_data) = sections[".reloc"];
         let relocs = PE::_parse_relocs(reloc_data, code_section)?;
 
-        return Ok(PE { thunks, relocs, code: code.to_owned(), code_vaddr: code_section.virtual_address});
+        return Ok(PE { thunks, relocs, code: code.to_owned(), code_vaddr: code_section.virtual_address, code_addr: code_section.virtual_address });
     }
 
     fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<HashMap<u32, Thunk>, Error> {
@@ -211,7 +215,7 @@ impl PE {
     }
 
     fn read_name(n: &[u8]) -> Result<String, Error> {
-        let end_offset: usize = n.iter().position(|&c| c == 0).ok_or::<PEError>(PEError::NameUnending{})?;
+        let end_offset: usize = n.iter().position(|&c| c == 0).ok_or::<PEError>(PEError::NameUnending {})?;
         return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
     }
 
@@ -243,6 +247,20 @@ impl PE {
             }
         }
         return Ok(out);
+    }
+
+    pub fn relocate(&mut self, addr: u32) -> Result<(), Error> {
+        assert!(addr >= self.code_vaddr);
+        let delta = addr - self.code_vaddr;
+        for &reloc in self.relocs.iter() {
+            let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
+            let pcode: *mut u32 = dwords.as_mut_ptr();
+            unsafe {
+                *pcode += delta;
+            }
+        }
+        self.code_addr = addr;
+        return Ok(());
     }
 }
 
@@ -296,14 +314,14 @@ struct WindowsHeader {
     size_of_heap_reserve: u32,
     size_of_heap_commit: u32,
     loader_flags: u32,
-    number_of_rvas_and_sizes: u32
+    number_of_rvas_and_sizes: u32,
 }
 
 #[repr(C)]
 #[repr(packed)]
 struct DataDirectory {
     virtual_address: u32,
-    size: u32
+    size: u32,
 }
 
 #[derive(Debug)]
@@ -319,7 +337,7 @@ struct SectionHeader {
     pointer_to_line_numbers: u32,
     number_of_relocations: u16,
     number_of_line_numbers: u16,
-    characteristics: u32
+    characteristics: u32,
 }
 
 bitflags! {

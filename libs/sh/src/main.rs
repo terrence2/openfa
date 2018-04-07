@@ -30,6 +30,12 @@ fn main() {
             .long("--all")
             .short("-a")
             .takes_value(false)
+            .required(false)
+            .conflicts_with_all(&["last"]))
+        .arg(Arg::with_name("last")
+            .long("--last")
+            .short("-l")
+            .takes_value(false)
             .required(false))
         .arg(Arg::with_name("INPUT")
             .help("The shape(s) to show")
@@ -43,36 +49,48 @@ fn main() {
         fp.read_to_end(&mut data).unwrap();
 
         let shape = CpuShape::new(&data).unwrap();
-        for (i, instr) in shape.instrs.iter().enumerate() {
-            if matches.is_present("all") {
-                println!("{}: {}", i, instr.show());
-                continue;
-            }
-            match instr {
-//                &Instr::X86Code(ref bc) => {
-//                    let filename = format!("/tmp/instr{}.bin", i);
-//                    let mut buffer = fs::File::create(filename).unwrap();
-//                    buffer.write(&bc.code).unwrap();
-//                }
-//                &Instr::UnkJumpIfLowDetail(ref x) => {
-//                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
-//                    println!("{}, {}: {}", name, instr.show(),
-//                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
-//                }
-//                &Instr::UnkJumpIfNotShown(ref x) => {
-//                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
-//                    println!("{}, {}: {}", name, instr.show(),
-//                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
-//                }
-                &Instr::TrailerUnknown(ref x) => {
-                    if x.data[0] == 0xEE {
 
-                        println!("{:25}: {}", name, instr.show());
-                    }
-                }
-                _ => {}
+        if matches.is_present("all") {
+            for (i, instr) in shape.instrs.iter().enumerate() {
+                println!("{}: {}", i, instr.show());
             }
+        } else if matches.is_present("last") {
+            let fmt = shape.instrs.last()
+                .map(|i| i.show())
+                .ok_or("NO INSTRUCTIONS").unwrap();
+            println!("{:20}: {}", name, fmt);
         }
+
+//        for (i, instr) in shape.instrs.iter().enumerate() {
+//            if matches.is_present("all") {
+//                println!("{}: {}", i, instr.show());
+//                continue;
+//            }
+//            match instr {
+////                &Instr::X86Code(ref bc) => {
+////                    let filename = format!("/tmp/instr{}.bin", i);
+////                    let mut buffer = fs::File::create(filename).unwrap();
+////                    buffer.write(&bc.code).unwrap();
+////                }
+////                &Instr::UnkJumpIfLowDetail(ref x) => {
+////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
+////                    println!("{}, {}: {}", name, instr.show(),
+////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
+////                }
+////                &Instr::UnkJumpIfNotShown(ref x) => {
+////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
+////                    println!("{}, {}: {}", name, instr.show(),
+////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
+////                }
+//                &Instr::TrailerUnknown(ref x) => {
+//                    if x.data[0] == 0xEE {
+//
+//                        println!("{:25}: {}", name, instr.show());
+//                    }
+//                }
+//                _ => {}
+//            }
+//        }
     }
 }
 

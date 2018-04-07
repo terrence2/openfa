@@ -18,17 +18,21 @@ extern crate failure;
 extern crate lazy_static;
 extern crate reverse;
 
+mod lut;
+
 use failure::Error;
 use reverse::bs2s;
-use std::collections::{HashMap, HashSet};
 use std::{fmt, mem};
+use lut::{AddressingMethod, OperandType, OpCodeDef, OperandDef};
+
+pub use lut::Memonic;
 
 #[derive(Debug, Fail)]
 pub enum DisassemblyError {
     #[fail(display = "unknown opcode/ext: {:?}", op)]
     UnknownOpcode {
         ip: usize,
-        op: (u8, u8),
+        op: (u16, u8),
     },
     #[fail(display = "disassembly stopped in middle of instruction")]
     TooShort {
@@ -49,118 +53,6 @@ pub enum DisassemblyError {
 //        }
 //    }
 //}
-
-#[derive(Clone, Copy, Debug)]
-enum FlagKind {
-    ZF,
-    CF,
-    SF,
-    OF,
-    PF,
-}
-
-#[derive(Clone, Copy, Debug)]
-enum ConditionCode1 {
-    Check(FlagKind, bool),
-    Eq(FlagKind, FlagKind),
-    NotEq(FlagKind, FlagKind),
-}
-
-#[derive(Clone, Copy, Debug)]
-enum ConditionCode2 {
-    Or(ConditionCode1, ConditionCode1),
-    And(ConditionCode1, ConditionCode1),
-}
-
-#[derive(Clone, Copy, Debug)]
-enum ConditionCode {
-    Unary(ConditionCode1),
-    Binary(ConditionCode2),
-}
-
-#[derive(Clone, Copy, Debug)]
-enum Memonic {
-    Adc,
-    Add,
-    And,
-    Call,
-    Compare,
-    Dec,
-    Jump,
-    Jcc(ConditionCode),
-    IDiv,
-    IMul,
-    Move,
-    Neg,
-    Or,
-    Pop,
-    PushAll,
-    Push,
-    Return,
-    Sar,
-    Shl,
-    //Sbb,
-    Sub,
-    Test,
-    Xor,
-}
-
-/// Specifies where to find the operand.
-#[derive(Clone)]
-enum AddressingMethod {
-    // A ModR/M byte follows the opcode and specifies the operand. The operand is either a
-    // general-purpose register or a memory address. If it is a memory address, the address is
-    // computed from a segment register and any of the following values: a base register, an index
-    // register, a scaling factor, or a displacement.
-    E,
-
-    // The reg field of the ModR/M byte selects a general register (for example, AX (000)).
-    G,
-
-    // Immediate data. The operand value is encoded in subsequent bytes of the instruction.
-    I,
-
-    // The instruction contains a relative offset to be added to the instruction pointer register
-    // (for example, JMP (E9), LOOP)).
-    J,
-
-    // The instruction has no ModR/M byte; the offset of the operand is coded as a word, double
-    // word or quad word (depending on address size attribute) in the instruction. No base register,
-    // index register, or scaling factor can be applied (only MOV  (A0, A1, A2, A3)).
-    O,
-
-    // The instruction has no ModR/M byte; the three least-significant bits of the opcode byte
-    // selects a general-purpose register
-    Z,
-
-    // Custom flag indicating that the Method/Type is an implicit register or constant in this
-    // operand. The OperandType is the register or constant.
-    Imp,
-}
-
-/// Specifies what size the operand is.
-#[derive(Clone)]
-#[allow(non_camel_case_types)]
-enum OperandType {
-    // Byte, regardless of operand-size attribute.
-    b,
-
-    // Byte, sign-extended to the size of the destination operand.
-    bs,
-
-    // Word or doubleword, depending on operand-size attribute (for example, INC (40), PUSH (50)).
-    v,
-
-    // Word or doubleword sign extended to the size of the stack pointer (for example, PUSH (68)).
-    vs,
-
-    // Implicit register.
-    eAX,
-    eDX,
-
-    // Implicit values
-    const1,
-}
 
 #[derive(Debug)]
 enum Reg {
@@ -186,6 +78,8 @@ enum Reg {
     EBP,
     ESI,
     EDI,
+
+    FS,
 }
 
 #[derive(Debug)]
@@ -194,45 +88,53 @@ struct MemRef {
     base: Option<Reg>,
     index: Option<Reg>,
     scale: u8,
+    segment: Option<Reg>,
 }
 
 impl MemRef {
-    fn base(base: Reg) -> Self {
+    fn base(base: Reg, prefix: &OpPrefix) -> Self {
         MemRef {
             displacement: 0,
             base: Some(base),
             index: None,
             scale: 1,
+            segment: Self::segment(prefix),
         }
     }
 
-    fn base_plus_displacement(base: Reg, displacement: i32) -> Self {
+    fn base_plus_displacement(base: Reg, displacement: i32, prefix: &OpPrefix) -> Self {
         MemRef {
             displacement,
             base: Some(base),
             index: None,
             scale: 1,
+            segment: Self::segment(prefix),
         }
     }
 
-    fn displacement(displacement: i32) -> Self {
+    fn displacement(displacement: i32, prefix: &OpPrefix) -> Self {
         MemRef {
             displacement,
             base: None,
             index: None,
             scale: 1,
+            segment: Self::segment(prefix),
         }
+    }
+
+    fn segment(prefix: &OpPrefix) -> Option<Reg> {
+        if prefix.use_fs_segment { Some(Reg::FS) } else { None }
     }
 }
 
 struct OperandDecodeState {
     prefix: OpPrefix,
-    op: u8,
+    op: u16,
     modrm: Option<u8>,
 }
 
 impl OperandDecodeState {
-    fn initial(prefix: OpPrefix, op: u8) -> Self {
+    fn initial(prefix: OpPrefix, op: u16) -> Self {
         Self {
             prefix,
             op,
@@ -248,7 +150,7 @@ impl OperandDecodeState {
         let b = code[*ip];
         *ip += 1;
         let out = Operand::modrm(b);
-        println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
+        //println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
         self.modrm = Some(b);
 
         return Ok(out);
@@ -263,106 +165,123 @@ enum Operand {
     Register(Reg),
 }
 
+#[allow(non_snake_case)]
 impl Operand {
     fn from_bytes(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
-        // Each of the two operands may use the singular regrm.
+        return match desc.method {
+            AddressingMethod::E => Self::from_bytes_mode_E(code, ip, desc, state),
+            AddressingMethod::G => Self::from_bytes_mode_G(code, ip, desc, state),
+            AddressingMethod::I => Self::from_bytes_mode_I(code, ip, desc, state),
+            AddressingMethod::J => Self::from_bytes_mode_J(code, ip, desc, state),
+            AddressingMethod::O => Self::from_bytes_mode_O(code, ip, desc, state),
+            AddressingMethod::Z => Self::from_bytes_mode_Z(state),
+            AddressingMethod::Imp => Self::from_bytes_mode_Imp(desc, state),
+        };
+    }
 
-        Ok(match desc.method {
-            AddressingMethod::E => {
-                let (mode, _reg, rm) = state.read_modrm(code, ip)?;
-                match mode {
-                    0b00 => {
-                        match rm {
-                            0 | 1 | 2 | 3 => {
-                                match desc.ty {
-                                    OperandType::b => {
-                                        Operand::Memory(MemRef::base(Self::register_low(rm)))
-                                    }
-                                    _ => unreachable!(),
-                                }
+    fn from_bytes_mode_E(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        let (mode, _reg, rm) = state.read_modrm(code, ip)?;
+        Ok(match mode {
+            0b00 => {
+                match rm {
+                    0 | 1 | 2 | 3 | 6 | 7 => {
+                        match desc.ty {
+                            OperandType::b => {
+                                Operand::Memory(MemRef::base(Self::register_low(rm), &state.prefix))
                             }
-                            0b101 => {
-                                assert!(!state.prefix.toggle_address_size);
-                                Operand::Memory(MemRef::displacement(Self::read4(code, ip)? as i32))
+                            OperandType::v => {
+                                Operand::Memory(MemRef::base(Self::register(rm), &state.prefix))
                             }
                             _ => unreachable!(),
                         }
-                    },
-                    0b01 => {
-                        let base = Self::register(rm);
-                        let disp8 = Self::read1(code, ip)?;
-                        Operand::Memory(MemRef::base_plus_displacement(base, disp8 as i8 as i32))
                     }
-                    0b10 => {
-                        let base = Self::register(rm);
-                        let disp32 = Self::read4(code, ip)?;
-                        Operand::Memory(MemRef::base_plus_displacement(base, disp32 as i32))
-                    }
-                    0b11 => {
-                        match desc.ty {
-                            OperandType::b => Operand::Register(Self::register_low(rm)),
-                            OperandType::v => Operand::Register(Self::maybe_toggle_reg_size(Self::register(rm), state.prefix.toggle_operand_size)),
-                            _ => unreachable!()
-                        }
+                    5 => {
+                        assert!(!state.prefix.toggle_address_size);
+                        Operand::Memory(MemRef::displacement(Self::read4(code, ip)? as i32, &state.prefix))
                     }
                     _ => unreachable!(),
                 }
             }
-            AddressingMethod::G => {
-                let (_mod, reg, _rm) = state.read_modrm(code, ip)?;
+            0b01 => {
+                let base = Self::register(rm);
+                let disp8 = Self::read1(code, ip)?;
+                Operand::Memory(MemRef::base_plus_displacement(base, disp8 as i8 as i32, &state.prefix))
+            }
+            0b10 => {
+                let base = Self::register(rm);
+                let disp32 = Self::read4(code, ip)?;
+                Operand::Memory(MemRef::base_plus_displacement(base, disp32 as i32, &state.prefix))
+            }
+            0b11 => {
                 match desc.ty {
-                    OperandType::b => Operand::Register(Self::register_low(reg)),
-                    OperandType::v => Operand::Register(Self::maybe_toggle_reg_size(Self::register(reg), state.prefix.toggle_operand_size)),
+                    OperandType::b => Operand::Register(Self::register_low(rm)),
+                    OperandType::v => Operand::Register(Self::maybe_toggle_reg_size(Self::register(rm), state.prefix.toggle_operand_size)),
                     _ => unreachable!()
                 }
             }
-            AddressingMethod::I => {
-                match desc.ty {
-                    OperandType::b => {
-                        Operand::Imm32(Self::read1(code, ip)? as u32)
-                    }
-                    OperandType::bs => {
-                        Operand::Imm32s(Self::read1(code, ip)? as i8 as i32)
-                    }
-                    OperandType::v => {
-                        Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?
-                    }
-                    OperandType::vs => {
-                        Self::read_n_32(code, ip, state.prefix.toggle_operand_size, true)?
-                    }
-                    _ => unreachable!()
-                }
+            _ => unreachable!(),
+        })
+    }
+
+    fn from_bytes_mode_G(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        let (_mod, reg, _rm) = state.read_modrm(code, ip)?;
+        Ok(match desc.ty {
+            OperandType::b => Operand::Register(Self::register_low(reg)),
+            OperandType::v => Operand::Register(Self::maybe_toggle_reg_size(Self::register(reg), state.prefix.toggle_operand_size)),
+            _ => unreachable!()
+        })
+    }
+
+    fn from_bytes_mode_I(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(match desc.ty {
+            OperandType::b => {
+                Operand::Imm32(Self::read1(code, ip)? as u32)
             }
-            AddressingMethod::J => {
-                match desc.ty {
-                    OperandType::bs => {
-                        Operand::Imm32s(Self::read1(code, ip)? as i8 as i32)
-                    }
-                    OperandType::v => {
-                        Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?
-                    }
-                    _ => unreachable!()
-                }
+            OperandType::bs => {
+                Operand::Imm32s(Self::read1(code, ip)? as i8 as i32)
             }
-            AddressingMethod::O => {
-                match desc.ty {
-                    OperandType::v => {
-                        Operand::Memory(MemRef::displacement(Self::read4(code, ip)? as i32))
-                    }
-                    _ => unreachable!()
-                }
+            OperandType::v => {
+                Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?
             }
-            AddressingMethod::Z => {
-                Operand::Register(Self::maybe_toggle_reg_size(Self::register(state.op & 0b111), state.prefix.toggle_operand_size))
+            OperandType::vs => {
+                Self::read_n_32(code, ip, state.prefix.toggle_operand_size, true)?
             }
-            AddressingMethod::Imp => {
-                match desc.ty {
-                    OperandType::eAX => Operand::Register(Self::maybe_toggle_reg_size(Reg::EAX, state.prefix.toggle_operand_size)),
-                    OperandType::eDX => Operand::Register(Self::maybe_toggle_reg_size(Reg::EDX, state.prefix.toggle_operand_size)),
-                    OperandType::const1 => Operand::Imm32(1),
-                    _ => unreachable!()
-                }
+            _ => unreachable!()
+        })
+    }
+
+    fn from_bytes_mode_J(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(match desc.ty {
+            OperandType::bs => {
+                Operand::Imm32s(Self::read1(code, ip)? as i8 as i32)
             }
+            OperandType::v => {
+                Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?
+            }
+            _ => unreachable!()
+        })
+    }
+
+    fn from_bytes_mode_O(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(match desc.ty {
+            OperandType::v => {
+                Operand::Memory(MemRef::displacement(Self::read4(code, ip)? as i32, &state.prefix))
+            }
+            _ => unreachable!()
+        })
+    }
+
+    fn from_bytes_mode_Z(state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(Operand::Register(Self::maybe_toggle_reg_size(Self::register((state.op & 0b111) as u8), state.prefix.toggle_operand_size)))
+    }
+
+    fn from_bytes_mode_Imp(desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(match desc.ty {
+            OperandType::eAX => Operand::Register(Self::maybe_toggle_reg_size(Reg::EAX, state.prefix.toggle_operand_size)),
+            OperandType::eDX => Operand::Register(Self::maybe_toggle_reg_size(Reg::EDX, state.prefix.toggle_operand_size)),
+            OperandType::AL => Operand::Register(Reg::AL),
+            OperandType::const1 => Operand::Imm32(1),
+            _ => unreachable!()
         })
     }
 
@@ -400,6 +319,7 @@ impl Operand {
                 Reg::EAX => Reg::AX,
                 Reg::ECX => Reg::CX,
                 Reg::EDX => Reg::DX,
+                Reg::ESI => Reg::DH,
                 _ => unreachable!()
             }
         } else {
@@ -460,222 +380,30 @@ impl fmt::Display for Operand {
             &Operand::Imm32(x) => write!(f, "0x{:X}", x),
             &Operand::Imm32s(x) => write!(f, "0x{:X}", x),
             &Operand::Memory(ref mr) => {
+                let seg = if let Some(ref r) = mr.segment {
+                    format!("{:?}:", r)
+                } else {
+                    "".to_owned()
+                };
                 match (&mr.base, &mr.index) {
                     (&Some(ref base), &Some(ref index)) =>
-                        write!(f, "[{:?}+{:?}*{}+0x{:X}]", base, index, mr.scale, mr.displacement),
+                        write!(f, "{}[{:?}+{:?}*{}+0x{:X}]", seg, base, index, mr.scale, mr.displacement),
                     (&Some(ref base), &None) =>
-                        write!(f, "[{:?}+0x{:X}]", base, mr.displacement),
+                        write!(f, "{}[{:?}+0x{:X}]", seg, base, mr.displacement),
                     (&None, &Some(ref index)) =>
-                        write!(f, "[{:?}*{}+0x{:X}]", index, mr.scale, mr.displacement),
+                        write!(f, "{}[{:?}*{}+0x{:X}]", seg, index, mr.scale, mr.displacement),
                     (&None, &None) =>
-                        write!(f, "[0x{:X}]", mr.displacement),
+                        write!(f, "{}[0x{:X}]", seg, mr.displacement),
                 }
             }
         }
     }
 }
 
-#[derive(Clone)]
-struct OperandDef {
-    // is_implicit: bool,
-    // is_target: bool,
-    method: AddressingMethod,
-    ty: OperandType,
-}
-
-#[derive(Clone)]
-struct OpCodeDef {
-    memonic: Memonic,
-    operands: Vec<OperandDef>,
-}
-
-macro_rules! make_operand {
-    ($meth0:ident / $type0:ident) => {
-        OperandDef {
-            method: AddressingMethod::$meth0,
-            ty: OperandType::$type0
-        }
-    }
-}
-
-macro_rules! make_cc1 {
-    ($flag:ident = $value:tt) => {
-        ConditionCode1::Check(FlagKind::$flag, $value == 1)
-    };
-
-    ($flag0:ident == $flag1:ident) => {
-        ConditionCode1::Eq(FlagKind::$flag0, FlagKind::$flag1)
-    };
-
-    ($flag0:ident != $flag1:ident) => {
-        ConditionCode1::NotEq(FlagKind::$flag0, FlagKind::$flag1)
-    };
-}
-
-macro_rules! make_cc2 {
-    ($a:tt $op0:tt $b:tt || $c:tt $op1:tt $d:tt) => {
-        ConditionCode2::Or(make_cc1!($a $op0 $b), make_cc1!($c $op1 $d))
-    };
-
-    ($a:tt $op0:tt $b:tt && $c:tt $op1:tt $d:tt) => {
-        ConditionCode2::And(make_cc1!($a $op0 $b), make_cc1!($c $op1 $d))
-    };
-}
-
-macro_rules! make_op {
-    ($meme:ident: $( $meth0:ident / $type0:ident ),* ) => {
-        OpCodeDef {
-            memonic: Memonic::$meme,
-            operands: vec![
-                $( make_operand!($meth0/$type0) ),*
-            ]
-        }
-    };
-
-    (J|$a:tt $op:tt $b:tt: $( $meth0:ident / $type0:ident ),* ) => {
-        OpCodeDef {
-            memonic: Memonic::Jcc(ConditionCode::Unary(make_cc1!($a $op $b))),
-            operands: vec![
-                $( make_operand!($meth0/$type0) ),*
-            ]
-        }
-    };
-
-    (J|$a:tt $op0:tt $b:tt $cmp:tt $c:tt $op1:tt $d:tt: $( $meth0:ident / $type0:ident ),* ) => {
-        OpCodeDef {
-            memonic: Memonic::Jcc(ConditionCode::Binary(make_cc2!($a $op0 $b $cmp $c $op1 $d))),
-            operands: vec![
-                $( make_operand!($meth0/$type0) ),*
-            ]
-        }
-    };
-}
-
-lazy_static! {
-    static ref PREFIX_CODES: HashSet<u8> = {
-        [0x26u8,
-         0x2Eu8,
-         0x36u8,
-         0x3Eu8,
-         0x64u8,
-         0x65u8,
-         0x66u8,
-         0x67u8,
-         0x9Bu8,
-         0xF0u8,
-         0xF2u8,
-         0xF3u8]
-            .iter()
-            .map(|&n| n)
-            .collect()
-    };
-
-    static ref USE_REG_OPCODES: HashSet<u8> = {
-        [0x80u8,
-         0x81u8,
-         0x82u8,
-         0x83u8,
-         0x8Fu8,
-         0xC0u8,
-         0xC1u8,
-         0xC6u8,
-         0xC7u8,
-         0xD0u8,
-         0xD1u8,
-         0xD2u8,
-         0xD3u8,
-         0xD8u8,
-         0xD9u8,
-         0xDAu8,
-         0xDBu8,
-         0xDCu8,
-         0xDDu8,
-         0xDEu8,
-         0xDFu8,
-         0xF6u8,
-         0xF7u8,
-         0xFEu8,
-         0xFFu8]
-            .iter()
-            .map(|&n| n)
-            .collect()
-    };
-
-    static ref HAS_INLINE_REG: HashSet<u8> = {
-        [0x50, 0x58, 0xB8].iter().map(|&n| n).collect()
-    };
-
-    static ref OPCODE_TABLE: HashMap<(u8, u8), OpCodeDef> = {
-        let mut out: HashMap<(u8, u8), OpCodeDef> = HashMap::new();
-        let ops = [
-            (0x00, 0, make_op!(Add:     E/b, G/b)),
-            (0x02, 0, make_op!(Add:     G/b, E/b)),
-            (0x05, 0, make_op!(Add:     Imp/eAX, I/v)),
-            (0x0B, 0, make_op!(Or:      G/v, E/v)),
-            (0x2A, 0, make_op!(Sub:     G/b, E/b)),
-            (0x2B, 0, make_op!(Sub:     G/v, E/v)),
-            (0x2D, 0, make_op!(Sub:     Imp/eAX, I/v)),
-            (0x32, 0, make_op!(Xor:     G/b, E/b)),
-            (0x3D, 0, make_op!(Compare: Imp/eAX, I/v)),
-            (0x48, 0, make_op!(Dec:     Z/v)),
-            (0x50, 0, make_op!(Push:    Z/v)),
-            (0x58, 0, make_op!(Pop:     Z/v)),
-            (0x60, 0, make_op!(PushAll:)),
-            (0x68, 0, make_op!(Push:    I/vs)),
-            (0x70, 0, make_op!(J|OF=1:  J/bs)),
-            (0x71, 0, make_op!(J|OF=0:  J/bs)),
-            (0x72, 0, make_op!(J|CF=1:  J/bs)),
-            (0x73, 0, make_op!(J|CF=0:  J/bs)),
-            (0x74, 0, make_op!(J|ZF=1:  J/bs)),
-            (0x75, 0, make_op!(J|ZF=0:  J/bs)),
-            (0x76, 0, make_op!(J|CF=1||ZF=1: J/bs)),
-            (0x77, 0, make_op!(J|CF=0&&ZF=0: J/bs)),
-            (0x78, 0, make_op!(J|SF=1:  J/bs)),
-            (0x79, 0, make_op!(J|SF=0:  J/bs)),
-            (0x7A, 0, make_op!(J|PF=1:  J/bs)),
-            (0x7B, 0, make_op!(J|PF=0:  J/bs)),
-            (0x7C, 0, make_op!(J|SF!=OF:J/bs)),
-            (0x7D, 0, make_op!(J|SF==OF:J/bs)),
-            (0x7E, 0, make_op!(J|ZF=1||SF!=OF: J/bs)),
-            (0x7F, 0, make_op!(J|ZF=0&&SF==OF: J/bs)),
-            (0x80, 2, make_op!(Adc:     E/b, I/b)),
-            (0x80, 7, make_op!(Compare: E/b, I/b)),
-            (0x81, 0, make_op!(Add:     E/v, I/v)),
-            (0x81, 1, make_op!(Or:      E/v, I/v)),
-            (0x81, 4, make_op!(And:     E/v, I/v)),
-            (0x81, 7, make_op!(Compare: E/v, I/v)),
-            (0x83, 1, make_op!(Or:      E/v, I/bs)),
-            //(0x83, 2, make_op!(Adc:     E/v, I/bs)),
-            (0x83, 7, make_op!(Compare: E/v, I/bs)),
-            //(0x83, 3, make_op!(Sbb:     E/v, I/bs)),
-            (0x89, 0, make_op!(Move:    E/v, G/v)),
-            (0x8A, 0, make_op!(Move:    G/b, E/b)),
-            (0x8B, 0, make_op!(Move:    G/v, E/v)),
-            (0xA1, 0, make_op!(Move:    Imp/eAX, O/v)),
-            (0xB8, 0, make_op!(Move:    Z/v, I/v)),
-            (0xC1, 4, make_op!(Shl:     E/v, I/b)),
-            (0xC1, 7, make_op!(Sar:     E/v, I/b)),
-            (0xC3, 0, make_op!(Return:)),
-            (0xC6, 0, make_op!(Move:    E/b, I/b)),
-            (0xD1, 7, make_op!(Sar:     E/v, Imp/const1)),
-            (0xE8, 0, make_op!(Call:    J/v)),
-            (0xE9, 0, make_op!(Jump:    J/v)),
-            (0xEB, 0, make_op!(Jump:    J/bs)),
-            (0xF7, 0, make_op!(Test:    E/v, I/v)),
-            (0xF7, 3, make_op!(Neg:     E/v)),
-            (0xF7, 5, make_op!(IMul:    Imp/eDX, Imp/eAX, E/v)),
-            (0xF7, 7, make_op!(IDiv:    Imp/eDX, Imp/eAX, E/v)),
-        ];
-        for &(ref op, ref ext, ref def) in ops.iter() {
-            out.insert((*op, *ext), (*def).clone());
-        }
-        return out;
-    };
-}
-
 struct OpPrefix {
     toggle_address_size: bool,
     toggle_operand_size: bool,
+    use_fs_segment: bool,
 }
 
 impl OpPrefix {
@@ -683,11 +411,13 @@ impl OpPrefix {
         OpPrefix {
             toggle_address_size: false,
             toggle_operand_size: false,
+            use_fs_segment: false,
         }
     }
 
     fn apply(mut self, b: u8) -> Self {
         match b {
+            0x64 => self.use_fs_segment = true,
             0x66 => self.toggle_operand_size = true,
             0x67 => self.toggle_address_size = true,
             _ => unreachable!()
@@ -697,7 +427,7 @@ impl OpPrefix {
 
     fn from_bytes(code: &[u8], ip: &mut usize) -> Self {
         let mut prefix = Self::default();
-        while *ip < code.len() && PREFIX_CODES.contains(&code[*ip]) {
+        while *ip < code.len() && lut::PREFIX_CODES.contains(&code[*ip]) {
             prefix = prefix.apply(code[*ip]);
             *ip += 1;
         }
@@ -707,7 +437,7 @@ impl OpPrefix {
 
 #[derive(Debug)]
 pub struct Instr {
-    memonic: Memonic,
+    pub memonic: Memonic,
     operands: Vec<Operand>,
     raw: Vec<u8>,
 }
@@ -729,12 +459,17 @@ impl Instr {
         return Ok(instrs);
     }
 
-    fn read_op(code: &[u8], ip: &mut usize) -> Result<(u8, u8), Error> {
+    fn read_op(code: &[u8], ip: &mut usize) -> Result<(u16, u8), Error> {
         ensure!(code.len() > *ip, DisassemblyError::TooShort{phase: "read_op"});
-        let op = code[*ip];
+        let mut op = code[*ip] as u16;
         *ip += 1;
+        if op == 0x0Fu16 {
+            op <<= 8;
+            op |= code[*ip] as u16;
+            *ip += 1;
+        }
         let op_ext =
-            if USE_REG_OPCODES.contains(&op) {
+            if lut::USE_REG_OPCODES.contains(&op) {
                 ensure!(code.len() > *ip, DisassemblyError::TooShort{phase: "decode_op_ext"});
                 let (_, ext, _) = Operand::modrm(code[*ip]);
                 ext
@@ -744,17 +479,17 @@ impl Instr {
         return Ok((op, op_ext));
     }
 
-    fn lookup_op<'a>(op: &(u8, u8), ip: &mut usize) -> Result<&'a OpCodeDef, Error> {
-        if OPCODE_TABLE.contains_key(&op) {
-            return Ok(&OPCODE_TABLE[&op]);
+    fn lookup_op<'a>(op: &(u16, u8), ip: &mut usize) -> Result<&'a OpCodeDef, Error> {
+        if lut::OPCODES.contains_key(&op) {
+            return Ok(&lut::OPCODES[&op]);
         }
 
         // If there is no exact match, then this may be an opcode with the reg embedded in
         // the low bits, so retry with those masked off.
         let base_op = (op.0 & !0b111, 0);
-        if HAS_INLINE_REG.contains(&base_op.0) {
-            if OPCODE_TABLE.contains_key(&base_op) {
-                return Ok(&OPCODE_TABLE[&base_op]);
+        if lut::HAS_INLINE_REG.contains(&base_op.0) {
+            if lut::OPCODES.contains_key(&base_op) {
+                return Ok(&lut::OPCODES[&base_op]);
             }
         }
 
