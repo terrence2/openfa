@@ -41,13 +41,15 @@ enum ShError {
 
 lazy_static! {
     static ref ALL_OPCODES: HashSet<u8> = {
-        [0x06,
+        [0x00,
+         0x06,
          0x0C,
          0x0E,
          0x10,
          0x12,
          0x1E,
          0x38,
+         0x40,
          0x42,
          0x46,
          0x48,
@@ -60,6 +62,7 @@ lazy_static! {
          0xAC,
          0xB2,
          0xB8,
+         0xBC,
          0xC4,
          0xC8,
          0xCA,
@@ -492,6 +495,7 @@ pub struct X86Code {
     pub offset: usize,
     pub code: Vec<u8>,
     pub formatted: String,
+    pub instrs: Vec<i386::Instr>,
 }
 
 impl X86Code {
@@ -506,99 +510,128 @@ impl X86Code {
         let mut instrs = Vec::new();
         let mut ip = 0;
         loop {
-            let instr = i386::Instr::decode_one(code, &mut ip)?;
+            println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip+4]));
+            let maybe_instr = i386::Instr::decode_one(code, &mut ip);
+
+            if let Err(ref e) = maybe_instr {
+                if let Some(&i386::DisassemblyError::UnknownOpcode { ip: ip, op: (op, ext) }) = e.downcast_ref::<i386::DisassemblyError>() {
+                    println!("Unknown OpCode: {:2X} /{}", op, ext);
+                    let line1 = bs2s(&code[ip..]);
+                    let mut line2 = String::new();
+                    for i in 0..(ip - 1) * 3 {
+                        line2 += "-";
+                    }
+                    line2 += "^";
+                    println!("{}\n{}", line1, line2);
+                }
+            }
+            let instr = maybe_instr?;
+
+            //println!("Error: {}", e);
             println!("{}", instr);
             instrs.push(instr);
             let words: &[u16] = unsafe { mem::transmute(&code[ip..]) };
-            if code[ip + 1] == 0 && ALL_OPCODES.contains(&code[ip]) {
+            if (ALL_OPCODES.contains(&code[ip]) && (code[ip + 1] == 0 || code[ip] == 0x42)) || code[ip] == 0x1E {
                 break;
             }
         }
 
-
-
-        // Find the next ret opcode that is followed by a known section header.
-        let mut end = 0;
-        let mut ip = 0;
-
-        loop {
-            if ip >= code.len() {
-                panic!("we should ret well before here")
-            }
-            if code[ip] == 0xC3 {
-                ip += 1;
-                let next_code: &[u16] = unsafe { mem::transmute(&section[2 + ip..]) };
-                /*
-                UNKNOWN
-                0x0000
-                0x0566
-                0x05EB
-                0xE850
-
-                MAYBE SECTION?
-                0x0066
-
-                KNOWN Sections
-                0x0010
-                0x0012
-                0x0048**
-                0x0082
-                0x00B8
-                0x00C4
-                0x00C8
-                0x00D0
-                0x00E2
-                0x0006
-                0x00F0
-
-                KNOWN with mod
-                0xXXFC
-                0xXX1E
-                */
-
-                // Our x86 virtual interpreter only supports a couple ops, so in order to get things
-                // working for now, we're just going to fast-forward past anything that doesn't
-                // look quite right.
-                if next_code[0] == 0x0048 ||
-                    next_code[0] == 0x0000 ||
-                    next_code[0] == 0x0566 ||
-                    next_code[0] == 0x05EB ||
-                    next_code[0] == 0xE850 ||
-                    next_code[0] == 0x8966 ||
-                    next_code[0] == 0x002E
-                    {
-                        ip += 2;
-                    } else {
-                    // println!("0x{:04X}", next_code[0]);
-                    end = ip;
-                    break;
-                }
-            }
-
-            if code[ip] == 0x68 { // push dword
-                ip += 5;
-            } else if code[ip] == 0x81 { // op reg imm32
-                ip += 6;
-            } else {
-                ip += 1;
-            }
-        }
-
-        let sec = reverse::Section::new(0xF0, offset, end + 2);
+        let sec = reverse::Section::new(0xF0, offset, ip + 2);
         let tags = reverse::get_all_tags(pe);
         let mut v = Vec::new();
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
         let fmt = v.iter().collect::<String>();
 
-        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
-        let mut file = File::create(tmp_name).unwrap();
-        file.write_all(&code[0..end]).unwrap();
-
         return Ok(X86Code {
             offset,
-            code: code[0..end].to_owned(),
+            instrs,
             formatted: fmt,
+            code: code[0..ip].to_owned(),
         });
+
+//
+//        // Find the next ret opcode that is followed by a known section header.
+//        let mut end = 0;
+//        let mut ip = 0;
+//
+//        loop {
+//            if ip >= code.len() {
+//                panic!("we should ret well before here")
+//            }
+//            if code[ip] == 0xC3 {
+//                ip += 1;
+//                let next_code: &[u16] = unsafe { mem::transmute(&section[2 + ip..]) };
+//                /*
+//                UNKNOWN
+//                0x0000
+//                0x0566
+//                0x05EB
+//                0xE850
+//
+//                MAYBE SECTION?
+//                0x0066
+//
+//                KNOWN Sections
+//                0x0010
+//                0x0012
+//                0x0048**
+//                0x0082
+//                0x00B8
+//                0x00C4
+//                0x00C8
+//                0x00D0
+//                0x00E2
+//                0x0006
+//                0x00F0
+//
+//                KNOWN with mod
+//                0xXXFC
+//                0xXX1E
+//                */
+//
+//                // Our x86 virtual interpreter only supports a couple ops, so in order to get things
+//                // working for now, we're just going to fast-forward past anything that doesn't
+//                // look quite right.
+//                if next_code[0] == 0x0048 ||
+//                    next_code[0] == 0x0000 ||
+//                    next_code[0] == 0x0566 ||
+//                    next_code[0] == 0x05EB ||
+//                    next_code[0] == 0xE850 ||
+//                    next_code[0] == 0x8966 ||
+//                    next_code[0] == 0x002E
+//                    {
+//                        ip += 2;
+//                    } else {
+//                    // println!("0x{:04X}", next_code[0]);
+//                    end = ip;
+//                    break;
+//                }
+//            }
+//
+//            if code[ip] == 0x68 { // push dword
+//                ip += 5;
+//            } else if code[ip] == 0x81 { // op reg imm32
+//                ip += 6;
+//            } else {
+//                ip += 1;
+//            }
+//        }
+//
+//        let sec = reverse::Section::new(0xF0, offset, end + 2);
+//        let tags = reverse::get_all_tags(pe);
+//        let mut v = Vec::new();
+//        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
+//        let fmt = v.iter().collect::<String>();
+//
+//        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
+//        let mut file = File::create(tmp_name).unwrap();
+//        file.write_all(&code[0..end]).unwrap();
+//
+//        return Ok(X86Code {
+//            offset,
+//            code: code[0..end].to_owned(),
+//            formatted: fmt,
+//        });
     }
 
     fn size(&self) -> usize {
@@ -611,7 +644,12 @@ impl X86Code {
 
     fn show(&self) -> String {
         //format!("X86Code: {}", bs2s(&self.code))
-        format!("X86Code @ {:04X}: {}", self.offset, self.formatted)
+        //format!("X86Code @ {:04X}: {}", self.offset, self.formatted)
+        let mut out = format!("X86Code @ {:04X}: {}", self.offset, self.formatted);
+        for instr in self.instrs.iter() {
+            out += &format!("\n\t{}", instr);
+        }
+        return out;
     }
 }
 
@@ -916,28 +954,28 @@ macro_rules! opaque_instr {
 }
 
 opaque_instr!(Header, 0xFF, 14);
-opaque_instr!(Unk46, 0x46, 2);
-opaque_instr!(UnkB2, 0xB2, 2);
-opaque_instr!(UnkEE, 0xEE, 2);
-opaque_instr!(Unk12, 0x12, 4);
-opaque_instr!(Unk48, 0x48, 4);
-opaque_instr!(UnkAC, 0xAC, 4);
-opaque_instr!(UnkB8, 0xB8, 4);
-opaque_instr!(UnkCA, 0xCA, 4);
-opaque_instr!(UnkD0, 0xD0, 4);
-opaque_instr!(UnkDA, 0xDA, 4);
-//opaque_instr!(UnkF2, 0xF2, 4);
-opaque_instr!(UnkA6, 0xA6, 6);
-opaque_instr!(UnkC8, 0xC8, 8);
-opaque_instr!(Unk66, 0x66, 10);
-opaque_instr!(Unk7A, 0x7A, 10);
-opaque_instr!(Unk78, 0x78, 12);
-opaque_instr!(UnkC4, 0xC4, 16);
+opaque_instr!(Unk06, 0x06, 21);
 opaque_instr!(Unk0C, 0x0C, 17);
 opaque_instr!(Unk0E, 0x0E, 17);
 opaque_instr!(Unk10, 0x10, 17);
+opaque_instr!(Unk12, 0x12, 4);
+opaque_instr!(Unk46, 0x46, 2);
+opaque_instr!(Unk48, 0x48, 4);
+opaque_instr!(Unk66, 0x66, 10);
 opaque_instr!(Unk6C, 0x6C, 13);
-opaque_instr!(Unk06, 0x06, 21);
+opaque_instr!(Unk78, 0x78, 12);
+opaque_instr!(Unk7A, 0x7A, 10);
+opaque_instr!(UnkA6, 0xA6, 6);
+opaque_instr!(UnkAC, 0xAC, 4);
+opaque_instr!(UnkB2, 0xB2, 2);
+opaque_instr!(UnkB8, 0xB8, 4);
+opaque_instr!(UnkC4, 0xC4, 16);
+opaque_instr!(UnkC8, 0xC8, 8);
+opaque_instr!(UnkCA, 0xCA, 4);
+opaque_instr!(UnkD0, 0xD0, 4);
+opaque_instr!(UnkDA, 0xDA, 4);
+opaque_instr!(UnkEE, 0xEE, 2);
+//opaque_instr!(UnkF2, 0xF2, 4);
 
 
 pub enum Instr {
@@ -1072,8 +1110,8 @@ impl CpuShape {
 
             let _code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
             let code: &[u8] = &pe.code[offset..];
-            println!("AT: {:04X}", _code[0]);
-            assert!(ALL_OPCODES.contains(&code[0]));
+            println!("AT: {:02X}", code[0]);
+            //assert!(ALL_OPCODES.contains(&code[0]));
 
             if code[0] == 0x1E {
                 offset += 1;
@@ -1150,7 +1188,6 @@ impl CpuShape {
                         name = source.source.clone();
                     }
                 }
-                //consume_instr!(X86Code, instrs, pe, offset);
                 let x86 = X86Code::from_bytes(name, offset, pe)?;
                 let sz = x86.size();
                 instrs.push(Instr::X86Code(x86));

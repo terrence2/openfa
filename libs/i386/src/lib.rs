@@ -56,31 +56,45 @@ enum FlagKind {
     CF,
     SF,
     OF,
+    PF,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ConditionCode1 {
+    Check(FlagKind, bool),
+    Eq(FlagKind, FlagKind),
+    NotEq(FlagKind, FlagKind),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ConditionCode2 {
+    Or(ConditionCode1, ConditionCode1),
+    And(ConditionCode1, ConditionCode1),
 }
 
 #[derive(Clone, Copy, Debug)]
 enum ConditionCode {
-    Check(FlagKind, bool),
-    CompareEq(FlagKind, FlagKind),
-    CompareNEq(FlagKind, FlagKind),
+    Unary(ConditionCode1),
+    Binary(ConditionCode2),
 }
 
 #[derive(Clone, Copy, Debug)]
 enum Memonic {
-    //Adc,
+    Adc,
     Add,
-    //And,
+    And,
     Call,
     Compare,
     Dec,
     Jump,
     Jcc(ConditionCode),
-    //    JccAnd(ConditionCode, ConditionCode),
-//    JccOr(ConditionCode, ConditionCode),
+    IDiv,
+    IMul,
     Move,
     Neg,
     Or,
     Pop,
+    PushAll,
     Push,
     Return,
     Sar,
@@ -88,6 +102,7 @@ enum Memonic {
     //Sbb,
     Sub,
     Test,
+    Xor,
 }
 
 /// Specifies where to find the operand.
@@ -141,6 +156,7 @@ enum OperandType {
 
     // Implicit register.
     eAX,
+    eDX,
 
     // Implicit values
     const1,
@@ -158,7 +174,9 @@ enum Reg {
     DH,
 
     AX,
+    BX,
     CX,
+    DX,
 
     EAX,
     ECX,
@@ -340,6 +358,7 @@ impl Operand {
             AddressingMethod::Imp => {
                 match desc.ty {
                     OperandType::eAX => Operand::Register(Self::maybe_toggle_reg_size(Reg::EAX, state.prefix.toggle_operand_size)),
+                    OperandType::eDX => Operand::Register(Self::maybe_toggle_reg_size(Reg::EDX, state.prefix.toggle_operand_size)),
                     OperandType::const1 => Operand::Imm32(1),
                     _ => unreachable!()
                 }
@@ -380,6 +399,7 @@ impl Operand {
             match reg {
                 Reg::EAX => Reg::AX,
                 Reg::ECX => Reg::CX,
+                Reg::EDX => Reg::DX,
                 _ => unreachable!()
             }
         } else {
@@ -478,6 +498,30 @@ macro_rules! make_operand {
     }
 }
 
+macro_rules! make_cc1 {
+    ($flag:ident = $value:tt) => {
+        ConditionCode1::Check(FlagKind::$flag, $value == 1)
+    };
+
+    ($flag0:ident == $flag1:ident) => {
+        ConditionCode1::Eq(FlagKind::$flag0, FlagKind::$flag1)
+    };
+
+    ($flag0:ident != $flag1:ident) => {
+        ConditionCode1::NotEq(FlagKind::$flag0, FlagKind::$flag1)
+    };
+}
+
+macro_rules! make_cc2 {
+    ($a:tt $op0:tt $b:tt || $c:tt $op1:tt $d:tt) => {
+        ConditionCode2::Or(make_cc1!($a $op0 $b), make_cc1!($c $op1 $d))
+    };
+
+    ($a:tt $op0:tt $b:tt && $c:tt $op1:tt $d:tt) => {
+        ConditionCode2::And(make_cc1!($a $op0 $b), make_cc1!($c $op1 $d))
+    };
+}
+
 macro_rules! make_op {
     ($meme:ident: $( $meth0:ident / $type0:ident ),* ) => {
         OpCodeDef {
@@ -488,32 +532,23 @@ macro_rules! make_op {
         }
     };
 
-    (J|$flag:ident=$value:tt: $( $meth0:ident / $type0:ident ),* ) => {
+    (J|$a:tt $op:tt $b:tt: $( $meth0:ident / $type0:ident ),* ) => {
         OpCodeDef {
-            memonic: Memonic::Jcc(ConditionCode::Check(FlagKind::$flag, $value == 1)),
+            memonic: Memonic::Jcc(ConditionCode::Unary(make_cc1!($a $op $b))),
             operands: vec![
                 $( make_operand!($meth0/$type0) ),*
             ]
         }
     };
 
-    (J|$flag0:ident==$flag1:ident: $( $meth0:ident / $type0:ident ),* ) => {
+    (J|$a:tt $op0:tt $b:tt $cmp:tt $c:tt $op1:tt $d:tt: $( $meth0:ident / $type0:ident ),* ) => {
         OpCodeDef {
-            memonic: Memonic::Jcc(ConditionCode::CompareEq(FlagKind::$flag0, FlagKind::$flag1)),
+            memonic: Memonic::Jcc(ConditionCode::Binary(make_cc2!($a $op0 $b $cmp $c $op1 $d))),
             operands: vec![
                 $( make_operand!($meth0/$type0) ),*
             ]
         }
     };
-
-    (J|$flag0:ident!=$flag1:ident: $( $meth0:ident / $type0:ident ),* ) => {
-        OpCodeDef {
-            memonic: Memonic::Jcc(ConditionCode::CompareNEq(FlagKind::$flag0, FlagKind::$flag1)),
-            operands: vec![
-                $( make_operand!($meth0/$type0) ),*
-            ]
-        }
-    }
 }
 
 lazy_static! {
@@ -574,41 +609,62 @@ lazy_static! {
         let mut out: HashMap<(u8, u8), OpCodeDef> = HashMap::new();
         let ops = [
             (0x00, 0, make_op!(Add:     E/b, G/b)),
+            (0x02, 0, make_op!(Add:     G/b, E/b)),
             (0x05, 0, make_op!(Add:     Imp/eAX, I/v)),
             (0x0B, 0, make_op!(Or:      G/v, E/v)),
+            (0x2A, 0, make_op!(Sub:     G/b, E/b)),
             (0x2B, 0, make_op!(Sub:     G/v, E/v)),
             (0x2D, 0, make_op!(Sub:     Imp/eAX, I/v)),
+            (0x32, 0, make_op!(Xor:     G/b, E/b)),
             (0x3D, 0, make_op!(Compare: Imp/eAX, I/v)),
             (0x48, 0, make_op!(Dec:     Z/v)),
             (0x50, 0, make_op!(Push:    Z/v)),
             (0x58, 0, make_op!(Pop:     Z/v)),
+            (0x60, 0, make_op!(PushAll:)),
             (0x68, 0, make_op!(Push:    I/vs)),
+            (0x70, 0, make_op!(J|OF=1:  J/bs)),
+            (0x71, 0, make_op!(J|OF=0:  J/bs)),
             (0x72, 0, make_op!(J|CF=1:  J/bs)),
             (0x73, 0, make_op!(J|CF=0:  J/bs)),
             (0x74, 0, make_op!(J|ZF=1:  J/bs)),
             (0x75, 0, make_op!(J|ZF=0:  J/bs)),
-            (0x7C, 0, make_op!(J|SF!=OF: J/bs)),
-            (0x7D, 0, make_op!(J|SF==OF: J/bs)),
+            (0x76, 0, make_op!(J|CF=1||ZF=1: J/bs)),
+            (0x77, 0, make_op!(J|CF=0&&ZF=0: J/bs)),
+            (0x78, 0, make_op!(J|SF=1:  J/bs)),
+            (0x79, 0, make_op!(J|SF=0:  J/bs)),
+            (0x7A, 0, make_op!(J|PF=1:  J/bs)),
+            (0x7B, 0, make_op!(J|PF=0:  J/bs)),
+            (0x7C, 0, make_op!(J|SF!=OF:J/bs)),
+            (0x7D, 0, make_op!(J|SF==OF:J/bs)),
+            (0x7E, 0, make_op!(J|ZF=1||SF!=OF: J/bs)),
+            (0x7F, 0, make_op!(J|ZF=0&&SF==OF: J/bs)),
+            (0x80, 2, make_op!(Adc:     E/b, I/b)),
             (0x80, 7, make_op!(Compare: E/b, I/b)),
             (0x81, 0, make_op!(Add:     E/v, I/v)),
             (0x81, 1, make_op!(Or:      E/v, I/v)),
-            //(0x81, 4, make_op!(And:     E/v, I/v)),
+            (0x81, 4, make_op!(And:     E/v, I/v)),
+            (0x81, 7, make_op!(Compare: E/v, I/v)),
             (0x83, 1, make_op!(Or:      E/v, I/bs)),
             //(0x83, 2, make_op!(Adc:     E/v, I/bs)),
             (0x83, 7, make_op!(Compare: E/v, I/bs)),
             //(0x83, 3, make_op!(Sbb:     E/v, I/bs)),
             (0x89, 0, make_op!(Move:    E/v, G/v)),
+            (0x8A, 0, make_op!(Move:    G/b, E/b)),
             (0x8B, 0, make_op!(Move:    G/v, E/v)),
             (0xA1, 0, make_op!(Move:    Imp/eAX, O/v)),
             (0xB8, 0, make_op!(Move:    Z/v, I/v)),
             (0xC1, 4, make_op!(Shl:     E/v, I/b)),
             (0xC1, 7, make_op!(Sar:     E/v, I/b)),
             (0xC3, 0, make_op!(Return:)),
+            (0xC6, 0, make_op!(Move:    E/b, I/b)),
             (0xD1, 7, make_op!(Sar:     E/v, Imp/const1)),
             (0xE8, 0, make_op!(Call:    J/v)),
+            (0xE9, 0, make_op!(Jump:    J/v)),
             (0xEB, 0, make_op!(Jump:    J/bs)),
             (0xF7, 0, make_op!(Test:    E/v, I/v)),
             (0xF7, 3, make_op!(Neg:     E/v)),
+            (0xF7, 5, make_op!(IMul:    Imp/eDX, Imp/eAX, E/v)),
+            (0xF7, 7, make_op!(IDiv:    Imp/eDX, Imp/eAX, E/v)),
         ];
         for &(ref op, ref ext, ref def) in ops.iter() {
             out.insert((*op, *ext), (*def).clone());
