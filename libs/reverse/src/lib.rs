@@ -595,13 +595,15 @@ pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
                 // of the pointer that is stored at the reloc position.
                 tags.push(Tag { kind: TagKind::RelocatedRef, offset: reloc as usize, length: 4 });
 
-                assert!(thunk_ptr > pe.code_addr, "thunked ptr before code");
-                assert!(thunk_ptr <= pe.code_addr + pe.code.len() as u32 - 4, "thunked ptr after code");
-                let code_offset = thunk_ptr - pe.code_addr;
-                let value_to_relocate_arr: &[u16] = unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
-                let value_to_relocate = value_to_relocate_arr[0];
-                //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
-                tags.push(Tag { kind: TagKind::RelocationTarget, offset: code_offset as usize, length: 2 });
+                if thunk_ptr - pe.code_addr < pe.code.len() as u32 - 4 {
+                    assert!(thunk_ptr > pe.code_addr, "thunked ptr before code");
+                    assert!(thunk_ptr <= pe.code_addr + pe.code.len() as u32 - 4, "thunked ptr after code");
+                    let code_offset = thunk_ptr - pe.code_addr;
+                    let value_to_relocate_arr: &[u16] = unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
+                    let value_to_relocate = value_to_relocate_arr[0];
+                    //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
+                    tags.push(Tag { kind: TagKind::RelocationTarget, offset: code_offset as usize, length: 2 });
+                }
             }
         }
     }

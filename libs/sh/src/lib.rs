@@ -25,7 +25,7 @@ extern crate reverse;
 
 use failure::Error;
 use std::path::{Path, PathBuf};
-use std::{cmp, fs, mem, str};
+use std::{cmp, fmt, fs, mem, str};
 use std::collections::{HashMap, HashSet};
 use reverse::{bs2s, b2h, b2b, Escape, Color};
 
@@ -35,19 +35,20 @@ use std::io::prelude::*;
 #[derive(Debug, Fail)]
 enum ShError {
     #[fail(display = "name ran off end of file")]
-    NameUnending {
-    }
+    NameUnending {}
 }
 
 lazy_static! {
     static ref ALL_OPCODES: HashSet<u8> = {
         [0x00,
          0x06,
+         0x08,
          0x0C,
          0x0E,
          0x10,
          0x12,
          0x1E,
+         0x2E,
          0x38,
          0x40,
          0x42,
@@ -84,7 +85,7 @@ lazy_static! {
     };
 
     static ref ONE_BYTE_MAGIC: HashSet<u8> = {
-        [0x1E, 0x42, 0x66, 0xFC, 0xFF]
+        [0x1E, 0x66, 0xFC, 0xFF]
             .iter()
             .map(|&n| n)
             .collect()
@@ -132,10 +133,11 @@ fn clone_into_array<A, T>(slice: &[T]) -> A
 
 fn read_name(n: &[u8]) -> Result<String, Error> {
     let end_offset: usize = n.iter().position(|&c| c == 0)
-        .ok_or::<ShError>(ShError::NameUnending{})?;
+        .ok_or::<ShError>(ShError::NameUnending {})?;
     return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
 }
 
+#[derive(Debug)]
 pub struct TextureRef {
     pub offset: usize,
     pub filename: String,
@@ -191,6 +193,7 @@ impl TextureIndexKind {
     }
 }
 
+#[derive(Debug)]
 pub struct TextureIndex {
     pub offset: usize,
     pub unk0: u8,
@@ -221,6 +224,7 @@ impl TextureIndex {
     }
 }
 
+#[derive(Debug)]
 pub struct SourceRef {
     pub offset: usize,
     pub unk0: u8,
@@ -233,6 +237,7 @@ impl SourceRef {
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
+        ensure!(data[1] == 0x00, "unexpected non-nil in hi");
         let source = read_name(&data[2..])?;
         return Ok(SourceRef { offset, unk0: data[1], source });
     }
@@ -250,6 +255,7 @@ impl SourceRef {
     }
 }
 
+#[derive(Debug)]
 pub struct VertexBuf {
     pub offset: usize,
     pub unk0: u16,
@@ -301,6 +307,7 @@ impl VertexBuf {
     }
 }
 
+#[derive(Debug)]
 pub struct Facet {
     pub offset: usize,
     pub length: usize,
@@ -499,67 +506,200 @@ impl Facet {
     }
 }
 
+#[derive(Debug)]
 pub struct X86Code {
     pub offset: usize,
     pub code: Vec<u8>,
     pub formatted: String,
-    pub instrs: Vec<i386::Instr>,
+    pub bytecode: i386::ByteCode,
 }
 
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
-    fn from_bytes(name: String, offset: usize, pe: &peff::PE) -> Result<Self, Error> {
-        let section = &pe.code[offset..];
+    fn find_external_jumps(base: usize, bc: &i386::ByteCode, external_jumps: &mut HashSet<usize>) {
+        let mut ip = 0;
+        let ip_end = bc.size();
+        for instr in bc.instrs.iter() {
+            let is_jump = match instr.memonic {
+                i386::Memonic::Call => true,
+                i386::Memonic::Jump => true,
+                i386::Memonic::Jcc(ref _cc) => true,
+                _ => false
+            };
+            ip += instr.size();
+            if is_jump {
+                let delta = match instr.operands[0] {
+                    i386::Operand::Imm32s(delta) => {
+                        if delta < 0 {
+                            println!("Skipping loop of {} bytes", delta);
+                            0
+                        } else {
+                            delta as u32 as usize
+                        }
+                    }
+                    i386::Operand::Imm32(delta) => {
+                        delta as usize
+                    }
+                    _ => panic!("Detected indirect jump target: {}", instr.operands[0])
+                };
+                let ip_target = ip + delta;
+                if ip_target >= ip_end {
+                    external_jumps.insert(base + ip_target);
+                }
+            };
+        }
+    }
+
+    fn lowest_jump(jumps: &HashSet<usize>) -> usize {
+        let mut lowest = usize::max_value();
+        for &jump in jumps {
+            if jump < lowest {
+                lowest = jump;
+            }
+        }
+        return lowest;
+    }
+
+    fn from_bytes(name: String, offset: &mut usize, pe: &peff::PE, vinstrs: &mut Vec<Instr>) -> Result<(), Error> {
+        let section = &pe.code[*offset..];
         assert_eq!(section[0], Self::MAGIC);
         assert_eq!(section[1], 0);
-        let code = &section[2..];
+        *offset += 2;
 
-        let mut instrs = Vec::new();
-        let mut ip = 0;
-        loop {
-            //println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip+4]));
-            let maybe_instr = i386::Instr::decode_one(code, &mut ip);
+        // Seed external jumps with our implicit F0 section jump.
+        let mut external_jumps = HashSet::new();
+        external_jumps.insert(*offset);
 
-            if let Err(ref e) = maybe_instr {
-                if let Some(&i386::DisassemblyError::UnknownOpcode { ip: ip, op: (op, ext) }) = e.downcast_ref::<i386::DisassemblyError>() {
-                    println!("Unknown OpCode: {:2X} /{}", op, ext);
-                    let line1 = bs2s(&code[0..]);
-                    let mut line2 = String::new();
-                    for i in 0..(ip - 1) * 3 {
-                        line2 += "-";
-                    }
-                    line2 += "^";
-                    println!("{}\n{}", line1, line2);
+        while external_jumps.len() > 0 {
+            println!("We are currently at {} with external jumps: {:?}", *offset, external_jumps);
+            if external_jumps.contains(&offset) {
+                external_jumps.remove(&offset);
+                println!("IP REACHED EXTERNAL JUMP");
+
+                let code = &pe.code[*offset..];
+                let maybe_bc = i386::ByteCode::disassemble_to_ret(code, true);
+                if let Err(e) = maybe_bc {
+                    i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
+                    bail!("Don't know how to disassemble at {}", *offset);
+                }
+                let bc = maybe_bc?;
+                println!("Decoded block:\n{}", bc);
+                Self::find_external_jumps(*offset, &bc, &mut external_jumps);
+                println!("Next external jumps: {:?}", external_jumps);
+
+                // Insert the instruction.
+                *offset += bc.size();
+                vinstrs.push(Instr::X86Code(X86Code {
+                    offset: *offset,
+                    code: code[0..bc.size()].to_owned(),
+                    formatted: Self::format_section(*offset, &bc, pe),
+                    bytecode: bc,
+                }));
+
+                if external_jumps.len() == 0 {
+                    return Ok(());
                 }
             }
-            let instr = maybe_instr?;
-            let is_ret = instr.memonic == i386::Memonic::Return;
 
-            //println!("{}", instr);
-            instrs.push(instr);
-            let words: &[u16] = unsafe { mem::transmute(&code[ip..]) };
-            if is_ret && ALL_OPCODES.contains(&code[ip]) && (code[ip + 1] == 0 || ONE_BYTE_MAGIC.contains(&code[ip])) {
-                break;
+            // We do not expect another F0 while we have external jumps to find.
+            let maybe = CpuShape::read_instr(offset, pe, vinstrs);
+            if let Err(e) = maybe {
+                // There is no instruction here, so assume data. Find the closest jump
+                // target remaining and fast-forward there.
+                println!("UNKNOWN DATA @{:04X}: {}", *offset, bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset+80)]));
+                let end = Self::lowest_jump(&external_jumps);
+                vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
+                    offset: *offset,
+                    data: pe.code[*offset..end].to_vec()
+                }));
+                *offset = end;
+            } else {
+                if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
+                    return Ok(());
+                }
+                println!("processed instr: {:?}", vinstrs.last().unwrap());
             }
         }
 
-        let sec = reverse::Section::new(0xF0, offset, ip + 2);
-        let tags = reverse::get_all_tags(pe);
-        let mut v = Vec::new();
-        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
-        let fmt = v.iter().collect::<String>();
+        return Ok(());
 
-        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
-        let mut file = File::create(tmp_name).unwrap();
-        file.write_all(&code[0..ip]).unwrap();
 
-        return Ok(X86Code {
-            offset,
-            instrs,
-            formatted: fmt,
-            code: code[0..ip].to_owned(),
-        });
+//        let mut instrs = Vec::new();
+//        let mut ip = 0;
+//        loop {
+//            //println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip + 4]));
+//            let maybe_instr = i386::Instr::decode_one(code, &mut ip);
+//            if let Err(ref e) = maybe_instr {
+//                if !i386::DisassemblyError::maybe_show(e, &code) {
+//                    println!("Error: {}", e);
+//                }
+//            }
+//            let instr = maybe_instr?;
+//            let is_jump = match instr.memonic {
+//                i386::Memonic::Call => true,
+//                i386::Memonic::Jump => true,
+//                i386::Memonic::Jcc(ref _cc) => true,
+//                _ => false
+//            };
+//            if is_jump {
+//                let delta = match instr.operands[0] {
+//                    i386::Operand::Imm32s(delta) => delta as i64,
+//                    i386::Operand::Imm32(delta) => delta as i64,
+//                    _ => panic!("Detected indirect jump target: {}", instr.operands[0])
+//                };
+//                println!("FOUND JUMP FROM {:X} to {:X}", ip, ip as i64 + delta);
+//            };
+//
+//            let is_ret = instr.memonic == i386::Memonic::Return;
+//            println!("instr: {}", instr);
+//            instrs.push(instr);
+//
+//            let words: &[u16] = unsafe { mem::transmute(&code[ip..]) };
+//
+//            // Unfortunately, it seems like there is no decidable way to do this statically as the
+//            // code can embed raw strings.
+//            if is_ret && ALL_OPCODES.contains(&code[ip]) {
+//                // If the second byte is 0, then try to decode some VM codes:
+//                if code[ip + 1] == 0 {}
+//
+//                // If the second byte is a 0, then we can be pretty sure it's actually an opcode.
+//                // Or if the opcode byte is in the ONE_BYTE set, then the one byte we've seen was
+//                // probably actually an opcode.
+//                if words[0] == 0x0048 {
+//                    ip += 4;
+//                } else if words[0] == 0x002E {
+//                    ip += 18;
+//                } else if words[0] == 0x007A {
+//                    ip += 10;
+//                } else if code[ip + 1] == 0 || ONE_BYTE_MAGIC.contains(&code[ip]) {
+//                    break;
+//                }
+//
+//                // There may be a string here! Let's check for some that we know about.
+//                let foo = str::from_utf8(&code[ip..ip + 24]);
+//                if let Ok(s) = foo {
+//                    println!("EMBEDDED STRING: {}", s);
+//                    if s == "Bad value in chaff.asm!\0" {
+//                        println!("Skipping");
+//                        ip += 24;
+//                    }
+//                }
+//            }
+//        }
+
+//        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
+//        let mut file = File::create(tmp_name).unwrap();
+//        file.write_all(&code[0..bc.size()]).unwrap();
+//
+//        let instr = Instr::X86Code(X86Code {
+//            offset,
+//            code: code[0..bc.size()].to_owned(),
+//            bytecode: bc,
+//            formatted: fmt,
+//        });
+//        vinstrs.push(instr);
+//        return Ok(vinstrs);
 
 //
 //        // Find the next ret opcode that is followed by a known section header.
@@ -646,6 +786,14 @@ impl X86Code {
 //        });
     }
 
+    fn format_section(offset: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
+        let sec = reverse::Section::new(0xF0, offset, 2 + bc.size());
+        let tags = reverse::get_all_tags(pe);
+        let mut v = Vec::new();
+        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
+        return v.iter().collect::<String>();
+    }
+
     fn size(&self) -> usize {
         return self.code.len() + 2;
     }
@@ -655,13 +803,7 @@ impl X86Code {
     }
 
     fn show(&self) -> String {
-        //format!("X86Code: {}", bs2s(&self.code))
-        //format!("X86Code @ {:04X}: {}", self.offset, self.formatted)
-        let mut out = format!("X86Code @ {:04X}: {}", self.offset, self.formatted);
-        for instr in self.instrs.iter() {
-            out += &format!("\n\t{}", instr);
-        }
-        return out;
+        return format!("X86Code @ {:04X}: {}\n{}", self.offset, self.formatted, self.bytecode);
     }
 }
 
@@ -702,6 +844,13 @@ impl UnkCE {
     }
 }
 
+impl fmt::Debug for UnkCE {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "UnkCE @{:04X}: {}", self.offset, bs2s(&self.data))
+    }
+}
+
+#[derive(Debug)]
 pub struct UnkBC {
     pub offset: usize,
     flags: u8,
@@ -749,6 +898,7 @@ impl UnkBC {
     }
 }
 
+#[derive(Debug)]
 pub struct Unk40 {
     pub offset: usize,
     count: usize,
@@ -763,7 +913,7 @@ impl Unk40 {
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0);
+        assert_eq!(data[1], 0x00);
         let words: &[u16] = unsafe { mem::transmute(&data[2..]) };
         let count = words[0] as usize;
         let length = 4 + count * 2;
@@ -784,6 +934,7 @@ impl Unk40 {
     }
 }
 
+#[derive(Debug)]
 pub struct UnkF6 {
     pub offset: usize,
     pub data: [u8; 6],
@@ -812,6 +963,7 @@ impl UnkF6 {
     }
 }
 
+#[derive(Debug)]
 pub struct UnkJumpIfLowDetail {
     pub offset: usize,
     pub offset_to_next: usize,
@@ -866,6 +1018,7 @@ impl UnkJumpIfLowDetail {
 // At: 7 => UnkA6 @ 0041: CF 00 01 00
 // 0x41 + 0xCF + 6 => 0x116 points past textured polys.
 
+#[derive(Debug)]
 pub struct UnkJumpIfNotShown {
     pub offset: usize,
     pub offset_to_next: usize,
@@ -905,12 +1058,15 @@ impl UnkJumpIfNotShown {
 
 // EE 00 E4 00 04 00 00 00 96 00 00 00 C7 00 1D 00 C7 00 1D 00 96 00 7A 00 00 00 00 00 06 00
 
+#[derive(Debug)]
 pub struct TrailerUnknown {
     pub offset: usize,
     pub data: Vec<u8>,
 }
 
 impl TrailerUnknown {
+    pub const MAGIC: u8 = 0x00;
+
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
         let data = &code[offset..];
         return Ok(Self { offset, data: data.to_owned() });
@@ -931,12 +1087,32 @@ impl TrailerUnknown {
     }
 }
 
+#[derive(Debug)]
+pub struct UnknownUnknown {
+    pub offset: usize,
+    pub data: Vec<u8>,
+}
+
+impl UnknownUnknown {
+    fn size(&self) -> usize {
+        return self.data.len();
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn show(&self) -> String {
+        format!("Unknown @ {:04X}: {:6} => {}", self.offset, self.data.len(), bs2s(&self.data))
+    }
+}
+
 
 macro_rules! opaque_instr {
     ($name:ident, $magic:expr, $size:expr) => {
         pub struct $name {
             pub offset: usize,
-            pub data: [u8; $size - 2]
+            pub data: [u8; $size]
         }
 
         impl $name {
@@ -946,8 +1122,9 @@ macro_rules! opaque_instr {
             fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
                 let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
-                assert!(ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0);
-                return Ok(Self { offset, data: clone_into_array(&data[2..Self::SIZE]) });
+                ensure!(ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0,
+                        "expected 1-byte instr or 0 in hi byte");
+                return Ok(Self { offset, data: clone_into_array(&data[0..Self::SIZE]) });
             }
 
             fn size(&self) -> usize {
@@ -962,15 +1139,24 @@ macro_rules! opaque_instr {
                 format!("{} @ {:04X}: {}", stringify!($name), self.offset, bs2s(&self.data))
             }
         }
+
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{} @{:04X}: {}", stringify!($name), self.offset, bs2s(&self.data))
+            }
+        }
     }
 }
 
 opaque_instr!(Header, 0xFF, 14);
 opaque_instr!(Unk06, 0x06, 21);
+opaque_instr!(Unk08, 0x08, 4);
 opaque_instr!(Unk0C, 0x0C, 17);
 opaque_instr!(Unk0E, 0x0E, 17);
 opaque_instr!(Unk10, 0x10, 17);
 opaque_instr!(Unk12, 0x12, 4);
+//opaque_instr!(Unk2E, 0x2E, 18);
+opaque_instr!(Unk2E, 0x2E, 4);
 opaque_instr!(Unk46, 0x46, 2);
 opaque_instr!(Unk48, 0x48, 4);
 opaque_instr!(Unk66, 0x66, 10);
@@ -990,33 +1176,36 @@ opaque_instr!(UnkEE, 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
 
 
+#[derive(Debug)]
 pub enum Instr {
     Header(Header),
 
     // Fixed size, with wasted 0 byte.
-    Unk46(Unk46),
-    UnkB2(UnkB2),
-    UnkEE(UnkEE),
-    Unk12(Unk12),
-    Unk48(Unk48),
-    UnkAC(UnkAC),
-    UnkB8(UnkB8),
-    UnkCA(UnkCA),
-    UnkD0(UnkD0),
-    UnkDA(UnkDA),
-    UnkJumpIfNotShown(UnkJumpIfNotShown),
-    UnkA6(UnkA6),
-    UnkC8(UnkC8),
-    Unk66(Unk66),
-    Unk7A(Unk7A),
-    Unk78(Unk78),
-    UnkC4(UnkC4),
+    Unk06(Unk06),
+    Unk08(Unk08),
     Unk0C(Unk0C),
     Unk0E(Unk0E),
     Unk10(Unk10),
+    Unk12(Unk12),
+    Unk2E(Unk2E),
+    Unk46(Unk46),
+    Unk48(Unk48),
+    Unk66(Unk66),
     Unk6C(Unk6C),
-    Unk06(Unk06),
+    Unk78(Unk78),
+    Unk7A(Unk7A),
+    UnkA6(UnkA6),
+    UnkAC(UnkAC),
+    UnkB2(UnkB2),
+    UnkB8(UnkB8),
+    UnkC4(UnkC4),
+    UnkC8(UnkC8),
+    UnkCA(UnkCA),
     UnkCE(UnkCE),
+    UnkD0(UnkD0),
+    UnkDA(UnkDA),
+    UnkEE(UnkEE),
+    UnkJumpIfNotShown(UnkJumpIfNotShown),
 
     // Fixed size, without wasted 0 byte after header.
     UnkF6(UnkF6),
@@ -1040,35 +1229,38 @@ pub enum Instr {
 
     // Wtf
     X86Code(X86Code),
+    UnknownUnknown(UnknownUnknown),
 }
 
 macro_rules! impl_for_all_instr {
     ($self:ident, $f:ident) => {
         match $self {
             &Instr::Header(ref i) => i.$f(),
-            &Instr::Unk46(ref i) => i.$f(),
-            &Instr::UnkB2(ref i) => i.$f(),
-            &Instr::UnkEE(ref i) => i.$f(),
-            &Instr::Unk12(ref i) => i.$f(),
-            &Instr::Unk48(ref i) => i.$f(),
-            &Instr::UnkAC(ref i) => i.$f(),
-            &Instr::UnkB8(ref i) => i.$f(),
-            &Instr::UnkCA(ref i) => i.$f(),
-            &Instr::UnkD0(ref i) => i.$f(),
-            &Instr::UnkDA(ref i) => i.$f(),
-            &Instr::UnkJumpIfNotShown(ref i) => i.$f(),
-            &Instr::UnkA6(ref i) => i.$f(),
-            &Instr::UnkC8(ref i) => i.$f(),
-            &Instr::Unk66(ref i) => i.$f(),
-            &Instr::Unk7A(ref i) => i.$f(),
-            &Instr::Unk78(ref i) => i.$f(),
-            &Instr::UnkC4(ref i) => i.$f(),
+            &Instr::Unk06(ref i) => i.$f(),
+            &Instr::Unk08(ref i) => i.$f(),
             &Instr::Unk0C(ref i) => i.$f(),
             &Instr::Unk0E(ref i) => i.$f(),
             &Instr::Unk10(ref i) => i.$f(),
+            &Instr::Unk12(ref i) => i.$f(),
+            &Instr::Unk2E(ref i) => i.$f(),
+            &Instr::Unk46(ref i) => i.$f(),
+            &Instr::Unk48(ref i) => i.$f(),
+            &Instr::Unk66(ref i) => i.$f(),
             &Instr::Unk6C(ref i) => i.$f(),
-            &Instr::Unk06(ref i) => i.$f(),
+            &Instr::Unk78(ref i) => i.$f(),
+            &Instr::Unk7A(ref i) => i.$f(),
+            &Instr::UnkA6(ref i) => i.$f(),
+            &Instr::UnkAC(ref i) => i.$f(),
+            &Instr::UnkB2(ref i) => i.$f(),
+            &Instr::UnkB8(ref i) => i.$f(),
+            &Instr::UnkC4(ref i) => i.$f(),
+            &Instr::UnkC8(ref i) => i.$f(),
+            &Instr::UnkCA(ref i) => i.$f(),
             &Instr::UnkCE(ref i) => i.$f(),
+            &Instr::UnkD0(ref i) => i.$f(),
+            &Instr::UnkDA(ref i) => i.$f(),
+            &Instr::UnkEE(ref i) => i.$f(),
+            &Instr::UnkJumpIfNotShown(ref i) => i.$f(),
             &Instr::UnkF6(ref i) => i.$f(),
             &Instr::UnkJumpIfLowDetail(ref i) => i.$f(),
             &Instr::UnkBC(ref i) => i.$f(),
@@ -1080,6 +1272,7 @@ macro_rules! impl_for_all_instr {
             &Instr::VertexBuf(ref i) => i.$f(),
             &Instr::Facet(ref i) => i.$f(),
             &Instr::X86Code(ref i) => i.$f(),
+            &Instr::UnknownUnknown(ref i) => i.$f(),
          }
     }
 }
@@ -1089,17 +1282,22 @@ impl Instr {
         impl_for_all_instr!(self, show)
     }
 
+    pub fn size(&self) -> usize {
+        impl_for_all_instr!(self, size)
+    }
+
     pub fn at_offset(&self) -> usize {
         impl_for_all_instr!(self, at_offset)
     }
 }
 
 macro_rules! consume_instr {
-    ($name:ident, $instr:ident, $pe:ident, $offset:ident) => {
-        let instr = $name::from_bytes($offset, &$pe.code)?;
-        let sz = instr.size();
-        $instr.push(Instr::$name(instr));
-        $offset += sz;
+    ($name:ident, $pe:ident, $offset:ident, $instrs:ident) => {
+        {
+            let instr = $name::from_bytes(*$offset, &$pe.code)?;
+            *$offset += instr.size();
+            $instrs.push(Instr::$name(instr));
+        }
     }
 }
 
@@ -1117,113 +1315,85 @@ impl CpuShape {
         let mut n_coords = 0;
 
         let mut instrs = Vec::new();
+        while offset < pe.code.len() {
+            println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
+            //assert!(ALL_OPCODES.contains(&pe.code[offset]));
+            Self::read_instr(&mut offset, pe, &mut instrs)?;
+            println!("=>: {}", instrs.last().unwrap().show());
+        }
 
-        loop {
-            assert!(offset < pe.code.len());
+        // Assertions.
+//        {
+//            let instr = find_first_instr(0xF2, &instrs);
+//            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
+//                let tgt = find_instr_at_offset(jmp.next_offset(), &instrs);
+//                assert!(tgt.is_some());
+//            }
+//        }
 
-            let _code: &[u16] = unsafe { mem::transmute(&pe.code[offset..]) };
-            let code: &[u8] = &pe.code[offset..];
-            //println!("AT: {:02X}", code[0]);
-            //assert!(ALL_OPCODES.contains(&code[0]));
+        let mut shape = CpuShape { source: "".to_owned(), instrs };
+        return Ok(shape);
+    }
 
-            if code[0] == 0x1E {
-                offset += 1;
-            } else if code[0] == Header::MAGIC {
-                consume_instr!(Header, instrs, pe, offset);
-            } else if code[0] == Unk46::MAGIC {
-                consume_instr!(Unk46, instrs, pe, offset);
-            } else if code[0] == UnkB2::MAGIC {
-                consume_instr!(UnkB2, instrs, pe, offset);
-            } else if code[0] == UnkEE::MAGIC {
-                consume_instr!(UnkEE, instrs, pe, offset);
-            } else if code[0] == Unk12::MAGIC {
-                consume_instr!(Unk12, instrs, pe, offset);
-            } else if code[0] == Unk48::MAGIC {
-                consume_instr!(Unk48, instrs, pe, offset);
-            } else if code[0] == UnkAC::MAGIC {
-                consume_instr!(UnkAC, instrs, pe, offset);
-            } else if code[0] == UnkB8::MAGIC {
-                consume_instr!(UnkB8, instrs, pe, offset);
-            } else if code[0] == UnkCA::MAGIC {
-                consume_instr!(UnkCA, instrs, pe, offset);
-            } else if code[0] == UnkD0::MAGIC {
-                consume_instr!(UnkD0, instrs, pe, offset);
-            } else if code[0] == UnkDA::MAGIC {
-                consume_instr!(UnkDA, instrs, pe, offset);
-            } else if code[0] == UnkJumpIfNotShown::MAGIC {
-                consume_instr!(UnkJumpIfNotShown, instrs, pe, offset);
-            } else if code[0] == UnkA6::MAGIC {
-                consume_instr!(UnkA6, instrs, pe, offset);
-            } else if code[0] == UnkC8::MAGIC {
-                consume_instr!(UnkC8, instrs, pe, offset);
-            } else if code[0] == Unk66::MAGIC {
-                consume_instr!(Unk66, instrs, pe, offset);
-            } else if code[0] == Unk78::MAGIC {
-                consume_instr!(Unk78, instrs, pe, offset);
-            } else if code[0] == Unk7A::MAGIC {
-                consume_instr!(Unk7A, instrs, pe, offset);
-            } else if code[0] == UnkC4::MAGIC {
-                consume_instr!(UnkC4, instrs, pe, offset);
-            } else if code[0] == Unk0C::MAGIC {
-                consume_instr!(Unk0C, instrs, pe, offset);
-            } else if code[0] == Unk0E::MAGIC {
-                consume_instr!(Unk0E, instrs, pe, offset);
-            } else if code[0] == Unk10::MAGIC {
-                consume_instr!(Unk10, instrs, pe, offset);
-            } else if code[0] == Unk6C::MAGIC {
-                consume_instr!(Unk6C, instrs, pe, offset);
-            } else if code[0] == Unk06::MAGIC {
-                consume_instr!(Unk06, instrs, pe, offset);
-            } else if code[0] == UnkCE::MAGIC {
-                consume_instr!(UnkCE, instrs, pe, offset);
-            } else if code[0] == UnkBC::MAGIC {
-                consume_instr!(UnkBC, instrs, pe, offset);
-            } else if code[0] == UnkF6::MAGIC {
-                consume_instr!(UnkF6, instrs, pe, offset);
-            } else if code[0] == UnkJumpIfLowDetail::MAGIC {
-                consume_instr!(UnkJumpIfLowDetail, instrs, pe, offset);
-            } else if code[0] == Unk40::MAGIC {
-                consume_instr!(Unk40, instrs, pe, offset);
-            } else if code[0] == TextureRef::MAGIC {
-                consume_instr!(TextureRef, instrs, pe, offset);
-            } else if code[0] == TextureIndex::MAGIC {
-                consume_instr!(TextureIndex, instrs, pe, offset);
-            } else if code[0] == SourceRef::MAGIC {
-                consume_instr!(SourceRef, instrs, pe, offset);
-            } else if code[0] == VertexBuf::MAGIC {
-                consume_instr!(VertexBuf, instrs, pe, offset);
-            } else if code[0] == Facet::MAGIC {
-                consume_instr!(Facet, instrs, pe, offset);
-            } else if code[0] == X86Code::MAGIC {
+    fn read_instr(offset: &mut usize, pe: &peff::PE, instrs: &mut Vec<Instr>) -> Result<(), Error> {
+        while pe.code[*offset] == 0x1E {
+            *offset += 1;
+        }
+
+        match pe.code[*offset] {
+            Header::MAGIC => consume_instr!(Header, pe, offset, instrs),
+            Unk06::MAGIC => consume_instr!(Unk06, pe, offset, instrs),
+            Unk08::MAGIC => consume_instr!(Unk08, pe, offset, instrs),
+            Unk0C::MAGIC => consume_instr!(Unk0C, pe, offset, instrs),
+            Unk0E::MAGIC => consume_instr!(Unk0E, pe, offset, instrs),
+            Unk10::MAGIC => consume_instr!(Unk10, pe, offset, instrs),
+            Unk12::MAGIC => consume_instr!(Unk12, pe, offset, instrs),
+            Unk2E::MAGIC => consume_instr!(Unk2E, pe, offset, instrs),
+            Unk40::MAGIC => consume_instr!(Unk40, pe, offset, instrs),
+            Unk46::MAGIC => consume_instr!(Unk46, pe, offset, instrs),
+            Unk48::MAGIC => consume_instr!(Unk48, pe, offset, instrs),
+            Unk66::MAGIC => consume_instr!(Unk66, pe, offset, instrs),
+            Unk6C::MAGIC => consume_instr!(Unk6C, pe, offset, instrs),
+            Unk78::MAGIC => consume_instr!(Unk78, pe, offset, instrs),
+            Unk7A::MAGIC => consume_instr!(Unk7A, pe, offset, instrs),
+            UnkA6::MAGIC => consume_instr!(UnkA6, pe, offset, instrs),
+            UnkAC::MAGIC => consume_instr!(UnkAC, pe, offset, instrs),
+            UnkB2::MAGIC => consume_instr!(UnkB2, pe, offset, instrs),
+            UnkB8::MAGIC => consume_instr!(UnkB8, pe, offset, instrs),
+            UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, instrs),
+            UnkC4::MAGIC => consume_instr!(UnkC4, pe, offset, instrs),
+            UnkC8::MAGIC => consume_instr!(UnkC8, pe, offset, instrs),
+            UnkCA::MAGIC => consume_instr!(UnkCA, pe, offset, instrs),
+            UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, instrs),
+            UnkD0::MAGIC => consume_instr!(UnkD0, pe, offset, instrs),
+            UnkDA::MAGIC => consume_instr!(UnkDA, pe, offset, instrs),
+            UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
+            UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
+            UnkJumpIfNotShown::MAGIC => consume_instr!(UnkJumpIfNotShown, pe, offset, instrs),
+            UnkJumpIfLowDetail::MAGIC => consume_instr!(UnkJumpIfLowDetail, pe, offset, instrs),
+            TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, instrs),
+            TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, instrs),
+            SourceRef::MAGIC => consume_instr!(SourceRef, pe, offset, instrs),
+            VertexBuf::MAGIC => consume_instr!(VertexBuf, pe, offset, instrs),
+            Facet::MAGIC => consume_instr!(Facet, pe, offset, instrs),
+            X86Code::MAGIC => {
                 let mut name = "unknown_source".to_owned();
                 {
                     if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, &instrs) {
                         name = source.source.clone();
                     }
                 }
-                let x86 = X86Code::from_bytes(name, offset, pe)?;
-                let sz = x86.size();
-                instrs.push(Instr::X86Code(x86));
-                offset += sz;
-            } else {
-                // Trailer / Unknown remaining.
-                consume_instr!(TrailerUnknown, instrs, pe, offset);
-
-                break;
+                let mut many_instrs = X86Code::from_bytes(name, offset, pe, instrs)?;
             }
-        }
-
-        // Assertions.
-        {
-            let instr = find_first_instr(0xF2, &instrs);
-            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
-                let tgt = find_instr_at_offset(jmp.next_offset(), &instrs);
-                //assert!(tgt.is_some());
+            _ => {
+                consume_instr!(TrailerUnknown, pe, offset, instrs)
             }
+            /*
+            TrailerUnknown::MAGIC => consume_instr!(TrailerUnknown, pe, offset, instrs),
+            _ => bail!("unknown instruction: {:02X}: {}", pe.code[*offset], bs2s(&pe.code[*offset..]))
+            */
         }
-
-        let mut shape = CpuShape { source: "".to_owned(), instrs: instrs };
-        return Ok(shape);
+        return Ok(());
     }
 }
 

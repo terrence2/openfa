@@ -252,6 +252,7 @@ impl PE {
     pub fn relocate(&mut self, addr: u32) -> Result<(), Error> {
         assert!(addr >= self.code_vaddr);
         let delta = addr - self.code_vaddr;
+        //println!("DELTA: {:08X}", delta);
         for &reloc in self.relocs.iter() {
             let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
             let pcode: *mut u32 = dwords.as_mut_ptr();

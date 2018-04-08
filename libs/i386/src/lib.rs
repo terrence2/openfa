@@ -40,22 +40,33 @@ pub enum DisassemblyError {
     },
 }
 
-//pub struct Machine {
-//    registers: [u32; 8],
-//    memory_map: HashMap<usize, usize>,
-//}
-//
-//impl Machine {
-//    pub fn new() -> Self {
-//        Machine {
-//            registers: [0, 0, 0, 0, 0, 0, 0, 0],
-//            memory_map: HashMap::new(),
-//        }
-//    }
-//}
+impl DisassemblyError {
+    pub fn maybe_show(e: &Error, code: &[u8]) -> bool {
+        if let Some(&DisassemblyError::UnknownOpcode { ip, op: (op, ext) }) = e.downcast_ref::<DisassemblyError>() {
+            println!("Unknown OpCode: {:2X} /{}", op, ext);
+            let line1 = bs2s(&code[0..]);
+            let mut line2 = String::new();
+            for _ in 0..(ip - 1) * 3 {
+                line2 += "-";
+            }
+            line2 += "^";
+            println!("{}\n{}", line1, line2);
+
+            use std::io::*;
+            use std::fs::File;
+            let name = "error";
+            let tmp_name = format!("/tmp/{}-{}.x86", name, 0);
+            let mut file = File::create(tmp_name).unwrap();
+            file.write_all(&code[0..]).unwrap();
+
+            return true;
+        }
+        return false;
+    }
+}
 
 #[derive(Debug)]
-enum Reg {
+pub enum Reg {
     AL,
     BL,
     CL,
@@ -69,6 +80,10 @@ enum Reg {
     BX,
     CX,
     DX,
+    SP,
+    BP,
+    SI,
+    DI,
 
     EAX,
     ECX,
@@ -79,11 +94,13 @@ enum Reg {
     ESI,
     EDI,
 
+    DS,
+    ES,
     FS,
 }
 
 #[derive(Debug)]
-struct MemRef {
+pub struct MemRef {
     displacement: i32,
     base: Option<Reg>,
     index: Option<Reg>,
@@ -99,6 +116,16 @@ impl MemRef {
             index: None,
             scale: 1,
             segment: Self::segment(prefix),
+        }
+    }
+
+    fn base_plus_segment(base: Reg, segment: Reg) -> Self {
+        MemRef {
+            displacement: 0,
+            base: Some(base),
+            index: None,
+            scale: 1,
+            segment: Some(segment),
         }
     }
 
@@ -150,7 +177,7 @@ impl OperandDecodeState {
         let b = code[*ip];
         *ip += 1;
         let out = Operand::modrm(b);
-        //println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
+        println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
         self.modrm = Some(b);
 
         return Ok(out);
@@ -158,7 +185,7 @@ impl OperandDecodeState {
 }
 
 #[derive(Debug)]
-enum Operand {
+pub enum Operand {
     Imm32(u32),
     Imm32s(i32),
     Memory(MemRef),
@@ -173,7 +200,10 @@ impl Operand {
             AddressingMethod::G => Self::from_bytes_mode_G(code, ip, desc, state),
             AddressingMethod::I => Self::from_bytes_mode_I(code, ip, desc, state),
             AddressingMethod::J => Self::from_bytes_mode_J(code, ip, desc, state),
+            AddressingMethod::M => Self::from_bytes_mode_E(code, ip, desc, state), // note: just a subset of E
             AddressingMethod::O => Self::from_bytes_mode_O(code, ip, desc, state),
+            AddressingMethod::X => Self::from_bytes_mode_X(code, ip, desc, state),
+            AddressingMethod::Y => Self::from_bytes_mode_Y(code, ip, desc, state),
             AddressingMethod::Z => Self::from_bytes_mode_Z(state),
             AddressingMethod::Imp => Self::from_bytes_mode_Imp(desc, state),
         };
@@ -215,6 +245,7 @@ impl Operand {
             0b11 => {
                 match desc.ty {
                     OperandType::b => Operand::Register(Self::register_low(rm)),
+                    OperandType::w => Operand::Register(Self::register_word(rm)),
                     OperandType::v => Operand::Register(Self::maybe_toggle_reg_size(Self::register(rm), state.prefix.toggle_operand_size)),
                     _ => unreachable!()
                 }
@@ -271,6 +302,14 @@ impl Operand {
         })
     }
 
+    fn from_bytes_mode_X(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(Operand::Memory(MemRef::base_plus_segment(Self::maybe_toggle_reg_size(Reg::ESI, state.prefix.toggle_operand_size), Reg::DS)))
+    }
+
+    fn from_bytes_mode_Y(code: &[u8], ip: &mut usize, desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self, Error> {
+        Ok(Operand::Memory(MemRef::base_plus_segment(Self::maybe_toggle_reg_size(Reg::EDI, state.prefix.toggle_operand_size), Reg::ES)))
+    }
+
     fn from_bytes_mode_Z(state: &mut OperandDecodeState) -> Result<Self, Error> {
         Ok(Operand::Register(Self::maybe_toggle_reg_size(Self::register((state.op & 0b111) as u8), state.prefix.toggle_operand_size)))
     }
@@ -299,6 +338,20 @@ impl Operand {
         }
     }
 
+    fn register_word(b: u8) -> Reg {
+        match b {
+            0 => Reg::AX,
+            1 => Reg::CX,
+            2 => Reg::DX,
+            3 => Reg::BX,
+            4 => Reg::SP,
+            5 => Reg::BP,
+            6 => Reg::SI,
+            7 => Reg::DI,
+            _ => unreachable!()
+        }
+    }
+
     fn register_low(b: u8) -> Reg {
         match b {
             0 => Reg::AL,
@@ -317,9 +370,11 @@ impl Operand {
         if toggle_operand_size {
             match reg {
                 Reg::EAX => Reg::AX,
+                Reg::EBX => Reg::BX,
                 Reg::ECX => Reg::CX,
                 Reg::EDX => Reg::DX,
-                Reg::ESI => Reg::DH,
+                Reg::ESI => Reg::SI,
+                Reg::EBP => Reg::BP,
                 _ => unreachable!()
             }
         } else {
@@ -404,6 +459,7 @@ struct OpPrefix {
     toggle_address_size: bool,
     toggle_operand_size: bool,
     use_fs_segment: bool,
+    toggle_repeat: bool,
 }
 
 impl OpPrefix {
@@ -412,6 +468,7 @@ impl OpPrefix {
             toggle_address_size: false,
             toggle_operand_size: false,
             use_fs_segment: false,
+            toggle_repeat: false,
         }
     }
 
@@ -420,6 +477,7 @@ impl OpPrefix {
             0x64 => self.use_fs_segment = true,
             0x66 => self.toggle_operand_size = true,
             0x67 => self.toggle_address_size = true,
+            0xF3 => self.toggle_repeat = true,
             _ => unreachable!()
         }
         return self;
@@ -438,25 +496,13 @@ impl OpPrefix {
 #[derive(Debug)]
 pub struct Instr {
     pub memonic: Memonic,
-    operands: Vec<Operand>,
-    raw: Vec<u8>,
+    pub operands: Vec<Operand>,
+    pub raw: Vec<u8>,
 }
 
 impl Instr {
-    pub fn disassemble(code: &[u8], verbose: bool) -> Result<Vec<Instr>, Error> {
-        if verbose {
-            println!("Disassembling: {}", bs2s(code));
-        }
-        let mut instrs = Vec::new();
-        let mut ip = 0usize;
-        while ip < code.len() {
-            let instr = Self::decode_one(code, &mut ip)?;
-            if verbose {
-                println!("  @{}: {}", ip, instr);
-            }
-            instrs.push(instr);
-        }
-        return Ok(instrs);
+    pub fn size(&self) -> usize {
+        return self.raw.len();
     }
 
     fn read_op(code: &[u8], ip: &mut usize) -> Result<(u16, u8), Error> {
@@ -528,6 +574,68 @@ impl fmt::Display for Instr {
     }
 }
 
+#[derive(Debug)]
+pub struct ByteCode {
+    pub instrs: Vec<Instr>,
+}
+
+impl ByteCode {
+    pub fn disassemble(code: &[u8], verbose: bool) -> Result<Self, Error> {
+        if verbose {
+            println!("Disassembling: {}", bs2s(code));
+        }
+        let mut instrs = Vec::new();
+        let mut ip = 0usize;
+        while ip < code.len() {
+            let instr = Instr::decode_one(code, &mut ip)?;
+            if verbose {
+                println!("  @{}: {}", ip, instr);
+            }
+            instrs.push(instr);
+        }
+        return Ok(Self { instrs });
+    }
+
+    pub fn disassemble_to_ret(code: &[u8], verbose: bool) -> Result<Self, Error> {
+        if verbose {
+            println!("Disassembling: {}", bs2s(code));
+        }
+        let mut instrs = Vec::new();
+        let mut ip = 0usize;
+        while ip < code.len() {
+            let instr = Instr::decode_one(code, &mut ip)?;
+            if verbose {
+                println!("  @{}: {}", ip, instr);
+            }
+            let is_ret = instr.memonic == Memonic::Return;
+            instrs.push(instr);
+            if is_ret {
+                break;
+            }
+        }
+        return Ok(Self { instrs });
+    }
+
+    pub fn size(&self) -> usize {
+        let mut sz = 0;
+        for instr in self.instrs.iter() {
+            sz += instr.size();
+        }
+        return sz;
+    }
+}
+
+impl fmt::Display for ByteCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut pos = 0;
+        for instr in self.instrs.iter() {
+            writeln!(f, "  @{:02X}: {}", pos, instr)?;
+            pos += instr.size();
+        }
+        return Ok(());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -546,19 +654,11 @@ mod tests {
             let mut data = Vec::new();
             fp.read_to_end(&mut data).unwrap();
 
-            let bc = Instr::disassemble(&data, true);
+            let bc = ByteCode::disassemble(&data, true);
             if let Err(ref e) = bc {
-                if let Some(&DisassemblyError::UnknownOpcode { ip: ip, op: (op, ext) }) = e.downcast_ref::<DisassemblyError>() {
-                    println!("Unknown OpCode: {:2X} /{}", op, ext);
-                    let line1 = bs2s(&data);
-                    let mut line2 = String::new();
-                    for i in 0..(ip - 1) * 3 {
-                        line2 += "-";
-                    }
-                    line2 += "^";
-                    println!("{}\n{}", line1, line2);
+                if !DisassemblyError::maybe_show(e, &data) {
+                    println!("Error: {}", e);
                 }
-                println!("Error: {}", e);
             }
             bc.unwrap();
         }

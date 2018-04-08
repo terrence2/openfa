@@ -33,10 +33,25 @@ pub enum AddressingMethod {
     // (for example, JMP (E9), LOOP)).
     J,
 
+    // The ModR/M byte may refer only to memory: mod != 11bin (BOUND, LEA, CALLF, JMPF, LES, LDS,
+    // LSS, LFS, LGS, CMPXCHG8B, CMPXCHG16B, F20FF0 LDDQU).
+    M,
+
     // The instruction has no ModR/M byte; the offset of the operand is coded as a word, double
     // word or quad word (depending on address size attribute) in the instruction. No base register,
     // index register, or scaling factor can be applied (only MOV  (A0, A1, A2, A3)).
     O,
+
+    // Memory addressed by the DS:eSI or by RSI (only MOVS, CMPS, OUTS, and LODS). In 64-bit mode,
+    // only 64-bit (RSI) and 32-bit (ESI) address sizes are supported. In non-64-bit modes, only
+    // 32-bit (ESI) and 16-bit (SI) address sizes are supported.
+    X,
+
+    // Memory addressed by the ES:eDI or by RDI (only MOVS, CMPS, INS, STOS, and SCAS). In 64-bit
+    // mode, only 64-bit (RDI) and 32-bit (EDI) address sizes are supported. In non-64-bit modes,
+    // only 32-bit (EDI) and 16-bit (DI) address sizes are supported. The implicit ES segment
+    // register cannot be overriden by a segment prefix.
+    Y,
 
     // The instruction has no ModR/M byte; the three least-significant bits of the opcode byte
     // selects a general-purpose register
@@ -62,6 +77,9 @@ pub enum OperandType {
 
     // Word or doubleword sign extended to the size of the stack pointer (for example, PUSH (68)).
     vs,
+
+    // Word, regardless of operand-size attribute (for example, ENTER).
+    w,
 
     // Implicit register.
     eAX,
@@ -155,13 +173,17 @@ pub enum Memonic {
     ClearDF,
     Compare,
     Dec,
+    Div,
     Jump,
     Jcc(ConditionCode),
     Inc,
     IDiv,
     IMul,
+    LEA,
     Move,
+    MoveStr,
     MoveZX,
+    Mul,
     Neg,
     Or,
     Pop,
@@ -172,7 +194,7 @@ pub enum Memonic {
     RotateR,
     ShiftR,
     Sar,
-    Shl,
+    ShiftL,
     //Sbb,
     Sub,
     Test,
@@ -276,11 +298,13 @@ lazy_static! {
             (0x03, 0, make_op!(Add:     G/v, E/v)),
             (0x05, 0, make_op!(Add:     Imp/eAX, I/v)),
             (0x0B, 0, make_op!(Or:      G/v, E/v)),
+            (0x25, 0, make_op!(And:     Imp/eAX, I/v)),
             (0x2A, 0, make_op!(Sub:     G/b, E/b)),
             (0x2B, 0, make_op!(Sub:     G/v, E/v)),
             (0x2D, 0, make_op!(Sub:     Imp/eAX, I/v)),
             (0x32, 0, make_op!(Xor:     G/b, E/b)),
             (0x33, 0, make_op!(Xor:     G/v, E/v)),
+            (0x3B, 0, make_op!(Compare: G/v, E/v)),
             (0x3C, 0, make_op!(Compare: Imp/AL, I/b)),
             (0x3D, 0, make_op!(Compare: Imp/eAX, I/v)),
             (0x40, 0, make_op!(Inc:     Z/v)),
@@ -314,33 +338,40 @@ lazy_static! {
             (0x81, 7, make_op!(Compare: E/v, I/v)),
             (0x83, 0, make_op!(Add:     E/v, I/bs)),
             (0x83, 1, make_op!(Or:      E/v, I/bs)),
-            //(0x83, 2, make_op!(Adc:     E/v, I/bs)),
-            //(0x83, 3, make_op!(Sbb:     E/v, I/bs)),
             (0x83, 4, make_op!(And:     E/v, I/bs)),
             (0x83, 7, make_op!(Compare: E/v, I/bs)),
             (0x89, 0, make_op!(Move:    E/v, G/v)),
             (0x8A, 0, make_op!(Move:    G/b, E/b)),
             (0x8B, 0, make_op!(Move:    G/v, E/v)),
+            (0x8D, 0, make_op!(LEA:     G/v, M/v)),
             (0xA1, 0, make_op!(Move:    Imp/eAX, O/v)),
+            (0xA4, 0, make_op!(MoveStr: Y/b, X/b)),
             (0xB8, 0, make_op!(Move:    Z/v, I/v)),
-            (0xC1, 4, make_op!(Shl:     E/v, I/b)),
+            (0xC1, 4, make_op!(ShiftL:  E/v, I/b)),
             (0xC1, 5, make_op!(ShiftR:  E/v, I/b)),
             (0xC1, 7, make_op!(Sar:     E/v, I/b)),
             (0xC3, 0, make_op!(Return:)),
             (0xC6, 0, make_op!(Move:    E/b, I/b)),
             (0xC7, 0, make_op!(Move:    E/v, I/v)),
             (0xD1, 1, make_op!(RotateR: E/v, Imp/const1)),
+            (0xD1, 4, make_op!(ShiftL:  E/v)),
             (0xD1, 7, make_op!(Sar:     E/v, Imp/const1)),
             (0xE8, 0, make_op!(Call:    J/v)),
             (0xE9, 0, make_op!(Jump:    J/v)),
             (0xEB, 0, make_op!(Jump:    J/bs)),
             (0xF7, 0, make_op!(Test:    E/v, I/v)),
             (0xF7, 3, make_op!(Neg:     E/v)),
+            (0xF7, 4, make_op!(Mul:     Imp/eDX, Imp/eAX, E/v)),
             (0xF7, 5, make_op!(IMul:    Imp/eDX, Imp/eAX, E/v)),
+            (0xF7, 6, make_op!(Div:     Imp/eDX, Imp/eAX, E/v)),
             (0xF7, 7, make_op!(IDiv:    Imp/eDX, Imp/eAX, E/v)),
             (0xFC, 0, make_op!(ClearDF:)),
+            (0xFF, 1, make_op!(Dec:     E/v)),
 
+            (0x0F85, 0, make_op!(J|ZF=0: J/v)),
+            (0x0FAF, 0, make_op!(IMul:   G/v, E/v)),
             (0x0FB6, 0, make_op!(MoveZX: G/v, E/b)),
+            (0x0FB7, 0, make_op!(MoveZX: G/v, E/w)),
         ];
         for &(ref op, ref ext, ref def) in ops.iter() {
             out.insert((*op, *ext), (*def).clone());
