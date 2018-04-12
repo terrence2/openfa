@@ -309,7 +309,7 @@ impl Section {
             SectionKind::Main(k) => {
                 match k {
                     0xFFFF => Color::Blue,
-                    0x00F0 => Color::BrightGreen,
+                    0x00F0 => Color::Green,
                     0x00F2 => Color::Blue,
                     0x00DA => Color::Magenta,
                     0x00CA => Color::Blue,

@@ -572,30 +572,31 @@ impl X86Code {
         external_jumps.insert(*offset);
 
         while external_jumps.len() > 0 {
-            println!("We are currently at {} with external jumps: {:?}", *offset, external_jumps);
+            //println!("We are currently at {} with external jumps: {:?}", *offset, external_jumps);
             if external_jumps.contains(&offset) {
                 external_jumps.remove(&offset);
-                println!("IP REACHED EXTERNAL JUMP");
+                //println!("IP REACHED EXTERNAL JUMP");
 
                 let code = &pe.code[*offset..];
-                let maybe_bc = i386::ByteCode::disassemble_to_ret(code, true);
+                let maybe_bc = i386::ByteCode::disassemble_to_ret(code, false);
                 if let Err(e) = maybe_bc {
                     i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
                     bail!("Don't know how to disassemble at {}", *offset);
                 }
                 let bc = maybe_bc?;
-                println!("Decoded block:\n{}", bc);
+                //println!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, &bc, &mut external_jumps);
-                println!("Next external jumps: {:?}", external_jumps);
+                //println!("Next external jumps: {:?}", external_jumps);
 
                 // Insert the instruction.
-                *offset += bc.size();
+                let bc_size = bc.size();
                 vinstrs.push(Instr::X86Code(X86Code {
                     offset: *offset,
                     code: code[0..bc.size()].to_owned(),
                     formatted: Self::format_section(*offset, &bc, pe),
                     bytecode: bc,
                 }));
+                *offset += bc_size;
 
                 if external_jumps.len() == 0 {
                     return Ok(());
@@ -607,7 +608,7 @@ impl X86Code {
             if let Err(e) = maybe {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                println!("UNKNOWN DATA @{:04X}: {}", *offset, bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset+80)]));
+                //println!("UNKNOWN DATA @{:04X}: {}", *offset, bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset+80)]));
                 let end = Self::lowest_jump(&external_jumps);
                 vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
                     offset: *offset,
@@ -618,176 +619,15 @@ impl X86Code {
                 if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
                     return Ok(());
                 }
-                println!("processed instr: {:?}", vinstrs.last().unwrap());
+                //println!("processed instr: {:?}", vinstrs.last().unwrap());
             }
         }
 
         return Ok(());
-
-
-//        let mut instrs = Vec::new();
-//        let mut ip = 0;
-//        loop {
-//            //println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip + 4]));
-//            let maybe_instr = i386::Instr::decode_one(code, &mut ip);
-//            if let Err(ref e) = maybe_instr {
-//                if !i386::DisassemblyError::maybe_show(e, &code) {
-//                    println!("Error: {}", e);
-//                }
-//            }
-//            let instr = maybe_instr?;
-//            let is_jump = match instr.memonic {
-//                i386::Memonic::Call => true,
-//                i386::Memonic::Jump => true,
-//                i386::Memonic::Jcc(ref _cc) => true,
-//                _ => false
-//            };
-//            if is_jump {
-//                let delta = match instr.operands[0] {
-//                    i386::Operand::Imm32s(delta) => delta as i64,
-//                    i386::Operand::Imm32(delta) => delta as i64,
-//                    _ => panic!("Detected indirect jump target: {}", instr.operands[0])
-//                };
-//                println!("FOUND JUMP FROM {:X} to {:X}", ip, ip as i64 + delta);
-//            };
-//
-//            let is_ret = instr.memonic == i386::Memonic::Return;
-//            println!("instr: {}", instr);
-//            instrs.push(instr);
-//
-//            let words: &[u16] = unsafe { mem::transmute(&code[ip..]) };
-//
-//            // Unfortunately, it seems like there is no decidable way to do this statically as the
-//            // code can embed raw strings.
-//            if is_ret && ALL_OPCODES.contains(&code[ip]) {
-//                // If the second byte is 0, then try to decode some VM codes:
-//                if code[ip + 1] == 0 {}
-//
-//                // If the second byte is a 0, then we can be pretty sure it's actually an opcode.
-//                // Or if the opcode byte is in the ONE_BYTE set, then the one byte we've seen was
-//                // probably actually an opcode.
-//                if words[0] == 0x0048 {
-//                    ip += 4;
-//                } else if words[0] == 0x002E {
-//                    ip += 18;
-//                } else if words[0] == 0x007A {
-//                    ip += 10;
-//                } else if code[ip + 1] == 0 || ONE_BYTE_MAGIC.contains(&code[ip]) {
-//                    break;
-//                }
-//
-//                // There may be a string here! Let's check for some that we know about.
-//                let foo = str::from_utf8(&code[ip..ip + 24]);
-//                if let Ok(s) = foo {
-//                    println!("EMBEDDED STRING: {}", s);
-//                    if s == "Bad value in chaff.asm!\0" {
-//                        println!("Skipping");
-//                        ip += 24;
-//                    }
-//                }
-//            }
-//        }
-
-//        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
-//        let mut file = File::create(tmp_name).unwrap();
-//        file.write_all(&code[0..bc.size()]).unwrap();
-//
-//        let instr = Instr::X86Code(X86Code {
-//            offset,
-//            code: code[0..bc.size()].to_owned(),
-//            bytecode: bc,
-//            formatted: fmt,
-//        });
-//        vinstrs.push(instr);
-//        return Ok(vinstrs);
-
-//
-//        // Find the next ret opcode that is followed by a known section header.
-//        let mut end = 0;
-//        let mut ip = 0;
-//
-//        loop {
-//            if ip >= code.len() {
-//                panic!("we should ret well before here")
-//            }
-//            if code[ip] == 0xC3 {
-//                ip += 1;
-//                let next_code: &[u16] = unsafe { mem::transmute(&section[2 + ip..]) };
-//                /*
-//                UNKNOWN
-//                0x0000
-//                0x0566
-//                0x05EB
-//                0xE850
-//
-//                MAYBE SECTION?
-//                0x0066
-//
-//                KNOWN Sections
-//                0x0010
-//                0x0012
-//                0x0048**
-//                0x0082
-//                0x00B8
-//                0x00C4
-//                0x00C8
-//                0x00D0
-//                0x00E2
-//                0x0006
-//                0x00F0
-//
-//                KNOWN with mod
-//                0xXXFC
-//                0xXX1E
-//                */
-//
-//                // Our x86 virtual interpreter only supports a couple ops, so in order to get things
-//                // working for now, we're just going to fast-forward past anything that doesn't
-//                // look quite right.
-//                if next_code[0] == 0x0048 ||
-//                    next_code[0] == 0x0000 ||
-//                    next_code[0] == 0x0566 ||
-//                    next_code[0] == 0x05EB ||
-//                    next_code[0] == 0xE850 ||
-//                    next_code[0] == 0x8966 ||
-//                    next_code[0] == 0x002E
-//                    {
-//                        ip += 2;
-//                    } else {
-//                    // println!("0x{:04X}", next_code[0]);
-//                    end = ip;
-//                    break;
-//                }
-//            }
-//
-//            if code[ip] == 0x68 { // push dword
-//                ip += 5;
-//            } else if code[ip] == 0x81 { // op reg imm32
-//                ip += 6;
-//            } else {
-//                ip += 1;
-//            }
-//        }
-//
-//        let sec = reverse::Section::new(0xF0, offset, end + 2);
-//        let tags = reverse::get_all_tags(pe);
-//        let mut v = Vec::new();
-//        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
-//        let fmt = v.iter().collect::<String>();
-//
-//        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
-//        let mut file = File::create(tmp_name).unwrap();
-//        file.write_all(&code[0..end]).unwrap();
-//
-//        return Ok(X86Code {
-//            offset,
-//            code: code[0..end].to_owned(),
-//            formatted: fmt,
-//        });
     }
 
     fn format_section(offset: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
-        let sec = reverse::Section::new(0xF0, offset, 2 + bc.size());
+        let sec = reverse::Section::new(0xF0, offset, bc.size());
         let tags = reverse::get_all_tags(pe);
         let mut v = Vec::new();
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
@@ -1316,10 +1156,10 @@ impl CpuShape {
 
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
-            println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
+            //println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
             Self::read_instr(&mut offset, pe, &mut instrs)?;
-            println!("=>: {}", instrs.last().unwrap().show());
+            //println!("=>: {}", instrs.last().unwrap().show());
         }
 
         // Assertions.

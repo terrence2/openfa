@@ -13,11 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
+extern crate i386;
 extern crate reverse;
 extern crate sh;
 
 use std::fs;
 use std::io::prelude::*;
+use std::collections::HashMap;
 use clap::{Arg, App};
 use sh::{Instr, CpuShape};
 
@@ -28,13 +30,15 @@ fn main() {
         .about("Slice up shape data for digestion.")
         .arg(Arg::with_name("all")
             .long("--all")
-            .short("-a")
             .takes_value(false)
             .required(false)
             .conflicts_with_all(&["last"]))
         .arg(Arg::with_name("last")
             .long("--last")
-            .short("-l")
+            .takes_value(false)
+            .required(false))
+        .arg(Arg::with_name("memory")
+            .long("--memory")
             .takes_value(false)
             .required(false))
         .arg(Arg::with_name("INPUT")
@@ -59,6 +63,25 @@ fn main() {
                 .map(|i| i.show())
                 .ok_or("NO INSTRUCTIONS").unwrap();
             println!("{:20}: {}", name, fmt);
+        } else if matches.is_present("memory") {
+            let mut dedup = HashMap::new();
+            for vinstr in shape.instrs {
+                if let sh::Instr::X86Code(x86) = vinstr {
+                    for instr in x86.bytecode.instrs {
+                        for operand in instr.operands {
+                            if let i386::Operand::Memory(memref) = operand {
+                                let key = format!("{}", memref);
+                                *dedup.entry(key).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            let mut memrefs = dedup.keys().map(|s| s.to_owned()).collect::<Vec<String>>();
+            memrefs.sort();
+            for memref in memrefs.iter() {
+                println!("{} - {}", dedup[memref], memref);
+            }
         }
 
 //        for (i, instr) in shape.instrs.iter().enumerate() {
