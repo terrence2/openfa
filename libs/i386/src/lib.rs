@@ -154,6 +154,26 @@ impl MemRef {
     }
 }
 
+impl fmt::Display for MemRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let seg = if let Some(ref r) = self.segment {
+            format!("{:?}:", r)
+        } else {
+            "".to_owned()
+        };
+        match (&self.base, &self.index) {
+            (&Some(ref base), &Some(ref index)) =>
+                write!(f, "{}[{:?}+{:?}*{}+0x{:X}]", seg, base, index, self.scale, self.displacement),
+            (&Some(ref base), &None) =>
+                write!(f, "{}[{:?}+0x{:X}]", seg, base, self.displacement),
+            (&None, &Some(ref index)) =>
+                write!(f, "{}[{:?}*{}+0x{:X}]", seg, index, self.scale, self.displacement),
+            (&None, &None) =>
+                write!(f, "{}[0x{:X}]", seg, self.displacement),
+        }
+    }
+}
+
 struct OperandDecodeState {
     prefix: OpPrefix,
     op: u16,
@@ -434,23 +454,7 @@ impl fmt::Display for Operand {
             &Operand::Register(ref r) => write!(f, "{:?}", r),
             &Operand::Imm32(x) => write!(f, "0x{:X}", x),
             &Operand::Imm32s(x) => write!(f, "0x{:X}", x),
-            &Operand::Memory(ref mr) => {
-                let seg = if let Some(ref r) = mr.segment {
-                    format!("{:?}:", r)
-                } else {
-                    "".to_owned()
-                };
-                match (&mr.base, &mr.index) {
-                    (&Some(ref base), &Some(ref index)) =>
-                        write!(f, "{}[{:?}+{:?}*{}+0x{:X}]", seg, base, index, mr.scale, mr.displacement),
-                    (&Some(ref base), &None) =>
-                        write!(f, "{}[{:?}+0x{:X}]", seg, base, mr.displacement),
-                    (&None, &Some(ref index)) =>
-                        write!(f, "{}[{:?}*{}+0x{:X}]", seg, index, mr.scale, mr.displacement),
-                    (&None, &None) =>
-                        write!(f, "{}[0x{:X}]", seg, mr.displacement),
-                }
-            }
+            &Operand::Memory(ref mr) => write!(f, "{}", mr),
         }
     }
 }

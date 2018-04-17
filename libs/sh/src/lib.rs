@@ -625,13 +625,14 @@ impl X86Code {
                 //println!("Next external jumps: {:?}", external_jumps);
 
                 // Insert the instruction.
-                *offset += bc.size();
+                let bc_size = bc.size();
                 vinstrs.push(Instr::X86Code(X86Code {
                     offset: *offset,
                     code: code[0..bc.size()].to_owned(),
                     formatted: Self::format_section(*offset, &bc, pe),
                     bytecode: bc,
                 }));
+                *offset += bc_size;
 
                 if external_jumps.len() == 0 {
                     return Ok(());
@@ -662,7 +663,7 @@ impl X86Code {
     }
 
     fn format_section(offset: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
-        let sec = reverse::Section::new(0xF0, offset, 2 + bc.size());
+        let sec = reverse::Section::new(0xF0, offset, bc.size());
         let tags = reverse::get_all_tags(pe);
         let mut v = Vec::new();
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
