@@ -177,7 +177,7 @@ impl OperandDecodeState {
         let b = code[*ip];
         *ip += 1;
         let out = Operand::modrm(b);
-        println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
+        //println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
         self.modrm = Some(b);
 
         return Ok(out);

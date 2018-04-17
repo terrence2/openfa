@@ -27,7 +27,7 @@ use failure::Error;
 use std::path::{Path, PathBuf};
 use std::{cmp, fmt, fs, mem, str};
 use std::collections::{HashMap, HashSet};
-use reverse::{bs2s, b2h, b2b, Escape, Color};
+use reverse::{Color, Escape, b2b, b2h, bs2s};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -35,7 +35,7 @@ use std::io::prelude::*;
 #[derive(Debug, Fail)]
 enum ShError {
     #[fail(display = "name ran off end of file")]
-    NameUnending {}
+    NameUnending {},
 }
 
 lazy_static! {
@@ -123,8 +123,9 @@ impl FacetFlags {
 use std::convert::AsMut;
 
 fn clone_into_array<A, T>(slice: &[T]) -> A
-    where A: Sized + Default + AsMut<[T]>,
-          T: Clone
+where
+    A: Sized + Default + AsMut<[T]>,
+    T: Clone,
 {
     let mut a = Default::default();
     <A as AsMut<[T]>>::as_mut(&mut a).clone_from_slice(slice);
@@ -132,7 +133,8 @@ fn clone_into_array<A, T>(slice: &[T]) -> A
 }
 
 fn read_name(n: &[u8]) -> Result<String, Error> {
-    let end_offset: usize = n.iter().position(|&c| c == 0)
+    let end_offset: usize = n.iter()
+        .position(|&c| c == 0)
         .ok_or::<ShError>(ShError::NameUnending {})?;
     return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
 }
@@ -188,7 +190,7 @@ impl TextureIndexKind {
             2 => Ok(TextureIndexKind::Nose),
             3 => Ok(TextureIndexKind::WingLeft),
             4 => Ok(TextureIndexKind::WingRight),
-            _ => bail!("unknown texture index")
+            _ => bail!("unknown texture index"),
         }
     }
 }
@@ -208,7 +210,11 @@ impl TextureIndex {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        return Ok(TextureIndex { offset, unk0: data[1], kind: TextureIndexKind::from_u16(data2[0])? });
+        return Ok(TextureIndex {
+            offset,
+            unk0: data[1],
+            kind: TextureIndexKind::from_u16(data2[0])?,
+        });
     }
 
     fn size(&self) -> usize {
@@ -220,7 +226,10 @@ impl TextureIndex {
     }
 
     fn show(&self) -> String {
-        format!("TextureIndexKind @ {:04X}: {}, {:?}", self.offset, self.unk0, self.kind)
+        format!(
+            "TextureIndexKind @ {:04X}: {}, {:?}",
+            self.offset, self.unk0, self.kind
+        )
     }
 }
 
@@ -239,7 +248,11 @@ impl SourceRef {
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0x00, "unexpected non-nil in hi");
         let source = read_name(&data[2..])?;
-        return Ok(SourceRef { offset, unk0: data[1], source });
+        return Ok(SourceRef {
+            offset,
+            unk0: data[1],
+            source,
+        });
     }
 
     fn size(&self) -> usize {
@@ -251,7 +264,10 @@ impl SourceRef {
     }
 
     fn show(&self) -> String {
-        format!("SourceRef @ {:04X}: {}, {}", self.offset, self.unk0, self.source)
+        format!(
+            "SourceRef @ {:04X}: {}, {}",
+            self.offset, self.unk0, self.source
+        )
     }
 }
 
@@ -272,8 +288,15 @@ impl VertexBuf {
         assert_eq!(data[1], 0);
         let head: &[u16] = unsafe { mem::transmute(&data[2..6]) };
         let words: &[u16] = unsafe { mem::transmute(&data[6..]) };
-        let mut buf = VertexBuf { offset, unk0: head[2], raw_verts: Vec::new(), verts: Vec::new() };
-        fn s2f(s: u16) -> f32 { (s as i16) as f32 }
+        let mut buf = VertexBuf {
+            offset,
+            unk0: head[2],
+            raw_verts: Vec::new(),
+            verts: Vec::new(),
+        };
+        fn s2f(s: u16) -> f32 {
+            (s as i16) as f32
+        }
         let nverts = head[0] as usize;
         for i in 0..nverts {
             let x = s2f(words[i * 3 + 0]);
@@ -298,12 +321,19 @@ impl VertexBuf {
     }
 
     fn show(&self) -> String {
-        let s = self.raw_verts.iter()
-            .map(|v| { format!("({:04X},{:04X},{:04X})", v[0], v[1], v[2]) })
+        let s = self.raw_verts
+            .iter()
+            .map(|v| format!("({:04X},{:04X},{:04X})", v[0], v[1], v[2]))
             .collect::<Vec<String>>()
             .join(", ");
-        format!("VertexBuf @ {:04X}: {} ({:b}) => {}verts -> {}", self.offset, self.unk0,
-                self.unk0, self.verts.len(), s)
+        format!(
+            "VertexBuf @ {:04X}: {} ({:b}) => {}verts -> {}",
+            self.offset,
+            self.unk0,
+            self.unk0,
+            self.verts.len(),
+            s
+        )
     }
 }
 
@@ -414,7 +444,7 @@ impl Facet {
     // FC 0b1110_1110_0000_0011  68 00 80 A5 80 A5 00 00 25 FF 01            04   7D 02 06 7E           5E 0A 61 0A 61 24 5E 24
     // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
     // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
-    */
+     */
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
@@ -465,12 +495,10 @@ impl Facet {
             for i in 0..index_count {
                 let (u, v) = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) {
                     off += 2;
-                    (tc_u8[i * 2 + 0] as u16,
-                     tc_u8[i * 2 + 1] as u16)
+                    (tc_u8[i * 2 + 0] as u16, tc_u8[i * 2 + 1] as u16)
                 } else {
                     off += 4;
-                    (tc_u16[i * 2 + 0],
-                     tc_u16[i * 2 + 1])
+                    (tc_u16[i * 2 + 0], tc_u16[i * 2 + 1])
                 };
                 tex_coords.push([u, v]);
             }
@@ -499,10 +527,15 @@ impl Facet {
     }
 
     fn show(&self) -> String {
-        let ind = self.indices.iter().map(|i| format!("{:X}", i))
+        let ind = self.indices
+            .iter()
+            .map(|i| format!("{:X}", i))
             .collect::<Vec<String>>()
             .join(", ");
-        format!("Facet @ {:04X} : {:016b} : [{}] : {:?}", self.offset, self.flags, ind, self.tex_coords)
+        format!(
+            "Facet @ {:04X} : {:016b} : [{}] : {:?}",
+            self.offset, self.flags, ind, self.tex_coords
+        )
     }
 }
 
@@ -525,7 +558,7 @@ impl X86Code {
                 i386::Memonic::Call => true,
                 i386::Memonic::Jump => true,
                 i386::Memonic::Jcc(ref _cc) => true,
-                _ => false
+                _ => false,
             };
             ip += instr.size();
             if is_jump {
@@ -538,10 +571,8 @@ impl X86Code {
                             delta as u32 as usize
                         }
                     }
-                    i386::Operand::Imm32(delta) => {
-                        delta as usize
-                    }
-                    _ => panic!("Detected indirect jump target: {}", instr.operands[0])
+                    i386::Operand::Imm32(delta) => delta as usize,
+                    _ => panic!("Detected indirect jump target: {}", instr.operands[0]),
                 };
                 let ip_target = ip + delta;
                 if ip_target >= ip_end {
@@ -561,7 +592,12 @@ impl X86Code {
         return lowest;
     }
 
-    fn from_bytes(name: String, offset: &mut usize, pe: &peff::PE, vinstrs: &mut Vec<Instr>) -> Result<(), Error> {
+    fn from_bytes(
+        name: String,
+        offset: &mut usize,
+        pe: &peff::PE,
+        vinstrs: &mut Vec<Instr>,
+    ) -> Result<(), Error> {
         let section = &pe.code[*offset..];
         assert_eq!(section[0], Self::MAGIC);
         assert_eq!(section[1], 0);
@@ -572,21 +608,21 @@ impl X86Code {
         external_jumps.insert(*offset);
 
         while external_jumps.len() > 0 {
-            println!("We are currently at {} with external jumps: {:?}", *offset, external_jumps);
+            //println!("We are currently at {} with external jumps: {:?}", *offset, external_jumps);
             if external_jumps.contains(&offset) {
                 external_jumps.remove(&offset);
-                println!("IP REACHED EXTERNAL JUMP");
+                //println!("IP REACHED EXTERNAL JUMP");
 
                 let code = &pe.code[*offset..];
-                let maybe_bc = i386::ByteCode::disassemble_to_ret(code, true);
+                let maybe_bc = i386::ByteCode::disassemble_to_ret(code, false);
                 if let Err(e) = maybe_bc {
                     i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
                     bail!("Don't know how to disassemble at {}", *offset);
                 }
                 let bc = maybe_bc?;
-                println!("Decoded block:\n{}", bc);
+                //println!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, &bc, &mut external_jumps);
-                println!("Next external jumps: {:?}", external_jumps);
+                //println!("Next external jumps: {:?}", external_jumps);
 
                 // Insert the instruction.
                 *offset += bc.size();
@@ -604,186 +640,25 @@ impl X86Code {
 
             // We do not expect another F0 while we have external jumps to find.
             let maybe = CpuShape::read_instr(offset, pe, vinstrs);
-            if let Err(e) = maybe {
+            if let Err(_e) = maybe {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                println!("UNKNOWN DATA @{:04X}: {}", *offset, bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset+80)]));
+                //println!("UNKNOWN DATA @{:04X}: {}", *offset, bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset+80)]));
                 let end = Self::lowest_jump(&external_jumps);
                 vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
                     offset: *offset,
-                    data: pe.code[*offset..end].to_vec()
+                    data: pe.code[*offset..end].to_vec(),
                 }));
                 *offset = end;
             } else {
                 if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
                     return Ok(());
                 }
-                println!("processed instr: {:?}", vinstrs.last().unwrap());
+                //println!("processed instr: {:?}", vinstrs.last().unwrap());
             }
         }
 
         return Ok(());
-
-
-//        let mut instrs = Vec::new();
-//        let mut ip = 0;
-//        loop {
-//            //println!("ABOUT TO LOOK AT: {}", bs2s(&code[ip..ip + 4]));
-//            let maybe_instr = i386::Instr::decode_one(code, &mut ip);
-//            if let Err(ref e) = maybe_instr {
-//                if !i386::DisassemblyError::maybe_show(e, &code) {
-//                    println!("Error: {}", e);
-//                }
-//            }
-//            let instr = maybe_instr?;
-//            let is_jump = match instr.memonic {
-//                i386::Memonic::Call => true,
-//                i386::Memonic::Jump => true,
-//                i386::Memonic::Jcc(ref _cc) => true,
-//                _ => false
-//            };
-//            if is_jump {
-//                let delta = match instr.operands[0] {
-//                    i386::Operand::Imm32s(delta) => delta as i64,
-//                    i386::Operand::Imm32(delta) => delta as i64,
-//                    _ => panic!("Detected indirect jump target: {}", instr.operands[0])
-//                };
-//                println!("FOUND JUMP FROM {:X} to {:X}", ip, ip as i64 + delta);
-//            };
-//
-//            let is_ret = instr.memonic == i386::Memonic::Return;
-//            println!("instr: {}", instr);
-//            instrs.push(instr);
-//
-//            let words: &[u16] = unsafe { mem::transmute(&code[ip..]) };
-//
-//            // Unfortunately, it seems like there is no decidable way to do this statically as the
-//            // code can embed raw strings.
-//            if is_ret && ALL_OPCODES.contains(&code[ip]) {
-//                // If the second byte is 0, then try to decode some VM codes:
-//                if code[ip + 1] == 0 {}
-//
-//                // If the second byte is a 0, then we can be pretty sure it's actually an opcode.
-//                // Or if the opcode byte is in the ONE_BYTE set, then the one byte we've seen was
-//                // probably actually an opcode.
-//                if words[0] == 0x0048 {
-//                    ip += 4;
-//                } else if words[0] == 0x002E {
-//                    ip += 18;
-//                } else if words[0] == 0x007A {
-//                    ip += 10;
-//                } else if code[ip + 1] == 0 || ONE_BYTE_MAGIC.contains(&code[ip]) {
-//                    break;
-//                }
-//
-//                // There may be a string here! Let's check for some that we know about.
-//                let foo = str::from_utf8(&code[ip..ip + 24]);
-//                if let Ok(s) = foo {
-//                    println!("EMBEDDED STRING: {}", s);
-//                    if s == "Bad value in chaff.asm!\0" {
-//                        println!("Skipping");
-//                        ip += 24;
-//                    }
-//                }
-//            }
-//        }
-
-//        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
-//        let mut file = File::create(tmp_name).unwrap();
-//        file.write_all(&code[0..bc.size()]).unwrap();
-//
-//        let instr = Instr::X86Code(X86Code {
-//            offset,
-//            code: code[0..bc.size()].to_owned(),
-//            bytecode: bc,
-//            formatted: fmt,
-//        });
-//        vinstrs.push(instr);
-//        return Ok(vinstrs);
-
-//
-//        // Find the next ret opcode that is followed by a known section header.
-//        let mut end = 0;
-//        let mut ip = 0;
-//
-//        loop {
-//            if ip >= code.len() {
-//                panic!("we should ret well before here")
-//            }
-//            if code[ip] == 0xC3 {
-//                ip += 1;
-//                let next_code: &[u16] = unsafe { mem::transmute(&section[2 + ip..]) };
-//                /*
-//                UNKNOWN
-//                0x0000
-//                0x0566
-//                0x05EB
-//                0xE850
-//
-//                MAYBE SECTION?
-//                0x0066
-//
-//                KNOWN Sections
-//                0x0010
-//                0x0012
-//                0x0048**
-//                0x0082
-//                0x00B8
-//                0x00C4
-//                0x00C8
-//                0x00D0
-//                0x00E2
-//                0x0006
-//                0x00F0
-//
-//                KNOWN with mod
-//                0xXXFC
-//                0xXX1E
-//                */
-//
-//                // Our x86 virtual interpreter only supports a couple ops, so in order to get things
-//                // working for now, we're just going to fast-forward past anything that doesn't
-//                // look quite right.
-//                if next_code[0] == 0x0048 ||
-//                    next_code[0] == 0x0000 ||
-//                    next_code[0] == 0x0566 ||
-//                    next_code[0] == 0x05EB ||
-//                    next_code[0] == 0xE850 ||
-//                    next_code[0] == 0x8966 ||
-//                    next_code[0] == 0x002E
-//                    {
-//                        ip += 2;
-//                    } else {
-//                    // println!("0x{:04X}", next_code[0]);
-//                    end = ip;
-//                    break;
-//                }
-//            }
-//
-//            if code[ip] == 0x68 { // push dword
-//                ip += 5;
-//            } else if code[ip] == 0x81 { // op reg imm32
-//                ip += 6;
-//            } else {
-//                ip += 1;
-//            }
-//        }
-//
-//        let sec = reverse::Section::new(0xF0, offset, end + 2);
-//        let tags = reverse::get_all_tags(pe);
-//        let mut v = Vec::new();
-//        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
-//        let fmt = v.iter().collect::<String>();
-//
-//        let tmp_name = format!("/tmp/{}-{}.x86", name, offset);
-//        let mut file = File::create(tmp_name).unwrap();
-//        file.write_all(&code[0..end]).unwrap();
-//
-//        return Ok(X86Code {
-//            offset,
-//            code: code[0..end].to_owned(),
-//            formatted: fmt,
-//        });
     }
 
     fn format_section(offset: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
@@ -803,7 +678,10 @@ impl X86Code {
     }
 
     fn show(&self) -> String {
-        return format!("X86Code @ {:04X}: {}\n{}", self.offset, self.formatted, self.bytecode);
+        return format!(
+            "X86Code @ {:04X}: {}\n{}",
+            self.offset, self.formatted, self.bytecode
+        );
     }
 }
 
@@ -824,10 +702,12 @@ impl UnkCE {
         let s = &data[2..];
         return Ok(Self {
             offset,
-            data: [s[00], s[01], s[02], s[03], s[04], s[05], s[06], s[07], s[08], s[09],
-                s[10], s[11], s[12], s[13], s[14], s[15], s[16], s[17], s[18], s[19],
-                s[20], s[21], s[22], s[23], s[24], s[25], s[26], s[27], s[28], s[29],
-                s[30], s[31], s[32], s[33], s[34], s[35], s[36], s[37]],
+            data: [
+                s[00], s[01], s[02], s[03], s[04], s[05], s[06], s[07], s[08], s[09], s[10], s[11],
+                s[12], s[13], s[14], s[15], s[16], s[17], s[18], s[19], s[20], s[21], s[22], s[23],
+                s[24], s[25], s[26], s[27], s[28], s[29], s[30], s[31], s[32], s[33], s[34], s[35],
+                s[36], s[37],
+            ],
         });
     }
 
@@ -873,7 +753,7 @@ impl UnkBC {
             0x72 => 6,
             0x68 => 10,
             0x08 => 6,
-            _ => bail!("unknown section BC flags: {}", flags)
+            _ => bail!("unknown section BC flags: {}", flags),
         };
         let data = data[4..length].to_owned();
         return Ok(UnkBC {
@@ -894,7 +774,14 @@ impl UnkBC {
     }
 
     fn show(&self) -> String {
-        format!("UnkBC @ {:04X}: flags:{}, unk0:{}, len:{}, data:{}", self.offset, self.flags, self.unk0, self.length, bs2s(&self.data))
+        format!(
+            "UnkBC @ {:04X}: flags:{}, unk0:{}, len:{}, data:{}",
+            self.offset,
+            self.flags,
+            self.unk0,
+            self.length,
+            bs2s(&self.data)
+        )
     }
 }
 
@@ -918,7 +805,12 @@ impl Unk40 {
         let count = words[0] as usize;
         let length = 4 + count * 2;
         let data = words[1..count + 1].to_owned();
-        return Ok(Unk40 { offset, count, length, data });
+        return Ok(Unk40 {
+            offset,
+            count,
+            length,
+            data,
+        });
     }
 
     fn size(&self) -> usize {
@@ -930,7 +822,10 @@ impl Unk40 {
     }
 
     fn show(&self) -> String {
-        format!("Unk40 @ {:04X}: cnt:{}, len:{}, data:{:?}", self.offset, self.count, self.length, self.data)
+        format!(
+            "Unk40 @ {:04X}: cnt:{}, len:{}, data:{:?}",
+            self.offset, self.count, self.length, self.data
+        )
     }
 }
 
@@ -947,7 +842,10 @@ impl UnkF6 {
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
-        return Ok(Self { offset, data: clone_into_array(&data[1..Self::SIZE]) });
+        return Ok(Self {
+            offset,
+            data: clone_into_array(&data[1..Self::SIZE]),
+        });
     }
 
     fn size(&self) -> usize {
@@ -984,7 +882,11 @@ impl UnkJumpIfLowDetail {
         assert_eq!(data[0], Self::MAGIC);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[1..]) };
         let offset_to_next = word_ref[0] as usize;
-        return Ok(Self { offset, offset_to_next, data: clone_into_array(&data[1..Self::SIZE]) });
+        return Ok(Self {
+            offset,
+            offset_to_next,
+            data: clone_into_array(&data[1..Self::SIZE]),
+        });
     }
 
     fn size(&self) -> usize {
@@ -1001,7 +903,12 @@ impl UnkJumpIfLowDetail {
     }
 
     fn show(&self) -> String {
-        format!("UnkJumpIfLowDetail @ {:04X}: {:X} => {:X}", self.offset, self.offset_to_next, self.next_offset())
+        format!(
+            "UnkJumpIfLowDetail @ {:04X}: {:X} => {:X}",
+            self.offset,
+            self.offset_to_next,
+            self.next_offset()
+        )
     }
 }
 
@@ -1035,7 +942,11 @@ impl UnkJumpIfNotShown {
         assert_eq!(data[1], 0x00);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
         let offset_to_next = word_ref[0] as usize;
-        return Ok(Self { offset, offset_to_next, data: clone_into_array(&data[2..Self::SIZE]) });
+        return Ok(Self {
+            offset,
+            offset_to_next,
+            data: clone_into_array(&data[2..Self::SIZE]),
+        });
     }
 
     fn size(&self) -> usize {
@@ -1052,7 +963,12 @@ impl UnkJumpIfNotShown {
     }
 
     fn show(&self) -> String {
-        format!("UnkJumpIfNotShown @ {:04X}: {:X} => {:X}", self.offset, self.offset_to_next, self.next_offset())
+        format!(
+            "UnkJumpIfNotShown @ {:04X}: {:X} => {:X}",
+            self.offset,
+            self.offset_to_next,
+            self.next_offset()
+        )
     }
 }
 
@@ -1069,7 +985,10 @@ impl TrailerUnknown {
 
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
         let data = &code[offset..];
-        return Ok(Self { offset, data: data.to_owned() });
+        return Ok(Self {
+            offset,
+            data: data.to_owned(),
+        });
     }
 
     fn size(&self) -> usize {
@@ -1082,8 +1001,18 @@ impl TrailerUnknown {
 
     fn show(&self) -> String {
         use reverse::{format_sections, Section, ShowMode};
-        let out = format_sections(&self.data, &vec![Section::new(0x0000, 0, self.data.len())], &mut vec![], ShowMode::AllPerLine);
-        format!("Trailer @ {:04X}: {:6}b => {}", self.offset, self.data.len(), out[0])
+        let out = format_sections(
+            &self.data,
+            &vec![Section::new(0x0000, 0, self.data.len())],
+            &mut vec![],
+            ShowMode::AllPerLine,
+        );
+        format!(
+            "Trailer @ {:04X}: {:6}b => {}",
+            self.offset,
+            self.data.len(),
+            out[0]
+        )
     }
 }
 
@@ -1103,16 +1032,20 @@ impl UnknownUnknown {
     }
 
     fn show(&self) -> String {
-        format!("Unknown @ {:04X}: {:6} => {}", self.offset, self.data.len(), bs2s(&self.data))
+        format!(
+            "Unknown @ {:04X}: {:6} => {}",
+            self.offset,
+            self.data.len(),
+            bs2s(&self.data)
+        )
     }
 }
 
-
 macro_rules! opaque_instr {
-    ($name:ident, $magic:expr, $size:expr) => {
+    ($name: ident, $magic: expr, $size: expr) => {
         pub struct $name {
             pub offset: usize,
-            pub data: [u8; $size]
+            pub data: [u8; $size],
         }
 
         impl $name {
@@ -1122,9 +1055,14 @@ macro_rules! opaque_instr {
             fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
                 let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
-                ensure!(ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0,
-                        "expected 1-byte instr or 0 in hi byte");
-                return Ok(Self { offset, data: clone_into_array(&data[0..Self::SIZE]) });
+                ensure!(
+                    ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0,
+                    "expected 1-byte instr or 0 in hi byte"
+                );
+                return Ok(Self {
+                    offset,
+                    data: clone_into_array(&data[0..Self::SIZE]),
+                });
             }
 
             fn size(&self) -> usize {
@@ -1136,16 +1074,27 @@ macro_rules! opaque_instr {
             }
 
             fn show(&self) -> String {
-                format!("{} @ {:04X}: {}", stringify!($name), self.offset, bs2s(&self.data))
+                format!(
+                    "{} @ {:04X}: {}",
+                    stringify!($name),
+                    self.offset,
+                    bs2s(&self.data)
+                )
             }
         }
 
         impl fmt::Debug for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{} @{:04X}: {}", stringify!($name), self.offset, bs2s(&self.data))
+                write!(
+                    f,
+                    "{} @{:04X}: {}",
+                    stringify!($name),
+                    self.offset,
+                    bs2s(&self.data)
+                )
             }
         }
-    }
+    };
 }
 
 opaque_instr!(Header, 0xFF, 14);
@@ -1174,7 +1123,6 @@ opaque_instr!(UnkD0, 0xD0, 4);
 opaque_instr!(UnkDA, 0xDA, 4);
 opaque_instr!(UnkEE, 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
-
 
 #[derive(Debug)]
 pub enum Instr {
@@ -1225,7 +1173,7 @@ pub enum Instr {
     // 0x0042
     VertexBuf(VertexBuf),
     // 0x0082
-    Facet(Facet),           // 0x__FC
+    Facet(Facet), // 0x__FC
 
     // Wtf
     X86Code(X86Code),
@@ -1233,7 +1181,7 @@ pub enum Instr {
 }
 
 macro_rules! impl_for_all_instr {
-    ($self:ident, $f:ident) => {
+    ($self: ident, $f: ident) => {
         match $self {
             &Instr::Header(ref i) => i.$f(),
             &Instr::Unk06(ref i) => i.$f(),
@@ -1273,8 +1221,8 @@ macro_rules! impl_for_all_instr {
             &Instr::Facet(ref i) => i.$f(),
             &Instr::X86Code(ref i) => i.$f(),
             &Instr::UnknownUnknown(ref i) => i.$f(),
-         }
-    }
+        }
+    };
 }
 
 impl Instr {
@@ -1292,13 +1240,11 @@ impl Instr {
 }
 
 macro_rules! consume_instr {
-    ($name:ident, $pe:ident, $offset:ident, $instrs:ident) => {
-        {
-            let instr = $name::from_bytes(*$offset, &$pe.code)?;
-            *$offset += instr.size();
-            $instrs.push(Instr::$name(instr));
-        }
-    }
+    ($name: ident, $pe: ident, $offset: ident, $instrs: ident) => {{
+        let instr = $name::from_bytes(*$offset, &$pe.code)?;
+        *$offset += instr.size();
+        $instrs.push(Instr::$name(instr));
+    }};
 }
 
 impl CpuShape {
@@ -1316,22 +1262,25 @@ impl CpuShape {
 
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
-            println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
+            //println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
             Self::read_instr(&mut offset, pe, &mut instrs)?;
-            println!("=>: {}", instrs.last().unwrap().show());
+            //println!("=>: {}", instrs.last().unwrap().show());
         }
 
         // Assertions.
-//        {
-//            let instr = find_first_instr(0xF2, &instrs);
-//            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
-//                let tgt = find_instr_at_offset(jmp.next_offset(), &instrs);
-//                assert!(tgt.is_some());
-//            }
-//        }
+        //        {
+        //            let instr = find_first_instr(0xF2, &instrs);
+        //            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
+        //                let tgt = find_instr_at_offset(jmp.next_offset(), &instrs);
+        //                assert!(tgt.is_some());
+        //            }
+        //        }
 
-        let mut shape = CpuShape { source: "".to_owned(), instrs };
+        let mut shape = CpuShape {
+            source: "".to_owned(),
+            instrs,
+        };
         return Ok(shape);
     }
 
@@ -1385,10 +1334,7 @@ impl CpuShape {
                 }
                 let mut many_instrs = X86Code::from_bytes(name, offset, pe, instrs)?;
             }
-            _ => {
-                consume_instr!(TrailerUnknown, pe, offset, instrs)
-            }
-            /*
+            _ => consume_instr!(TrailerUnknown, pe, offset, instrs), /*
             TrailerUnknown::MAGIC => consume_instr!(TrailerUnknown, pe, offset, instrs),
             _ => bail!("unknown instruction: {:02X}: {}", pe.code[*offset], bs2s(&pe.code[*offset..]))
             */
