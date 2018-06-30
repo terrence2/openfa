@@ -24,10 +24,10 @@ extern crate peff;
 extern crate reverse;
 
 use failure::Error;
+use reverse::{b2b, b2h, bs2s, Color, Escape};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::{cmp, fmt, fs, mem, str};
-use std::collections::{HashMap, HashSet};
-use reverse::{Color, Escape, b2b, b2h, bs2s};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -72,7 +72,7 @@ lazy_static! {
          0xDA,
          0xE0,
          0xE2,
-         0xE4, // FIXME: WHAT IS THIS???
+         0xE4, // Shows up in WAVE1, not sure if in others.
          0xEE,
          0xF0,
          0xF2,
@@ -542,9 +542,11 @@ impl Facet {
 #[derive(Debug)]
 pub struct X86Code {
     pub offset: usize,
+    pub length: usize,
     pub code: Vec<u8>,
     pub formatted: String,
     pub bytecode: i386::ByteCode,
+    pub have_header: bool,
 }
 
 impl X86Code {
@@ -622,15 +624,19 @@ impl X86Code {
                 let bc = maybe_bc?;
                 //println!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, &bc, &mut external_jumps);
-                //println!("Next external jumps: {:?}", external_jumps);
 
                 // Insert the instruction.
                 let bc_size = bc.size();
+                let have_header = pe.code[*offset - 2] == 0xF0;
+                let section_offset = if (have_header) { *offset - 2 } else { *offset };
+                let section_length = bc_size + if (have_header) { 2 } else { 0 };
                 vinstrs.push(Instr::X86Code(X86Code {
-                    offset: *offset,
-                    code: code[0..bc.size()].to_owned(),
-                    formatted: Self::format_section(*offset, &bc, pe),
+                    offset: section_offset,
+                    length: section_length,
+                    code: code[0..bc_size].to_owned(),
+                    formatted: Self::format_section(section_offset, section_length, &bc, pe),
                     bytecode: bc,
+                    have_header,
                 }));
                 *offset += bc_size;
 
@@ -639,31 +645,51 @@ impl X86Code {
                 }
             }
 
+            // If we have no more jumps, continue looking for instructions.
+            if external_jumps.len() == 0 || Self::lowest_jump(&external_jumps) < *offset {
+                break;
+            }
+
+            // Otherwise, we are between code segments. There may be instructions
+            // here, or maybe just some raw data. Look for an instruction and if
+            // there is one, decode it. Otherwise treat it as raw data.
+
             // We do not expect another F0 while we have external jumps to find.
+            //println!("FF: Next external jumps: {:?}", external_jumps);
+            let saved_offset = *offset;
+            let mut have_raw_data = false;
             let maybe = CpuShape::read_instr(offset, pe, vinstrs);
             if let Err(_e) = maybe {
+                have_raw_data = true;
+            } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
+                vinstrs.pop();
+                *offset = saved_offset;
+                have_raw_data = true;
+            }
+
+            if have_raw_data {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                //println!("UNKNOWN DATA @{:04X}: {}", *offset, bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset+80)]));
+                println!(
+                    "UNKNOWN DATA @{:04X}: {}",
+                    *offset,
+                    bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
+                );
                 let end = Self::lowest_jump(&external_jumps);
+                println!("Read data from {:04X} -> {:04X}", *offset, end);
                 vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
                     offset: *offset,
                     data: pe.code[*offset..end].to_vec(),
                 }));
                 *offset = end;
-            } else {
-                if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
-                    return Ok(());
-                }
-                //println!("processed instr: {:?}", vinstrs.last().unwrap());
             }
         }
 
         return Ok(());
     }
 
-    fn format_section(offset: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
-        let sec = reverse::Section::new(0xF0, offset, bc.size());
+    fn format_section(offset: usize, length: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
+        let sec = reverse::Section::new(0xF0, offset, length);
         let tags = reverse::get_all_tags(pe);
         let mut v = Vec::new();
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
@@ -1043,7 +1069,7 @@ impl UnknownUnknown {
 }
 
 macro_rules! opaque_instr {
-    ($name: ident, $magic: expr, $size: expr) => {
+    ($name:ident, $magic:expr, $size:expr) => {
         pub struct $name {
             pub offset: usize,
             pub data: [u8; $size],
@@ -1122,6 +1148,7 @@ opaque_instr!(UnkC8, 0xC8, 8);
 opaque_instr!(UnkCA, 0xCA, 4);
 opaque_instr!(UnkD0, 0xD0, 4);
 opaque_instr!(UnkDA, 0xDA, 4);
+opaque_instr!(UnkE4, 0xE4, 20);
 opaque_instr!(UnkEE, 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
 
@@ -1153,6 +1180,7 @@ pub enum Instr {
     UnkCE(UnkCE),
     UnkD0(UnkD0),
     UnkDA(UnkDA),
+    UnkE4(UnkE4),
     UnkEE(UnkEE),
     UnkJumpIfNotShown(UnkJumpIfNotShown),
 
@@ -1182,7 +1210,7 @@ pub enum Instr {
 }
 
 macro_rules! impl_for_all_instr {
-    ($self: ident, $f: ident) => {
+    ($self:ident, $f:ident) => {
         match $self {
             &Instr::Header(ref i) => i.$f(),
             &Instr::Unk06(ref i) => i.$f(),
@@ -1208,6 +1236,7 @@ macro_rules! impl_for_all_instr {
             &Instr::UnkCE(ref i) => i.$f(),
             &Instr::UnkD0(ref i) => i.$f(),
             &Instr::UnkDA(ref i) => i.$f(),
+            &Instr::UnkE4(ref i) => i.$f(),
             &Instr::UnkEE(ref i) => i.$f(),
             &Instr::UnkJumpIfNotShown(ref i) => i.$f(),
             &Instr::UnkF6(ref i) => i.$f(),
@@ -1241,7 +1270,7 @@ impl Instr {
 }
 
 macro_rules! consume_instr {
-    ($name: ident, $pe: ident, $offset: ident, $instrs: ident) => {{
+    ($name:ident, $pe:ident, $offset:ident, $instrs:ident) => {{
         let instr = $name::from_bytes(*$offset, &$pe.code)?;
         *$offset += instr.size();
         $instrs.push(Instr::$name(instr));
@@ -1317,6 +1346,7 @@ impl CpuShape {
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, instrs),
             UnkD0::MAGIC => consume_instr!(UnkD0, pe, offset, instrs),
             UnkDA::MAGIC => consume_instr!(UnkDA, pe, offset, instrs),
+            UnkE4::MAGIC => consume_instr!(UnkE4, pe, offset, instrs),
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
             UnkJumpIfNotShown::MAGIC => consume_instr!(UnkJumpIfNotShown, pe, offset, instrs),
@@ -1374,9 +1404,9 @@ fn find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs;
     use std::io::prelude::*;
-    use super::*;
 
     #[test]
     fn it_works() {

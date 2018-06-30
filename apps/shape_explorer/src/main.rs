@@ -14,35 +14,37 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
 extern crate glfw;
+extern crate image;
 extern crate kiss3d;
 extern crate nalgebra as na;
 extern crate pal;
 extern crate pic;
 extern crate sh;
-extern crate image;
 
-use image::GenericImage;
-use clap::{Arg, App, SubCommand};
+use clap::{App, Arg, SubCommand};
 use glfw::{Action, Key, WindowEvent};
-use sh::{CpuShape, FacetFlags, Instr};
-use std::{cmp, cell, fs, rc};
-use std::path::{Path, PathBuf};
-use std::io::prelude::*;
-use pal::Palette;
-use na::{Point2, Point3, Vector3, UnitQuaternion, Translation3};
-use kiss3d::window::Window;
+use image::GenericImage;
 use kiss3d::light::Light;
-use kiss3d::scene::SceneNode;
 use kiss3d::resource::Mesh;
+use kiss3d::scene::SceneNode;
+use kiss3d::window::Window;
+use na::{Point2, Point3, Translation3, UnitQuaternion, Vector3};
+use pal::Palette;
+use sh::{CpuShape, FacetFlags, Instr};
+use std::io::prelude::*;
+use std::path::{Path, PathBuf};
+use std::{cell, cmp, fs, rc};
 
 fn main() {
     let matches = App::new("OpenFA shape explorer")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("Figure out what bits belong where.")
-        .arg(Arg::with_name("INPUT")
-            .help("The shape(s) to show")
-            .required(true))
+        .arg(
+            Arg::with_name("INPUT")
+                .help("The shape(s) to show")
+                .required(true),
+        )
         .get_matches();
 
     let files = get_files(matches.value_of("INPUT").unwrap());
@@ -56,7 +58,7 @@ struct ViewState {
     mesh_nodes: Vec<SceneNode>,
     //textures: HashMap<String, String>,
     palette: Palette,
-    tex_size: [f32;2],// [0f32, 0f32];
+    tex_size: [f32; 2], // [0f32, 0f32];
     active_mesh: usize,
     instr_count: usize,
 }
@@ -78,7 +80,7 @@ impl ViewState {
             palette,
             tex_size: [0f32, 0f32],
             active_mesh: 0,
-            instr_count: 284,
+            instr_count: 0,
         };
         state._redraw(window);
         state.set_vertex_colors();
@@ -112,9 +114,9 @@ impl ViewState {
         //let mut skip_before = 0x544;
 
         for (i, instr) in self.shape.instrs.iter().enumerate() {
-//            if i < 990 {
-//                continue;
-//            }
+            //            if i < 990 {
+            //                continue;
+            //            }
             if i == self.instr_count {
                 break;
             }
@@ -125,12 +127,14 @@ impl ViewState {
                     continue;
                 }
             }
-            //if i == self.instr_count - 1 {
             println!("At: {} => {}", i, instr.show());
-            //}
+            if i == self.instr_count - 1 {
+                println!("--- FIN ---")
+            }
             match instr {
                 &Instr::TextureRef(ref texture) => {
-                    let cache_name = Path::new(&format!("/tmp/{}.png", texture.filename)).to_owned();
+                    let cache_name =
+                        Path::new(&format!("/tmp/{}.png", texture.filename)).to_owned();
                     if active_texture.is_none() || !cache_name.exists() {
                         let source = format!("test_data/{}", texture.filename.to_uppercase());
                         let mut fp = fs::File::open(source).unwrap();
@@ -139,7 +143,10 @@ impl ViewState {
                         let imagebuf = pic::decode_pic(&self.palette, &data).unwrap();
                         let ref mut fout = fs::File::create(&cache_name).unwrap();
                         imagebuf.save(fout, image::PNG).unwrap();
-                        self.tex_size = [imagebuf.dimensions().0 as f32, imagebuf.dimensions().1 as f32];
+                        self.tex_size = [
+                            imagebuf.dimensions().0 as f32,
+                            imagebuf.dimensions().1 as f32,
+                        ];
                     }
                     active_texture = Some((texture.filename.clone(), cache_name));
                 }
@@ -147,9 +154,9 @@ impl ViewState {
                     if end_at_offset == buf.offset {
                         vert_buf.truncate(0);
                     }
-//                    if i == 990 {
-//                        vert_buf.truncate(0);
-//                    }
+                    //                    if i == 990 {
+                    //                        vert_buf.truncate(0);
+                    //                    }
                     for v in buf.verts.iter() {
                         vert_buf.push(Point3::new(v[0], v[1], v[2]));
                     }
@@ -168,33 +175,39 @@ impl ViewState {
                     }
                     for base in 2..facet.indices.len() {
                         let coords_base = coords.len() as u32;
-                        index_buf.push(Point3::new(coords_base,
-                                                   coords_base + 1,
-                                                   coords_base + 2));
+                        index_buf.push(Point3::new(coords_base, coords_base + 1, coords_base + 2));
                         coords.push(vert_buf[facet.indices[0] as usize]);
                         coords.push(vert_buf[facet.indices[base - 0] as usize]);
                         coords.push(vert_buf[facet.indices[base - 1] as usize]);
                         if let Some(ref mut uvs) = uv_buf {
-                            uvs.push(Point2::new(facet.tex_coords[0][0] as f32 / self.tex_size[0],
-                                                 1f32 - facet.tex_coords[0][1] as f32 / self.tex_size[1]));
-                            uvs.push(Point2::new(facet.tex_coords[base - 0][0] as f32 / self.tex_size[0],
-                                                 1f32 - facet.tex_coords[base - 0][1] as f32 / self.tex_size[1]));
-                            uvs.push(Point2::new(facet.tex_coords[base - 1][0] as f32 / self.tex_size[0],
-                                                 1f32 - facet.tex_coords[base - 1][1] as f32 / self.tex_size[1]));
+                            uvs.push(Point2::new(
+                                facet.tex_coords[0][0] as f32 / self.tex_size[0],
+                                1f32 - facet.tex_coords[0][1] as f32 / self.tex_size[1],
+                            ));
+                            uvs.push(Point2::new(
+                                facet.tex_coords[base - 0][0] as f32 / self.tex_size[0],
+                                1f32 - facet.tex_coords[base - 0][1] as f32 / self.tex_size[1],
+                            ));
+                            uvs.push(Point2::new(
+                                facet.tex_coords[base - 1][0] as f32 / self.tex_size[0],
+                                1f32 - facet.tex_coords[base - 1][1] as f32 / self.tex_size[1],
+                            ));
                         }
                     }
 
-                    let m = rc::Rc::new(cell::RefCell::new(Mesh::new(coords, index_buf, None, uv_buf, false)));
+                    let m = rc::Rc::new(cell::RefCell::new(Mesh::new(
+                        coords, index_buf, None, uv_buf, false,
+                    )));
                     let mut node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
                     match &active_texture {
                         &None => (),
-                        &Some((ref name, ref path)) => node.set_texture_from_file(path, name)
+                        &Some((ref name, ref path)) => node.set_texture_from_file(path, name),
                     }
                     nodes.push(node);
                 }
-//                &Instr::UnkJumpIfLowDetail(ref shape_end) => {
-//                    end_at_offset = shape_end.next_offset();
-//                }
+                //                &Instr::UnkJumpIfLowDetail(ref shape_end) => {
+                //                    end_at_offset = shape_end.next_offset();
+                //                }
                 _ => {}
             }
         }
@@ -202,62 +215,62 @@ impl ViewState {
         return nodes;
     }
 
-//    fn _push_shape_vertices(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
-//        let mut vertex_nodes = Vec::new();
-//        for v in shape.vertices.iter() {
-//            let mut node = window.add_sphere(0.5);
-//            node.append_translation(&Translation3::new(v[0], v[1], v[2]));
-//            vertex_nodes.push(node);
-//        }
-//        return vertex_nodes;
-//    }
+    //    fn _push_shape_vertices(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
+    //        let mut vertex_nodes = Vec::new();
+    //        for v in shape.vertices.iter() {
+    //            let mut node = window.add_sphere(0.5);
+    //            node.append_translation(&Translation3::new(v[0], v[1], v[2]));
+    //            vertex_nodes.push(node);
+    //        }
+    //        return vertex_nodes;
+    //    }
 
-//    fn _push_shape_meshes(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
-//        let mut nodes = Vec::new();
-//
-//        for (i, mesh) in shape.meshes.iter().enumerate() {
-//            for v in mesh.vertices.iter() {
-//                let mut node = window.add_sphere(0.5);
-//                node.append_translation(&Translation3::new(v[0], v[1], v[2]));
-//                nodes.push(node);
-//            }
-//
-//            for facet in mesh.facets.iter() {
-//                for index in facet.indices.iter() {
-//                    println!("{}: {} of {}", i, index, mesh.vertices.len());
-//                }
-//            }
-//
-//            let mut vert_buf = Vec::new();
-//            for v in mesh.vertices.iter() {
-//                vert_buf.push(Point3::new(v[0], v[1], v[2]));
-//            }
-//
-//            let mut index_buf = Vec::new();
-//            for facet in mesh.facets.iter() {
-//                assert!(facet.indices.len() >= 3);
-//                for base in 2..facet.indices.len() {
-//                    let i = facet.indices[0] as u32;
-//                    let j = facet.indices[base - 1] as u32;
-//                    let k = facet.indices[base - 0] as u32;
-//                    index_buf.push(Point3::new(k, j, i));
-//                }
-//            }
-//
-//            if index_buf.len() > 0 {
-//                let m = rc::Rc::new(cell::RefCell::new(Mesh::new(vert_buf, index_buf, None, None, false)));
-//                let node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
-//                nodes.push(node);
-//            }
-//        }
-//
-//        return nodes;
-//    }
+    //    fn _push_shape_meshes(window: &mut Window, shape: &Shape) -> Vec<SceneNode> {
+    //        let mut nodes = Vec::new();
+    //
+    //        for (i, mesh) in shape.meshes.iter().enumerate() {
+    //            for v in mesh.vertices.iter() {
+    //                let mut node = window.add_sphere(0.5);
+    //                node.append_translation(&Translation3::new(v[0], v[1], v[2]));
+    //                nodes.push(node);
+    //            }
+    //
+    //            for facet in mesh.facets.iter() {
+    //                for index in facet.indices.iter() {
+    //                    println!("{}: {} of {}", i, index, mesh.vertices.len());
+    //                }
+    //            }
+    //
+    //            let mut vert_buf = Vec::new();
+    //            for v in mesh.vertices.iter() {
+    //                vert_buf.push(Point3::new(v[0], v[1], v[2]));
+    //            }
+    //
+    //            let mut index_buf = Vec::new();
+    //            for facet in mesh.facets.iter() {
+    //                assert!(facet.indices.len() >= 3);
+    //                for base in 2..facet.indices.len() {
+    //                    let i = facet.indices[0] as u32;
+    //                    let j = facet.indices[base - 1] as u32;
+    //                    let k = facet.indices[base - 0] as u32;
+    //                    index_buf.push(Point3::new(k, j, i));
+    //                }
+    //            }
+    //
+    //            if index_buf.len() > 0 {
+    //                let m = rc::Rc::new(cell::RefCell::new(Mesh::new(vert_buf, index_buf, None, None, false)));
+    //                let node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
+    //                nodes.push(node);
+    //            }
+    //        }
+    //
+    //        return nodes;
+    //    }
 
     fn _remove_shape(&mut self, window: &mut Window) {
-//        for mut node in self.vertex_nodes.iter_mut() {
-//            window.remove(&mut node);
-//        }
+        //        for mut node in self.vertex_nodes.iter_mut() {
+        //            window.remove(&mut node);
+        //        }
         for mut node in self.mesh_nodes.iter_mut() {
             window.remove(&mut node);
         }
@@ -275,7 +288,9 @@ impl ViewState {
         } else {
             self.offset = self.files.len() - 1;
         }
-        while self.offset < 0 { self.offset += self.files.len(); }
+        while self.offset < 0 {
+            self.offset += self.files.len();
+        }
         self._use_shape(window);
     }
 
@@ -325,25 +340,25 @@ impl ViewState {
     }
 
     fn set_vertex_colors(&mut self) {
-//        let active_facet = &self.shape.meshes[self.active_mesh].facets[self.active_face];
-//        for (i, mut node) in self.vertex_nodes.iter_mut().enumerate() {
-//            let mut c = [0.1, 0.1, 0.1];
-//            let mut s = 0.5;
-//            for (j, &index) in active_facet.indices.iter().enumerate() {
-//                if i == (index as usize) {
-//                    s = 1.0;
-//                    c = match j {
-//                        0 => [1.0, 0.0, 0.0],
-//                        1 => [0.0, 1.0, 0.0],
-//                        2 => [0.0, 0.0, 1.0],
-//                        3 => [1.0, 0.5, 0.0],
-//                        _ => [1.0, 0.0, 1.0],
-//                    }
-//                }
-//            }
-//            node.set_local_scale(s, s, s);
-//            node.set_color(c[0], c[1], c[2]);
-//        }
+        //        let active_facet = &self.shape.meshes[self.active_mesh].facets[self.active_face];
+        //        for (i, mut node) in self.vertex_nodes.iter_mut().enumerate() {
+        //            let mut c = [0.1, 0.1, 0.1];
+        //            let mut s = 0.5;
+        //            for (j, &index) in active_facet.indices.iter().enumerate() {
+        //                if i == (index as usize) {
+        //                    s = 1.0;
+        //                    c = match j {
+        //                        0 => [1.0, 0.0, 0.0],
+        //                        1 => [0.0, 1.0, 0.0],
+        //                        2 => [0.0, 0.0, 1.0],
+        //                        3 => [1.0, 0.5, 0.0],
+        //                        _ => [1.0, 0.0, 1.0],
+        //                    }
+        //                }
+        //            }
+        //            node.set_local_scale(s, s, s);
+        //            node.set_color(c[0], c[1], c[2]);
+        //        }
     }
 }
 
@@ -359,35 +374,35 @@ fn run_loop(files: Vec<PathBuf>) {
             match event.value {
                 WindowEvent::Key(Key::PageDown, _, Action::Press, _) => {
                     state.next_shape(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::PageUp, _, Action::Press, _) => {
                     state.prev_shape(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Up, _, Action::Press, _) => {
                     state.next_instr_10(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Down, _, Action::Press, _) => {
                     state.prev_instr_10(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Right, _, Action::Press, _) => {
                     state.next_instr(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Left, _, Action::Press, _) => {
                     state.prev_instr(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Right, _, Action::Repeat, _) => {
                     state.next_instr(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Left, _, Action::Repeat, _) => {
                     state.prev_instr(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::End, _, Action::Press, _) => {
                     state.last_instr(&mut window);
-                },
+                }
                 WindowEvent::Key(Key::Home, _, Action::Press, _) => {
                     state.first_instr(&mut window);
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
     }
@@ -396,8 +411,10 @@ fn run_loop(files: Vec<PathBuf>) {
 fn get_files(input: &str) -> Vec<PathBuf> {
     let path = Path::new(input);
     if path.is_dir() {
-        return path.read_dir().unwrap().map(|p| { p.unwrap().path().to_owned() }).collect::<Vec<_>>();
+        return path.read_dir()
+            .unwrap()
+            .map(|p| p.unwrap().path().to_owned())
+            .collect::<Vec<_>>();
     }
     return vec![path.to_owned()];
 }
-
