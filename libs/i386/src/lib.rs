@@ -725,6 +725,16 @@ impl ByteCode {
         }
         return sz;
     }
+
+    pub fn show_relative(&self, base: usize) -> String {
+        let mut pos = 0;
+        let mut s = String::new();
+        for instr in self.instrs.iter() {
+            s += &format!("  @{:02X}|{:04X}: {}\n", pos, pos + base, instr);
+            pos += instr.size();
+        }
+        return s;
+    }
 }
 
 impl fmt::Display for ByteCode {

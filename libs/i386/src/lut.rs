@@ -90,12 +90,10 @@ pub enum OperandType {
     const1,
 }
 
-
 #[derive(Clone)]
 pub struct OperandDef {
     pub method: AddressingMethod,
     pub ty: OperandType,
-
     // In theory we could also be stuffing more data about each operand into this struct.
     // For example:
     //
@@ -107,9 +105,9 @@ macro_rules! make_operand {
     ($meth0:ident / $type0:ident) => {
         OperandDef {
             method: AddressingMethod::$meth0,
-            ty: OperandType::$type0
+            ty: OperandType::$type0,
         }
-    }
+    };
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -290,6 +288,7 @@ lazy_static! {
         [0x50, 0x58, 0xB8].iter().map(|&n| n).collect()
     };
 
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     pub static ref OPCODES: HashMap<(u16, u8), OpCodeDef> = {
         let mut out: HashMap<(u16, u8), OpCodeDef> = HashMap::new();
         let ops = [
@@ -367,6 +366,7 @@ lazy_static! {
             (0xF7, 7, make_op!(IDiv:    Imp/eDX, Imp/eAX, E/v)),
             (0xFC, 0, make_op!(ClearDF:)),
             (0xFF, 1, make_op!(Dec:     E/v)),
+            (0xFF, 4, make_op!(Jump:    E/v)),
 
             (0x0F85, 0, make_op!(J|ZF=0: J/v)),
             (0x0FAF, 0, make_op!(IMul:   G/v, E/v)),

@@ -590,46 +590,57 @@ fn find_tags_in_section(section: &Section, tags: &Vec<Tag>) -> Vec<Tag> {
 }
 
 pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
+    println!("PE: vaddr:{:04X}", pe.code_vaddr);
+    for (key, thunk) in pe.thunks.clone().unwrap().iter() {
+        println!(
+            "THUNK> @{:04X}: {}: {:04X} -> {}",
+            key, thunk.ordinal, thunk.vaddr, thunk.name
+        );
+    }
     let mut tags = Vec::new();
     for &reloc in pe.relocs.iter() {
         assert!((reloc as usize) + 4 <= pe.code.len());
+        // Look up the word we need to relocate in the binary.
         let dwords: &[u32] = unsafe { mem::transmute(&pe.code[reloc as usize..]) };
         let thunk_ptr = dwords[0];
-        if let Some(thunks) = pe.thunks.clone() {
-            if thunks.contains_key(&thunk_ptr) || thunks.contains_key(&(thunk_ptr - 2)) {
-                // This relocation is for a pointer into the thunk table; store the name so
-                // that we can print the name instead of the address.
-                //println!("Relocating {:X} in code to {}", thunk_ptr, &thunks[&thunk_ptr].name);
-                tags.push(Tag {
-                    kind: TagKind::RelocatedCall(thunks[&thunk_ptr].name.clone()),
-                    offset: reloc as usize,
-                    length: 4,
-                });
-            } else {
-                // This relocation is to somewhere in code; mark both it and the target word
-                // of the pointer that is stored at the reloc position.
-                tags.push(Tag {
-                    kind: TagKind::RelocatedRef,
-                    offset: reloc as usize,
-                    length: 4,
-                });
-
-                if thunk_ptr - pe.code_addr < pe.code.len() as u32 - 4 {
-                    assert!(thunk_ptr > pe.code_addr, "thunked ptr before code");
-                    assert!(
-                        thunk_ptr <= pe.code_addr + pe.code.len() as u32 - 4,
-                        "thunked ptr after code"
-                    );
-                    let code_offset = thunk_ptr - pe.code_addr;
-                    let value_to_relocate_arr: &[u16] =
-                        unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
-                    let value_to_relocate = value_to_relocate_arr[0];
-                    //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
+        if let Some(ref thunks) = pe.thunks {
+            for thunk in thunks.values() {
+                let thunk_addr = thunk.vaddr - pe.code_vaddr + pe.code_addr;
+                if thunk_ptr == thunk_addr {
+                    // This relocation is for a pointer into the thunk table; store the name so
+                    // that we can print the name instead of the address.
+                    //println!("Relocating {:X} in code to {}", thunk_ptr, &thunks[&thunk_ptr].name);
                     tags.push(Tag {
-                        kind: TagKind::RelocationTarget,
-                        offset: code_offset as usize,
-                        length: 2,
+                        kind: TagKind::RelocatedCall(thunk.name.clone()),
+                        offset: reloc as usize,
+                        length: 4,
                     });
+                } else {
+                    // This relocation is to somewhere in code; mark both it and the target word
+                    // of the pointer that is stored at the reloc position.
+                    tags.push(Tag {
+                        kind: TagKind::RelocatedRef,
+                        offset: reloc as usize,
+                        length: 4,
+                    });
+
+                    if thunk_ptr - pe.code_addr < pe.code.len() as u32 - 4 {
+                        assert!(thunk_ptr > pe.code_addr, "thunked ptr before code");
+                        assert!(
+                            thunk_ptr <= pe.code_addr + pe.code.len() as u32 - 4,
+                            "thunked ptr after code"
+                        );
+                        let code_offset = thunk_ptr - pe.code_addr;
+                        let value_to_relocate_arr: &[u16] =
+                            unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
+                        let value_to_relocate = value_to_relocate_arr[0];
+                        //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
+                        tags.push(Tag {
+                            kind: TagKind::RelocationTarget,
+                            offset: code_offset as usize,
+                            length: 2,
+                        });
+                    }
                 }
             }
         }

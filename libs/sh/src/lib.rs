@@ -552,35 +552,81 @@ pub struct X86Code {
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
-    fn find_external_jumps(base: usize, bc: &i386::ByteCode, external_jumps: &mut HashSet<usize>) {
+    fn find_external_jumps(
+        base: usize,
+        pe: &peff::PE,
+        bc: &i386::ByteCode,
+        external_jumps: &mut HashSet<usize>,
+    ) {
+        Self::find_external_relative(base, pe, bc, external_jumps);
+        Self::find_external_absolute(base, pe, bc, external_jumps);
+    }
+
+    fn instr_is_relative_jump(instr: &i386::Instr) -> bool {
+        match instr.memonic {
+            i386::Memonic::Call => true,
+            i386::Memonic::Jump => true,
+            i386::Memonic::Jcc(ref _cc) => true,
+            _ => false,
+        }
+    }
+
+    fn operand_to_offset(op: &i386::Operand) -> usize {
+        match op {
+            i386::Operand::Imm32s(delta) => {
+                if *delta < 0 {
+                    println!("Skipping loop of {} bytes", *delta);
+                    0
+                } else {
+                    *delta as u32 as usize
+                }
+            }
+            i386::Operand::Imm32(delta) => *delta as usize,
+            _ => {
+                println!("Detected indirect jump target: {}", op);
+                0
+            }
+        }
+    }
+
+    fn find_external_relative(
+        base: usize,
+        pe: &peff::PE,
+        bc: &i386::ByteCode,
+        external_jumps: &mut HashSet<usize>,
+    ) {
         let mut ip = 0;
         let ip_end = bc.size();
         for instr in bc.instrs.iter() {
-            let is_jump = match instr.memonic {
-                i386::Memonic::Call => true,
-                i386::Memonic::Jump => true,
-                i386::Memonic::Jcc(ref _cc) => true,
-                _ => false,
-            };
             ip += instr.size();
-            if is_jump {
-                let delta = match instr.operands[0] {
-                    i386::Operand::Imm32s(delta) => {
-                        if delta < 0 {
-                            println!("Skipping loop of {} bytes", delta);
-                            0
-                        } else {
-                            delta as u32 as usize
-                        }
-                    }
-                    i386::Operand::Imm32(delta) => delta as usize,
-                    _ => panic!("Detected indirect jump target: {}", instr.operands[0]),
-                };
+            if Self::instr_is_relative_jump(&instr) {
+                let delta = Self::operand_to_offset(&instr.operands[0]);
                 let ip_target = ip + delta;
                 if ip_target >= ip_end {
                     external_jumps.insert(base + ip_target);
                 }
             };
+        }
+    }
+
+    fn find_external_absolute(
+        base: usize,
+        pe: &peff::PE,
+        bc: &i386::ByteCode,
+        external_jumps: &mut HashSet<usize>,
+    ) {
+        for s in bc.instrs.windows(2) {
+            match s {
+                &[ref a, ref b] => {
+                    if a.memonic == i386::Memonic::Push && b.memonic == i386::Memonic::Return {
+                        if let i386::Operand::Imm32s(delta) = a.operands[0] {
+                            let absolute_ip = (delta as u32).checked_sub(pe.code_addr).unwrap_or(0);
+                            external_jumps.insert(absolute_ip as usize);
+                        }
+                    }
+                }
+                _ => panic!("expected 2 elements in window"),
+            }
         }
     }
 
@@ -622,14 +668,14 @@ impl X86Code {
                     bail!("Don't know how to disassemble at {}", *offset);
                 }
                 let bc = maybe_bc?;
-                //println!("Decoded block:\n{}", bc);
-                Self::find_external_jumps(*offset, &bc, &mut external_jumps);
+                println!("Decoded block:\n{}", bc);
+                Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
 
                 // Insert the instruction.
                 let bc_size = bc.size();
                 let have_header = pe.code[*offset - 2] == 0xF0;
-                let section_offset = if (have_header) { *offset - 2 } else { *offset };
-                let section_length = bc_size + if (have_header) { 2 } else { 0 };
+                let section_offset = if have_header { *offset - 2 } else { *offset };
+                let section_length = bc_size + if have_header { 2 } else { 0 };
                 vinstrs.push(Instr::X86Code(X86Code {
                     offset: section_offset,
                     length: section_length,
@@ -646,7 +692,10 @@ impl X86Code {
             }
 
             // If we have no more jumps, continue looking for instructions.
-            if external_jumps.len() == 0 || Self::lowest_jump(&external_jumps) < *offset {
+            if external_jumps.len() == 0
+                || Self::lowest_jump(&external_jumps) < *offset
+                || *offset >= pe.code.len()
+            {
                 break;
             }
 
@@ -705,9 +754,16 @@ impl X86Code {
     }
 
     fn show(&self) -> String {
+        let show_offset = if self.have_header {
+            self.offset + 2
+        } else {
+            self.offset
+        };
         return format!(
             "X86Code @ {:04X}: {}\n{}",
-            self.offset, self.formatted, self.bytecode
+            self.offset,
+            self.formatted,
+            self.bytecode.show_relative(show_offset)
         );
     }
 }
@@ -1028,18 +1084,38 @@ impl TrailerUnknown {
 
     fn show(&self) -> String {
         use reverse::{format_sections, Section, ShowMode};
-        let out = format_sections(
-            &self.data,
-            &vec![Section::new(0x0000, 0, self.data.len())],
-            &mut vec![],
-            ShowMode::AllPerLine,
-        );
-        format!(
-            "Trailer @ {:04X}: {:6}b => {}",
-            self.offset,
-            self.data.len(),
-            out[0]
-        )
+        let mut sections = Vec::new();
+        let mut sec_start = self.offset;
+        // make a first section to align to word boundary if needed
+        if sec_start % 4 != 0 {
+            let sec_end = self.offset + 4 - (sec_start % 4);
+            sections.push(Section::new(
+                0x0000,
+                sec_start - self.offset,
+                sec_end - sec_start,
+            ));
+            sec_start = sec_end;
+        }
+
+        while sec_start < self.offset + self.data.len() {
+            let sec_end = cmp::min(sec_start + 16, self.offset + self.data.len());
+            sections.push(Section::new(
+                0x0000,
+                sec_start - self.offset,
+                sec_end - sec_start,
+            ));
+            println!("{} => {}", sec_start - self.offset, sec_end - self.offset,);
+            sec_start = sec_end;
+        }
+
+        let out = format_sections(&self.data, &sections, &mut vec![], ShowMode::AllPerLine);
+        let mut s = format!("Trailer @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
+        let mut off = 0;
+        for (line, section) in out.iter().zip(sections) {
+            s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
+            off += section.length;
+        }
+        return s;
     }
 }
 
@@ -1315,6 +1391,10 @@ impl CpuShape {
     }
 
     fn read_instr(offset: &mut usize, pe: &peff::PE, instrs: &mut Vec<Instr>) -> Result<(), Error> {
+        if *offset >= pe.code.len() {
+            return Ok(());
+        }
+
         while pe.code[*offset] == 0x1E {
             *offset += 1;
         }
