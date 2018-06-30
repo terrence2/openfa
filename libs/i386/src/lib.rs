@@ -528,10 +528,28 @@ impl Operand {
     fn modrm(b: u8) -> (u8, u8, u8) {
         return (b >> 6, (b >> 3) & 0b111, b & 0b111);
     }
+
+    fn show_relative(&self, base: usize, show_target: bool) -> String {
+        match self {
+            &Operand::Register(ref r) => format!("{:?}", r),
+            &Operand::Imm32(x) => if show_target {
+                format!("0x{:X} -> 0x{:X}", x, x as usize + base)
+            } else {
+                format!("0x{:X}", x)
+            },
+            &Operand::Imm32s(x) => if show_target {
+                format!("0x{:X} -> 0x{:X}", x, x as usize + base)
+            } else {
+                format!("0x{:X}", x)
+            },
+            &Operand::Memory(ref mr) => format!("{}", mr),
+        }
+    }
 }
 
 impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        //write!(f, "{}", self.show_relative(0, false))
         match self {
             &Operand::Register(ref r) => write!(f, "{:?}", r),
             &Operand::Imm32(x) => write!(f, "0x{:X}", x),
@@ -660,6 +678,23 @@ impl Instr {
             raw: code[initial_ip..*ip].to_vec(),
         });
     }
+
+    pub fn show_relative(&self, base: usize) -> String {
+        let show_target = match self.memonic {
+            Memonic::Jump => true,
+            Memonic::Call => true,
+            Memonic::Jcc(_) => true,
+            _ => false,
+        };
+        let mut s = format!("{:23} {:?}(", bs2s(&self.raw), self.memonic);
+        for (i, op) in self.operands.iter().enumerate() {
+            if i != 0 {
+                s += &format!(", ");
+            }
+            s += &op.show_relative(base + self.size(), show_target);
+        }
+        return s + &format!(")");
+    }
 }
 
 impl fmt::Display for Instr {
@@ -730,7 +765,12 @@ impl ByteCode {
         let mut pos = 0;
         let mut s = String::new();
         for instr in self.instrs.iter() {
-            s += &format!("  @{:02X}|{:04X}: {}\n", pos, pos + base, instr);
+            s += &format!(
+                "  @{:02X}|{:04X}: {}\n",
+                pos,
+                base + pos,
+                instr.show_relative(base + pos)
+            );
             pos += instr.size();
         }
         return s;

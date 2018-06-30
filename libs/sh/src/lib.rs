@@ -1135,11 +1135,17 @@ impl UnknownUnknown {
     }
 
     fn show(&self) -> String {
+        let msg = if let Ok(msg) = str::from_utf8(&self.data) {
+            msg
+        } else {
+            ""
+        };
         format!(
-            "Unknown @ {:04X}: {:6} => {}",
+            "Unknown @ {:04X}: {:6} => {} ({})",
             self.offset,
             self.data.len(),
-            bs2s(&self.data)
+            bs2s(&self.data),
+            msg
         )
     }
 }
