@@ -116,24 +116,59 @@ Kuril Islands      {0, 1}
 Ukraine            {0, 1}
 */
 
-#[macro_use] extern crate failure;
-#[macro_use] extern crate packed_struct;
-extern crate reverse;
+extern crate failure;
 extern crate image;
+extern crate reverse;
 
 use failure::Error;
-use reverse::bs2s;
-use std::{mem, str};
+use std::cmp;
 use std::fs;
-use std::io::prelude::*;
-use std::collections::HashSet;
+use std::{mem, str};
+
+pub struct Sample {
+    kind: u8,
+    modifiers: u8,
+    pub height: u8,
+}
+
+impl Sample {
+    fn new(kind: u8, modifiers: u8, height: u8) -> Self {
+        assert!(
+            kind == 0xFF
+                || kind == 0xD0
+                || kind == 0xD1
+                || kind == 0xD2
+                || kind == 0xD3
+                || kind == 0xD4
+                || kind == 0xD5
+                || kind == 0xD7
+                || kind == 0xD6
+                || kind == 0xD8
+                || kind == 0xD9
+                || kind == 0xDA
+                || kind == 0xC2
+                || kind == 0xC4
+                || kind == 0xC5
+                || kind == 0xC6
+                || kind == 0xC7
+        );
+        assert!(modifiers <= 14 || modifiers == 16);
+        Sample {
+            kind,
+            modifiers,
+            height,
+        }
+    }
+}
 
 pub struct Terrain {
     pub name: String,
     pub pic_file: String,
-    data: Vec<u8>
+    pub width: usize,
+    pub height: usize,
+    pub samples: Vec<Sample>,
+    _extra: Vec<u8>,
 }
-
 const MAGIC: &[u8] = &['B' as u8, 'I' as u8, 'T' as u8, '2' as u8];
 
 fn read_name(n: &[u8]) -> Result<String, Error> {
@@ -142,7 +177,7 @@ fn read_name(n: &[u8]) -> Result<String, Error> {
 }
 
 impl Terrain {
-    fn from_bytes(path: &str, data: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(data: &[u8]) -> Result<Self, Error> {
         let magic = &data[0..4];
         assert_eq!(magic, MAGIC);
 
@@ -163,103 +198,91 @@ impl Terrain {
         // 24  25       28  29       32  33     35      37           41           45
         // 00  20 00 00 00  20 00 00 00  95 00  03 00   00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
         let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
-        let width = dwords[0];
-        let height = dwords[1];
-        let mut npix = width * height;
-
-        let mut imgbuf = image::ImageBuffer::new(width, height);
+        let width = dwords[0] as usize;
+        let height = dwords[1] as usize;
+        let npix = width * height;
 
         // Followed by many 3-byte entries.
         // How many? 4 fewer than 258 * 258 (for the normal size).
         // Probably not a coincidence.
-        let mut entries = &data[84 + 16 + 49..];
-        let mut offset = 0;
-        let mut min = u16::max_value();
-        let mut max = u16::min_value();
-        let mut fl = HashSet::new();
-        while offset < entries.len() {
-            let pos = (offset / 3usize) as u32;
-            if pos < npix {
-                let hdr = entries[offset];
-                assert!(hdr == 0xFF ||
-                        hdr == 0xD0 ||
-                        hdr == 0xD1 ||
-                        hdr == 0xD2 ||
-                        hdr == 0xD3 ||
-                        hdr == 0xD4 ||
-                        hdr == 0xD5 ||
-                        hdr == 0xD7 ||
-                        hdr == 0xD6 ||
-                        hdr == 0xD8 ||
-                        hdr == 0xD9 ||
-                        hdr == 0xDA ||
-                        hdr == 0xC2 ||
-                        hdr == 0xC4 ||
-                        hdr == 0xC5 ||
-                        hdr == 0xC6 ||
-                        hdr == 0xC7);
-                if hdr != 0xFF {
-                    fl.insert(hdr);
-                }
+        let data_start = 84 + 16 + 49;
+        let data_end = data_start + npix * 3;
+        let entries = &data[data_start..data_end];
+        let mut samples = Vec::new();
 
-                // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 || 16
-                let flag = entries[offset + 1];
-                assert!(flag <= 14 || flag == 16);
-
-                // 0, 1, 2, 3, 4 || 7, 8 || 10
-//                if hdr == 0xFF {
-//                    fl.insert(flag);
-//                }
-
-//                let mut clr = image::Rgb { data: [
-//                    entries[offset + 2],
-//                    entries[offset + 2],
-//                    entries[offset + 2],
-//                ] };
-                let mut clr = if flag == 16 {
-                    image::Rgb { data: [ 255, 0, 255 ] }
-                } else {
-                    image::Rgb { data: [flag * 18, flag * 18, flag * 18 ] }
-                };
-                if hdr == 0xFF {
-                    if flag <= 1 {
-                        clr.data[2] = 0xFF;
-                    } else {
-                        clr.data = [0xff, 0x00, 0xff];
-                    }
-                }
-                imgbuf.put_pixel(pos % width, height - (pos / width) - 1, clr);
-            }
-
-            offset += 3;
+        for i in 0..npix {
+            let kind = entries[i * 3 + 0];
+            let mods = entries[i * 3 + 1];
+            let height = entries[i * 3 + 2];
+            samples.push(Sample::new(kind, mods, height))
         }
-        //println!("CNT: {}", entries.len() / 3);
-        let cnt = entries.len() / 3;
-        let sqrt = (cnt as f64).sqrt();
-
-        let img = image::ImageRgb8(imgbuf);
-        let ref mut fout = fs::File::create(path.to_owned() + ".png").unwrap();
-        img.save(fout, image::PNG).unwrap();
-
-        let mut foo = fl.iter().collect::<Vec<_>>();
-        foo.sort();
-        let foo = foo.iter().map(|f| format!("{:2X}", f)).collect::<Vec<_>>();
-
-        println!("{:30}| {:10}| cnt:{} => {:.4} ; {}x{} ; {}/{} | {:?}",
-                 name, pic_file, cnt, sqrt, width, height, min, max, foo);// bs2s(&data[84+16+49..]));
-        return Ok(Terrain {
+        let extra = data[data_end..].to_owned();
+        let terrain = Terrain {
             name,
             pic_file,
-            data: (&data[84..]).to_owned()
-        });
+            width,
+            height,
+            samples,
+            _extra: extra,
+        };
+        return Ok(terrain);
+    }
+
+    fn make_debug_images(&self, path: &str) {
+        let mut metabuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
+        let mut heightbuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
+        for (pos, sample) in self.samples.iter().enumerate() {
+            let mut metaclr = if sample.modifiers == 16 {
+                image::Rgb {
+                    data: [255, 0, 255],
+                }
+            } else {
+                image::Rgb {
+                    data: [
+                        sample.modifiers * 18,
+                        sample.modifiers * 18,
+                        sample.modifiers * 18,
+                    ],
+                }
+            };
+            if sample.kind == 0xFF {
+                if sample.modifiers <= 1 {
+                    metaclr.data[2] = 0xFF;
+                } else {
+                    metaclr.data = [0xff, 0x00, 0xff];
+                }
+            }
+            let w = (pos % self.width) as u32;
+            let h = (self.height - (pos / self.width) - 1) as u32;
+            metabuf.put_pixel(w, h, metaclr);
+            heightbuf.put_pixel(
+                w,
+                h,
+                image::Rgb {
+                    data: [
+                        cmp::min(255usize, sample.height as usize * 4) as u8,
+                        cmp::min(255usize, sample.height as usize * 4) as u8,
+                        cmp::min(255usize, sample.height as usize * 4) as u8,
+                    ],
+                },
+            );
+        }
+
+        let img = image::ImageRgb8(metabuf);
+        let ref mut fout = fs::File::create(path.to_owned() + ".meta.png").unwrap();
+        img.save(fout, image::PNG).unwrap();
+
+        let img = image::ImageRgb8(heightbuf);
+        let ref mut fout = fs::File::create(path.to_owned() + ".height.png").unwrap();
+        img.save(fout, image::PNG).unwrap();
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs;
     use std::io::prelude::*;
-    use super::*;
 
     #[test]
     fn it_works() {
@@ -269,11 +292,12 @@ mod tests {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
             if path.ends_with("T2") {
-                //println!("AT: {}", path);
                 let mut fp = fs::File::open(entry.path()).unwrap();
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
-                let terrain = Terrain::from_bytes(&path, &data);
+                let terrain = Terrain::from_bytes(&data).unwrap();
+                assert!(terrain.pic_file.len() > 0);
+                terrain.make_debug_images(&path);
             }
         }
         rv.sort();
