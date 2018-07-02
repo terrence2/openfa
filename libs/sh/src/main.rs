@@ -17,40 +17,55 @@ extern crate i386;
 extern crate reverse;
 extern crate sh;
 
+use clap::{App, Arg};
+use sh::{CpuShape, Instr};
+use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
-use std::collections::HashMap;
-use clap::{Arg, App};
-use sh::{Instr, CpuShape};
 
 fn main() {
     let matches = App::new("OpenFA shape tool")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("Slice up shape data for digestion.")
-        .arg(Arg::with_name("all")
-            .long("--all")
-            .takes_value(false)
-            .required(false)
-            .conflicts_with_all(&["last"]))
-        .arg(Arg::with_name("last")
-            .long("--last")
-            .takes_value(false)
-            .required(false))
-        .arg(Arg::with_name("memory")
-            .long("--memory")
-            .takes_value(false)
-            .required(false))
-        .arg(Arg::with_name("INPUT")
-            .help("The shape(s) to show")
-            .multiple(true)
-            .required(true))
+        .arg(
+            Arg::with_name("all")
+                .long("--all")
+                .takes_value(false)
+                .required(false)
+                .conflicts_with_all(&["last"]),
+        )
+        .arg(
+            Arg::with_name("last")
+                .long("--last")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("unknown")
+                .long("--unknown")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("memory")
+                .long("--memory")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("INPUT")
+                .help("The shape(s) to show")
+                .multiple(true)
+                .required(true),
+        )
         .get_matches();
 
     for name in matches.values_of("INPUT").unwrap() {
         let mut fp = fs::File::open(name).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
+        println!("At: {}", name);
 
         let shape = CpuShape::new(&data).unwrap();
 
@@ -59,10 +74,19 @@ fn main() {
                 println!("{}: {}", i, instr.show());
             }
         } else if matches.is_present("last") {
-            let fmt = shape.instrs.last()
+            let fmt = shape
+                .instrs
+                .last()
                 .map(|i| i.show())
-                .ok_or("NO INSTRUCTIONS").unwrap();
+                .ok_or("NO INSTRUCTIONS")
+                .unwrap();
             println!("{:20}: {}", name, fmt);
+        } else if matches.is_present("unknown") {
+            for i in shape.instrs.iter() {
+                if let sh::Instr::UnknownUnknown(u) = i {
+                    println!("{:20}: {}", name, i.show());
+                }
+            }
         } else if matches.is_present("memory") {
             let mut dedup = HashMap::new();
             for vinstr in shape.instrs {
@@ -84,36 +108,36 @@ fn main() {
             }
         }
 
-//        for (i, instr) in shape.instrs.iter().enumerate() {
-//            if matches.is_present("all") {
-//                println!("{}: {}", i, instr.show());
-//                continue;
-//            }
-//            match instr {
-////                &Instr::X86Code(ref bc) => {
-////                    let filename = format!("/tmp/instr{}.bin", i);
-////                    let mut buffer = fs::File::create(filename).unwrap();
-////                    buffer.write(&bc.code).unwrap();
-////                }
-////                &Instr::UnkJumpIfLowDetail(ref x) => {
-////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
-////                    println!("{}, {}: {}", name, instr.show(),
-////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
-////                }
-////                &Instr::UnkJumpIfNotShown(ref x) => {
-////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
-////                    println!("{}, {}: {}", name, instr.show(),
-////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
-////                }
-//                &Instr::TrailerUnknown(ref x) => {
-//                    if x.data[0] == 0xEE {
-//
-//                        println!("{:25}: {}", name, instr.show());
-//                    }
-//                }
-//                _ => {}
-//            }
-//        }
+        //        for (i, instr) in shape.instrs.iter().enumerate() {
+        //            if matches.is_present("all") {
+        //                println!("{}: {}", i, instr.show());
+        //                continue;
+        //            }
+        //            match instr {
+        ////                &Instr::X86Code(ref bc) => {
+        ////                    let filename = format!("/tmp/instr{}.bin", i);
+        ////                    let mut buffer = fs::File::create(filename).unwrap();
+        ////                    buffer.write(&bc.code).unwrap();
+        ////                }
+        ////                &Instr::UnkJumpIfLowDetail(ref x) => {
+        ////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
+        ////                    println!("{}, {}: {}", name, instr.show(),
+        ////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
+        ////                }
+        ////                &Instr::UnkJumpIfNotShown(ref x) => {
+        ////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
+        ////                    println!("{}, {}: {}", name, instr.show(),
+        ////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
+        ////                }
+        //                &Instr::TrailerUnknown(ref x) => {
+        //                    if x.data[0] == 0xEE {
+        //
+        //                        println!("{:25}: {}", name, instr.show());
+        //                    }
+        //                }
+        //                _ => {}
+        //            }
+        //        }
     }
 }
 

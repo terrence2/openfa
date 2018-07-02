@@ -54,6 +54,7 @@ lazy_static! {
          0x42,
          0x46,
          0x48,
+         0x4E, // Shows up in FLARE.
          0x66,
          0x6C,
          0x78,
@@ -583,7 +584,7 @@ impl X86Code {
             }
             i386::Operand::Imm32(delta) => *delta as usize,
             _ => {
-                println!("Detected indirect jump target: {}", op);
+                //println!("Detected indirect jump target: {}", op);
                 0
             }
         }
@@ -668,7 +669,7 @@ impl X86Code {
                     bail!("Don't know how to disassemble at {}", *offset);
                 }
                 let bc = maybe_bc?;
-                println!("Decoded block:\n{}", bc);
+                //println!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
 
                 // Insert the instruction.
@@ -710,22 +711,27 @@ impl X86Code {
             let maybe = CpuShape::read_instr(offset, pe, vinstrs);
             if let Err(_e) = maybe {
                 have_raw_data = true;
-            } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
+            } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {
                 vinstrs.pop();
                 *offset = saved_offset;
                 have_raw_data = true;
+            } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
+                bail!("found trailer while we still have external jumps to track down")
+                // vinstrs.pop();
+                // *offset = saved_offset;
+                // have_raw_data = true;
             }
 
             if have_raw_data {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                println!(
-                    "UNKNOWN DATA @{:04X}: {}",
-                    *offset,
-                    bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
-                );
+                // println!(
+                //     "UNKNOWN DATA @{:04X}: {}",
+                //     *offset,
+                //     bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
+                // );
                 let end = Self::lowest_jump(&external_jumps);
-                println!("Read data from {:04X} -> {:04X}", *offset, end);
+                //println!("Read data from {:04X} -> {:04X}", *offset, end);
                 vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
                     offset: *offset,
                     data: pe.code[*offset..end].to_vec(),
@@ -1104,7 +1110,7 @@ impl TrailerUnknown {
                 sec_start - self.offset,
                 sec_end - sec_start,
             ));
-            println!("{} => {}", sec_start - self.offset, sec_end - self.offset,);
+            //println!("{} => {}", sec_start - self.offset, sec_end - self.offset,);
             sec_start = sec_end;
         }
 
@@ -1135,18 +1141,51 @@ impl UnknownUnknown {
     }
 
     fn show(&self) -> String {
-        let msg = if let Ok(msg) = str::from_utf8(&self.data) {
-            msg
-        } else {
-            ""
-        };
-        format!(
-            "Unknown @ {:04X}: {:6} => {} ({})",
-            self.offset,
-            self.data.len(),
-            bs2s(&self.data),
-            msg
-        )
+        // let msg = if let Ok(msg) = str::from_utf8(&self.data) {
+        //     msg
+        // } else {
+        //     ""
+        // };
+        // format!(
+        //     "Unknown @ {:04X}: {:6} => {} ({})",
+        //     self.offset,
+        //     self.data.len(),
+        //     bs2s(&self.data),
+        //     msg
+        // )
+        use reverse::{format_sections, Section, ShowMode};
+        let mut sections = Vec::new();
+        let mut sec_start = self.offset;
+        // make a first section to align to word boundary if needed
+        if sec_start % 4 != 0 {
+            let sec_end = self.offset + 4 - (sec_start % 4);
+            sections.push(Section::new(
+                0x0000,
+                sec_start - self.offset,
+                sec_end - sec_start,
+            ));
+            sec_start = sec_end;
+        }
+
+        while sec_start < self.offset + self.data.len() {
+            let sec_end = cmp::min(sec_start + 16, self.offset + self.data.len());
+            sections.push(Section::new(
+                0x0000,
+                sec_start - self.offset,
+                sec_end - sec_start,
+            ));
+            //println!("{} => {}", sec_start - self.offset, sec_end - self.offset,);
+            sec_start = sec_end;
+        }
+
+        let out = format_sections(&self.data, &sections, &mut vec![], ShowMode::AllPerLine);
+        let mut s = format!("Trailer @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
+        let mut off = 0;
+        for (line, section) in out.iter().zip(sections) {
+            s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
+            off += section.length;
+        }
+        return s;
     }
 }
 
@@ -1213,10 +1252,11 @@ opaque_instr!(Unk0C, 0x0C, 17);
 opaque_instr!(Unk0E, 0x0E, 17);
 opaque_instr!(Unk10, 0x10, 17);
 opaque_instr!(Unk12, 0x12, 4);
-//opaque_instr!(Unk2E, 0x2E, 18);
+opaque_instr!(Unk1E, 0x1E, 1);
 opaque_instr!(Unk2E, 0x2E, 4);
 opaque_instr!(Unk46, 0x46, 2);
 opaque_instr!(Unk48, 0x48, 4);
+opaque_instr!(Unk4E, 0x4E, 2);
 opaque_instr!(Unk66, 0x66, 10);
 opaque_instr!(Unk6C, 0x6C, 13);
 opaque_instr!(Unk78, 0x78, 12);
@@ -1248,6 +1288,7 @@ pub enum Instr {
     Unk2E(Unk2E),
     Unk46(Unk46),
     Unk48(Unk48),
+    Unk4E(Unk4E),
     Unk66(Unk66),
     Unk6C(Unk6C),
     Unk78(Unk78),
@@ -1267,6 +1308,7 @@ pub enum Instr {
     UnkJumpIfNotShown(UnkJumpIfNotShown),
 
     // Fixed size, without wasted 0 byte after header.
+    Unk1E(Unk1E),
     UnkF6(UnkF6),
     UnkJumpIfLowDetail(UnkJumpIfLowDetail),
 
@@ -1301,9 +1343,11 @@ macro_rules! impl_for_all_instr {
             &Instr::Unk0E(ref i) => i.$f(),
             &Instr::Unk10(ref i) => i.$f(),
             &Instr::Unk12(ref i) => i.$f(),
+            &Instr::Unk1E(ref i) => i.$f(),
             &Instr::Unk2E(ref i) => i.$f(),
             &Instr::Unk46(ref i) => i.$f(),
             &Instr::Unk48(ref i) => i.$f(),
+            &Instr::Unk4E(ref i) => i.$f(),
             &Instr::Unk66(ref i) => i.$f(),
             &Instr::Unk6C(ref i) => i.$f(),
             &Instr::Unk78(ref i) => i.$f(),
@@ -1397,13 +1441,13 @@ impl CpuShape {
     }
 
     fn read_instr(offset: &mut usize, pe: &peff::PE, instrs: &mut Vec<Instr>) -> Result<(), Error> {
-        if *offset >= pe.code.len() {
-            return Ok(());
-        }
+        // if *offset >= pe.code.len() {
+        //     return Ok(());
+        // }
 
-        while pe.code[*offset] == 0x1E {
-            *offset += 1;
-        }
+        // while pe.code[*offset] == 0x1E {
+        //     *offset += 1;
+        // }
 
         match pe.code[*offset] {
             Header::MAGIC => consume_instr!(Header, pe, offset, instrs),
@@ -1413,10 +1457,12 @@ impl CpuShape {
             Unk0E::MAGIC => consume_instr!(Unk0E, pe, offset, instrs),
             Unk10::MAGIC => consume_instr!(Unk10, pe, offset, instrs),
             Unk12::MAGIC => consume_instr!(Unk12, pe, offset, instrs),
+            Unk1E::MAGIC => consume_instr!(Unk1E, pe, offset, instrs),
             Unk2E::MAGIC => consume_instr!(Unk2E, pe, offset, instrs),
             Unk40::MAGIC => consume_instr!(Unk40, pe, offset, instrs),
             Unk46::MAGIC => consume_instr!(Unk46, pe, offset, instrs),
             Unk48::MAGIC => consume_instr!(Unk48, pe, offset, instrs),
+            Unk4E::MAGIC => consume_instr!(Unk4E, pe, offset, instrs),
             Unk66::MAGIC => consume_instr!(Unk66, pe, offset, instrs),
             Unk6C::MAGIC => consume_instr!(Unk6C, pe, offset, instrs),
             Unk78::MAGIC => consume_instr!(Unk78, pe, offset, instrs),
@@ -1451,7 +1497,22 @@ impl CpuShape {
                 }
                 let mut many_instrs = X86Code::from_bytes(name, offset, pe, instrs)?;
             }
-            _ => consume_instr!(TrailerUnknown, pe, offset, instrs), /*
+            // if we hit a zero byte, we are done (or far enough off that we might as well be).
+            0 => consume_instr!(TrailerUnknown, pe, offset, instrs),
+            // if we find something we don't recognize, add it as an unknown-unknown for
+            // the entire rest of the file. If this is nested under x86 because it is between
+            // regions, the caller will remove this and re-add it with a limited size.
+            n => {
+                let instr = UnknownUnknown {
+                    offset: *offset,
+                    data: pe.code[*offset..].to_owned(),
+                };
+                *offset = pe.code.len();
+                instrs.push(Instr::UnknownUnknown(instr));
+
+                // Someday we'll be able to turn on this bail.
+                //bail!("unknown instruction 0x{:02X} at 0x{:04X}", n, offset),
+            } /*
             TrailerUnknown::MAGIC => consume_instr!(TrailerUnknown, pe, offset, instrs),
             _ => bail!("unknown instruction: {:02X}: {}", pe.code[*offset], bs2s(&pe.code[*offset..]))
             */

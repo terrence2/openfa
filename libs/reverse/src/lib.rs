@@ -606,10 +606,11 @@ pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
         if let Some(ref thunks) = pe.thunks {
             for thunk in thunks.values() {
                 let thunk_addr = thunk.vaddr - pe.code_vaddr + pe.code_addr;
+                //println!("checking addr: {:04X} == {:04X}", thunk_ptr, thunk_addr);
                 if thunk_ptr == thunk_addr {
                     // This relocation is for a pointer into the thunk table; store the name so
                     // that we can print the name instead of the address.
-                    //println!("Relocating {:X} in code to {}", thunk_ptr, &thunks[&thunk_ptr].name);
+                    //println!("Relocating {:04X} in code to {}", thunk_ptr, &thunk.name);
                     tags.push(Tag {
                         kind: TagKind::RelocatedCall(thunk.name.clone()),
                         offset: reloc as usize,
