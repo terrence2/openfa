@@ -85,6 +85,7 @@ pub enum OperandType {
     eAX,
     eDX,
     AL,
+    SS,
 
     // Implicit values
     const1,
@@ -297,6 +298,7 @@ lazy_static! {
             (0x03, 0, make_op!(Add:     G/v, E/v)),
             (0x05, 0, make_op!(Add:     Imp/eAX, I/v)),
             (0x0B, 0, make_op!(Or:      G/v, E/v)),
+            (0x16, 0, make_op!(Push:    Imp/SS)),
             (0x25, 0, make_op!(And:     Imp/eAX, I/v)),
             (0x2A, 0, make_op!(Sub:     G/b, E/b)),
             (0x2B, 0, make_op!(Sub:     G/v, E/v)),

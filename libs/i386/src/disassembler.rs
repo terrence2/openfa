@@ -82,19 +82,129 @@ pub enum Reg {
     EBP,
     ESI,
     EDI,
+    EIP,
 
+    SS,
+    CS,
     DS,
     ES,
     FS,
 }
 
+impl Reg {
+    pub fn all_registers() -> Vec<Reg> {
+        vec![
+            Reg::EAX,
+            Reg::EBX,
+            Reg::ECX,
+            Reg::EDX,
+            Reg::ESP,
+            Reg::EBP,
+            Reg::ESI,
+            Reg::EDI,
+            Reg::EIP,
+            Reg::SS,
+            Reg::CS,
+            Reg::DS,
+            Reg::ES,
+            Reg::FS,
+        ]
+    }
+
+    pub fn num_registers() -> usize {
+        13
+    }
+
+    pub fn to_offset(&self) -> usize {
+        match self {
+            // Unique regs
+            Reg::EAX => 0,
+            Reg::EBX => 1,
+            Reg::ECX => 2,
+            Reg::EDX => 3,
+            Reg::ESP => 4,
+            Reg::EBP => 5,
+            Reg::ESI => 6,
+            Reg::EDI => 7,
+            Reg::EIP => 8,
+            Reg::SS => 9,
+            Reg::CS => 10,
+            Reg::DS => 11,
+            Reg::ES => 12,
+            Reg::FS => 13,
+
+            // 16 bit versions
+            Reg::AX => 0,
+            Reg::BX => 1,
+            Reg::CX => 2,
+            Reg::DX => 3,
+            Reg::SP => 4,
+            Reg::BP => 5,
+            Reg::SI => 6,
+            Reg::DI => 7,
+
+            // 8 bit low
+            Reg::AL => 0,
+            Reg::BL => 1,
+            Reg::CL => 2,
+            Reg::DL => 3,
+
+            // 8 bit high
+            Reg::AH => 0,
+            Reg::BH => 1,
+            Reg::CH => 2,
+            Reg::DH => 3,
+        }
+    }
+
+    pub fn is_reg16(&self) -> bool {
+        match self {
+            Reg::AX => true,
+            Reg::BX => true,
+            Reg::CX => true,
+            Reg::DX => true,
+            Reg::SP => true,
+            Reg::BP => true,
+            Reg::SI => true,
+            Reg::DI => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_low8(&self) -> bool {
+        match self {
+            Reg::AL => true,
+            Reg::BL => true,
+            Reg::CL => true,
+            Reg::DL => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_high8(&self) -> bool {
+        match self {
+            Reg::AH => true,
+            Reg::BH => true,
+            Reg::CH => true,
+            Reg::DH => true,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Reg {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Debug)]
 pub struct MemRef {
-    displacement: i32,
-    base: Option<Reg>,
-    index: Option<Reg>,
-    scale: u8,
-    segment: Option<Reg>,
+    pub displacement: i32,
+    pub base: Option<Reg>,
+    pub index: Option<Reg>,
+    pub scale: u8,
+    pub segment: Option<Reg>,
 }
 
 impl MemRef {
@@ -355,9 +465,9 @@ impl Operand {
     }
 
     fn from_bytes_mode_X(
-        code: &[u8],
-        ip: &mut usize,
-        desc: &OperandDef,
+        _code: &[u8],
+        _ip: &mut usize,
+        _desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Result<Self, Error> {
         Ok(Operand::Memory(MemRef::base_plus_segment(
@@ -367,9 +477,9 @@ impl Operand {
     }
 
     fn from_bytes_mode_Y(
-        code: &[u8],
-        ip: &mut usize,
-        desc: &OperandDef,
+        _code: &[u8],
+        _ip: &mut usize,
+        _desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Result<Self, Error> {
         Ok(Operand::Memory(MemRef::base_plus_segment(
@@ -399,6 +509,7 @@ impl Operand {
                 state.prefix.toggle_operand_size,
             )),
             OperandType::AL => Operand::Register(Reg::AL),
+            OperandType::SS => Operand::Register(Reg::SS),
             OperandType::const1 => Operand::Imm32(1),
             _ => unreachable!(),
         })
@@ -788,7 +899,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let paths = fs::read_dir("./test_data").unwrap();
+        let paths = fs::read_dir("./test_data/x86").unwrap();
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
