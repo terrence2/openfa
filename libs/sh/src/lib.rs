@@ -24,10 +24,9 @@ extern crate peff;
 extern crate reverse;
 
 use failure::Error;
-use reverse::{b2b, b2h, bs2s, Color, Escape};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::{cmp, fmt, fs, mem, str};
+use reverse::bs2s;
+use std::collections::HashSet;
+use std::{cmp, fmt, mem, str};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -544,6 +543,7 @@ impl Facet {
 pub struct X86Code {
     pub offset: usize,
     pub length: usize,
+    pub code_offset: usize,
     pub code: Vec<u8>,
     pub formatted: String,
     pub bytecode: i386::ByteCode,
@@ -611,7 +611,7 @@ impl X86Code {
     }
 
     fn find_external_absolute(
-        base: usize,
+        _base: usize,
         pe: &peff::PE,
         bc: &i386::ByteCode,
         external_jumps: &mut HashSet<usize>,
@@ -669,6 +669,19 @@ impl X86Code {
                     bail!("Don't know how to disassemble at {}", *offset);
                 }
                 let bc = maybe_bc?;
+
+                // Dump all decoded segments for testing the disassembler.
+                // if true {
+                //     let src = match find_first_instr(0x42, vinstrs) {
+                //         Some(Instr::SourceRef(ref sr)) => sr.source.clone(),
+                //         _ => "unknown".to_owned(),
+                //     };
+                //     let actual_code = &pe.code[*offset..*offset + bc.size()];
+                //     let mut file =
+                //         File::create(&format!("../i386/test_data/{}-{}.x86", src, *offset))?;
+                //     file.write_all(actual_code)?;
+                // }
+
                 //println!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
 
@@ -680,6 +693,7 @@ impl X86Code {
                 vinstrs.push(Instr::X86Code(X86Code {
                     offset: section_offset,
                     length: section_length,
+                    code_offset: *offset,
                     code: code[0..bc_size].to_owned(),
                     formatted: Self::format_section(section_offset, section_length, &bc, pe),
                     bytecode: bc,
@@ -716,10 +730,8 @@ impl X86Code {
                 *offset = saved_offset;
                 have_raw_data = true;
             } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
-                bail!("found trailer while we still have external jumps to track down")
-                // vinstrs.pop();
-                // *offset = saved_offset;
-                // have_raw_data = true;
+                //bail!("found trailer while we still have external jumps to track down")
+                return Ok(());
             }
 
             if have_raw_data {
@@ -1179,7 +1191,7 @@ impl UnknownUnknown {
         }
 
         let out = format_sections(&self.data, &sections, &mut vec![], ShowMode::AllPerLine);
-        let mut s = format!("Trailer @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
+        let mut s = format!("Unknown @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
         let mut off = 0;
         for (line, section) in out.iter().zip(sections) {
             s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
@@ -1416,6 +1428,8 @@ impl CpuShape {
         let mut offset = 0;
         let mut n_coords = 0;
 
+        println!("TOTAL LEN: {:08X}", pe.code.len());
+
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
             //println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
@@ -1582,6 +1596,38 @@ mod tests {
 
         for v in rv {
             println!("{}", v);
+        }
+    }
+
+    #[test]
+    fn virtual_interp() {
+        let path = "./test_data/EXP.SH";
+        let mut fp = fs::File::open(path).unwrap();
+        let mut data = Vec::new();
+        fp.read_to_end(&mut data).unwrap();
+
+        let shape = CpuShape::new(&data).unwrap();
+        let mut interp = i386::Interpreter::new();
+        for instr in shape.instrs.iter() {
+            match instr {
+                Instr::UnknownUnknown(ref unk) => {
+                    interp.map_memory(0xAA000000 + unk.offset, &unk.data);
+                }
+                Instr::X86Code(ref code) => {
+                    interp.map_memory(0xAA000000 + code.code_offset, &code.code);
+                    interp.add_entry_point(0xAA000000u32 + code.code_offset as u32, &code.bytecode)
+                }
+                _ => {}
+            }
+            println!("{}", instr.show());
+        }
+        for instr in shape.instrs.iter() {
+            if let Instr::X86Code(ref code) = instr {
+                interp
+                    .interpret(0xAA000000u32 + code.code_offset as u32)
+                    .unwrap();
+                break;
+            }
         }
     }
 }

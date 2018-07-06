@@ -83,7 +83,7 @@ fn main() {
             println!("{:20}: {}", name, fmt);
         } else if matches.is_present("unknown") {
             for i in shape.instrs.iter() {
-                if let sh::Instr::UnknownUnknown(u) = i {
+                if let sh::Instr::UnknownUnknown(_u) = i {
                     println!("{:20}: {}", name, i.show());
                 }
             }

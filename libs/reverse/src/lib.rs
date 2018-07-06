@@ -590,13 +590,13 @@ fn find_tags_in_section(section: &Section, tags: &Vec<Tag>) -> Vec<Tag> {
 }
 
 pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
-    println!("PE: vaddr:{:04X}", pe.code_vaddr);
-    for (key, thunk) in pe.thunks.clone().unwrap().iter() {
-        println!(
-            "THUNK> @{:04X}: {}: {:04X} -> {}",
-            key, thunk.ordinal, thunk.vaddr, thunk.name
-        );
-    }
+    // println!("PE: vaddr:{:04X}", pe.code_vaddr);
+    // for (key, thunk) in pe.thunks.clone().unwrap().iter() {
+    //     println!(
+    //         "THUNK> @{:04X}: {}: {:04X} -> {}",
+    //         key, thunk.ordinal, thunk.vaddr, thunk.name
+    //     );
+    // }
     let mut tags = Vec::new();
     for &reloc in pe.relocs.iter() {
         assert!((reloc as usize) + 4 <= pe.code.len());
