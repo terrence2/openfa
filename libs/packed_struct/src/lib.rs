@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with packed_struct.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate failure;
+pub use failure::Error;
 
 #[macro_export]
 macro_rules! _make_packed_struct_accessor {
@@ -49,7 +49,7 @@ macro_rules! packed_struct {
             )+
 
             #[allow(unused)]
-            fn overlay(buf: &[u8]) -> Result<&$name, failure::Error> {
+            fn overlay(buf: &[u8]) -> Result<&$name, $crate::Error> {
                 ensure!(buf.len() >= std::mem::size_of::<$name>(), "buffer to short to overlay $name");
                 let ptr: *const $name = buf.as_ptr() as *const _;
                 let r: &$name = unsafe { &*ptr };
