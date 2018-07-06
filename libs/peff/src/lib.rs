@@ -21,8 +21,8 @@ extern crate packed_struct;
 
 use failure::Error;
 
-use std::{mem, str};
 use std::collections::HashMap;
+use std::{mem, str};
 
 #[derive(Debug, Fail)]
 enum PEError {
@@ -157,7 +157,10 @@ impl PE {
         // win.number_of_rvas_and_sizes == 16
         // win.size_of_image
 
-        // Note: we skip the directory data because the section labels have reliably correct names.
+        // Load directory data so we can cross reference with the section labels.
+        let dir_offset = win_offset + mem::size_of::<WindowsHeader>();
+        let dir_ptr: *const DataDirectory = data[dir_offset..].as_ptr() as *const _;
+        let dirs: &[DataDirectory] = unsafe { std::slice::from_raw_parts(dir_ptr, 16) };
 
         let section_table_offset =
             pe_offset + 4 + mem::size_of::<COFFHeader>() + coff.size_of_optional_header() as usize;
@@ -191,15 +194,25 @@ impl PE {
 
             let expect_flags = match name {
                 "CODE" => {
-                    SectionFlags::IMAGE_SCN_CNT_CODE | SectionFlags::IMAGE_SCN_MEM_EXECUTE
+                    SectionFlags::IMAGE_SCN_CNT_CODE
+                        | SectionFlags::IMAGE_SCN_MEM_EXECUTE
                         | SectionFlags::IMAGE_SCN_MEM_READ
                         | SectionFlags::IMAGE_SCN_MEM_WRITE
                 }
                 ".idata" => {
-                    SectionFlags::IMAGE_SCN_CNT_INITIALIZED_DATA | SectionFlags::IMAGE_SCN_MEM_READ
+                    ensure!(
+                        dirs[1].virtual_address() == section.virtual_address(),
+                        "mismatched virtual address on .idata section"
+                    );
+                    SectionFlags::IMAGE_SCN_CNT_INITIALIZED_DATA
+                        | SectionFlags::IMAGE_SCN_MEM_READ
                         | SectionFlags::IMAGE_SCN_MEM_WRITE
                 }
                 ".reloc" => {
+                    ensure!(
+                        dirs[5].virtual_address() == section.virtual_address(),
+                        "mismatched virtual address on .reloc section"
+                    );
                     SectionFlags::IMAGE_SCN_CNT_INITIALIZED_DATA
                         | SectionFlags::IMAGE_SCN_MEM_DISCARDABLE
                         | SectionFlags::IMAGE_SCN_MEM_READ
@@ -216,7 +229,12 @@ impl PE {
                 "unexpected section flags"
             );
 
-            // println!("Section {} starting at offset {:X} loaded at vaddr {:X}", name, section.pointer_to_raw_data, section.virtual_address);
+            println!(
+                "Section {} starting at offset {:X} loaded at vaddr {:X}",
+                name,
+                section.pointer_to_raw_data(),
+                section.virtual_address()
+            );
             let start = section.pointer_to_raw_data() as usize;
             let end = start + section.virtual_size() as usize;
             let section_data = &data[start..end];
@@ -264,8 +282,11 @@ impl PE {
             idata[mem::size_of::<ImportDirectoryEntry>()..].as_ptr() as *const _;
         let term: &ImportDirectoryEntry = unsafe { &*term_ptr };
         ensure!(
-            term.import_lut_rva() == 0 && term.timestamp() == 0 && term.forwarder_chain() == 0
-                && term.name_rva() == 0 && term.thunk_table() == 0,
+            term.import_lut_rva() == 0
+                && term.timestamp() == 0
+                && term.forwarder_chain() == 0
+                && term.name_rva() == 0
+                && term.thunk_table() == 0,
             "expected one import dirctory entry"
         );
 
@@ -541,9 +562,9 @@ const DOSX_HEADER: &[u8] = &[
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs;
     use std::io::prelude::*;
-    use super::*;
 
     #[test]
     fn it_works() {
@@ -556,7 +577,7 @@ mod tests {
             let mut fp = fs::File::open(&path).unwrap();
             let mut data = Vec::new();
             fp.read_to_end(&mut data).unwrap();
-            let pe = PE::parse(&data).unwrap();
+            let _pe = PE::parse(&data).unwrap();
         }
     }
 }
