@@ -25,7 +25,7 @@ extern crate reverse;
 
 use failure::Error;
 use reverse::bs2s;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::{cmp, fmt, mem, str};
 
 use std::fs::File;
@@ -97,6 +97,7 @@ lazy_static! {
 pub struct CpuShape {
     pub source: String,
     pub instrs: Vec<Instr>,
+    pub data_refs: HashMap<u32, String>,
 }
 
 bitflags! {
@@ -597,7 +598,7 @@ impl X86Code {
         external_jumps: &mut HashSet<usize>,
     ) {
         let mut ip = 0;
-        let ip_end = bc.size();
+        let ip_end = bc.size as usize;
         for instr in bc.instrs.iter() {
             ip += instr.size();
             if Self::instr_is_relative_jump(&instr) {
@@ -663,7 +664,11 @@ impl X86Code {
                 //println!("IP REACHED EXTERNAL JUMP");
 
                 let code = &pe.code[*offset..];
-                let maybe_bc = i386::ByteCode::disassemble_to_ret(code, false);
+                let maybe_bc = i386::ByteCode::disassemble_to_ret(
+                    ShapePointerBase as usize + *offset,
+                    code,
+                    false,
+                );
                 if let Err(e) = maybe_bc {
                     i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
                     bail!("Don't know how to disassemble at {}", *offset);
@@ -686,7 +691,7 @@ impl X86Code {
                 Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
 
                 // Insert the instruction.
-                let bc_size = bc.size();
+                let bc_size = bc.size as usize;
                 let have_header = pe.code[*offset - 2] == 0xF0;
                 let section_offset = if have_header { *offset - 2 } else { *offset };
                 let section_length = bc_size + if have_header { 2 } else { 0 };
@@ -1415,16 +1420,84 @@ macro_rules! consume_instr {
     }};
 }
 
+lazy_static! {
+    pub static ref DATA_RELOCATIONS: HashSet<String> = {
+        ["_currentTicks", "brentObjId"]
+            .iter()
+            .map(|&n| n.to_owned())
+            .collect()
+    };
+}
+
+const ShapePointerBase: u32 = 0xAA000000;
+
 impl CpuShape {
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         let mut pe = peff::PE::parse(data)?;
-        pe.relocate(0xAA000000)?;
 
-        let shape = Self::_read_sections(&pe)?;
+        // Do default relocation to a high address. This makes offsets appear
+        // 0-based and tags all local pointers with an obvious flag.
+        pe.relocate(ShapePointerBase)?;
+        let data_refs = Self::find_data_references(&pe)?;
+
+        let instrs = Self::_read_sections(&pe)?;
+
+        let shape = CpuShape {
+            source: "".to_owned(),
+            instrs,
+            data_refs,
+        };
         return Ok(shape);
     }
 
-    fn _read_sections(pe: &peff::PE) -> Result<Self, Error> {
+    // The standard relocation is not quite adequate. Whatever tool was used to
+    // link .SH's bakes in a direct pointer to the GOT PLT base as the data
+    // location. Presumably when doing runtime linking, it uses the IAT's name
+    // as a tag and rewrites the direct load to the real address of the symbol
+    // (and not a split read of the code and reloc in the GOT). These appear to
+    // be both global and per-object data depending on the data -- e.g.
+    // brentObjectId is probably per-object and _currentTicks is probably
+    // global?
+    //
+    // A concrete example; if the inline assembly does:
+    //    `mov %ebp, [<addr of GOT of data>]`
+    //
+    // The runtime would presumably use the relocation of the above addr as an
+    // opportunity to rewrite the load as a reference to the real memory.
+    fn find_data_references(pe: &peff::PE) -> Result<HashMap<u32, String>, Error> {
+        let mut data_refs = HashMap::new();
+
+        // If the file has no idata, there are no data references.
+        if !pe.section_info.contains_key(".idata") {
+            return Ok(data_refs);
+        }
+        let idata_info = &pe.section_info[".idata"];
+
+        // For each data import we reference...
+        for thunk in pe.thunks.iter() {
+            if !DATA_RELOCATIONS.contains(&thunk.name) {
+                continue;
+            }
+
+            // Find the GOT PLT entry that would act as a thunk if this were a
+            // call. We can do this by scanning the relocations and finding the
+            // relocation that points into the right thunk in the .idata
+            // section.
+            for &reloc in pe.relocs.iter() {
+                let dwords: &[u32] = unsafe { mem::transmute(&pe.code[reloc as usize..]) };
+                let pcode: *const u32 = dwords.as_ptr();
+                let target = unsafe { *pcode };
+                if target == thunk.vaddr {
+                    // Any read to the start of the GOT that this reloc is in
+                    // should be replaced by the given value.
+                    data_refs.insert(ShapePointerBase + reloc - 2, thunk.name.clone());
+                }
+            }
+        }
+        return Ok(data_refs);
+    }
+
+    fn _read_sections(pe: &peff::PE) -> Result<Vec<Instr>, Error> {
         let mut offset = 0;
         let mut n_coords = 0;
 
@@ -1447,11 +1520,7 @@ impl CpuShape {
         //            }
         //        }
 
-        let mut shape = CpuShape {
-            source: "".to_owned(),
-            instrs,
-        };
-        return Ok(shape);
+        return Ok(instrs);
     }
 
     fn read_instr(offset: &mut usize, pe: &peff::PE, instrs: &mut Vec<Instr>) -> Result<(), Error> {
@@ -1599,23 +1668,109 @@ mod tests {
         }
     }
 
+    struct ExplosionInfo {
+        field0: u8,
+        field2: u8,
+
+        // ax = (field49 - field48) & 0x00FF
+        // cx = _currentTicks - field40
+        // dx:ax = ax * cx
+        // cx = field44 - field40
+        // ax, dx = dx:ax / cx, dx:ax % cx
+        // ax += field48
+        // if ax > 0x316 { _ErrorExit("Bad value (around line 133) in exp.asm!") }
+        field40: u16,
+        field44: u16,
+        field48: u8,
+        field49: u8,
+    }
+
     #[test]
     fn virtual_interp() {
         let path = "./test_data/EXP.SH";
+        //let path = "./test_data/FLARE.SH";
         let mut fp = fs::File::open(path).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
+        let obj = ExplosionInfo {
+            field0: 0x11,
+            field2: 0x10,
+            field40: 0,
+            field44: 4,
+            field48: 25,
+            field49: 44,
+        };
+        let exp_base = 0x40F0;
+
         let shape = CpuShape::new(&data).unwrap();
         let mut interp = i386::Interpreter::new();
+        for (addr, name) in shape.data_refs.iter() {
+            match name.as_ref() {
+                "brentObjId" => interp.add_port(
+                    *addr,
+                    Box::new(move || {
+                        println!("LOOKUP brentObjectId");
+                        exp_base // Lowest valid (shown?) object id is 0x3E8, at least by the check EXP.sh does.
+                    }),
+                ),
+                "_currentTicks" => interp.add_port(
+                    *addr,
+                    Box::new(move || {
+                        println!("LOOKUP _currentTicks");
+                        0
+                    }),
+                ),
+                _ => panic!("unknown data reference to {}", name),
+            }
+        }
+
+        // Expose the underlying object as needed.
+        interp.add_port(
+            exp_base,
+            Box::new(|| {
+                return 0x11 as u32;
+            }),
+        );
+        interp.add_port(
+            exp_base + 0x2,
+            Box::new(|| {
+                return 0x10 as u32;
+            }),
+        );
+        interp.add_port(
+            exp_base + 0x40,
+            Box::new(|| {
+                return 0 as u32;
+            }),
+        );
+        interp.add_port(
+            exp_base + 0x44,
+            Box::new(|| {
+                return 4 as u32;
+            }),
+        );
+        interp.add_port(
+            exp_base + 0x48,
+            Box::new(|| {
+                return 25 as u32;
+            }),
+        );
+        interp.add_port(
+            exp_base + 0x49,
+            Box::new(move || {
+                return 44 as u32;
+            }),
+        );
+
         for instr in shape.instrs.iter() {
             match instr {
                 Instr::UnknownUnknown(ref unk) => {
-                    interp.map_memory(0xAA000000 + unk.offset, &unk.data);
+                    interp.map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone());
                 }
                 Instr::X86Code(ref code) => {
-                    interp.map_memory(0xAA000000 + code.code_offset, &code.code);
-                    interp.add_entry_point(0xAA000000u32 + code.code_offset as u32, &code.bytecode)
+                    interp.map_readonly((0xAA000000 + code.code_offset) as u32, &code.code);
+                    interp.add_code(&code.bytecode);
                 }
                 _ => {}
             }

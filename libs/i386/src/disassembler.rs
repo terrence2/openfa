@@ -198,6 +198,7 @@ impl fmt::Display for Reg {
     }
 }
 
+// size @ [base + index*scale + disp]
 #[derive(Debug)]
 pub struct MemRef {
     pub displacement: i32,
@@ -205,46 +206,51 @@ pub struct MemRef {
     pub index: Option<Reg>,
     pub scale: u8,
     pub segment: Option<Reg>,
+    pub size: u8, // one of 1, 2, or 4
 }
 
 impl MemRef {
-    fn base(base: Reg, prefix: &OpPrefix) -> Self {
+    fn base(base: Reg, size: u8, prefix: &OpPrefix) -> Self {
         MemRef {
             displacement: 0,
             base: Some(base),
             index: None,
             scale: 1,
             segment: Self::segment(prefix),
+            size,
         }
     }
 
-    fn base_plus_segment(base: Reg, segment: Reg) -> Self {
+    fn base_plus_segment(base: Reg, size: u8, segment: Reg) -> Self {
         MemRef {
             displacement: 0,
             base: Some(base),
             index: None,
             scale: 1,
             segment: Some(segment),
+            size,
         }
     }
 
-    fn base_plus_displacement(base: Reg, displacement: i32, prefix: &OpPrefix) -> Self {
+    fn base_plus_displacement(base: Reg, displacement: i32, size: u8, prefix: &OpPrefix) -> Self {
         MemRef {
             displacement,
             base: Some(base),
             index: None,
             scale: 1,
             segment: Self::segment(prefix),
+            size,
         }
     }
 
-    fn displacement(displacement: i32, prefix: &OpPrefix) -> Self {
+    fn displacement(displacement: i32, size: u8, prefix: &OpPrefix) -> Self {
         MemRef {
             displacement,
             base: None,
             index: None,
             scale: 1,
             segment: Self::segment(prefix),
+            size,
         }
     }
 
@@ -254,6 +260,18 @@ impl MemRef {
         } else {
             None
         }
+    }
+
+    fn size_for_type(ty: OperandType, state: &OperandDecodeState) -> Result<u8, Error> {
+        Ok(match ty {
+            OperandType::b => 1,
+            OperandType::v => if state.prefix.toggle_operand_size {
+                2
+            } else {
+                4
+            },
+            _ => bail!("size_for_type for handled operand type: {:?}", ty),
+        })
     }
 }
 
@@ -352,22 +370,24 @@ impl Operand {
         desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Result<Self, Error> {
+        assert!(!state.prefix.toggle_address_size);
         let (mode, _reg, rm) = state.read_modrm(code, ip)?;
         Ok(match mode {
             0b00 => match rm {
                 0 | 1 | 2 | 3 | 6 | 7 => match desc.ty {
                     OperandType::b => {
-                        Operand::Memory(MemRef::base(Self::register_low(rm), &state.prefix))
+                        Operand::Memory(MemRef::base(Self::register_low(rm), 1, &state.prefix))
                     }
                     OperandType::v => {
-                        Operand::Memory(MemRef::base(Self::register(rm), &state.prefix))
+                        Operand::Memory(MemRef::base(Self::register(rm), 4, &state.prefix))
                     }
                     _ => unreachable!(),
                 },
                 5 => {
-                    assert!(!state.prefix.toggle_address_size);
+                    println!("OperandType: {:?}", desc.ty);
                     Operand::Memory(MemRef::displacement(
                         Self::read4(code, ip)? as i32,
+                        MemRef::size_for_type(desc.ty, state)?,
                         &state.prefix,
                     ))
                 }
@@ -379,6 +399,7 @@ impl Operand {
                 Operand::Memory(MemRef::base_plus_displacement(
                     base,
                     disp8 as i8 as i32,
+                    MemRef::size_for_type(desc.ty, state)?,
                     &state.prefix,
                 ))
             }
@@ -388,6 +409,7 @@ impl Operand {
                 Operand::Memory(MemRef::base_plus_displacement(
                     base,
                     disp32 as i32,
+                    MemRef::size_for_type(desc.ty, state)?,
                     &state.prefix,
                 ))
             }
@@ -455,9 +477,11 @@ impl Operand {
         desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Result<Self, Error> {
+        assert!(!state.prefix.toggle_address_size);
         Ok(match desc.ty {
             OperandType::v => Operand::Memory(MemRef::displacement(
                 Self::read4(code, ip)? as i32,
+                MemRef::size_for_type(desc.ty, state)?,
                 &state.prefix,
             )),
             _ => unreachable!(),
@@ -467,11 +491,13 @@ impl Operand {
     fn from_bytes_mode_X(
         _code: &[u8],
         _ip: &mut usize,
-        _desc: &OperandDef,
+        desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Result<Self, Error> {
+        assert!(!state.prefix.toggle_address_size);
         Ok(Operand::Memory(MemRef::base_plus_segment(
             Self::maybe_toggle_reg_size(Reg::ESI, state.prefix.toggle_operand_size),
+            MemRef::size_for_type(desc.ty, state)?,
             Reg::DS,
         )))
     }
@@ -479,11 +505,13 @@ impl Operand {
     fn from_bytes_mode_Y(
         _code: &[u8],
         _ip: &mut usize,
-        _desc: &OperandDef,
+        desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Result<Self, Error> {
+        assert!(!state.prefix.toggle_address_size);
         Ok(Operand::Memory(MemRef::base_plus_segment(
             Self::maybe_toggle_reg_size(Reg::EDI, state.prefix.toggle_operand_size),
+            MemRef::size_for_type(desc.ty, state)?,
             Reg::ES,
         )))
     }
@@ -712,6 +740,10 @@ impl Instr {
         return self.raw.len();
     }
 
+    pub fn op(&self, i: usize) -> &Operand {
+        return &self.operands[i];
+    }
+
     fn read_op(code: &[u8], ip: &mut usize) -> Result<(u16, u8), Error> {
         ensure!(
             code.len() > *ip,
@@ -816,6 +848,8 @@ impl fmt::Display for Instr {
 
 #[derive(Debug)]
 pub struct ByteCode {
+    pub start_addr: u32,
+    pub size: u32,
     pub instrs: Vec<Instr>,
 }
 
@@ -833,10 +867,15 @@ impl ByteCode {
             }
             instrs.push(instr);
         }
-        return Ok(Self { instrs });
+
+        return Ok(Self {
+            start_addr: 0,
+            size: Self::compute_size(&instrs) as u32,
+            instrs,
+        });
     }
 
-    pub fn disassemble_to_ret(code: &[u8], verbose: bool) -> Result<Self, Error> {
+    pub fn disassemble_to_ret(at_offset: usize, code: &[u8], verbose: bool) -> Result<Self, Error> {
         if verbose {
             println!("Disassembling: {}", bs2s(code));
         }
@@ -853,12 +892,16 @@ impl ByteCode {
                 break;
             }
         }
-        return Ok(Self { instrs });
+        return Ok(Self {
+            start_addr: at_offset as u32,
+            size: Self::compute_size(&instrs) as u32,
+            instrs,
+        });
     }
 
-    pub fn size(&self) -> usize {
+    fn compute_size(instrs: &Vec<Instr>) -> usize {
         let mut sz = 0;
-        for instr in self.instrs.iter() {
+        for instr in instrs.iter() {
             sz += instr.size();
         }
         return sz;

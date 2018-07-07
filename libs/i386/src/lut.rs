@@ -178,6 +178,7 @@ pub enum Memonic {
     Inc,
     IDiv,
     IMul,
+    IMul2,
     LEA,
     Move,
     MoveStr,
@@ -371,7 +372,7 @@ lazy_static! {
             (0xFF, 4, make_op!(Jump:    E/v)),
 
             (0x0F85, 0, make_op!(J|ZF=0: J/v)),
-            (0x0FAF, 0, make_op!(IMul:   G/v, E/v)),
+            (0x0FAF, 0, make_op!(IMul2:  G/v, E/v)),
             (0x0FB6, 0, make_op!(MoveZX: G/v, E/b)),
             (0x0FB7, 0, make_op!(MoveZX: G/v, E/w)),
         ];

@@ -32,7 +32,7 @@ enum PEError {
 
 pub struct PE {
     // Maps from vaddr (as we may see in CODE) to the function name to thunk to.
-    pub thunks: Option<HashMap<u32, Thunk>>,
+    pub thunks: Vec<Thunk>,
 
     // A list of offsets in CODE containing a 32bit address that needs to be relocated in memory.
     // The base is always 0, so just add the address of CODE.
@@ -40,6 +40,9 @@ pub struct PE {
 
     // The code itself, copied out of the source.
     pub code: Vec<u8>,
+
+    // Stored section headers, so that we can interpret thunks and relocs.
+    pub section_info: HashMap<String, SectionInfo>,
 
     // The assumed load address of the code.
     pub code_vaddr: u32,
@@ -55,6 +58,22 @@ pub struct Thunk {
     pub ordinal: u32,
     // The ordinal of this import.
     pub vaddr: u32, // Virtual address of the thunk of this symbol.
+}
+
+pub struct SectionInfo {
+    pub virtual_address: u32,
+    pub virtual_size: u32,
+    pub size_of_raw_data: u32,
+}
+
+impl SectionInfo {
+    fn from_header(header: &SectionHeader) -> Self {
+        Self {
+            virtual_address: header.virtual_address(),
+            virtual_size: header.virtual_size(),
+            size_of_raw_data: header.size_of_raw_data(),
+        }
+    }
 }
 
 impl PE {
@@ -249,28 +268,34 @@ impl PE {
             sections.insert(name.to_owned(), (section, section_data));
         }
 
-        let thunks = match sections.contains_key(".idata") {
-            true => {
-                let (idata_section, idata) = sections[".idata"];
-                Some(PE::_parse_idata(idata_section, idata)?)
-            }
-            false => None,
-        };
+        let mut thunks = Vec::new();
+        if sections.contains_key(".idata") {
+            let (idata_section, idata) = sections[".idata"];
+            thunks.append(&mut PE::_parse_idata(idata_section, idata)?);
+        }
 
         let (code_section, code) = sections["CODE"];
         let (_, reloc_data) = sections[".reloc"];
         let relocs = PE::_parse_relocs(reloc_data, code_section)?;
 
+        let section_info = sections
+            .iter()
+            .map(|(ref name, (ref header, _))| {
+                ((*name).to_owned(), SectionInfo::from_header(header))
+            })
+            .collect::<HashMap<String, SectionInfo>>();
+
         return Ok(PE {
             thunks,
             relocs,
             code: code.to_owned(),
+            section_info,
             code_vaddr: code_section.virtual_address(),
             code_addr: code_section.virtual_address(),
         });
     }
 
-    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<HashMap<u32, Thunk>, Error> {
+    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<Vec<Thunk>, Error> {
         ensure!(
             idata.len() > mem::size_of::<ImportDirectoryEntry>() * 2,
             "section data too short for directory"
@@ -292,6 +317,8 @@ impl PE {
 
         let dir_ptr: *const ImportDirectoryEntry = idata.as_ptr() as *const _;
         let dir: &ImportDirectoryEntry = unsafe { &*dir_ptr };
+        ensure!(dir.timestamp() == 0, "expected zero timestamp");
+        ensure!(dir.forwarder_chain() == 0, "did not expect forwarding");
 
         // Check that the name is main.dll.
         ensure!(
@@ -314,7 +341,7 @@ impl PE {
         let thunk_offset = dir.thunk_table() as usize - section.virtual_address() as usize;
         let lut_table: &[u32] = unsafe { mem::transmute(&idata[lut_offset..]) };
         let thunk_table: &[u32] = unsafe { mem::transmute(&idata[thunk_offset..]) };
-        let mut thunks = HashMap::new();
+        let mut thunks = Vec::new();
         let mut ordinal = 0usize;
         while lut_table[ordinal] != 0 {
             ensure!(
@@ -341,12 +368,20 @@ impl PE {
             ensure!(hint == 0, "hint table entries are not supported");
             let name = Self::read_name(&idata[name_table_offset + 2..])?;
             let vaddr = dir.thunk_table() as usize + ordinal * mem::size_of::<u32>();
+            let vaddr_offset = dir.thunk_table() as usize + ordinal * mem::size_of::<u32>();
+            let vaddrs: &[u32] = unsafe {
+                mem::transmute(&idata[vaddr_offset - section.virtual_address() as usize..])
+            };
+            println!(
+                "Loaded thunk: {} for {} at {:04X} which contains: {:08X}",
+                ordinal, name, vaddr, vaddrs[0]
+            );
             let thunk = Thunk {
                 name,
                 ordinal: ordinal as u32,
                 vaddr: vaddr as u32,
             };
-            thunks.insert(vaddr as u32, thunk);
+            thunks.push(thunk);
             ordinal += 1;
         }
         return Ok(thunks);
@@ -379,6 +414,7 @@ impl PE {
                     let offset = relocs[i] & 0x0FFF;
                     ensure!(flags == 3, "only 32bit relocations are supported");
                     let rva = base_reloc.page_rva() + offset as u32;
+                    println!("Base Reloc: {:04X} + {:04X}", base_reloc.page_rva(), offset);
                     ensure!(
                         rva >= code_section.virtual_address(),
                         "relocation not in CODE"
@@ -399,13 +435,24 @@ impl PE {
     pub fn relocate(&mut self, addr: u32) -> Result<(), Error> {
         assert!(addr >= self.code_vaddr);
         let delta = addr - self.code_vaddr;
-        //println!("DELTA: {:08X}", delta);
         for &reloc in self.relocs.iter() {
             let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
             let pcode: *mut u32 = dwords.as_mut_ptr();
             unsafe {
+                println!(
+                    "Relocating word at {:04X} from {:04X} to {:04X}",
+                    reloc as usize,
+                    *pcode,
+                    *pcode + delta
+                );
                 *pcode += delta;
             }
+        }
+        for info in self.section_info.values_mut() {
+            info.virtual_address += delta;
+        }
+        for thunk in self.thunks.iter_mut() {
+            thunk.vaddr += delta;
         }
         self.code_addr = addr;
         return Ok(());
