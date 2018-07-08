@@ -16,20 +16,19 @@
 extern crate bitflags;
 #[macro_use]
 extern crate failure;
-#[macro_use]
 extern crate i386;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
 extern crate peff;
 extern crate reverse;
+extern crate simplelog;
 
 use failure::Error;
 use reverse::bs2s;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::{cmp, fmt, mem, str};
-
-use std::fs::File;
-use std::io::prelude::*;
 
 #[derive(Debug, Fail)]
 enum ShError {
@@ -37,57 +36,24 @@ enum ShError {
     NameUnending {},
 }
 
-lazy_static! {
-    static ref ALL_OPCODES: HashSet<u8> = {
-        [0x00,
-         0x06,
-         0x08,
-         0x0C,
-         0x0E,
-         0x10,
-         0x12,
-         0x1E,
-         0x2E,
-         0x38,
-         0x40,
-         0x42,
-         0x46,
-         0x48,
-         0x4E, // Shows up in FLARE.
-         0x66,
-         0x6C,
-         0x78,
-         0x7A,
-         0x82,
-         0xA6,
-         0xAC,
-         0xB2,
-         0xB8,
-         0xBC,
-         0xC4,
-         0xC8,
-         0xCA,
-         0xCE,
-         0xD0,
-         0xDA,
-         0xE0,
-         0xE2,
-         0xE4, // Shows up in WAVE1, not sure if in others.
-         0xEE,
-         0xF0,
-         0xF2,
-         0xF6,
-         0xFC,
-         0xFF]
-            .iter()
-            .map(|&n| n)
-            .collect()
-    };
+const SHAPE_LOAD_BASE: u32 = 0xAA000000;
 
-    static ref ONE_BYTE_MAGIC: HashSet<u8> = {
-        [0x1E, 0x66, 0xFC, 0xFF]
-            .iter()
-            .map(|&n| n)
+lazy_static! {
+    // Virtual instructions that have a one-byte header instead of
+    static ref ONE_BYTE_MAGIC: HashSet<u8> =
+        { [0x1E, 0x66, 0xFC, 0xFF].iter().map(|&n| n).collect() };
+
+    pub static ref DATA_RELOCATIONS: HashSet<String> = {
+        [
+            "_currentTicks",
+            "_effectsAllowed",
+            "brentObjId",
+            "viewer_x",
+            "viewer_z",
+            "xv32",
+            "zv32",
+        ].iter()
+            .map(|&n| n.to_owned())
             .collect()
     };
 }
@@ -97,7 +63,8 @@ lazy_static! {
 pub struct CpuShape {
     pub source: String,
     pub instrs: Vec<Instr>,
-    pub data_refs: HashMap<u32, String>,
+    pub trampolines: Vec<X86Trampoline>,
+    pub pe: peff::PE,
 }
 
 bitflags! {
@@ -540,6 +507,107 @@ impl Facet {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct X86Trampoline {
+    pub offset: usize,
+
+    // The name attached to the thunk that would populate this trampoline.
+    pub name: String,
+
+    // Where this trampoline would indirect to, if called.
+    pub target: u32,
+
+    // The jump or data reference that will be baked into code to call or load
+    // from this trampoline (e.g. offset but including the relocation).
+    pub location: u32,
+
+    // Whatever tool was used to link .SH's bakes in a direct pointer to the GOT
+    // PLT base (e.g. target) as the data location. Presumably when doing
+    // runtime linking, it uses the IAT's name as a tag and rewrites the direct
+    // load to the real address of the symbol (and not a split read of the code
+    // and reloc in the GOT). These appear to be both global and per-object data
+    // depending on the data -- e.g. brentObjectId is probably per-object and
+    // _currentTicks is probably global?
+    //
+    // A concrete example; if the inline assembly does:
+    //    `mov %ebp, [<addr of GOT of data>]`
+    //
+    // The runtime would presumably use the relocation of the above addr as an
+    // opportunity to rewrite the load as a reference to the real memory. We
+    // need to take all of this into account when interpreting the referencing
+    // code.
+    pub is_data: bool,
+}
+
+impl X86Trampoline {
+    const SIZE: usize = 6;
+
+    fn from_pe(offset: usize, pe: &peff::PE) -> Result<Self, Error> {
+        ensure!(
+            pe.code.len() >= offset + 6,
+            "not enough code in X86Trampoline::from_pe"
+        );
+        ensure!(
+            pe.code[offset] == 0xFF && pe.code[offset + 1] == 0x25,
+            "not at a trampoline"
+        );
+        ensure!(
+            pe.section_info.contains_key(".idata"),
+            "no .idata section (thunks) in pe"
+        );
+        let target = {
+            let vp: &[u32] = unsafe { mem::transmute(&pe.code[offset + 2..offset + 6]) };
+            vp[0]
+        };
+        let name = Self::find_matching_thunk(target, pe)?;
+        let is_data = DATA_RELOCATIONS.contains(&name);
+        return Ok(X86Trampoline {
+            offset,
+            name,
+            target,
+            location: SHAPE_LOAD_BASE + offset as u32,
+            is_data,
+        });
+    }
+
+    fn find_matching_thunk(target: u32, pe: &peff::PE) -> Result<String, Error> {
+        for thunk in pe.thunks.iter() {
+            if target == thunk.vaddr {
+                return Ok(thunk.name.clone());
+            }
+        }
+        // Not all SH files contain relocations for the thunk targets(!). This
+        // is yet more evidence that they're not actually using LoadLibrary to
+        // put shapes in memory. They're probably only using the relocation list
+        // to rewrite data access with the thunks as tags. We're using
+        // relocation, however, to help debug. So if the thunks are not
+        // relocated automatically we have to check the relocated value
+        // manually.
+        let target = pe.relocate_pointer(target);
+        for thunk in pe.thunks.iter() {
+            if target == thunk.vaddr {
+                return Ok(thunk.name.clone());
+            }
+        }
+        bail!("did not find thunk with a target of {:08X}", target);
+    }
+
+    fn size(&self) -> usize {
+        6
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn show(&self) -> String {
+        format!(
+            "X86Trampoline @ {:04X} -> {:04X}({})",
+            self.offset, self.target, self.name
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct X86Code {
     pub offset: usize,
@@ -554,6 +622,7 @@ pub struct X86Code {
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
+    // External, but excluding trampolines.
     fn find_external_jumps(
         base: usize,
         pe: &peff::PE,
@@ -561,7 +630,7 @@ impl X86Code {
         external_jumps: &mut HashSet<usize>,
     ) {
         Self::find_external_relative(base, pe, bc, external_jumps);
-        Self::find_external_absolute(base, pe, bc, external_jumps);
+        //Self::find_external_absolute(base, pe, bc, external_jumps);
     }
 
     fn instr_is_relative_jump(instr: &i386::Instr) -> bool {
@@ -577,7 +646,7 @@ impl X86Code {
         match op {
             i386::Operand::Imm32s(delta) => {
                 if *delta < 0 {
-                    println!("Skipping loop of {} bytes", *delta);
+                    info!("Skipping loop of {} bytes", *delta);
                     0
                 } else {
                     *delta as u32 as usize
@@ -585,7 +654,7 @@ impl X86Code {
             }
             i386::Operand::Imm32(delta) => *delta as usize,
             _ => {
-                //println!("Detected indirect jump target: {}", op);
+                trace!("Detected indirect jump target: {}", op);
                 0
             }
         }
@@ -593,7 +662,7 @@ impl X86Code {
 
     fn find_external_relative(
         base: usize,
-        pe: &peff::PE,
+        _pe: &peff::PE,
         bc: &i386::ByteCode,
         external_jumps: &mut HashSet<usize>,
     ) {
@@ -643,9 +712,10 @@ impl X86Code {
     }
 
     fn from_bytes(
-        name: String,
+        _name: String,
         offset: &mut usize,
         pe: &peff::PE,
+        trampolines: &Vec<X86Trampoline>,
         vinstrs: &mut Vec<Instr>,
     ) -> Result<(), Error> {
         let section = &pe.code[*offset..];
@@ -665,7 +735,7 @@ impl X86Code {
 
                 let code = &pe.code[*offset..];
                 let maybe_bc = i386::ByteCode::disassemble_to_ret(
-                    ShapePointerBase as usize + *offset,
+                    SHAPE_LOAD_BASE as usize + *offset,
                     code,
                     false,
                 );
@@ -724,10 +794,9 @@ impl X86Code {
             // there is one, decode it. Otherwise treat it as raw data.
 
             // We do not expect another F0 while we have external jumps to find.
-            //println!("FF: Next external jumps: {:?}", external_jumps);
             let saved_offset = *offset;
             let mut have_raw_data = false;
-            let maybe = CpuShape::read_instr(offset, pe, vinstrs);
+            let maybe = CpuShape::read_instr(offset, pe, trampolines, vinstrs);
             if let Err(_e) = maybe {
                 have_raw_data = true;
             } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {
@@ -760,7 +829,7 @@ impl X86Code {
         return Ok(());
     }
 
-    fn format_section(offset: usize, length: usize, bc: &i386::ByteCode, pe: &peff::PE) -> String {
+    fn format_section(offset: usize, length: usize, _bc: &i386::ByteCode, pe: &peff::PE) -> String {
         let sec = reverse::Section::new(0xF0, offset, length);
         let tags = reverse::get_all_tags(pe);
         let mut v = Vec::new();
@@ -1089,8 +1158,12 @@ pub struct TrailerUnknown {
 impl TrailerUnknown {
     pub const MAGIC: u8 = 0x00;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
-        let data = &code[offset..];
+    fn from_bytes(
+        offset: usize,
+        code: &[u8],
+        trampolines: &Vec<X86Trampoline>,
+    ) -> Result<Self, Error> {
+        let data = &code[offset..code.len() - trampolines.len() * X86Trampoline::SIZE];
         return Ok(Self {
             offset,
             data: data.to_owned(),
@@ -1345,8 +1418,9 @@ pub enum Instr {
     // 0x0082
     Facet(Facet), // 0x__FC
 
-    // Wtf
+    // Raw i386 bitcode used as a scripting language.
     X86Code(X86Code),
+    X86Trampoline(X86Trampoline),
     UnknownUnknown(UnknownUnknown),
 }
 
@@ -1393,6 +1467,7 @@ macro_rules! impl_for_all_instr {
             &Instr::VertexBuf(ref i) => i.$f(),
             &Instr::Facet(ref i) => i.$f(),
             &Instr::X86Code(ref i) => i.$f(),
+            &Instr::X86Trampoline(ref i) => i.$f(),
             &Instr::UnknownUnknown(ref i) => i.$f(),
         }
     };
@@ -1420,94 +1495,57 @@ macro_rules! consume_instr {
     }};
 }
 
-lazy_static! {
-    pub static ref DATA_RELOCATIONS: HashSet<String> = {
-        ["_currentTicks", "brentObjId"]
-            .iter()
-            .map(|&n| n.to_owned())
-            .collect()
-    };
-}
-
-const ShapePointerBase: u32 = 0xAA000000;
-
 impl CpuShape {
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         let mut pe = peff::PE::parse(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
         // 0-based and tags all local pointers with an obvious flag.
-        pe.relocate(ShapePointerBase)?;
-        let data_refs = Self::find_data_references(&pe)?;
+        pe.relocate(SHAPE_LOAD_BASE)?;
+        let mut trampolines = Self::find_trampolines(&pe)?;
 
-        let instrs = Self::_read_sections(&pe)?;
+        let mut instrs = Self::_read_sections(&pe, &trampolines)?;
+        let mut tramp_instr = trampolines
+            .iter()
+            .map(|t| Instr::X86Trampoline(t.to_owned()))
+            .collect::<Vec<_>>();
+        instrs.append(&mut tramp_instr);
 
         let shape = CpuShape {
             source: "".to_owned(),
             instrs,
-            data_refs,
+            trampolines,
+            pe,
         };
         return Ok(shape);
     }
 
-    // The standard relocation is not quite adequate. Whatever tool was used to
-    // link .SH's bakes in a direct pointer to the GOT PLT base as the data
-    // location. Presumably when doing runtime linking, it uses the IAT's name
-    // as a tag and rewrites the direct load to the real address of the symbol
-    // (and not a split read of the code and reloc in the GOT). These appear to
-    // be both global and per-object data depending on the data -- e.g.
-    // brentObjectId is probably per-object and _currentTicks is probably
-    // global?
-    //
-    // A concrete example; if the inline assembly does:
-    //    `mov %ebp, [<addr of GOT of data>]`
-    //
-    // The runtime would presumably use the relocation of the above addr as an
-    // opportunity to rewrite the load as a reference to the real memory.
-    fn find_data_references(pe: &peff::PE) -> Result<HashMap<u32, String>, Error> {
-        let mut data_refs = HashMap::new();
-
-        // If the file has no idata, there are no data references.
-        if !pe.section_info.contains_key(".idata") {
-            return Ok(data_refs);
-        }
-        let idata_info = &pe.section_info[".idata"];
-
-        // For each data import we reference...
-        for thunk in pe.thunks.iter() {
-            if !DATA_RELOCATIONS.contains(&thunk.name) {
-                continue;
+    fn find_trampolines(pe: &peff::PE) -> Result<Vec<X86Trampoline>, Error> {
+        let mut offset = pe.code.len() - 6;
+        let mut trampolines = Vec::new();
+        while offset > 0 {
+            let maybe_tramp = X86Trampoline::from_pe(offset, pe);
+            if let Ok(tramp) = maybe_tramp {
+                trampolines.push(tramp);
+            } else {
+                break;
             }
-
-            // Find the GOT PLT entry that would act as a thunk if this were a
-            // call. We can do this by scanning the relocations and finding the
-            // relocation that points into the right thunk in the .idata
-            // section.
-            for &reloc in pe.relocs.iter() {
-                let dwords: &[u32] = unsafe { mem::transmute(&pe.code[reloc as usize..]) };
-                let pcode: *const u32 = dwords.as_ptr();
-                let target = unsafe { *pcode };
-                if target == thunk.vaddr {
-                    // Any read to the start of the GOT that this reloc is in
-                    // should be replaced by the given value.
-                    data_refs.insert(ShapePointerBase + reloc - 2, thunk.name.clone());
-                }
-            }
+            offset -= 6;
         }
-        return Ok(data_refs);
+        trampolines.reverse();
+        return Ok(trampolines);
     }
 
-    fn _read_sections(pe: &peff::PE) -> Result<Vec<Instr>, Error> {
+    fn _read_sections(
+        pe: &peff::PE,
+        trampolines: &Vec<X86Trampoline>,
+    ) -> Result<Vec<Instr>, Error> {
         let mut offset = 0;
-        let mut n_coords = 0;
-
-        println!("TOTAL LEN: {:08X}", pe.code.len());
-
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
             //println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
-            Self::read_instr(&mut offset, pe, &mut instrs)?;
+            Self::read_instr(&mut offset, pe, trampolines, &mut instrs)?;
             //println!("=>: {}", instrs.last().unwrap().show());
         }
 
@@ -1515,7 +1553,7 @@ impl CpuShape {
         //        {
         //            let instr = find_first_instr(0xF2, &instrs);
         //            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
-        //                let tgt = find_instr_at_offset(jmp.next_offset(), &instrs);
+        //                let tgt = _find_instr_at_offset(jmp.next_offset(), &instrs);
         //                assert!(tgt.is_some());
         //            }
         //        }
@@ -1523,15 +1561,12 @@ impl CpuShape {
         return Ok(instrs);
     }
 
-    fn read_instr(offset: &mut usize, pe: &peff::PE, instrs: &mut Vec<Instr>) -> Result<(), Error> {
-        // if *offset >= pe.code.len() {
-        //     return Ok(());
-        // }
-
-        // while pe.code[*offset] == 0x1E {
-        //     *offset += 1;
-        // }
-
+    fn read_instr(
+        offset: &mut usize,
+        pe: &peff::PE,
+        trampolines: &Vec<X86Trampoline>,
+        instrs: &mut Vec<Instr>,
+    ) -> Result<(), Error> {
         match pe.code[*offset] {
             Header::MAGIC => consume_instr!(Header, pe, offset, instrs),
             Unk06::MAGIC => consume_instr!(Unk06, pe, offset, instrs),
@@ -1578,14 +1613,18 @@ impl CpuShape {
                         name = source.source.clone();
                     }
                 }
-                let mut many_instrs = X86Code::from_bytes(name, offset, pe, instrs)?;
+                X86Code::from_bytes(name, offset, pe, trampolines, instrs)?;
             }
-            // if we hit a zero byte, we are done (or far enough off that we might as well be).
-            0 => consume_instr!(TrailerUnknown, pe, offset, instrs),
+            // Zero is the magic for the trailer (sans trampolines).
+            0 => {
+                let unk = TrailerUnknown::from_bytes(*offset, &pe.code, trampolines)?;
+                instrs.push(Instr::TrailerUnknown(unk));
+                *offset = pe.code.len();
+            }
             // if we find something we don't recognize, add it as an unknown-unknown for
             // the entire rest of the file. If this is nested under x86 because it is between
             // regions, the caller will remove this and re-add it with a limited size.
-            n => {
+            _vop => {
                 let instr = UnknownUnknown {
                     offset: *offset,
                     data: pe.code[*offset..].to_owned(),
@@ -1594,13 +1633,21 @@ impl CpuShape {
                 instrs.push(Instr::UnknownUnknown(instr));
 
                 // Someday we'll be able to turn on this bail.
-                //bail!("unknown instruction 0x{:02X} at 0x{:04X}", n, offset),
-            } /*
-            TrailerUnknown::MAGIC => consume_instr!(TrailerUnknown, pe, offset, instrs),
-            _ => bail!("unknown instruction: {:02X}: {}", pe.code[*offset], bs2s(&pe.code[*offset..]))
-            */
+                //bail!("unknown instruction 0x{:02X} at 0x{:04X}: {}", vop, offset, bs2s(&pe.code[*offset..])),
+            }
         }
         return Ok(());
+    }
+
+    pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Result<usize, Error> {
+        let mut b_offset = 0u32;
+        for (offset, instr) in self.instrs.iter().enumerate() {
+            if SHAPE_LOAD_BASE + b_offset == x86_offset {
+                return Ok(offset);
+            }
+            b_offset += instr.size() as u32;
+        }
+        bail!("no instruction at x86_offset: {:08X}", x86_offset);
     }
 }
 
@@ -1623,18 +1670,10 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
     return None;
 }
 
-fn find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
-    for instr in instrs.iter() {
-        if instr.at_offset() == offset {
-            return Some(instr);
-        }
-    }
-    return None;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use i386::ExitInfo;
     use std::fs;
     use std::io::prelude::*;
 
@@ -1645,7 +1684,7 @@ mod tests {
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
-            println!("AT: {}", path);
+            //println!("AT: {}", path);
 
             //if path == "./test_data/MIG21.SH" {
             if true {
@@ -1668,95 +1707,165 @@ mod tests {
         }
     }
 
-    struct ExplosionInfo {
-        field0: u8,
-        field2: u8,
+    // struct ObjectInfo {
+    //     field0: u8,
+    //     field2: u8,
 
-        // ax = (field49 - field48) & 0x00FF
-        // cx = _currentTicks - field40
-        // dx:ax = ax * cx
-        // cx = field44 - field40
-        // ax, dx = dx:ax / cx, dx:ax % cx
-        // ax += field48
-        // if ax > 0x316 { _ErrorExit("Bad value (around line 133) in exp.asm!") }
-        field40: u16,
-        field44: u16,
-        field48: u8,
-        field49: u8,
-    }
+    // USED BY FLARE.ASM
+    //     // eax = -field22 >> 10
+    //     // if eax < 90 {
+    //     //     if eax < -90 {
+    //     //        eax = -90
+    //     //     }
+    //     // } else { eax = 90 }
+    //     field22: u32,
+
+    // USED BY EXP.ASM
+    //     // ax = (field49 - field48) & 0x00FF
+    //     // cx = _currentTicks - field40
+    //     // dx:ax = ax * cx
+    //     // cx = field44 - field40
+    //     // ax, dx = dx:ax / cx, dx:ax % cx
+    //     // ax += field48
+    //     // if ax > 0x316 { _ErrorExit("Bad value (around line 133) in exp.asm!") }
+    //     field40: u16,
+    //     field44: u16,
+    //     field48: u8,
+    //     field49: u8,
+    // }
+
+    use simplelog::*;
 
     #[test]
     fn virtual_interp() {
-        let path = "./test_data/EXP.SH";
+        //TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+
+        //let path = "./test_data/EXP.SH";
         //let path = "./test_data/FLARE.SH";
+        let path = "./test_data/WNDMLL.SH";
         let mut fp = fs::File::open(path).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
 
-        let obj = ExplosionInfo {
-            field0: 0x11,
-            field2: 0x10,
-            field40: 0,
-            field44: 4,
-            field48: 25,
-            field49: 44,
-        };
-        let exp_base = 0x40F0;
+        // let obj = ExplosionInfo {
+        //     field0: 0x11,
+        //     field2: 0x10,
+        //     field40: 0,
+        //     field44: 4,
+        //     field48: 25,
+        //     field49: 44,
+        // };
+        let exp_base = 0x77000000;
 
         let shape = CpuShape::new(&data).unwrap();
         let mut interp = i386::Interpreter::new();
-        for (addr, name) in shape.data_refs.iter() {
-            match name.as_ref() {
-                "brentObjId" => interp.add_port(
-                    *addr,
+        for tramp in shape.trampolines.iter() {
+            if !tramp.is_data {
+                interp.add_trampoline(tramp.location, &tramp.name, 1);
+                continue;
+            }
+            match tramp.name.as_ref() {
+                "brentObjId" => interp.add_read_port(
+                    tramp.location,
                     Box::new(move || {
                         println!("LOOKUP brentObjectId");
                         exp_base // Lowest valid (shown?) object id is 0x3E8, at least by the check EXP.sh does.
                     }),
                 ),
-                "_currentTicks" => interp.add_port(
-                    *addr,
+                "_currentTicks" => interp.add_read_port(
+                    tramp.location,
                     Box::new(move || {
                         println!("LOOKUP _currentTicks");
                         0
                     }),
                 ),
-                _ => panic!("unknown data reference to {}", name),
+                "viewer_x" => interp.add_read_port(
+                    tramp.location,
+                    Box::new(move || {
+                        println!("LOOKUP viewer_x");
+                        0
+                    }),
+                ),
+                "viewer_z" => interp.add_read_port(
+                    tramp.location,
+                    Box::new(move || {
+                        println!("LOOKUP viewer_z");
+                        0
+                    }),
+                ),
+                "xv32" => interp.add_read_port(
+                    tramp.location,
+                    Box::new(move || {
+                        println!("LOOKUP xv32");
+                        0
+                    }),
+                ),
+                "zv32" => interp.add_read_port(
+                    tramp.location,
+                    Box::new(move || {
+                        println!("LOOKUP zv32");
+                        0
+                    }),
+                ),
+                "_effectsAllowed" => {
+                    interp.add_read_port(
+                        tramp.location,
+                        Box::new(move || {
+                            println!("LOOKUP _effectsAllowed");
+                            0
+                        }),
+                    );
+                    interp.add_write_port(
+                        tramp.location,
+                        Box::new(move |value| {
+                            println!("SET _effectsAllowed to {}", value);
+                        }),
+                    );
+                }
+                _ => panic!("unknown data reference to {}", tramp.name),
             }
         }
 
-        // Expose the underlying object as needed.
-        interp.add_port(
+        // FLARE
+        interp.add_read_port(
+            exp_base + 0x22,
+            Box::new(|| {
+                return 0x10 as u32;
+            }),
+        );
+
+        // EXP
+        interp.add_read_port(
             exp_base,
             Box::new(|| {
                 return 0x11 as u32;
             }),
         );
-        interp.add_port(
+        interp.add_read_port(
             exp_base + 0x2,
             Box::new(|| {
                 return 0x10 as u32;
             }),
         );
-        interp.add_port(
+        interp.add_read_port(
             exp_base + 0x40,
             Box::new(|| {
                 return 0 as u32;
             }),
         );
-        interp.add_port(
+        interp.add_read_port(
             exp_base + 0x44,
             Box::new(|| {
                 return 4 as u32;
             }),
         );
-        interp.add_port(
+        interp.add_read_port(
             exp_base + 0x48,
             Box::new(|| {
                 return 25 as u32;
             }),
         );
-        interp.add_port(
+        interp.add_read_port(
             exp_base + 0x49,
             Box::new(move || {
                 return 44 as u32;
@@ -1765,23 +1874,44 @@ mod tests {
 
         for instr in shape.instrs.iter() {
             match instr {
+                // Written into by windmill with (_currentTicks & 0xFF) << 2.
+                // The frame of animation to show, maybe?
+                Instr::UnkC4(ref c4) => interp.add_write_port(
+                    SHAPE_LOAD_BASE + c4.offset as u32 + 2 + 0xA,
+                    Box::new(move |value| {
+                        println!("WOULD UPDATE C4 Internals with {:02X}", value);
+                    }),
+                ),
                 Instr::UnknownUnknown(ref unk) => {
-                    interp.map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone());
+                    interp
+                        .map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone())
+                        .unwrap();
                 }
                 Instr::X86Code(ref code) => {
-                    interp.map_readonly((0xAA000000 + code.code_offset) as u32, &code.code);
                     interp.add_code(&code.bytecode);
                 }
                 _ => {}
             }
             println!("{}", instr.show());
         }
-        for instr in shape.instrs.iter() {
-            if let Instr::X86Code(ref code) = instr {
-                interp
+        let mut offset = 0;
+        while offset < shape.instrs.len() {
+            if let Instr::X86Code(ref code) = shape.instrs[offset] {
+                let rv = interp
                     .interpret(0xAA000000u32 + code.code_offset as u32)
                     .unwrap();
-                break;
+                match rv {
+                    ExitInfo::OutOfInstructions => break,
+                    ExitInfo::Trampoline(ref name, ref args) => {
+                        println!("Got trampoline return to {} with args {:?}", name, args);
+                        offset = shape
+                            .map_interpreter_offset_to_instr_offset(args[0])
+                            .unwrap();
+                        println!("Resuming at instruction {}", offset);
+                    }
+                }
+            } else {
+                offset += 1;
             }
         }
     }

@@ -141,7 +141,7 @@ fn main() {
     }
 }
 
-fn find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
+fn _find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
     for instr in instrs.iter() {
         if instr.at_offset() == offset {
             return Some(instr);

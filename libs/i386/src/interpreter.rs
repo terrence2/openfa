@@ -17,6 +17,11 @@ use failure::Error;
 use lut::{ConditionCode, ConditionCode1, ConditionCode2, FlagKind};
 use std::{collections::HashMap, mem};
 
+pub enum ExitInfo {
+    OutOfInstructions,
+    Trampoline(String, Vec<u32>),
+}
+
 #[derive(Eq, Ord, PartialOrd, PartialEq)]
 struct MemMapR<'a> {
     start: u32,
@@ -55,7 +60,9 @@ pub struct Interpreter<'a> {
     memmap_w: Vec<MemMapW>,
     memmap_r: Vec<MemMapR<'a>>,
     bytecode: Vec<&'a ByteCode>,
-    ports: HashMap<u32, Box<Fn() -> u32>>,
+    ports_r: HashMap<u32, Box<Fn() -> u32>>,
+    ports_w: HashMap<u32, Box<Fn(u32)>>,
+    trampolines: HashMap<u32, (String, usize)>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -73,12 +80,22 @@ impl<'a> Interpreter<'a> {
             memmap_r: Vec::new(),
             memmap_w: Vec::new(),
             bytecode: Vec::new(),
-            ports: HashMap::new(),
+            ports_r: HashMap::new(),
+            ports_w: HashMap::new(),
+            trampolines: HashMap::new(),
         }
     }
 
-    pub fn add_port(&mut self, addr: u32, func: Box<Fn() -> u32>) {
-        self.ports.insert(addr, func);
+    pub fn add_trampoline(&mut self, addr: u32, name: &str, arg_count: usize) {
+        self.trampolines.insert(addr, (name.to_owned(), arg_count));
+    }
+
+    pub fn add_read_port(&mut self, addr: u32, func: Box<Fn() -> u32>) {
+        self.ports_r.insert(addr, func);
+    }
+
+    pub fn add_write_port(&mut self, addr: u32, func: Box<Fn(u32)>) {
+        self.ports_w.insert(addr, func);
     }
 
     pub fn map_readonly(&mut self, start: u32, data: &'a Vec<u8>) -> Result<(), Error> {
@@ -120,14 +137,14 @@ impl<'a> Interpreter<'a> {
     }
 
     fn find_instr(&self) -> Result<(&'a ByteCode, usize), Error> {
-        //println!("searching for instr at ip: {:08X}", self.eip());
+        trace!("searching for instr at ip: {:08X}", self.eip());
         for bc in self.bytecode.iter() {
             if self.eip() >= bc.start_addr && self.eip() < bc.start_addr + bc.size {
-                //println!("in bc at {:08X}", bc.start_addr);
+                trace!("in bc at {:08X}", bc.start_addr);
                 let mut pos = bc.start_addr;
                 let mut offset = 0;
                 for instr in bc.instrs.iter() {
-                    //println!("checking {}: {:08X} of {:08X}", offset, pos, self.eip());
+                    trace!("checking {}: {:08X} of {:08X}", offset, pos, self.eip());
                     if pos == self.eip() {
                         return Ok((bc, offset));
                     }
@@ -147,13 +164,9 @@ impl<'a> Interpreter<'a> {
         );
     }
 
-    pub fn interpret(&mut self, at: u32) -> Result<(), Error> {
+    pub fn interpret(&mut self, at: u32) -> Result<ExitInfo, Error> {
         *self.eip_mut() = at;
         let (bc, mut offset) = self.find_instr()?;
-        // println!(
-        //     "About to interpret at {:08X}, {} instrs into {:08X}",
-        //     at, offset, bc.start_addr
-        // );
         while offset < bc.instrs.len() {
             let instr = &bc.instrs[offset];
             println!("{:3}:{:04X}: {}", offset, self.eip(), instr);
@@ -176,17 +189,16 @@ impl<'a> Interpreter<'a> {
                 Memonic::IMul => self.do_imul(instr.op(0), instr.op(1), instr.op(2))?,
                 Memonic::IMul2 => self.do_imul2(instr.op(0), instr.op(1))?,
                 Memonic::And => self.do_and(instr.op(0), instr.op(1))?,
+                Memonic::Or => self.do_or(instr.op(0), instr.op(1))?,
                 Memonic::Xor => self.do_xor(instr.op(0), instr.op(1))?,
+                Memonic::RotCR => self.do_rcr(instr.op(0), instr.op(1))?,
+                Memonic::ShiftL => self.do_shl(instr.op(0), instr.op(1))?,
+                Memonic::ShiftR => self.do_shr(instr.op(0), instr.op(1))?,
+                Memonic::Sar => self.do_sar(instr.op(0), instr.op(1))?,
                 Memonic::LEA => self.do_lea(instr.op(0), instr.op(1))?,
                 Memonic::Compare => self.do_compare(instr.op(0), instr.op(1))?,
                 Memonic::Test => self.do_test(instr.op(0), instr.op(1))?,
                 Memonic::Jump => {
-                    // Check for a trampoline out.
-                    if let Operand::Memory(ref mem) = instr.op(0) {
-                        if mem.displacement == 0xAA001044 {
-                            return Ok(());
-                        }
-                    }
                     let offset = self.do_jump(instr.op(0))?;
                     if offset != 0 {
                         return self.jump(offset);
@@ -206,15 +218,24 @@ impl<'a> Interpreter<'a> {
                 }
                 Memonic::Return => {
                     let absolute = self.do_return()?;
+                    // If returning to a trampoline, do actual return with data
+                    // about what we would be returning from.
+                    println!("checking {:08X} against {:?}", absolute, self.trampolines);
+                    if self.trampolines.contains_key(&absolute) {
+                        let (ref name, ref arg_count) = self.trampolines[&absolute];
+                        let mut args = self.stack[self.stack.len() - *arg_count..].to_owned();
+                        args.reverse();
+                        return Ok(ExitInfo::Trampoline(name.to_owned(), args));
+                    }
                     return self.interpret(absolute);
                 }
                 _ => bail!("not implemented: {}", instr),
             }
         }
-        return Ok(());
+        return Ok(ExitInfo::OutOfInstructions);
     }
 
-    fn jump(&mut self, offset: i32) -> Result<(), Error> {
+    fn jump(&mut self, offset: i32) -> Result<ExitInfo, Error> {
         let next_ip = if offset >= 0 {
             self.eip() + offset as u32
         } else {
@@ -292,7 +313,7 @@ impl<'a> Interpreter<'a> {
     fn do_pop(&mut self, op: &Operand) -> Result<(), Error> {
         ensure!(self.stack.len() > 0, "pop with empty stack");
         let v = self.stack.pop().unwrap();
-        self.put(op, v);
+        self.put(op, v)?;
         *self.esp_mut() += 4;
         println!("        pop: sp at {:08X}", self.esp());
         return Ok(());
@@ -351,17 +372,17 @@ impl<'a> Interpreter<'a> {
         return self.put(op1, (a - b) as u32);
     }
 
-    fn do_imul(&mut self, opDX: &Operand, opAX: &Operand, op3: &Operand) -> Result<(), Error> {
+    fn do_imul(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Result<(), Error> {
         // dx:ax = ax * reg
-        let a = self.get(opAX)? as i32 as i64;
+        let a = self.get(op_ax)? as i32 as i64;
         let b = self.get(op3)? as i32 as i64;
         let v = a * b;
         let va = (v & 0xFFFFFFFF) as u32;
         let vd = (v >> 32) as u32;
         self.cf = vd != 0;
         self.of = self.cf;
-        self.put(opAX, va)?;
-        return self.put(opDX, vd);
+        self.put(op_ax, va)?;
+        return self.put(op_dx, vd);
     }
 
     fn do_imul2(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
@@ -374,16 +395,16 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_idiv(&mut self, opDX: &Operand, opAX: &Operand, op3: &Operand) -> Result<(), Error> {
+    fn do_idiv(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Result<(), Error> {
         // ax, dx = dx:ax / cx, dx:ax % cx
-        let dx = self.get(opDX)? as i32 as i64 as u64; // make sure to sign-extend
-        let ax = self.get(opAX)? as i32 as i64 as u64;
+        let dx = self.get(op_dx)? as i32 as i64 as u64; // make sure to sign-extend
+        let ax = self.get(op_ax)? as i32 as i64 as u64;
         let cx = self.get(op3)? as i32 as i64;
         let tmp = ((dx << 32) | ax) as i64;
         let q = (tmp / cx) as i32 as u32;
         let r = (tmp % cx) as i32 as u32;
-        self.put(opAX, q)?;
-        return self.put(opDX, r);
+        self.put(op_ax, q)?;
+        return self.put(op_dx, r);
     }
 
     fn do_and(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
@@ -392,10 +413,79 @@ impl<'a> Interpreter<'a> {
         return self.put(op1, a & b);
     }
 
+    fn do_or(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+        let a = self.get(op1)?;
+        let b = self.get(op2)?;
+        return self.put(op1, a | b);
+    }
+
     fn do_xor(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         return self.put(op1, a ^ b);
+    }
+
+    // rotate right including carry.
+    fn do_rcr(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+        let arg = self.get(op1)?;
+        let cnt = self.get(op2)?;
+        assert!(!self.cf, "carry flag set in rotate right");
+        // FIXME: this needs to be size aware; put a func to get it on Operand.
+        let v = arg.rotate_right(cnt);
+        // FIXME: this needs to set CF
+        return self.put(op1, v);
+    }
+
+    fn msb(v: u32, size: u8) -> bool {
+        match size {
+            1 => (v >> 7) & 1 == 1,
+            2 => (v >> 15) & 1 == 1,
+            4 => (v >> 31) & 1 == 1,
+            _ => panic!("invalid size"),
+        }
+    }
+
+    fn do_shl(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+        let count = self.get(op2)? & 0x1F;
+        let mut arg = self.get(op1)?;
+        let mut cnt = count;
+        while cnt != 0 {
+            self.cf = Self::msb(arg, op1.size());
+            arg <<= 1;
+            cnt -= 1;
+        }
+        if count == 1 {
+            self.of = Self::msb(arg, op1.size()) ^ self.cf;
+        }
+        return self.put(op1, arg);
+    }
+
+    fn do_shr(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+        let tmp_dest = self.get(op1)?;
+        let count = self.get(op2)? & 0x1F;
+        let mut arg = tmp_dest;
+        let mut cnt = count;
+        while cnt != 0 {
+            self.cf = (arg & 1) == 1;
+            arg /= 2;
+            cnt -= 1;
+        }
+        if count == 1 {
+            self.of = Self::msb(tmp_dest, op1.size())
+        }
+        return self.put(op1, arg);
+    }
+
+    fn do_sar(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+        let mut arg = self.get(op1)? as i32;
+        let mut cnt = self.get(op2)? & 0x1F;
+        while cnt != 0 {
+            self.cf = (arg & 1) == 1;
+            arg /= 2;
+            cnt -= 1;
+        }
+        self.of = false;
+        return self.put(op1, arg as u32);
     }
 
     fn do_compare(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
@@ -559,8 +649,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn mem_lookup(&self, addr: u32, size: u8) -> Result<u32, Error> {
-        if self.ports.contains_key(&addr) {
-            let v = self.ports[&addr]();
+        if self.ports_r.contains_key(&addr) {
+            let v = self.ports_r[&addr]();
             println!("    read_port {:08X} -> {:08X}", addr, v);
             return Ok(v);
         }
@@ -630,6 +720,11 @@ impl<'a> Interpreter<'a> {
     }
 
     fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Result<(), Error> {
+        if self.ports_w.contains_key(&addr) {
+            println!("    write_port {:08X} <- {:08X}", addr, v);
+            self.ports_w[&addr](v);
+            return Ok(());
+        }
         for map in self.memmap_w.iter_mut() {
             if addr >= map.start && addr < map.end {
                 let rel = (addr - map.start) as usize;

@@ -16,6 +16,8 @@
 extern crate failure;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
 extern crate reverse;
 
 mod disassembler;
@@ -23,4 +25,4 @@ mod interpreter;
 mod lut;
 
 pub use disassembler::{ByteCode, DisassemblyError, Instr, Memonic, Operand};
-pub use interpreter::Interpreter;
+pub use interpreter::{ExitInfo, Interpreter};

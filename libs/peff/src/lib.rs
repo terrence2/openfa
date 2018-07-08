@@ -17,6 +17,8 @@ extern crate bitflags;
 #[macro_use]
 extern crate failure;
 #[macro_use]
+extern crate log;
+#[macro_use]
 extern crate packed_struct;
 
 use failure::Error;
@@ -248,7 +250,7 @@ impl PE {
                 "unexpected section flags"
             );
 
-            println!(
+            trace!(
                 "Section {} starting at offset {:X} loaded at vaddr {:X}",
                 name,
                 section.pointer_to_raw_data(),
@@ -372,9 +374,12 @@ impl PE {
             let vaddrs: &[u32] = unsafe {
                 mem::transmute(&idata[vaddr_offset - section.virtual_address() as usize..])
             };
-            println!(
+            trace!(
                 "Loaded thunk: {} for {} at {:04X} which contains: {:08X}",
-                ordinal, name, vaddr, vaddrs[0]
+                ordinal,
+                name,
+                vaddr,
+                vaddrs[0]
             );
             let thunk = Thunk {
                 name,
@@ -414,7 +419,7 @@ impl PE {
                     let offset = relocs[i] & 0x0FFF;
                     ensure!(flags == 3, "only 32bit relocations are supported");
                     let rva = base_reloc.page_rva() + offset as u32;
-                    println!("Base Reloc: {:04X} + {:04X}", base_reloc.page_rva(), offset);
+                    trace!("Base Reloc: {:04X} + {:04X}", base_reloc.page_rva(), offset);
                     ensure!(
                         rva >= code_section.virtual_address(),
                         "relocation not in CODE"
@@ -439,7 +444,7 @@ impl PE {
             let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
             let pcode: *mut u32 = dwords.as_mut_ptr();
             unsafe {
-                println!(
+                trace!(
                     "Relocating word at {:04X} from {:04X} to {:04X}",
                     reloc as usize,
                     *pcode,
@@ -456,6 +461,10 @@ impl PE {
         }
         self.code_addr = addr;
         return Ok(());
+    }
+
+    pub fn relocate_pointer(&self, addr: u32) -> u32 {
+        addr - self.code_vaddr + self.code_addr
     }
 }
 

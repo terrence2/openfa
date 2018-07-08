@@ -383,14 +383,11 @@ impl Operand {
                     }
                     _ => unreachable!(),
                 },
-                5 => {
-                    println!("OperandType: {:?}", desc.ty);
-                    Operand::Memory(MemRef::displacement(
-                        Self::read4(code, ip)? as i32,
-                        MemRef::size_for_type(desc.ty, state)?,
-                        &state.prefix,
-                    ))
-                }
+                5 => Operand::Memory(MemRef::displacement(
+                    Self::read4(code, ip)? as i32,
+                    MemRef::size_for_type(desc.ty, state)?,
+                    &state.prefix,
+                )),
                 _ => unreachable!(),
             },
             0b01 => {
@@ -658,6 +655,23 @@ impl Operand {
 
     fn modrm(b: u8) -> (u8, u8, u8) {
         return (b >> 6, (b >> 3) & 0b111, b & 0b111);
+    }
+
+    pub fn size(&self) -> u8 {
+        match self {
+            Operand::Imm32(_) => 4,
+            Operand::Imm32s(_) => 4,
+            Operand::Register(r) => {
+                if r.is_low8() || r.is_high8() {
+                    1
+                } else if r.is_reg16() {
+                    2
+                } else {
+                    4
+                }
+            }
+            Operand::Memory(mem) => mem.size,
+        }
     }
 
     fn show_relative(&self, base: usize, show_target: bool) -> String {

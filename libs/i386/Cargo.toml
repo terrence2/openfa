@@ -7,4 +7,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 clap = "*"
 failure = "*"
 lazy_static = "1.0"
+log = "0.4"
 reverse = { path = "../reverse" }
