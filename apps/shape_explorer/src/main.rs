@@ -31,9 +31,10 @@ use kiss3d::window::Window;
 use na::{Point2, Point3, Translation3, UnitQuaternion, Vector3};
 use pal::Palette;
 use sh::{CpuShape, FacetFlags, Instr};
+use std::collections::HashMap;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::{cell, cmp, fs, rc};
+use std::{cell, cmp, fs, mem, rc};
 
 fn main() {
     let matches = App::new("OpenFA shape explorer")
@@ -51,14 +52,20 @@ fn main() {
     run_loop(files);
 }
 
+struct TextureInfo {
+    name: String,
+    source: String,
+    cache: PathBuf,
+    size: [f32; 2],
+}
+
 struct ViewState {
     files: Vec<PathBuf>,
     offset: usize,
     shape: CpuShape,
     mesh_nodes: Vec<SceneNode>,
-    //textures: HashMap<String, String>,
+    textures: HashMap<String, TextureInfo>,
     palette: Palette,
-    tex_size: [f32; 2], // [0f32, 0f32];
     active_mesh: usize,
     instr_count: usize,
 }
@@ -71,20 +78,56 @@ impl ViewState {
         let palette = Palette::from_bytes(&data).unwrap();
 
         let shape = Self::_load_shape(&files[0]);
+        let textures = Self::preload_all_textures(&shape, &palette);
 
         let mut state = ViewState {
             files,
             offset: 0,
             shape,
             mesh_nodes: Vec::new(),
+            textures,
             palette,
-            tex_size: [0f32, 0f32],
+            //tex_size: [0f32, 0f32],
             active_mesh: 0,
             instr_count: 0,
         };
         state._redraw(window);
         state.set_vertex_colors();
         return state;
+    }
+
+    fn preload_all_textures(shape: &CpuShape, palette: &Palette) -> HashMap<String, TextureInfo> {
+        let mut textures = HashMap::new();
+        for instr in shape.instrs.iter() {
+            if let Instr::TextureRef(texture) = instr {
+                if textures.contains_key(&texture.filename) {
+                    continue;
+                }
+
+                let cache_name = Path::new(&format!("/tmp/{}.png", texture.filename)).to_owned();
+                let source = format!("test_data/{}", texture.filename.to_uppercase());
+                let mut fp = fs::File::open(source.clone()).unwrap();
+                let mut data = Vec::new();
+                fp.read_to_end(&mut data).unwrap();
+                let imagebuf = pic::decode_pic(palette, &data).unwrap();
+                let ref mut fout = fs::File::create(&cache_name).unwrap();
+                imagebuf.save(fout, image::PNG).unwrap();
+                let tex_size = [
+                    imagebuf.dimensions().0 as f32,
+                    imagebuf.dimensions().1 as f32,
+                ];
+                textures.insert(
+                    texture.filename.clone(),
+                    TextureInfo {
+                        name: texture.filename.clone(),
+                        source: source,
+                        cache: cache_name,
+                        size: tex_size,
+                    },
+                );
+            }
+        }
+        return textures;
     }
 
     fn _load_shape(path: &PathBuf) -> CpuShape {
@@ -103,7 +146,7 @@ impl ViewState {
     fn _draw_shape(&mut self, window: &mut Window) -> Vec<SceneNode> {
         let mut nodes = Vec::new();
 
-        let mut active_texture: Option<(String, PathBuf)> = None;
+        let mut active_texture: Option<&TextureInfo> = None;
 
         let mut vert_buf: Vec<Point3<f32>> = Vec::new();
 
@@ -112,61 +155,61 @@ impl ViewState {
         let skip_before = 0;
         //let mut skip_before = 0x1C8;
         //let mut skip_before = 0x544;
+        let mut xform: [f32; 6] = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
 
+        println!("Drawing up to offset {}", self.instr_count);
         for (i, instr) in self.shape.instrs.iter().enumerate() {
-            //            if i < 990 {
-            //                continue;
-            //            }
-            if i == self.instr_count {
+            if i >= self.instr_count {
                 break;
-            }
-            if instr.at_offset() < skip_before {
-                if let &Instr::TextureRef(ref texture) = instr {
-                    // let texture refs through
-                } else {
-                    continue;
-                }
             }
             println!("At: {} => {}", i, instr.show());
             if i == self.instr_count - 1 {
                 println!("--- FIN ---")
             }
+
             match instr {
-                &Instr::TextureRef(ref texture) => {
-                    let cache_name =
-                        Path::new(&format!("/tmp/{}.png", texture.filename)).to_owned();
-                    if active_texture.is_none() || !cache_name.exists() {
-                        let source = format!("test_data/{}", texture.filename.to_uppercase());
-                        let mut fp = fs::File::open(source).unwrap();
-                        let mut data = Vec::new();
-                        fp.read_to_end(&mut data).unwrap();
-                        let imagebuf = pic::decode_pic(&self.palette, &data).unwrap();
-                        let ref mut fout = fs::File::create(&cache_name).unwrap();
-                        imagebuf.save(fout, image::PNG).unwrap();
-                        self.tex_size = [
-                            imagebuf.dimensions().0 as f32,
-                            imagebuf.dimensions().1 as f32,
-                        ];
-                    }
-                    active_texture = Some((texture.filename.clone(), cache_name));
+                Instr::TextureRef(texture) => {
+                    active_texture = Some(&self.textures[&texture.filename]);
                 }
-                &Instr::VertexBuf(ref buf) => {
-                    if end_at_offset == buf.offset {
-                        vert_buf.truncate(0);
-                    }
-                    //                    if i == 990 {
-                    //                        vert_buf.truncate(0);
-                    //                    }
+                Instr::UnkC4(c4) => {
+                    // C4 00   FF FF   13 00   E4 FF    00 00   00 00   00 00    7D 02
+                    //            -1      19     -28        0       0     ang      637
+                    let vp: &[i16] = unsafe { mem::transmute(&c4.data[2..]) };
+                    println!(
+                        "v: ({}, {}, {}), ang: ({}, {}, {}), ?: {}",
+                        vp[0], vp[1], vp[2], vp[3], vp[4], vp[5], vp[6],
+                    );
+                    xform = [
+                        vp[0] as f32,
+                        vp[1] as f32,
+                        vp[2] as f32,
+                        vp[3] as f32,
+                        vp[4] as f32,
+                        vp[5] as f32,
+                    ];
+                }
+                Instr::VertexBuf(buf) => {
+                    // if end_at_offset == buf.offset {
+                    //     vert_buf.truncate(0);
+                    // }
                     for v in buf.verts.iter() {
-                        vert_buf.push(Point3::new(v[0], v[1], v[2]));
+                        vert_buf.push(Point3::new(
+                            v[0] + xform[0],
+                            v[1] + xform[1],
+                            v[2] + xform[2],
+                        ));
                     }
                     for v in buf.verts.iter() {
                         let mut node = window.add_sphere(0.5);
-                        node.append_translation(&Translation3::new(v[0], v[1], v[2]));
+                        node.append_translation(&Translation3::new(
+                            v[0] + xform[0],
+                            v[1] + xform[1],
+                            v[2] + xform[2],
+                        ));
                         nodes.push(node);
                     }
                 }
-                &Instr::Facet(ref facet) => {
+                Instr::Facet(facet) => {
                     let mut coords = Vec::new();
                     let mut index_buf = Vec::new();
                     let mut uv_buf: Option<Vec<Point2<f32>>> = None;
@@ -181,16 +224,21 @@ impl ViewState {
                         coords.push(vert_buf[facet.indices[base - 1] as usize]);
                         if let Some(ref mut uvs) = uv_buf {
                             uvs.push(Point2::new(
-                                facet.tex_coords[0][0] as f32 / self.tex_size[0],
-                                1f32 - facet.tex_coords[0][1] as f32 / self.tex_size[1],
+                                facet.tex_coords[0][0] as f32 / active_texture.unwrap().size[0],
+                                1f32 - facet.tex_coords[0][1] as f32
+                                    / active_texture.unwrap().size[1],
                             ));
                             uvs.push(Point2::new(
-                                facet.tex_coords[base - 0][0] as f32 / self.tex_size[0],
-                                1f32 - facet.tex_coords[base - 0][1] as f32 / self.tex_size[1],
+                                facet.tex_coords[base - 0][0] as f32
+                                    / active_texture.unwrap().size[0],
+                                1f32 - facet.tex_coords[base - 0][1] as f32
+                                    / active_texture.unwrap().size[1],
                             ));
                             uvs.push(Point2::new(
-                                facet.tex_coords[base - 1][0] as f32 / self.tex_size[0],
-                                1f32 - facet.tex_coords[base - 1][1] as f32 / self.tex_size[1],
+                                facet.tex_coords[base - 1][0] as f32
+                                    / active_texture.unwrap().size[0],
+                                1f32 - facet.tex_coords[base - 1][1] as f32
+                                    / active_texture.unwrap().size[1],
                             ));
                         }
                     }
@@ -199,10 +247,13 @@ impl ViewState {
                         coords, index_buf, None, uv_buf, false,
                     )));
                     let mut node = window.add_mesh(m, Vector3::new(1.0, 1.0, 1.0));
-                    match &active_texture {
-                        &None => (),
-                        &Some((ref name, ref path)) => node.set_texture_from_file(path, name),
+                    if let Some(info) = active_texture {
+                        node.set_texture_from_file(&info.cache, &info.name);
                     }
+                    // match &active_texture {
+                    //     &None => (),
+                    //     &Some((ref name, ref path)) => node.set_texture_from_file(path, name),
+                    // }
                     nodes.push(node);
                 }
                 //                &Instr::UnkJumpIfLowDetail(ref shape_end) => {

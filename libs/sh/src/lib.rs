@@ -1361,6 +1361,7 @@ opaque_instr!(UnkCA, 0xCA, 4);
 opaque_instr!(UnkD0, 0xD0, 4);
 opaque_instr!(UnkDA, 0xDA, 4);
 opaque_instr!(UnkE4, 0xE4, 20);
+opaque_instr!(UnkEA, 0xEA, 8);
 opaque_instr!(UnkEE, 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
 
@@ -1394,6 +1395,7 @@ pub enum Instr {
     UnkD0(UnkD0),
     UnkDA(UnkDA),
     UnkE4(UnkE4),
+    UnkEA(UnkEA),
     UnkEE(UnkEE),
     UnkJumpIfNotShown(UnkJumpIfNotShown),
 
@@ -1454,6 +1456,7 @@ macro_rules! impl_for_all_instr {
             &Instr::UnkD0(ref i) => i.$f(),
             &Instr::UnkDA(ref i) => i.$f(),
             &Instr::UnkE4(ref i) => i.$f(),
+            &Instr::UnkEA(ref i) => i.$f(),
             &Instr::UnkEE(ref i) => i.$f(),
             &Instr::UnkJumpIfNotShown(ref i) => i.$f(),
             &Instr::UnkF6(ref i) => i.$f(),
@@ -1597,6 +1600,7 @@ impl CpuShape {
             UnkD0::MAGIC => consume_instr!(UnkD0, pe, offset, instrs),
             UnkDA::MAGIC => consume_instr!(UnkDA, pe, offset, instrs),
             UnkE4::MAGIC => consume_instr!(UnkE4, pe, offset, instrs),
+            UnkEA::MAGIC => consume_instr!(UnkEA, pe, offset, instrs),
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
             UnkJumpIfNotShown::MAGIC => consume_instr!(UnkJumpIfNotShown, pe, offset, instrs),

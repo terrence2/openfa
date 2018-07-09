@@ -18,6 +18,7 @@ extern crate reverse;
 extern crate sh;
 
 use clap::{App, Arg};
+use reverse::{b2h, bs2s};
 use sh::{CpuShape, Instr};
 use std::collections::HashMap;
 use std::fs;
@@ -65,7 +66,7 @@ fn main() {
         let mut fp = fs::File::open(name).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
-        println!("At: {}", name);
+        //println!("At: {}", name);
 
         let shape = CpuShape::new(&data).unwrap();
 
@@ -83,8 +84,9 @@ fn main() {
             println!("{:20}: {}", name, fmt);
         } else if matches.is_present("unknown") {
             for i in shape.instrs.iter() {
-                if let sh::Instr::UnknownUnknown(_u) = i {
-                    println!("{:20}: {}", name, i.show());
+                if let sh::Instr::UnknownUnknown(unk) = i {
+                    //println!("{:20}: {}", name, i.show());
+                    println!("{}, {:20}", format_unk(&unk.data), name,);
                 }
             }
         } else if matches.is_present("memory") {
@@ -139,6 +141,20 @@ fn main() {
         //            }
         //        }
     }
+}
+
+fn format_unk(xs: &[u8]) -> String {
+    let mut out = Vec::new();
+    for &x in xs.iter() {
+        out.push(' ');
+        if x >= 0x21 && x <= 0x5E || x >= 0x61 && x <= 0x7E {
+            out.push(' ');
+            out.push(x as char);
+        } else {
+            b2h(x, &mut out);
+        }
+    }
+    return out.iter().collect::<String>();
 }
 
 fn _find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
