@@ -16,7 +16,7 @@
 extern crate bitflags;
 extern crate peff;
 
-use std::mem;
+use std::{fmt, mem};
 
 pub fn n2h(n: u8) -> char {
     match n {
@@ -98,6 +98,12 @@ impl Color {
         for c in format!("{}", (*self as u8) + 10).chars() {
             v.push(c);
         }
+    }
+    pub fn fmt(&self) -> String {
+        format!("{}", *self as u8)
+    }
+    pub fn fmt_bg(&self) -> String {
+        format!("{}", (*self as u8) + 10)
     }
 }
 
@@ -254,6 +260,14 @@ impl Escape {
             c.put_bg(v);
         }
         v.push('m');
+    }
+}
+
+impl fmt::Display for Escape {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = Vec::new();
+        self.put(&mut s);
+        write!(f, "{}", s.iter().collect::<String>())
     }
 }
 

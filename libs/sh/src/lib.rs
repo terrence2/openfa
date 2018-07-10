@@ -26,7 +26,7 @@ extern crate reverse;
 extern crate simplelog;
 
 use failure::Error;
-use reverse::bs2s;
+use reverse::{bs2s, Color, Escape};
 use std::collections::HashSet;
 use std::{cmp, fmt, mem, str};
 
@@ -134,7 +134,15 @@ impl TextureRef {
     }
 
     fn show(&self) -> String {
-        format!("TextureRef @ {:04X} -> {}", self.offset, self.filename)
+        format!(
+            "@{:04X} {}TexRf{}: {}{}{}",
+            self.offset,
+            Escape::new().fg(Color::Yellow).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Yellow),
+            self.filename,
+            Escape::new(),
+        )
     }
 }
 
@@ -204,7 +212,6 @@ impl TextureIndex {
 #[derive(Debug)]
 pub struct SourceRef {
     pub offset: usize,
-    pub unk0: u8,
     pub source: String,
 }
 
@@ -216,11 +223,7 @@ impl SourceRef {
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0x00, "unexpected non-nil in hi");
         let source = read_name(&data[2..])?;
-        return Ok(SourceRef {
-            offset,
-            unk0: data[1],
-            source,
-        });
+        return Ok(SourceRef { offset, source });
     }
 
     fn size(&self) -> usize {
@@ -233,8 +236,13 @@ impl SourceRef {
 
     fn show(&self) -> String {
         format!(
-            "SourceRef @ {:04X}: {}, {}",
-            self.offset, self.unk0, self.source
+            "@{:04X} {}SrcRf{}: {}{}{}",
+            self.offset,
+            Escape::new().fg(Color::Yellow).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Yellow),
+            self.source,
+            Escape::new(),
         )
     }
 }
@@ -295,12 +303,18 @@ impl VertexBuf {
             .collect::<Vec<String>>()
             .join(", ");
         format!(
-            "VertexBuf @ {:04X}: {} ({:b}) => {}verts -> {}",
+            "@{:04X} {}VxBuf{}: {}{} ({:b}){} => {}verts -> {}{}{}",
             self.offset,
+            Escape::new().fg(Color::Magenta).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Magenta),
             self.unk0,
             self.unk0,
+            Escape::new(),
             self.verts.len(),
-            s
+            Escape::new().fg(Color::Magenta).dimmed(),
+            s,
+            Escape::new(),
         )
     }
 }
@@ -495,14 +509,45 @@ impl Facet {
     }
 
     fn show(&self) -> String {
+        let mut flags = format!("{:016b}", self.flags)
+            .chars()
+            .collect::<Vec<char>>();
+        flags[8] = 'z';
+        flags[9] = 'z';
+        flags[10] = 'z';
+        flags[11] = 'z';
+        flags[5] = 'x';
+        flags[13] = 'x';
+        flags[14] = 'x';
+        flags[14] = 'x';
+        // const HAVE_MATERIAL      = 0b0100_0000_0000_0000;
+        // const HAVE_TEXCOORDS     = 0b0000_0100_0000_0000;
+        // const USE_SHORT_INDICES  = 0b0000_0000_0000_0100;
+        // const USE_SHORT_MATERIAL = 0b0000_0000_0000_0010;
+        // const USE_BYTE_TEXCOORDS = 0b0000_0000_0000_0001;
+        // const UNK_MATERIAL_RELATED = 0b0000_0001_0000_0000;
         let ind = self.indices
             .iter()
             .map(|i| format!("{:X}", i))
             .collect::<Vec<String>>()
             .join(", ");
         format!(
-            "Facet @ {:04X} : {:016b} : [{}] : {:?}",
-            self.offset, self.flags, ind, self.tex_coords
+            "@{:04X} {}Facet{}: {}{}{} - {}{}{} - [{}{}{}] - {}{:?}{}",
+            self.offset,
+            Escape::new().fg(Color::Cyan).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Cyan),
+            flags.iter().collect::<String>(),
+            Escape::new(),
+            Escape::new().fg(Color::Cyan).dimmed(),
+            self.mat_desc,
+            Escape::new(),
+            Escape::new().fg(Color::Cyan),
+            ind,
+            Escape::new(),
+            Escape::new().fg(Color::Cyan),
+            self.tex_coords,
+            Escape::new(),
         )
     }
 }
@@ -602,8 +647,14 @@ impl X86Trampoline {
 
     fn show(&self) -> String {
         format!(
-            "X86Trampoline @ {:04X} -> {:04X}({})",
-            self.offset, self.target, self.name
+            "@{:04X} {}Tramp{}: {}{}{} = {:04X}",
+            self.offset,
+            Escape::new().fg(Color::Yellow).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Yellow),
+            self.name,
+            Escape::new(),
+            self.target
         )
     }
 }
@@ -852,10 +903,10 @@ impl X86Code {
             self.offset
         };
         return format!(
-            "X86Code @ {:04X}: {}\n{}",
+            "@{:04X} X86Code: {}\n{}",
             self.offset,
             self.formatted,
-            self.bytecode.show_relative(show_offset)
+            self.bytecode.show_relative(show_offset).trim()
         );
     }
 }
@@ -1139,8 +1190,10 @@ impl UnkJumpIfNotShown {
 
     fn show(&self) -> String {
         format!(
-            "UnkJumpIfNotShown @ {:04X}: {:X} => {:X}",
+            "@{:04X} {}UnkF2{}: jump-if-not-shown: delta: {:04X}, target: {:04X}",
             self.offset,
+            Escape::new().fg(Color::BrightBlue).bold(),
+            Escape::new(),
             self.offset_to_next,
             self.next_offset()
         )
@@ -1279,6 +1332,35 @@ impl UnknownUnknown {
     }
 }
 
+#[derive(Debug)]
+pub struct Pad1E {
+    offset: usize,
+}
+impl Pad1E {
+    pub const MAGIC: u8 = 0x1E;
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+        return Ok(Pad1E { offset });
+    }
+
+    fn size(&self) -> usize {
+        return 1;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn show(&self) -> String {
+        format!(
+            "@{:04X} {}Pad1E: 1E{}",
+            self.offset,
+            Escape::new().dimmed(),
+            Escape::new()
+        )
+    }
+}
+
 macro_rules! opaque_instr {
     ($name:ident, $magic:expr, $size:expr) => {
         pub struct $name {
@@ -1312,11 +1394,23 @@ macro_rules! opaque_instr {
             }
 
             fn show(&self) -> String {
+                let clr = if stringify!($name) == "Header" {
+                    Color::Green
+                } else {
+                    Color::Red
+                };
                 format!(
-                    "{} @ {:04X}: {}",
-                    stringify!($name),
+                    "@{:04X} {}{}{}: {}{}{}| {}{}{}",
                     self.offset,
-                    bs2s(&self.data)
+                    Escape::new().fg(clr).bold(),
+                    stringify!($name),
+                    Escape::new(),
+                    Escape::new().fg(clr).bold(),
+                    bs2s(&self.data[..2]).trim(),
+                    Escape::new(),
+                    Escape::new().fg(clr),
+                    bs2s(&self.data[2..]),
+                    Escape::new()
                 )
             }
         }
@@ -1328,7 +1422,7 @@ macro_rules! opaque_instr {
                     "{} @{:04X}: {}",
                     stringify!($name),
                     self.offset,
-                    bs2s(&self.data)
+                    bs2s(&self.data[..2]),
                 )
             }
         }
@@ -1342,7 +1436,6 @@ opaque_instr!(Unk0C, 0x0C, 17);
 opaque_instr!(Unk0E, 0x0E, 17);
 opaque_instr!(Unk10, 0x10, 17);
 opaque_instr!(Unk12, 0x12, 4);
-opaque_instr!(Unk1E, 0x1E, 1);
 opaque_instr!(Unk2E, 0x2E, 4);
 opaque_instr!(Unk46, 0x46, 2);
 opaque_instr!(Unk48, 0x48, 4);
@@ -1400,7 +1493,7 @@ pub enum Instr {
     UnkJumpIfNotShown(UnkJumpIfNotShown),
 
     // Fixed size, without wasted 0 byte after header.
-    Unk1E(Unk1E),
+    Pad1E(Pad1E),
     UnkF6(UnkF6),
     UnkJumpIfLowDetail(UnkJumpIfLowDetail),
 
@@ -1436,7 +1529,7 @@ macro_rules! impl_for_all_instr {
             &Instr::Unk0E(ref i) => i.$f(),
             &Instr::Unk10(ref i) => i.$f(),
             &Instr::Unk12(ref i) => i.$f(),
-            &Instr::Unk1E(ref i) => i.$f(),
+            &Instr::Pad1E(ref i) => i.$f(),
             &Instr::Unk2E(ref i) => i.$f(),
             &Instr::Unk46(ref i) => i.$f(),
             &Instr::Unk48(ref i) => i.$f(),
@@ -1578,7 +1671,7 @@ impl CpuShape {
             Unk0E::MAGIC => consume_instr!(Unk0E, pe, offset, instrs),
             Unk10::MAGIC => consume_instr!(Unk10, pe, offset, instrs),
             Unk12::MAGIC => consume_instr!(Unk12, pe, offset, instrs),
-            Unk1E::MAGIC => consume_instr!(Unk1E, pe, offset, instrs),
+            Pad1E::MAGIC => consume_instr!(Pad1E, pe, offset, instrs),
             Unk2E::MAGIC => consume_instr!(Unk2E, pe, offset, instrs),
             Unk40::MAGIC => consume_instr!(Unk40, pe, offset, instrs),
             Unk46::MAGIC => consume_instr!(Unk46, pe, offset, instrs),

@@ -72,7 +72,7 @@ fn main() {
 
         if matches.is_present("all") {
             for (i, instr) in shape.instrs.iter().enumerate() {
-                println!("{}: {}", i, instr.show());
+                println!("{:3}: {}", i, instr.show());
             }
         } else if matches.is_present("last") {
             let fmt = shape

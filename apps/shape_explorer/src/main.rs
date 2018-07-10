@@ -168,6 +168,9 @@ impl ViewState {
             }
 
             match instr {
+                Instr::Header(hdr) => {
+                    xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
+                }
                 Instr::TextureRef(texture) => {
                     active_texture = Some(&self.textures[&texture.filename]);
                 }
