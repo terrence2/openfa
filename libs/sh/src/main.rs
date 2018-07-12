@@ -49,6 +49,24 @@ fn main() {
                 .required(false),
         )
         .arg(
+            Arg::with_name("a6")
+                .long("--a6")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("c8")
+                .long("--c8")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("f2")
+                .long("--f2")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("memory")
                 .long("--memory")
                 .takes_value(false)
@@ -87,6 +105,57 @@ fn main() {
                 if let sh::Instr::UnknownUnknown(unk) = i {
                     //println!("{:20}: {}", name, i.show());
                     println!("{}, {:20}", format_unk(&unk.data), name,);
+                }
+            }
+        } else if matches.is_present("a6") {
+            let mut offset = 0;
+            while offset < shape.instrs.len() {
+                if let sh::Instr::UnkA6(_) = shape.instrs[offset] {
+                    println!("{:20} {}", name, shape.instrs[offset].show());
+                    println!("{:20} {}", name, shape.instrs[offset + 1].show());
+                }
+                offset += 1;
+            }
+        } else if matches.is_present("f2") {
+            for i in shape.instrs.iter() {
+                if let sh::Instr::F2_JumpIfNotShown(unk) = i {
+                    let abs_offset = unk.offset + 4 + unk.offset_to_next;
+                    let off = shape.map_absolute_offset_to_instr_offset(abs_offset);
+                    if off.is_ok() {
+                        println!(
+                            "{} {:04X} : {} : {:20}",
+                            off.is_ok(),
+                            unk.offset_to_next,
+                            shape.instrs[off.unwrap()].show().trim(),
+                            name
+                        );
+                    } else {
+                        for j in shape.instrs.iter() {
+                            if let sh::Instr::TrailerUnknown(trailer) = j {
+                                if abs_offset >= trailer.offset {
+                                    println!(
+                                        "AFTER: {} {:04X} : {:20}",
+                                        off.is_ok(),
+                                        unk.offset_to_next,
+                                        name
+                                    );
+                                } else {
+                                    println!(
+                                        "BEFORE: {} {:04X} : {:20}",
+                                        off.is_ok(),
+                                        unk.offset_to_next,
+                                        name
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if matches.is_present("c8") {
+            for i in shape.instrs.iter() {
+                if let sh::Instr::UnkC8_JumpOnDetailLevel(jmp) = i {
+                    println!("{:04X} - {} - {}", jmp.unk0, name, jmp.show());
                 }
             }
         } else if matches.is_present("memory") {

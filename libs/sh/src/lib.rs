@@ -1152,13 +1152,12 @@ impl UnkJumpIfLowDetail {
 // 0x41 + 0xCF + 6 => 0x116 points past textured polys.
 
 #[derive(Debug)]
-pub struct UnkJumpIfNotShown {
+pub struct F2_JumpIfNotShown {
     pub offset: usize,
     pub offset_to_next: usize,
-    pub data: [u8; 2],
 }
 
-impl UnkJumpIfNotShown {
+impl F2_JumpIfNotShown {
     pub const MAGIC: u8 = 0xF2;
     pub const SIZE: usize = 4;
 
@@ -1170,6 +1169,76 @@ impl UnkJumpIfNotShown {
         let offset_to_next = word_ref[0] as usize;
         return Ok(Self {
             offset,
+            offset_to_next,
+        });
+    }
+
+    fn size(&self) -> usize {
+        return Self::SIZE;
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        // Our start offset + our size + offset_to_next.
+        return self.offset + Self::SIZE + self.offset_to_next;
+    }
+
+    fn show(&self) -> String {
+        format!(
+            "@{:04X} {}   F2{}: jump-if-not-shown: delta: {:04X}, target: {:04X}",
+            self.offset,
+            Escape::new().fg(Color::BrightBlue).bold(),
+            Escape::new(),
+            self.offset_to_next,
+            self.next_offset()
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct UnkC8_JumpOnDetailLevel {
+    pub offset: usize,
+    pub unk0: u16,
+    pub unk1: u16,
+    pub offset_to_next: usize,
+    pub data: [u8; 6],
+}
+
+impl UnkC8_JumpOnDetailLevel {
+    pub const MAGIC: u8 = 0xC8;
+    pub const SIZE: usize = 8;
+
+    // Unk1 Values are used in files:
+    // 4+5  chaff/crater/flare/smoke
+    // 6    rock + vom
+    // 9    rocks
+    // A    guide
+    // C    moth+que+wtrbuf  (not in the game?)
+    // F    bridges, docks, and rigs
+    // 10   planes... all of them
+    // 12   vehicles, trees, buildings
+    // 14   bullet, tracer, wtrbuf
+    // 18   moth, que
+    // 19   missles, buildings, bridges, mooses, ships... basically everything?
+    // 1E   buildings, missles, ships, etc.
+    // 21   planes... all of them
+    // distance at which it should be shown?
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+        let data = &code[offset..];
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
+        let unk0 = word_ref[0];
+        let unk1 = word_ref[1];
+        let offset_to_next = word_ref[2] as usize;
+        return Ok(Self {
+            offset,
+            unk0,
+            unk1,
             offset_to_next,
             data: clone_into_array(&data[2..Self::SIZE]),
         });
@@ -1185,15 +1254,17 @@ impl UnkJumpIfNotShown {
 
     pub fn next_offset(&self) -> usize {
         // Our start offset + our size + 1 + offset_to_next.
-        return self.offset + 4 + self.offset_to_next;
+        return self.offset + Self::SIZE + self.offset_to_next;
     }
 
-    fn show(&self) -> String {
+    pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}UnkF2{}: jump-if-not-shown: delta: {:04X}, target: {:04X}",
+            "@{:04X} {}UnkC8{}: jump-on-detail-level: {:04X}, {:04X} delta: {:04X}, target: {:04X}",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
+            self.unk0,
+            self.unk1,
             self.offset_to_next,
             self.next_offset()
         )
@@ -1449,7 +1520,7 @@ opaque_instr!(UnkAC, 0xAC, 4);
 opaque_instr!(UnkB2, 0xB2, 2);
 opaque_instr!(UnkB8, 0xB8, 4);
 opaque_instr!(UnkC4, 0xC4, 16);
-opaque_instr!(UnkC8, 0xC8, 8);
+//opaque_instr!(UnkC8, 0xC8, 8);
 opaque_instr!(UnkCA, 0xCA, 4);
 opaque_instr!(UnkD0, 0xD0, 4);
 opaque_instr!(UnkDA, 0xDA, 4);
@@ -1482,7 +1553,7 @@ pub enum Instr {
     UnkB2(UnkB2),
     UnkB8(UnkB8),
     UnkC4(UnkC4),
-    UnkC8(UnkC8),
+    UnkC8_JumpOnDetailLevel(UnkC8_JumpOnDetailLevel),
     UnkCA(UnkCA),
     UnkCE(UnkCE),
     UnkD0(UnkD0),
@@ -1490,7 +1561,7 @@ pub enum Instr {
     UnkE4(UnkE4),
     UnkEA(UnkEA),
     UnkEE(UnkEE),
-    UnkJumpIfNotShown(UnkJumpIfNotShown),
+    F2_JumpIfNotShown(F2_JumpIfNotShown),
 
     // Fixed size, without wasted 0 byte after header.
     Pad1E(Pad1E),
@@ -1543,7 +1614,7 @@ macro_rules! impl_for_all_instr {
             &Instr::UnkB2(ref i) => i.$f(),
             &Instr::UnkB8(ref i) => i.$f(),
             &Instr::UnkC4(ref i) => i.$f(),
-            &Instr::UnkC8(ref i) => i.$f(),
+            &Instr::UnkC8_JumpOnDetailLevel(ref i) => i.$f(),
             &Instr::UnkCA(ref i) => i.$f(),
             &Instr::UnkCE(ref i) => i.$f(),
             &Instr::UnkD0(ref i) => i.$f(),
@@ -1551,7 +1622,7 @@ macro_rules! impl_for_all_instr {
             &Instr::UnkE4(ref i) => i.$f(),
             &Instr::UnkEA(ref i) => i.$f(),
             &Instr::UnkEE(ref i) => i.$f(),
-            &Instr::UnkJumpIfNotShown(ref i) => i.$f(),
+            &Instr::F2_JumpIfNotShown(ref i) => i.$f(),
             &Instr::UnkF6(ref i) => i.$f(),
             &Instr::UnkJumpIfLowDetail(ref i) => i.$f(),
             &Instr::UnkBC(ref i) => i.$f(),
@@ -1648,7 +1719,7 @@ impl CpuShape {
         // Assertions.
         //        {
         //            let instr = find_first_instr(0xF2, &instrs);
-        //            if let Some(&Instr::UnkJumpIfNotShown(ref jmp)) = instr {
+        //            if let Some(&Instr::F2_JumpIfNotShown(ref jmp)) = instr {
         //                let tgt = _find_instr_at_offset(jmp.next_offset(), &instrs);
         //                assert!(tgt.is_some());
         //            }
@@ -1687,7 +1758,9 @@ impl CpuShape {
             UnkB8::MAGIC => consume_instr!(UnkB8, pe, offset, instrs),
             UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, instrs),
             UnkC4::MAGIC => consume_instr!(UnkC4, pe, offset, instrs),
-            UnkC8::MAGIC => consume_instr!(UnkC8, pe, offset, instrs),
+            UnkC8_JumpOnDetailLevel::MAGIC => {
+                consume_instr!(UnkC8_JumpOnDetailLevel, pe, offset, instrs)
+            }
             UnkCA::MAGIC => consume_instr!(UnkCA, pe, offset, instrs),
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, instrs),
             UnkD0::MAGIC => consume_instr!(UnkD0, pe, offset, instrs),
@@ -1696,7 +1769,7 @@ impl CpuShape {
             UnkEA::MAGIC => consume_instr!(UnkEA, pe, offset, instrs),
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
-            UnkJumpIfNotShown::MAGIC => consume_instr!(UnkJumpIfNotShown, pe, offset, instrs),
+            F2_JumpIfNotShown::MAGIC => consume_instr!(F2_JumpIfNotShown, pe, offset, instrs),
             UnkJumpIfLowDetail::MAGIC => consume_instr!(UnkJumpIfLowDetail, pe, offset, instrs),
             TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, instrs),
             TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, instrs),
@@ -1736,6 +1809,19 @@ impl CpuShape {
         return Ok(());
     }
 
+    // Map an offset in bytes from the beginning of the virtual instruction stream
+    // to an offset into the virtual instructions.
+    pub fn map_absolute_offset_to_instr_offset(&self, abs_offset: usize) -> Result<usize, Error> {
+        let mut cur_offset = 0;
+        for (instr_offset, instr) in self.instrs.iter().enumerate() {
+            if cur_offset == abs_offset {
+                return Ok(instr_offset);
+            }
+            cur_offset += instr.size();
+        }
+        bail!("no instruction at absolute offset: {:08X}", abs_offset);
+    }
+
     pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Result<usize, Error> {
         let mut b_offset = 0u32;
         for (offset, instr) in self.instrs.iter().enumerate() {
@@ -1752,7 +1838,7 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
     for instr in instrs.iter() {
         match kind {
             0xF2 => {
-                if let &Instr::UnkJumpIfNotShown(ref _x) = instr {
+                if let &Instr::F2_JumpIfNotShown(ref _x) = instr {
                     return Some(instr);
                 }
             }

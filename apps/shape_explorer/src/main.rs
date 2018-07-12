@@ -68,6 +68,8 @@ struct ViewState {
     palette: Palette,
     active_mesh: usize,
     instr_count: usize,
+    end_at_offset: usize,
+    subdetail_at_offset: usize,
 }
 
 impl ViewState {
@@ -90,6 +92,8 @@ impl ViewState {
             //tex_size: [0f32, 0f32],
             active_mesh: 0,
             instr_count: 0,
+            end_at_offset: 0,
+            subdetail_at_offset: usize::max_value(),
         };
         state._redraw(window);
         state.set_vertex_colors();
@@ -158,12 +162,28 @@ impl ViewState {
         let mut xform: [f32; 6] = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
 
         println!("Drawing up to offset {}", self.instr_count);
-        for (i, instr) in self.shape.instrs.iter().enumerate() {
-            if i >= self.instr_count {
+        let mut offset = 0;
+        let mut byte_offset = 0;
+        while offset < self.shape.instrs.len() {
+            //for (i, instr) in self.shape.instrs.iter().enumerate() {
+            let instr = &self.shape.instrs[offset];
+            if offset >= self.instr_count {
                 break;
             }
-            println!("At: {} => {}", i, instr.show());
-            if i == self.instr_count - 1 {
+            // if byte_offset >= self.subdetail_at_offset && byte_offset < self.end_at_offset {
+            //     let next_offset = cmp::max(self.end_at_offset, byte_offset);
+            //     let maybe_offset = self.shape
+            //         .map_interpreter_offset_to_instr_offset(next_offset as u32);
+            //     if let Ok(off) = maybe_offset {
+            //         offset = off;
+            //         byte_offset = next_offset;
+            //         continue;
+            //     } else {
+            //         break;
+            //     }
+            // }
+            println!("At: {} => {}", offset, instr.show());
+            if offset == self.instr_count - 1 {
                 println!("--- FIN ---")
             }
 
@@ -173,6 +193,16 @@ impl ViewState {
                 }
                 Instr::TextureRef(texture) => {
                     active_texture = Some(&self.textures[&texture.filename]);
+                }
+                Instr::F2_JumpIfNotShown(f2) => {
+                    if f2.next_offset() > self.end_at_offset {
+                        self.end_at_offset = f2.next_offset();
+                    }
+                }
+                Instr::UnkC8_JumpOnDetailLevel(c8) => {
+                    if c8.next_offset() < self.subdetail_at_offset {
+                        self.subdetail_at_offset = c8.next_offset();
+                    }
                 }
                 Instr::UnkC4(c4) => {
                     // C4 00   FF FF   13 00   E4 FF    00 00   00 00   00 00    7D 02
@@ -192,6 +222,9 @@ impl ViewState {
                     ];
                 }
                 Instr::VertexBuf(buf) => {
+                    if buf.unk0 & 1 == 1 {
+                        vert_buf.truncate(0);
+                    }
                     // if end_at_offset == buf.offset {
                     //     vert_buf.truncate(0);
                     // }
@@ -264,6 +297,8 @@ impl ViewState {
                 //                }
                 _ => {}
             }
+            offset += 1;
+            byte_offset += instr.size();
         }
 
         return nodes;
@@ -362,8 +397,9 @@ impl ViewState {
     }
 
     fn prev_instr(&mut self, window: &mut Window) {
-        self.instr_count -= 1;
-        self.instr_count = cmp::max(self.instr_count, 0);
+        if self.instr_count >= 0 {
+            self.instr_count -= 1;
+        }
         self._redraw(window);
     }
 
@@ -379,7 +415,6 @@ impl ViewState {
         } else {
             self.instr_count = 0;
         }
-        self.instr_count = cmp::max(self.instr_count, 0);
         self._redraw(window);
     }
 

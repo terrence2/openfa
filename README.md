@@ -37,7 +37,7 @@ An attempt at an open-source re-implementation of the Janes Fighters Anthology's
 | PTS       |                 |          |
 | SEE       |                 | Todo     |
 | SEQ       |                 |          |
-| SH        | Shape           | Parsed   |
+| SH        | Shape           | Partial  |
 | T2        | Terrain         | Partial  |
 | TXT       |                 |          |
 | VDO       | Video           | *        |
