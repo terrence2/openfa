@@ -1,0 +1,24 @@
+[package]
+name = "lib"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[features]
+benchmark = []
+
+# pkware is unusable at opt level 0.
+# [profile.dev]
+# opt-level = 2
+
+# [profile.test]
+# opt-level = 2
+
+[dependencies]
+clap = "2.32"
+codepage-437 = "0.1.0"
+failure = "0.1"
+glob = "0.2"
+humansize = "1.0.1"
+memmap = "0.6"
+packed_struct = { path = "../packed_struct" }
+pkware = { path = "../pkware" }

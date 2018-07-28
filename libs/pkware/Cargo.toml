@@ -1,0 +1,15 @@
+[package]
+name = "pkware"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[features]
+benchmark = []
+
+# This crate is unusably slow at opt-level 0.
+[profile.test]
+opt-level = 1
+
+[dependencies]
+failure = "0.1"
+lazy_static = "1.0"
