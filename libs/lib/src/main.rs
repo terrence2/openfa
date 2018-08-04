@@ -15,9 +15,8 @@
 
 // Unpack lib files.
 
-#[macro_use]
-extern crate failure;
 extern crate clap;
+extern crate failure;
 extern crate humansize;
 extern crate lib;
 

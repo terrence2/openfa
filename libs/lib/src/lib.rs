@@ -318,14 +318,14 @@ pub enum LibraryData {
 pub struct Library {
     // The assigned key. The key is used to avoid a circular reference
     // from the FileInfo structures back to the owning index.
-    libkey: usize,
+    _libkey: usize,
 
     // The location of the lib file.
     path: PathBuf,
 
     // The priority of a lib file increases with the number in the name.
     // Given two libs with the same name, the larger suffix letter wins.
-    priority: Priority,
+    _priority: Priority,
 
     // The index + data to load actual content.
     data: LibraryData,
@@ -341,9 +341,9 @@ impl Library {
             bail!("library: tried to open non-file");
         };
         return Ok(Library {
-            libkey,
+            _libkey: libkey,
             path: path.to_owned(),
-            priority: priority.to_owned(),
+            _priority: priority.to_owned(),
             data,
         });
     }
@@ -395,6 +395,17 @@ pub enum FileRef {
 }
 
 impl FileRef {
+    pub fn owning_library<'a>(&self, libs: &'a Vec<Library>) -> &'a Library {
+        match self {
+            FileRef::Packed(ref fileinfo) => {
+                return &libs[fileinfo.libkey];
+            }
+            FileRef::Unpacked(ref fileinfo) => {
+                return &libs[fileinfo.libkey];
+            }
+        }
+    }
+
     pub fn load<'a>(&self, libs: &'a Vec<Library>) -> Fallible<Cow<'a, [u8]>> {
         match self {
             FileRef::Packed(ref fileinfo) => {
@@ -464,7 +475,7 @@ impl LibStack {
         let mut index = HashMap::new();
         let mut masked = Vec::new();
         for lib in libs.iter() {
-            lib.build_index(&mut index, &mut masked);
+            lib.build_index(&mut index, &mut masked)?;
         }
 
         return Ok(Self {
@@ -496,14 +507,6 @@ impl LibStack {
         return self.index.get(filename).is_some();
     }
 
-    pub fn load(&self, filename: &str) -> Fallible<Cow<[u8]>> {
-        ensure!(filename.len() > 0, "cannot load empty file");
-        if let Some(info) = self.index.get(filename) {
-            return Ok(info.load(&self.libs)?);
-        }
-        bail!("no such file {} in index", filename);
-    }
-
     pub fn stat(&self, filename: &str) -> Fallible<StatInfo> {
         ensure!(filename.len() > 0, "cannot load empty file");
         if let Some(info) = self.index.get(filename) {
@@ -512,9 +515,44 @@ impl LibStack {
         bail!("no such file {} in index", filename);
     }
 
+    pub fn load(&self, filename: &str) -> Fallible<Cow<[u8]>> {
+        ensure!(filename.len() > 0, "cannot load empty file");
+        if let Some(info) = self.index.get(filename) {
+            return Ok(info.load(&self.libs)?);
+        }
+        bail!("no such file {} in index", filename);
+    }
+
     pub fn load_text(&self, filename: &str) -> Fallible<String> {
         let contents = self.load(filename)?.to_vec();
         return Ok(String::from_cp437(contents, &CP437_CONTROL));
+    }
+
+    /// Load the masked filename from the given libpath.
+    pub fn load_masked_text(&self, filename: &str, libpath: &Path) -> Fallible<String> {
+        for (name, fileref) in self.masked.iter() {
+            if name != filename {
+                continue;
+            }
+            if libpath != fileref.owning_library(&self.libs).path.clone() {
+                continue;
+            }
+            let contents = fileref.load(&self.libs)?.to_vec();
+            return Ok(String::from_cp437(contents, &CP437_CONTROL));
+        }
+        bail!("libstack: no masked file {:?}/{}", libpath, filename);
+    }
+
+    /// Find all files with filename that have been masked.
+    pub fn find_masked(&self, filename: &str) -> Fallible<Vec<PathBuf>> {
+        let mut out = Vec::new();
+        for (name, fileref) in self.masked.iter() {
+            if name != filename {
+                continue;
+            }
+            out.push(fileref.owning_library(&self.libs).path.clone());
+        }
+        return Ok(out);
     }
 
     pub fn find_matching(&self, glob: &str) -> Fallible<Vec<String>> {
@@ -603,6 +641,11 @@ mod tests {
         let libs = LibStack::from_dir_search(Path::new("./test_data/masking"))?;
         let txt = libs.load_text("FILE.TXT")?;
         assert_eq!(txt, "20b\n");
+        let libpaths = libs.find_masked("FILE.TXT")?;
+        for libpath in libpaths.iter() {
+            let txt = libs.load_masked_text("FILE.TXT", libpath)?;
+            assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
+        }
         return Ok(());
     }
 }
