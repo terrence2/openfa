@@ -17,13 +17,8 @@
 extern crate failure;
 
 use failure::Error;
-use std::mem;
 
-pub fn explode(
-    _name: &str,
-    input_data: &[u8],
-    expect_output_size: Option<usize>,
-) -> Result<Vec<u8>, Error> {
+pub fn explode(input_data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>, Error> {
     let mut input_offset = 0;
     let mut dict: [u8; 4096] = [' ' as u8; 4096];
     let mut dict_offset = 0;
@@ -37,6 +32,10 @@ pub fn explode(
                 break;
             }
             if flag & 1 == 0 {
+                ensure!(
+                    input_data.len() > input_offset + 1,
+                    "out of input in middle of code"
+                );
                 let i0 = input_data[input_offset] as usize;
                 let i1 = input_data[input_offset + 1] as usize;
                 input_offset += 2;
@@ -68,52 +67,45 @@ mod tests {
     use std::path::Path;
     use std::{fs, io::Read};
 
-    fn find_expect_data(path: &str) -> Option<Vec<u8>> {
+    fn find_expect_data(path: &str) -> Result<Option<Vec<u8>>, Error> {
         // strip ./test_data/inputs/ and .lzss.zip
         let path_stem = &path.to_owned()[19..path.len() - 9];
         let expect_path = format!("./test_data/expect/{}", path_stem);
         if !Path::new(&expect_path).exists() {
-            return None;
+            return Ok(None);
         }
-        let mut fp = fs::File::open(&expect_path).unwrap();
+        let mut fp = fs::File::open(&expect_path)?;
         let mut contents = Vec::new();
-        fp.read_to_end(&mut contents).unwrap();
-        return Some(contents);
+        fp.read_to_end(&mut contents)?;
+        return Ok(Some(contents));
     }
 
     #[test]
-    fn it_doesnt_crash() {
-        let paths = fs::read_dir("./test_data/inputs").unwrap();
+    fn it_doesnt_crash() -> Result<(), Error> {
+        let paths = fs::read_dir("./test_data/inputs")?;
         for i in paths {
-            let entry = i.unwrap();
+            let entry = i?;
             let path = format!("{}", entry.path().display());
-            let expect = find_expect_data(&path);
-            println!("At: {}", path);
-            //let path = format!("test_data/{}.INF.lzss.zip", inf);
-            let mut fp = fs::File::open(&path).unwrap();
+            let expect = find_expect_data(&path)?;
+            // println!("At: {}", path);
+            let mut fp = fs::File::open(&path)?;
             let mut contents = Vec::new();
-            fp.read_to_end(&mut contents).unwrap();
-            let out = explode(&path, &contents, None).unwrap();
+            fp.read_to_end(&mut contents)?;
+            let out = explode(&contents, None)?;
 
             if let Some(want) = &expect {
-                if path != "./test_data/inputs/SU37.INF.lzss.zip" {
-                    println!("CHECKING: {}", path);
-                    println!(
-                        "out: {}",
-                        out.iter().map(|&c| c as char).collect::<String>()
-                    );
-                    assert_eq!(want, &out);
-                }
+                assert_eq!(want, &out);
             }
 
-            use std::fs::File;
-            use std::io::Write;
-            let outname = format!(
-                "output/{}",
-                entry.path().file_stem().unwrap().to_str().unwrap()
-            );
-            let mut fp = File::create(&outname).unwrap();
-            fp.write(&out);
+            // use std::fs::File;
+            // use std::io::Write;
+            // let outname = format!(
+            //     "output/{}",
+            //     entry.path().file_stem()?.to_str()?
+            // );
+            // let mut fp = File::create(&outname).unwrap();
+            // fp.write(&out);
         }
+        return Ok(());
     }
 }
