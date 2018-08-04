@@ -157,7 +157,7 @@ impl LibFile {
         ensure!(magic == "EALIB", "lib missing magic");
 
         // Entries
-        let mut local_index = HashMap::new();
+        let mut local_index: HashMap<String, PackedFileInfo> = HashMap::new();
         let entries_start = mem::size_of::<LibHeader>();
         let entries_end = entries_start + hdr.count() as usize * mem::size_of::<LibEntry>();
         ensure!(map.len() > entries_end, "lib too short for entries");
@@ -172,11 +172,12 @@ impl LibFile {
             } else {
                 map.len()
             };
-            ensure!(
-                !local_index.contains_key(&name),
-                "duplicate filename in lib {:?}",
-                path
-            );
+            // This occurs at least once ATF Gold's 2.LIB.
+            if local_index.contains_key(&name) {
+                let new_name = format!("__rename{}__{}", i, name);
+                let fileinfo = local_index[&name].clone();
+                local_index.insert(new_name, fileinfo);
+            }
             local_index.insert(
                 name,
                 PackedFileInfo::new(key, entry.offset() as usize, end_offset, entry.flags())?,
