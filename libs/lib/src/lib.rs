@@ -60,8 +60,8 @@ impl CompressionType {
     }
 }
 
-#[derive(Debug)]
-struct Priority {
+#[derive(Clone, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Priority {
     priority: usize,
     version: usize,
 }
@@ -102,14 +102,14 @@ pub struct StatInfo {
 }
 
 #[derive(Clone, Debug)]
-pub struct FileInfo {
+pub struct PackedFileInfo {
     libkey: usize,
     start_offset: usize,
     end_offset: usize,
     compression: CompressionType,
 }
 
-impl FileInfo {
+impl PackedFileInfo {
     pub fn new(
         libkey: usize,
         start_offset: usize,
@@ -126,15 +126,8 @@ impl FileInfo {
 }
 
 pub struct LibFile {
-    // The location of the lib file.
-    _path: PathBuf,
-
-    // The priority of a lib file increases with the number in the name.
-    // Given two libs with the same name, the larger suffix letter wins.
-    priority: Priority,
-
     // Index of the files in this library.
-    local_index: HashMap<String, FileInfo>,
+    local_index: HashMap<String, PackedFileInfo>,
 
     // mmapped buffer
     data: Mmap,
@@ -155,10 +148,6 @@ impl LibFile {
     pub fn new(key: usize, path: &Path) -> Fallible<Self> {
         let fp = fs::File::open(path)?;
         let map = unsafe { MmapOptions::new().map(&fp)? };
-
-        // Take priorty from the name.
-        let priority = Priority::from_path(path)?;
-        println!("{:?}: {:?}", path, priority);
 
         // Header
         ensure!(map.len() > mem::size_of::<LibHeader>(), "lib too short");
@@ -190,68 +179,232 @@ impl LibFile {
             );
             local_index.insert(
                 name,
-                FileInfo::new(key, entry.offset() as usize, end_offset, entry.flags())?,
+                PackedFileInfo::new(key, entry.offset() as usize, end_offset, entry.flags())?,
             );
         }
 
         return Ok(Self {
-            _path: path.to_owned(),
-            priority,
             local_index,
             data: map,
         });
     }
+
+    pub fn load(&self, info: &PackedFileInfo) -> Fallible<Cow<[u8]>> {
+        match info.compression {
+            CompressionType::None => {
+                return Ok(Cow::from(&self.data[info.start_offset..info.end_offset]));
+            }
+            CompressionType::PKWare => {
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                let expect_output_size = Some(dwords[0] as usize);
+                return Ok(Cow::from(pkware::explode(
+                    &self.data[info.start_offset + 4..info.end_offset],
+                    expect_output_size,
+                )?));
+            }
+            CompressionType::LZSS => {
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                let expect_output_size = Some(dwords[0] as usize);
+                return Ok(Cow::from(lzss::explode(
+                    &self.data[info.start_offset + 4..info.end_offset],
+                    expect_output_size,
+                )?));
+            }
+            CompressionType::PXPK => unimplemented!(),
+        }
+    }
+
+    pub fn stat(&self, filename: &str, info: &PackedFileInfo) -> Fallible<StatInfo> {
+        match info.compression {
+            CompressionType::None => {
+                return Ok(StatInfo {
+                    name: filename.to_owned(),
+                    compression: info.compression.clone(),
+                    packed_size: info.end_offset - info.start_offset,
+                    unpacked_size: info.end_offset - info.start_offset,
+                });
+            }
+            CompressionType::PKWare => {
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                return Ok(StatInfo {
+                    name: filename.to_owned(),
+                    compression: info.compression.clone(),
+                    packed_size: info.end_offset - info.start_offset,
+                    unpacked_size: dwords[0] as usize,
+                });
+            }
+            CompressionType::LZSS => {
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                return Ok(StatInfo {
+                    name: filename.to_owned(),
+                    compression: info.compression.clone(),
+                    packed_size: info.end_offset - info.start_offset,
+                    unpacked_size: dwords[0] as usize,
+                });
+            }
+            CompressionType::PXPK => unimplemented!(),
+        }
+    }
+}
+
+pub enum LibraryData {
+    File(LibFile),
+    //Dir(LibDir),
+}
+
+pub struct Library {
+    // The assigned key. The key is used to avoid a circular reference
+    // from the FileInfo structures back to the owning index.
+    libkey: usize,
+
+    // The location of the lib file.
+    path: PathBuf,
+
+    // The priority of a lib file increases with the number in the name.
+    // Given two libs with the same name, the larger suffix letter wins.
+    priority: Priority,
+
+    // The index + data to load actual content.
+    data: LibraryData,
+}
+
+impl Library {
+    pub fn from_path(priority: &Priority, libkey: usize, path: &Path) -> Fallible<Self> {
+        let data = if path.is_file() {
+            LibraryData::File(LibFile::new(libkey, path)?)
+        } else {
+            bail!("library: tried to open non-file");
+        };
+        return Ok(Library {
+            libkey,
+            path: path.to_owned(),
+            priority: priority.to_owned(),
+            data,
+        });
+    }
+
+    pub fn build_index(
+        &self,
+        index: &mut HashMap<String, FileRef>,
+        masked: &mut Vec<(String, FileRef)>,
+    ) -> Fallible<()> {
+        match self.data {
+            LibraryData::File(ref libfile) => {
+                for (name, info) in libfile.local_index.iter() {
+                    let removed = index.insert(name.to_owned(), FileRef::Packed(info.clone()));
+                    if let Some(overwritten) = removed {
+                        masked.push((name.to_owned(), overwritten));
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    pub fn libfile(&self) -> Fallible<&LibFile> {
+        return match self.data {
+            LibraryData::File(ref libfile) => Ok(libfile),
+        };
+    }
+}
+
+pub enum FileRef {
+    Packed(PackedFileInfo),
+    //Unpacked(RawFileInfo),
+}
+
+impl FileRef {
+    pub fn load<'a>(&self, libs: &'a Vec<Library>) -> Fallible<Cow<'a, [u8]>> {
+        match self {
+            FileRef::Packed(ref fileinfo) => {
+                let lib = &libs[fileinfo.libkey];
+                return Ok(lib.libfile()?.load(fileinfo)?);
+            }
+        }
+    }
+
+    pub fn stat(&self, filename: &str, libs: &Vec<Library>) -> Fallible<StatInfo> {
+        match self {
+            FileRef::Packed(ref fileinfo) => {
+                let lib = &libs[fileinfo.libkey];
+                return Ok(lib.libfile()?.stat(filename, fileinfo)?);
+            }
+        }
+    }
 }
 
 pub struct LibStack {
-    // Map from lib file path to the local index.
-    libs: HashMap<usize, LibFile>,
+    // Offset into this vec is the libkey. This should be sorted by priority.
+    libs: Vec<Library>,
 
-    // Keep a list of all hidden files.
-    hidden: Vec<(String, LibFile, FileInfo)>,
+    // Global index mapping file names to FileInfo.
+    index: HashMap<String, FileRef>,
 
-    // Global index mapping file names to lib key.
-    index: HashMap<String, FileInfo>,
+    // Keep a list of all files that are hidden by a higher priority file.
+    masked: Vec<(String, FileRef)>,
 }
 
 impl LibStack {
-    pub fn new_from_files(libfiles: &Vec<PathBuf>) -> Fallible<Self> {
-        let mut libs = HashMap::new();
-        let mut key = 0;
-        for libfile in libfiles {
-            let info = LibFile::new(key, &libfile)?;
-            libs.insert(key, info);
-            key += 1;
+    pub fn from_paths(libpaths: &Vec<PathBuf>) -> Fallible<Self> {
+        // Ensure that all libs in the stack have a unique priority.
+        let mut priorities = HashMap::new();
+        for libpath in libpaths {
+            let prio = Priority::from_path(&libpath)?;
+            ensure!(
+                !priorities.contains_key(&prio),
+                "libstack: trying to load two libs with same priority: {:?} and {:?}",
+                libpath,
+                priorities[&prio]
+            );
+            priorities.insert(prio, libpath);
         }
+
+        // Get all priorities in sorted order.
+        let mut sorted_priorities = priorities.keys().collect::<Vec<_>>();
+        sorted_priorities.sort();
+        let sorted_priorities = sorted_priorities;
+
+        // Load libraries in sorted order. This lets us use the index as a key to
+        // avoid a second hash lookup in the load path.
+        let mut libs = Vec::new();
+        for (libkey, prio) in sorted_priorities.iter().enumerate() {
+            libs.push(Library::from_path(&prio, libkey, priorities[prio])?);
+        }
+
+        // Build the global index from names to direct references.
         let mut index = HashMap::new();
-        for lib in libs.values() {
-            for (name, info) in lib.local_index.iter() {
-                // TODO: proper masking
-                // ensure!(
-                //     !index.contains_key(name),
-                //     "duplicate filename in lib stack: {}",
-                //     name
-                // );
-                index.insert(name.to_owned(), info.clone());
-            }
+        let mut masked = Vec::new();
+        for lib in libs.iter() {
+            lib.build_index(&mut index, &mut masked);
         }
+
         return Ok(Self {
             libs,
-            hidden: Vec::new(),
             index,
+            masked,
         });
     }
 
     /// Find all lib files under search path and index them.
-    pub fn new_from_search_under(search_path: &Path) -> Fallible<Self> {
-        let libfiles = Self::find_all_libs_under(search_path)?;
-        return Self::new_from_files(&libfiles);
+    pub fn from_file_search(search_path: &Path) -> Fallible<Self> {
+        let libfiles = Self::find_all_lib_files_under(search_path)?;
+        return Self::from_paths(&libfiles);
+    }
+
+    /// Find all lib directories under search path and index them.
+    pub fn from_dir_search(search_path: &Path) -> Fallible<Self> {
+        let libdirs = Self::find_all_lib_dirs_under(search_path)?;
+        return Self::from_paths(&libdirs);
     }
 
     pub fn new_for_test() -> Fallible<Self> {
         let libdirs = fs::read_dir("../../test_data/unpacked/FA/")?;
         //LibStack::new_from_directories(libdirs)?
-        LibStack::new_from_search_under(Path::new("../../test_data/FA"))
+        LibStack::from_file_search(Path::new("../../test_data/FA"))
     }
 
     pub fn file_exists(&self, filename: &str) -> bool {
@@ -261,35 +414,7 @@ impl LibStack {
     pub fn load(&self, filename: &str) -> Fallible<Cow<[u8]>> {
         ensure!(filename.len() > 0, "cannot load empty file");
         if let Some(info) = self.index.get(filename) {
-            if let Some(lib) = self.libs.get(&info.libkey) {
-                match info.compression {
-                    CompressionType::None => {
-                        return Ok(Cow::from(&lib.data[info.start_offset..info.end_offset]));
-                    }
-                    CompressionType::PKWare => {
-                        let dwords: &[u32] = unsafe {
-                            mem::transmute(&lib.data[info.start_offset..info.start_offset + 4])
-                        };
-                        let expect_output_size = Some(dwords[0] as usize);
-                        return Ok(Cow::from(pkware::explode(
-                            &lib.data[info.start_offset + 4..info.end_offset],
-                            expect_output_size,
-                        )?));
-                    }
-                    CompressionType::LZSS => {
-                        let dwords: &[u32] = unsafe {
-                            mem::transmute(&lib.data[info.start_offset..info.start_offset + 4])
-                        };
-                        let expect_output_size = Some(dwords[0] as usize);
-                        return Ok(Cow::from(lzss::explode(
-                            &lib.data[info.start_offset + 4..info.end_offset],
-                            expect_output_size,
-                        )?));
-                    }
-                    CompressionType::PXPK => unimplemented!(),
-                }
-            }
-            panic!("found file in index with invalid libkey: {:?}", info);
+            return Ok(info.load(&self.libs)?);
         }
         bail!("no such file {} in index", filename);
     }
@@ -297,42 +422,7 @@ impl LibStack {
     pub fn stat(&self, filename: &str) -> Fallible<StatInfo> {
         ensure!(filename.len() > 0, "cannot load empty file");
         if let Some(info) = self.index.get(filename) {
-            if let Some(lib) = self.libs.get(&info.libkey) {
-                match info.compression {
-                    CompressionType::None => {
-                        return Ok(StatInfo {
-                            name: filename.to_owned(),
-                            compression: info.compression.clone(),
-                            packed_size: info.end_offset - info.start_offset,
-                            unpacked_size: info.end_offset - info.start_offset,
-                        });
-                    }
-                    CompressionType::PKWare => {
-                        let dwords: &[u32] = unsafe {
-                            mem::transmute(&lib.data[info.start_offset..info.start_offset + 4])
-                        };
-                        return Ok(StatInfo {
-                            name: filename.to_owned(),
-                            compression: info.compression.clone(),
-                            packed_size: info.end_offset - info.start_offset,
-                            unpacked_size: dwords[0] as usize,
-                        });
-                    }
-                    CompressionType::LZSS => {
-                        let dwords: &[u32] = unsafe {
-                            mem::transmute(&lib.data[info.start_offset..info.start_offset + 4])
-                        };
-                        return Ok(StatInfo {
-                            name: filename.to_owned(),
-                            compression: info.compression.clone(),
-                            packed_size: info.end_offset - info.start_offset,
-                            unpacked_size: dwords[0] as usize,
-                        });
-                    }
-                    CompressionType::PXPK => unimplemented!(),
-                }
-            }
-            panic!("found file in index with invalid libkey: {:?}", info);
+            return Ok(info.stat(filename, &self.libs)?);
         }
         bail!("no such file {} in index", filename);
     }
@@ -358,16 +448,34 @@ impl LibStack {
         return Ok(matching);
     }
 
-    fn find_all_libs_under(path: &Path) -> Fallible<Vec<PathBuf>> {
+    fn find_all_lib_files_under(path: &Path) -> Fallible<Vec<PathBuf>> {
         let mut out = Vec::new();
         for maybe_child in fs::read_dir(path)? {
             let child = maybe_child?;
             if child.file_type()?.is_dir() {
-                out.append(&mut Self::find_all_libs_under(&child.path())?);
+                out.append(&mut Self::find_all_lib_files_under(&child.path())?);
             } else if child.path().extension() == Some(OsStr::new("lib"))
                 || child.path().extension() == Some(OsStr::new("LIB"))
             {
                 out.push(child.path().to_owned());
+            }
+        }
+        return Ok(out);
+    }
+
+    fn find_all_lib_dirs_under(path: &Path) -> Fallible<Vec<PathBuf>> {
+        let mut out = Vec::new();
+        for maybe_child in fs::read_dir(path)? {
+            let child = maybe_child?;
+            if !child.file_type()?.is_dir() {
+                continue;
+            }
+            if child.path().extension() == Some(OsStr::new("lib"))
+                || child.path().extension() == Some(OsStr::new("LIB"))
+            {
+                out.push(child.path());
+            } else {
+                out.append(&mut Self::find_all_lib_dirs_under(&child.path())?);
             }
         }
         return Ok(out);
@@ -384,8 +492,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn can_load_and_match_all_files() -> Fallible<()> {
-        let libs = LibStack::new_from_search_under(Path::new("../../test_data/packed/FA"))?;
+    fn can_load_all_files_in_all_libfiles() -> Fallible<()> {
+        let libs = LibStack::from_file_search(Path::new("../../test_data/packed/FA"))?;
+        for name in libs.find_matching("*")?.iter() {
+            println!("At: {}", name);
+            let data = libs.load(name)?;
+            assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
+        }
+        return Ok(());
+    }
+
+    #[test]
+    fn can_load_all_files_in_all_libdirs() -> Fallible<()> {
+        let libs = LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
         for name in libs.find_matching("*")?.iter() {
             println!("At: {}", name);
             let data = libs.load(name)?;

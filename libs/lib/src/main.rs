@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
         let inputs = matches.values_of("INPUT").unwrap();
         let multi_input = inputs.len() > 1;
         for (i, input) in inputs.enumerate() {
-            let libfile = lib::LibStack::new_from_files(&vec![Path::new(input).to_owned()])?;
+            let libfile = lib::LibStack::from_paths(&vec![Path::new(input).to_owned()])?;
             if multi_input {
                 if i != 0 {
                     println!();
@@ -114,7 +114,7 @@ fn main() -> Result<(), Error> {
                 .file_name()
                 .expect("no filename in library");
             let outdir = output.join(libname);
-            let libfile = lib::LibStack::new_from_files(&vec![Path::new(input).to_owned()])?;
+            let libfile = lib::LibStack::from_paths(&vec![Path::new(input).to_owned()])?;
             if !outdir.exists() {
                 create_dir(&outdir)?;
             }
