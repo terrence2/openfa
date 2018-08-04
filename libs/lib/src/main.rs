@@ -25,7 +25,7 @@ use clap::{App, Arg, SubCommand};
 use failure::Error;
 use humansize::{file_size_opts as options, FileSize};
 use std::{
-    fs::{create_dir, remove_file, File}, io::Write, path::{Path, PathBuf},
+    fs::{create_dir, remove_file, File}, io::Write, path::Path,
 };
 
 fn main() -> Result<(), Error> {
@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
         let inputs = matches.values_of("INPUT").unwrap();
         let multi_input = inputs.len() > 1;
         for (i, input) in inputs.enumerate() {
-            let libfile = lib::Library::new_from_files(&vec![Path::new(input).to_owned()])?;
+            let libfile = lib::LibStack::new_from_files(&vec![Path::new(input).to_owned()])?;
             if multi_input {
                 if i != 0 {
                     println!();
@@ -94,7 +94,10 @@ fn main() -> Result<(), Error> {
                     )
                 };
 
-                println!("{:15} {:>12} {:>12}  {}", info.name, psize, asize, ratio);
+                println!(
+                    "{:15} {:?} {:>12} {:>12}  {}",
+                    info.name, info.compression, psize, asize, ratio
+                );
             }
         }
     }
@@ -111,7 +114,7 @@ fn main() -> Result<(), Error> {
                 .file_name()
                 .expect("no filename in library");
             let outdir = output.join(libname);
-            let libfile = lib::Library::new_from_files(&vec![Path::new(input).to_owned()])?;
+            let libfile = lib::LibStack::new_from_files(&vec![Path::new(input).to_owned()])?;
             if !outdir.exists() {
                 create_dir(&outdir)?;
             }

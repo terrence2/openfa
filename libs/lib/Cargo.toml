@@ -7,11 +7,11 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 benchmark = []
 
 # pkware is unusable at opt level 0.
-# [profile.dev]
-# opt-level = 2
+[profile.dev]
+opt-level = 2
 
-# [profile.test]
-# opt-level = 2
+[profile.test]
+opt-level = 2
 
 [dependencies]
 clap = "2.32"
@@ -19,6 +19,9 @@ codepage-437 = "0.1.0"
 failure = "0.1"
 glob = "0.2"
 humansize = "1.0.1"
+lazy_static = "1.0"
 memmap = "0.6"
+regex = "1"
+lzss = { path = "../lzss" }
 packed_struct = { path = "../packed_struct" }
 pkware = { path = "../pkware" }
