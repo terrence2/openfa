@@ -32,7 +32,7 @@ use glob::{MatchOptions, Pattern};
 use memmap::{Mmap, MmapOptions};
 use regex::Regex;
 use std::{
-    borrow::Cow, collections::HashMap, ffi::OsStr, fs, mem, path::{Path, PathBuf}, str,
+    borrow::Cow, collections::HashMap, ffi::OsStr, fs, io::Read, mem, path::{Path, PathBuf}, str,
 };
 
 #[derive(Clone, Debug)]
@@ -97,8 +97,8 @@ impl Priority {
 pub struct StatInfo {
     pub name: String,
     pub compression: CompressionType,
-    pub packed_size: usize,
-    pub unpacked_size: usize,
+    pub packed_size: u64,
+    pub unpacked_size: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -145,7 +145,7 @@ packed_struct!(LibEntry {
 });
 
 impl LibFile {
-    pub fn new(key: usize, path: &Path) -> Fallible<Self> {
+    pub fn from_path(key: usize, path: &Path) -> Fallible<Self> {
         let fp = fs::File::open(path)?;
         let map = unsafe { MmapOptions::new().map(&fp)? };
 
@@ -222,8 +222,8 @@ impl LibFile {
                 return Ok(StatInfo {
                     name: filename.to_owned(),
                     compression: info.compression.clone(),
-                    packed_size: info.end_offset - info.start_offset,
-                    unpacked_size: info.end_offset - info.start_offset,
+                    packed_size: (info.end_offset - info.start_offset) as u64,
+                    unpacked_size: (info.end_offset - info.start_offset) as u64,
                 });
             }
             CompressionType::PKWare => {
@@ -232,8 +232,8 @@ impl LibFile {
                 return Ok(StatInfo {
                     name: filename.to_owned(),
                     compression: info.compression.clone(),
-                    packed_size: info.end_offset - info.start_offset,
-                    unpacked_size: dwords[0] as usize,
+                    packed_size: (info.end_offset - info.start_offset) as u64,
+                    unpacked_size: dwords[0] as u64,
                 });
             }
             CompressionType::LZSS => {
@@ -242,8 +242,8 @@ impl LibFile {
                 return Ok(StatInfo {
                     name: filename.to_owned(),
                     compression: info.compression.clone(),
-                    packed_size: info.end_offset - info.start_offset,
-                    unpacked_size: dwords[0] as usize,
+                    packed_size: (info.end_offset - info.start_offset) as u64,
+                    unpacked_size: dwords[0] as u64,
                 });
             }
             CompressionType::PXPK => unimplemented!(),
@@ -251,9 +251,68 @@ impl LibFile {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct UnpackedFileInfo {
+    libkey: usize,
+    path: PathBuf,
+}
+
+pub struct LibDir {
+    local_index: HashMap<String, UnpackedFileInfo>,
+}
+
+impl LibDir {
+    pub fn from_path(libkey: usize, path: &Path) -> Fallible<Self> {
+        let mut local_index = HashMap::new();
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            if !entry.path().is_file() {
+                continue;
+            }
+            let filename = entry
+                .path()
+                .file_name()
+                .expect("libdir: no filename in file")
+                .to_owned();
+            ensure!(
+                filename.to_str().is_some(),
+                "libdir: non-utf8 characters in file: {:?}",
+                filename
+            );
+            let name = filename.to_str().unwrap().to_owned();
+            let rv = local_index.insert(
+                name,
+                UnpackedFileInfo {
+                    libkey,
+                    path: entry.path(),
+                },
+            );
+            assert!(rv.is_none());
+        }
+        return Ok(Self { local_index });
+    }
+
+    pub fn load(&self, info: &UnpackedFileInfo) -> Fallible<Cow<[u8]>> {
+        let mut fp = fs::File::open(&info.path)?;
+        let mut content = Vec::new();
+        fp.read_to_end(&mut content)?;
+        return Ok(Cow::from(content));
+    }
+
+    pub fn stat(&self, filename: &str, info: &UnpackedFileInfo) -> Fallible<StatInfo> {
+        let stat = fs::metadata(&info.path)?;
+        return Ok(StatInfo {
+            name: filename.to_owned(),
+            compression: CompressionType::None,
+            packed_size: stat.len(),
+            unpacked_size: stat.len(),
+        });
+    }
+}
+
 pub enum LibraryData {
     File(LibFile),
-    //Dir(LibDir),
+    Dir(LibDir),
 }
 
 pub struct Library {
@@ -275,7 +334,9 @@ pub struct Library {
 impl Library {
     pub fn from_path(priority: &Priority, libkey: usize, path: &Path) -> Fallible<Self> {
         let data = if path.is_file() {
-            LibraryData::File(LibFile::new(libkey, path)?)
+            LibraryData::File(LibFile::from_path(libkey, path)?)
+        } else if path.is_dir() {
+            LibraryData::Dir(LibDir::from_path(libkey, path)?)
         } else {
             bail!("library: tried to open non-file");
         };
@@ -295,7 +356,15 @@ impl Library {
         match self.data {
             LibraryData::File(ref libfile) => {
                 for (name, info) in libfile.local_index.iter() {
-                    let removed = index.insert(name.to_owned(), FileRef::Packed(info.clone()));
+                    let removed = index.insert(name.to_owned(), FileRef::Packed(info.to_owned()));
+                    if let Some(overwritten) = removed {
+                        masked.push((name.to_owned(), overwritten));
+                    }
+                }
+            }
+            LibraryData::Dir(ref libdir) => {
+                for (name, info) in libdir.local_index.iter() {
+                    let removed = index.insert(name.to_owned(), FileRef::Unpacked(info.to_owned()));
                     if let Some(overwritten) = removed {
                         masked.push((name.to_owned(), overwritten));
                     }
@@ -308,13 +377,21 @@ impl Library {
     pub fn libfile(&self) -> Fallible<&LibFile> {
         return match self.data {
             LibraryData::File(ref libfile) => Ok(libfile),
+            LibraryData::Dir(_) => bail!("library: not a libfile"),
+        };
+    }
+
+    pub fn libdir(&self) -> Fallible<&LibDir> {
+        return match self.data {
+            LibraryData::Dir(ref libdir) => Ok(libdir),
+            LibraryData::File(_) => bail!("library: not a libdir"),
         };
     }
 }
 
 pub enum FileRef {
     Packed(PackedFileInfo),
-    //Unpacked(RawFileInfo),
+    Unpacked(UnpackedFileInfo),
 }
 
 impl FileRef {
@@ -324,6 +401,10 @@ impl FileRef {
                 let lib = &libs[fileinfo.libkey];
                 return Ok(lib.libfile()?.load(fileinfo)?);
             }
+            FileRef::Unpacked(ref fileinfo) => {
+                let lib = &libs[fileinfo.libkey];
+                return Ok(lib.libdir()?.load(fileinfo)?);
+            }
         }
     }
 
@@ -332,6 +413,10 @@ impl FileRef {
             FileRef::Packed(ref fileinfo) => {
                 let lib = &libs[fileinfo.libkey];
                 return Ok(lib.libfile()?.stat(filename, fileinfo)?);
+            }
+            FileRef::Unpacked(ref fileinfo) => {
+                let lib = &libs[fileinfo.libkey];
+                return Ok(lib.libdir()?.stat(filename, fileinfo)?);
             }
         }
     }
@@ -401,11 +486,11 @@ impl LibStack {
         return Self::from_paths(&libdirs);
     }
 
-    pub fn new_for_test() -> Fallible<Self> {
-        let libdirs = fs::read_dir("../../test_data/unpacked/FA/")?;
-        //LibStack::new_from_directories(libdirs)?
-        LibStack::from_file_search(Path::new("../../test_data/FA"))
-    }
+    // pub fn new_for_test() -> Fallible<Self> {
+    //     let libdirs = fs::read_dir("../../test_data/unpacked/FA/")?;
+    //     //LibStack::new_from_directories(libdirs)?
+    //     LibStack::from_file_search(Path::new("../../test_data/FA"))
+    // }
 
     pub fn file_exists(&self, filename: &str) -> bool {
         return self.index.get(filename).is_some();
@@ -510,6 +595,14 @@ mod tests {
             let data = libs.load(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
+        return Ok(());
+    }
+
+    #[test]
+    fn mask_lower_priority_files() -> Fallible<()> {
+        let libs = LibStack::from_dir_search(Path::new("./test_data/masking"))?;
+        let txt = libs.load_text("FILE.TXT")?;
+        assert_eq!(txt, "20b\n");
         return Ok(());
     }
 }
