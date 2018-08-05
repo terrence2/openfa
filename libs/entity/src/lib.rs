@@ -15,24 +15,22 @@
 #[macro_use]
 extern crate failure;
 
-use failure::Error;
+use failure::Fallible;
 use std::mem;
 
 // A resource that can be loaded by an entity.
 pub trait Resource {
-    fn from_file(filename: &str) -> Result<Self, Error>
+    fn from_file(filename: &str) -> Fallible<Self>
     where
         Self: std::marker::Sized;
 }
 
 pub mod parse {
     use super::Resource;
-    use failure::Error;
+    use failure::Fallible;
     use std::collections::HashMap;
 
-    pub fn find_pointers<'a>(
-        lines: &Vec<&'a str>,
-    ) -> Result<HashMap<&'a str, Vec<&'a str>>, Error> {
+    pub fn find_pointers<'a>(lines: &Vec<&'a str>) -> Fallible<HashMap<&'a str, Vec<&'a str>>> {
         let mut pointers = HashMap::new();
         let pointer_names = lines
             .iter()
@@ -55,10 +53,7 @@ pub mod parse {
         return Ok(pointers);
     }
 
-    pub fn find_section<'a>(
-        lines: &Vec<&'a str>,
-        section_tag: &str,
-    ) -> Result<Vec<&'a str>, Error> {
+    pub fn find_section<'a>(lines: &Vec<&'a str>, section_tag: &str) -> Fallible<Vec<&'a str>> {
         let start_pattern = format!("START OF {}", section_tag);
         let end_pattern = format!("END OF {}", section_tag);
         return Ok(lines
@@ -73,7 +68,7 @@ pub mod parse {
     pub fn follow_pointer<'a>(
         line: &'a str,
         pointers: &'a HashMap<&'a str, Vec<&'a str>>,
-    ) -> Result<&'a Vec<&'a str>, Error> {
+    ) -> Fallible<&'a Vec<&'a str>> {
         let name = ptr(line)?;
         match pointers.get(name) {
             Some(v) => return Ok(v),
@@ -84,7 +79,7 @@ pub mod parse {
     pub fn maybe_load_resource<'a, T>(
         line: &'a str,
         pointers: &'a HashMap<&'a str, Vec<&'a str>>,
-    ) -> Result<Option<T>, Error>
+    ) -> Fallible<Option<T>>
     where
         T: Resource,
     {
@@ -100,13 +95,13 @@ pub mod parse {
         return Ok(None);
     }
 
-    fn hex(n: &str) -> Result<u32, Error> {
+    fn hex(n: &str) -> Fallible<u32> {
         ensure!(n.is_ascii(), "non-ascii in number");
         ensure!(n.starts_with("$"), "expected hex to start with $");
         return Ok(u32::from_str_radix(&n[1..], 16)?);
     }
 
-    pub fn byte(line: &str) -> Result<u8, Error> {
+    pub fn byte(line: &str) -> Fallible<u8> {
         let parts = line.split_whitespace().collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "expected 2 parts");
         ensure!(parts[0] == "byte", "expected byte type");
@@ -116,7 +111,7 @@ pub mod parse {
         });
     }
 
-    pub fn word(line: &str) -> Result<i16, Error> {
+    pub fn word(line: &str) -> Fallible<i16> {
         let parts = line.split_whitespace().collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "expected 2 parts");
         ensure!(parts[0] == "word", "expected word type");
@@ -126,7 +121,7 @@ pub mod parse {
         });
     }
 
-    pub fn dword(line: &str) -> Result<u32, Error> {
+    pub fn dword(line: &str) -> Fallible<u32> {
         let parts = line.split_whitespace().collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "expected 2 parts");
         ensure!(parts[0] == "dword", "expected dword type");
@@ -146,7 +141,7 @@ pub mod parse {
         });
     }
 
-    pub fn string(line: &str) -> Result<String, Error> {
+    pub fn string(line: &str) -> Fallible<String> {
         let parts = line.splitn(2, " ").collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "expected 2 parts");
         ensure!(parts[0] == "string", "expected string type");
@@ -160,7 +155,7 @@ pub mod parse {
         return Ok(unquoted);
     }
 
-    pub fn ptr(line: &str) -> Result<&str, Error> {
+    pub fn ptr(line: &str) -> Fallible<&str> {
         let parts = line.split_whitespace().collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "expected 2 parts");
         ensure!(parts[0] == "ptr", "expected ptr type");
@@ -178,7 +173,7 @@ pub enum TypeTag {
 }
 
 impl TypeTag {
-    pub fn new(n: u8) -> Result<TypeTag, Error> {
+    pub fn new(n: u8) -> Fallible<TypeTag> {
         if n != 1 && n != 3 && n != 5 && n != 7 {
             bail!("unknown TypeTag {}", n);
         }
@@ -189,8 +184,6 @@ impl TypeTag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::prelude::*;
 
     #[test]
     fn parse_byte() {
