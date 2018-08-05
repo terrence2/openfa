@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
+clap = "2.32"
 failure = "0.1"
 image = "0.18"
