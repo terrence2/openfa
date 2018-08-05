@@ -17,6 +17,8 @@
 
 extern crate codepage_437;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate failure;
 extern crate glob;
 extern crate lzss;
@@ -27,7 +29,7 @@ extern crate pkware;
 extern crate regex;
 
 use codepage_437::{CP437_CONTROL, FromCp437};
-use failure::Fallible;
+use failure::{err_msg, Fallible};
 use glob::{MatchOptions, Pattern};
 use memmap::{Mmap, MmapOptions};
 use regex::Regex;
@@ -68,16 +70,22 @@ pub struct Priority {
 
 impl Priority {
     fn from_path(path: &Path) -> Fallible<Self> {
-        let stem = path.file_stem();
-        ensure!(stem.is_some(), "lib name: must no start with a '.'");
-        let name = stem.unwrap().to_str();
-        ensure!(name.is_some(), "lib name: must be utf8");
-        let filename = name.unwrap();
-        let re = Regex::new(r"(\d+)([a-zA-Z]?)")?;
-        let maybe_caps = re.captures(&filename);
-        ensure!(maybe_caps.is_some(), "lib name: must contain a number");
-        let caps = maybe_caps.unwrap();
-        let priority = caps.get(1).unwrap().as_str().parse::<usize>()?;
+        lazy_static! {
+            static ref PRIO_RE: Regex =
+                Regex::new(r"(\d+)([a-zA-Z]?)").expect("failed to create regex");
+        }
+        let filename = path.file_stem()
+            .ok_or_else(|| err_msg("priority: name must not start with a '.'"))?
+            .to_str()
+            .ok_or_else(|| err_msg("priority: name not utf8"))?
+            .to_owned();
+        let caps = PRIO_RE
+            .captures(&filename)
+            .ok_or_else(|| err_msg("priority: name must contain a number"))?;
+        let priority = caps.get(1)
+            .ok_or_else(|| err_msg("priority: expected number match"))?
+            .as_str()
+            .parse::<usize>()?;
         let version = Self::version_from_char(caps.get(2));
         return Ok(Self { priority, version });
     }
@@ -273,14 +281,17 @@ impl LibDir {
             let filename = entry
                 .path()
                 .file_name()
-                .expect("libdir: no filename in file")
+                .ok_or_else(|| err_msg("libdir: no filename in file"))?
                 .to_owned();
-            ensure!(
-                filename.to_str().is_some(),
-                "libdir: non-utf8 characters in file: {:?}",
-                filename
-            );
-            let name = filename.to_str().unwrap().to_owned();
+            let name = filename
+                .to_str()
+                .ok_or_else(|| {
+                    err_msg(format!(
+                        "libdir: non-utf8 characters in file: {:?}",
+                        filename,
+                    ))
+                })?
+                .to_owned();
             let rv = local_index.insert(
                 name,
                 UnpackedFileInfo {
@@ -611,6 +622,33 @@ struct OmniLib {
     stacks: HashMap<String, LibStack>,
 }
 
+impl OmniLib {
+    // LibStack from_dir_search in every subdir in the given path.
+    fn from_subdirs(path: &Path) -> Fallible<Self> {
+        let mut stacks = HashMap::new();
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let name = entry
+                .path()
+                .file_name()
+                .ok_or_else(|| err_msg("omnilib: no file name"))?
+                .to_str()
+                .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
+                .to_owned();
+            let stack = LibStack::from_dir_search(&entry.path())?;
+            stacks.insert(name, stack);
+        }
+        return Ok(Self { stacks });
+    }
+
+    fn all_files(&self) -> Fallible<Vec<(String, String)>> {
+        unimplemented!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,6 +685,12 @@ mod tests {
             let txt = libs.load_masked_text("FILE.TXT", libpath)?;
             assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
         }
+        return Ok(());
+    }
+
+    #[test]
+    fn test_omnilib_from_dir() -> Fallible<()> {
+        let omni = OmniLib::from_subdirs(Path::new("../../test_data/unpacked"))?;
         return Ok(());
     }
 }
