@@ -306,7 +306,7 @@ mod tests {
     #[test]
     fn can_parse_all_entity_types() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
-        for (libname, name) in omni.find_matching("*.JT")?.iter() {
+        for (libname, name) in omni.find_matching("*.[OJNP]T")?.iter() {
             let contents = omni.load_text(libname, name)?;
             let ot = ObjectType::from_str(&contents).unwrap();
             assert_eq!(ot.file_name, *name);
