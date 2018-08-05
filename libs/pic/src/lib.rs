@@ -12,16 +12,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use] extern crate packed_struct;
-#[macro_use] extern crate failure;
+#[macro_use]
+extern crate packed_struct;
+#[macro_use]
+extern crate failure;
 extern crate image;
 extern crate pal;
 extern crate reverse;
 
-use std::mem;
 use failure::Error;
 use image::{DynamicImage, ImageRgb8, ImageRgba8};
 use pal::Palette;
+use std::mem;
 
 packed_struct!(Header {
     _0 => format: u16,
@@ -48,7 +50,8 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage,
     let header = Header::overlay(data)?;
     if header.format() == 0 {
         let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
-        let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
+        let palette =
+            &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
         let local_palette = Palette::from_bytes(&palette)?;
         let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
         for (i, p) in imgbuf.pixels_mut().enumerate() {
@@ -66,7 +69,8 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage,
         return Ok(ImageRgba8(imgbuf));
     } else if header.format() == 1 {
         let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
-        let palette = &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
+        let palette =
+            &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
         let local_palette = Palette::from_bytes(&palette)?;
         let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
         let spans = &data[header.spans_offset()..header.spans_offset() + header.spans_size()];
@@ -127,9 +131,9 @@ mod tests {
             fp.read_to_end(&mut data).unwrap();
 
             //if data[0] == 1u8 {
-                let img = decode_pic(&palette, &data).unwrap();
-                let ref mut fout = fs::File::create(path.to_owned() + ".png").unwrap();
-                img.save(fout, image::PNG).unwrap();
+            let img = decode_pic(&palette, &data).unwrap();
+            let ref mut fout = fs::File::create(path.to_owned() + ".png").unwrap();
+            img.save(fout, image::PNG).unwrap();
             //}
         }
     }
