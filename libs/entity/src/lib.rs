@@ -21,7 +21,8 @@ use std::mem;
 // A resource that can be loaded by an entity.
 pub trait Resource {
     fn from_file(filename: &str) -> Result<Self, Error>
-        where Self: std::marker::Sized;
+    where
+        Self: std::marker::Sized;
 }
 
 pub mod parse {
@@ -29,7 +30,9 @@ pub mod parse {
     use failure::Error;
     use std::collections::HashMap;
 
-    pub fn find_pointers<'a>(lines: &Vec<&'a str>) -> Result<HashMap<&'a str, Vec<&'a str>>, Error> {
+    pub fn find_pointers<'a>(
+        lines: &Vec<&'a str>,
+    ) -> Result<HashMap<&'a str, Vec<&'a str>>, Error> {
         let mut pointers = HashMap::new();
         let pointer_names = lines
             .iter()
@@ -52,31 +55,41 @@ pub mod parse {
         return Ok(pointers);
     }
 
-    pub fn find_section<'a>(lines: &Vec<&'a str>, section_tag: &str) -> Result<Vec<&'a str>, Error> {
+    pub fn find_section<'a>(
+        lines: &Vec<&'a str>,
+        section_tag: &str,
+    ) -> Result<Vec<&'a str>, Error> {
         let start_pattern = format!("START OF {}", section_tag);
         let end_pattern = format!("END OF {}", section_tag);
-        return Ok(
-            lines
-                .iter()
-                .skip_while(|&l| l.find(&start_pattern).is_none())
-                .take_while(|&l| l.find(&end_pattern).is_none())
-                .map(|&l| l.trim())
-                .filter(|&l| l.len() != 0 && !l.starts_with(";"))
-                .collect::<Vec<&str>>());
+        return Ok(lines
+            .iter()
+            .skip_while(|&l| l.find(&start_pattern).is_none())
+            .take_while(|&l| l.find(&end_pattern).is_none())
+            .map(|&l| l.trim())
+            .filter(|&l| l.len() != 0 && !l.starts_with(";"))
+            .collect::<Vec<&str>>());
     }
 
-    pub fn follow_pointer<'a>(line: &'a str, pointers: &'a HashMap<&'a str, Vec<&'a str>>) -> Result<&'a Vec<&'a str>, Error> {
+    pub fn follow_pointer<'a>(
+        line: &'a str,
+        pointers: &'a HashMap<&'a str, Vec<&'a str>>,
+    ) -> Result<&'a Vec<&'a str>, Error> {
         let name = ptr(line)?;
         match pointers.get(name) {
             Some(v) => return Ok(v),
-            None => bail!("no pointer {} in pointers", name)
+            None => bail!("no pointer {} in pointers", name),
         }
     }
 
-    pub fn maybe_load_resource<'a, T>(line: &'a str, pointers: &'a HashMap<&'a str, Vec<&'a str>>) -> Result<Option<T>, Error>
-        where T: Resource
+    pub fn maybe_load_resource<'a, T>(
+        line: &'a str,
+        pointers: &'a HashMap<&'a str, Vec<&'a str>>,
+    ) -> Result<Option<T>, Error>
+    where
+        T: Resource,
     {
-        let maybe_value = ptr(line).ok()
+        let maybe_value = ptr(line)
+            .ok()
             .and_then(|ptr_name| pointers.get(ptr_name))
             .and_then(|values| values.get(0));
         if let Some(value) = maybe_value {
@@ -99,7 +112,7 @@ pub mod parse {
         ensure!(parts[0] == "byte", "expected byte type");
         return Ok(match parts[1].parse::<u8>() {
             Ok(n) => n,
-            Err(_) => hex(parts[1])? as u8
+            Err(_) => hex(parts[1])? as u8,
         });
     }
 
@@ -109,7 +122,7 @@ pub mod parse {
         ensure!(parts[0] == "word", "expected word type");
         return Ok(match parts[1].parse::<i16>() {
             Ok(n) => n,
-            Err(_) => hex(parts[1])? as u16 as i16
+            Err(_) => hex(parts[1])? as u16 as i16,
         });
     }
 
@@ -124,6 +137,9 @@ pub mod parse {
                     hex(parts[1])?
                 } else {
                     assert!(parts[1].starts_with("^"));
+                    // FIXME: ^ is meaningful
+                    //   ^0 => 0
+                    //   ^250_000 => 64_000_000
                     parts[1][1..].parse::<u32>()?
                 }
             }
@@ -172,9 +188,9 @@ impl TypeTag {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs;
     use std::io::prelude::*;
-    use super::*;
 
     #[test]
     fn parse_byte() {
@@ -211,8 +227,14 @@ mod tests {
     fn parse_string() {
         assert_eq!(parse::string("string \"\"").unwrap(), "");
         assert_eq!(parse::string("string \"foo\"").unwrap(), "foo");
-        assert_eq!(parse::string("string \"foo bar baz\"").unwrap(), "foo bar baz");
-        assert_eq!(parse::string("string \"foo\"bar\"baz\"").unwrap(), "foo\"bar\"baz");
+        assert_eq!(
+            parse::string("string \"foo bar baz\"").unwrap(),
+            "foo bar baz"
+        );
+        assert_eq!(
+            parse::string("string \"foo\"bar\"baz\"").unwrap(),
+            "foo\"bar\"baz"
+        );
         assert!(parse::string("string \"foo").is_err());
         assert!(parse::string("string foo\"").is_err());
         assert!(parse::string("string foo").is_err());
