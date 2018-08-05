@@ -135,6 +135,7 @@ pub mod parse {
                     // FIXME: ^ is meaningful
                     //   ^0 => 0
                     //   ^250_000 => 64_000_000
+                    // units of 256?
                     parts[1][1..].parse::<u32>()?
                 }
             }

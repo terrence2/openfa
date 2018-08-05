@@ -19,25 +19,25 @@ extern crate entity;
 extern crate failure;
 
 use entity::{parse, Resource, TypeTag};
-use failure::Error;
-use std::mem;
+use failure::Fallible;
 use std::collections::HashMap;
+use std::mem;
 
 pub struct Shape {}
 impl Resource for Shape {
-    fn from_file(_: &str) -> Result<Self, Error> {
+    fn from_file(_: &str) -> Fallible<Self> {
         Ok(Shape {})
     }
 }
 pub struct HUD {}
 impl Resource for HUD {
-    fn from_file(_: &str) -> Result<Self, Error> {
+    fn from_file(_: &str) -> Fallible<Self> {
         Ok(HUD {})
     }
 }
 pub struct Sound {}
 impl Resource for Sound {
-    fn from_file(_: &str) -> Result<Self, Error> {
+    fn from_file(_: &str) -> Fallible<Self> {
         Ok(Sound {})
     }
 }
@@ -57,7 +57,7 @@ enum ObjectKind {
 }
 
 impl ObjectKind {
-    fn new(x: u16) -> Result<Self, Error> {
+    fn new(x: u16) -> Fallible<Self> {
         return match x {
             0b1000_0000_0000_0000 => Ok(ObjectKind::Fighter),
             0b0100_0000_0000_0000 => Ok(ObjectKind::Bomber),
@@ -86,7 +86,7 @@ pub enum ProcKind {
 }
 
 impl ProcKind {
-    fn new(s: &str) -> Result<ProcKind, Error> {
+    fn new(s: &str) -> Fallible<ProcKind> {
         let parts = s.split_whitespace().collect::<Vec<&str>>();
         ensure!(parts[0] == "symbol", "expected 'symbol'");
         return Ok(match parts[1] {
@@ -199,7 +199,7 @@ pub struct ObjectType {
 }
 
 impl ObjectType {
-    pub fn from_str(data: &str) -> Result<Self, Error> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -209,10 +209,7 @@ impl ObjectType {
         return Self::from_lines(&lines, &pointers);
     }
 
-    pub fn from_lines(
-        lines: &Vec<&str>,
-        pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Result<Self, Error> {
+    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let lines = parse::find_section(&lines, "OBJ_TYPE")?;
 
         let ot_names = parse::follow_pointer(lines[3], pointers)?;
@@ -299,32 +296,25 @@ impl ObjectType {
 }
 
 #[cfg(test)]
+extern crate lib;
+
+#[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::io::prelude::*;
     use super::*;
+    use lib::OmniLib;
 
     #[test]
-    fn can_parse_all_entity_types() {
-        let mut rv = vec![];
-        let paths = fs::read_dir("./test_data").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            let mut fp = fs::File::open(entry.path()).unwrap();
-            let mut contents = String::new();
-            fp.read_to_string(&mut contents).unwrap();
-            println!("At: {}", path);
+    fn can_parse_all_entity_types() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        for (libname, name) in omni.find_matching("*.JT")?.iter() {
+            let contents = omni.load_text(libname, name)?;
             let ot = ObjectType::from_str(&contents).unwrap();
-            assert_eq!(format!("./test_data/{}", ot.file_name), path);
-            rv.push(format!(
-                "{:?} <> {} <> {}",
-                ot.unk_explosion_type, ot.long_name, path
-            ));
+            assert_eq!(ot.file_name, *name);
+            println!(
+                "{}:{:13}> {:?} <> {}",
+                libname, name, ot.unk_explosion_type, ot.long_name
+            );
         }
-        rv.sort();
-        for v in rv {
-            println!("{}", v);
-        }
+        return Ok(());
     }
 }
