@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-// An implementation of PKWare's implode. This is a direct apples-to-apples port
-// of Mark Adler's blast.c/h implementation included in zlib. As such, the
+// An implementation of PKWare decompression. This is a direct apples-to-apples
+// port of Mark Adler's blast.c/h implementation included in zlib. As such, the
 // original license also still holds to this code. It is included in full below:
 
 /* blast.h -- interface for blast.c
