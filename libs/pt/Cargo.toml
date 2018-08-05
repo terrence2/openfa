@@ -5,5 +5,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = "0.1"
-nt = { path = "../nt/" }
 entity = { path = "../entity/" }
+nt = { path = "../nt/" }
