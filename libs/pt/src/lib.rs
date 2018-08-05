@@ -18,17 +18,17 @@ extern crate failure;
 extern crate nt;
 
 use entity::{parse, Resource};
-use failure::Error;
+use failure::Fallible;
 use nt::NpcType;
 use std::collections::HashMap;
 
 struct EnvelopeCoord {
     speed: i16,
-    altitude: u32
+    altitude: u32,
 }
 
 impl EnvelopeCoord {
-    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Result<Self, Error> {
+    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         return Ok(EnvelopeCoord {
             speed: parse::word(lines[0])?,
             altitude: parse::dword(lines[1])?,
@@ -37,15 +37,15 @@ impl EnvelopeCoord {
 }
 
 struct Envelope {
-    g_load: i16, // word -4 ; env [ii].gload
-    count: i16, // word 6 ; env [ii].count
+    g_load: i16,     // word -4 ; env [ii].gload
+    count: i16,      // word 6 ; env [ii].count
     stall_lift: i16, // word 2 ; env [ii].stallLift
-    max_speed: i16, // word 4 ; env [ii].maxSpeed
-    shape: [EnvelopeCoord; 20]
+    max_speed: i16,  // word 4 ; env [ii].maxSpeed
+    shape: [EnvelopeCoord; 20],
 }
 
 impl Envelope {
-    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Result<Self, Error> {
+    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let mut env = Envelope {
             g_load: parse::word(lines[0])?,
             count: parse::word(lines[1])?,
@@ -72,7 +72,7 @@ impl Envelope {
                 EnvelopeCoord::from_lines(&lines[38..40], pointers)?,
                 EnvelopeCoord::from_lines(&lines[40..42], pointers)?,
                 EnvelopeCoord::from_lines(&lines[42..44], pointers)?,
-            ]
+            ],
         };
         return Ok(env);
     }
@@ -86,70 +86,70 @@ struct PlaneType {
     // $91 horizontal axis thrust vectoring, $591 horizontal and vertical thrust vectoring,
     // ex: $4591 - 3d thrust vectoring /w ATG link]
     unk_flags: u32,
-    envelope: Vec<Envelope>,  //ptr env
-    negative_envelopes: i16, //word -4 ; Number of Negative G Envelopes
-    positive_envelopes: i16, //word 9 ; Number of Maximum G Envelopes
-    max_speed_sea_level: i16, //word 1340 ; Max Speed @ Sea-Level (Mph)
-    max_speed_36a: i16, //word 1934 ; Max Speed @ 36K Feet (Mph)
-    unk6: i16, //word -73 ; _bv.x.min
-    unk7: i16, //word 0 ; _bv.x.max
-    unk8: i16, //word 73 ; Acceleration on Runway
-    unk9: i16, //word 73 ; Deceleration on Runway(?)
-    unk10: i16, //word -146 ; _bv.y.min
-    unk11: i16, //word 146 ; _bv.y.max
-    unk12: i16, //word 7 ; _bv.y.acc
-    unk13: i16, //word 7 ; _bv.y.dacc
-    unk14: i16, //word -146 ; _bv.z.min
-    unk15: i16, //word 146 ; _bv.z.max
-    unk16: i16, //word 73 ; _bv.z.acc
-    unk17: i16, //word 73 ; _bv.z.dacc
-    unk18: i16, //word -270 ; Roll Speed(?)
-    unk19: i16, //word 270 ; Roll Speed(?)
-    unk20: i16, //word 362 ; Pull Up or Down Rate(?)
-    unk21: i16, //word 724 ; Pull Up or Down Rate(?)
-    unk22: i16, //word 0 ; _brv.y.min
-    unk23: i16, //word 0 ; _brv.y.max
-    unk24: i16, //word 9 ; G-Pull Accelleration Rate(?)
-    unk25: i16, //word 9 ; G-Pull Deceleration Rate(?)
-    unk26: i16, //word -45 ; Yaw Speed On Runway
-    unk27: i16, //word 45 ; Yaw Speed on Runway
-    unk28: i16, //word 90 ; Yaw Accelleration on Runway
-    unk29: i16, //word 90 ; Yaw Deceleration on Runway
-    unk30: i16, //word 7 ; AoA G pull limit when plane exeeds 9 G's
-    unk31: i16, //word 50 ; AoA speed limit when plane exeeds 9 G's
-    unk32: i16, //word 10 ; AoA pitch limit when plane exeeds 9 G's
-    unk33: i16, //word 115 ; Turbulence Percentage
-    unk34: i16, //word -4 ; Rudder Min Yaw limit
-    unk35: i16, //word 4 ; Rudder Max Yaw limit
-    unk36: i16, //word 4 ; Degrees yaw/sec when rudder is fully deflected
-    unk37: i16, //word 9 ; Degrees yaw/sec when rudder returns to neutral
-    unk38: i16, //word 6 ; Rudder Slip deg/sec when rudder is fully deflected
-    unk39: i16, //word 108 ; Rudder Drag when rudder is fully deflected
-    unk40: i16, //word 60 ; Roll in deg/sec when rudder is fully deflected
-    unk41: i16, //word -90 ; puffRot.x.min
-    unk42: i16, //word 90 ; puffRot.x.max
-    unk43: i16, //word 362 ; Pull Up or Down Rate II(?)
-    unk44: i16, //word 724 ; Pull Up or Down Rate II(?)
-    unk45: i16, //word -90 ; puffRot.y.min
-    unk46: i16, //word 90 ; puffRot.y.max
-    unk47: i16, //word 362 ; Pull Up or Down Rate III(?)
-    unk48: i16, //word 724 ; Pull Up or Down Rate III(?)
-    unk49: i16, //word -90 ; puffRot.z.min
-    unk50: i16, //word 90 ; puffRot.z.max
-    unk51: i16, //word 362 ; Pull Up or Down Speed IV(?)
-    unk52: i16, //word 724 ; Pull Up or Down Speed IV(?)
-    unk53: i16, //word 512 ; Stall Warning delay in clocks (1 clock = 1/256 sec)
-    unk54: i16, //word 512 ; Stall Delay/Duration
-    unk55: i16, //word 222 ; Stall Severity
-    unk56: i16, //word 30 ; Stall Pitch-Down in deg/sec
-    unk57: i16, //word 2 ; Ease of entry into Spin
-    unk58: i16, //word -2 ; Ease of exit from Spin
-    unk59: i16, //word 120 ; Sping yaw low
-    unk60: i16, //word 180 ; Sping yaw high
-    unk61: i16, //word 30 ; Spin AoA low
-    unk62: i16, //word 70 ; Spin AoA high
-    unk63: i16, //word 15 ; Spin bank low
-    unk64: i16, //word 5 ; Spin bank high
+    envelope: Vec<Envelope>,       //ptr env
+    negative_envelopes: i16,       //word -4 ; Number of Negative G Envelopes
+    positive_envelopes: i16,       //word 9 ; Number of Maximum G Envelopes
+    max_speed_sea_level: i16,      //word 1340 ; Max Speed @ Sea-Level (Mph)
+    max_speed_36a: i16,            //word 1934 ; Max Speed @ 36K Feet (Mph)
+    unk6: i16,                     //word -73 ; _bv.x.min
+    unk7: i16,                     //word 0 ; _bv.x.max
+    unk8: i16,                     //word 73 ; Acceleration on Runway
+    unk9: i16,                     //word 73 ; Deceleration on Runway(?)
+    unk10: i16,                    //word -146 ; _bv.y.min
+    unk11: i16,                    //word 146 ; _bv.y.max
+    unk12: i16,                    //word 7 ; _bv.y.acc
+    unk13: i16,                    //word 7 ; _bv.y.dacc
+    unk14: i16,                    //word -146 ; _bv.z.min
+    unk15: i16,                    //word 146 ; _bv.z.max
+    unk16: i16,                    //word 73 ; _bv.z.acc
+    unk17: i16,                    //word 73 ; _bv.z.dacc
+    unk18: i16,                    //word -270 ; Roll Speed(?)
+    unk19: i16,                    //word 270 ; Roll Speed(?)
+    unk20: i16,                    //word 362 ; Pull Up or Down Rate(?)
+    unk21: i16,                    //word 724 ; Pull Up or Down Rate(?)
+    unk22: i16,                    //word 0 ; _brv.y.min
+    unk23: i16,                    //word 0 ; _brv.y.max
+    unk24: i16,                    //word 9 ; G-Pull Accelleration Rate(?)
+    unk25: i16,                    //word 9 ; G-Pull Deceleration Rate(?)
+    unk26: i16,                    //word -45 ; Yaw Speed On Runway
+    unk27: i16,                    //word 45 ; Yaw Speed on Runway
+    unk28: i16,                    //word 90 ; Yaw Accelleration on Runway
+    unk29: i16,                    //word 90 ; Yaw Deceleration on Runway
+    unk30: i16,                    //word 7 ; AoA G pull limit when plane exeeds 9 G's
+    unk31: i16,                    //word 50 ; AoA speed limit when plane exeeds 9 G's
+    unk32: i16,                    //word 10 ; AoA pitch limit when plane exeeds 9 G's
+    unk33: i16,                    //word 115 ; Turbulence Percentage
+    unk34: i16,                    //word -4 ; Rudder Min Yaw limit
+    unk35: i16,                    //word 4 ; Rudder Max Yaw limit
+    unk36: i16,                    //word 4 ; Degrees yaw/sec when rudder is fully deflected
+    unk37: i16,                    //word 9 ; Degrees yaw/sec when rudder returns to neutral
+    unk38: i16,                    //word 6 ; Rudder Slip deg/sec when rudder is fully deflected
+    unk39: i16,                    //word 108 ; Rudder Drag when rudder is fully deflected
+    unk40: i16,                    //word 60 ; Roll in deg/sec when rudder is fully deflected
+    unk41: i16,                    //word -90 ; puffRot.x.min
+    unk42: i16,                    //word 90 ; puffRot.x.max
+    unk43: i16,                    //word 362 ; Pull Up or Down Rate II(?)
+    unk44: i16,                    //word 724 ; Pull Up or Down Rate II(?)
+    unk45: i16,                    //word -90 ; puffRot.y.min
+    unk46: i16,                    //word 90 ; puffRot.y.max
+    unk47: i16,                    //word 362 ; Pull Up or Down Rate III(?)
+    unk48: i16,                    //word 724 ; Pull Up or Down Rate III(?)
+    unk49: i16,                    //word -90 ; puffRot.z.min
+    unk50: i16,                    //word 90 ; puffRot.z.max
+    unk51: i16,                    //word 362 ; Pull Up or Down Speed IV(?)
+    unk52: i16,                    //word 724 ; Pull Up or Down Speed IV(?)
+    unk53: i16,                    //word 512 ; Stall Warning delay in clocks (1 clock = 1/256 sec)
+    unk54: i16,                    //word 512 ; Stall Delay/Duration
+    unk55: i16,                    //word 222 ; Stall Severity
+    unk56: i16,                    //word 30 ; Stall Pitch-Down in deg/sec
+    unk57: i16,                    //word 2 ; Ease of entry into Spin
+    unk58: i16,                    //word -2 ; Ease of exit from Spin
+    unk59: i16,                    //word 120 ; Sping yaw low
+    unk60: i16,                    //word 180 ; Sping yaw high
+    unk61: i16,                    //word 30 ; Spin AoA low
+    unk62: i16,                    //word 70 ; Spin AoA high
+    unk63: i16,                    //word 15 ; Spin bank low
+    unk64: i16,                    //word 5 ; Spin bank high
     unk65: i16, //word 0 ; Gear Pitch (Pitch of plane when on ground, relative to the horizon.  Ex: a taildragger)
     unk66: i16, //word 325 ; Max safe landing speed
     unk67: i16, //word 31 ; Max landing side speed
@@ -185,12 +185,12 @@ struct PlaneType {
     structural_speed_limit: i16, //word 5120 ; Structural Speed Limit
     unk_system_maintainence: [u8; 45],
     unk_maintainence_per_mission: i16, //word 10 ; miscPerFlight
-    unk_maintainence_multiplier: i16, //word 10 ; repairMultiplier
-    unk_max_takeoff_weight: u32, //dword 34500 ; MTOW (Max Take-Off Weight)
+    unk_maintainence_multiplier: i16,  //word 10 ; repairMultiplier
+    unk_max_takeoff_weight: u32,       //dword 34500 ; MTOW (Max Take-Off Weight)
 }
 
 impl PlaneType {
-    pub fn from_str(data: &str) -> Result<Self, Error> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -200,7 +200,7 @@ impl PlaneType {
         return Self::from_lines(&lines, &pointers);
     }
 
-    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self, Error> {
+    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let npc = NpcType::from_lines(lines, pointers)?;
         let lines = parse::find_section(&lines, "PLANE_TYPE")?;
 
@@ -366,32 +366,25 @@ impl PlaneType {
 }
 
 #[cfg(test)]
+extern crate lib;
+
+#[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::io::prelude::*;
     use super::*;
+    use lib::OmniLib;
 
     #[test]
-    fn it_can_parse_all_plane_files() {
-        let mut rv = vec![];
-        let paths = fs::read_dir("./test_data").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            let mut fp = fs::File::open(entry.path()).unwrap();
-            let mut contents = String::new();
-            fp.read_to_string(&mut contents).unwrap();
-            println!("At: {}", path);
-            let pt = PlaneType::from_str(&contents).unwrap();
-            assert_eq!(format!("./test_data/{}", pt.npc.obj.file_name), path);
-            rv.push(format!(
-                "{:08X} <> {} <> {}",
-                pt.unk_max_takeoff_weight, pt.npc.obj.long_name, path
-            ));
+    fn it_can_parse_all_plane_files() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        for (libname, name) in omni.find_matching("*.PT")?.iter() {
+            let contents = omni.load_text(libname, name)?;
+            let pt = PlaneType::from_str(&contents)?;
+            assert_eq!(pt.npc.obj.file_name, *name);
+            println!(
+                "{}:{:13}> {:08X} <> {}",
+                libname, name, pt.unk_max_takeoff_weight, pt.npc.obj.long_name
+            );
         }
-        rv.sort();
-        for v in rv {
-            println!("{}", v);
-        }
+        return Ok(());
     }
 }
