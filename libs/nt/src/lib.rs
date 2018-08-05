@@ -18,21 +18,21 @@ extern crate failure;
 extern crate ot;
 
 use entity::{parse, Resource};
-use failure::Error;
+use failure::Fallible;
 use ot::ObjectType;
 use std::collections::HashMap;
 
 // placeholder
 struct AI(String);
 impl Resource for AI {
-    fn from_file(filename: &str) -> Result<Self, Error> {
+    fn from_file(filename: &str) -> Fallible<Self> {
         return Ok(AI(filename.to_owned()));
     }
 }
 
 struct Fueltank(String);
 impl Resource for Fueltank {
-    fn from_file(filename: &str) -> Result<Self, Error> {
+    fn from_file(filename: &str) -> Fallible<Self> {
         println!("Fueltank: {}", filename);
         return Ok(Fueltank(filename.to_owned()));
     }
@@ -40,7 +40,7 @@ impl Resource for Fueltank {
 
 struct Sensor(String);
 impl Resource for Sensor {
-    fn from_file(filename: &str) -> Result<Self, Error> {
+    fn from_file(filename: &str) -> Fallible<Self> {
         println!("Sensor: {}", filename);
         return Ok(Sensor(filename.to_owned()));
     }
@@ -48,7 +48,7 @@ impl Resource for Sensor {
 
 struct Ecm(String);
 impl Resource for Ecm {
-    fn from_file(filename: &str) -> Result<Self, Error> {
+    fn from_file(filename: &str) -> Fallible<Self> {
         println!("Ecm: {}", filename);
         return Ok(Ecm(filename.to_owned()));
     }
@@ -56,7 +56,7 @@ impl Resource for Ecm {
 
 struct ProjectileType(String);
 impl Resource for ProjectileType {
-    fn from_file(filename: &str) -> Result<Self, Error> {
+    fn from_file(filename: &str) -> Fallible<Self> {
         println!("Projectile: {}", filename);
         return Ok(ProjectileType(filename.to_owned()));
     }
@@ -66,18 +66,18 @@ enum Loadout {
     GAS(Fueltank),
     SEE(Sensor),
     ECM(Ecm),
-    JT(ProjectileType)
+    JT(ProjectileType),
 }
 
 impl Resource for Loadout {
-    fn from_file(filename: &str) -> Result<Self, Error> {
+    fn from_file(filename: &str) -> Fallible<Self> {
         let parts = filename.rsplit(".").collect::<Vec<&str>>();
         return match parts[0] {
             "SEE" => Ok(Loadout::SEE(Sensor::from_file(filename)?)),
             "ECM" => Ok(Loadout::ECM(Ecm::from_file(filename)?)),
             "JT" => Ok(Loadout::JT(ProjectileType::from_file(filename)?)),
             "GAS" => Ok(Loadout::GAS(Fueltank::from_file(filename)?)),
-            _ => bail!("unknown loadout type: {}", parts[0])
+            _ => bail!("unknown loadout type: {}", parts[0]),
         };
     }
 }
@@ -99,7 +99,7 @@ pub struct Hardpoint {
 }
 
 impl Hardpoint {
-    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Result<Self, Error> {
+    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         return Ok(Hardpoint {
             unk_flags: parse::word(lines[0])?,
             unk1: parse::word(lines[1])?,
@@ -132,7 +132,7 @@ pub struct NpcType {
 }
 
 impl NpcType {
-    pub fn from_str(data: &str) -> Result<Self, Error> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -142,7 +142,7 @@ impl NpcType {
         return Self::from_lines(&lines, &pointers);
     }
 
-    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self, Error> {
+    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let obj = ObjectType::from_lines(lines, pointers)?;
         let lines = parse::find_section(&lines, "NPC_TYPE")?;
 
@@ -152,7 +152,10 @@ impl NpcType {
         for chunk in hardpoint_lines.chunks(12) {
             hardpoints.push(Hardpoint::from_lines(chunk, pointers)?);
         }
-        ensure!(hardpoint_count == hardpoints.len(), "wrong number of hardpoints");
+        ensure!(
+            hardpoint_count == hardpoints.len(),
+            "wrong number of hardpoints"
+        );
 
         return Ok(NpcType {
             obj,
@@ -169,33 +172,30 @@ impl NpcType {
 }
 
 pub struct HardPoint {}
+
+#[cfg(test)]
+extern crate lib;
+
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::io::prelude::*;
     use super::*;
+    use lib::OmniLib;
 
     #[test]
-    fn can_parse_all_npc_types() {
-        let mut rv = vec![];
-        let paths = fs::read_dir("./test_data").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            let mut fp = fs::File::open(entry.path()).unwrap();
-            let mut contents = String::new();
-            fp.read_to_string(&mut contents).unwrap();
-            println!("At: {}", path);
-            let nt = NpcType::from_str(&contents).unwrap();
-            assert_eq!(format!("./test_data/{}", nt.obj.file_name), path);
-            rv.push(format!(
-                "{:?} <> {} <> {}",
-                nt.hardpoints.len(), nt.obj.long_name, path
-            ));
+    fn can_parse_all_npc_types() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        for (libname, name) in omni.find_matching("*.[NP]T")?.iter() {
+            let contents = omni.load_text(libname, name)?;
+            let nt = NpcType::from_str(&contents)?;
+            assert_eq!(nt.obj.file_name, *name);
+            println!(
+                "{}:{:13}> {:?} <> {}",
+                libname,
+                name,
+                nt.hardpoints.len(),
+                nt.obj.long_name,
+            );
         }
-        rv.sort();
-        for v in rv {
-            println!("{}", v);
-        }
+        return Ok(());
     }
 }
