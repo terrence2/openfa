@@ -509,12 +509,6 @@ impl LibStack {
         return Self::from_paths(&libdirs);
     }
 
-    // pub fn new_for_test() -> Fallible<Self> {
-    //     let libdirs = fs::read_dir("../../test_data/unpacked/FA/")?;
-    //     //LibStack::new_from_directories(libdirs)?
-    //     LibStack::from_file_search(Path::new("../../test_data/FA"))
-    // }
-
     pub fn file_exists(&self, filename: &str) -> bool {
         return self.index.get(filename).is_some();
     }
@@ -618,13 +612,28 @@ impl LibStack {
 }
 
 /// Hold multiple LibStacks at once: e.g. for visiting resources from multiple games at once.
-struct OmniLib {
+pub struct OmniLib {
     stacks: HashMap<String, LibStack>,
 }
 
 impl OmniLib {
+    pub fn new_for_test() -> Fallible<Self> {
+        Self::from_subdirs(Path::new("../../test_data/unpacked"))
+    }
+
+    pub fn new_for_test_in_games(dirs: Vec<&str>) -> Fallible<Self> {
+        let mut stacks = HashMap::new();
+        for dir in dirs {
+            stacks.insert(
+                dir.to_owned(),
+                LibStack::from_dir_search(&Path::new("../../test_data/unpacked/").join(dir))?,
+            );
+        }
+        return Ok(Self { stacks });
+    }
+
     // LibStack from_dir_search in every subdir in the given path.
-    fn from_subdirs(path: &Path) -> Fallible<Self> {
+    pub fn from_subdirs(path: &Path) -> Fallible<Self> {
         let mut stacks = HashMap::new();
         for entry in fs::read_dir(path)? {
             let entry = entry?;
@@ -644,8 +653,19 @@ impl OmniLib {
         return Ok(Self { stacks });
     }
 
-    fn all_files(&self) -> Fallible<Vec<(String, String)>> {
-        unimplemented!()
+    pub fn find_matching(&self, glob: &str) -> Fallible<Vec<(String, String)>> {
+        let mut out = Vec::new();
+        for (libname, stack) in self.stacks.iter() {
+            let names = stack.find_matching(glob)?;
+            for name in names {
+                out.push((libname.to_owned(), name));
+            }
+        }
+        return Ok(out);
+    }
+
+    pub fn load_text(&self, libname: &str, name: &str) -> Fallible<String> {
+        self.stacks[libname].load_text(name)
     }
 }
 
