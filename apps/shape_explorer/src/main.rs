@@ -286,15 +286,8 @@ impl ViewState {
                     if let Some(info) = active_texture {
                         node.set_texture_from_file(&info.cache, &info.name);
                     }
-                    // match &active_texture {
-                    //     &None => (),
-                    //     &Some((ref name, ref path)) => node.set_texture_from_file(path, name),
-                    // }
                     nodes.push(node);
                 }
-                //                &Instr::UnkJumpIfLowDetail(ref shape_end) => {
-                //                    end_at_offset = shape_end.next_offset();
-                //                }
                 _ => {}
             }
             offset += 1;
