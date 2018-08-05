@@ -1,0 +1,15 @@
+[package]
+name = "map_explorer"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+clap = "2.32"
+glfw = "0.19"
+image = "0.18"
+kiss3d = "0.15"
+nalgebra = "0.15"
+pal = { path = "../../libs/pal/" }
+pic = { path = "../../libs/pic/" }
+t2 = { path = "../../libs/t2/" }
+
