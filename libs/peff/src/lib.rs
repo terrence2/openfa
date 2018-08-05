@@ -438,26 +438,50 @@ impl PE {
     }
 
     pub fn relocate(&mut self, addr: u32) -> Result<(), Error> {
-        assert!(addr >= self.code_vaddr);
-        let delta = addr - self.code_vaddr;
-        for &reloc in self.relocs.iter() {
-            let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
-            let pcode: *mut u32 = dwords.as_mut_ptr();
-            unsafe {
-                trace!(
-                    "Relocating word at {:04X} from {:04X} to {:04X}",
-                    reloc as usize,
-                    *pcode,
-                    *pcode + delta
-                );
-                *pcode += delta;
+        if addr >= self.code_vaddr {
+            let delta = addr - self.code_vaddr;
+            for &reloc in self.relocs.iter() {
+                let dwords: &mut [u32] =
+                    unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
+                let pcode: *mut u32 = dwords.as_mut_ptr();
+                unsafe {
+                    trace!(
+                        "Relocating word at {:04X} from {:04X} to {:04X}",
+                        reloc as usize,
+                        *pcode,
+                        *pcode + delta
+                    );
+                    *pcode += delta;
+                }
             }
-        }
-        for info in self.section_info.values_mut() {
-            info.virtual_address += delta;
-        }
-        for thunk in self.thunks.iter_mut() {
-            thunk.vaddr += delta;
+            for info in self.section_info.values_mut() {
+                info.virtual_address += delta;
+            }
+            for thunk in self.thunks.iter_mut() {
+                thunk.vaddr += delta;
+            }
+        } else {
+            let delta = self.code_vaddr - addr;
+            for &reloc in self.relocs.iter() {
+                let dwords: &mut [u32] =
+                    unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
+                let pcode: *mut u32 = dwords.as_mut_ptr();
+                unsafe {
+                    trace!(
+                        "Relocating word at {:04X} from {:04X} to {:04X}",
+                        reloc as usize,
+                        *pcode,
+                        *pcode - delta
+                    );
+                    *pcode -= delta;
+                }
+            }
+            for info in self.section_info.values_mut() {
+                info.virtual_address -= delta;
+            }
+            for thunk in self.thunks.iter_mut() {
+                thunk.vaddr -= delta;
+            }
         }
         self.code_addr = addr;
         return Ok(());
