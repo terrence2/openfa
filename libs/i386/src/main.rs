@@ -13,29 +13,36 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
+extern crate failure;
 extern crate i386;
 
-use clap::{Arg, App};
-use i386::{DisassemblyError, ByteCode};
+use clap::{App, Arg};
+use failure::{err_msg, Fallible};
+use i386::{ByteCode, DisassemblyError};
 use std::fs;
 use std::io::prelude::*;
 
-fn main() {
+fn main() -> Fallible<()> {
     let matches = App::new("OpenFA disassembler tool")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("Disassemble a fragment of i386 code.")
-        .arg(Arg::with_name("INPUT")
-            .help("The files to disassemble")
-            .multiple(true)
-            .required(true))
+        .arg(
+            Arg::with_name("INPUT")
+                .help("The files to disassemble")
+                .multiple(true)
+                .required(true),
+        )
         .get_matches();
 
-    for name in matches.values_of("INPUT").unwrap() {
+    for name in matches
+        .values_of("INPUT")
+        .ok_or_else(|| err_msg("no input"))?
+    {
         println!("Reading: {}", name);
-        let mut fp = fs::File::open(name).unwrap();
+        let mut fp = fs::File::open(name)?;
         let mut data = Vec::new();
-        fp.read_to_end(&mut data).unwrap();
+        fp.read_to_end(&mut data)?;
 
         let bc = ByteCode::disassemble(&data, true);
         if let Err(ref e) = bc {
@@ -43,7 +50,9 @@ fn main() {
                 println!("ERROR: {}", e);
             }
         }
-        let bc = bc.unwrap();
+        let bc = bc?;
         println!("Results:\n{}", bc);
     }
+
+    return Ok(());
 }

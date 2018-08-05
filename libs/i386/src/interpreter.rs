@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use disassembler::{ByteCode, MemRef, Memonic, Operand, Reg};
-use failure::Error;
+use failure::Fallible;
 use lut::{ConditionCode, ConditionCode1, ConditionCode2, FlagKind};
 use std::{collections::HashMap, mem};
 
@@ -98,7 +98,7 @@ impl<'a> Interpreter<'a> {
         self.ports_w.insert(addr, func);
     }
 
-    pub fn map_readonly(&mut self, start: u32, data: &'a Vec<u8>) -> Result<(), Error> {
+    pub fn map_readonly(&mut self, start: u32, data: &'a Vec<u8>) -> Fallible<()> {
         ensure!(
             data.len() < u32::max_value() as usize,
             "readonly data segment too large"
@@ -115,7 +115,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    pub fn map_writable(&mut self, start: u32, data: Vec<u8>) -> Result<(), Error> {
+    pub fn map_writable(&mut self, start: u32, data: Vec<u8>) -> Fallible<()> {
         ensure!(
             data.len() < u32::max_value() as usize,
             "readonly data segment too large"
@@ -136,7 +136,7 @@ impl<'a> Interpreter<'a> {
         self.bytecode.push(bc);
     }
 
-    fn find_instr(&self) -> Result<(&'a ByteCode, usize), Error> {
+    fn find_instr(&self) -> Fallible<(&'a ByteCode, usize)> {
         trace!("searching for instr at ip: {:08X}", self.eip());
         for bc in self.bytecode.iter() {
             if self.eip() >= bc.start_addr && self.eip() < bc.start_addr + bc.size {
@@ -164,7 +164,7 @@ impl<'a> Interpreter<'a> {
         );
     }
 
-    pub fn interpret(&mut self, at: u32) -> Result<ExitInfo, Error> {
+    pub fn interpret(&mut self, at: u32) -> Fallible<ExitInfo> {
         *self.eip_mut() = at;
         let (bc, mut offset) = self.find_instr()?;
         while offset < bc.instrs.len() {
@@ -235,7 +235,7 @@ impl<'a> Interpreter<'a> {
         return Ok(ExitInfo::OutOfInstructions);
     }
 
-    fn jump(&mut self, offset: i32) -> Result<ExitInfo, Error> {
+    fn jump(&mut self, offset: i32) -> Fallible<ExitInfo> {
         let next_ip = if offset >= 0 {
             self.eip() + offset as u32
         } else {
@@ -276,7 +276,7 @@ impl<'a> Interpreter<'a> {
         &mut self.registers[Reg::EDI.to_offset()]
     }
 
-    fn do_pushall(&mut self) -> Result<(), Error> {
+    fn do_pushall(&mut self) -> Fallible<()> {
         let tmp = self.esp();
         self.do_push(&Operand::Register(Reg::EAX))?;
         self.do_push(&Operand::Register(Reg::ECX))?;
@@ -289,7 +289,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_popall(&mut self) -> Result<(), Error> {
+    fn do_popall(&mut self) -> Fallible<()> {
         self.do_pop(&Operand::Register(Reg::EDI))?;
         self.do_pop(&Operand::Register(Reg::ESI))?;
         self.do_pop(&Operand::Register(Reg::EBP))?;
@@ -302,7 +302,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_push(&mut self, op: &Operand) -> Result<(), Error> {
+    fn do_push(&mut self, op: &Operand) -> Fallible<()> {
         let v = self.get(op)?;
         self.stack.push(v);
         *self.esp_mut() -= 4;
@@ -310,7 +310,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_pop(&mut self, op: &Operand) -> Result<(), Error> {
+    fn do_pop(&mut self, op: &Operand) -> Fallible<()> {
         ensure!(self.stack.len() > 0, "pop with empty stack");
         let v = self.stack.pop().unwrap();
         self.put(op, v)?;
@@ -319,12 +319,12 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_move(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_move(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let v = self.get(op2)?;
         self.put(op1, v)
     }
 
-    fn do_move_str(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_move_str(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         while self.ecx() != 0 {
             let v = self.get(op2)?;
             self.put(op1, v)?;
@@ -335,44 +335,44 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_dec(&mut self, op: &Operand) -> Result<(), Error> {
+    fn do_dec(&mut self, op: &Operand) -> Fallible<()> {
         let v = self.get(op)? - 1;
         // FIXME: set flags
         return self.put(op, v);
     }
 
-    fn do_inc(&mut self, op: &Operand) -> Result<(), Error> {
+    fn do_inc(&mut self, op: &Operand) -> Fallible<()> {
         let v = self.get(op)? + 1;
         // FIXME: set flags
         return self.put(op, v);
     }
 
-    fn do_neg(&mut self, op: &Operand) -> Result<(), Error> {
+    fn do_neg(&mut self, op: &Operand) -> Fallible<()> {
         let v = -(self.get(op)? as i32);
         // FIXME: set flags
         return self.put(op, v as u32);
     }
 
-    fn do_add(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_add(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         return self.put(op1, a + b);
     }
 
-    fn do_adc(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_adc(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         let carry = if self.cf { 1 } else { 0 };
         return self.put(op1, a + b + carry);
     }
 
-    fn do_sub(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_sub(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)? as i32;
         let b = self.get(op2)? as i32;
         return self.put(op1, (a - b) as u32);
     }
 
-    fn do_imul(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Result<(), Error> {
+    fn do_imul(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Fallible<()> {
         // dx:ax = ax * reg
         let a = self.get(op_ax)? as i32 as i64;
         let b = self.get(op3)? as i32 as i64;
@@ -385,7 +385,7 @@ impl<'a> Interpreter<'a> {
         return self.put(op_dx, vd);
     }
 
-    fn do_imul2(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_imul2(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         // IMUL r16,r/m16 	word register = word register * r/m word.
         let a = self.get(op1)? as i32 as i64;
         let b = self.get(op2)? as i32 as i64;
@@ -395,7 +395,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_idiv(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Result<(), Error> {
+    fn do_idiv(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Fallible<()> {
         // ax, dx = dx:ax / cx, dx:ax % cx
         let dx = self.get(op_dx)? as i32 as i64 as u64; // make sure to sign-extend
         let ax = self.get(op_ax)? as i32 as i64 as u64;
@@ -407,26 +407,26 @@ impl<'a> Interpreter<'a> {
         return self.put(op_dx, r);
     }
 
-    fn do_and(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_and(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         return self.put(op1, a & b);
     }
 
-    fn do_or(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_or(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         return self.put(op1, a | b);
     }
 
-    fn do_xor(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_xor(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         return self.put(op1, a ^ b);
     }
 
     // rotate right including carry.
-    fn do_rcr(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_rcr(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let arg = self.get(op1)?;
         let cnt = self.get(op2)?;
         assert!(!self.cf, "carry flag set in rotate right");
@@ -445,7 +445,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn do_shl(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_shl(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let count = self.get(op2)? & 0x1F;
         let mut arg = self.get(op1)?;
         let mut cnt = count;
@@ -460,7 +460,7 @@ impl<'a> Interpreter<'a> {
         return self.put(op1, arg);
     }
 
-    fn do_shr(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_shr(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let tmp_dest = self.get(op1)?;
         let count = self.get(op2)? & 0x1F;
         let mut arg = tmp_dest;
@@ -476,7 +476,7 @@ impl<'a> Interpreter<'a> {
         return self.put(op1, arg);
     }
 
-    fn do_sar(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_sar(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let mut arg = self.get(op1)? as i32;
         let mut cnt = self.get(op2)? & 0x1F;
         while cnt != 0 {
@@ -488,7 +488,7 @@ impl<'a> Interpreter<'a> {
         return self.put(op1, arg as u32);
     }
 
-    fn do_compare(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_compare(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         self.cf = (a as i32) < (b as i32);
@@ -509,7 +509,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_test(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_test(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
         let tmp = a & b;
@@ -520,7 +520,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn do_jcc(&self, cc: &ConditionCode, op: &Operand) -> Result<i32, Error> {
+    fn do_jcc(&self, cc: &ConditionCode, op: &Operand) -> Fallible<i32> {
         let should_jump = match cc {
             ConditionCode::Unary(ref cc1) => self.check_cc1(cc1),
             ConditionCode::Binary(ref cc2) => match cc2 {
@@ -554,13 +554,13 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn do_jump(&self, op: &Operand) -> Result<i32, Error> {
+    fn do_jump(&self, op: &Operand) -> Fallible<i32> {
         let offset = self.get(op)? as i32;
         println!("    jump -> {:04X}", offset);
         return Ok(offset);
     }
 
-    fn do_call(&mut self, op: &Operand) -> Result<i32, Error> {
+    fn do_call(&mut self, op: &Operand) -> Fallible<i32> {
         let offset = self.get(op)? as i32;
         let ip = self.eip();
         self.stack.push(ip);
@@ -569,7 +569,7 @@ impl<'a> Interpreter<'a> {
         return Ok(offset);
     }
 
-    fn do_return(&mut self) -> Result<u32, Error> {
+    fn do_return(&mut self) -> Fallible<u32> {
         ensure!(self.stack.len() > 0, "return with empty stack");
         let absolute = self.stack.pop().unwrap();
         *self.esp_mut() += 4;
@@ -577,13 +577,13 @@ impl<'a> Interpreter<'a> {
         return Ok(absolute);
     }
 
-    fn do_lea(&mut self, op1: &Operand, op2: &Operand) -> Result<(), Error> {
+    fn do_lea(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let v = self.lea(Self::op_as_mem(op2)?)?;
         return self.put(op1, v);
     }
 
     // Some instructions force a certain operand type.
-    fn op_as_mem(op: &Operand) -> Result<&MemRef, Error> {
+    fn op_as_mem(op: &Operand) -> Fallible<&MemRef> {
         match op {
             Operand::Memory(mem) => return Ok(mem),
             _ => bail!("op_as_mem on non memory operand"),
@@ -591,7 +591,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // [base + index*scale + disp]
-    fn lea(&self, mem: &MemRef) -> Result<u32, Error> {
+    fn lea(&self, mem: &MemRef) -> Fallible<u32> {
         if let Some(ref seg_reg) = mem.segment {
             ensure!(
                 self.registers[seg_reg.to_offset()] == 0,
@@ -621,7 +621,7 @@ impl<'a> Interpreter<'a> {
         return Ok(addr);
     }
 
-    fn get(&self, op: &Operand) -> Result<u32, Error> {
+    fn get(&self, op: &Operand) -> Fallible<u32> {
         Ok(match op {
             Operand::Imm32(u) => *u,
             Operand::Imm32s(i) => *i as u32,
@@ -648,7 +648,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    fn mem_lookup(&self, addr: u32, size: u8) -> Result<u32, Error> {
+    fn mem_lookup(&self, addr: u32, size: u8) -> Fallible<u32> {
         if self.ports_r.contains_key(&addr) {
             let v = self.ports_r[&addr]();
             println!("    read_port {:08X} -> {:08X}", addr, v);
@@ -675,7 +675,7 @@ impl<'a> Interpreter<'a> {
         );
     }
 
-    fn mem_peek(&self, rel: usize, v: &'a Vec<u8>, size: u8) -> Result<u32, Error> {
+    fn mem_peek(&self, rel: usize, v: &'a Vec<u8>, size: u8) -> Fallible<u32> {
         Ok(match size {
             1 => v[rel] as u32,
             2 => {
@@ -690,7 +690,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    fn put(&mut self, op: &Operand, v: u32) -> Result<(), Error> {
+    fn put(&mut self, op: &Operand, v: u32) -> Fallible<()> {
         match op {
             Operand::Register(r) => {
                 if r.is_reg16() {
@@ -719,7 +719,7 @@ impl<'a> Interpreter<'a> {
         return Ok(());
     }
 
-    fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Result<(), Error> {
+    fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Fallible<()> {
         if self.ports_w.contains_key(&addr) {
             println!("    write_port {:08X} <- {:08X}", addr, v);
             self.ports_w[&addr](v);
@@ -751,21 +751,28 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::prelude::*;
+    // use std::fs;
+    // use std::io::prelude::*;
 
     #[test]
-    fn it_works() {
-        // //let path = "./test_data/sh/EXP.SH";
-        // let path = "./test_data/x86/exp.asm-1035.x86";
-        // let mut fp = fs::File::open(path).unwrap();
+    fn it_works() -> Fallible<()> {
+        // TODO: this approach would basically needs the whole shape loader. See
+        // if we can craft a more targetted test in nasm.
+
+        //let path = "./test_data/x86/exp.asm-1035.x86";
+        // let path = "./test_data/x86/a10.asm-10399.x86";
+        // let mut fp = fs::File::open(path)?;
         // let mut data = Vec::new();
-        // fp.read_to_end(&mut data).unwrap();
+        // fp.read_to_end(&mut data)?;
 
-        // let bc = ByteCode::disassemble(&data, true).unwrap();
+        // let bc = ByteCode::disassemble(&data, true)?;
 
+        // let memory = [0u8; 4096].to_vec();
         // let mut interp = Interpreter::new();
-        // //interp.map_memory(0xAA000000, data);
-        // interp.interpret(&bc).unwrap();
+        // interp.map_writable(0x00005000, memory);
+        // interp.add_code(&bc);
+        // interp.interpret(0)?;
+
+        return Ok(());
     }
 }

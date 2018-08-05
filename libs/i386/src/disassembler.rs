@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Error;
+use failure::{Error, Fallible};
 use lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use reverse::bs2s;
 use std::{fmt, mem};
@@ -262,7 +262,7 @@ impl MemRef {
         }
     }
 
-    fn size_for_type(ty: OperandType, state: &OperandDecodeState) -> Result<u8, Error> {
+    fn size_for_type(ty: OperandType, state: &OperandDecodeState) -> Fallible<u8> {
         Ok(match ty {
             OperandType::b => 1,
             OperandType::v => if state.prefix.toggle_operand_size {
@@ -314,7 +314,7 @@ impl OperandDecodeState {
         }
     }
 
-    fn read_modrm(&mut self, code: &[u8], ip: &mut usize) -> Result<(u8, u8, u8), Error> {
+    fn read_modrm(&mut self, code: &[u8], ip: &mut usize) -> Fallible<(u8, u8, u8)> {
         if let Some(b) = self.modrm {
             return Ok(Operand::modrm(b));
         }
@@ -349,7 +349,7 @@ impl Operand {
         ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         return match desc.method {
             AddressingMethod::E => Self::from_bytes_mode_E(code, ip, desc, state),
             AddressingMethod::G => Self::from_bytes_mode_G(code, ip, desc, state),
@@ -369,7 +369,7 @@ impl Operand {
         ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         assert!(!state.prefix.toggle_address_size);
         let (mode, _reg, rm) = state.read_modrm(code, ip)?;
         Ok(match mode {
@@ -428,7 +428,7 @@ impl Operand {
         ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         let (_mod, reg, _rm) = state.read_modrm(code, ip)?;
         Ok(match desc.ty {
             OperandType::b => Operand::Register(Self::register_low(reg)),
@@ -445,7 +445,7 @@ impl Operand {
         ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         Ok(match desc.ty {
             OperandType::b => Operand::Imm32(Self::read1(code, ip)? as u32),
             OperandType::bs => Operand::Imm32s(Self::read1(code, ip)? as i8 as i32),
@@ -460,7 +460,7 @@ impl Operand {
         ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         Ok(match desc.ty {
             OperandType::bs => Operand::Imm32s(Self::read1(code, ip)? as i8 as i32),
             OperandType::v => Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?,
@@ -473,7 +473,7 @@ impl Operand {
         ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         assert!(!state.prefix.toggle_address_size);
         Ok(match desc.ty {
             OperandType::v => Operand::Memory(MemRef::displacement(
@@ -490,7 +490,7 @@ impl Operand {
         _ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         assert!(!state.prefix.toggle_address_size);
         Ok(Operand::Memory(MemRef::base_plus_segment(
             Self::maybe_toggle_reg_size(Reg::ESI, state.prefix.toggle_operand_size),
@@ -504,7 +504,7 @@ impl Operand {
         _ip: &mut usize,
         desc: &OperandDef,
         state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    ) -> Fallible<Self> {
         assert!(!state.prefix.toggle_address_size);
         Ok(Operand::Memory(MemRef::base_plus_segment(
             Self::maybe_toggle_reg_size(Reg::EDI, state.prefix.toggle_operand_size),
@@ -513,17 +513,14 @@ impl Operand {
         )))
     }
 
-    fn from_bytes_mode_Z(state: &mut OperandDecodeState) -> Result<Self, Error> {
+    fn from_bytes_mode_Z(state: &mut OperandDecodeState) -> Fallible<Self> {
         Ok(Operand::Register(Self::maybe_toggle_reg_size(
             Self::register((state.op & 0b111) as u8),
             state.prefix.toggle_operand_size,
         )))
     }
 
-    fn from_bytes_mode_Imp(
-        desc: &OperandDef,
-        state: &mut OperandDecodeState,
-    ) -> Result<Self, Error> {
+    fn from_bytes_mode_Imp(desc: &OperandDef, state: &mut OperandDecodeState) -> Fallible<Self> {
         Ok(match desc.ty {
             OperandType::eAX => Operand::Register(Self::maybe_toggle_reg_size(
                 Reg::EAX,
@@ -603,7 +600,7 @@ impl Operand {
         ip: &mut usize,
         toggle_size: bool,
         sign_extend: bool,
-    ) -> Result<Operand, Error> {
+    ) -> Fallible<Operand> {
         Ok(if toggle_size {
             let uw = Self::read2(code, ip)?;
             if sign_extend {
@@ -621,7 +618,7 @@ impl Operand {
         })
     }
 
-    fn read1(code: &[u8], ip: &mut usize) -> Result<u8, Error> {
+    fn read1(code: &[u8], ip: &mut usize) -> Fallible<u8> {
         ensure!(
             code.len() > *ip,
             DisassemblyError::TooShort { phase: "op read 1" }
@@ -631,7 +628,7 @@ impl Operand {
         return Ok(b);
     }
 
-    fn read2(code: &[u8], ip: &mut usize) -> Result<u16, Error> {
+    fn read2(code: &[u8], ip: &mut usize) -> Fallible<u16> {
         ensure!(
             code.len() > *ip + 1,
             DisassemblyError::TooShort { phase: "op read 2" }
@@ -642,7 +639,7 @@ impl Operand {
         return Ok(w);
     }
 
-    fn read4(code: &[u8], ip: &mut usize) -> Result<u32, Error> {
+    fn read4(code: &[u8], ip: &mut usize) -> Fallible<u32> {
         ensure!(
             code.len() > *ip + 3,
             DisassemblyError::TooShort { phase: "op read 4" }
@@ -758,7 +755,7 @@ impl Instr {
         return &self.operands[i];
     }
 
-    fn read_op(code: &[u8], ip: &mut usize) -> Result<(u16, u8), Error> {
+    fn read_op(code: &[u8], ip: &mut usize) -> Fallible<(u16, u8)> {
         ensure!(
             code.len() > *ip,
             DisassemblyError::TooShort { phase: "read_op" }
@@ -785,7 +782,7 @@ impl Instr {
         return Ok((op, op_ext));
     }
 
-    fn lookup_op<'a>(op: &(u16, u8), ip: &mut usize) -> Result<&'a OpCodeDef, Error> {
+    fn lookup_op<'a>(op: &(u16, u8), ip: &mut usize) -> Fallible<&'a OpCodeDef> {
         if OPCODES.contains_key(&op) {
             return Ok(&OPCODES[&op]);
         }
@@ -802,7 +799,7 @@ impl Instr {
         return Err(DisassemblyError::UnknownOpcode { ip: *ip, op: *op }.into());
     }
 
-    pub fn decode_one(code: &[u8], ip: &mut usize) -> Result<Instr, Error> {
+    pub fn decode_one(code: &[u8], ip: &mut usize) -> Fallible<Instr> {
         let initial_ip = *ip;
 
         let prefix = OpPrefix::from_bytes(code, ip);
@@ -868,7 +865,7 @@ pub struct ByteCode {
 }
 
 impl ByteCode {
-    pub fn disassemble(code: &[u8], verbose: bool) -> Result<Self, Error> {
+    pub fn disassemble(code: &[u8], verbose: bool) -> Fallible<Self> {
         if verbose {
             println!("Disassembling: {}", bs2s(code));
         }
@@ -889,7 +886,7 @@ impl ByteCode {
         });
     }
 
-    pub fn disassemble_to_ret(at_offset: usize, code: &[u8], verbose: bool) -> Result<Self, Error> {
+    pub fn disassemble_to_ret(at_offset: usize, code: &[u8], verbose: bool) -> Fallible<Self> {
         if verbose {
             println!("Disassembling: {}", bs2s(code));
         }
