@@ -6,7 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 bitflags = "1.0"
 failure = ">= 0.1.2"
-entity = { path = "../entity/" }
+num-traits = ">= 0.2.5"
 sh = { path = "../sh" }
 
 [dev-dependencies]

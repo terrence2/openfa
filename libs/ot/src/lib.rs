@@ -14,16 +14,36 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #[macro_use]
 extern crate bitflags;
-extern crate entity;
 #[macro_use]
 extern crate failure;
+extern crate num_traits;
 extern crate sh;
 
-use entity::{parse, Resource, TypeTag};
+pub mod parse;
+
 use failure::Fallible;
+pub use parse::Resource;
 //use sh::CpuShape as Shape;
 use std::collections::HashMap;
 use std::mem;
+
+#[derive(Debug)]
+#[repr(u8)]
+pub enum TypeTag {
+    Object = 1,
+    NPC = 3,
+    Plane = 5,
+    Projectile = 7,
+}
+
+impl TypeTag {
+    pub fn new(n: u8) -> Fallible<TypeTag> {
+        if n != 1 && n != 3 && n != 5 && n != 7 {
+            bail!("unknown TypeTag {}", n);
+        }
+        return Ok(unsafe { mem::transmute(n) });
+    }
+}
 
 pub struct Shape {}
 impl Resource for Shape {

@@ -5,7 +5,6 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
-entity = { path = "../entity" }
 ot = { path = "../ot" }
 
 [dev-dependencies]

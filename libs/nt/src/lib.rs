@@ -12,14 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate entity;
 #[macro_use]
 extern crate failure;
 extern crate ot;
 
-use entity::{parse, Resource};
 use failure::Fallible;
-use ot::ObjectType;
+use ot::{parse, ObjectType, Resource};
 use std::collections::HashMap;
 
 // placeholder
