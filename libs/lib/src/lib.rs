@@ -28,7 +28,7 @@ extern crate packed_struct;
 extern crate pkware;
 extern crate regex;
 
-use codepage_437::{CP437_CONTROL, FromCp437};
+use codepage_437::{BorrowFromCp437, CP437_CONTROL, FromCp437};
 use failure::{err_msg, Fallible};
 use glob::{MatchOptions, Pattern};
 use memmap::{Mmap, MmapOptions};
@@ -107,6 +107,7 @@ pub struct StatInfo {
     pub compression: CompressionType,
     pub packed_size: u64,
     pub unpacked_size: u64,
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
@@ -233,6 +234,7 @@ impl LibFile {
                     compression: info.compression.clone(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
                     unpacked_size: (info.end_offset - info.start_offset) as u64,
+                    path: None,
                 });
             }
             CompressionType::PKWare => {
@@ -243,6 +245,7 @@ impl LibFile {
                     compression: info.compression.clone(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
                     unpacked_size: dwords[0] as u64,
+                    path: None,
                 });
             }
             CompressionType::LZSS => {
@@ -253,6 +256,7 @@ impl LibFile {
                     compression: info.compression.clone(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
                     unpacked_size: dwords[0] as u64,
+                    path: None,
                 });
             }
             CompressionType::PXPK => unimplemented!(),
@@ -318,6 +322,7 @@ impl LibDir {
             compression: CompressionType::None,
             packed_size: stat.len(),
             unpacked_size: stat.len(),
+            path: Some(info.path.clone()),
         });
     }
 }
@@ -529,9 +534,11 @@ impl LibStack {
         bail!("no such file {} in index", filename);
     }
 
-    pub fn load_text(&self, filename: &str) -> Fallible<String> {
-        let contents = self.load(filename)?.to_vec();
-        return Ok(String::from_cp437(contents, &CP437_CONTROL));
+    pub fn load_text(&self, filename: &str) -> Fallible<Cow<str>> {
+        return Ok(match self.load(filename)? {
+            Cow::Borrowed(r) => Cow::borrow_from_cp437(r, &CP437_CONTROL),
+            Cow::Owned(o) => Cow::from(String::from_cp437(o, &CP437_CONTROL)),
+        });
     }
 
     /// Load the masked filename from the given libpath.
@@ -611,64 +618,6 @@ impl LibStack {
     }
 }
 
-/// Hold multiple LibStacks at once: e.g. for visiting resources from multiple games at once.
-pub struct OmniLib {
-    stacks: HashMap<String, LibStack>,
-}
-
-impl OmniLib {
-    pub fn new_for_test() -> Fallible<Self> {
-        Self::from_subdirs(Path::new("../../test_data/unpacked"))
-    }
-
-    pub fn new_for_test_in_games(dirs: Vec<&str>) -> Fallible<Self> {
-        let mut stacks = HashMap::new();
-        for dir in dirs {
-            stacks.insert(
-                dir.to_owned(),
-                LibStack::from_dir_search(&Path::new("../../test_data/unpacked/").join(dir))?,
-            );
-        }
-        return Ok(Self { stacks });
-    }
-
-    // LibStack from_dir_search in every subdir in the given path.
-    pub fn from_subdirs(path: &Path) -> Fallible<Self> {
-        let mut stacks = HashMap::new();
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            if !entry.path().is_dir() {
-                continue;
-            }
-            let name = entry
-                .path()
-                .file_name()
-                .ok_or_else(|| err_msg("omnilib: no file name"))?
-                .to_str()
-                .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
-                .to_owned();
-            let stack = LibStack::from_dir_search(&entry.path())?;
-            stacks.insert(name, stack);
-        }
-        return Ok(Self { stacks });
-    }
-
-    pub fn find_matching(&self, glob: &str) -> Fallible<Vec<(String, String)>> {
-        let mut out = Vec::new();
-        for (libname, stack) in self.stacks.iter() {
-            let names = stack.find_matching(glob)?;
-            for name in names {
-                out.push((libname.to_owned(), name));
-            }
-        }
-        return Ok(out);
-    }
-
-    pub fn load_text(&self, libname: &str, name: &str) -> Fallible<String> {
-        self.stacks[libname].load_text(name)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -705,12 +654,6 @@ mod tests {
             let txt = libs.load_masked_text("FILE.TXT", libpath)?;
             assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
         }
-        return Ok(());
-    }
-
-    #[test]
-    fn test_omnilib_from_dir() -> Fallible<()> {
-        let omni = OmniLib::from_subdirs(Path::new("../../test_data/unpacked"))?;
         return Ok(());
     }
 }
