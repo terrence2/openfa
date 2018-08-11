@@ -1,8 +1,9 @@
 [package]
-name = "entity"
+name = "omni_resource"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
-num-traits = ">= 0.2.5"
+lib = { path = "../lib" }
+resource_manager = { path = "../resource_manager" }

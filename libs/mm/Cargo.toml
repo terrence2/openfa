@@ -1,0 +1,19 @@
+[package]
+name = "mm"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+failure = "0.1.2"
+mint = "0.5"
+nalgebra = "0.16"
+entity = { path = "../entity" }
+lay = { path = "../lay" }
+nt = { path = "../nt" }
+ot = { path = "../ot" }
+pic = { path = "../pic" }
+resource_manager = { path = "../resource_manager" }
+t2 = { path = "../t2" }
+
+[dev-dependencies]
+omnilib = { path = "../omnilib" }

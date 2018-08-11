@@ -14,9 +14,11 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #[macro_use]
 extern crate failure;
+extern crate num_traits;
 
 use failure::Fallible;
-use std::mem;
+use num_traits::Num;
+use std::{error, mem, str};
 
 // A resource that can be loaded by an entity.
 pub trait Resource {
@@ -95,10 +97,24 @@ pub mod parse {
         return Ok(None);
     }
 
-    fn hex(n: &str) -> Fallible<u32> {
+    pub fn hex(n: &str) -> Fallible<u32> {
         ensure!(n.is_ascii(), "non-ascii in number");
         ensure!(n.starts_with("$"), "expected hex to start with $");
         return Ok(u32::from_str_radix(&n[1..], 16)?);
+    }
+
+    pub fn maybe_hex<T>(n: &str) -> Fallible<T>
+    where
+        T: ::Num + ::str::FromStr,
+        <T as ::Num>::FromStrRadixErr: 'static + ::error::Error + Send + Sync,
+        <T as ::str::FromStr>::Err: 'static + ::error::Error + Send + Sync,
+    {
+        ensure!(n.is_ascii(), "non-ascii in number");
+        return Ok(if n.starts_with('$') {
+            T::from_str_radix(&n[1..], 16)?
+        } else {
+            n.parse::<T>()?
+        });
     }
 
     pub fn byte(line: &str) -> Fallible<u8> {

@@ -1,0 +1,12 @@
+[package]
+name = "resource_manager"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+failure = ">= 0.1.2"
+lib = { path = "../lib" }
+jt = { path = "../jt" }
+nt = { path = "../nt" }
+ot = { path = "../ot" }
+pt = { path = "../pt" }
