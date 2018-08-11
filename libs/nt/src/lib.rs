@@ -174,23 +174,23 @@ impl NpcType {
 pub struct HardPoint {}
 
 #[cfg(test)]
-extern crate lib;
+extern crate omnilib;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::OmniLib;
+    use omnilib::OmniLib;
 
     #[test]
     fn can_parse_all_npc_types() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
-        for (libname, name) in omni.find_matching("*.[NP]T")?.iter() {
-            let contents = omni.load_text(libname, name)?;
+        for (game, name) in omni.find_matching("*.[NP]T")?.iter() {
+            let contents = omni.library(game).load_text(name)?;
             let nt = NpcType::from_str(&contents)?;
             assert_eq!(nt.obj.file_name, *name);
             println!(
                 "{}:{:13}> {:?} <> {}",
-                libname,
+                game,
                 name,
                 nt.hardpoints.len(),
                 nt.obj.long_name,

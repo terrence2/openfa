@@ -15,7 +15,6 @@
 extern crate entity;
 #[macro_use]
 extern crate failure;
-extern crate lib;
 extern crate ot;
 
 use entity::{parse, Resource};
@@ -31,7 +30,8 @@ impl Resource for Sound {
     }
 }
 
-struct ProjectileType {
+#[allow(dead_code)]
+pub struct ProjectileType {
     obj: ObjectType,
 
     unk0: u32,              // $2a06f
@@ -129,7 +129,7 @@ struct ProjectileType {
 }
 
 impl ProjectileType {
-    fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -139,7 +139,7 @@ impl ProjectileType {
         return Self::from_lines(&lines, &pointers);
     }
 
-    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+    fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let obj = ObjectType::from_lines(lines, pointers)?;
         let lines = parse::find_section(&lines, "PROJ_TYPE")?;
 
@@ -245,21 +245,23 @@ impl ProjectileType {
 }
 
 #[cfg(test)]
+extern crate omnilib;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use lib::OmniLib;
-    use std::{fs, io::prelude::*};
+    use omnilib::OmniLib;
 
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
-        for (libname, name) in omni.find_matching("*.JT")?.iter() {
-            let contents = omni.load_text(libname, name)?;
+        for (game, name) in omni.find_matching("*.JT")?.iter() {
+            let contents = omni.library(game).load_text(name)?;
             let jt = ProjectileType::from_str(&contents).unwrap();
             assert_eq!(&jt.obj.file_name, name);
             println!(
                 "{}:{:13}> {:08X} <> {} <> {}",
-                libname, name, jt.unk0, jt.obj.long_name, name
+                game, name, jt.unk0, jt.obj.long_name, name
             );
         }
         return Ok(());

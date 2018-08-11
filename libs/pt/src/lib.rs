@@ -17,18 +17,19 @@ extern crate entity;
 extern crate failure;
 extern crate nt;
 
-use entity::{parse, Resource};
+use entity::parse;
 use failure::Fallible;
 use nt::NpcType;
 use std::collections::HashMap;
 
-struct EnvelopeCoord {
+#[allow(dead_code)]
+pub struct EnvelopeCoord {
     speed: i16,
     altitude: u32,
 }
 
 impl EnvelopeCoord {
-    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+    pub fn from_lines(lines: &[&str], _pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         return Ok(EnvelopeCoord {
             speed: parse::word(lines[0])?,
             altitude: parse::dword(lines[1])?,
@@ -36,7 +37,8 @@ impl EnvelopeCoord {
     }
 }
 
-struct Envelope {
+#[allow(dead_code)]
+pub struct Envelope {
     g_load: i16,     // word -4 ; env [ii].gload
     count: i16,      // word 6 ; env [ii].count
     stall_lift: i16, // word 2 ; env [ii].stallLift
@@ -46,7 +48,7 @@ struct Envelope {
 
 impl Envelope {
     pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
-        let mut env = Envelope {
+        return Ok(Envelope {
             g_load: parse::word(lines[0])?,
             count: parse::word(lines[1])?,
             stall_lift: parse::word(lines[2])?,
@@ -73,12 +75,12 @@ impl Envelope {
                 EnvelopeCoord::from_lines(&lines[40..42], pointers)?,
                 EnvelopeCoord::from_lines(&lines[42..44], pointers)?,
             ],
-        };
-        return Ok(env);
+        });
     }
 }
 
-struct PlaneType {
+#[allow(dead_code)]
+pub struct PlaneType {
     npc: NpcType,
 
     // Awacs links, and thrust vectoring [$2011 (prefix of 20)- provides ATA link,
@@ -200,7 +202,7 @@ impl PlaneType {
         return Self::from_lines(&lines, &pointers);
     }
 
-    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+    fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let npc = NpcType::from_lines(lines, pointers)?;
         let lines = parse::find_section(&lines, "PLANE_TYPE")?;
 
@@ -366,23 +368,23 @@ impl PlaneType {
 }
 
 #[cfg(test)]
-extern crate lib;
+extern crate omnilib;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::OmniLib;
+    use omnilib::OmniLib;
 
     #[test]
     fn it_can_parse_all_plane_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
-        for (libname, name) in omni.find_matching("*.PT")?.iter() {
-            let contents = omni.load_text(libname, name)?;
+        for (game, name) in omni.find_matching("*.PT")?.iter() {
+            let contents = omni.library(game).load_text(name)?;
             let pt = PlaneType::from_str(&contents)?;
             assert_eq!(pt.npc.obj.file_name, *name);
             println!(
                 "{}:{:13}> {:08X} <> {}",
-                libname, name, pt.unk_max_takeoff_weight, pt.npc.obj.long_name
+                game, name, pt.unk_max_takeoff_weight, pt.npc.obj.long_name
             );
         }
         return Ok(());

@@ -78,6 +78,20 @@ pub mod parse {
         }
     }
 
+    pub fn maybe_resource_filename<'a>(
+        line: &'a str,
+        pointers: &'a HashMap<&'a str, Vec<&'a str>>,
+    ) -> Fallible<Option<String>> {
+        let maybe_value = ptr(line)
+            .ok()
+            .and_then(|ptr_name| pointers.get(ptr_name))
+            .and_then(|values| values.get(0));
+        if let Some(value) = maybe_value {
+            return Ok(Some(string(value)?));
+        }
+        return Ok(None);
+    }
+
     pub fn maybe_load_resource<'a, T>(
         line: &'a str,
         pointers: &'a HashMap<&'a str, Vec<&'a str>>,

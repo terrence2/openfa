@@ -17,7 +17,7 @@ extern crate lib;
 
 use failure::{err_msg, Fallible};
 use lib::LibStack;
-use std::{borrow::Cow, collections::HashMap, fs, path::Path};
+use std::{collections::HashMap, fs, path::Path};
 
 /// Hold multiple LibStacks at once: e.g. for visiting resources from multiple games at once.
 pub struct OmniLib {
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_omnilib_from_dir() -> Fallible<()> {
-        let omni = OmniLib::from_subdirs(Path::new("../../test_data/unpacked"))?;
+        let _omni = OmniLib::from_subdirs(Path::new("../../test_data/unpacked"))?;
         return Ok(());
     }
 }

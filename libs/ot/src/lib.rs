@@ -17,9 +17,11 @@ extern crate bitflags;
 extern crate entity;
 #[macro_use]
 extern crate failure;
+extern crate sh;
 
 use entity::{parse, Resource, TypeTag};
 use failure::Fallible;
+//use sh::CpuShape as Shape;
 use std::collections::HashMap;
 use std::mem;
 
@@ -209,6 +211,17 @@ impl ObjectType {
         return Self::from_lines(&lines, &pointers);
     }
 
+    fn load_shape(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Option<Shape>> {
+        let filename = parse::maybe_resource_filename(line, pointers)?;
+        return Ok(match filename {
+            None => None,
+            Some(f) => {
+                let resource = Shape::from_file(&f)?;
+                Some(resource)
+            }
+        });
+    }
+
     pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
         let lines = parse::find_section(&lines, "OBJ_TYPE")?;
 
@@ -223,8 +236,8 @@ impl ObjectType {
             file_name: parse::string(ot_names[2])?,
             flags: ObjectFlags::from_u32(parse::dword(lines[4])?),
             kind: ObjectKind::new(parse::word(lines[5])? as u16)?,
-            shape: parse::maybe_load_resource(lines[6], pointers)?,
-            shadow_shape: parse::maybe_load_resource(lines[7], pointers)?,
+            shape: Self::load_shape(lines[6], pointers)?, //parse::maybe_load_resource(lines[6], pointers)?,
+            shadow_shape: Self::load_shape(lines[7], pointers)?, //parse::maybe_load_resource(lines[7], pointers)?,
             unk8: parse::dword(lines[8])?,
             unk9: parse::dword(lines[9])?,
             unk_damage_debris_pos: [
@@ -296,23 +309,23 @@ impl ObjectType {
 }
 
 #[cfg(test)]
-extern crate lib;
+extern crate omnilib;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::OmniLib;
+    use omnilib::OmniLib;
 
     #[test]
     fn can_parse_all_entity_types() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
-        for (libname, name) in omni.find_matching("*.[OJNP]T")?.iter() {
-            let contents = omni.load_text(libname, name)?;
+        for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
+            let contents = omni.library(game).load_text(name)?;
             let ot = ObjectType::from_str(&contents).unwrap();
             assert_eq!(ot.file_name, *name);
             println!(
                 "{}:{:13}> {:?} <> {}",
-                libname, name, ot.unk_explosion_type, ot.long_name
+                game, name, ot.unk_explosion_type, ot.long_name
             );
         }
         return Ok(());
