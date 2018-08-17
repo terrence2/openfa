@@ -15,17 +15,13 @@
 
 #[macro_use]
 extern crate failure;
-extern crate entity;
 extern crate nalgebra;
-extern crate ot;
-extern crate resource_manager;
+extern crate xt;
 
-use entity::parse;
 use failure::{err_msg, Fallible};
 use nalgebra::{Point3, Vector3};
-use ot::ObjectType;
-use resource_manager::{ResourceManager, ResourceRef};
-use std::{rc::Rc, str::FromStr};
+use std::str::FromStr;
+use xt::{parse, TypeManager, TypeRef};
 
 pub enum Nationality {
     Unk0 = 0,
@@ -112,8 +108,9 @@ impl Nationality {
     }
 }
 
+#[allow(dead_code)]
 pub struct ObjectInst {
-    ty: ResourceRef,
+    ty: TypeRef,
     name: Option<String>,
     pos: Point3<f32>,
     angle: Vector3<f32>,
@@ -130,7 +127,7 @@ pub struct ObjectInst {
 }
 
 impl ObjectInst {
-    fn from_lines(lines: &[&str], offset: &mut usize, rm: &ResourceManager) -> Fallible<Self> {
+    fn from_lines(lines: &[&str], offset: &mut usize, tm: &TypeManager) -> Fallible<Self> {
         let mut ty = None;
         let mut name = None;
         let mut pos = None;
@@ -148,7 +145,7 @@ impl ObjectInst {
             let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
             match parts[0].trim_left() {
                 "type" => {
-                    ty = Some(rm.load(parts[1].trim())?);
+                    ty = Some(tm.load(parts[1].trim())?);
                 }
                 "name" => name = Some(parts[1].to_owned()),
                 "pos" => {
@@ -183,7 +180,6 @@ impl ObjectInst {
                 "react" => {
                     let subparts = parts[1].split(' ').collect::<Vec<&str>>();
                     assert!(ty.is_some());
-                    assert!(!ty.clone().unwrap().is_object_type());
                     react = Some((
                         parse::maybe_hex::<u16>(subparts[0])?,
                         parse::maybe_hex::<u16>(subparts[1])?,
@@ -230,6 +226,7 @@ impl ObjectInst {
 //         icon -1
 //         flags $0
 //         .
+#[allow(dead_code)]
 struct SpecialInst {
     pos: Point3<f32>,
     name: String,
@@ -313,6 +310,7 @@ impl SpecialInst {
 // w_searchDist 0
 // w_preferredTargetId 0
 // w_name ^A^A
+#[allow(dead_code)]
 pub struct Waypoint {
     index: u8,
     flags: u8,
@@ -348,7 +346,6 @@ impl Waypoint {
             if parts.len() == 0 {
                 break;
             }
-            println!("wp: {:?} => {:?}", lines[*offset], parts);
             match parts[0].trim_left() {
                 "w_index" => index = Some(parts[1].parse::<u8>()?),
                 "w_flags" => flags = Some(parts[1].parse::<u8>()?),
@@ -453,6 +450,7 @@ pub enum TLoc {
     Name(String),
 }
 
+#[allow(dead_code)]
 pub struct TMap {
     pos0: i16,
     pos1: i16,
@@ -460,11 +458,13 @@ pub struct TMap {
     loc: TLoc,
 }
 
+#[allow(dead_code)]
 pub struct TDic {
     n: usize,
     map: [[u8; 4]; 8],
 }
 
+#[allow(dead_code)]
 pub struct MissionMap {
     map_name: String,
     //map: T2,
@@ -476,7 +476,7 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str, rm: &ResourceManager) -> Fallible<Self> {
+    pub fn from_str(s: &str, tm: &TypeManager) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
@@ -505,12 +505,11 @@ impl MissionMap {
                 continue;
             }
 
-            println!("at: {:?}", parts);
             match parts[0] {
                 "map" => {
                     assert_eq!(map_name, None);
                     map_name = Some(parts[1]);
-                    //map = rm.load_t2(map_name.to_uppercase());
+                    //map = tm.load_t2(map_name.to_uppercase());
                 }
                 "layer" => {
                     assert_eq!(layer_name, None);
@@ -607,7 +606,7 @@ impl MissionMap {
                 }
                 "obj" => {
                     offset += 1;
-                    let obj = ObjectInst::from_lines(&lines, &mut offset, rm)?;
+                    let obj = ObjectInst::from_lines(&lines, &mut offset, tm)?;
                     objects.push(obj);
                 }
                 "special" => {
@@ -665,7 +664,9 @@ impl MissionMap {
                     offset += 1;
                     let mut waypoints = Vec::new();
                     for i in 0..cnt {
-                        waypoints.push(Waypoint::from_lines(&lines, &mut offset)?);
+                        let wp = Waypoint::from_lines(&lines, &mut offset)?;
+                        assert_eq!(wp.index as usize, i);
+                        waypoints.push(wp);
                     }
                     let wfor = lines[offset].split(' ').collect::<Vec<&str>>();
                     ensure!(wfor[0] == "\tw_for", "expected w_for after waypoint list");
@@ -695,10 +696,10 @@ impl MissionMap {
             offset += 1;
         }
 
-        for tm in tmaps.iter() {
-            match tm.loc {
+        for tmap in tmaps.iter() {
+            match tmap.loc {
                 TLoc::Index(i) => assert!((i as usize) < tdics.len()),
-                TLoc::Name(ref n) => assert!(rm.library().file_exists(n)),
+                TLoc::Name(ref n) => assert!(tm.library().file_exists(n)),
             }
         }
 
@@ -725,15 +726,11 @@ mod tests {
     #[test]
     fn it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
-        for (libname, name) in omni.find_matching("*.MM")?.iter() {
-            println!("At: {}:{} @ {}", libname, name, omni.path(libname, name)?);
-            let contents = omni.resource_manager(libname).library().load_text(name)?;
-            let mm = MissionMap::from_str(&contents, omni.resource_manager(libname)).unwrap();
-            // assert_eq!(format!("./test_data/{}", ot.file_name), path);
-            // rv.push(format!(
-            //     "{:?} <> {} <> {}",
-            //     ot.unk_explosion_type, ot.long_name, path
-            // ));
+        for (game, name) in omni.find_matching("*.MM")?.iter() {
+            println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
+            let type_man = TypeManager::new(omni.library(game))?;
+            let contents = omni.library(game).load_text(name)?;
+            let _mm = MissionMap::from_str(&contents, &type_man).unwrap();
         }
         return Ok(());
     }

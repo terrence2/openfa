@@ -7,12 +7,9 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 failure = "0.1.2"
 mint = "0.5"
 nalgebra = "0.16"
-entity = { path = "../entity" }
+xt = { path = "../xt" }
 lay = { path = "../lay" }
-nt = { path = "../nt" }
-ot = { path = "../ot" }
 pic = { path = "../pic" }
-resource_manager = { path = "../resource_manager" }
 t2 = { path = "../t2" }
 
 [dev-dependencies]

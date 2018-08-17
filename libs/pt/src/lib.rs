@@ -81,7 +81,7 @@ impl Envelope {
 
 #[allow(dead_code)]
 pub struct PlaneType {
-    npc: NpcType,
+    pub npc: NpcType,
 
     // Awacs links, and thrust vectoring [$2011 (prefix of 20)- provides ATA link,
     // $4011 (prefix of 40)- provides ATG link, $6011 (prefix of 60)- provides ATA & ATG links,
