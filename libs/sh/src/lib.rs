@@ -61,7 +61,6 @@ lazy_static! {
 /// A version of the shape for slicing/dicing on the CPU for exploration. The normal
 /// load path will go straight into GPU buffers.
 pub struct CpuShape {
-    pub source: String,
     pub instrs: Vec<Instr>,
     pub trampolines: Vec<X86Trampoline>,
     pub pe: peff::PE,
@@ -1679,7 +1678,6 @@ impl CpuShape {
         instrs.append(&mut tramp_instr);
 
         let shape = CpuShape {
-            source: "".to_owned(),
             instrs,
             trampolines,
             pe,
