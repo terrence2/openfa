@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
-use num_traits::Num;
+use num_traits::{cast::AsPrimitive, Num};
 use std::{collections::HashMap, marker, str, str::FromStr};
 
 // A resource that can be loaded by an entity.
@@ -271,8 +271,7 @@ macro_rules! make_consume_field {
             Ok(value) => value as $ty2,
             Err(_) => parse_one::<$ty2>($offset, Repr::$repr, &$lines[$offset])?,
         };
-        $offset += 1;
-        v
+        (v, 1)
     }};
     (
         ($repr:ident : $parse_ty:ty),
@@ -283,8 +282,7 @@ macro_rules! make_consume_field {
     ) => {{
         check_num_type::<$parse_ty>($offset, $gname, &$lines[$offset])?;
         let v = parse_one::<$parse_ty>($offset, Repr::$repr, &$lines[$offset])?;
-        $offset += 1;
-        v
+        (v, 1)
     }};
     (
         ([$repr1:ident, $repr2:ident]: $parse_ty:ty),
@@ -296,8 +294,7 @@ macro_rules! make_consume_field {
         check_num_type::<$parse_ty>($offset, $gname, &$lines[$offset])?;
         let v = parse_one::<$parse_ty>($offset, Repr::$repr1, &$lines[$offset])
             .or_else(|_| parse_one::<$parse_ty>($offset, Repr::$repr2, &$lines[$offset]))?;
-        $offset += 1;
-        v
+        (v, 1)
     }};
     (
         ([$repr1:ident, $repr2:ident, $repr3:ident]: $parse_ty:ty),
@@ -310,8 +307,20 @@ macro_rules! make_consume_field {
         let v = parse_one::<$parse_ty>($offset, Repr::$repr1, &$lines[$offset])
             .or_else(|_| parse_one::<$parse_ty>($offset, Repr::$repr2, &$lines[$offset]))
             .or_else(|_| parse_one::<$parse_ty>($offset, Repr::$repr3, &$lines[$offset]))?;
-        $offset += 1;
-        v
+        (v, 1)
+    }};
+    (Altitude, $gname:expr, $v:ident, $pointers:ident, $lines:ident[$offset:ident]) => {{
+        // Every combination of repr and sign is used here, including frankly insane
+        // ones like hex signed 32 bit values.
+        check_num_type::<u32>($offset, $gname, &$lines[$offset])?;
+        let v = match parse_one::<u32>($offset, Repr::Car, &$lines[$offset]) {
+            Ok(v) => Ok(v as i32),
+            Err(_) => match parse_one::<u32>($offset, Repr::Hex, &$lines[$offset]) {
+                Ok(v) => Ok(v as i32),
+                Err(_) => parse_one::<i32>($offset, Repr::Dec, &$lines[$offset]),
+            },
+        }?;
+        (v, 1)
     }};
     ([Vec3: $parse_ty:ty], $gname:expr, $v:ident, $pointers:ident, $lines:ident[$offset:ident]) => {{
         for i in 0..3 {
@@ -320,23 +329,19 @@ macro_rules! make_consume_field {
         let x = parse_one::<$parse_ty>($offset + 0, Repr::Dec, &$lines[$offset + 0])?;
         let y = parse_one::<$parse_ty>($offset + 1, Repr::Dec, &$lines[$offset + 1])?;
         let z = parse_one::<$parse_ty>($offset + 2, Repr::Dec, &$lines[$offset + 2])?;
-        $offset += 3;
-        [x, y, z]
+        ([x, y, z], 3)
     }};
     (ObjClass, $gname:expr, $v:ident, $pointers:ident, $lines:ident[$offset:ident]) => {{
         let tmp = consume_obj_class(&$lines[$offset])?;
-        $offset += 1;
-        tmp
+        (tmp, 1)
     }};
     (Ptr, $gname:expr, $v:ident, $pointers:ident, $lines:ident[$offset:ident]) => {{
         let tmp = consume_ptr($offset, $gname, &$lines[$offset], $pointers)?;
-        $offset += 1;
-        tmp
+        (tmp, 1)
     }};
     (Symbol, $gname:expr, $v:ident, $pointers:ident, $lines:ident[$offset:ident]) => {{
         let tmp = $lines[$offset].1;
-        $offset += 1;
-        tmp
+        (tmp, 1)
     }};
 }
 
@@ -365,7 +370,8 @@ macro_rules! make_type_struct {
                     let field_version = $version_ty::$vsup;
                     let $name: $store_ty = if field_version <= file_version {
                         println!("AT FIELD: {:?}", lines[offset]);
-                        let tmp = make_consume_field!($parse_ty, $gname, version, pointers, lines[offset]);
+                        let (tmp, cnt) = make_consume_field!($parse_ty, $gname, version, pointers, lines[offset]);
+                        offset += cnt;
                         <$store_ty>::try_from(tmp)?
                     } else {
                         $default
@@ -469,7 +475,8 @@ pub fn parse_one<T>(
     actual: &(FieldType, &str, Option<&str>),
 ) -> Fallible<T>
 where
-    T: Num + FromStr + GetFieldType,
+    T: Num + FromStr + GetFieldType + AsPrimitive<u32>,
+    u32: AsPrimitive<T>,
     <T as FromStr>::Err: ::std::error::Error + 'static + Send + Sync,
     <T as ::num_traits::Num>::FromStrRadixErr: ::std::error::Error + 'static + Send + Sync,
 {
@@ -491,7 +498,10 @@ where
                 offset,
                 actual.1
             );
-            actual.1[1..].parse::<T>()?
+            let v = actual.1[1..].parse::<T>()?;
+            let u: u32 = v.as_() * 256;
+            let t: T = u.as_();
+            t
         }
     });
 }

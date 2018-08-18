@@ -25,7 +25,6 @@ pub mod parse;
 
 use failure::Fallible;
 use nalgebra::Point3;
-use num_traits::Num;
 pub use parse::{
     check_num_type, consume_obj_class, consume_ptr, parse_one, FieldType, Repr, Resource,
     TryConvert,
@@ -151,17 +150,12 @@ bitflags! {
     }
 }
 
-impl ObjectFlags {
-    fn from_u32(f: u32) -> ObjectFlags {
-        unsafe { mem::transmute(f) }
-    }
-}
-
 struct ObjectNames {
     short_name: String,
     long_name: String,
     file_name: String,
 }
+
 impl TryConvert<u8> for TypeTag {
     type Error = failure::Error;
     fn try_from(value: u8) -> Fallible<TypeTag> {
@@ -306,8 +300,8 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (max_speed,                 u16, "_maxSpeed",           (Dec: u16), V0, panic!()),
     (acceleration,              u32, "_acc",           ([Dec,Car]:u32), V0, panic!()),
     (deceleration,              u32, "_dacc",          ([Dec,Car]:u32), V0, panic!()),
-    (min_altitude,              i32, "minAlt",         ([Dec,Car]:i32), V0, panic!()), // in feet?
-    (max_altitude,              i32, "maxAlt",     ([Dec,Hex,Car]:i32), V0, panic!()),
+    (min_altitude,              i32, "minAlt",                Altitude, V0, panic!()), // in feet?
+    (max_altitude,              i32, "maxAlt",                Altitude, V0, panic!()),
     (util_proc,            ProcKind, "utilProc",                Symbol, V0, panic!()),
     // Sound Info
     (loop_sound,      Option<Sound>, "loopSound",                  Ptr, V0, panic!()),

@@ -34,17 +34,22 @@ impl Resource for Sound {
 struct ProjectileNames {
     short_name: String,
     long_name: String,
-    file_name: String,
+    file_name: Option<String>,
 }
 
 impl<'a> TryConvert<Vec<String>> for ProjectileNames {
     type Error = failure::Error;
     fn try_from(value: Vec<String>) -> Fallible<ProjectileNames> {
-        ensure!(value.len() == 3, "expected 3 names in ot_names");
+        ensure!(value.len() >= 2, "expected at least 2 names in si_names");
+        let file_name = if value.len() == 3 {
+            Some(parse::string(&value[2])?)
+        } else {
+            None
+        };
         return Ok(ProjectileNames {
             short_name: parse::string(&value[0])?,
             long_name: parse::string(&value[1])?,
-            file_name: parse::string(&value[2])?,
+            file_name,
         });
     }
 }
@@ -89,14 +94,14 @@ impl TryConvert<u16> for ProjectilesInPod {
 }
 
 make_type_struct![ProjectileType(obj: ObjectType, version: ProjectileTypeVersion) {       // AA11.JT
-    (flags0,                    u32, "flags",                  (Hex: u32), V0, panic!()), // dword $1204f ; flags
+    (flags0,                    u32, "flags",            ([Dec,Hex]: u32), V0, panic!()), // dword $1204f ; flags
     (projs_in_pod, ProjectilesInPod, "projsInPod",       (Dec: (u8, u16)), V0, panic!()), // word 1 ; projsInPod
     (struct_type,                u8, "structType",              (Dec: u8), V0, panic!()), // byte 10 ; structType
     (si_names,      ProjectileNames, "si_names",                      Ptr, V0, panic!()), // ptr si_names
     (weight,                    u16, "weight",                 (Dec: u16), V0, panic!()), // word 0 ; weight
-    (flags1,                     u8, "flags",                   (Hex: u8), V0, panic!()), // byte $0 ; flags
+    (flags1,                     u8, "flags",             ([Dec,Hex]: u8), V0, panic!()), // byte $0 ; flags
     (sig,                        u8, "sig",                     (Dec: u8), V0, panic!()), // byte 2 ; sig
-    (flags2,                     u8, "flags",                   (Hex: u8), V0, panic!()), // byte $0 ; flags
+    (flags2,                     u8, "flags",             ([Dec,Hex]: u8), V0, panic!()), // byte $0 ; flags
     (look_down,                  u8, "lookDown",                (Dec: u8), V0, panic!()), // byte 0 ; lookDown
     (doppler_speed_above,        u8, "dopplerSpeedAbove",       (Dec: u8), V0, panic!()), // byte 0 ; dopplerSpeedAbove
     (doppler_speed_below,        u8, "dopplerSpeedBelow",       (Dec: u8), V0, panic!()), // byte 0 ; dopplerSpeedBelow
@@ -104,16 +109,16 @@ make_type_struct![ProjectileType(obj: ObjectType, version: ProjectileTypeVersion
     (all_aspect,                 u8, "allAspect",               (Dec: u8), V0, panic!()), // byte 30 ; allAspect
     (h0,                        u16, "h",                      (Dec: u16), V0, panic!()), // word 14560 ; h
     (p0,                        u16, "p",                      (Dec: u16), V0, panic!()), // word 14560 ; p
-    (min_range0,                u32, "minRange",               (Car: u32), V0, panic!()), // dword ^0 ; minRange
-    (max_range0,                u32, "maxRange",               (Car: u32), V0, panic!()), // dword ^60000 ; maxRange
-    (min_alt0,                  u32, "minAlt",           ([Hex,Car]: u32), V0, panic!()), // dword $80000000 ; minAlt
-    (max_alt0,                  u32, "maxAlt",           ([Hex,Car]: u32), V0, panic!()), // dword $7fffffff ; maxAlt
+    (min_range0,                u32, "minRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^0 ; minRange
+    (max_range0,                u32, "maxRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^60000 ; maxRange
+    (min_alt0,                  i32, "minAlt",                   Altitude, V0, panic!()), // dword $80000000 ; minAlt
+    (max_alt0,                  i32, "maxAlt",                   Altitude, V0, panic!()), // dword $7fffffff ; maxAlt
     (h1,                        u16, "h",                      (Dec: u16), V0, panic!()), // word 14560 ; h
     (p1,                        u16, "p",                      (Dec: u16), V0, panic!()), // word 14560 ; p
-    (min_range1,                u32, "minRange",               (Car: u32), V0, panic!()), // dword ^2000 ; minRange
-    (max_range1,                u32, "maxRange",               (Car: u32), V0, panic!()), // dword ^60000 ; maxRange
-    (min_alt1,                  u32, "minAlt",           ([Hex,Car]: u32), V0, panic!()), // dword $80000000 ; minAlt
-    (max_alt1,                  u32, "maxAlt",           ([Hex,Car]: u32), V0, panic!()), // dword $7fffffff ; maxAlt
+    (min_range1,                u32, "minRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^2000 ; minRange
+    (max_range1,                u32, "maxRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^60000 ; maxRange
+    (min_alt1,                  i32, "minAlt",                   Altitude, V0, panic!()), // dword $80000000 ; minAlt
+    (max_alt1,                  i32, "maxAlt",                   Altitude, V0, panic!()), // dword $7fffffff ; maxAlt
     (chaff_flare_chance,         u8, "chaffFlareChance",        (Dec: u8), V0, panic!()), // byte 50 ; chaffFlareChance
     (deception_chance,           u8, "deceptionChance",         (Dec: u8), V0, panic!()), // byte 50 ; deceptionChance
     (track_t,                    u8, "trackT",                  (Dec: u8), V0, panic!()), // byte 12 ; trackT
@@ -207,18 +212,13 @@ mod tests {
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
-            "FA",
-            //"ATF",
-            "ATFGOLD",
-            "ATFNATO",
-            //"USNF", "MF",
-            "USNF97",
+            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
         ])?;
         for (game, name) in omni.find_matching("*.JT")?.iter() {
             println!("{}:{} @ {}", game, name, omni.path(game, name)?);
             let contents = omni.library(game).load_text(name)?;
             let jt = ProjectileType::from_str(&contents)?;
-            assert_eq!(&jt.obj.file_name(), name);
+            assert!(jt.obj.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:08X} <> {} <> {}",
             //     game, name, jt.unk0, jt.obj.long_name, name
