@@ -25,7 +25,7 @@ extern crate peff;
 extern crate reverse;
 extern crate simplelog;
 
-use failure::Error;
+use failure::Fallible;
 use reverse::{bs2s, Color, Escape};
 use std::collections::HashSet;
 use std::{cmp, fmt, mem, str};
@@ -99,7 +99,7 @@ where
     a
 }
 
-fn read_name(n: &[u8]) -> Result<String, Error> {
+fn read_name(n: &[u8]) -> Fallible<String> {
     let end_offset: usize = n.iter()
         .position(|&c| c == 0)
         .ok_or::<ShError>(ShError::NameUnending {})?;
@@ -116,7 +116,7 @@ impl TextureRef {
     pub const MAGIC: u8 = 0xE2;
     pub const SIZE: usize = 16;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
@@ -158,7 +158,7 @@ pub enum TextureIndexKind {
 }
 
 impl TextureIndexKind {
-    fn from_u16(kind: u16) -> Result<Self, Error> {
+    fn from_u16(kind: u16) -> Fallible<Self> {
         match kind {
             0 => Ok(TextureIndexKind::TailLeft),
             1 => Ok(TextureIndexKind::TailRight),
@@ -181,7 +181,7 @@ impl TextureIndex {
     pub const MAGIC: u8 = 0xE0;
     pub const SIZE: usize = 4;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
@@ -217,7 +217,7 @@ pub struct SourceRef {
 impl SourceRef {
     pub const MAGIC: u8 = 0x42;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0x00, "unexpected non-nil in hi");
@@ -257,7 +257,7 @@ pub struct VertexBuf {
 impl VertexBuf {
     pub const MAGIC: u8 = 0x82;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
@@ -426,7 +426,7 @@ impl Facet {
     // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
     // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
      */
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
@@ -586,7 +586,7 @@ pub struct X86Trampoline {
 impl X86Trampoline {
     const SIZE: usize = 6;
 
-    fn from_pe(offset: usize, pe: &peff::PE) -> Result<Self, Error> {
+    fn from_pe(offset: usize, pe: &peff::PE) -> Fallible<Self> {
         ensure!(
             pe.code.len() >= offset + 6,
             "not enough code in X86Trampoline::from_pe"
@@ -614,7 +614,7 @@ impl X86Trampoline {
         });
     }
 
-    fn find_matching_thunk(target: u32, pe: &peff::PE) -> Result<String, Error> {
+    fn find_matching_thunk(target: u32, pe: &peff::PE) -> Fallible<String> {
         for thunk in pe.thunks.iter() {
             if target == thunk.vaddr {
                 return Ok(thunk.name.clone());
@@ -767,7 +767,7 @@ impl X86Code {
         pe: &peff::PE,
         trampolines: &Vec<X86Trampoline>,
         vinstrs: &mut Vec<Instr>,
-    ) -> Result<(), Error> {
+    ) -> Fallible<()> {
         let section = &pe.code[*offset..];
         assert_eq!(section[0], Self::MAGIC);
         assert_eq!(section[1], 0);
@@ -919,7 +919,7 @@ impl UnkCE {
     pub const MAGIC: u8 = 0xCE;
     pub const SIZE: usize = 40;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
@@ -967,7 +967,7 @@ pub struct UnkBC {
 impl UnkBC {
     pub const MAGIC: u8 = 0xBC;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
@@ -1022,7 +1022,7 @@ impl Unk40 {
     pub const MAGIC: u8 = 0x40;
 
     // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
@@ -1064,7 +1064,7 @@ impl UnkF6 {
     pub const MAGIC: u8 = 0xF6;
     pub const SIZE: usize = 7;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         return Ok(Self {
@@ -1102,7 +1102,7 @@ impl UnkJumpIfLowDetail {
     pub const MAGIC: u8 = 0x38;
     pub const SIZE: usize = 3;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[1..]) };
@@ -1160,7 +1160,7 @@ impl F2_JumpIfNotShown {
     pub const MAGIC: u8 = 0xF2;
     pub const SIZE: usize = 4;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
@@ -1226,7 +1226,7 @@ impl UnkC8_JumpOnDetailLevel {
     // 21   planes... all of them
     // distance at which it should be shown?
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
@@ -1281,11 +1281,7 @@ pub struct TrailerUnknown {
 impl TrailerUnknown {
     pub const MAGIC: u8 = 0x00;
 
-    fn from_bytes(
-        offset: usize,
-        code: &[u8],
-        trampolines: &Vec<X86Trampoline>,
-    ) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8], trampolines: &Vec<X86Trampoline>) -> Fallible<Self> {
         let data = &code[offset..code.len() - trampolines.len() * X86Trampoline::SIZE];
         return Ok(Self {
             offset,
@@ -1409,7 +1405,7 @@ pub struct Pad1E {
 impl Pad1E {
     pub const MAGIC: u8 = 0x1E;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         return Ok(Pad1E { offset });
     }
 
@@ -1442,7 +1438,7 @@ macro_rules! opaque_instr {
             pub const MAGIC: u8 = $magic;
             pub const SIZE: usize = $size;
 
-            fn from_bytes(offset: usize, code: &[u8]) -> Result<Self, Error> {
+            fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
                 let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
                 ensure!(
@@ -1662,7 +1658,7 @@ macro_rules! consume_instr {
 }
 
 impl CpuShape {
-    pub fn new(data: &[u8]) -> Result<Self, Error> {
+    pub fn from_data(data: &[u8]) -> Fallible<Self> {
         let mut pe = peff::PE::parse(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
@@ -1685,7 +1681,7 @@ impl CpuShape {
         return Ok(shape);
     }
 
-    fn find_trampolines(pe: &peff::PE) -> Result<Vec<X86Trampoline>, Error> {
+    fn find_trampolines(pe: &peff::PE) -> Fallible<Vec<X86Trampoline>> {
         let mut offset = pe.code.len() - 6;
         let mut trampolines = Vec::new();
         while offset > 0 {
@@ -1701,10 +1697,7 @@ impl CpuShape {
         return Ok(trampolines);
     }
 
-    fn _read_sections(
-        pe: &peff::PE,
-        trampolines: &Vec<X86Trampoline>,
-    ) -> Result<Vec<Instr>, Error> {
+    fn _read_sections(pe: &peff::PE, trampolines: &Vec<X86Trampoline>) -> Fallible<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
@@ -1731,7 +1724,7 @@ impl CpuShape {
         pe: &peff::PE,
         trampolines: &Vec<X86Trampoline>,
         instrs: &mut Vec<Instr>,
-    ) -> Result<(), Error> {
+    ) -> Fallible<()> {
         match pe.code[*offset] {
             Header::MAGIC => consume_instr!(Header, pe, offset, instrs),
             Unk06::MAGIC => consume_instr!(Unk06, pe, offset, instrs),
@@ -1809,7 +1802,7 @@ impl CpuShape {
 
     // Map an offset in bytes from the beginning of the virtual instruction stream
     // to an offset into the virtual instructions.
-    pub fn map_absolute_offset_to_instr_offset(&self, abs_offset: usize) -> Result<usize, Error> {
+    pub fn map_absolute_offset_to_instr_offset(&self, abs_offset: usize) -> Fallible<usize> {
         let mut cur_offset = 0;
         for (instr_offset, instr) in self.instrs.iter().enumerate() {
             if cur_offset == abs_offset {
@@ -1820,7 +1813,7 @@ impl CpuShape {
         bail!("no instruction at absolute offset: {:08X}", abs_offset);
     }
 
-    pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Result<usize, Error> {
+    pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Fallible<usize> {
         let mut b_offset = 0u32;
         for (offset, instr) in self.instrs.iter().enumerate() {
             if SHAPE_LOAD_BASE + b_offset == x86_offset {
@@ -1873,7 +1866,7 @@ mod tests {
                 let mut data = Vec::new();
                 fp.read_to_end(&mut data).unwrap();
 
-                let shape = CpuShape::new(&data).unwrap();
+                let shape = CpuShape::from_data(&data).unwrap();
             }
 
             //assert_eq!(format!("./test_data/{}", t.object.file_name), path);
@@ -1938,7 +1931,7 @@ mod tests {
         // };
         let exp_base = 0x77000000;
 
-        let shape = CpuShape::new(&data).unwrap();
+        let shape = CpuShape::from_data(&data).unwrap();
         let mut interp = i386::Interpreter::new();
         for tramp in shape.trampolines.iter() {
             if !tramp.is_data {

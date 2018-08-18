@@ -86,7 +86,7 @@ fn main() {
         fp.read_to_end(&mut data).unwrap();
         //println!("At: {}", name);
 
-        let shape = CpuShape::new(&data).unwrap();
+        let shape = CpuShape::from_data(&data).unwrap();
 
         if matches.is_present("all") {
             for (i, instr) in shape.instrs.iter().enumerate() {
