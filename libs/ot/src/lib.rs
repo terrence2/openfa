@@ -18,19 +18,18 @@ extern crate bitflags;
 extern crate failure;
 extern crate nalgebra;
 extern crate num_traits;
-extern crate sh;
+extern crate resource;
+extern crate texture;
 
 #[macro_use]
 pub mod parse;
 
 use failure::Fallible;
 use nalgebra::Point3;
-pub use parse::{
-    check_num_type, consume_obj_class, consume_ptr, parse_one, FieldType, Repr, Resource,
-    TryConvert,
-};
-//use sh::CpuShape as Shape;
-use std::{collections::HashMap, mem};
+pub use parse::{check_num_type, consume_obj_class, consume_ptr, parse_one, FieldType, Repr};
+use resource::{CpuShape, ResourceManager, Sound, HUD};
+use std::{collections::HashMap, mem, rc::Rc};
+use texture::TextureManager;
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -47,25 +46,6 @@ impl TypeTag {
             bail!("unknown TypeTag {}", n);
         }
         return Ok(unsafe { mem::transmute(n) });
-    }
-}
-
-pub struct Shape {}
-impl Resource for Shape {
-    fn from_file(_: &str) -> Fallible<Self> {
-        Ok(Shape {})
-    }
-}
-pub struct HUD {}
-impl Resource for HUD {
-    fn from_file(_: &str) -> Fallible<Self> {
-        Ok(HUD {})
-    }
-}
-pub struct Sound {}
-impl Resource for Sound {
-    fn from_file(_: &str) -> Fallible<Self> {
-        Ok(Sound {})
     }
 }
 
@@ -156,82 +136,82 @@ struct ObjectNames {
     file_name: String,
 }
 
-impl TryConvert<u8> for TypeTag {
-    type Error = failure::Error;
-    fn try_from(value: u8) -> Fallible<TypeTag> {
-        TypeTag::new(value)
-    }
-}
+// impl TryConvert<u8> for TypeTag {
+//     type Error = failure::Error;
+//     fn try_from(value: u8) -> Fallible<TypeTag> {
+//         TypeTag::new(value)
+//     }
+// }
 
-impl TryConvert<u16> for ObjectKind {
-    type Error = failure::Error;
-    fn try_from(value: u16) -> Fallible<ObjectKind> {
-        ObjectKind::new(value)
-    }
-}
+// impl TryConvert<u16> for ObjectKind {
+//     type Error = failure::Error;
+//     fn try_from(value: u16) -> Fallible<ObjectKind> {
+//         ObjectKind::new(value)
+//     }
+// }
 
-impl<'a> TryConvert<Vec<String>> for ObjectNames {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<ObjectNames> {
-        ensure!(value.len() == 3, "expected 3 names in ot_names");
-        return Ok(ObjectNames {
-            short_name: parse::string(&value[0])?,
-            long_name: parse::string(&value[1])?,
-            file_name: parse::string(&value[2])?,
-        });
-    }
-}
+// impl<'a> TryConvert<Vec<String>> for ObjectNames {
+//     type Error = failure::Error;
+//     fn try_from(value: Vec<String>) -> Fallible<ObjectNames> {
+//         ensure!(value.len() == 3, "expected 3 names in ot_names");
+//         return Ok(ObjectNames {
+//             short_name: parse::string(&value[0])?,
+//             long_name: parse::string(&value[1])?,
+//             file_name: parse::string(&value[2])?,
+//         });
+//     }
+// }
 
-impl<'a> TryConvert<Vec<String>> for Option<Shape> {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<Option<Shape>> {
-        ensure!(value.len() <= 1, "expected 0 or 1 names in shape");
-        if value.len() > 0 {
-            return Ok(Some(Shape::from_file(&value[0])?));
-        }
-        return Ok(None);
-    }
-}
+// impl<'a> TryConvert<Vec<String>> for Option<Shape> {
+//     type Error = failure::Error;
+//     fn try_from(value: Vec<String>) -> Fallible<Option<Shape>> {
+//         ensure!(value.len() <= 1, "expected 0 or 1 names in shape");
+//         if value.len() > 0 {
+//             return Ok(Some(Shape::from_file(&value[0])?));
+//         }
+//         return Ok(None);
+//     }
+// }
 
-impl<'a> TryConvert<Vec<String>> for Option<Sound> {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<Option<Sound>> {
-        ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
-        if value.len() > 0 {
-            return Ok(Some(Sound::from_file(&value[0])?));
-        }
-        return Ok(None);
-    }
-}
+// impl<'a> TryConvert<Vec<String>> for Option<Sound> {
+//     type Error = failure::Error;
+//     fn try_from(value: Vec<String>) -> Fallible<Option<Sound>> {
+//         ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
+//         if value.len() > 0 {
+//             return Ok(Some(Sound::from_file(&value[0])?));
+//         }
+//         return Ok(None);
+//     }
+// }
 
-impl<'a> TryConvert<Vec<String>> for Option<HUD> {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<Option<HUD>> {
-        ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
-        if value.len() > 0 {
-            return Ok(Some(HUD::from_file(&value[0])?));
-        }
-        return Ok(None);
-    }
-}
+// impl<'a> TryConvert<Vec<String>> for Option<HUD> {
+//     type Error = failure::Error;
+//     fn try_from(value: Vec<String>) -> Fallible<Option<HUD>> {
+//         ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
+//         if value.len() > 0 {
+//             return Ok(Some(HUD::from_file(&value[0])?));
+//         }
+//         return Ok(None);
+//     }
+// }
 
-impl TryConvert<[i16; 3]> for Point3<f32> {
-    type Error = failure::Error;
-    fn try_from(value: [i16; 3]) -> Fallible<Point3<f32>> {
-        return Ok(Point3::new(
-            value[0] as f32,
-            value[1] as f32,
-            value[2] as f32,
-        ));
-    }
-}
+// impl TryConvert<[i16; 3]> for Point3<f32> {
+//     type Error = failure::Error;
+//     fn try_from(value: [i16; 3]) -> Fallible<Point3<f32>> {
+//         return Ok(Point3::new(
+//             value[0] as f32,
+//             value[1] as f32,
+//             value[2] as f32,
+//         ));
+//     }
+// }
 
-impl<'a> TryConvert<&'a str> for ProcKind {
-    type Error = failure::Error;
-    fn try_from(value: &'a str) -> Fallible<ProcKind> {
-        return ProcKind::new(value);
-    }
-}
+// impl<'a> TryConvert<&'a str> for ProcKind {
+//     type Error = failure::Error;
+//     fn try_from(value: &'a str) -> Fallible<ProcKind> {
+//         return ProcKind::new(value);
+//     }
+// }
 
 // We can detect the version by the number of lines.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -256,73 +236,77 @@ impl ObjectTypeVersion {
 
 make_type_struct![
 ObjectType(parent: (), version: ObjectTypeVersion) {
-    (struct_type,           TypeTag, "structType",           (Dec: u8), V0, panic!()),
-    (type_size,               usize, "typeSize",            (Dec: u16), V0, panic!()),
-    (instance_size,           usize, "instanceSize",        (Dec: u16), V0, panic!()),
-    (ot_names,          ObjectNames, "ot_names",                   Ptr, V0, panic!()),
-    (flags,                     u32, "flags",          ([Dec,Hex]:u32), V0, panic!()),
-    (obj_class,          ObjectKind, "obj_class",             ObjClass, V0, panic!()),
-    (shape,           Option<Shape>, "shape",                      Ptr, V0, panic!()),
-    (shadow_shape,    Option<Shape>, "shadowShape",                Ptr, V0, panic!()),
-    (unk8,                      u32, "",                    (Dec: u32), V2, 0),
-    (unk9,                      u32, "",                    (Dec: u32), V2, 0),
-    (dmg_debris_pos,    Point3<f32>, "dmgDebrisPos.",      [Vec3: i16], V2, Point3::new(0f32, 0f32, 0f32)),
-    (unk13,                     u32, "",                    (Dec: u32), V2, 0),
-    (unk14,                     u32, "",                    (Dec: u32), V2, 0),
-    (dst_debris_pos,    Point3<f32>, "dstDebrisPos.",      [Vec3: i16], V2, Point3::new(0f32, 0f32, 0f32)),
-    (dmg_type,                usize, "dmgType",             (Dec: u32), V2, 0),
-    (year_available,          usize, "year",                (Dec: u32), V3, usize::max_value()),
-    (max_vis_dist,              f32, "maxVisDist",          (Dec: u16), V0, panic!()),
-    (camera_dist,               f32, "cameraDist",          (Dec: u16), V0, panic!()),
-    (unk_sig_22,                u16, "sigs [i]",            (Dec: u16), V0, panic!()),
-    (unk_sig_laser,             u16, "sigs [i]",            (Dec: u16), V0, panic!()),
-    (unk_sig_ir,                u16, "sigs [i]",            (Dec: u16), V0, panic!()),
-    (unk_sig_radar,             u16, "sigs [i]",            (Dec: u16), V0, panic!()),
-    (unk_sig_26,                u16, "sigs [i]",            (Dec: u16), V0, panic!()),
-    (hit_points,                u16, "hitPoints",           (Dec: u16), V0, panic!()),
-    (damage_on_planes,          u16, "damage [i]",          (Dec: u16), V0, panic!()),
-    (damage_on_ships,           u16, "damage [i]",          (Dec: u16), V0, panic!()),
-    (damage_on_structures,      u16, "damage [i]",          (Dec: u16), V0, panic!()),
-    (damage_on_armor,           u16, "damage [i]",          (Dec: u16), V0, panic!()),
-    (damage_on_other,           u16, "damage [i]",          (Dec: u16), V0, panic!()),
-    (explosion_type,             u8, "expType",             (Dec:  u8), V0, panic!()),
-    (crater_size,/*ft?*/         u8, "craterSize",          (Dec:  u8), V0, panic!()),
-    (empty_weight,              u32, "weight",              (Dec: u32), V0, panic!()),
-    (cmd_buf_size,              u16, "cmdBufSize",          (Dec: u16), V0, panic!()),
+    (struct_type,           TypeTag, "structType",          [Dec/u8 ], V0, panic!()), // byte 1 ; structType
+    (type_size,               usize, "typeSize",            [Dec/u16], V0, panic!()), // word 166 ; typeSize
+    (instance_size,           usize, "instanceSize",        [Dec/u16], V0, panic!()), // word 0 ; instanceSize
+    (ot_names,          ObjectNames, "ot_names",                  Ptr, V0, panic!()), // ptr ot_names
+    (flags,                     u32, "flags",       [Dec/u32,Hex/u32], V0, panic!()), // dword $20c21 ; flags
+    (obj_class,          ObjectKind, "obj_class",           [Hex/u16], V0, panic!()), // word $40 ; obj_class
+    (shape,                CpuShape, "shape",                     Ptr, V0, panic!()), // ptr shape
+    (shadow_shape,         CpuShape, "shadowShape",               Ptr, V0, panic!()), // dword 0
+    (unk8,                      u32, "",                    [Dec/u32], V2, 0), // dword 0
+    (unk9,                      u32, "",                    [Dec/u32], V2, 0), // dword 0
+    (dmg_debris_pos,    Point3<f32>, "dmgDebrisPos.",      [Vec3|i16], V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dmgDebrisPos.x
+    (unk13,                     u32, "",                    (Dec/u32], V2, 0), // dword 0
+    (unk14,                     u32, "",                    (Dec/u32], V2, 0), // dword 0
+    (dst_debris_pos,    Point3<f32>, "dstDebrisPos.",      [Vec3|i16], V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dstDebrisPos.x
+    (dmg_type,                usize, "dmgType",             [Dec/u32], V2, 0), // dword 0 ; dmgType
+    (year_available,          usize, "year",                [Dec/u32], V3, usize::max_value()), // dword 1956 ; year
+    (max_vis_dist,              f32, "maxVisDist",          [Dec/u16], V0, panic!()), // word 98 ; maxVisDist
+    (camera_dist,               f32, "cameraDist",          [Dec/u16], V0, panic!()), // word 0 ; cameraDist
+    (unk_sig_22,                u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
+    (unk_sig_laser,             u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
+    (unk_sig_ir,                u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
+    (unk_sig_radar,             u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
+    (unk_sig_26,                u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 0 ; sigs [i]
+    (hit_points,                u16, "hitPoints",           [Dec/u16], V0, panic!()), // word 50 ; hitPoints
+    (damage_on_planes,          u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
+    (damage_on_ships,           u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
+    (damage_on_structures,      u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
+    (damage_on_armor,           u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
+    (damage_on_other,           u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
+    (explosion_type,             u8, "expType",             [Dec/u8 ], V0, panic!()), // byte 15 ; expType
+    (crater_size,/*ft?*/         u8, "craterSize",          [Dec/u8 ], V0, panic!()), // byte 0 ; craterSize
+    (empty_weight,              u32, "weight",              [Dec/u32], V0, panic!()), // dword 0 ; weight
+    (cmd_buf_size,              u16, "cmdBufSize",          [Dec/u16], V0, panic!()), // word 0 ; cmdBufSize
     // // Movement Info
-    (turn_rate,                 u16, "_turnRate",           (Dec: u16), V0, panic!()),
-    (bank_rate,                 u16, "_bankRate",           (Dec: u16), V0, panic!()), // degrees per second / 182?
-    (max_climb,                 i16, "maxClimb",            (Dec: i16), V0, panic!()),
-    (max_dive,                  i16, "maxDive",             (Dec: i16), V0, panic!()),
-    (max_bank,                  i16, "maxBank",             (Dec: i16), V0, panic!()),
-    (min_speed,                 u16, "_minSpeed",           (Dec: u16), V0, panic!()),
-    (corner_speed,              u16, "_cornerSpeed",        (Dec: u16), V0, panic!()),
-    (max_speed,                 u16, "_maxSpeed",           (Dec: u16), V0, panic!()),
-    (acceleration,              u32, "_acc",           ([Dec,Car]:u32), V0, panic!()),
-    (deceleration,              u32, "_dacc",          ([Dec,Car]:u32), V0, panic!()),
-    (min_altitude,              i32, "minAlt",                Altitude, V0, panic!()), // in feet?
-    (max_altitude,              i32, "maxAlt",                Altitude, V0, panic!()),
-    (util_proc,            ProcKind, "utilProc",                Symbol, V0, panic!()),
+    (turn_rate,                 u16, "_turnRate",           [Dec/u16], V0, panic!()), // word 0 ; _turnRate
+    (bank_rate,                 u16, "_bankRate",           [Dec/u16], V0, panic!()), // degrees per second / 182? // word 0 ; _bankRate
+    (max_climb,                 i16, "maxClimb",            [Dec/i16], V0, panic!()), // word 0 ; maxClimb
+    (max_dive,                  i16, "maxDive",             [Dec/i16], V0, panic!()), // word 0 ; maxDive
+    (max_bank,                  i16, "maxBank",             [Dec/i16], V0, panic!()), // word 0 ; maxBank
+    (min_speed,                 u16, "_minSpeed",           [Dec/u16], V0, panic!()), // word 0 ; _minSpeed
+    (corner_speed,              u16, "_cornerSpeed",        [Dec/u16], V0, panic!()), // word 0 ; _cornerSpeed
+    (max_speed,                 u16, "_maxSpeed",           [Dec/u16], V0, panic!()), // word 0 ; _maxSpeed
+    (acceleration,              u32, "_acc",        [Dec/u32,Car/u32], V0, panic!()), // dword ^0 ; _acc
+    (deceleration,              u32, "_dacc",       [Dec/u32,Car/u32], V0, panic!()), // dword ^0 ; _dacc
+    (min_altitude,              i32, "minAlt",                [*/u32], V0, panic!()), // in feet? // dword ^0 ; minAlt
+    (max_altitude,              i32, "maxAlt",              [Dec/u32], V0, panic!()), // dword ^0 ; maxAlt
+    (util_proc,            ProcKind, "utilProc",               Symbol, V0, panic!()), // symbol _OBJProc	; utilProc
     // Sound Info
-    (loop_sound,      Option<Sound>, "loopSound",                  Ptr, V0, panic!()),
-    (second_sound,    Option<Sound>, "secondSound",                Ptr, V0, panic!()),
-    (engine_on_sound, Option<Sound>, "engineOnSound",              Ptr, V1, None), // TODO: figure out what the default was in USNF.
-    (engine_off_sound,Option<Sound>, "engineOffSound",             Ptr, V1, None),
-    (do_doppler,               bool, "doDoppler",           (Dec:  u8), V0, panic!()),
-    (max_snd_dist,              u16, "maxSndDist",          (Dec: u16), V0, panic!()), // in feet?
-    (max_plus_doppler_pitch,    i16, "maxPlusDopplerPitch", (Dec: i16), V0, panic!()),
-    (max_minus_doppler_pitch,   i16, "maxMinusDopplerPitch",(Dec: i16), V0, panic!()),
-    (min_doppler_speed,         i16, "minDopplerSpeed",     (Dec: i16), V0, panic!()),
-    (max_doppler_speed,         i16, "maxDopplerSpeed",     (Dec: i16), V0, panic!()),
-    (unk_rear_view_pos, Point3<f32>, "viewOffset.",         [Vec3:i16], V0, panic!()),
+    (loop_sound,      Option<Sound>, "loopSound",                 Ptr, V0, panic!()), // dword 0
+    (second_sound,    Option<Sound>, "secondSound",               Ptr, V0, panic!()), // dword 0
+    (engine_on_sound, Option<Sound>, "engineOnSound",             Ptr, V1, None), // TODO: figure out what the default was in USNF. // dword 0
+    (engine_off_sound,Option<Sound>, "engineOffSound",            Ptr, V1, None), // dword 0
+    (do_doppler,               bool, "doDoppler",           [Dec/u8 ], V0, panic!()), // byte 1 ; doDoppler
+    (max_snd_dist,              u16, "maxSndDist",          [Dec/u16], V0, panic!()), // in feet? // word 7000 ; maxSndDist
+    (max_plus_doppler_pitch,    i16, "maxPlusDopplerPitch", [Dec/i16], V0, panic!()), // word 25 ; maxPlusDopplerPitch
+    (max_minus_doppler_pitch,   i16, "maxMinusDopplerPitch",[Dec/i16], V0, panic!()), // word 20 ; maxMinusDopplerPitch
+    (min_doppler_speed,         i16, "minDopplerSpeed",     [Dec/i16], V0, panic!()), // word 20 ; minDopplerSpeed
+    (max_doppler_speed,         i16, "maxDopplerSpeed",     [Dec/i16], V0, panic!()), // word 1000 ; maxDopplerSpeed
+    (unk_rear_view_pos, Point3<f32>, "viewOffset.",        [Vec3|i16], V0, panic!()), // word 0 ; viewOffset.x
     // FIXME: looks like we need to specialize the hud source somehow... it is
     // not set in the older games for some of the main planes; it's probably
     // assuming the $name.HUD.
-    (hud,               Option<HUD>,             "hudName", Ptr,        V2, None)
+    (hud,               Option<HUD>,             "hudName", Ptr,        V2, None) // dword 0
 }];
 
 impl ObjectType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_str(
+        data: &str,
+        resman: &ResourceManager,
+        texman: &TextureManager,
+    ) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -330,19 +314,19 @@ impl ObjectType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        return Self::from_lines((), &obj_lines, &pointers);
+        return Self::from_lines((), &obj_lines, &pointers, resman, texman);
     }
 
-    fn load_shape(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Option<Shape>> {
-        let filename = parse::maybe_resource_filename(line, pointers)?;
-        return Ok(match filename {
-            None => None,
-            Some(f) => {
-                let resource = Shape::from_file(&f)?;
-                Some(resource)
-            }
-        });
-    }
+    // fn load_shape(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Option<Shape>> {
+    //     let filename = parse::maybe_resource_filename(line, pointers)?;
+    //     return Ok(match filename {
+    //         None => None,
+    //         Some(f) => {
+    //             let resource = CpuShape::from_file(&f)?;
+    //             Some(resource)
+    //         }
+    //     });
+    // }
 
     pub fn file_name(&self) -> &str {
         return &self.ot_names.file_name;
@@ -364,8 +348,11 @@ mod tests {
         ])?;
         for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
             println!("At: {}:{:13} @ {}", game, name, omni.path(game, name)?);
-            let contents = omni.library(game).load_text(name)?;
-            let ot = ObjectType::from_str(&contents)?;
+            let lib = omni.library(game);
+            let texman = TextureManager::new(lib)?;
+            let resman = ResourceManager::new_headless(lib)?;
+            let contents = lib.load_text(name)?;
+            let ot = ObjectType::from_str(&contents, &resman, &texman)?;
             // Only one misspelling in 2.5e3 files.
             assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(

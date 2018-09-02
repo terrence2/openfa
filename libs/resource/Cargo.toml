@@ -1,0 +1,14 @@
+[package]
+name = "resource"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+failure = ">= 0.1.2"
+lib = { path = "../lib" }
+#bi = { path = "../bi" }
+#hud = { path = "../hud" }
+#pcm = { path = "../pcm" }
+sh = { path = "../sh" }
+t2 = { path = "../t2" }
+lay = { path = "../lay" }

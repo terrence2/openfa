@@ -14,17 +14,41 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #[macro_use]
 extern crate failure;
+#[macro_use]
 extern crate ot;
 
 use failure::Fallible;
-use ot::{parse, ObjectType, Resource};
+use ot::{parse, parse::TryConvert, ObjectType, Resource};
 use std::collections::HashMap;
+
+// We can detect the version by the number of lines.
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+enum NpcTypeVersion {
+    V0,
+}
+
+impl NpcTypeVersion {
+    fn from_len(_: usize) -> Fallible<Self> {
+        Ok(NpcTypeVersion::V0)
+    }
+}
 
 // placeholder
 struct AI(String);
 impl Resource for AI {
     fn from_file(filename: &str) -> Fallible<Self> {
         return Ok(AI(filename.to_owned()));
+    }
+}
+
+impl<'a> TryConvert<Vec<String>> for AI {
+    type Error = failure::Error;
+    fn try_from(value: Vec<String>) -> Fallible<AI> {
+        ensure!(value.len() <= 1, "expected 0 or 1 names in ai");
+        if value.len() > 0 {
+            return Ok(AI::from_file(&value[0])?);
+        }
+        bail!("not an ai file")
     }
 }
 
@@ -97,7 +121,7 @@ pub struct Hardpoint {
 }
 
 impl Hardpoint {
-    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+    pub fn from_lines(lines: &[&str] /*, pointers: &HashMap<&str, Vec<&str>>*/) -> Fallible<Self> {
         return Ok(Hardpoint {
             unk_flags: parse::word(lines[0])?,
             unk1: parse::word(lines[1])?,
@@ -107,7 +131,8 @@ impl Hardpoint {
             unk5: parse::word(lines[5])?,
             unk6: parse::word(lines[6])?,
             unk7: parse::word(lines[7])?,
-            default_loadout: parse::maybe_load_resource(lines[8], pointers)?,
+            //default_loadout: parse::maybe_load_resource(lines[8], pointers)?,
+            default_loadout: None,
             unk9: parse::byte(lines[9])?,
             unk10: parse::word(lines[10])?,
             unk11: parse::byte(lines[11])?,
@@ -115,19 +140,41 @@ impl Hardpoint {
     }
 }
 
-#[allow(dead_code)]
-pub struct NpcType {
-    pub obj: ObjectType,
+// Wrap Vec<HP> so that we can impl TryConvert.
+struct HardpointWrapper(Vec<Hardpoint>);
 
-    unk0: u32,
-    behavior: Option<AI>,
-    unk_search_frequency_time: u8,
-    unk_unready_attack_time: u8,
-    unk_attack_time: u8,
-    unk_retarget_time: i16,
-    unk_zone_distance: i16,
-    hardpoints: Vec<Hardpoint>,
+impl<'a> TryConvert<Vec<String>> for HardpointWrapper {
+    type Error = failure::Error;
+    fn try_from(value: Vec<String>) -> Fallible<HardpointWrapper> {
+        Ok(HardpointWrapper(Hardpoint::from_lines(value)?))
+    }
 }
+
+make_type_struct![NpcType(obj: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
+    (flags,            u32, "flags",          (Hex: u32), V0, panic!()), // dword $0 ; flags
+    (ct_name,           AI, "",                      Ptr, V0, panic!()), // ptr ctName
+    (search_frequency_t,u8, "searchFrequencyT",(Dec: u8), V0, panic!()), // byte 40 ; searchFrequencyT
+    (unready_attack_t,  u8, "unreadyAttackT",  (Dec: u8), V0, panic!()), // byte 100 ; unreadyAttackT
+    (attack_t,          u8, "attackT",         (Dec: u8), V0, panic!()), // byte 80 ; attackT
+    (retarget_t,       u16, "retargetT",      (Dec: u16), V0, panic!()), // word 32767 ; retargetT
+    (zone_dist,        u16, "zoneDist",       (Dec: u16), V0, panic!()), // word 0 ; zoneDist
+    (num_hards,         u8, "numHards",        (Dec: u8), V0, panic!()), // byte 3 ; numHards
+	(hards, Vec<Hardpoint>, "",    Ptr(HardpointWrapper), V0, panic!())  // ptr hards
+}];
+
+// #[allow(dead_code)]
+// pub struct NpcType {
+//     pub obj: ObjectType,
+
+//     unk0: u32,
+//     behavior: Option<AI>,
+//     unk_search_frequency_time: u8,
+//     unk_unready_attack_time: u8,
+//     unk_attack_time: u8,
+//     unk_retarget_time: i16,
+//     unk_zone_distance: i16,
+//     hardpoints: Vec<Hardpoint>,
+// }
 
 impl NpcType {
     pub fn from_str(data: &str) -> Fallible<Self> {
@@ -137,36 +184,40 @@ impl NpcType {
             "not a type file"
         );
         let pointers = parse::find_pointers(&lines)?;
-        return Self::from_lines(&lines, &pointers);
+        let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
+        let npc_lines = parse::find_section(&lines, "NPC_TYPE")?;
+        return Self::from_lines(obj, &npc_lines, &pointers);
     }
 
-    pub fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
-        let obj = ObjectType::from_lines(lines, pointers)?;
-        let lines = parse::find_section(&lines, "NPC_TYPE")?;
+    // pub fn from_lines(
+    //     obj: ObjectType,
+    //     lines: &Vec<&str>,
+    //     pointers: &HashMap<&str, Vec<&str>>,
+    // ) -> Fallible<Self> {
+    //     let hardpoint_count = parse::byte(lines[7])? as usize;
+    //     let hardpoint_lines = parse::follow_pointer(lines[8], pointers)?;
+    //     let mut hardpoints = Vec::new();
+    //     for chunk in hardpoint_lines.chunks(12) {
+    //         hardpoints.push(Hardpoint::from_lines(chunk, pointers)?);
+    //     }
+    //     ensure!(
+    //         hardpoint_count == hardpoints.len(),
+    //         "wrong number of hardpoints"
+    //     );
 
-        let hardpoint_count = parse::byte(lines[7])? as usize;
-        let hardpoint_lines = parse::follow_pointer(lines[8], pointers)?;
-        let mut hardpoints = Vec::new();
-        for chunk in hardpoint_lines.chunks(12) {
-            hardpoints.push(Hardpoint::from_lines(chunk, pointers)?);
-        }
-        ensure!(
-            hardpoint_count == hardpoints.len(),
-            "wrong number of hardpoints"
-        );
-
-        return Ok(NpcType {
-            obj,
-            unk0: parse::dword(lines[0])?,
-            behavior: parse::maybe_load_resource(lines[1], pointers)?,
-            unk_search_frequency_time: parse::byte(lines[2])?,
-            unk_unready_attack_time: parse::byte(lines[3])?,
-            unk_attack_time: parse::byte(lines[4])?,
-            unk_retarget_time: parse::word(lines[5])?,
-            unk_zone_distance: parse::word(lines[6])?,
-            hardpoints,
-        });
-    }
+    //     return Ok(NpcType {
+    //         obj,
+    //         unk0: parse::dword(lines[0])?,
+    //         behavior: parse::maybe_load_resource(lines[1], pointers)?,
+    //         unk_search_frequency_time: parse::byte(lines[2])?,
+    //         unk_unready_attack_time: parse::byte(lines[3])?,
+    //         unk_attack_time: parse::byte(lines[4])?,
+    //         unk_retarget_time: parse::word(lines[5])?,
+    //         unk_zone_distance: parse::word(lines[6])?,
+    //         hardpoints,
+    //     });
+    // }
 }
 
 pub struct HardPoint {}

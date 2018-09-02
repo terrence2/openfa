@@ -18,9 +18,7 @@ extern crate failure;
 extern crate ot;
 
 use failure::Fallible;
-use ot::{
-    parse, parse::{check_num_type, consume_ptr, parse_one, Repr, TryConvert}, ObjectType, Resource,
-};
+use ot::{parse, parse::TryConvert, ObjectType, Resource};
 use std::collections::HashMap;
 
 // placeholder
