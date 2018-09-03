@@ -30,4 +30,5 @@ mod backend;
 mod gpu;
 mod window;
 
+pub use gpu::Gpu;
 pub use window::Window;

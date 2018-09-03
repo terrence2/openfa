@@ -13,28 +13,77 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate failure;
+extern crate gfx;
+extern crate gfx_hal;
+extern crate image;
 extern crate lib;
+extern crate pal;
 extern crate pic;
 
 use failure::Fallible;
+use gfx::Gpu;
+use gfx_hal::image as img;
 use lib::LibStack;
+use pal::Palette;
+use pic::decode_pic;
 
 pub struct TextureManager<'a> {
+    base_palette: Palette,
+    gpu: &'a Gpu,
     library: &'a LibStack,
 }
 
 impl<'a> TextureManager<'a> {
-    pub fn new(library: &'a LibStack) -> Fallible<Self> {
-        return Ok(TextureManager { library });
+    pub fn new(library: &'a LibStack, gpu: &'a Gpu) -> Fallible<Self> {
+        let bytes = library.load("PALETTE.PAL")?;
+        let base_palette = Palette::from_bytes(&bytes)?;
+        return Ok(TextureManager {
+            base_palette,
+            gpu,
+            library,
+        });
+    }
+
+    pub fn load_texture(&self, name: &str) -> Fallible<()> {
+        let bytes = self.library.load(name)?;
+        let img = decode_pic(&self.base_palette, &bytes)?.to_rgba();
+
+        let (width, height) = img.dimensions();
+        let kind = img::Kind::D2(width as img::Size, height as img::Size, 1, 1);
+        let row_alignment_mask = self.gpu.limits().min_buffer_copy_pitch_alignment as u32 - 1;
+        let image_stride = 4u32;
+        let row_pitch = (width * image_stride + row_alignment_mask) & !row_alignment_mask;
+        let upload_size = (height * row_pitch) as u64;
+
+        let buf = self.gpu.create_upload_buffer(upload_size)?;
+        self.gpu.with_mapped_upload_buffer(&buf, |data| {
+            for y in 0..height as usize {
+                let from_off = y * (width as usize) * (image_stride as usize);
+                let to_off = (y + 1) * (width as usize) * (image_stride as usize);
+                let row = &(*img)[from_off..to_off];
+                let dest_base = y * (row_pitch as usize);
+                data[dest_base..dest_base + row.len()].copy_from_slice(row);
+            }
+        })?;
+
+        return Ok(());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
-    fn it_works() {
-        let _ = TextureManager::new();
+    fn it_works() -> Fallible<()> {
+        let mut win = gfx::Window::new(800, 600, "test-texture")?;
+        win.select_any_adapter()?;
+        let lib = lib::LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
+        let texman = TextureManager::new(&lib, win.gpu()?)?;
+
+        let _foo = texman.load_texture("FLARE.PIC")?;
+
+        return Ok(());
     }
 }
