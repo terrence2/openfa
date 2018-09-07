@@ -45,94 +45,142 @@ impl FieldType {
     }
 }
 
-pub enum FieldValue {
+#[derive(Clone, Copy, Debug)]
+pub enum FieldNumber {
     Byte(u8),
     Word(u16),
     DWord(u32),
-    Ptr(Vec<String>),
-    Symbol(String),
 }
 
-impl FieldValue {
-    fn from_line(
-        line: &str,
-        section_name: &str,
-        field_name: &str,
-        offset: usize,
-        pointers: HashMap<&str, Option<Vec<&str>>>,
-        expect_repr: &Vec<(Repr, FieldType)>,
-        expect_comment: &str,
-    ) -> Fallible<Self> {
-        let mut a = line.splitn(2, ';');
-        let mut b = a.next()
-            .ok_or_else(|| {
-                err_msg(format!(
-                    "empty line at {}; offset {} in section {}",
-                    field_name, offset, section_name
-                ))
-            })?
-            .splitn(2, ' ');
-        let kind = FieldType::from_str(
-            b.next()
-                .ok_or_else(|| {
-                    err_msg(format!(
-                        "missing or incorrect field kind at {}; offset {} in section {}",
-                        field_name, offset, section_name
-                    ))
-                })?
-                .trim(),
-        )?;
-        let vs = b.next().ok_or_else(|| err_msg("no value"))?.trim();
-        let maybe_comment = a.next().map(|s| s.trim());
-
-        let v = if kind.is_numeric() {
-            let (repr, v32) = Self::parse_numeric(vs)?;
-            ensure!(expect_repr.contains((repr, kind)), "number for field {} at offset {} in {} section has kind {:?}, which is not in {:?}", field_name, offset, section_name, (repr, kind), expect_repr);
-            match kind {
-                FieldType::Byte => FieldValue::Byte(v32 as u8),
-                FieldType::Word => FieldValue::Word(v32 as u16),
-                FieldType::DWord => FieldValue::Word(v32),
-                _ => unreachable!(),
-            }
-        } else {
-            match kind {
-                FieldType::Symbol => FieldValue::Symbol(vs.to_owned()),
-                FieldType::Ptr => {
-                    let tblref = pointers.get(vs).ok_or_else(|| {
-                        err_msg(format!("pointer {} in field {} at offset {} in {} section is not in pointer in pointers", vs, field_name, offset, section_name))
-                    })?;
-                    let copy = tblref
-                        .iter()
-                        .map(|&s| s.to_owned())
-                        .collect::<Vec<String>>();
-                    FieldValue::Ptr(copy)
-                }
-                _ => unreachable!(),
-            }
+impl FieldNumber {
+    fn from_kind_and_str(kind: &FieldType, s: &str) -> Fallible<(Repr, Self)> {
+        let (repr, v32) = Self::parse_numeric(s)?;
+        let num = match kind {
+            FieldType::Byte => FieldNumber::Byte(v32 as u8),
+            FieldType::Word => FieldNumber::Word(v32 as u16),
+            FieldType::DWord => FieldNumber::DWord(v32 as u32),
+            _ => bail!("not a number"),
         };
-        return Ok(v);
+        return Ok((repr, num));
     }
 
-    fn parse_numeric(vs: &str) -> Fallible<u32> {
-        if vs.starts_with('$') {
+    // Note: some instances are marked as one size, but represented as 32 bits
+    // anyway. The assumption appears to be that truncation will happen. At
+    // least one of these instances implies sign extension as well.
+    fn parse_numeric(vs: &str) -> Fallible<(Repr, u32)> {
+        println!("parsing: {}", vs);
+        let tpl = if vs.starts_with('$') {
             (Repr::Hex, u32::from_str_radix(&vs[1..], 16)?)
         } else if vs.starts_with('^') {
             (Repr::Car, vs[1..].parse::<u32>()? * 256)
         } else {
-            (Repr::Dec, vs[1..].parse::<u32>()?)
+            (Repr::Dec, vs.parse::<i32>()? as u32)
+        };
+        return Ok(tpl);
+    }
+
+    pub fn byte(&self) -> Fallible<u8> {
+        match self {
+            FieldNumber::Byte(b) => Ok(*b),
+            _ => bail!("not a byte")
+        }
+    }
+
+    pub fn word(&self) -> Fallible<u16> {
+        match self {
+            FieldNumber::Word(w) => Ok(*w),
+            _ => bail!("not a word")
+        }
+    }
+
+    pub fn dword(&self) -> Fallible<u32> {
+        match self {
+            FieldNumber::DWord(dw) => Ok(*dw),
+            _ => bail!("not a dword")
         }
     }
 }
 
-pub fn tokenize_lines<'a>(
-    lines: &'a Vec<&'a str>,
-    pointers: &HashMap<&str, Vec<&str>>,
-) -> Fallible<Vec<TokenRow<'a>>> {
-    let mut out = Vec::new();
-    for line in lines.iter() {
-        out.push(TokenRow::partition_line(line)?);
+#[derive(Debug)]
+pub enum FieldValue {
+    Numeric((Repr, FieldNumber)),
+    Ptr(String, Vec<String>),
+    Symbol(String),
+}
+
+impl FieldValue {
+    fn from_kind_and_str(kind: &FieldType, s: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+        let value = match kind {
+            FieldType::Byte => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
+            FieldType::Word => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
+            FieldType::DWord => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
+            FieldType::Ptr => {
+                let values = pointers[s].iter().map(|&v| v.to_owned()).collect::<Vec<String>>();
+                FieldValue::Ptr(s.to_owned(), values) 
+            }
+            FieldType::Symbol => FieldValue::Symbol(s.to_owned()),
+        };
+        return Ok(value);
     }
-    return Ok(out);
+
+    pub fn numeric(&self) -> Fallible<FieldNumber> {
+        match self {
+            FieldValue::Numeric((_, num)) => Ok(*num),
+            _ => bail!("not a number")
+        }
+    }
+
+    pub fn pointer(&self) -> Fallible<(String, Vec<String>)> {
+        match self {
+            FieldValue::Ptr(s, v) => Ok((s.clone(), v.clone())),
+            _ => bail!("not a pointer")
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FieldRow {
+    kind: FieldType,
+    value: FieldValue,
+    comment: Option<String>
+}
+
+impl FieldRow {
+    pub fn from_line(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+        let mut a = line.splitn(2, ';');
+        let mut b = a.next()
+            .ok_or_else(|| err_msg("empty line"))?
+            .splitn(2, ' ');
+        let comment = a.next().map(|s| s.to_owned());
+        let kind = FieldType::from_str(
+            b.next()
+                .ok_or_else(|| err_msg("missing or incorrect field kind"))?
+                .trim(),
+        )?;
+        let value = FieldValue::from_kind_and_str(
+            &kind,
+            b.next()
+                .ok_or_else(|| err_msg("missing or incorrect field value"))?
+                .trim(),
+            pointers,
+        )?;
+        return Ok(FieldRow {
+            kind,
+            value,
+            comment
+        });
+    }
+
+    pub fn value(&self) -> &FieldValue {
+        &self.value
+    }
+
+    pub fn comment(&self) -> Option<&str> {
+        if let Some(ref c) = self.comment {
+            return Some(c as &str);
+        }
+        return None;
+    }
 }
 
 pub fn find_pointers<'a>(lines: &Vec<&'a str>) -> Fallible<HashMap<&'a str, Vec<&'a str>>> {
@@ -279,6 +327,7 @@ where
 //     }
 // }
 
+#[derive(Debug)]
 pub enum Repr {
     Dec,
     Hex,
@@ -512,64 +561,133 @@ pub enum Repr {
 //     }};
 // }
 
-#[macro_export]
-macro_rules! make_convert_type {
-    (($repr:ident : $parse_ty:ty), $field_type:path, $value:expr) => {{
-        let intermediate: $field_type = $value as $field_type;
-        intermediate
-    }};
-    // ($value:expr,([$repr1:ident, $repr2:ident]: $parse_ty:ty), $field_type:path) => {{
-    //     let intermediate: $field_type = $value as $field_type;
-    //     intermediate
-    // }};
-    // ($value:expr,[Vec3: $parse_ty:path], $field_type:path) => {{
-    //     let intermediate: $field_type = $value as $field_type;
-    //     intermediate
-    // }};
-    // ($value:expr,Ptr, $field_type:path) => {{
-    //     let intermediate: $field_type = $value.load_into();
-    //     intermediate
-    // }};
-    // ($value:expr,Altitude, $field_type:path) => {{
-    //     let intermediate: $field_type = $value as $field_type;
-    //     intermediate
-    // }};
-    // ($value:expr,Symbol, $field_type:path) => {{
-    //     let intermediate: $field_type = $value as $field_type;
-    //     intermediate
-    // }};
-    // ($value:expr,ObjClass, $field_type:path) => {{
-    //     let intermediate: $field_type = $value as $field_type;
-    //     intermediate
-    // }};
-    ($repr_package:tt, $field_type:path, $value:expr) => {{
-        $value
-    }};
-}
+// #[macro_export]
+// macro_rules! make_convert_type {
+//     (($repr:ident : $parse_ty:ty), $field_type:path, $value:expr) => {{
+//         let intermediate: $field_type = $value as $field_type;
+//         intermediate
+//     }};
+//     ($value:expr,([$repr1:ident, $repr2:ident]: $parse_ty:ty), $field_type:path) => {{
+//         let intermediate: $field_type = $value as $field_type;
+//         intermediate
+//     }};
+//     ($value:expr,[Vec3: $parse_ty:path], $field_type:path) => {{
+//         let intermediate: $field_type = $value as $field_type;
+//         intermediate
+//     }};
+//     ($value:expr,Ptr, $field_type:path) => {{
+//         let intermediate: $field_type = $value.load_into();
+//         intermediate
+//     }};
+//     ($value:expr,Altitude, $field_type:path) => {{
+//         let intermediate: $field_type = $value as $field_type;
+//         intermediate
+//     }};
+//     ($value:expr,Symbol, $field_type:path) => {{
+//         let intermediate: $field_type = $value as $field_type;
+//         intermediate
+//     }};
+//     ($value:expr,ObjClass, $field_type:path) => {{
+//         let intermediate: $field_type = $value as $field_type;
+//         intermediate
+//     }};
+//     ($repr_package:tt, $field_type:path, $value:expr) => {{
+//         $value
+//     }};
+// }
 
 macro_rules! make_storage_type {
-    (Resource, $field_type:path) => {
-        std::rc::Rc<std::boxed::Box<$field_type>>
+    (Option<HUD>) => {
+        std::rc::Rc<std::boxed::Box<std::option::Option<HUD>>>
     };
-    (Resource0, $field_type:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
+    (Option<Sound>) => {
+        std::rc::Rc<std::boxed::Box<std::option::Option<Sound>>>
     };
-    ($repr_package:tt, $field_type:path) => {
+    (CpuShape) => {
+        std::rc::Rc<std::boxed::Box<CpuShape>>
+    };
+    ($field_type:path) => {
         $field_type
+    };
+}
+
+pub trait FromField {
+    type Produces;
+    fn from_field(field: &FieldRow) -> Fallible<Self::Produces>;
+}
+
+// impl FromField for usize {
+//     type Produces = usize;
+//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+//         Ok(field.value().numeric()?.dword()? as usize)
+//     }
+// }
+
+// impl FromField for u32 {
+//     type Produces = u32;
+//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+//         field.value().numeric()?.dword()
+//     }
+// }
+
+// impl FromField for u16 {
+//     type Produces = u16;
+//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+//         field.value().numeric()?.word()
+//     }
+// }
+
+// impl FromField for i16 {
+//     type Produces = i16;
+//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+//         Ok(field.value().numeric()?.word()? as i16)
+//     }
+// }
+
+pub use std::any::TypeId;
+
+
+macro_rules! make_consume_fields {
+    (Byte, Num, $field_type:path, $rows:expr, $pointer:ident) => {
+        ($rows[0].value().numeric()?.byte()? as $field_type, 1)
+    };
+    (Byte, Struct, $field_type:path, $rows:expr, $pointer:ident) => {
+        (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
+    };
+    (Word, Num, $field_type:path, $rows:expr, $pointer:ident) => {
+        ($rows[0].value().numeric()?.word()?, 1)
+    };
+    (Word, Struct, $field_type:path, $rows:expr, $pointer:ident) => {
+        (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
+    };
+    (DWord, Num, $field_type:path, $rows:expr, $pointer:ident) => {
+        ($rows[0].value().numeric()?.dword()?, 1usize)
+    };
+    (Ptr, Struct, $field_type:path, $rows:expr, $pointer:ident) => {
+        (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
+    };
+    (Ptr, Resource, $field_type:path, $rows:expr, $pointer:ident) => {
+        if $crate::parse::TypeId::of::<$field_type>() == $crate::parse::TypeId::of::<CpuShape>() {
+            let v = Vec::new();
+            (CpuShape::from_data(&v)?, 1)
+        } else {
+            unimplemented!()
+        }
+        //(<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
     };
 }
 
 #[macro_export]
 macro_rules! make_type_struct {
     ($structname:ident($parent:ident: $parent_ty:ty, version: $version_ty:ident) {
-        $( ($field_name:ident, $field_type:path, $comment:expr, $repr_package:tt, $version_supported:ident, $default_value:expr) ),*
+        $( ($row_type:ident, [ $( $row_format:ident ),* ], $comment:expr, $parse_type:ident, $field_name:ident, $field_type:path, $version_supported:ident, $default_value:expr) ),*
     }) => {
         #[allow(dead_code)]
         pub struct $structname {
             $parent: $parent_ty,
 
             $(
-                $field_name: make_storage_type!($repr_package, $field_type)
+                $field_name: make_storage_type!($field_type)
             ),*
         }
 
@@ -581,39 +699,73 @@ macro_rules! make_type_struct {
                 resman: &ResourceManager,
                 texman: &TextureManager
             ) -> Fallible<Self> {
-                // Tokenize rows.
+                let file_version = $version_ty::from_len(lines.len())?;
+
+                // Tokenize all rows and parse to value, capturing repr and size.
+                let mut rows = Vec::new();
+                for line in lines {
+                    let row = $crate::parse::FieldRow::from_line(line, pointers)?;
+                    rows.push(row);
+                }
+
+                // Group rows into fields.
+                // Validate reprs and comment against field.
+                // Build and assign fields.
+
+                let mut offset = 0;
+                $(
+                    ensure!(rows[offset].comment().is_none() || rows[offset].comment() == Some($comment), "non-matching comment");
+                    let field_version = $version_ty::$version_supported;
+                    let $field_name: $field_type = if field_version <= file_version {
+                        println!("AT FIELD: {:?}", rows[offset]);
+
+                        let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers);
+                        offset += count;
+                        intermediate
+
+                        // let (tmp, cnt) = make_consume_fields!(pointers, resman, texman, lines[offset]);
+                        // offset += cnt;
+                        // let out = make_convert_type!($repr_package, $field_type, tmp);
+                        // out
+                    } else {
+                        $default_value
+                    };
+                );*
+                
+                unimplemented!()
+
                 //let token_rows = parse::tokenize_lines(&lines, pointers)?;
 
-                let mut rows = Vec::new();
-                let mut offset = 0;
-                $(
+                // let mut rows = Vec::new();
+                // let mut offset = 0;
+                // $(
 
-                    rows.push(
-                        FieldValue::from_line(
-                            &lines[offset],
-                            stringify!(structname),
-                            $field_name,
-                            offset,
-                            pointers,
-                            make_expect_repr!($repr_package),
-                            $comment
-                        )
-                    );
-                    offset += 1;
+                //     rows.push(
+                //         FieldValue::from_line(
+                //             &lines[offset],
+                //             stringify!(structname),
+                //             $field_name,
+                //             offset,
+                //             pointers,
+                //             make_expect_repr!($repr_package),
+                //             $comment
+                //         )
+                //     );
+                //     offset += 1;
 
-                 );*
+                //  );*
 
-                // Iterate through token_rows and our macro contents in
-                // parallel: this will be complete unrolled.
-                let mut offset = 0;
-                $(
-                    let token_row = &token_rows[offset];
+                // // Iterate through token_rows and our macro contents in
+                // // parallel: this will be complete unrolled.
+                // let mut offset = 0;
+                // $(
+                //     let token_row = &token_rows[offset];
 
-                    // Parse each row according to the labeled type.
-                    let row_data = token_row.parse($comment)?;
+                //     // Parse each row according to the labeled type.
+                //     let row_data = token_row.parse($comment)?;
 
-                    offset += 1;
-                 );*
+                //     offset += 1;
+                //  );*
                 
                 // let lines = parse::partition_lines(&lines)?;
                 // println!("LEN: {}", lines.len());
@@ -641,7 +793,6 @@ macro_rules! make_type_struct {
                 //         $field_name
                 //     ),*
                 // });
-                unimplemented!()
             }
         }
     }
@@ -704,76 +855,76 @@ pub fn unpack_name(names: Vec<String>) -> Fallible<String> {
 // The file provides us with a string giving the type, a value, and possible a line comment.
 // In theory we know the type and the field based on the offset. Make sure our expectations
 // match the reality.
-pub fn check_num_type<T>(
-    offset: usize,
-    comment: &'static str,
-    actual: &(FieldType, &str, Option<&str>),
-) -> Fallible<()>
-where
-    T: Num + FromStr + GetFieldType,
-{
-    let expect_type = T::field_type();
-    ensure!(
-        expect_type == actual.0,
-        "expected {:?}, but found {:?} at line {} of section, {}",
-        expect_type,
-        actual.0,
-        offset,
-        comment
-    );
-    if let Some(c) = actual.2 {
-        if comment.len() > 0 {
-            ensure!(
-                c.starts_with(comment),
-                "expected {}, but found {} at line {} of section",
-                comment,
-                c,
-                offset
-            );
-        }
-    }
-    return Ok(());
-}
+// pub fn check_num_type<T>(
+//     offset: usize,
+//     comment: &'static str,
+//     actual: &(FieldType, &str, Option<&str>),
+// ) -> Fallible<()>
+// where
+//     T: Num + FromStr + GetFieldType,
+// {
+//     let expect_type = T::field_type();
+//     ensure!(
+//         expect_type == actual.0,
+//         "expected {:?}, but found {:?} at line {} of section, {}",
+//         expect_type,
+//         actual.0,
+//         offset,
+//         comment
+//     );
+//     if let Some(c) = actual.2 {
+//         if comment.len() > 0 {
+//             ensure!(
+//                 c.starts_with(comment),
+//                 "expected {}, but found {} at line {} of section",
+//                 comment,
+//                 c,
+//                 offset
+//             );
+//         }
+//     }
+//     return Ok(());
+// }
 
 // The file provides us with a string giving the type, a value, and possible a line comment.
 // In theory we know the type and the field based on the offset. Make sure our expectations
 // match the reality and use that to parse and return the value.
-pub fn parse_one<T>(
-    offset: usize,
-    repr: Repr,
-    actual: &(FieldType, &str, Option<&str>),
-) -> Fallible<T>
-where
-    T: Num + FromStr + GetFieldType + AsPrimitive<u32>,
-    u32: AsPrimitive<T>,
-    <T as FromStr>::Err: ::std::error::Error + 'static + Send + Sync,
-    <T as ::num_traits::Num>::FromStrRadixErr: ::std::error::Error + 'static + Send + Sync,
-{
-    return Ok(match repr {
-        Repr::Dec => actual.1.parse::<T>()?,
-        Repr::Hex => {
-            ensure!(
-                actual.1.starts_with('$'),
-                "expected a hex number at line {} of section, but got {}",
-                offset,
-                actual.1
-            );
-            T::from_str_radix(&actual.1[1..], 16)?
-        }
-        Repr::Car => {
-            ensure!(
-                actual.1.starts_with('^'),
-                "expected a caret number at line {} of section, but got {}",
-                offset,
-                actual.1
-            );
-            let v = actual.1[1..].parse::<T>()?;
-            let u: u32 = v.as_() * 256;
-            let t: T = u.as_();
-            t
-        }
-    });
-}
+// pub fn parse_one<T>(
+//     offset: usize,
+//     repr: Repr,
+//     actual: &(FieldType, &str, Option<&str>),
+// ) -> Fallible<T>
+// where
+//     T: Num + FromStr + GetFieldType + AsPrimitive<u32>,
+//     u32: AsPrimitive<T>,
+//     <T as FromStr>::Err: ::std::error::Error + 'static + Send + Sync,
+//     <T as ::num_traits::Num>::FromStrRadixErr: ::std::error::Error + 'static + Send + Sync,
+// {
+//     return Ok(match repr {
+//         Repr::Dec => actual.1.parse::<T>()?,
+//         Repr::Hex => {
+//             ensure!(
+//                 actual.1.starts_with('$'),
+//                 "expected a hex number at line {} of section, but got {}",
+//                 offset,
+//                 actual.1
+//             );
+//             T::from_str_radix(&actual.1[1..], 16)?
+//         }
+//         Repr::Car => {
+//             ensure!(
+//                 actual.1.starts_with('^'),
+//                 "expected a caret number at line {} of section, but got {}",
+//                 offset,
+//                 actual.1
+//             );
+//             let v = actual.1[1..].parse::<T>()?;
+//             let u: u32 = v.as_() * 256;
+//             let t: T = u.as_();
+//             t
+//         }
+//     });
+// }
 
 // The obj_class field is sometimes written as 32 bits, sign extended. We can drop the top half.
 pub fn consume_obj_class(actual: &(FieldType, &str, Option<&str>)) -> Fallible<u16> {

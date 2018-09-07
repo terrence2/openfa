@@ -32,8 +32,8 @@ impl OmniLib {
     pub fn new_for_test_in_games(dirs: Vec<&str>) -> Fallible<Self> {
         let mut stacks = HashMap::new();
         for dir in dirs {
-            let path = Path::new("../../test_data/unpacked/").join(dir);
-            let libs = LibStack::from_dir_search(&path)?;
+            let path = Path::new("../../test_data/packed/").join(dir);
+            let libs = LibStack::from_file_search(&path)?;
             stacks.insert(dir.to_owned(), libs);
         }
         return Ok(Self { stacks });
