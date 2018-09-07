@@ -170,83 +170,6 @@ impl FromField for ObjectNames {
     }
 }
 
-// impl TryConvert<u8> for TypeTag {
-//     type Error = failure::Error;
-//     fn try_from(value: u8) -> Fallible<TypeTag> {
-//         TypeTag::new(value)
-//     }
-// }
-
-// impl TryConvert<u16> for ObjectKind {
-//     type Error = failure::Error;
-//     fn try_from(value: u16) -> Fallible<ObjectKind> {
-//         ObjectKind::new(value)
-//     }
-// }
-
-// impl<'a> TryConvert<Vec<String>> for ObjectNames {
-//     type Error = failure::Error;
-//     fn try_from(value: Vec<String>) -> Fallible<ObjectNames> {
-//         ensure!(value.len() == 3, "expected 3 names in ot_names");
-//         return Ok(ObjectNames {
-//             short_name: parse::string(&value[0])?,
-//             long_name: parse::string(&value[1])?,
-//             file_name: parse::string(&value[2])?,
-//         });
-//     }
-// }
-
-// impl<'a> TryConvert<Vec<String>> for Option<Shape> {
-//     type Error = failure::Error;
-//     fn try_from(value: Vec<String>) -> Fallible<Option<Shape>> {
-//         ensure!(value.len() <= 1, "expected 0 or 1 names in shape");
-//         if value.len() > 0 {
-//             return Ok(Some(Shape::from_file(&value[0])?));
-//         }
-//         return Ok(None);
-//     }
-// }
-
-// impl<'a> TryConvert<Vec<String>> for Option<Sound> {
-//     type Error = failure::Error;
-//     fn try_from(value: Vec<String>) -> Fallible<Option<Sound>> {
-//         ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
-//         if value.len() > 0 {
-//             return Ok(Some(Sound::from_file(&value[0])?));
-//         }
-//         return Ok(None);
-//     }
-// }
-
-// impl<'a> TryConvert<Vec<String>> for Option<HUD> {
-//     type Error = failure::Error;
-//     fn try_from(value: Vec<String>) -> Fallible<Option<HUD>> {
-//         ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
-//         if value.len() > 0 {
-//             return Ok(Some(HUD::from_file(&value[0])?));
-//         }
-//         return Ok(None);
-//     }
-// }
-
-// impl TryConvert<[i16; 3]> for Point3<f32> {
-//     type Error = failure::Error;
-//     fn try_from(value: [i16; 3]) -> Fallible<Point3<f32>> {
-//         return Ok(Point3::new(
-//             value[0] as f32,
-//             value[1] as f32,
-//             value[2] as f32,
-//         ));
-//     }
-// }
-
-// impl<'a> TryConvert<&'a str> for ProcKind {
-//     type Error = failure::Error;
-//     fn try_from(value: &'a str) -> Fallible<ProcKind> {
-//         return ProcKind::new(value);
-//     }
-// }
-
 // We can detect the version by the number of lines.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum ObjectTypeVersion {
@@ -350,17 +273,6 @@ impl ObjectType {
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
         return Self::from_lines((), &obj_lines, &pointers, resman, texman);
     }
-
-    // fn load_shape(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Option<Shape>> {
-    //     let filename = parse::maybe_resource_filename(line, pointers)?;
-    //     return Ok(match filename {
-    //         None => None,
-    //         Some(f) => {
-    //             let resource = CpuShape::from_file(&f)?;
-    //             Some(resource)
-    //         }
-    //     });
-    // }
 
     pub fn file_name(&self) -> &str {
         return &self.ot_names.file_name;

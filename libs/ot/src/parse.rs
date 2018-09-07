@@ -16,6 +16,8 @@ use failure::{err_msg, Fallible};
 use num_traits::{cast::AsPrimitive, Num};
 use std::{collections::HashMap, marker, str, str::FromStr};
 pub use std::any::TypeId;
+pub use resource::{CpuShape, HUD, Sound, ResourceManager};
+pub use texture::TextureManager;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FieldType {
@@ -254,39 +256,6 @@ pub fn follow_pointer<'a>(
     }
 }
 
-// pub fn maybe_resource_filename<'a>(
-//     line: &'a str,
-//     pointers: &'a HashMap<&'a str, Vec<&'a str>>,
-// ) -> Fallible<Option<String>> {
-//     let maybe_value = ptr(line)
-//         .ok()
-//         .and_then(|ptr_name| pointers.get(ptr_name))
-//         .and_then(|values| values.get(0));
-//     if let Some(value) = maybe_value {
-//         return Ok(Some(string(value)?));
-//     }
-//     return Ok(None);
-// }
-
-// pub fn maybe_load_resource<'a, T>(
-//     line: &'a str,
-//     pointers: &'a HashMap<&'a str, Vec<&'a str>>,
-// ) -> Fallible<Option<T>>
-// where
-//     T: Resource,
-// {
-//     let maybe_value = ptr(line)
-//         .ok()
-//         .and_then(|ptr_name| pointers.get(ptr_name))
-//         .and_then(|values| values.get(0));
-//     if let Some(value) = maybe_value {
-//         let filename = string(value)?;
-//         let resource = T::from_file(&filename)?;
-//         return Ok(Some(resource));
-//     }
-//     return Ok(None);
-// }
-
 pub fn hex(n: &str) -> Fallible<u32> {
     ensure!(n.is_ascii(), "non-ascii in number");
     ensure!(n.starts_with("$"), "expected hex to start with $");
@@ -315,242 +284,16 @@ pub enum Repr {
     Sym,
 }
 
-// #[macro_export]
-// macro_rules! make_consume_field {
-//     (
-//         Resource,CpuShape,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         let names = $crate::parse::consume_ptr($offset, $comment, &$lines[$offset], $pointers)?;
-//         let resource_name = $crate::parse::unpack_name(names)?;
-//         $resman.load_sh(&resource_name)?
-//     }};
-//     (
-//         ObjClass,
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         $crate::parse::check_num_type::<u16>($offset, $comment, &$lines[$offset])?;
-//         let v =
-//             $crate::parse::parse_one::<u16>($offset, $crate::parse::Repr::$repr, &$lines[$offset])?;
-//         ObjectKind::new(v)?
-//     }};
-//     (
-//         ($repr:ident : ($ty1:ty, $ty2:ty)),
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         $crate::parse::check_num_type::<$ty1>($offset, $comment, &$lines[$offset]).or_else(|_| {
-//             $crate::parse::check_num_type::<$ty2>($offset, $comment, &$lines[$offset])
-//         })?;
-//         let v = match $crate::parse::parse_one::<$ty1>(
-//             $offset,
-//             $crate::parse::Repr::$repr,
-//             &$lines[$offset],
-//         ) {
-//             Ok(value) => value as $ty2,
-//             Err(_) => $crate::parse::parse_one::<$ty2>(
-//                 $offset,
-//                 $crate::parse::Repr::$repr,
-//                 &$lines[$offset],
-//             )?,
-//         };
-//         (v, 1)
-//     }};
-//     (
-//         ($repr:ident : $parse_ty:ty),
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         $crate::parse::check_num_type::<$parse_ty>($offset, $comment, &$lines[$offset])?;
-//         let v = $crate::parse::parse_one::<$parse_ty>(
-//             $offset,
-//             $crate::parse::Repr::$repr,
-//             &$lines[$offset],
-//         )?;
-//         (v, 1)
-//     }};
-//     (
-//         ([$repr1:ident, $repr2:ident]: $parse_ty:ty),
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         $crate::parse::check_num_type::<$parse_ty>($offset, $comment, &$lines[$offset])?;
-//         let v = $crate::parse::parse_one::<$parse_ty>(
-//             $offset,
-//             $crate::parse::Repr::$repr1,
-//             &$lines[$offset],
-//         ).or_else(|_| {
-//             $crate::parse::parse_one::<$parse_ty>(
-//                 $offset,
-//                 $crate::parse::Repr::$repr2,
-//                 &$lines[$offset],
-//             )
-//         })?;
-//         (v, 1)
-//     }};
-//     (
-//         ([$repr1:ident, $repr2:ident, $repr3:ident]: $parse_ty:ty),
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         $crate::parse::check_num_type::<$parse_ty>($offset, $comment, &$lines[$offset])?;
-//         let v = $crate::parse::parse_one::<$parse_ty>(
-//             $offset,
-//             $crate::parse::Repr::$repr1,
-//             &$lines[$offset],
-//         ).or_else(|_| {
-//             $crate::parse::parse_one::<$parse_ty>(
-//                 $offset,
-//                 $crate::parse::Repr::$repr2,
-//                 &$lines[$offset],
-//             )
-//         })
-//             .or_else(|_| {
-//                 $crate::parse::parse_one::<$parse_ty>(
-//                     $offset,
-//                     $crate::parse::Repr::$repr3,
-//                     &$lines[$offset],
-//                 )
-//             })?;
-//         (v, 1)
-//     }};
-//     (
-//         Altitude,
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         // Every combination of repr and sign is used here, including frankly insane
-//         // ones like hex signed 32 bit values.
-//         $crate::parse::check_num_type::<u32>($offset, $comment, &$lines[$offset])?;
-//         let v = match $crate::parse::parse_one::<u32>(
-//             $offset,
-//             $crate::parse::Repr::Car,
-//             &$lines[$offset],
-//         ) {
-//             Ok(v) => Ok(v as i32),
-//             Err(_) => match $crate::parse::parse_one::<u32>(
-//                 $offset,
-//                 $crate::parse::Repr::Hex,
-//                 &$lines[$offset],
-//             ) {
-//                 Ok(v) => Ok(v as i32),
-//                 Err(_) => $crate::parse::parse_one::<i32>(
-//                     $offset,
-//                     $crate::parse::Repr::Dec,
-//                     &$lines[$offset],
-//                 ),
-//             },
-//         }?;
-//         (v, 1)
-//     }};
-//     (
-//         [Vec3: $parse_ty:ty],
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         for i in 0..3 {
-//             $crate::parse::check_num_type::<$parse_ty>(
-//                 $offset + i,
-//                 $comment,
-//                 &$lines[$offset + i],
-//             )?;
-//         }
-//         let x = $crate::parse::parse_one::<$parse_ty>(
-//             $offset + 0,
-//             $crate::parse::Repr::Dec,
-//             &$lines[$offset + 0],
-//         )?;
-//         let y = $crate::parse::parse_one::<$parse_ty>(
-//             $offset + 1,
-//             $crate::parse::Repr::Dec,
-//             &$lines[$offset + 1],
-//         )?;
-//         let z = $crate::parse::parse_one::<$parse_ty>(
-//             $offset + 2,
-//             $crate::parse::Repr::Dec,
-//             &$lines[$offset + 2],
-//         )?;
-//         ([x, y, z], 3)
-//     }};
-//     (
-//         ObjClass,
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         let tmp = consume_obj_class(&$lines[$offset])?;
-//         (tmp, 1)
-//     }};
-//     (
-//         Symbol,
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         let tmp = $lines[$offset].1;
-//         (tmp, 1)
-//     }};
-//     (
-//         $repr_package:tt,
-//         $field_type:path,
-//         $comment:expr,
-//         $pointers:ident,
-//         $resman:ident,
-//         $texman:ident,
-//         $lines:ident[$offset:ident]
-//     ) => {{
-//         panic!();
-//     }};
-// }
-
+#[macro_export]
 macro_rules! make_storage_type {
-    (Shape, $field_type:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
+    (Shape, $_ft:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::CpuShape>>>
     };
-    (Sound, $field_type:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
+    (Sound, $_ft:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::Sound>>>
     };
-    (HUD, $field_type:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
+    (HUD, $_ft:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::HUD>>>
     };
     ($_:ident, $field_type:path) => {
         $field_type
@@ -562,6 +305,7 @@ pub trait FromField {
     fn from_field(field: &FieldRow) -> Fallible<Self::Produces>;
 }
 
+#[macro_export]
 macro_rules! make_consume_fields {
     (Byte, Bool, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.byte()? != 0, 1)
@@ -642,9 +386,10 @@ macro_rules! make_consume_fields {
     };
 }
 
+#[macro_export]
 macro_rules! make_validate_field_repr {
     ([ $( $row_format:ident ),* ], $row:expr, $field_name:expr) => {
-        let reprs = vec![$(Repr::$row_format),*];
+        let reprs = vec![$($crate::parse::Repr::$row_format),*];
         let valid = reprs.iter().map(|&r| r == $row.value().repr()).any(|v| v == true);
         ensure!(valid, "field {} repr of {:?} did not match any expected reprs: {:?}", $field_name, $row.value().repr(), reprs);
     };
@@ -669,8 +414,8 @@ macro_rules! make_type_struct {
                 $parent: $parent_ty,
                 lines: &Vec<&str>,
                 pointers: &HashMap<&str, Vec<&str>>,
-                resman: &ResourceManager,
-                texman: &TextureManager
+                resman: &$crate::parse::ResourceManager,
+                texman: &$crate::parse::TextureManager
             ) -> Fallible<Self> {
                 let file_version = $version_ty::from_len(lines.len())?;
 
@@ -768,79 +513,6 @@ pub fn unpack_name(names: Vec<String>) -> Fallible<String> {
     return Ok(names[0].clone());
 }
 
-// The file provides us with a string giving the type, a value, and possible a line comment.
-// In theory we know the type and the field based on the offset. Make sure our expectations
-// match the reality.
-// pub fn check_num_type<T>(
-//     offset: usize,
-//     comment: &'static str,
-//     actual: &(FieldType, &str, Option<&str>),
-// ) -> Fallible<()>
-// where
-//     T: Num + FromStr + GetFieldType,
-// {
-//     let expect_type = T::field_type();
-//     ensure!(
-//         expect_type == actual.0,
-//         "expected {:?}, but found {:?} at line {} of section, {}",
-//         expect_type,
-//         actual.0,
-//         offset,
-//         comment
-//     );
-//     if let Some(c) = actual.2 {
-//         if comment.len() > 0 {
-//             ensure!(
-//                 c.starts_with(comment),
-//                 "expected {}, but found {} at line {} of section",
-//                 comment,
-//                 c,
-//                 offset
-//             );
-//         }
-//     }
-//     return Ok(());
-// }
-
-// The file provides us with a string giving the type, a value, and possible a line comment.
-// In theory we know the type and the field based on the offset. Make sure our expectations
-// match the reality and use that to parse and return the value.
-// pub fn parse_one<T>(
-//     offset: usize,
-//     repr: Repr,
-//     actual: &(FieldType, &str, Option<&str>),
-// ) -> Fallible<T>
-// where
-//     T: Num + FromStr + GetFieldType + AsPrimitive<u32>,
-//     u32: AsPrimitive<T>,
-//     <T as FromStr>::Err: ::std::error::Error + 'static + Send + Sync,
-//     <T as ::num_traits::Num>::FromStrRadixErr: ::std::error::Error + 'static + Send + Sync,
-// {
-//     return Ok(match repr {
-//         Repr::Dec => actual.1.parse::<T>()?,
-//         Repr::Hex => {
-//             ensure!(
-//                 actual.1.starts_with('$'),
-//                 "expected a hex number at line {} of section, but got {}",
-//                 offset,
-//                 actual.1
-//             );
-//             T::from_str_radix(&actual.1[1..], 16)?
-//         }
-//         Repr::Car => {
-//             ensure!(
-//                 actual.1.starts_with('^'),
-//                 "expected a caret number at line {} of section, but got {}",
-//                 offset,
-//                 actual.1
-//             );
-//             let v = actual.1[1..].parse::<T>()?;
-//             let u: u32 = v.as_() * 256;
-//             let t: T = u.as_();
-//             t
-//         }
-//     });
-// }
 
 // The obj_class field is sometimes written as 32 bits, sign extended. We can drop the top half.
 pub fn consume_obj_class(actual: &(FieldType, &str, Option<&str>)) -> Fallible<u16> {

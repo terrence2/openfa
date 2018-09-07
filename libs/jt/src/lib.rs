@@ -16,18 +16,14 @@
 extern crate failure;
 #[macro_use]
 extern crate ot;
+extern crate resource;
+extern crate texture;
 
 use failure::Fallible;
-use ot::{parse, parse::TryConvert, ObjectType, Resource};
+use ot::{parse, parse::FieldRow, parse::FromField, ObjectType};
 use std::collections::HashMap;
-
-// placeholder
-pub struct Sound {}
-impl Resource for Sound {
-    fn from_file(_: &str) -> Fallible<Self> {
-        Ok(Sound {})
-    }
-}
+use resource::ResourceManager;
+use texture::TextureManager;
 
 struct ProjectileNames {
     short_name: String,
@@ -35,31 +31,22 @@ struct ProjectileNames {
     file_name: Option<String>,
 }
 
-impl<'a> TryConvert<Vec<String>> for ProjectileNames {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<ProjectileNames> {
-        ensure!(value.len() >= 2, "expected at least 2 names in si_names");
-        let file_name = if value.len() == 3 {
-            Some(parse::string(&value[2])?)
+impl FromField for ProjectileNames {
+    type Produces = ProjectileNames;
+    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+        let (name, values) = field.value().pointer()?;
+        ensure!(name == "si_names", "expected pointer to si_names");
+        ensure!(values.len() >= 2, "expected at least 2 names in si_names");
+        let file_name = if values.len() == 3 {
+            Some(parse::string(&values[2])?)
         } else {
             None
         };
-        return Ok(ProjectileNames {
-            short_name: parse::string(&value[0])?,
-            long_name: parse::string(&value[1])?,
-            file_name,
-        });
-    }
-}
-
-impl<'a> TryConvert<Vec<String>> for Sound {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<Sound> {
-        ensure!(value.len() <= 1, "expected 0 or 1 names in sound");
-        if value.len() > 0 {
-            return Ok(Sound::from_file(&value[0])?);
-        }
-        bail!("not a sound")
+        Ok(ProjectileNames {
+            short_name: parse::string(&values[0])?,
+            long_name: parse::string(&values[1])?,
+            file_name
+        })
     }
 }
 
@@ -84,108 +71,112 @@ impl ProjectileTypeVersion {
 
 struct ProjectilesInPod(u16);
 
-impl TryConvert<u16> for ProjectilesInPod {
-    type Error = failure::Error;
-    fn try_from(value: u16) -> Fallible<ProjectilesInPod> {
-        Ok(ProjectilesInPod(value))
+impl FromField for ProjectilesInPod {
+    type Produces = ProjectilesInPod;
+    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+        Ok(ProjectilesInPod(field.value().numeric()?.word()?))
     }
 }
 
-make_type_struct![ProjectileType(obj: ObjectType, version: ProjectileTypeVersion) {       // AA11.JT
-    (flags0,                    u32, "flags",            ([Dec,Hex]: u32), V0, panic!()), // dword $1204f ; flags
-    (projs_in_pod, ProjectilesInPod, "projsInPod",       (Dec: (u8, u16)), V0, panic!()), // word 1 ; projsInPod
-    (struct_type,                u8, "structType",              (Dec: u8), V0, panic!()), // byte 10 ; structType
-    (si_names,      ProjectileNames, "si_names",                      Ptr, V0, panic!()), // ptr si_names
-    (weight,                    u16, "weight",                 (Dec: u16), V0, panic!()), // word 0 ; weight
-    (flags1,                     u8, "flags",             ([Dec,Hex]: u8), V0, panic!()), // byte $0 ; flags
-    (sig,                        u8, "sig",                     (Dec: u8), V0, panic!()), // byte 2 ; sig
-    (flags2,                     u8, "flags",             ([Dec,Hex]: u8), V0, panic!()), // byte $0 ; flags
-    (look_down,                  u8, "lookDown",                (Dec: u8), V0, panic!()), // byte 0 ; lookDown
-    (doppler_speed_above,        u8, "dopplerSpeedAbove",       (Dec: u8), V0, panic!()), // byte 0 ; dopplerSpeedAbove
-    (doppler_speed_below,        u8, "dopplerSpeedBelow",       (Dec: u8), V0, panic!()), // byte 0 ; dopplerSpeedBelow
-    (doppler_min_range,          u8, "dopplerMinRange",         (Dec: u8), V0, panic!()), // byte 0 ; dopplerMinRange
-    (all_aspect,                 u8, "allAspect",               (Dec: u8), V0, panic!()), // byte 30 ; allAspect
-    (h0,                        u16, "h",                      (Dec: u16), V0, panic!()), // word 14560 ; h
-    (p0,                        u16, "p",                      (Dec: u16), V0, panic!()), // word 14560 ; p
-    (min_range0,                u32, "minRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^0 ; minRange
-    (max_range0,                u32, "maxRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^60000 ; maxRange
-    (min_alt0,                  i32, "minAlt",                   Altitude, V0, panic!()), // dword $80000000 ; minAlt
-    (max_alt0,                  i32, "maxAlt",                   Altitude, V0, panic!()), // dword $7fffffff ; maxAlt
-    (h1,                        u16, "h",                      (Dec: u16), V0, panic!()), // word 14560 ; h
-    (p1,                        u16, "p",                      (Dec: u16), V0, panic!()), // word 14560 ; p
-    (min_range1,                u32, "minRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^2000 ; minRange
-    (max_range1,                u32, "maxRange",         ([Dec,Car]: u32), V0, panic!()), // dword ^60000 ; maxRange
-    (min_alt1,                  i32, "minAlt",                   Altitude, V0, panic!()), // dword $80000000 ; minAlt
-    (max_alt1,                  i32, "maxAlt",                   Altitude, V0, panic!()), // dword $7fffffff ; maxAlt
-    (chaff_flare_chance,         u8, "chaffFlareChance",        (Dec: u8), V0, panic!()), // byte 50 ; chaffFlareChance
-    (deception_chance,           u8, "deceptionChance",         (Dec: u8), V0, panic!()), // byte 50 ; deceptionChance
-    (track_t,                    u8, "trackT",                  (Dec: u8), V0, panic!()), // byte 12 ; trackT
-    (track_max_g,                u8, "trackMaxG",               (Dec: u8), V0, panic!()), // byte 5 ; trackMaxG
-    (target_sun_chance,          u8, "targetSunChance",         (Dec: u8), V0, panic!()), // byte 10 ; targetSunChance
-    (random_fire_percent,       u16, "randomFirePercent",      (Dec: u16), V2, 0),        // word 0 ; randomFirePercent
-    (offset_fire_percent,       u16, "offsetFirePercent",      (Dec: u16), V2, 0),        // word 0 ; offsetFirePercent
-    (offset_fire_h,             u16, "offsetFireH",            (Dec: u16), V2, 0),        // word 0 ; offsetFireH
-    (offset_fire_p,             u16, "offsetFireP",            (Dec: u16), V2, 0),        // word 0 ; offsetFireP
-    (actual_rounds_per_game,     u8, "actualRoundsPerGame",     (Dec: u8), V2, 0),        // byte 1 ; actualRoundsPerGame
-    (game_rounds_in_burst,       u8, "gameRoundsInBurst",       (Dec: u8), V0, panic!()), // byte 1 ; gameRoundsInBurst
-    (game_rounds_in_carpet_burst,u8, "gameRoundsInCarpetBurst", (Dec: u8), V0, panic!()), // byte 1 ; gameRoundsInCarpetBurst
-    (game_burst_t,               u8, "gameBurstT",              (Dec: u8), V0, panic!()), // byte 0 ; gameBurstT
-    (reload_t,                   u8, "reloadT",                 (Dec: u8), V0, panic!()), // byte 24 ; reloadT
-    (startup_shots,              u8, "startupShots",            (Dec: u8), V0, panic!()), // byte 0 ; startupShots
-    (h_sines,                    u8, "hSines",                  (Dec: u8), V0, panic!()), // byte 0 ; hSines
-    (h_sine_degrees,             u8, "hSineDegrees",            (Dec: u8), V0, panic!()), // byte 0 ; hSineDegrees
-    (v_sines,                    u8, "vSines",                  (Dec: u8), V0, panic!()), // byte 0 ; vSines
-    (v_sine_degrees,             u8, "vSineDegrees",            (Dec: u8), V2, 0),        // byte 0 ; vSineDegrees
-    (max_aon,                    u8, "maxAON",                  (Dec: u8), V0, panic!()), // byte 31 ; maxAON
-    (initial_speed,             u16, "initialSpeed",           (Dec: u16), V0, panic!()), // word 0 ; initialSpeed
-    (final_speed,               u16, "finalSpeed",             (Dec: u16), V0, panic!()), // word 1026 ; finalSpeed
-    (ignite_t,                  u16, "igniteT",                (Dec: u16), V0, panic!()), // word 0 ; igniteT
-    (fuel_t,                    u16, "fuelT",                  (Dec: u16), V0, panic!()), // word 104 ; fuelT
-    (remove_t,                  u16, "removeT",                (Dec: u16), V0, panic!()), // word 208 ; removeT
-    (powered_turn_rate,         u16, "poweredTurnRate",        (Dec: u16), V0, panic!()), // word 21840 ; poweredTurnRate
-    (unpowered_turn_rate,       u16, "unpoweredTurnRate",      (Dec: u16), V0, panic!()), // word 16380 ; unpoweredTurnRate
-    (performance_at_0,           u8, "performanceAt0",          (Dec: u8), V0, panic!()), // byte 75 ; performanceAt0
-    (performance_at_20,          u8, "performanceAt20",         (Dec: u8), V0, panic!()), // byte 100 ; performanceAt20
-    (cruise1_dist,               u8, "cruise1Dist",             (Dec: u8), V0, panic!()), // byte 0 ; cruise1Dist
-    (cruise1_alt,                u8, "cruise1Alt",              (Dec: u8), V0, panic!()), // byte 0 ; cruise1Alt
-    (cruise2_dist,               u8, "cruise2Dist",             (Dec: u8), V0, panic!()), // byte 0 ; cruise2Dist
-    (cruise2_alt,                u8, "cruise2Alt",              (Dec: u8), V0, panic!()), // byte 0 ; cruise2Alt
-    (jink_size,                 u16, "jinkSize",               (Dec: u16), V0, panic!()), // word 546 ; jinkSize
-    (jink_t,                    u16, "jinkT",                  (Dec: u16), V0, panic!()), // word 1 ; jinkT
-    (total_jink_t,              u16, "totalJinkT",             (Dec: u16), V0, panic!()), // word 16 ; totalJinkT
-    (launch_retard,              u8, "launchRetard",            (Dec: u8), V0, panic!()), // byte 100 ; launchRetard
-    (smoke_type,                 u8, "smokeType",               (Dec: u8), V0, panic!()), // byte 8 ; smokeType
-    (smoke_freq,                 u8, "smokeFreq",               (Dec: u8), V0, panic!()), // byte 12 ; smokeFreq
-    (smoke_exist_time,           u8, "smokeExistTime",          (Dec: u8), V0, panic!()), // byte 2 ; smokeExistTime
-    (smoke_start_size,           u8, "smokeStartSize",          (Dec: u8), V0, panic!()), // byte 15 ; smokeStartSize
-    (smoke_end_size,             u8, "smokeEndSize",            (Dec: u8), V0, panic!()), // byte 50 ; smokeEndSize
-    (chances_i_0,                u8, "chances [i]",             (Dec: u8), V0, panic!()), // byte 75 ; chances [i]
-    (chances_i_1,                u8, "chances [i]",             (Dec: u8), V0, panic!()), // byte 75 ; chances [i]
-    (chances_i_2,                u8, "chances [i]",             (Dec: u8), V0, panic!()), // byte 56 ; chances [i]
-    (chances_i_3,                u8, "chances [i]",             (Dec: u8), V0, panic!()), // byte 0 ; chances [i]
-    (taa_hit_change,             u8, "taaHitChange",            (Dec: u8), V0, panic!()), // byte 0 ; taaHitChange
-    (climb_hit_change,           u8, "climbHitChange",          (Dec: u8), V0, panic!()), // byte 0 ; climbHitChange
-    (g_hit_change,               u8, "gHitChange",              (Dec: u8), V0, panic!()), // byte 10 ; gHitChange
-    (air_hit_change,             u8, "airHitChange",            (Dec: u8), V0, panic!()), // byte 0 ; airHitChange
-    (speed_hit_change,           u8, "speedHitChange",          (Dec: u8), V0, panic!()), // byte 0 ; speedHitChange
-    (speed_hit_min,              u8, "speedHitMin",             (Dec: u8), V0, panic!()), // byte 0 ; speedHitMin
-    (predictable_hit_change,     u8, "predictableHitChange",    (Dec: u8), V0, panic!()), // byte 30 ; predictableHitChange
-    (big_plane_change,           u8, "bigPlaneChange",          (Dec: u8), V1, 0),        // byte 0 ; bigPlaneChange
-    (g_miss,                     u8, "gMiss",                   (Dec: u8), V0, panic!()), // byte 9 ; gMiss
-    (fuze_arm_t,                u16, "fuzeArmT",               (Dec: u16), V0, panic!()), // word 4 ; fuzeArmT
-    (fuze_radius,               u16, "fuzeRadius",             (Dec: u16), V0, panic!()), // word 100 ; fuzeRadius
-    (side_hit_fuze_failure,      u8, "sideHitFuzeFailure",      (Dec: u8), V0, panic!()), // byte 0 ; sideHitFuzeFailure
-    (exp_type_for_land,          u8, "expTypeForLand",          (Dec: u8), V0, panic!()), // byte 21 ; expTypeForLand
-    (exp_type_for_water,         u8, "expTypeForWater",         (Dec: u8), V0, panic!()), // byte 34 ; expTypeForWater
-    (fire_sound,              Sound, "fireSound",                     Ptr, V0, panic!()), // ptr fireSound
-    (max_snd_dist,              u16, "maxSndDist",             (Dec: u16), V0, panic!()), // word 6000 ; maxSndDist
-    (freq_adj,                  u16, "freqAdj",                (Dec: u16), V0, panic!()), // word 0 ; freqAdj
-    (collateral_damage_radius,  u16, "collateralDamageRadius", (Dec: u16), V1, 0),        // word 750 ; collateralDamageRadius
-    (collateral_damage_percent, u16, "collateralDamagePercent",(Dec: u16), V1, 0)         // word 35 ; collateralDamagePercent
+make_type_struct![
+ProjectileType(obj: ObjectType, version: ProjectileTypeVersion) {                    // AA11.JT
+    (DWord, [Dec,Hex],               "flags", Unsigned, flags0,                    u32, V0, panic!()), // dword $1204f ; flags
+    (D_Word,[Dec],              "projsInPod",   Struct, projs_in_pod, ProjectilesInPod, V0, panic!()), // word 1 ; projsInPod
+    (Byte,  [Dec],              "structType", Unsigned, struct_type,                u8, V0, panic!()), // byte 10 ; structType
+    (Ptr,   [Sym],                "si_names",   Struct, si_names,      ProjectileNames, V0, panic!()), // ptr si_names
+    (Word,  [Dec],                  "weight", Unsigned, weight,                    u16, V0, panic!()), // word 0 ; weight
+    (Byte,  [Dec,Hex],               "flags", Unsigned, flags1,                     u8, V0, panic!()), // byte $0 ; flags
+    (Byte,  [Dec],                     "sig", Unsigned, sig,                        u8, V0, panic!()), // byte 2 ; sig
+    (Byte,  [Dec,Hex],               "flags", Unsigned, flags2,                     u8, V0, panic!()), // byte $0 ; flags
+    (Byte,  [Dec],                "lookDown", Unsigned, look_down,                  u8, V0, panic!()), // byte 0 ; lookDown
+    (Byte,  [Dec],       "dopplerSpeedAbove", Unsigned, doppler_speed_above,        u8, V0, panic!()), // byte 0 ; dopplerSpeedAbove
+    (Byte,  [Dec],       "dopplerSpeedBelow", Unsigned, doppler_speed_below,        u8, V0, panic!()), // byte 0 ; dopplerSpeedBelow
+    (Byte,  [Dec],         "dopplerMinRange", Unsigned, doppler_min_range,          u8, V0, panic!()), // byte 0 ; dopplerMinRange
+    (Byte,  [Dec],               "allAspect", Unsigned, all_aspect,                 u8, V0, panic!()), // byte 30 ; allAspect
+    (Word,  [Dec],                       "h", Unsigned, h0,                        u16, V0, panic!()), // word 14560 ; h
+    (Word,  [Dec],                       "p", Unsigned, p0,                        u16, V0, panic!()), // word 14560 ; p
+    (DWord, [Dec,Car],            "minRange", Unsigned, min_range0,                u32, V0, panic!()), // dword ^0 ; minRange
+    (DWord, [Dec,Car],            "maxRange", Unsigned, max_range0,                u32, V0, panic!()), // dword ^60000 ; maxRange
+    (DWord, [Dec,Car,Hex],          "minAlt",   Signed, min_alt0,                  i32, V0, panic!()), // dword $80000000 ; minAlt
+    (DWord, [Dec,Car,Hex],          "maxAlt",   Signed, max_alt0,                  i32, V0, panic!()), // dword $7fffffff ; maxAlt
+    (Word,  [Dec],                       "h", Unsigned, h1,                        u16, V0, panic!()), // word 14560 ; h
+    (Word,  [Dec],                       "p", Unsigned, p1,                        u16, V0, panic!()), // word 14560 ; p
+    (DWord, [Dec,Car],            "minRange", Unsigned, min_range1,                u32, V0, panic!()), // dword ^2000 ; minRange
+    (DWord, [Dec,Car],            "maxRange", Unsigned, max_range1,                u32, V0, panic!()), // dword ^60000 ; maxRange
+    (DWord, [Dec,Car,Hex],          "minAlt",   Signed, min_alt1,                  i32, V0, panic!()), // dword $80000000 ; minAlt
+    (DWord, [Dec,Car,Hex],          "maxAlt",   Signed, max_alt1,                  i32, V0, panic!()), // dword $7fffffff ; maxAlt
+    (Byte,  [Dec],        "chaffFlareChance", Unsigned, chaff_flare_chance,         u8, V0, panic!()), // byte 50 ; chaffFlareChance
+    (Byte,  [Dec],         "deceptionChance", Unsigned, deception_chance,           u8, V0, panic!()), // byte 50 ; deceptionChance
+    (Byte,  [Dec],                  "trackT", Unsigned, track_t,                    u8, V0, panic!()), // byte 12 ; trackT
+    (Byte,  [Dec],               "trackMaxG", Unsigned, track_max_g,                u8, V0, panic!()), // byte 5 ; trackMaxG
+    (Byte,  [Dec],         "targetSunChance", Unsigned, target_sun_chance,          u8, V0, panic!()), // byte 10 ; targetSunChance
+    (Word,  [Dec],       "randomFirePercent", Unsigned, random_fire_percent,       u16, V2, 0),        // word 0 ; randomFirePercent
+    (Word,  [Dec],       "offsetFirePercent", Unsigned, offset_fire_percent,       u16, V2, 0),        // word 0 ; offsetFirePercent
+    (Word,  [Dec],             "offsetFireH", Unsigned, offset_fire_h,             u16, V2, 0),        // word 0 ; offsetFireH
+    (Word,  [Dec],             "offsetFireP", Unsigned, offset_fire_p,             u16, V2, 0),        // word 0 ; offsetFireP
+    (Byte,  [Dec],     "actualRoundsPerGame", Unsigned, actual_rounds_per_game,     u8, V2, 0),        // byte 1 ; actualRoundsPerGame
+    (Byte,  [Dec],       "gameRoundsInBurst", Unsigned, game_rounds_in_burst,       u8, V0, panic!()), // byte 1 ; gameRoundsInBurst
+    (Byte,  [Dec], "gameRoundsInCarpetBurst", Unsigned, game_rounds_in_carpet_burst,u8, V0, panic!()), // byte 1 ; gameRoundsInCarpetBurst
+    (Byte,  [Dec],              "gameBurstT", Unsigned, game_burst_t,               u8, V0, panic!()), // byte 0 ; gameBurstT
+    (Byte,  [Dec],                 "reloadT", Unsigned, reload_t,                   u8, V0, panic!()), // byte 24 ; reloadT
+    (Byte,  [Dec],            "startupShots", Unsigned, startup_shots,              u8, V0, panic!()), // byte 0 ; startupShots
+    (Byte,  [Dec],                  "hSines", Unsigned, h_sines,                    u8, V0, panic!()), // byte 0 ; hSines
+    (Byte,  [Dec],            "hSineDegrees", Unsigned, h_sine_degrees,             u8, V0, panic!()), // byte 0 ; hSineDegrees
+    (Byte,  [Dec],                  "vSines", Unsigned, v_sines,                    u8, V0, panic!()), // byte 0 ; vSines
+    (Byte,  [Dec],            "vSineDegrees", Unsigned, v_sine_degrees,             u8, V2, 0),        // byte 0 ; vSineDegrees
+    (Byte,  [Dec],                  "maxAON", Unsigned, max_aon,                    u8, V0, panic!()), // byte 31 ; maxAON
+    (Word,  [Dec],            "initialSpeed", Unsigned, initial_speed,             u16, V0, panic!()), // word 0 ; initialSpeed
+    (Word,  [Dec],              "finalSpeed", Unsigned, final_speed,               u16, V0, panic!()), // word 1026 ; finalSpeed
+    (Word,  [Dec],                 "igniteT", Unsigned, ignite_t,                  u16, V0, panic!()), // word 0 ; igniteT
+    (Word,  [Dec],                   "fuelT", Unsigned, fuel_t,                    u16, V0, panic!()), // word 104 ; fuelT
+    (Word,  [Dec],                 "removeT", Unsigned, remove_t,                  u16, V0, panic!()), // word 208 ; removeT
+    (Word,  [Dec],         "poweredTurnRate", Unsigned, powered_turn_rate,         u16, V0, panic!()), // word 21840 ; poweredTurnRate
+    (Word,  [Dec],       "unpoweredTurnRate", Unsigned, unpowered_turn_rate,       u16, V0, panic!()), // word 16380 ; unpoweredTurnRate
+    (Byte,  [Dec],          "performanceAt0", Unsigned, performance_at_0,           u8, V0, panic!()), // byte 75 ; performanceAt0
+    (Byte,  [Dec],         "performanceAt20", Unsigned, performance_at_20,          u8, V0, panic!()), // byte 100 ; performanceAt20
+    (Byte,  [Dec],             "cruise1Dist", Unsigned, cruise1_dist,               u8, V0, panic!()), // byte 0 ; cruise1Dist
+    (Byte,  [Dec],              "cruise1Alt", Unsigned, cruise1_alt,                u8, V0, panic!()), // byte 0 ; cruise1Alt
+    (Byte,  [Dec],             "cruise2Dist", Unsigned, cruise2_dist,               u8, V0, panic!()), // byte 0 ; cruise2Dist
+    (Byte,  [Dec],              "cruise2Alt", Unsigned, cruise2_alt,                u8, V0, panic!()), // byte 0 ; cruise2Alt
+    (Word,  [Dec],                "jinkSize", Unsigned, jink_size,                 u16, V0, panic!()), // word 546 ; jinkSize
+    (Word,  [Dec],                   "jinkT", Unsigned, jink_t,                    u16, V0, panic!()), // word 1 ; jinkT
+    (Word,  [Dec],              "totalJinkT", Unsigned, total_jink_t,              u16, V0, panic!()), // word 16 ; totalJinkT
+    (Byte,  [Dec],            "launchRetard", Unsigned, launch_retard,              u8, V0, panic!()), // byte 100 ; launchRetard
+    (Byte,  [Dec],               "smokeType", Unsigned, smoke_type,                 u8, V0, panic!()), // byte 8 ; smokeType
+    (Byte,  [Dec],               "smokeFreq", Unsigned, smoke_freq,                 u8, V0, panic!()), // byte 12 ; smokeFreq
+    (Byte,  [Dec],          "smokeExistTime", Unsigned, smoke_exist_time,           u8, V0, panic!()), // byte 2 ; smokeExistTime
+    (Byte,  [Dec],          "smokeStartSize", Unsigned, smoke_start_size,           u8, V0, panic!()), // byte 15 ; smokeStartSize
+    (Byte,  [Dec],            "smokeEndSize", Unsigned, smoke_end_size,             u8, V0, panic!()), // byte 50 ; smokeEndSize
+    (Byte,  [Dec],             "chances [i]", Unsigned, chances_i_0,                u8, V0, panic!()), // byte 75 ; chances [i]
+    (Byte,  [Dec],             "chances [i]", Unsigned, chances_i_1,                u8, V0, panic!()), // byte 75 ; chances [i]
+    (Byte,  [Dec],             "chances [i]", Unsigned, chances_i_2,                u8, V0, panic!()), // byte 56 ; chances [i]
+    (Byte,  [Dec],             "chances [i]", Unsigned, chances_i_3,                u8, V0, panic!()), // byte 0 ; chances [i]
+    (Byte,  [Dec],            "taaHitChange", Unsigned, taa_hit_change,             u8, V0, panic!()), // byte 0 ; taaHitChange
+    (Byte,  [Dec],          "climbHitChange", Unsigned, climb_hit_change,           u8, V0, panic!()), // byte 0 ; climbHitChange
+    (Byte,  [Dec],              "gHitChange", Unsigned, g_hit_change,               u8, V0, panic!()), // byte 10 ; gHitChange
+    (Byte,  [Dec],            "airHitChange", Unsigned, air_hit_change,             u8, V0, panic!()), // byte 0 ; airHitChange
+    (Byte,  [Dec],          "speedHitChange", Unsigned, speed_hit_change,           u8, V0, panic!()), // byte 0 ; speedHitChange
+    (Byte,  [Dec],             "speedHitMin", Unsigned, speed_hit_min,              u8, V0, panic!()), // byte 0 ; speedHitMin
+    (Byte,  [Dec],    "predictableHitChange", Unsigned, predictable_hit_change,     u8, V0, panic!()), // byte 30 ; predictableHitChange
+    (Byte,  [Dec],          "bigPlaneChange", Unsigned, big_plane_change,           u8, V1, 0),        // byte 0 ; bigPlaneChange
+    (Byte,  [Dec],                   "gMiss", Unsigned, g_miss,                     u8, V0, panic!()), // byte 9 ; gMiss
+    (Word,  [Dec],                "fuzeArmT", Unsigned, fuze_arm_t,                u16, V0, panic!()), // word 4 ; fuzeArmT
+    (Word,  [Dec],              "fuzeRadius", Unsigned, fuze_radius,               u16, V0, panic!()), // word 100 ; fuzeRadius
+    (Byte,  [Dec],      "sideHitFuzeFailure", Unsigned, side_hit_fuze_failure,      u8, V0, panic!()), // byte 0 ; sideHitFuzeFailure
+    (Byte,  [Dec],          "expTypeForLand", Unsigned, exp_type_for_land,          u8, V0, panic!()), // byte 21 ; expTypeForLand
+    (Byte,  [Dec],         "expTypeForWater", Unsigned, exp_type_for_water,         u8, V0, panic!()), // byte 34 ; expTypeForWater
+    (Ptr,   [Sym],               "fireSound",    Sound, fire_sound,              Sound, V0, panic!()), // ptr fireSound
+    (Word,  [Dec],              "maxSndDist", Unsigned, max_snd_dist,              u16, V0, panic!()), // word 6000 ; maxSndDist
+    (Word,  [Dec],                 "freqAdj", Unsigned, freq_adj,                  u16, V0, panic!()), // word 0 ; freqAdj
+    (Word,  [Dec],  "collateralDamageRadius", Unsigned, collateral_damage_radius,  u16, V1, 0),        // word 750 ; collateralDamageRadius
+    (Word,  [Dec], "collateralDamagePercent", Unsigned, collateral_damage_percent, u16, V1, 0)         // word 35 ; collateralDamagePercent
 }];
 
 impl ProjectileType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_str(data: &str,
+        resman: &ResourceManager,
+        texman: &TextureManager,
+    ) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -193,9 +184,9 @@ impl ProjectileType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers, resman, texman)?;
         let proj_lines = parse::find_section(&lines, "PROJ_TYPE")?;
-        return Self::from_lines(obj, &proj_lines, &pointers);
+        return Self::from_lines(obj, &proj_lines, &pointers, resman, texman);
     }
 }
 
@@ -206,16 +197,26 @@ extern crate omnilib;
 mod tests {
     use super::*;
     use omnilib::OmniLib;
+    use failure::Error;
 
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
-            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
+            "FA",
+            // "ATF",
+            // "ATFGOLD",
+            // "ATFNATO",
+            // "USNF",
+            // "MF",
+            // "USNF97",
         ])?;
         for (game, name) in omni.find_matching("*.JT")?.iter() {
-            println!("{}:{} @ {}", game, name, omni.path(game, name)?);
+            println!("At: {}:{:13} @ {}", game, name, omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?);
+            let lib = omni.library(game);
+            let texman = TextureManager::new(lib)?;
+            let resman = ResourceManager::new_headless(lib)?;
             let contents = omni.library(game).load_text(name)?;
-            let jt = ProjectileType::from_str(&contents)?;
+            let jt = ProjectileType::from_str(&contents, &resman, &texman)?;
             assert!(jt.obj.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:08X} <> {} <> {}",
