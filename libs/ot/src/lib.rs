@@ -276,8 +276,8 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Ptr,   [Sym],            "ot_names",   Struct, ot_names,         ObjectNames, V0, panic!()), // ptr ot_names
     (DWord, [Dec,Hex],           "flags", Unsigned, flags,                    u32, V0, panic!()), // dword $20c21 ; flags
     (Word,  [Hex],           "obj_class",   Struct, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
-    (Ptr,   [Sym],               "shape",    Shape, shape,               CpuShape, V0, panic!()), // ptr shape
-    (Ptr,   [Sym],         "shadowShape",    Shape, shadow_shape,        CpuShape, V0, panic!()), // dword 0
+    (Ptr,   [Dec,Sym],           "shape",    Shape, shape,               CpuShape, V0, panic!()), // ptr shape
+    (Ptr,   [Dec,Sym],     "shadowShape",    Shape, shadow_shape,        CpuShape, V0, panic!()), // dword 0
     (DWord, [Dec],                    "", Unsigned, unk8,                     u32, V2, 0),        // dword 0
     (DWord, [Dec],                    "", Unsigned, unk9,                     u32, V2, 0),        // dword 0
     (Word,  [Dec],       "dmgDebrisPos.",     Vec3, dmg_debris_pos,   Point3<f32>, V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dmgDebrisPos.x
@@ -315,13 +315,13 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (DWord, [Dec,Car],            "_acc", Unsigned, acceleration,             u32, V0, panic!()), // dword ^0 ; _acc
     (DWord, [Dec,Car],           "_dacc", Unsigned, deceleration,             u32, V0, panic!()), // dword ^0 ; _dacc
     (DWord, [Dec,Hex,Car],      "minAlt",   Signed, min_altitude,             i32, V0, panic!()), // in feet? // dword ^0 ; minAlt
-    (DWord, [Dec],              "maxAlt",   Signed, max_altitude,             i32, V0, panic!()), // dword ^0 ; maxAlt
+    (DWord, [Dec,Hex,Car],      "maxAlt",   Signed, max_altitude,             i32, V0, panic!()), // dword ^0 ; maxAlt
     (Symbol,[Sym],            "utilProc",   Struct, util_proc,           ProcKind, V0, panic!()), // symbol _OBJProc	; utilProc
     // Sound Info
-    (Ptr,   [Sym],           "loopSound",    Sound, loop_sound,             Sound, V0, panic!()), // dword 0
-    (Ptr,   [Sym],         "secondSound",    Sound, second_sound,           Sound, V0, panic!()), // dword 0
-    (Ptr,   [Sym],       "engineOnSound",    Sound, engine_on_sound,        Sound, V1, None), // TODO: figure out what the default was in USNF. // dword 0
-    (Ptr,   [Sym],      "engineOffSound",    Sound, engine_off_sound,       Sound, V1, None),     // dword 0
+    (Ptr,   [Dec,Sym],       "loopSound",    Sound, loop_sound,             Sound, V0, panic!()), // dword 0
+    (Ptr,   [Dec,Sym],     "secondSound",    Sound, second_sound,           Sound, V0, panic!()), // dword 0
+    (Ptr,   [Dec,Sym],   "engineOnSound",    Sound, engine_on_sound,        Sound, V1, None), // TODO: figure out what the default was in USNF. // dword 0
+    (Ptr,   [Dec,Sym],  "engineOffSound",    Sound, engine_off_sound,       Sound, V1, None),     // dword 0
     (Byte,  [Dec],           "doDoppler",     Bool, do_doppler,              bool, V0, panic!()), // byte 1 ; doDoppler
     (Word,  [Dec],          "maxSndDist", Unsigned, max_snd_dist,             u16, V0, panic!()), // in feet? // word 7000 ; maxSndDist
     (Word,  [Dec], "maxPlusDopplerPitch",   Signed, max_plus_doppler_pitch,   i16, V0, panic!()), // word 25 ; maxPlusDopplerPitch
@@ -332,7 +332,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     // // FIXME: looks like we need to specialize the hud source somehow... it is
     // // not set in the older games for some of the main planes; it's probably
     // // assuming the $name.HUD.
-    (Ptr,   [Sym],             "hudName",      HUD, hud,                      HUD, V2, None) // dword 0
+    (Ptr,   [Dec,Sym],         "hudName",      HUD, hud,                      HUD, V2, None) // dword 0
 }];
 
 impl ObjectType {

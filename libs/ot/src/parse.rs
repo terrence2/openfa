@@ -151,6 +151,14 @@ impl FieldValue {
         }
         return false;
     }
+
+    pub fn repr(&self) -> Repr {
+        match self {
+            FieldValue::Numeric((r, _)) => *r,
+            FieldValue::Symbol(_s) => Repr::Sym,
+            FieldValue::Ptr(_s, _v) => Repr::Sym,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -299,11 +307,12 @@ where
     });
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Repr {
     Dec,
     Hex,
     Car,
+    Sym,
 }
 
 // #[macro_export]
@@ -633,6 +642,14 @@ macro_rules! make_consume_fields {
     };
 }
 
+macro_rules! make_validate_field_repr {
+    ([ $( $row_format:ident ),* ], $row:expr, $field_name:expr) => {
+        let reprs = vec![$(Repr::$row_format),*];
+        let valid = reprs.iter().map(|&r| r == $row.value().repr()).any(|v| v == true);
+        ensure!(valid, "field {} repr of {:?} did not match any expected reprs: {:?}", $field_name, $row.value().repr(), reprs);
+    };
+}
+
 #[macro_export]
 macro_rules! make_type_struct {
     ($structname:ident($parent:ident: $parent_ty:ty, version: $version_ty:ident) {
@@ -664,18 +681,21 @@ macro_rules! make_type_struct {
                     rows.push(row);
                 }
 
-                // Group rows into fields.
-                // Validate reprs and comment against field.
-                // Build and assign fields.
-
                 let mut offset = 0;
                 $(
+                    // Validate comment.
                     ensure!(rows[offset].comment().is_none() || rows[offset].comment() == Some($comment), "non-matching comment");
+
+                    // Take a field if it exists in this version of the format.
                     let field_version = $version_ty::$version_supported;
                     let $field_name = if field_version <= file_version {
-                        println!("AT FIELD: {:?}", rows[offset]);
-
                         let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, resman);
+
+                        // Validate count fields
+                        for i in 0..count {
+                            make_validate_field_repr!([ $( $row_format ),* ], &rows[offset + i], stringify!($field_name));
+                        }
+
                         offset += count;
                         intermediate
                     } else {
