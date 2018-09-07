@@ -5,5 +5,9 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
+gfx-hal = { git = "https://github.com/gfx-rs/gfx.git", rev="a23baba92ca9bdea90ca2c120cb2dd6da7d0acf7" }
+image = "0.18"
+gfx = { path = "../gfx" }
 lib = { path = "../lib" }
+pal = { path = "../pal" }
 pic = { path = "../pic" }
