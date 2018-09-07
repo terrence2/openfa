@@ -15,6 +15,7 @@
 use failure::{err_msg, Fallible};
 use num_traits::{cast::AsPrimitive, Num};
 use std::{collections::HashMap, marker, str, str::FromStr};
+pub use std::any::TypeId;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FieldType {
@@ -135,6 +136,13 @@ impl FieldValue {
             FieldValue::Ptr(s, v) => Ok((s.clone(), v.clone())),
             _ => bail!("not a pointer")
         }
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        if let FieldValue::Ptr(_, _) = self {
+            return true;
+        }
+        return false;
     }
 }
 
@@ -283,49 +291,6 @@ where
         n.parse::<T>()?
     });
 }
-
-// pub trait TryConvert<T>
-// where
-//     Self: Sized,
-// {
-//     type Error;
-//     fn try_from(value: T) -> Result<Self, Self::Error>;
-// }
-
-// impl<T> TryConvert<T> for T {
-//     type Error = ::failure::Error;
-//     fn try_from(value: T) -> Fallible<T> {
-//         Ok(value)
-//     }
-// }
-
-// impl TryConvert<u8> for bool {
-//     type Error = ::failure::Error;
-//     fn try_from(value: u8) -> Fallible<bool> {
-//         Ok(value != 0)
-//     }
-// }
-
-// impl TryConvert<u16> for f32 {
-//     type Error = ::failure::Error;
-//     fn try_from(value: u16) -> Fallible<f32> {
-//         Ok(value as f32)
-//     }
-// }
-
-// impl TryConvert<u16> for usize {
-//     type Error = ::failure::Error;
-//     fn try_from(value: u16) -> Fallible<usize> {
-//         Ok(value as usize)
-//     }
-// }
-
-// impl TryConvert<u32> for usize {
-//     type Error = ::failure::Error;
-//     fn try_from(value: u32) -> Fallible<usize> {
-//         Ok(value as usize)
-//     }
-// }
 
 #[derive(Debug)]
 pub enum Repr {
@@ -561,54 +526,22 @@ pub enum Repr {
 //     }};
 // }
 
-// #[macro_export]
-// macro_rules! make_convert_type {
-//     (($repr:ident : $parse_ty:ty), $field_type:path, $value:expr) => {{
-//         let intermediate: $field_type = $value as $field_type;
-//         intermediate
-//     }};
-//     ($value:expr,([$repr1:ident, $repr2:ident]: $parse_ty:ty), $field_type:path) => {{
-//         let intermediate: $field_type = $value as $field_type;
-//         intermediate
-//     }};
-//     ($value:expr,[Vec3: $parse_ty:path], $field_type:path) => {{
-//         let intermediate: $field_type = $value as $field_type;
-//         intermediate
-//     }};
-//     ($value:expr,Ptr, $field_type:path) => {{
-//         let intermediate: $field_type = $value.load_into();
-//         intermediate
-//     }};
-//     ($value:expr,Altitude, $field_type:path) => {{
-//         let intermediate: $field_type = $value as $field_type;
-//         intermediate
-//     }};
-//     ($value:expr,Symbol, $field_type:path) => {{
-//         let intermediate: $field_type = $value as $field_type;
-//         intermediate
-//     }};
-//     ($value:expr,ObjClass, $field_type:path) => {{
-//         let intermediate: $field_type = $value as $field_type;
-//         intermediate
-//     }};
-//     ($repr_package:tt, $field_type:path, $value:expr) => {{
-//         $value
-//     }};
-// }
-
 macro_rules! make_storage_type {
-    (Option<HUD>) => {
-        std::rc::Rc<std::boxed::Box<std::option::Option<HUD>>>
+    (Resource, $field_type:path) => {
+        std::rc::Rc<std::boxed::Box<$field_type>>
     };
-    (Option<Sound>) => {
-        std::rc::Rc<std::boxed::Box<std::option::Option<Sound>>>
+    (Resource0, $field_type:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
     };
-    (CpuShape) => {
-        std::rc::Rc<std::boxed::Box<CpuShape>>
-    };
-    ($field_type:path) => {
+    (Num, $field_type:path) => {
         $field_type
     };
+    (Struct, $field_type:path) => {
+        $field_type
+    };
+    // ($_:ident, $field_type:path) => {
+    //     $field_type
+    // };
 }
 
 pub trait FromField {
@@ -616,64 +549,49 @@ pub trait FromField {
     fn from_field(field: &FieldRow) -> Fallible<Self::Produces>;
 }
 
-// impl FromField for usize {
-//     type Produces = usize;
-//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
-//         Ok(field.value().numeric()?.dword()? as usize)
-//     }
-// }
-
-// impl FromField for u32 {
-//     type Produces = u32;
-//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
-//         field.value().numeric()?.dword()
-//     }
-// }
-
-// impl FromField for u16 {
-//     type Produces = u16;
-//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
-//         field.value().numeric()?.word()
-//     }
-// }
-
-// impl FromField for i16 {
-//     type Produces = i16;
-//     fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
-//         Ok(field.value().numeric()?.word()? as i16)
-//     }
-// }
-
-pub use std::any::TypeId;
-
-
 macro_rules! make_consume_fields {
-    (Byte, Num, $field_type:path, $rows:expr, $pointer:ident) => {
+    (Byte, Num, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.byte()? as $field_type, 1)
     };
-    (Byte, Struct, $field_type:path, $rows:expr, $pointer:ident) => {
+    (Byte, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
     };
-    (Word, Num, $field_type:path, $rows:expr, $pointer:ident) => {
+    (Word, Num, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.word()?, 1)
     };
-    (Word, Struct, $field_type:path, $rows:expr, $pointer:ident) => {
+    (Word, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
     };
-    (DWord, Num, $field_type:path, $rows:expr, $pointer:ident) => {
+    (DWord, Num, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.dword()?, 1usize)
     };
-    (Ptr, Struct, $field_type:path, $rows:expr, $pointer:ident) => {
+    (Ptr, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
     };
-    (Ptr, Resource, $field_type:path, $rows:expr, $pointer:ident) => {
+    (Ptr, Resource, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+        // Null ptr is represented as `DWord 0`.
         if $crate::parse::TypeId::of::<$field_type>() == $crate::parse::TypeId::of::<CpuShape>() {
-            let v = Vec::new();
-            (CpuShape::from_data(&v)?, 1)
+            let (sym, values) = $rows[0].value().pointer()?;
+            ensure!(sym.ends_with("hape"), "expected shape in ptr name");
+            let name = $crate::parse::string(&values[0])?.to_uppercase();
+            ($resman.load_sh(&name)?, 1)
         } else {
             unimplemented!()
         }
-        //(<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
+    };
+    (Ptr, Resource0, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+        // Null ptr is represented as `DWord 0`.
+        if !$rows[0].value().is_pointer() {
+            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            (None, 1)
+        } else if $crate::parse::TypeId::of::<$field_type>() == $crate::parse::TypeId::of::<CpuShape>() {
+            let (sym, values) = $rows[0].value().pointer()?;
+            ensure!(sym.ends_with("hape"), "expected shape in ptr name");
+            let name = $crate::parse::string(&values[0])?.to_uppercase();
+            (Some($resman.load_sh(&name)?), 1)
+        } else {
+            unimplemented!()
+        }
     };
 }
 
@@ -687,7 +605,7 @@ macro_rules! make_type_struct {
             $parent: $parent_ty,
 
             $(
-                $field_name: make_storage_type!($field_type)
+                $field_name: make_storage_type!($parse_type, $field_type)
             ),*
         }
 
@@ -716,83 +634,23 @@ macro_rules! make_type_struct {
                 $(
                     ensure!(rows[offset].comment().is_none() || rows[offset].comment() == Some($comment), "non-matching comment");
                     let field_version = $version_ty::$version_supported;
-                    let $field_name: $field_type = if field_version <= file_version {
+                    let $field_name = if field_version <= file_version {
                         println!("AT FIELD: {:?}", rows[offset]);
 
-                        let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers);
+                        let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, resman);
                         offset += count;
                         intermediate
-
-                        // let (tmp, cnt) = make_consume_fields!(pointers, resman, texman, lines[offset]);
-                        // offset += cnt;
-                        // let out = make_convert_type!($repr_package, $field_type, tmp);
-                        // out
                     } else {
                         $default_value
                     };
                 );*
                 
-                unimplemented!()
-
-                //let token_rows = parse::tokenize_lines(&lines, pointers)?;
-
-                // let mut rows = Vec::new();
-                // let mut offset = 0;
-                // $(
-
-                //     rows.push(
-                //         FieldValue::from_line(
-                //             &lines[offset],
-                //             stringify!(structname),
-                //             $field_name,
-                //             offset,
-                //             pointers,
-                //             make_expect_repr!($repr_package),
-                //             $comment
-                //         )
-                //     );
-                //     offset += 1;
-
-                //  );*
-
-                // // Iterate through token_rows and our macro contents in
-                // // parallel: this will be complete unrolled.
-                // let mut offset = 0;
-                // $(
-                //     let token_row = &token_rows[offset];
-
-                //     // Parse each row according to the labeled type.
-                //     let row_data = token_row.parse($comment)?;
-
-                //     offset += 1;
-                //  );*
-                
-                // let lines = parse::partition_lines(&lines)?;
-                // println!("LEN: {}", lines.len());
-                // for (i, l) in lines.iter().enumerate() {
-                //     println!("{}: {:?}", i, l);
-                // }
-                // let mut offset = 0;
-                // let file_version = $version_ty::from_len(lines.len())?;
-                // $(
-                //     let field_version = $version_ty::$version_supported;
-                //     let $field_name: $field_type = if field_version <= file_version {
-                //         println!("AT FIELD: {:?}", lines[offset]);
-                //         let (tmp, cnt) = make_consume_field!($repr_package, $field_type, $comment, pointers, resman, texman, lines[offset]);
-                //         offset += cnt;
-                //         let out = make_convert_type!($repr_package, $field_type, tmp);
-                //         out
-                //     } else {
-                //         $default_value
-                //     };
-                //  );*
-                // //ensure!(offset == lines.len(), "did not consume all lines");
-                // return Ok(Self {
-                //     $parent,
-                //     $(
-                //         $field_name
-                //     ),*
-                // });
+                return Ok(Self {
+                    $parent,
+                    $(
+                        $field_name
+                    ),*
+                });
             }
         }
     }

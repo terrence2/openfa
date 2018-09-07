@@ -269,10 +269,10 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Ptr,  [Sym],    "ot_names",  Struct, ot_names, ObjectNames, V0, panic!()), // ptr ot_names
     (DWord,[Dec,Hex],   "flags",     Num, flags,            u32, V0, panic!()), // dword $20c21 ; flags
     (Word, [Hex],   "obj_class",  Struct, obj_class, ObjectKind, V0, panic!()), // word $40 ; obj_class
-    (Ptr,  [Dec],       "shape",Resource, shape,       CpuShape, V0, panic!()) // ptr shape
-    // (shadow_shape, Option<CpuShape>, "shadowShape",    [Ptr/CpuShape], V0, panic!()), // dword 0
-    // (unk8,                      u32, "",                    [Dec/u32], V2, 0),        // dword 0
-    // (unk9,                      u32, "",                    [Dec/u32], V2, 0),        // dword 0
+    (Ptr,  [Sym],       "shape",Resource0, shape,       CpuShape, V0, panic!()), // ptr shape
+    (Ptr,  [Sym], "shadowShape",Resource0, shadow_shape, CpuShape, V0, panic!()), // dword 0
+    (DWord,[Dec], "",           Num, unk8,                      u32, V2, 0),        // dword 0
+    (DWord,[Dec], "",           Num, unk9,                      u32, V2, 0)        // dword 0
     // (dmg_debris_pos,    Point3<f32>, "dmgDebrisPos.",      [Vec3/i16], V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dmgDebrisPos.x
     // (unk13,                     u32, "",                    [Dec/u32], V2, 0),        // dword 0
     // (unk14,                     u32, "",                    [Dec/u32], V2, 0),        // dword 0
