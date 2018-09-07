@@ -90,6 +90,19 @@ impl<'a> ResourceManager<'a> {
     pub fn load_sh(&self, name: &str) -> Fallible<Rc<Box<CpuShape>>> {
         assert!(name.ends_with(".SH"));
 
+        // FIXME: I *think* that FA probably got random forests by manually
+        // replacing TREE{1,2} with TREE{A,B,C,D}. Is there a way to verify?
+        let name = if name == "TREE1.SH" {
+            "TREEA.SH"
+        } else {
+            name
+        };
+        let name = if name == "TREE2.SH" {
+            "TREEC.SH"
+        } else {
+            name
+        };
+
         if let Some(item) = self.cache_sh.borrow().get(name) {
             return Ok(item.clone());
         };
@@ -103,6 +116,14 @@ impl<'a> ResourceManager<'a> {
             return Ok(item.clone());
         }
         panic!("unreachable")
+    }
+
+    pub fn load_sound(&self, name: &str) -> Fallible<Rc<Box<Sound>>> {
+        Ok(Rc::new(Box::new(Sound{})))
+    }
+
+    pub fn load_hud(&self, name: &str) -> Fallible<Rc<Box<HUD>>> {
+        Ok(Rc::new(Box::new(HUD{})))
     }
 
     pub fn library(&self) -> &LibStack {

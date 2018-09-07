@@ -124,6 +124,13 @@ impl ProcKind {
     }
 }
 
+impl FromField for ProcKind {
+    type Produces = ProcKind;
+    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+        ProcKind::new(&field.value().symbol()?)
+    }
+}
+
 bitflags! {
     struct ObjectFlags : u32 {
         const UNK0     = 0b0000_1000_0000_0000_0000_0000_0000_0000;
@@ -263,69 +270,69 @@ impl ObjectTypeVersion {
 
 make_type_struct![
 ObjectType(parent: (), version: ObjectTypeVersion) {
-    (Byte, [Dec],  "structType",  Struct, struct_type,  TypeTag, V0, panic!()), // byte 1 ; structType
-    (Word, [Dec],    "typeSize",     Num, type_size,        u16, V0, panic!()), // word 166 ; typeSize
-    (Word, [Dec],"instanceSize",     Num, instance_size,    u16, V0, panic!()), // word 0 ; instanceSize
-    (Ptr,  [Sym],    "ot_names",  Struct, ot_names, ObjectNames, V0, panic!()), // ptr ot_names
-    (DWord,[Dec,Hex],   "flags",     Num, flags,            u32, V0, panic!()), // dword $20c21 ; flags
-    (Word, [Hex],   "obj_class",  Struct, obj_class, ObjectKind, V0, panic!()), // word $40 ; obj_class
-    (Ptr,  [Sym],       "shape",Resource0, shape,       CpuShape, V0, panic!()), // ptr shape
-    (Ptr,  [Sym], "shadowShape",Resource0, shadow_shape, CpuShape, V0, panic!()), // dword 0
-    (DWord,[Dec], "",           Num, unk8,                      u32, V2, 0),        // dword 0
-    (DWord,[Dec], "",           Num, unk9,                      u32, V2, 0)        // dword 0
-    // (dmg_debris_pos,    Point3<f32>, "dmgDebrisPos.",      [Vec3/i16], V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dmgDebrisPos.x
-    // (unk13,                     u32, "",                    [Dec/u32], V2, 0),        // dword 0
-    // (unk14,                     u32, "",                    [Dec/u32], V2, 0),        // dword 0
-    // (dst_debris_pos,    Point3<f32>, "dstDebrisPos.",      [Vec3/i16], V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dstDebrisPos.x
-    // (dmg_type,                usize, "dmgType",             [Dec/u32], V2, 0),        // dword 0 ; dmgType
-    // (year_available,          usize, "year",                [Dec/u32], V3, usize::max_value()), // dword 1956 ; year
-    // (max_vis_dist,              f32, "maxVisDist",          [Dec/u16], V0, panic!()), // word 98 ; maxVisDist
-    // (camera_dist,               f32, "cameraDist",          [Dec/u16], V0, panic!()), // word 0 ; cameraDist
-    // (unk_sig_22,                u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
-    // (unk_sig_laser,             u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
-    // (unk_sig_ir,                u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
-    // (unk_sig_radar,             u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 100 ; sigs [i]
-    // (unk_sig_26,                u16, "sigs [i]",            [Dec/u16], V0, panic!()), // word 0 ; sigs [i]
-    // (hit_points,                u16, "hitPoints",           [Dec/u16], V0, panic!()), // word 50 ; hitPoints
-    // (damage_on_planes,          u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
-    // (damage_on_ships,           u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
-    // (damage_on_structures,      u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
-    // (damage_on_armor,           u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
-    // (damage_on_other,           u16, "damage [i]",          [Dec/u16], V0, panic!()), // word 0 ; damage [i]
-    // (explosion_type,             u8, "expType",             [Dec/u8 ], V0, panic!()), // byte 15 ; expType
-    // (crater_size,/*ft?*/         u8, "craterSize",          [Dec/u8 ], V0, panic!()), // byte 0 ; craterSize
-    // (empty_weight,              u32, "weight",              [Dec/u32], V0, panic!()), // dword 0 ; weight
-    // (cmd_buf_size,              u16, "cmdBufSize",          [Dec/u16], V0, panic!()), // word 0 ; cmdBufSize
-    // // Movement Info
-    // (turn_rate,                 u16, "_turnRate",           [Dec/u16], V0, panic!()), // word 0 ; _turnRate
-    // (bank_rate,                 u16, "_bankRate",           [Dec/u16], V0, panic!()), // degrees per second / 182? // word 0 ; _bankRate
-    // (max_climb,                 i16, "maxClimb",            [Dec/i16], V0, panic!()), // word 0 ; maxClimb
-    // (max_dive,                  i16, "maxDive",             [Dec/i16], V0, panic!()), // word 0 ; maxDive
-    // (max_bank,                  i16, "maxBank",             [Dec/i16], V0, panic!()), // word 0 ; maxBank
-    // (min_speed,                 u16, "_minSpeed",           [Dec/u16], V0, panic!()), // word 0 ; _minSpeed
-    // (corner_speed,              u16, "_cornerSpeed",        [Dec/u16], V0, panic!()), // word 0 ; _cornerSpeed
-    // (max_speed,                 u16, "_maxSpeed",           [Dec/u16], V0, panic!()), // word 0 ; _maxSpeed
-    // (acceleration,              u32, "_acc",        [Dec/u32,Car/u32], V0, panic!()), // dword ^0 ; _acc
-    // (deceleration,              u32, "_dacc",       [Dec/u32,Car/u32], V0, panic!()), // dword ^0 ; _dacc
-    // (min_altitude,              i32, "minAlt",                [*/u32], V0, panic!()), // in feet? // dword ^0 ; minAlt
-    // (max_altitude,              i32, "maxAlt",              [Dec/u32], V0, panic!()), // dword ^0 ; maxAlt
-    // (util_proc,            ProcKind, "utilProc",    [Symbol/ProcKind], V0, panic!()), // symbol _OBJProc	; utilProc
-    // // Sound Info
-    // (loop_sound,      Option<Sound>, "loopSound",         [Ptr/Sound], V0, panic!()), // dword 0
-    // (second_sound,    Option<Sound>, "secondSound",       [Ptr/Sound], V0, panic!()), // dword 0
-    // (engine_on_sound, Option<Sound>, "engineOnSound",     [Ptr/Sound], V1, None), // TODO: figure out what the default was in USNF. // dword 0
-    // (engine_off_sound,Option<Sound>, "engineOffSound",    [Ptr/Sound], V1, None),     // dword 0
-    // (do_doppler,               bool, "doDoppler",           [Dec/u8 ], V0, panic!()), // byte 1 ; doDoppler
-    // (max_snd_dist,              u16, "maxSndDist",          [Dec/u16], V0, panic!()), // in feet? // word 7000 ; maxSndDist
-    // (max_plus_doppler_pitch,    i16, "maxPlusDopplerPitch", [Dec/i16], V0, panic!()), // word 25 ; maxPlusDopplerPitch
-    // (max_minus_doppler_pitch,   i16, "maxMinusDopplerPitch",[Dec/i16], V0, panic!()), // word 20 ; maxMinusDopplerPitch
-    // (min_doppler_speed,         i16, "minDopplerSpeed",     [Dec/i16], V0, panic!()), // word 20 ; minDopplerSpeed
-    // (max_doppler_speed,         i16, "maxDopplerSpeed",     [Dec/i16], V0, panic!()), // word 1000 ; maxDopplerSpeed
-    // (unk_rear_view_pos, Point3<f32>, "viewOffset.",        [Vec3/i16], V0, panic!()), // word 0 ; viewOffset.x
+    (Byte,  [Dec],          "structType",   Struct, struct_type,          TypeTag, V0, panic!()), // byte 1 ; structType
+    (Word,  [Dec],            "typeSize", Unsigned, type_size,                u16, V0, panic!()), // word 166 ; typeSize
+    (Word,  [Dec],        "instanceSize", Unsigned, instance_size,            u16, V0, panic!()), // word 0 ; instanceSize
+    (Ptr,   [Sym],            "ot_names",   Struct, ot_names,         ObjectNames, V0, panic!()), // ptr ot_names
+    (DWord, [Dec,Hex],           "flags", Unsigned, flags,                    u32, V0, panic!()), // dword $20c21 ; flags
+    (Word,  [Hex],           "obj_class",   Struct, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
+    (Ptr,   [Sym],               "shape",    Shape, shape,               CpuShape, V0, panic!()), // ptr shape
+    (Ptr,   [Sym],         "shadowShape",    Shape, shadow_shape,        CpuShape, V0, panic!()), // dword 0
+    (DWord, [Dec],                    "", Unsigned, unk8,                     u32, V2, 0),        // dword 0
+    (DWord, [Dec],                    "", Unsigned, unk9,                     u32, V2, 0),        // dword 0
+    (Word,  [Dec],       "dmgDebrisPos.",     Vec3, dmg_debris_pos,   Point3<f32>, V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dmgDebrisPos.x
+    (DWord, [Dec],                    "", Unsigned, unk13,                    u32, V2, 0),        // dword 0
+    (DWord, [Dec],                    "", Unsigned, unk14,                    u32, V2, 0),        // dword 0
+    (Word,  [Dec],       "dstDebrisPos.",     Vec3, dst_debris_pos,   Point3<f32>, V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dstDebrisPos.x
+    (DWord, [Dec],             "dmgType", Unsigned, dmg_type,                 u32, V2, 0),        // dword 0 ; dmgType
+    (DWord, [Dec],                "year", Unsigned, year_available,           u32, V3, u32::max_value()), // dword 1956 ; year
+    (Word,  [Dec],          "maxVisDist", Unsigned, max_vis_dist,             f32, V0, panic!()), // word 98 ; maxVisDist
+    (Word,  [Dec],          "cameraDist", Unsigned, camera_dist,              f32, V0, panic!()), // word 0 ; cameraDist
+    (Word,  [Dec],            "sigs [i]", Unsigned, unk_sig_22,               u16, V0, panic!()), // word 100 ; sigs [i]
+    (Word,  [Dec],            "sigs [i]", Unsigned, unk_sig_laser,            u16, V0, panic!()), // word 100 ; sigs [i]
+    (Word,  [Dec],            "sigs [i]", Unsigned, unk_sig_ir,               u16, V0, panic!()), // word 100 ; sigs [i]
+    (Word,  [Dec],            "sigs [i]", Unsigned, unk_sig_radar,            u16, V0, panic!()), // word 100 ; sigs [i]
+    (Word,  [Dec],            "sigs [i]", Unsigned, unk_sig_26,               u16, V0, panic!()), // word 0 ; sigs [i]
+    (Word,  [Dec],           "hitPoints", Unsigned, hit_points,               u16, V0, panic!()), // word 50 ; hitPoints
+    (Word,  [Dec],          "damage [i]", Unsigned, damage_on_planes,         u16, V0, panic!()), // word 0 ; damage [i]
+    (Word,  [Dec],          "damage [i]", Unsigned, damage_on_ships,          u16, V0, panic!()), // word 0 ; damage [i]
+    (Word,  [Dec],          "damage [i]", Unsigned, damage_on_structures,     u16, V0, panic!()), // word 0 ; damage [i]
+    (Word,  [Dec],          "damage [i]", Unsigned, damage_on_armor,          u16, V0, panic!()), // word 0 ; damage [i]
+    (Word,  [Dec],          "damage [i]", Unsigned, damage_on_other,          u16, V0, panic!()), // word 0 ; damage [i]
+    (Byte,  [Dec],             "expType", Unsigned, explosion_type,            u8, V0, panic!()), // byte 15 ; expType
+    (Byte,  [Dec],          "craterSize", Unsigned, crater_size,/*ft?*/        u8, V0, panic!()), // byte 0 ; craterSize
+    (DWord, [Dec],              "weight", Unsigned, empty_weight,             u32, V0, panic!()), // dword 0 ; weight
+    (Word,  [Dec],          "cmdBufSize", Unsigned, cmd_buf_size,             u16, V0, panic!()), // word 0 ; cmdBufSize
+    // Movement Info
+    (Word,  [Dec],           "_turnRate", Unsigned, turn_rate,                u16, V0, panic!()), // word 0 ; _turnRate
+    (Word,  [Dec],           "_bankRate", Unsigned, bank_rate,                u16, V0, panic!()), // degrees per second / 182? // word 0 ; _bankRate
+    (Word,  [Dec],            "maxClimb",   Signed, max_climb,                i16, V0, panic!()), // word 0 ; maxClimb
+    (Word,  [Dec],             "maxDive",   Signed, max_dive,                 i16, V0, panic!()), // word 0 ; maxDive
+    (Word,  [Dec],             "maxBank",   Signed, max_bank,                 i16, V0, panic!()), // word 0 ; maxBank
+    (Word,  [Dec],           "_minSpeed", Unsigned, min_speed,                u16, V0, panic!()), // word 0 ; _minSpeed
+    (Word,  [Dec],        "_cornerSpeed", Unsigned, corner_speed,             u16, V0, panic!()), // word 0 ; _cornerSpeed
+    (Word,  [Dec],           "_maxSpeed", Unsigned, max_speed,                u16, V0, panic!()), // word 0 ; _maxSpeed
+    (DWord, [Dec,Car],            "_acc", Unsigned, acceleration,             u32, V0, panic!()), // dword ^0 ; _acc
+    (DWord, [Dec,Car],           "_dacc", Unsigned, deceleration,             u32, V0, panic!()), // dword ^0 ; _dacc
+    (DWord, [Dec,Hex,Car],      "minAlt",   Signed, min_altitude,             i32, V0, panic!()), // in feet? // dword ^0 ; minAlt
+    (DWord, [Dec],              "maxAlt",   Signed, max_altitude,             i32, V0, panic!()), // dword ^0 ; maxAlt
+    (Symbol,[Sym],            "utilProc",   Struct, util_proc,           ProcKind, V0, panic!()), // symbol _OBJProc	; utilProc
+    // Sound Info
+    (Ptr,   [Sym],           "loopSound",    Sound, loop_sound,             Sound, V0, panic!()), // dword 0
+    (Ptr,   [Sym],         "secondSound",    Sound, second_sound,           Sound, V0, panic!()), // dword 0
+    (Ptr,   [Sym],       "engineOnSound",    Sound, engine_on_sound,        Sound, V1, None), // TODO: figure out what the default was in USNF. // dword 0
+    (Ptr,   [Sym],      "engineOffSound",    Sound, engine_off_sound,       Sound, V1, None),     // dword 0
+    (Byte,  [Dec],           "doDoppler",     Bool, do_doppler,              bool, V0, panic!()), // byte 1 ; doDoppler
+    (Word,  [Dec],          "maxSndDist", Unsigned, max_snd_dist,             u16, V0, panic!()), // in feet? // word 7000 ; maxSndDist
+    (Word,  [Dec], "maxPlusDopplerPitch",   Signed, max_plus_doppler_pitch,   i16, V0, panic!()), // word 25 ; maxPlusDopplerPitch
+    (Word,  [Dec],"maxMinusDopplerPitch",   Signed, max_minus_doppler_pitch,  i16, V0, panic!()), // word 20 ; maxMinusDopplerPitch
+    (Word,  [Dec],     "minDopplerSpeed",   Signed, min_doppler_speed,        i16, V0, panic!()), // word 20 ; minDopplerSpeed
+    (Word,  [Dec],     "maxDopplerSpeed",   Signed, max_doppler_speed,        i16, V0, panic!()), // word 1000 ; maxDopplerSpeed
+    (Word,  [Dec],         "viewOffset.",     Vec3, unk_rear_view_pos,Point3<f32>, V0, panic!()), // word 0 ; viewOffset.x
     // // FIXME: looks like we need to specialize the hud source somehow... it is
     // // not set in the older games for some of the main planes; it's probably
     // // assuming the $name.HUD.
-    // (hud,               Option<HUD>,             "hudName", [Ptr/HUD],        V2, None) // dword 0
+    (Ptr,   [Sym],             "hudName",      HUD, hud,                      HUD, V2, None) // dword 0
 }];
 
 impl ObjectType {

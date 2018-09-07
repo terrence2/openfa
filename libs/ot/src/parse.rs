@@ -138,6 +138,13 @@ impl FieldValue {
         }
     }
 
+    pub fn symbol(&self) -> Fallible<String> {
+        match self {
+            FieldValue::Symbol(s) => Ok(s.clone()),
+            _ => bail!("not a symbol field")
+        }
+    }
+
     pub fn is_pointer(&self) -> bool {
         if let FieldValue::Ptr(_, _) = self {
             return true;
@@ -159,7 +166,7 @@ impl FieldRow {
         let mut b = a.next()
             .ok_or_else(|| err_msg("empty line"))?
             .splitn(2, ' ');
-        let comment = a.next().map(|s| s.to_owned());
+        let comment = a.next().map(|s| s.trim().to_owned());
         let kind = FieldType::from_str(
             b.next()
                 .ok_or_else(|| err_msg("missing or incorrect field kind"))?
@@ -527,21 +534,18 @@ pub enum Repr {
 // }
 
 macro_rules! make_storage_type {
-    (Resource, $field_type:path) => {
-        std::rc::Rc<std::boxed::Box<$field_type>>
-    };
-    (Resource0, $field_type:path) => {
+    (Shape, $field_type:path) => {
         std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
     };
-    (Num, $field_type:path) => {
+    (Sound, $field_type:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
+    };
+    (HUD, $field_type:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$field_type>>>
+    };
+    ($_:ident, $field_type:path) => {
         $field_type
     };
-    (Struct, $field_type:path) => {
-        $field_type
-    };
-    // ($_:ident, $field_type:path) => {
-    //     $field_type
-    // };
 }
 
 pub trait FromField {
@@ -550,47 +554,81 @@ pub trait FromField {
 }
 
 macro_rules! make_consume_fields {
-    (Byte, Num, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Byte, Bool, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.byte()? != 0, 1)
+    };
+
+    (Byte, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.byte()? as $field_type, 1)
     };
-    (Byte, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Word, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.word()? as $field_type, 1)
+    };
+    (DWord, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.dword()? as $field_type, 1)
+    };
+
+    (Byte, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.byte()? as i8 as $field_type, 1)
+    };
+    (Word, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.word()? as i16 as $field_type, 1)
+    };
+    (DWord, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.dword()? as i32 as $field_type, 1)
+    };
+
+    ($_t:ident, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
     };
-    (Word, Num, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        ($rows[0].value().numeric()?.word()?, 1)
-    };
-    (Word, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
-    };
-    (DWord, Num, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        ($rows[0].value().numeric()?.dword()?, 1usize)
-    };
-    (Ptr, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
-    };
-    (Ptr, Resource, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
-        // Null ptr is represented as `DWord 0`.
-        if $crate::parse::TypeId::of::<$field_type>() == $crate::parse::TypeId::of::<CpuShape>() {
-            let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym.ends_with("hape"), "expected shape in ptr name");
-            let name = $crate::parse::string(&values[0])?.to_uppercase();
-            ($resman.load_sh(&name)?, 1)
-        } else {
-            unimplemented!()
+
+    (Word, Vec3, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        {
+            let x = $rows[0].value().numeric()?.word()? as i16 as f32;
+            let y = $rows[1].value().numeric()?.word()? as i16 as f32;
+            let z = $rows[2].value().numeric()?.word()? as i16 as f32;
+            let p = Point3::new(x, y, z);
+            (p, 3)
         }
     };
-    (Ptr, Resource0, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+
+    // FIXME: fix up consume_ptr and just call that for all of these types
+    (Ptr, Shape, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().is_pointer() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
             (None, 1)
-        } else if $crate::parse::TypeId::of::<$field_type>() == $crate::parse::TypeId::of::<CpuShape>() {
+        } else {
             let (sym, values) = $rows[0].value().pointer()?;
             ensure!(sym.ends_with("hape"), "expected shape in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($resman.load_sh(&name)?), 1)
+        }
+    };
+
+    (Ptr, Sound, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+        // Null ptr is represented as `DWord 0`.
+        if !$rows[0].value().is_pointer() {
+            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            (None, 1)
         } else {
-            unimplemented!()
+            let (sym, values) = $rows[0].value().pointer()?;
+            ensure!(sym.ends_with("ound"), "expected sound in ptr name");
+            let name = $crate::parse::string(&values[0])?.to_uppercase();
+            (Some($resman.load_sound(&name)?), 1)
+        }
+    };
+
+    (Ptr, HUD, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+        // Null ptr is represented as `DWord 0`.
+        if !$rows[0].value().is_pointer() {
+            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            (None, 1)
+        } else {
+            let (sym, values) = $rows[0].value().pointer()?;
+            ensure!(sym == "hudName", "expected hud in ptr name");
+            let name = $crate::parse::string(&values[0])?.to_uppercase();
+            (Some($resman.load_hud(&name)?), 1)
         }
     };
 }
