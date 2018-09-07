@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{err_msg, Fallible};
+pub use failure::{err_msg, Fallible, Error};
 use num_traits::{cast::AsPrimitive, Num};
 use std::{collections::HashMap, marker, str, str::FromStr};
 pub use std::any::TypeId;
@@ -24,6 +24,7 @@ pub enum FieldType {
     Byte,
     Word,
     DWord,
+    XWord, // word or dword
     Ptr,
     Symbol,
 }
@@ -102,6 +103,14 @@ impl FieldNumber {
             _ => bail!("not a dword")
         }
     }
+
+    pub fn field_type(&self) -> FieldType {
+        match self {
+            FieldNumber::DWord(_) => FieldType::DWord,
+            FieldNumber::Word(_) => FieldType::Word,
+            FieldNumber::Byte(_) => FieldType::Byte,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -122,6 +131,7 @@ impl FieldValue {
                 FieldValue::Ptr(s.to_owned(), values) 
             }
             FieldType::Symbol => FieldValue::Symbol(s.to_owned()),
+            FieldType::XWord => bail!("xword is not a valid concrete type")
         };
         return Ok(value);
     }
@@ -147,18 +157,19 @@ impl FieldValue {
         }
     }
 
-    pub fn is_pointer(&self) -> bool {
-        if let FieldValue::Ptr(_, _) = self {
-            return true;
-        }
-        return false;
-    }
-
     pub fn repr(&self) -> Repr {
         match self {
             FieldValue::Numeric((r, _)) => *r,
             FieldValue::Symbol(_s) => Repr::Sym,
             FieldValue::Ptr(_s, _v) => Repr::Sym,
+        }
+    }
+
+    pub fn field_type(&self) -> FieldType {
+        match self {
+            FieldValue::Numeric((_, num)) => num.field_type(),
+            FieldValue::Symbol(_s) => FieldType::Symbol,
+            FieldValue::Ptr(_s, _v) => FieldType::Ptr,
         }
     }
 }
@@ -348,7 +359,7 @@ macro_rules! make_consume_fields {
     // FIXME: fix up consume_ptr and just call that for all of these types
     (Ptr, Shape, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
-        if !$rows[0].value().is_pointer() {
+        if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
             (None, 1)
         } else {
@@ -361,7 +372,7 @@ macro_rules! make_consume_fields {
 
     (Ptr, Sound, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
-        if !$rows[0].value().is_pointer() {
+        if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
             (None, 1)
         } else {
@@ -374,7 +385,7 @@ macro_rules! make_consume_fields {
 
     (Ptr, HUD, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
-        if !$rows[0].value().is_pointer() {
+        if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
             (None, 1)
         } else {
@@ -392,6 +403,24 @@ macro_rules! make_validate_field_repr {
         let reprs = vec![$($crate::parse::Repr::$row_format),*];
         let valid = reprs.iter().map(|&r| r == $row.value().repr()).any(|v| v == true);
         ensure!(valid, "field {} repr of {:?} did not match any expected reprs: {:?}", $field_name, $row.value().repr(), reprs);
+    };
+}
+
+#[macro_export]
+macro_rules! make_validate_field_type {
+    (Ptr, $row:expr, $field_name:expr) => {
+        ensure!($row.value().field_type() == $crate::parse::FieldType::Ptr ||
+                $row.value().field_type() == $crate::parse::FieldType::DWord,
+            "expected {} to have ptr or dword field_type", $field_name);
+    };
+    (XWord, $row:expr, $field_name:expr) => {
+        ensure!($row.value().field_type() == $crate::parse::FieldType::Word ||
+                $row.value().field_type() == $crate::parse::FieldType::DWord,
+            "expected {} to have word or dword field_type", $field_name);
+    };
+    ($row_type:ident, $row:expr, $field_name:expr) => {
+        ensure!($row.value().field_type() == $crate::parse::FieldType::$row_type,
+            "expected {} to have {:?} field_type", $field_name, $crate::parse::FieldType::$row_type);
     };
 }
 
@@ -436,9 +465,10 @@ macro_rules! make_type_struct {
                     let $field_name = if field_version <= file_version {
                         let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, resman);
 
-                        // Validate count fields
+                        // Validate all consumed fields
                         for i in 0..count {
                             make_validate_field_repr!([ $( $row_format ),* ], &rows[offset + i], stringify!($field_name));
+                            make_validate_field_type!($row_type, &rows[offset + i], stringify!($field_name));
                         }
 
                         offset += count;

@@ -81,7 +81,7 @@ impl FromField for ProjectilesInPod {
 make_type_struct![
 ProjectileType(obj: ObjectType, version: ProjectileTypeVersion) {                    // AA11.JT
     (DWord, [Dec,Hex],               "flags", Unsigned, flags0,                    u32, V0, panic!()), // dword $1204f ; flags
-    (D_Word,[Dec],              "projsInPod",   Struct, projs_in_pod, ProjectilesInPod, V0, panic!()), // word 1 ; projsInPod
+    (XWord, [Dec],              "projsInPod",   Struct, projs_in_pod, ProjectilesInPod, V0, panic!()), // word 1 ; projsInPod
     (Byte,  [Dec],              "structType", Unsigned, struct_type,                u8, V0, panic!()), // byte 10 ; structType
     (Ptr,   [Sym],                "si_names",   Struct, si_names,      ProjectileNames, V0, panic!()), // ptr si_names
     (Word,  [Dec],                  "weight", Unsigned, weight,                    u16, V0, panic!()), // word 0 ; weight
