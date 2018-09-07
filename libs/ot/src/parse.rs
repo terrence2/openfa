@@ -16,7 +16,7 @@ pub use failure::{err_msg, Fallible, Error};
 use num_traits::{cast::AsPrimitive, Num};
 use std::{collections::HashMap, marker, str, str::FromStr};
 pub use std::any::TypeId;
-pub use resource::{CpuShape, HUD, Sound, ResourceManager};
+pub use resource::{AI, CpuShape, HUD, Sound, ResourceManager};
 pub use texture::TextureManager;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -297,6 +297,9 @@ pub enum Repr {
 
 #[macro_export]
 macro_rules! make_storage_type {
+    (AI, $_ft:path) => {
+        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::AI>>>
+    };
     (Shape, $_ft:path) => {
         std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::CpuShape>>>
     };
@@ -356,10 +359,22 @@ macro_rules! make_consume_fields {
         }
     };
 
-    // FIXME: fix up consume_ptr and just call that for all of these types
-    (Ptr, Shape, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, AI, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
-        if !$rows[0].value().pointer().is_ok() {
+        if $rows[0].value().pointer().is_err() {
+            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            (None, 1)
+        } else {
+            let (sym, values) = $rows[0].value().pointer()?;
+            ensure!(sym.ends_with("ctName"), "expected ctName in ptr name");
+            let name = $crate::parse::string(&values[0])?.to_uppercase();
+            (Some($resman.load_ai(&name)?), 1)
+        }
+    };
+
+    (Ptr, Shape, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
+        // Null ptr is represented as `DWord 0`.
+        if $rows[0].value().pointer().is_err() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
             (None, 1)
         } else {
@@ -370,7 +385,7 @@ macro_rules! make_consume_fields {
         }
     };
 
-    (Ptr, Sound, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, Sound, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
@@ -383,7 +398,7 @@ macro_rules! make_consume_fields {
         }
     };
 
-    (Ptr, HUD, $field_type:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, HUD, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");

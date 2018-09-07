@@ -16,10 +16,14 @@
 extern crate failure;
 #[macro_use]
 extern crate ot;
+extern crate resource;
+extern crate texture;
 
 use failure::Fallible;
-use ot::{parse, parse::TryConvert, ObjectType, Resource};
+use ot::{parse, parse::{FieldRow, FromField}, ObjectType};
 use std::collections::HashMap;
+use resource::ResourceManager;
+use texture::TextureManager;
 
 // We can detect the version by the number of lines.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -33,56 +37,37 @@ impl NpcTypeVersion {
     }
 }
 
-// placeholder
-struct AI(String);
-impl Resource for AI {
-    fn from_file(filename: &str) -> Fallible<Self> {
-        return Ok(AI(filename.to_owned()));
-    }
-}
+// struct Fueltank(String);
+// impl Resource for Fueltank {
+//     fn from_file(filename: &str) -> Fallible<Self> {
+//         println!("Fueltank: {}", filename);
+//         return Ok(Fueltank(filename.to_owned()));
+//     }
+// }
 
-impl<'a> TryConvert<Vec<String>> for AI {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<AI> {
-        ensure!(value.len() <= 1, "expected 0 or 1 names in ai");
-        if value.len() > 0 {
-            return Ok(AI::from_file(&value[0])?);
-        }
-        bail!("not an ai file")
-    }
-}
+// struct Sensor(String);
+// impl Resource for Sensor {
+//     fn from_file(filename: &str) -> Fallible<Self> {
+//         println!("Sensor: {}", filename);
+//         return Ok(Sensor(filename.to_owned()));
+//     }
+// }
 
-struct Fueltank(String);
-impl Resource for Fueltank {
-    fn from_file(filename: &str) -> Fallible<Self> {
-        println!("Fueltank: {}", filename);
-        return Ok(Fueltank(filename.to_owned()));
-    }
-}
+// struct Ecm(String);
+// impl Resource for Ecm {
+//     fn from_file(filename: &str) -> Fallible<Self> {
+//         println!("Ecm: {}", filename);
+//         return Ok(Ecm(filename.to_owned()));
+//     }
+// }
 
-struct Sensor(String);
-impl Resource for Sensor {
-    fn from_file(filename: &str) -> Fallible<Self> {
-        println!("Sensor: {}", filename);
-        return Ok(Sensor(filename.to_owned()));
-    }
-}
-
-struct Ecm(String);
-impl Resource for Ecm {
-    fn from_file(filename: &str) -> Fallible<Self> {
-        println!("Ecm: {}", filename);
-        return Ok(Ecm(filename.to_owned()));
-    }
-}
-
-struct ProjectileType(String);
-impl Resource for ProjectileType {
-    fn from_file(filename: &str) -> Fallible<Self> {
-        println!("Projectile: {}", filename);
-        return Ok(ProjectileType(filename.to_owned()));
-    }
-}
+// struct ProjectileType(String);
+// impl Resource for ProjectileType {
+//     fn from_file(filename: &str) -> Fallible<Self> {
+//         println!("Projectile: {}", filename);
+//         return Ok(ProjectileType(filename.to_owned()));
+//     }
+// }
 
 enum Loadout {
     GAS(Fueltank),
@@ -91,18 +76,18 @@ enum Loadout {
     JT(ProjectileType),
 }
 
-impl Resource for Loadout {
-    fn from_file(filename: &str) -> Fallible<Self> {
-        let parts = filename.rsplit(".").collect::<Vec<&str>>();
-        return match parts[0] {
-            "SEE" => Ok(Loadout::SEE(Sensor::from_file(filename)?)),
-            "ECM" => Ok(Loadout::ECM(Ecm::from_file(filename)?)),
-            "JT" => Ok(Loadout::JT(ProjectileType::from_file(filename)?)),
-            "GAS" => Ok(Loadout::GAS(Fueltank::from_file(filename)?)),
-            _ => bail!("unknown loadout type: {}", parts[0]),
-        };
-    }
-}
+// impl Resource for Loadout {
+//     fn from_file(filename: &str) -> Fallible<Self> {
+//         let parts = filename.rsplit(".").collect::<Vec<&str>>();
+//         return match parts[0] {
+//             "SEE" => Ok(Loadout::SEE(Sensor::from_file(filename)?)),
+//             "ECM" => Ok(Loadout::ECM(Ecm::from_file(filename)?)),
+//             "JT" => Ok(Loadout::JT(ProjectileType::from_file(filename)?)),
+//             "GAS" => Ok(Loadout::GAS(Fueltank::from_file(filename)?)),
+//             _ => bail!("unknown loadout type: {}", parts[0]),
+//         };
+//     }
+// }
 
 #[allow(dead_code)]
 pub struct Hardpoint {
@@ -140,44 +125,38 @@ impl Hardpoint {
     }
 }
 
-// Wrap Vec<HP> so that we can impl TryConvert.
-struct HardpointWrapper(Vec<Hardpoint>);
+// Wrap Vec<HP> so that we can impl FromField.
+pub struct Hardpoints {
+    all: Vec<Hardpoint>
+}
 
-impl<'a> TryConvert<Vec<String>> for HardpointWrapper {
-    type Error = failure::Error;
-    fn try_from(value: Vec<String>) -> Fallible<HardpointWrapper> {
-        Ok(HardpointWrapper(Hardpoint::from_lines(value)?))
+impl FromField for Hardpoints {
+    type Produces = Hardpoints;
+    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+        let (name, values) = field.value().pointer()?;
+        ensure!(name == "hards", "expected pointer to hards");
+        unimplemented!();
     }
 }
 
 make_type_struct![NpcType(obj: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
-    (flags,            u32, "flags",          (Hex: u32), V0, panic!()), // dword $0 ; flags
-    (ct_name,           AI, "",                      Ptr, V0, panic!()), // ptr ctName
-    (search_frequency_t,u8, "searchFrequencyT",(Dec: u8), V0, panic!()), // byte 40 ; searchFrequencyT
-    (unready_attack_t,  u8, "unreadyAttackT",  (Dec: u8), V0, panic!()), // byte 100 ; unreadyAttackT
-    (attack_t,          u8, "attackT",         (Dec: u8), V0, panic!()), // byte 80 ; attackT
-    (retarget_t,       u16, "retargetT",      (Dec: u16), V0, panic!()), // word 32767 ; retargetT
-    (zone_dist,        u16, "zoneDist",       (Dec: u16), V0, panic!()), // word 0 ; zoneDist
-    (num_hards,         u8, "numHards",        (Dec: u8), V0, panic!()), // byte 3 ; numHards
-	(hards, Vec<Hardpoint>, "",    Ptr(HardpointWrapper), V0, panic!())  // ptr hards
+    (DWord, [Hex],            "flags", Unsigned, flags,             u32, V0, panic!()), // dword $0 ; flags
+    (Ptr,   [Sym],                 "",       AI, ct_name,            AI, V0, panic!()), // ptr ctName
+    (Byte,  [Dec], "searchFrequencyT", Unsigned, search_frequency_t, u8, V0, panic!()), // byte 40 ; searchFrequencyT
+    (Byte,  [Dec],   "unreadyAttackT", Unsigned, unready_attack_t,   u8, V0, panic!()), // byte 100 ; unreadyAttackT
+    (Byte,  [Dec],          "attackT", Unsigned, attack_t,           u8, V0, panic!()), // byte 80 ; attackT
+    (Word,  [Dec],        "retargetT", Unsigned, retarget_t,        u16, V0, panic!()), // word 32767 ; retargetT
+    (Word,  [Dec],         "zoneDist", Unsigned, zone_dist,         u16, V0, panic!()), // word 0 ; zoneDist
+    (Byte,  [Dec],         "numHards", Unsigned, num_hards,          u8, V0, panic!()), // byte 3 ; numHards
+	(Ptr,   [Sym],                 "",   Struct, hards,      Hardpoints, V0, panic!())  // ptr hards
 }];
 
-// #[allow(dead_code)]
-// pub struct NpcType {
-//     pub obj: ObjectType,
-
-//     unk0: u32,
-//     behavior: Option<AI>,
-//     unk_search_frequency_time: u8,
-//     unk_unready_attack_time: u8,
-//     unk_attack_time: u8,
-//     unk_retarget_time: i16,
-//     unk_zone_distance: i16,
-//     hardpoints: Vec<Hardpoint>,
-// }
-
 impl NpcType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_str(
+        data: &str,
+        resman: &ResourceManager,
+        texman: &TextureManager,
+    ) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -185,9 +164,9 @@ impl NpcType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers, resman, texman)?;
         let npc_lines = parse::find_section(&lines, "NPC_TYPE")?;
-        return Self::from_lines(obj, &npc_lines, &pointers);
+        return Self::from_lines(obj, &npc_lines, &pointers, resman, texman);
     }
 
     // pub fn from_lines(
@@ -234,6 +213,10 @@ mod tests {
     fn can_parse_all_npc_types() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
         for (game, name) in omni.find_matching("*.[NP]T")?.iter() {
+            println!("At: {}:{:13} @ {}", game, name, omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?);
+            let lib = omni.library(game);
+            let texman = TextureManager::new(lib)?;
+            let resman = ResourceManager::new_headless(lib)?;
             let contents = omni.library(game).load_text(name)?;
             let nt = NpcType::from_str(&contents)?;
             assert_eq!(nt.obj.file_name, *name);

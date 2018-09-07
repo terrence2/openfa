@@ -126,6 +126,10 @@ impl<'a> ResourceManager<'a> {
         Ok(Rc::new(Box::new(HUD{})))
     }
 
+    pub fn load_ai(&self, name: &str) -> Fallible<Rc<Box<AI>>> {
+        Ok(Rc::new(Box::new(AI{})))
+    }
+
     pub fn library(&self) -> &LibStack {
         return self.library;
     }
