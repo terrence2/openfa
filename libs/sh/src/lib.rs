@@ -25,7 +25,7 @@ extern crate peff;
 extern crate reverse;
 extern crate simplelog;
 
-use failure::Fallible;
+use failure::{Error, Fallible};
 use reverse::{bs2s, Color, Escape};
 use std::collections::HashSet;
 use std::{cmp, fmt, mem, str};
@@ -100,7 +100,8 @@ where
 }
 
 fn read_name(n: &[u8]) -> Fallible<String> {
-    let end_offset: usize = n.iter()
+    let end_offset: usize = n
+        .iter()
         .position(|&c| c == 0)
         .ok_or::<ShError>(ShError::NameUnending {})?;
     return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
@@ -296,7 +297,8 @@ impl VertexBuf {
     }
 
     fn show(&self) -> String {
-        let s = self.raw_verts
+        let s = self
+            .raw_verts
             .iter()
             .map(|v| format!("({:04X},{:04X},{:04X})", v[0], v[1], v[2]))
             .collect::<Vec<String>>()
@@ -525,7 +527,8 @@ impl Facet {
         // const USE_SHORT_MATERIAL = 0b0000_0000_0000_0010;
         // const USE_BYTE_TEXCOORDS = 0b0000_0000_0000_0001;
         // const UNK_MATERIAL_RELATED = 0b0000_0001_0000_0000;
-        let ind = self.indices
+        let ind = self
+            .indices
             .iter()
             .map(|i| format!("{:X}", i))
             .collect::<Vec<String>>()
@@ -615,7 +618,13 @@ impl X86Trampoline {
     }
 
     fn find_matching_thunk(target: u32, pe: &peff::PE) -> Fallible<String> {
+        trace!(
+            "looking for target 0x{:X} in {} thunks",
+            target,
+            pe.thunks.len()
+        );
         for thunk in pe.thunks.iter() {
+            trace!("    {:20} @ 0x{:X}", thunk.name, thunk.vaddr);
             if target == thunk.vaddr {
                 return Ok(thunk.name.clone());
             }
@@ -1848,11 +1857,14 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 mod tests {
     use super::*;
     use i386::ExitInfo;
+    use simplelog::{Config, LevelFilter, TermLogger};
     use std::fs;
     use std::io::prelude::*;
 
     #[test]
     fn it_works() {
+        //let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+
         let mut rv: Vec<String> = Vec::new();
         let paths = fs::read_dir("./test_data").unwrap();
         for i in paths {
@@ -1908,11 +1920,9 @@ mod tests {
     //     field49: u8,
     // }
 
-    use simplelog::*;
-
     #[test]
     fn virtual_interp() {
-        //TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+        //let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 
         //let path = "./test_data/EXP.SH";
         //let path = "./test_data/FLARE.SH";

@@ -92,16 +92,8 @@ impl<'a> ResourceManager<'a> {
 
         // FIXME: I *think* that FA probably got random forests by manually
         // replacing TREE{1,2} with TREE{A,B,C,D}. Is there a way to verify?
-        let name = if name == "TREE1.SH" {
-            "TREEA.SH"
-        } else {
-            name
-        };
-        let name = if name == "TREE2.SH" {
-            "TREEC.SH"
-        } else {
-            name
-        };
+        let name = if name == "TREE1.SH" { "TREEA.SH" } else { name };
+        let name = if name == "TREE2.SH" { "TREEC.SH" } else { name };
 
         if let Some(item) = self.cache_sh.borrow().get(name) {
             return Ok(item.clone());
@@ -112,22 +104,19 @@ impl<'a> ResourceManager<'a> {
         self.cache_sh
             .borrow_mut()
             .insert(name.to_owned(), Rc::new(Box::new(sh)));
-        if let Some(item) = self.cache_sh.borrow().get(name) {
-            return Ok(item.clone());
-        }
-        panic!("unreachable")
+        return Ok(self.cache_sh.borrow().get(name).unwrap().clone());
     }
 
     pub fn load_sound(&self, name: &str) -> Fallible<Rc<Box<Sound>>> {
-        Ok(Rc::new(Box::new(Sound{})))
+        Ok(Rc::new(Box::new(Sound {})))
     }
 
     pub fn load_hud(&self, name: &str) -> Fallible<Rc<Box<HUD>>> {
-        Ok(Rc::new(Box::new(HUD{})))
+        Ok(Rc::new(Box::new(HUD {})))
     }
 
     pub fn load_ai(&self, name: &str) -> Fallible<Rc<Box<AI>>> {
-        Ok(Rc::new(Box::new(AI{})))
+        Ok(Rc::new(Box::new(AI {})))
     }
 
     pub fn library(&self) -> &LibStack {

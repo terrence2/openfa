@@ -72,7 +72,6 @@ impl FieldNumber {
     // anyway. The assumption appears to be that truncation will happen. At
     // least one of these instances implies sign extension as well.
     fn parse_numeric(vs: &str) -> Fallible<(Repr, u32)> {
-        println!("parsing: {}", vs);
         let tpl = if vs.starts_with('$') {
             (Repr::Hex, u32::from_str_radix(&vs[1..], 16)?)
         } else if vs.starts_with('^') {
@@ -381,6 +380,7 @@ macro_rules! make_consume_fields {
             let (sym, values) = $rows[0].value().pointer()?;
             ensure!(sym.ends_with("hape"), "expected shape in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
+            println!("NAME: {}", name);
             (Some($resman.load_sh(&name)?), 1)
         }
     };
@@ -473,7 +473,8 @@ macro_rules! make_type_struct {
                 let mut offset = 0;
                 $(
                     // Validate comment.
-                    ensure!(rows[offset].comment().is_none() || rows[offset].comment() == Some($comment), "non-matching comment");
+                    println!("{:?} == {}", rows[offset].comment(), $comment);
+                    ensure!(rows[offset].comment().is_none() || rows[offset].comment().unwrap().starts_with($comment), "non-matching comment");
 
                     // Take a field if it exists in this version of the format.
                     let field_version = $version_ty::$version_supported;

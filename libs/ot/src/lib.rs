@@ -26,11 +26,10 @@ pub mod parse;
 
 use failure::Fallible;
 use nalgebra::Point3;
-pub use parse::{FromField, FieldRow, consume_obj_class, consume_ptr, FieldType, Repr};
+pub use parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromField, Repr};
 use resource::{CpuShape, ResourceManager, Sound, HUD};
 use std::{collections::HashMap, mem, rc::Rc};
 use texture::TextureManager;
-
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -286,22 +285,27 @@ extern crate omnilib;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnilib::OmniLib;
     use failure::Error;
+    use omnilib::OmniLib;
 
     #[test]
     fn can_parse_all_entity_types() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
-            "FA", //"ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
+            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
         ])?;
         for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
-            println!("At: {}:{:13} @ {}", game, name, omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?);
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
+            );
             let lib = omni.library(game);
-            let texman = TextureManager::new(lib)?;
+            let texman = TextureManager::new_headless(lib)?;
             let resman = ResourceManager::new_headless(lib)?;
             let contents = lib.load_text(name)?;
             let ot = ObjectType::from_str(&contents, &resman, &texman)?;
-            // Only one misspelling in 2.5e3 files.
+            // Only one misspelling in 2500 files.
             assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:?} <> {}",

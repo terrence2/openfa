@@ -16,10 +16,12 @@ extern crate clap;
 extern crate i386;
 extern crate reverse;
 extern crate sh;
+extern crate simplelog;
 
 use clap::{App, Arg};
 use reverse::{b2h, bs2s};
 use sh::{CpuShape, Instr};
+use simplelog::*;
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
@@ -79,6 +81,8 @@ fn main() {
                 .required(true),
         )
         .get_matches();
+
+    let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 
     for name in matches.values_of("INPUT").unwrap() {
         let mut fp = fs::File::open(name).unwrap();
