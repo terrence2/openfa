@@ -8,3 +8,6 @@ log = "0.4"
 bitflags = "1.0"
 failure = "0.1"
 packed_struct = { path = "../packed_struct/" }
+
+[dev-dependencies]
+omnilib = { path = "../omnilib" }

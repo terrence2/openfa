@@ -21,7 +21,7 @@ extern crate log;
 #[macro_use]
 extern crate packed_struct;
 
-use failure::Error;
+use failure::Fallible;
 
 use std::collections::HashMap;
 use std::{mem, str};
@@ -45,6 +45,9 @@ pub struct PE {
 
     // Stored section headers, so that we can interpret thunks and relocs.
     pub section_info: HashMap<String, SectionInfo>,
+
+    // The assumed mmap location of the file.
+    pub image_base: u32,
 
     // The assumed load address of the code.
     pub code_vaddr: u32,
@@ -79,7 +82,7 @@ impl SectionInfo {
 }
 
 impl PE {
-    pub fn parse(data: &[u8]) -> Result<PE, Error> {
+    pub fn parse(data: &[u8]) -> Fallible<PE> {
         assert_eq!(mem::size_of::<COFFHeader>(), 20);
         assert_eq!(mem::size_of::<OptionalHeader>(), 28);
         assert_eq!(mem::size_of::<WindowsHeader>(), 68);
@@ -139,7 +142,10 @@ impl PE {
             pe_offset + 4 + mem::size_of::<COFFHeader>() + mem::size_of::<OptionalHeader>();
         let win_ptr: *const WindowsHeader = data[win_offset..].as_ptr() as *const _;
         let win: &WindowsHeader = unsafe { &*win_ptr };
-        ensure!(win.image_base() == 0, "expected image base to be zero");
+        ensure!(
+            win.image_base() == 0 || win.image_base() == 0x10000,
+            "expected image base to be 0 or 10000"
+        );
         ensure!(
             win.section_alignment() == 4096,
             "expected page aligned memory sections"
@@ -161,7 +167,7 @@ impl PE {
             "win32 version version should be unset"
         );
         ensure!(
-            win.size_of_headers() == 1024,
+            win.size_of_headers() == 1024 || win.size_of_headers() == 512,
             "expected exactly 1K of headers"
         );
         ensure!(win.checksum() == 0, "checksum should be unset");
@@ -214,7 +220,7 @@ impl PE {
             let name = str::from_utf8(&name_raw)?;
 
             let expect_flags = match name {
-                "CODE" => {
+                "CODE" | ".text" => {
                     SectionFlags::IMAGE_SCN_CNT_CODE
                         | SectionFlags::IMAGE_SCN_MEM_EXECUTE
                         | SectionFlags::IMAGE_SCN_MEM_READ
@@ -243,6 +249,11 @@ impl PE {
                         | SectionFlags::IMAGE_SCN_MEM_DISCARDABLE
                         | SectionFlags::IMAGE_SCN_MEM_READ
                 }
+                ".bss" => {
+                    SectionFlags::IMAGE_SCN_CNT_UNINITIALIZED_DATA
+                        | SectionFlags::IMAGE_SCN_MEM_READ
+                        | SectionFlags::IMAGE_SCN_MEM_WRITE
+                }
                 s => bail!("unexpected section name: {}", s),
             };
             ensure!(
@@ -251,10 +262,11 @@ impl PE {
             );
 
             trace!(
-                "Section {} starting at offset {:X} loaded at vaddr {:X}",
+                "Section {} starting at offset {:X} loaded at vaddr {:X} base {:X}",
                 name,
                 section.pointer_to_raw_data(),
-                section.virtual_address()
+                section.virtual_address(),
+                win.image_base(),
             );
             let start = section.pointer_to_raw_data() as usize;
             let end = start + section.virtual_size() as usize;
@@ -276,7 +288,11 @@ impl PE {
             thunks.append(&mut PE::_parse_idata(idata_section, idata)?);
         }
 
-        let (code_section, code) = sections["CODE"];
+        let (code_section, code) = if sections.contains_key("CODE") {
+            sections["CODE"]
+        } else {
+            sections[".text"]
+        };
         let (_, reloc_data) = sections[".reloc"];
         let relocs = PE::_parse_relocs(reloc_data, code_section)?;
 
@@ -292,12 +308,13 @@ impl PE {
             relocs,
             code: code.to_owned(),
             section_info,
+            image_base: win.image_base(),
             code_vaddr: code_section.virtual_address(),
             code_addr: code_section.virtual_address(),
         });
     }
 
-    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<Vec<Thunk>, Error> {
+    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Fallible<Vec<Thunk>> {
         ensure!(
             idata.len() > mem::size_of::<ImportDirectoryEntry>() * 2,
             "section data too short for directory"
@@ -392,14 +409,15 @@ impl PE {
         return Ok(thunks);
     }
 
-    fn read_name(n: &[u8]) -> Result<String, Error> {
-        let end_offset: usize = n.iter()
+    fn read_name(n: &[u8]) -> Fallible<String> {
+        let end_offset: usize = n
+            .iter()
             .position(|&c| c == 0)
             .ok_or::<PEError>(PEError::NameUnending {})?;
         return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
     }
 
-    fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Result<Vec<u32>, Error> {
+    fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Fallible<Vec<u32>> {
         let mut out = Vec::new();
         let mut offset = 0usize;
         while offset < relocs.len() {
@@ -437,58 +455,83 @@ impl PE {
         return Ok(out);
     }
 
-    pub fn relocate(&mut self, addr: u32) -> Result<(), Error> {
-        if addr >= self.code_vaddr {
-            let delta = addr - self.code_vaddr;
-            for &reloc in self.relocs.iter() {
-                let dwords: &mut [u32] =
-                    unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
-                let pcode: *mut u32 = dwords.as_mut_ptr();
-                unsafe {
-                    trace!(
-                        "Relocating word at {:04X} from {:04X} to {:04X}",
-                        reloc as usize,
-                        *pcode,
-                        *pcode + delta
-                    );
-                    *pcode += delta;
-                }
-            }
-            for info in self.section_info.values_mut() {
-                info.virtual_address += delta;
-            }
-            for thunk in self.thunks.iter_mut() {
-                thunk.vaddr += delta;
-            }
-        } else {
-            let delta = self.code_vaddr - addr;
-            for &reloc in self.relocs.iter() {
-                let dwords: &mut [u32] =
-                    unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
-                let pcode: *mut u32 = dwords.as_mut_ptr();
-                unsafe {
-                    trace!(
-                        "Relocating word at {:04X} from {:04X} to {:04X}",
-                        reloc as usize,
-                        *pcode,
-                        *pcode - delta
-                    );
-                    *pcode -= delta;
-                }
-            }
-            for info in self.section_info.values_mut() {
-                info.virtual_address -= delta;
-            }
-            for thunk in self.thunks.iter_mut() {
-                thunk.vaddr -= delta;
+    pub fn relocate(&mut self, addr: u32) -> Fallible<()> {
+        let delta = RelocationDelta::new(addr, self.image_base + self.code_vaddr);
+        for &reloc in self.relocs.iter() {
+            let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
+            let pcode: *mut u32 = dwords.as_mut_ptr();
+            unsafe {
+                trace!(
+                    "Relocating word at 0x{:04X} from 0x{:08X} to 0x{:08X}",
+                    reloc as usize,
+                    *pcode,
+                    delta.apply(*pcode)
+                );
+                *pcode = delta.apply(*pcode);
             }
         }
-        self.code_addr = addr;
+
+        // Note: section headers and thunks do not get image base I guess?
+        let delta = RelocationDelta::new(addr, self.code_vaddr);
+        for info in self.section_info.values_mut() {
+            trace!(
+                "Relocating section vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
+                info.virtual_address,
+                delta.delta(),
+                delta.apply(info.virtual_address)
+            );
+            info.virtual_address = delta.apply(info.virtual_address);
+        }
+        for thunk in self.thunks.iter_mut() {
+            trace!(
+                "Relocating thunk vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
+                thunk.vaddr,
+                delta.delta(),
+                delta.apply(thunk.vaddr)
+            );
+            thunk.vaddr = delta.apply(thunk.vaddr);
+        }
+
         return Ok(());
     }
 
     pub fn relocate_pointer(&self, addr: u32) -> u32 {
-        addr - self.code_vaddr + self.code_addr
+        trace!(
+            "Relocate: 0x{:08X}, vaddr: 0x{:08X}, addr: 0x{:08X}",
+            addr,
+            self.code_vaddr,
+            self.code_addr
+        );
+        addr - self.image_base - self.code_vaddr + self.code_addr
+    }
+}
+
+enum RelocationDelta {
+    Up(u32),
+    Down(u32),
+}
+
+impl RelocationDelta {
+    pub fn new(target: u32, base: u32) -> Self {
+        if target >= base {
+            RelocationDelta::Up(target - base)
+        } else {
+            RelocationDelta::Down(base - target)
+        }
+    }
+
+    pub fn apply(&self, vaddr: u32) -> u32 {
+        match self {
+            RelocationDelta::Up(delta) => vaddr + *delta,
+            RelocationDelta::Down(delta) => vaddr - *delta,
+        }
+    }
+
+    pub fn delta(&self) -> u32 {
+        match self {
+            RelocationDelta::Up(delta) => *delta,
+            RelocationDelta::Down(delta) => *delta,
+        }
     }
 }
 
@@ -641,23 +684,37 @@ const DOSX_HEADER: &[u8] = &[
 ];
 
 #[cfg(test)]
+extern crate omnilib;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use failure::Error;
+    use omnilib::OmniLib;
     use std::fs;
     use std::io::prelude::*;
 
     #[test]
-    fn it_works() {
-        let paths = fs::read_dir("./test_data/").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            //println!("At: {}", path);
+    fn it_works() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
+        ])?;
 
-            let mut fp = fs::File::open(&path).unwrap();
-            let mut data = Vec::new();
-            fp.read_to_end(&mut data).unwrap();
-            let _pe = PE::parse(&data).unwrap();
+        let sh = omni.find_matching("*.SH")?;
+        let lay = omni.find_matching("*.LAY")?;
+
+        for (game, name) in sh.iter().chain(lay.iter()) {
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
+            );
+            let lib = omni.library(game);
+            let data = lib.load(name)?;
+            let _pe = PE::parse(&data)?;
         }
+
+        return Ok(());
     }
 }
