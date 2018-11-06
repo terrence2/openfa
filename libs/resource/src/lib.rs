@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate failure;
 //extern crate bi;
 //extern crate hud;
@@ -37,37 +36,37 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 // Placeholder
 pub struct AI {}
 impl AI {
-    fn from_data(data: &[u8]) -> Fallible<Self> {
-        Ok(AI {})
-    }
+    // fn from_data(data: &[u8]) -> Fallible<Self> {
+    //     Ok(AI {})
+    // }
 }
 
 // Placeholder
 pub struct HUD {}
 impl HUD {
-    fn from_data(data: &[u8]) -> Fallible<Self> {
-        Ok(HUD {})
-    }
+    // fn from_data(data: &[u8]) -> Fallible<Self> {
+    //     Ok(HUD {})
+    // }
 }
 
 // Placeholder
 pub struct Sound {}
 impl Sound {
-    fn from_data(data: &[u8]) -> Fallible<Self> {
-        Ok(Sound {})
-    }
+    // fn from_data(data: &[u8]) -> Fallible<Self> {
+    //     Ok(Sound {})
+    // }
 }
 
 pub struct ResourceManager<'a> {
     // The library to load from.
     library: &'a LibStack,
 
-    cache_ai: RefCell<HashMap<String, Rc<Box<AI>>>>,
-    cache_hud: RefCell<HashMap<String, Rc<Box<HUD>>>>,
-    cache_layer: RefCell<HashMap<String, Rc<Box<Layer>>>>,
+    // cache_ai: RefCell<HashMap<String, Rc<Box<AI>>>>,
+    // cache_hud: RefCell<HashMap<String, Rc<Box<HUD>>>>,
+    // cache_layer: RefCell<HashMap<String, Rc<Box<Layer>>>>,
     cache_sh: RefCell<HashMap<String, Rc<Box<CpuShape>>>>,
-    cache_sound: RefCell<HashMap<String, Rc<Box<Sound>>>>,
-    cache_terrain: RefCell<HashMap<String, Rc<Box<Terrain>>>>,
+    // cache_sound: RefCell<HashMap<String, Rc<Box<Sound>>>>,
+    // cache_terrain: RefCell<HashMap<String, Rc<Box<Terrain>>>>,
 }
 
 impl<'a> ResourceManager<'a> {
@@ -75,12 +74,12 @@ impl<'a> ResourceManager<'a> {
     pub fn new_headless(library: &'a LibStack) -> Fallible<Self> {
         return Ok(ResourceManager {
             library,
-            cache_ai: RefCell::new(HashMap::new()),
-            cache_hud: RefCell::new(HashMap::new()),
-            cache_layer: RefCell::new(HashMap::new()),
+            // cache_ai: RefCell::new(HashMap::new()),
+            // cache_hud: RefCell::new(HashMap::new()),
+            // cache_layer: RefCell::new(HashMap::new()),
             cache_sh: RefCell::new(HashMap::new()),
-            cache_sound: RefCell::new(HashMap::new()),
-            cache_terrain: RefCell::new(HashMap::new()),
+            // cache_sound: RefCell::new(HashMap::new()),
+            // cache_terrain: RefCell::new(HashMap::new()),
         });
     }
 
@@ -107,17 +106,17 @@ impl<'a> ResourceManager<'a> {
         return Ok(self.cache_sh.borrow().get(name).unwrap().clone());
     }
 
-    pub fn load_sound(&self, name: &str) -> Fallible<Rc<Box<Sound>>> {
-        Ok(Rc::new(Box::new(Sound {})))
-    }
+    // pub fn load_sound(&self, name: &str) -> Fallible<Rc<Box<Sound>>> {
+    //     Ok(Rc::new(Box::new(Sound {})))
+    // }
 
-    pub fn load_hud(&self, name: &str) -> Fallible<Rc<Box<HUD>>> {
-        Ok(Rc::new(Box::new(HUD {})))
-    }
+    // pub fn load_hud(&self, name: &str) -> Fallible<Rc<Box<HUD>>> {
+    //     Ok(Rc::new(Box::new(HUD {})))
+    // }
 
-    pub fn load_ai(&self, name: &str) -> Fallible<Rc<Box<AI>>> {
-        Ok(Rc::new(Box::new(AI {})))
-    }
+    // pub fn load_ai(&self, name: &str) -> Fallible<Rc<Box<AI>>> {
+    //     Ok(Rc::new(Box::new(AI {})))
+    // }
 
     pub fn library(&self) -> &LibStack {
         return self.library;
@@ -130,10 +129,10 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn load_direct() -> Fallible<()> {
+    fn test_load_direct() -> Fallible<()> {
         let lib = LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
         let rm = ResourceManager::new_headless(&lib)?;
-        let sh = rm.load_sh("F22.SH")?;
+        let _sh = rm.load_sh("F22.SH")?;
         //assert_eq!(ot.short_name, "Runway 2");
         return Ok(());
     }
