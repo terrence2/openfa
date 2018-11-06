@@ -11,5 +11,5 @@ benchmark = []
 opt-level = 1
 
 [dependencies]
-failure = "0.1.2"
-lazy_static = "1.0"
+failure = ">= 0.1.2"
+lazy_static = ">= 1"

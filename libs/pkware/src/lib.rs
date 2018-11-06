@@ -41,15 +41,14 @@
  */
 
 #![cfg_attr(feature = "benchmark", feature(test))]
-#[macro_use]
 extern crate failure;
-#[macro_use]
 extern crate lazy_static;
 
-use failure::Error;
+use failure::{bail, ensure, Fallible};
+use lazy_static::lazy_static;
 
 /// Simple interface: uncompress all of data at once from memory to memory.
-pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>, Error> {
+pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Fallible<Vec<u8>> {
     let mut state = State {
         data,
         offset: 0,
@@ -58,8 +57,7 @@ pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>
         out: Vec::with_capacity(expect_output_size.unwrap_or(0)),
     };
     state.decomp()?;
-    //println!("state: {:?}", out);
-    return Ok(state.out);
+    Ok(state.out)
 }
 
 struct State<'a> {
@@ -133,15 +131,9 @@ const LENGTH_LENGTHS: [u8; 6] = [2, 35, 36, 53, 38, 23];
 const DISTANCE_LENGTHS: [u8; 7] = [2, 20, 53, 230, 247, 151, 248];
 
 lazy_static! {
-    pub static ref LITERAL_CODES: Huffman = {
-        return construct(&LITERAL_LENGTHS).unwrap();
-    };
-    pub static ref LENGTH_CODES: Huffman = {
-        return construct(&LENGTH_LENGTHS).unwrap();
-    };
-    pub static ref DISTANCE_CODES: Huffman = {
-        return construct(&DISTANCE_LENGTHS).unwrap();
-    };
+    pub static ref LITERAL_CODES: Huffman = { construct(&LITERAL_LENGTHS).unwrap() };
+    pub static ref LENGTH_CODES: Huffman = { construct(&LENGTH_LENGTHS).unwrap() };
+    pub static ref DISTANCE_CODES: Huffman = { construct(&DISTANCE_LENGTHS).unwrap() };
 }
 
 /*
@@ -163,7 +155,7 @@ lazy_static! {
  */
 // Note: constructing all 3 vectors takes ~1us; not really worth optimizating
 // further as they are cached by lazy_static!.
-fn construct(rep: &[u8]) -> Result<Huffman, Error> {
+fn construct(rep: &[u8]) -> Fallible<Huffman> {
     let mut length = [0usize; 256]; /* code lengths */
 
     /* convert compact repeat counts into symbol bit length list */
@@ -180,10 +172,10 @@ fn construct(rep: &[u8]) -> Result<Huffman, Error> {
 
     /* count number of codes of each length */
     let mut h = Huffman::new();
-    for symbol in 0..n {
-        debug_assert!(symbol < 256);
-        debug_assert!(length[symbol] <= MAXBITS);
-        h.count[length[symbol]] += 1;
+    debug_assert!(n < 256);
+    for sym_len in length.iter().take(n) {
+        debug_assert!(*sym_len <= MAXBITS);
+        h.count[*sym_len] += 1;
     }
     if h.count[0] as usize == n {
         /* no codes! Complete, but decode() will fail */
@@ -192,7 +184,7 @@ fn construct(rep: &[u8]) -> Result<Huffman, Error> {
 
     /* check for an over-subscribed or incomplete set of lengths */
     let mut left = 1; /* one possible code of zero length */
-    for len in 0..MAXBITS + 1 {
+    for len in 0..=MAXBITS {
         left <<= 1; /* one more bit, double codes left */
         /* over-subscribed--return negative; left > 0 means incomplete */
         ensure!(left >= h.count[len], "codes are over-subscribed");
@@ -216,7 +208,7 @@ fn construct(rep: &[u8]) -> Result<Huffman, Error> {
         }
     }
 
-    return Ok(h);
+    Ok(h)
 }
 
 impl<'a> State<'a> {
@@ -258,7 +250,7 @@ impl<'a> State<'a> {
      *   ignoring whether the length is greater than the distance or not implements
      *   this correctly.
      */
-    fn decomp(&mut self) -> Result<(), Error> {
+    fn decomp(&mut self) -> Fallible<()> {
         /* read header */
         let lit = self.bits(8)?;
         ensure!(lit <= 1, "invalid header");
@@ -270,7 +262,7 @@ impl<'a> State<'a> {
             if self.bits(1)? != 0 {
                 /* get length */
                 let len_code = self.decode(&LENGTH_CODES)? as usize;
-                let len = BASE[len_code] + self.bits(EXTRA[len_code])? as i16;
+                let len = BASE[len_code] + i16::from(self.bits(EXTRA[len_code])?);
                 /* end code */
                 if len == 519 {
                     break;
@@ -279,7 +271,7 @@ impl<'a> State<'a> {
                 /* get distance */
                 let dist_shift = if len == 2 { 2 } else { dict };
                 let mut dist = self.decode(&DISTANCE_CODES)? << dist_shift;
-                dist += self.bits(dist_shift)? as u16;
+                dist += u16::from(self.bits(dist_shift)?);
                 dist += 1;
 
                 /* copy length bytes from distance bytes back */
@@ -293,14 +285,14 @@ impl<'a> State<'a> {
                 let symbol = if lit == 1 {
                     self.decode(&LITERAL_CODES)?
                 } else {
-                    self.bits(8)? as u16
+                    u16::from(self.bits(8)?)
                 };
                 debug_assert!(symbol < 256);
                 self.outb(symbol as u8)?;
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     /*
@@ -324,7 +316,7 @@ impl<'a> State<'a> {
      *   this ordering, the bits pulled during decoding are inverted to apply the
      *   more "natural" ordering starting with all zeros and incrementing.
      */
-    fn decode(&mut self, h: &Huffman) -> Result<u16, Error> {
+    fn decode(&mut self, h: &Huffman) -> Fallible<u16> {
         let mut bitbuf = self.bitbuf;
         let mut left = self.bitcnt;
         let mut code: usize = 0;
@@ -374,7 +366,7 @@ impl<'a> State<'a> {
      *   buffer, using shift right, and new bytes are appended to the top of the
      *   bit buffer, using shift left.
      */
-    fn bits(&mut self, need: u8) -> Result<u8, Error> {
+    fn bits(&mut self, need: u8) -> Fallible<u8> {
         debug_assert!(need <= 8, "need too many bits");
 
         /* load at least `need` bits into val */
@@ -389,21 +381,21 @@ impl<'a> State<'a> {
         self.bitcnt -= need as usize;
 
         /* return need bits, zeroing the bits above that */
-        return Ok((val & ((1 << need) - 1)) as u8);
+        Ok((val & ((1 << need) - 1)) as u8)
     }
 
     // Read in one byte.
-    fn inb(&mut self) -> Result<u8, Error> {
+    fn inb(&mut self) -> Fallible<u8> {
         ensure!(self.offset < self.data.len(), "overflowed buf");
         let out = self.data[self.offset];
         self.offset += 1;
-        return Ok(out);
+        Ok(out)
     }
 
     // Write out one byte.
-    fn outb(&mut self, symbol: u8) -> Result<(), Error> {
+    fn outb(&mut self, symbol: u8) -> Fallible<()> {
         self.out.push(symbol as u8);
-        return Ok(());
+        Ok(())
     }
 }
 
