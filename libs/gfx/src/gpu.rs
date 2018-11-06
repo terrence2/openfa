@@ -15,29 +15,48 @@
 use backend::backend::{Backend, Device as BackendDevice};
 use failure::{err_msg, Fallible};
 use hal::{
-    buffer, mapping, memory, pool::CommandPoolCreateFlags, Adapter, Backend as HalBackend,
-    CommandPool, Device, Graphics, Limits, MemoryType, MemoryTypeId, PhysicalDevice, QueueGroup,
-    Surface,
+    buffer, format::Format, image, mapping, memory, pool::CommandPoolCreateFlags, Adapter,
+    Backend as HalBackend, CommandPool, Device, Graphics, Limits, MemoryType, MemoryTypeId,
+    PhysicalDevice, QueueGroup, Surface,
 };
 
-pub struct UploadBuffer {
+pub struct UploadBuffer<'a> {
+    gpu: &'a Gpu,
     buffer: <Backend as HalBackend>::Buffer,
     memory: <Backend as HalBackend>::Memory,
     requirements: memory::Requirements,
 }
 
-impl UploadBuffer {
+impl<'a> UploadBuffer<'a> {
     pub fn new(
+        gpu: &'a Gpu,
         buffer: <Backend as HalBackend>::Buffer,
         memory: <Backend as HalBackend>::Memory,
         requirements: memory::Requirements,
     ) -> Self {
         Self {
+            gpu,
             buffer,
             memory,
             requirements,
         }
     }
+}
+
+impl<'a> Drop for UploadBuffer<'a> {
+    fn drop(&mut self) {
+        // FIXME: do we need to sync with other GPU resources here?
+        self.gpu.device.destroy_buffer(self.buffer);
+        //self.gpu.device.free_memory(self.memory);
+    }
+}
+
+pub struct ImageBuffer<'a> {
+    gpu: &'a Gpu,
+    //buffer: <Backend as HalBackend>::Buffer,
+    buffer: HalBackend::Buffer,
+    memory: <Backend as HalBackend>::Memory,
+    requirements: memory::Requirements,
 }
 
 pub struct Gpu {
@@ -85,33 +104,33 @@ impl Gpu {
             .device
             .bind_buffer_memory(&upload_memory, 0, buffer_unbound)?;
         return Ok(UploadBuffer::new(
+            self,
             upload_buffer,
             upload_memory,
             requirements,
         ));
     }
 
-    // this really just wants the type mask and property.
-    pub fn get_upload_memory_type(&self, require: &memory::Requirements) -> Fallible<MemoryTypeId> {
-        return Ok(self
-            .memory_types
-            .iter()
-            .enumerate()
-            .position(|(id, mem_type)| {
-                require.type_mask & (1 << id) != 0
-                    && mem_type
-                        .properties
-                        .contains(memory::Properties::CPU_VISIBLE)
-            })
-            .ok_or_else(|| {
-                err_msg(format!(
-                    "gfx: no memory upload type for requirements: {:?}",
-                    require
-                ))
-            })?
-            .into());
+    pub fn create_image(&self, kind: image::Kind) -> Fallible<()> {
+        let unbound = self.device.create_image(
+            kind,
+            1,
+            Format::Rgba8Srgb,
+            image::Tiling::Optimal,
+            image::Usage::TRANSFER_DST | image::Usage::SAMPLED,
+            image::ViewCapabilities::empty(),
+        )?;
+        let req = self.device.get_image_requirements(&unbound);
+        let mem_type = self.get_image_memory_type(&req)?;
+        // FIXME: free_memory on this
+        let image_memory = self.device.allocate_memory(mem_type, req.size)?;
+        // FIXME: destroy_image on this
+        let image = self.device.bind_image_memory(&image_memory, 0, unbound)?;
+
+        Ok(())
     }
 
+    // FIXME: maybe don't panic on failure in the callback?
     pub fn with_mapped_upload_buffer<F>(&self, buffer: &UploadBuffer, f: F) -> Fallible<()>
     where
         F: FnOnce(&mut mapping::Writer<Backend, u8>),
@@ -123,6 +142,38 @@ impl Gpu {
         self.device.release_mapping_writer(data);
         return Ok(());
     }
+
+    pub fn get_upload_memory_type(&self, require: &memory::Requirements) -> Fallible<MemoryTypeId> {
+        return Ok(self
+            .get_memory_type(require.type_mask, memory::Properties::CPU_VISIBLE)
+            .ok_or_else(|| {
+                err_msg(format!(
+                    "gfx: no memory upload type for gpu: req:{:?}",
+                    require
+                ))
+            })?.into());
+    }
+
+    pub fn get_image_memory_type(&self, require: &memory::Requirements) -> Fallible<MemoryTypeId> {
+        return Ok(self
+            .get_memory_type(require.type_mask, memory::Properties::DEVICE_LOCAL)
+            .ok_or_else(|| {
+                err_msg(format!(
+                    "gfx: no image memory type for gpu: req:{:?}",
+                    require
+                ))
+            })?.into());
+    }
+
+    pub fn get_memory_type(&self, type_mask: u64, property: memory::Properties) -> Option<usize> {
+        return self
+            .memory_types
+            .iter()
+            .enumerate()
+            .position(|(id, mem_type)| {
+                type_mask & (1 << id) != 0 && mem_type.properties.contains(property)
+            });
+    }
 }
 
 // impl Drop for Gpu {
@@ -131,3 +182,15 @@ impl Gpu {
 //             .destroy_command_pool(self.command_pool.into_raw());
 //     }
 // }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_can_create_gpu() -> Fallible<()> {
+        let mut win = gfx::Window::new(800, 600, "test-texture")?;
+        win.select_any_adapter()?;
+        return Ok(());
+    }
+}

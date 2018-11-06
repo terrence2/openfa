@@ -12,19 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate bitflags;
-#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate log;
-#[macro_use]
 extern crate packed_struct;
 
-use failure::Fallible;
-
-use std::collections::HashMap;
-use std::{mem, str};
+use bitflags::bitflags;
+use failure::{bail, ensure, Fail, Fallible};
+use packed_struct::packed_struct;
+use std::{collections::HashMap, mem, str};
 
 #[derive(Debug, Fail)]
 enum PEError {
@@ -300,8 +297,7 @@ impl PE {
             .iter()
             .map(|(ref name, (ref header, _))| {
                 ((*name).to_owned(), SectionInfo::from_header(header))
-            })
-            .collect::<HashMap<String, SectionInfo>>();
+            }).collect::<HashMap<String, SectionInfo>>();
 
         return Ok(PE {
             thunks,
@@ -708,7 +704,8 @@ mod tests {
                 "At: {}:{:13} @ {}",
                 game,
                 name,
-                omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
             let data = lib.load(name)?;

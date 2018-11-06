@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with packed_struct.  If not, see <http://www.gnu.org/licenses/>.
 extern crate failure;
-pub use failure::Error;
+pub use failure::{ensure, Error};
 
 #[macro_export]
 macro_rules! _make_packed_struct_accessor {
@@ -45,7 +45,7 @@ macro_rules! packed_struct {
 
         impl $name {
             $(
-                _make_packed_struct_accessor!($field, $field_name, $field_ty, $($field_name_ty),*);
+                $crate::_make_packed_struct_accessor!($field, $field_name, $field_ty, $($field_name_ty),*);
             )+
 
             #[allow(unused)]

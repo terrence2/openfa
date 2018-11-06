@@ -25,7 +25,7 @@ extern crate peff;
 extern crate reverse;
 extern crate simplelog;
 
-use failure::{Error, Fallible};
+use failure::Fallible;
 use reverse::{bs2s, Color, Escape};
 use std::collections::HashSet;
 use std::{cmp, fmt, mem, str};
@@ -787,16 +787,19 @@ impl X86Code {
         external_jumps.insert(*offset);
 
         while external_jumps.len() > 0 {
-            //println!("We are currently at {} with external jumps: {:?}", *offset, external_jumps);
+            println!(
+                "We are currently at {} with external jumps: {:?}",
+                *offset, external_jumps
+            );
             if external_jumps.contains(&offset) {
                 external_jumps.remove(&offset);
-                //println!("IP REACHED EXTERNAL JUMP");
+                println!("IP REACHED EXTERNAL JUMP");
 
                 let code = &pe.code[*offset..];
                 let maybe_bc = i386::ByteCode::disassemble_to_ret(
                     SHAPE_LOAD_BASE as usize + *offset,
                     code,
-                    false,
+                    true,
                 );
                 if let Err(e) = maybe_bc {
                     i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
@@ -805,18 +808,19 @@ impl X86Code {
                 let bc = maybe_bc?;
 
                 // Dump all decoded segments for testing the disassembler.
-                // if true {
-                //     let src = match find_first_instr(0x42, vinstrs) {
-                //         Some(Instr::SourceRef(ref sr)) => sr.source.clone(),
-                //         _ => "unknown".to_owned(),
-                //     };
-                //     let actual_code = &pe.code[*offset..*offset + bc.size()];
-                //     let mut file =
-                //         File::create(&format!("../i386/test_data/{}-{}.x86", src, *offset))?;
-                //     file.write_all(actual_code)?;
-                // }
+                if false {
+                    use std::{fs::File, io::Write};
+                    let src = match find_first_instr(0x42, vinstrs) {
+                        Some(Instr::SourceRef(ref sr)) => sr.source.clone(),
+                        _ => "unknown".to_owned(),
+                    };
+                    let actual_code = &pe.code[*offset..*offset + bc.size as usize];
+                    let mut file =
+                        File::create(&format!("../i386/test_data/{}-{}.x86", src, *offset))?;
+                    file.write_all(actual_code)?;
+                }
 
-                //println!("Decoded block:\n{}", bc);
+                println!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
 
                 // Insert the instruction.
@@ -870,11 +874,11 @@ impl X86Code {
             if have_raw_data {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                // println!(
-                //     "UNKNOWN DATA @{:04X}: {}",
-                //     *offset,
-                //     bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
-                // );
+                println!(
+                    "UNKNOWN DATA @{:04X}: {}",
+                    *offset,
+                    bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
+                );
                 let end = Self::lowest_jump(&external_jumps);
                 //println!("Read data from {:04X} -> {:04X}", *offset, end);
                 vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
@@ -1710,10 +1714,14 @@ impl CpuShape {
         let mut offset = 0;
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
-            //println!("AT: {:04X}: {}", offset, bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)]));
+            println!(
+                "AT: {:04X}: {}",
+                offset,
+                bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)])
+            );
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
             Self::read_instr(&mut offset, pe, trampolines, &mut instrs)?;
-            //println!("=>: {}", instrs.last().unwrap().show());
+            println!("=>: {}", instrs.last().unwrap().show());
         }
 
         // Assertions.
@@ -1854,43 +1862,71 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 }
 
 #[cfg(test)]
+extern crate omnilib;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use failure::Error;
     use i386::ExitInfo;
+    use omnilib::OmniLib;
     use simplelog::{Config, LevelFilter, TermLogger};
     use std::fs;
     use std::io::prelude::*;
 
     #[test]
-    fn it_works() {
+    fn it_works() -> Fallible<()> {
         //let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 
-        let mut rv: Vec<String> = Vec::new();
-        let paths = fs::read_dir("./test_data").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            //println!("AT: {}", path);
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "ATFGOLD", "USNF97",
+            //"ATF",
+            //"ATFNATO",
+            //"MF",
+            "USNF",
+        ])?;
 
-            //if path == "./test_data/MIG21.SH" {
-            if true {
-                let mut fp = fs::File::open(entry.path()).unwrap();
-                let mut data = Vec::new();
-                fp.read_to_end(&mut data).unwrap();
+        for (game, name) in omni.find_matching("*.SH")?.iter() {
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
+            );
 
-                let shape = CpuShape::from_data(&data).unwrap();
-            }
-
-            //assert_eq!(format!("./test_data/{}", t.object.file_name), path);
-            //rv.push(format!("{:?} <> {} <> {}",
-            //                t.object.unk_explosion_type,
-            //                t.object.long_name, path));
+            let lib = omni.library(game);
+            let data = lib.load(name)?;
+            let _shape = CpuShape::from_data(&data)?;
         }
-        rv.sort();
 
-        for v in rv {
-            println!("{}", v);
-        }
+        // let mut rv: Vec<String> = Vec::new();
+        // let paths = fs::read_dir("./test_data").unwrap();
+        // for i in paths {
+        //     let entry = i.unwrap();
+        //     let path = format!("{}", entry.path().display());
+        //     //println!("AT: {}", path);
+
+        //     //if path == "./test_data/MIG21.SH" {
+        //     if true {
+        //         let mut fp = fs::File::open(entry.path()).unwrap();
+        //         let mut data = Vec::new();
+        //         fp.read_to_end(&mut data).unwrap();
+
+        //         let shape = CpuShape::from_data(&data).unwrap();
+        //     }
+
+        //     //assert_eq!(format!("./test_data/{}", t.object.file_name), path);
+        //     //rv.push(format!("{:?} <> {} <> {}",
+        //     //                t.object.unk_explosion_type,
+        //     //                t.object.long_name, path));
+        // }
+        // rv.sort();
+
+        // for v in rv {
+        //     println!("{}", v);
+        // }
+
+        return Ok(());
     }
 
     // struct ObjectInfo {
@@ -1922,11 +1958,11 @@ mod tests {
 
     #[test]
     fn virtual_interp() {
-        //let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+        let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 
-        //let path = "./test_data/EXP.SH";
+        let path = "./test_data/EXP.SH";
         //let path = "./test_data/FLARE.SH";
-        let path = "./test_data/WNDMLL.SH";
+        //let path = "./test_data/WNDMLL.SH";
         let mut fp = fs::File::open(path).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();

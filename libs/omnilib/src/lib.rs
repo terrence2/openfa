@@ -32,8 +32,12 @@ impl OmniLib {
     pub fn new_for_test_in_games(dirs: Vec<&str>) -> Fallible<Self> {
         let mut stacks = HashMap::new();
         for dir in dirs {
-            let path = Path::new("../../test_data/packed/").join(dir);
-            let libs = LibStack::from_file_search(&path)?;
+            // This is super slow in debug mode because decompressors
+            // get bulit with the options of whatever crate we're actually building.
+            // let path = Path::new("../../test_data/packed/").join(dir);
+            // let libs = LibStack::from_file_search(&path)?;
+            let path = Path::new("../../test_data/unpacked/").join(dir);
+            let libs = LibStack::from_dir_search(&path)?;
             stacks.insert(dir.to_owned(), libs);
         }
         return Ok(Self { stacks });
@@ -77,7 +81,8 @@ impl OmniLib {
     }
 
     pub fn path(&self, libname: &str, name: &str) -> Fallible<String> {
-        return Ok(self.library(libname)
+        return Ok(self
+            .library(libname)
             .stat(name)?
             .path
             .ok_or_else(|| err_msg("no path for name"))?

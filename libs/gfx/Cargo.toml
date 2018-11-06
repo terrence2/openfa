@@ -11,11 +11,12 @@ metal = ["gfx-backend-metal"]
 
 [dependencies]
 clap = "2.29"
-failure = "0.1"
+failure = "0.1.2"
 image = "0.18"
 winit = "0.16"
 glsl-to-spirv = "0.1"
-gfx-hal = { git = "https://github.com/gfx-rs/gfx.git", rev="191af6a9b4d5aeccc36c109e186ae09fc29f4cbe" }
+#gfx-hal = { git = "https://github.com/gfx-rs/gfx.git", rev="191af6a9b4d5aeccc36c109e186ae09fc29f4cbe" }
+gfx-hal = { git = "https://github.com/gfx-rs/gfx.git", rev="c7fd2338fff2dfd95c56adf481801780169bc74d" }
 gfx-backend-vulkan = { git = "https://github.com/gfx-rs/gfx.git", rev="191af6a9b4d5aeccc36c109e186ae09fc29f4cbe", optional = true, features = ["glsl-to-spirv"] }
 
 [target.'cfg(windows)'.dependencies]
