@@ -17,7 +17,7 @@ extern crate image;
 extern crate pal;
 extern crate pic;
 
-use clap::{Arg, App};
+use clap::{App, Arg};
 use pal::Palette;
 use pic::decode_pic;
 use std::fs;
@@ -28,11 +28,12 @@ fn main() {
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("Convert a pic to a png.")
-        .arg(Arg::with_name("INPUT")
-            .help("The pics to convert")
-            .multiple(true)
-            .required(true))
-        .get_matches();
+        .arg(
+            Arg::with_name("INPUT")
+                .help("The pics to convert")
+                .multiple(true)
+                .required(true),
+        ).get_matches();
 
     let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL").unwrap();
     let mut palette_data = Vec::new();
@@ -46,7 +47,7 @@ fn main() {
         fp.read_to_end(&mut data).unwrap();
 
         let img = decode_pic(&palette, &data).unwrap();
-        let ref mut fout = fs::File::create(name.to_owned() + ".png").unwrap();
+        let fout = &mut fs::File::create(name.to_owned() + ".png").unwrap();
         img.save(fout, image::PNG).unwrap();
     }
 }

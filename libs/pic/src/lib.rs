@@ -12,16 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
-extern crate packed_struct;
-#[macro_use]
 extern crate failure;
 extern crate image;
+extern crate packed_struct;
 extern crate pal;
 extern crate reverse;
 
-use failure::Error;
-use image::{DynamicImage, ImageRgb8, ImageRgba8};
+use failure::{ensure, Fallible};
+use image::{DynamicImage, ImageRgba8};
+use packed_struct::packed_struct;
 use pal::Palette;
 use std::mem;
 
@@ -46,7 +45,7 @@ packed_struct!(Span {
     _index => index: u32 as usize
 });
 
-pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage, Error> {
+pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Fallible<DynamicImage> {
     let header = Header::overlay(data)?;
     if header.format() == 0 {
         let pixels = &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()];
@@ -73,7 +72,7 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage,
             &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
         let local_palette = Palette::from_bytes(&palette)?;
         let mut imgbuf = image::ImageBuffer::new(header.width(), header.height());
-        let spans = &data[header.spans_offset()..header.spans_offset() + header.spans_size()];
+        let _spans = &data[header.spans_offset()..header.spans_offset() + header.spans_size()];
         assert_eq!(header.spans_size() % mem::size_of::<Span>(), 0);
         let span_cnt = header.spans_size() / mem::size_of::<Span>() - 1;
         for i in 0..span_cnt {
@@ -85,7 +84,7 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage,
             assert!(span.start() <= span.end());
             assert!(span.index() + ((span.end() - span.start()) as usize) < header.pixels_size());
 
-            for (j, column) in (span.start()..span.end() + 1).enumerate() {
+            for (j, column) in (span.start()..=span.end()).enumerate() {
                 let offset = span.index() + j;
                 let pix = pixels[offset] as usize;
                 let clr = if pix < local_palette.color_count {
@@ -100,7 +99,7 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Result<DynamicImage,
     }
 
     // Otherwise it's just a normal jpeg.
-    return Ok(image::load_from_memory(data)?);
+    Ok(image::load_from_memory(data)?)
 }
 
 #[cfg(test)]
