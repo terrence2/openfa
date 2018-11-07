@@ -13,17 +13,19 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
+extern crate failure;
 extern crate image;
 extern crate pal;
 extern crate pic;
 
 use clap::{App, Arg};
+use failure::Fallible;
 use pal::Palette;
 use pic::decode_pic;
 use std::fs;
 use std::io::prelude::*;
 
-fn main() {
+fn main() -> Fallible<()> {
     let matches = App::new("OpenFA pic tool")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
@@ -35,19 +37,20 @@ fn main() {
                 .required(true),
         ).get_matches();
 
-    let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL").unwrap();
+    let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL")?;
     let mut palette_data = Vec::new();
-    fp.read_to_end(&mut palette_data).unwrap();
-    let palette = Palette::from_bytes(&palette_data).unwrap();
+    fp.read_to_end(&mut palette_data)?;
+    let palette = Palette::from_bytes(&palette_data)?;
 
     for name in matches.values_of("INPUT").unwrap() {
         println!("Converting: {}", name);
-        let mut fp = fs::File::open(name).unwrap();
+        let mut fp = fs::File::open(name)?;
         let mut data = Vec::new();
-        fp.read_to_end(&mut data).unwrap();
+        fp.read_to_end(&mut data)?;
 
-        let img = decode_pic(&palette, &data).unwrap();
-        let fout = &mut fs::File::create(name.to_owned() + ".png").unwrap();
-        img.save(fout, image::PNG).unwrap();
+        let img = decode_pic(&palette, &data)?;
+        img.save(name.to_owned() + ".png")?;
     }
+
+    Ok(())
 }

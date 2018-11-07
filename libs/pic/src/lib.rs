@@ -109,31 +109,29 @@ mod tests {
     use std::io::prelude::*;
 
     #[test]
-    fn show_all_type1() {
-        let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL").unwrap();
+    fn show_all_type1() -> Fallible<()> {
+        let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL")?;
         let mut palette_data = Vec::new();
-        fp.read_to_end(&mut palette_data).unwrap();
-        let palette = Palette::from_bytes(&palette_data).unwrap();
+        fp.read_to_end(&mut palette_data)?;
+        let palette = Palette::from_bytes(&palette_data)?;
 
-        let mut rv: Vec<String> = Vec::new();
-        let paths = fs::read_dir("./test_data").unwrap();
+        let paths = fs::read_dir("./test_data")?;
         for i in paths {
-            let entry = i.unwrap();
+            let entry = i?;
             let path = format!("{}", entry.path().display());
             if !path.ends_with("PIC") {
                 continue;
             }
             println!("AT: {}", path);
 
-            let mut fp = fs::File::open(entry.path()).unwrap();
+            let mut fp = fs::File::open(entry.path())?;
             let mut data = Vec::new();
-            fp.read_to_end(&mut data).unwrap();
+            fp.read_to_end(&mut data)?;
 
-            //if data[0] == 1u8 {
-            let img = decode_pic(&palette, &data).unwrap();
-            let ref mut fout = fs::File::create(path.to_owned() + ".png").unwrap();
-            img.save(fout, image::PNG).unwrap();
-            //}
+            let _img = decode_pic(&palette, &data)?;
+            // img.save(fs::File::create(path.to_owned() + ".png")?, image::PNG)?;
         }
+
+        Ok(())
     }
 }
