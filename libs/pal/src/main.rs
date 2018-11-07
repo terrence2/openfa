@@ -34,14 +34,12 @@ fn main() -> Result<(), Error> {
                 .help("dump the palette to a png")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("POSITIONS")
                 .help("The palette indexes to dump")
                 .multiple(true)
                 .required(false),
-        )
-        .get_matches();
+        ).get_matches();
 
     let mut fp = fs::File::open("test_data/PALETTE.PAL")?;
     let mut data = Vec::new();
@@ -62,8 +60,7 @@ fn main() -> Result<(), Error> {
             }
         }
         let img = image::ImageRgb8(buf);
-        let ref mut fout = fs::File::create("palette.png")?;
-        img.save(fout, image::PNG)?;
+        img.save("palette.png")?;
 
         return Ok(());
     }
@@ -79,5 +76,5 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }

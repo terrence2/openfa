@@ -12,13 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate failure;
 extern crate image;
 
-use failure::Error;
+use failure::{ensure, Fallible};
 use image::{Pixel, Rgb, Rgba};
-use std::fs;
 
 pub struct Palette {
     pub color_count: usize,
@@ -26,48 +24,48 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn from_bytes(data: &[u8]) -> Result<Palette, Error> {
+    pub fn from_bytes(data: &[u8]) -> Fallible<Palette> {
         Self::from_bytes_with_scale(data, 3)
     }
 
-    pub fn from_bytes_prescaled(data: &[u8]) -> Result<Palette, Error> {
+    pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Palette> {
         Self::from_bytes_with_scale(data, 1)
     }
 
-    fn from_bytes_with_scale(data: &[u8], scale: u8) -> Result<Palette, Error> {
+    fn from_bytes_with_scale(data: &[u8], scale: u8) -> Fallible<Palette> {
         ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
             entries.push(Rgba {
                 data: [
-                    data[i * 3 + 0] * scale,
+                    data[i * 3] * scale,
                     data[i * 3 + 1] * scale,
                     data[i * 3 + 2] * scale,
                     255,
                 ],
             });
         }
-        return Ok(Palette {
+        Ok(Palette {
             color_count,
             entries,
-        });
+        })
     }
 
-    pub fn rgba(&self, index: usize) -> Result<Rgba<u8>, Error> {
+    pub fn rgba(&self, index: usize) -> Fallible<Rgba<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
-        return Ok(self.entries[index]);
+        Ok(self.entries[index])
     }
 
-    pub fn rgb(&self, index: usize) -> Result<Rgb<u8>, Error> {
+    pub fn rgb(&self, index: usize) -> Fallible<Rgb<u8>> {
         //ensure!(index < self.entries.len(), "index outside of palette");
         if index >= self.entries.len() {
             return Ok(Rgb { data: [0, 0, 0] });
         }
-        return Ok(self.entries[index].to_rgb());
+        Ok(self.entries[index].to_rgb())
     }
 
-    pub fn dump_png(&self, name: &str) -> Result<(), Error> {
+    pub fn dump_png(&self, name: &str) -> Fallible<()> {
         let size = 80;
         let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
         for i in 0..16 {
@@ -81,9 +79,8 @@ impl Palette {
             }
         }
         let img = image::ImageRgb8(buf);
-        let ref mut fout = fs::File::create(&format!("{}.png", name))?;
-        img.save(fout, image::PNG)?;
-        return Ok(());
+        img.save(&format!("{}.png", name))?;
+        Ok(())
     }
 }
 
@@ -94,23 +91,25 @@ mod tests {
     use std::io::prelude::*;
 
     #[test]
-    fn it_works_with_normal_palette() {
-        let mut fp = fs::File::open("test_data/PALETTE.PAL").unwrap();
+    fn it_works_with_normal_palette() -> Fallible<()> {
+        let mut fp = fs::File::open("test_data/PALETTE.PAL")?;
         let mut data = Vec::new();
-        fp.read_to_end(&mut data).unwrap();
-        let pal = Palette::from_bytes(&data).unwrap();
+        fp.read_to_end(&mut data)?;
+        let pal = Palette::from_bytes(&data)?;
         assert_eq!(
-            pal.rgb(1).unwrap(),
+            pal.rgb(1)?,
             Rgb {
                 data: [189, 0, 189]
             }
         );
+        Ok(())
     }
 
     #[test]
-    fn it_can_be_empty() {
+    fn it_can_be_empty() -> Fallible<()> {
         let empty = Vec::new();
-        let pal = Palette::from_bytes(&empty).unwrap();
+        let pal = Palette::from_bytes(&empty)?;
         assert_eq!(pal.color_count, 0);
+        Ok(())
     }
 }
