@@ -12,10 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate bitflags;
+extern crate failure;
 extern crate peff;
 
+use bitflags::bitflags;
 use std::{fmt, mem};
 
 pub fn n2h(n: u8) -> char {
@@ -65,7 +66,7 @@ pub fn bs2s(bs: &[u8]) -> String {
         b2h(b, &mut v);
         v.push(' ');
     }
-    return v.iter().collect::<String>();
+    v.iter().collect::<String>()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -89,39 +90,39 @@ pub enum Color {
 }
 
 impl Color {
-    pub fn put(&self, v: &mut Vec<char>) {
-        for c in format!("{}", *self as u8).chars() {
+    pub fn put(self, v: &mut Vec<char>) {
+        for c in format!("{}", self as u8).chars() {
             v.push(c);
         }
     }
-    pub fn put_bg(&self, v: &mut Vec<char>) {
-        for c in format!("{}", (*self as u8) + 10).chars() {
+    pub fn put_bg(self, v: &mut Vec<char>) {
+        for c in format!("{}", (self as u8) + 10).chars() {
             v.push(c);
         }
     }
-    pub fn fmt(&self) -> String {
-        format!("{}", *self as u8)
+    pub fn fmt(self) -> String {
+        format!("{}", self as u8)
     }
-    pub fn fmt_bg(&self) -> String {
-        format!("{}", (*self as u8) + 10)
+    pub fn fmt_bg(self) -> String {
+        format!("{}", (self as u8) + 10)
     }
 }
 
 bitflags! {
     struct StyleFlags: u8 {
-        const BOLD          = 0b00000001;
-        const DIMMED        = 0b00000010;
-        const ITALIC        = 0b00000100;
-        const UNDERLINE     = 0b00001000;
-        const BLINK         = 0b00010000;
-        const REVERSE       = 0b00100000;
-        const HIDDEN        = 0b01000000;
-        const STRIKETHROUGH = 0b10000000;
+        const BOLD          = 0b0000_0001;
+        const DIMMED        = 0b0000_0010;
+        const ITALIC        = 0b0000_0100;
+        const UNDERLINE     = 0b0000_1000;
+        const BLINK         = 0b0001_0000;
+        const REVERSE       = 0b0010_0000;
+        const HIDDEN        = 0b0100_0000;
+        const STRIKETHROUGH = 0b1000_0000;
     }
 }
 
 impl StyleFlags {
-    fn put(&self, v: &mut Vec<char>) -> bool {
+    fn put(self, v: &mut Vec<char>) -> bool {
         let mut acc = Vec::new();
         if self.contains(StyleFlags::BOLD) {
             acc.push('1');
@@ -147,7 +148,7 @@ impl StyleFlags {
         if self.contains(StyleFlags::STRIKETHROUGH) {
             acc.push('9');
         }
-        if acc.len() > 0 {
+        if !acc.is_empty() {
             for (i, &c) in acc.iter().enumerate() {
                 v.push(c);
                 if i + 1 < acc.len() {
@@ -155,7 +156,7 @@ impl StyleFlags {
                 }
             }
         }
-        return acc.len() > 0;
+        !acc.is_empty()
     }
 }
 
@@ -177,60 +178,60 @@ impl Escape {
 
     pub fn fg(mut self, clr: Color) -> Self {
         self.foreground = Some(clr);
-        return self;
+        self
     }
 
     pub fn bg(mut self, clr: Color) -> Self {
         self.background = Some(clr);
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn bold(mut self) -> Self {
         self.styles |= StyleFlags::BOLD;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn dimmed(mut self) -> Self {
         self.styles |= StyleFlags::DIMMED;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn italic(mut self) -> Self {
         self.styles |= StyleFlags::ITALIC;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn underline(mut self) -> Self {
         self.styles |= StyleFlags::UNDERLINE;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn blink(mut self) -> Self {
         self.styles |= StyleFlags::BLINK;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn reverse(mut self) -> Self {
         self.styles |= StyleFlags::REVERSE;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn hidden(mut self) -> Self {
         self.styles |= StyleFlags::HIDDEN;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
     pub fn strike_through(mut self) -> Self {
         self.styles |= StyleFlags::STRIKETHROUGH;
-        return self;
+        self
     }
 
     #[allow(dead_code)]
@@ -260,6 +261,12 @@ impl Escape {
             c.put_bg(v);
         }
         v.push('m');
+    }
+}
+
+impl Default for Escape {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -362,18 +369,19 @@ impl Section {
     // }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
 pub fn format_sections(
     code: &[u8],
-    sections: &Vec<Section>,
+    sections: &[Section],
     tags: &mut Vec<Tag>,
-    mode: ShowMode,
+    mode: &ShowMode,
 ) -> Vec<String> {
     // Assert that sections tightly abut.
-    let mut next_offset = 0;
-    for section in sections {
-        //assert_eq!(section.offset, next_offset);
-        next_offset = section.offset + section.length;
-    }
+    // let mut next_offset = 0;
+    // for section in sections {
+    //     assert_eq!(section.offset, next_offset);
+    //     next_offset = section.offset + section.length;
+    // }
 
     // Assert that there are no tags overlapping.
     tags.sort_by(|a, b| a.offset.cmp(&b.offset));
@@ -444,7 +452,7 @@ pub fn format_sections(
         }
         ShowMode::Custom => {
             // Grab sections that we care about and stuff them into lines.
-            for (i, section) in sections.iter().enumerate() {
+            for (i, _section) in sections.iter().enumerate() {
                 let mut line: Vec<char> = Vec::new();
                 if i > 0 {
                     if let SectionKind::Main(k) = sections[i - 1].kind {
@@ -479,10 +487,10 @@ pub fn format_sections(
         }
     }
 
-    return out;
+    out
 }
 
-pub fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &mut Vec<char>) {
+pub fn accumulate_section(code: &[u8], section: &Section, tags: &[Tag], v: &mut Vec<char>) {
     if section.length == 0 {
         return;
     }
@@ -503,14 +511,14 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &m
 
     if section.length == 1 {
         Escape::new().bg(section.color()).put(tgt(v, n));
-        b2h(code[section.offset + 0], v);
+        b2h(code[section.offset], v);
         Escape::new().put(tgt(v, n));
         v.push(' ');
         return;
     }
 
     Escape::new().bg(section.color()).put(tgt(v, n));
-    b2h(code[section.offset + 0], v);
+    b2h(code[section.offset], v);
     v.push(' ');
     b2h(code[section.offset + 1], v);
     //    v.push('_');
@@ -522,7 +530,7 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &m
         // Push any tag closers.
         for tag in section_tags.iter() {
             if tag.offset + tag.length == off {
-                if let &TagKind::RelocatedCall(ref target) = &tag.kind {
+                if let TagKind::RelocatedCall(ref target) = &tag.kind {
                     Escape::new().put(tgt(v, n));
                     v.push('(');
                     Escape::new().fg(Color::Red).put(tgt(v, n));
@@ -542,11 +550,11 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &Vec<Tag>, v: &m
         for tag in section_tags.iter() {
             if tag.offset == off {
                 match &tag.kind {
-                    &TagKind::RelocatedCall(_) => Escape::new().dimmed().put(tgt(v, n)),
-                    &TagKind::RelocatedRef => {
+                    TagKind::RelocatedCall(_) => Escape::new().dimmed().put(tgt(v, n)),
+                    TagKind::RelocatedRef => {
                         Escape::new().bg(Color::BrightRed).bold().put(tgt(v, n))
                     }
-                    &TagKind::RelocationTarget => Escape::new()
+                    TagKind::RelocationTarget => Escape::new()
                         .fg(Color::BrightMagenta)
                         .strike_through()
                         .put(tgt(v, n)),
@@ -566,7 +574,7 @@ fn tgt<'a>(x: &'a mut Vec<char>, y: &'a mut Vec<char>) -> &'a mut Vec<char> {
     if COLORIZE {
         return x;
     }
-    return y;
+    y
 }
 
 fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>) {
@@ -578,7 +586,7 @@ fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>
     let n = &mut nul;
 
     Escape::new().bg(section.color()).put(tgt(line, n));
-    b2h(code[section.offset + 0], line);
+    b2h(code[section.offset], line);
     Escape::new().put(tgt(line, n));
 
     Escape::new().fg(section.color()).put(tgt(line, n));
@@ -596,11 +604,11 @@ fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>
     line.push(' ');
 }
 
-fn find_tags_in_section(section: &Section, tags: &Vec<Tag>) -> Vec<Tag> {
-    return tags.iter()
+fn find_tags_in_section(section: &Section, tags: &[Tag]) -> Vec<Tag> {
+    tags.iter()
         .filter(|t| t.offset >= section.offset && t.offset < section.offset + section.length)
         .map(|t| t.to_owned())
-        .collect::<Vec<Tag>>();
+        .collect::<Vec<Tag>>()
 }
 
 pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
@@ -644,10 +652,10 @@ pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
                         "thunked ptr after code"
                     );
                     let code_offset = thunk_ptr - pe.code_addr;
-                    let value_to_relocate_arr: &[u16] =
-                        unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
-                    let value_to_relocate = value_to_relocate_arr[0];
-                    //println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
+                    // let value_to_relocate_arr: &[u16] =
+                    //     unsafe { mem::transmute(&pe.code[code_offset as usize..]) };
+                    // let value_to_relocate = value_to_relocate_arr[0];
+                    // println!("Relocating {:X} at offset {:X}", value_to_relocate, code_offset);
                     tags.push(Tag {
                         kind: TagKind::RelocationTarget,
                         offset: code_offset as usize,
@@ -657,20 +665,22 @@ pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
             }
         }
     }
-    return tags;
+    tags
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use failure::Fallible;
 
     #[test]
-    fn style_flags() {
+    fn style_flags() -> Fallible<()> {
         let mut style = StyleFlags::empty();
         style |= StyleFlags::BOLD;
         style |= StyleFlags::ITALIC;
         let mut acc = Vec::new();
-        style.put(acc);
+        style.put(&mut acc);
         assert_eq!(acc, vec!['1', ';', '3']);
+        Ok(())
     }
 }
