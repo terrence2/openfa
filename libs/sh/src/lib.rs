@@ -12,23 +12,23 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
+#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+
 extern crate bitflags;
-#[macro_use]
 extern crate failure;
 extern crate i386;
-#[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate log;
 extern crate peff;
 extern crate reverse;
 extern crate simplelog;
 
-use failure::Fallible;
+use bitflags::bitflags;
+use failure::{bail, ensure, Fail, Fallible};
+use lazy_static::lazy_static;
+use log::{info, trace};
 use reverse::{bs2s, Color, Escape};
-use std::collections::HashSet;
-use std::{cmp, fmt, mem, str};
+use std::{cmp, collections::HashSet, fmt, mem, str};
 
 #[derive(Debug, Fail)]
 enum ShError {
@@ -36,12 +36,12 @@ enum ShError {
     NameUnending {},
 }
 
-const SHAPE_LOAD_BASE: u32 = 0xAA000000;
+const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
 
 lazy_static! {
     // Virtual instructions that have a one-byte header instead of
     static ref ONE_BYTE_MAGIC: HashSet<u8> =
-        { [0x1E, 0x66, 0xFC, 0xFF].iter().map(|&n| n).collect() };
+        { [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect() };
 
     pub static ref DATA_RELOCATIONS: HashSet<String> = {
         [
@@ -82,8 +82,8 @@ impl FacetFlags {
         unsafe { mem::transmute(flags) }
     }
 
-    pub fn to_u16(&self) -> u16 {
-        unsafe { mem::transmute(*self) }
+    pub fn to_u16(self) -> u16 {
+        unsafe { mem::transmute(self) }
     }
 }
 
@@ -104,7 +104,7 @@ fn read_name(n: &[u8]) -> Fallible<String> {
         .iter()
         .position(|&c| c == 0)
         .ok_or::<ShError>(ShError::NameUnending {})?;
-    return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
+    Ok(str::from_utf8(&n[..end_offset])?.to_owned())
 }
 
 #[derive(Debug)]
@@ -122,11 +122,11 @@ impl TextureRef {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let filename = read_name(&data[2..Self::SIZE])?;
-        return Ok(TextureRef { offset, filename });
+        Ok(TextureRef { offset, filename })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -186,15 +186,15 @@ impl TextureIndex {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        return Ok(TextureIndex {
+        Ok(TextureIndex {
             offset,
             unk0: data[1],
             kind: TextureIndexKind::from_u16(data2[0])?,
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -223,11 +223,11 @@ impl SourceRef {
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0x00, "unexpected non-nil in hi");
         let source = read_name(&data[2..])?;
-        return Ok(SourceRef { offset, source });
+        Ok(SourceRef { offset, source })
     }
 
     fn size(&self) -> usize {
-        return 2 + self.source.len() + 1;
+        2 + self.source.len() + 1
     }
 
     fn at_offset(&self) -> usize {
@@ -271,25 +271,25 @@ impl VertexBuf {
             verts: Vec::new(),
         };
         fn s2f(s: u16) -> f32 {
-            (s as i16) as f32
+            f32::from(s as i16)
         }
         let nverts = head[0] as usize;
         for i in 0..nverts {
-            let x = s2f(words[i * 3 + 0]);
+            let x = s2f(words[i * 3]);
             let y = s2f(words[i * 3 + 1]);
             let z = s2f(words[i * 3 + 2]);
             buf.verts.push([x, y, z]);
 
-            let x = words[i * 3 + 0];
+            let x = words[i * 3];
             let y = words[i * 3 + 1];
             let z = words[i * 3 + 2];
             buf.raw_verts.push([x, y, z]);
         }
-        return Ok(buf);
+        Ok(buf)
     }
 
     fn size(&self) -> usize {
-        return 6 + self.verts.len() * 6;
+        6 + self.verts.len() * 6
     }
 
     fn at_offset(&self) -> usize {
@@ -432,7 +432,7 @@ impl Facet {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
-        let flags_word = ((data[1] as u16) << 8) | (data[2] as u16);
+        let flags_word = (u16::from(data[1]) << 8) | u16::from(data[2]);
         assert_eq!(flags_word & 0x00F0, 0u16);
         let flags = FacetFlags::from_u16(flags_word);
 
@@ -465,7 +465,7 @@ impl Facet {
                 index_u16[i]
             } else {
                 off += 1;
-                index_u8[i] as u16
+                u16::from(index_u8[i])
             };
             indices.push(index);
         }
@@ -478,10 +478,10 @@ impl Facet {
             for i in 0..index_count {
                 let (u, v) = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) {
                     off += 2;
-                    (tc_u8[i * 2 + 0] as u16, tc_u8[i * 2 + 1] as u16)
+                    (u16::from(tc_u8[i * 2]), u16::from(tc_u8[i * 2 + 1]))
                 } else {
                     off += 4;
-                    (tc_u16[i * 2 + 0], tc_u16[i * 2 + 1])
+                    (tc_u16[i * 2], tc_u16[i * 2 + 1])
                 };
                 tex_coords.push([u, v]);
             }
@@ -489,7 +489,7 @@ impl Facet {
             assert_eq!(tex_coords.len(), indices.len());
         }
 
-        return Ok(Facet {
+        Ok(Facet {
             offset,
             length: off,
             flags,
@@ -498,11 +498,11 @@ impl Facet {
             min_index: *indices.iter().min().unwrap(),
             indices,
             tex_coords,
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return self.length;
+        self.length
     }
 
     fn at_offset(&self) -> usize {
@@ -608,13 +608,13 @@ impl X86Trampoline {
         };
         let name = Self::find_matching_thunk(target, pe)?;
         let is_data = DATA_RELOCATIONS.contains(&name);
-        return Ok(X86Trampoline {
+        Ok(X86Trampoline {
             offset,
             name,
             target,
             location: SHAPE_LOAD_BASE + offset as u32,
             is_data,
-        });
+        })
     }
 
     fn find_matching_thunk(target: u32, pe: &peff::PE) -> Fallible<String> {
@@ -747,7 +747,7 @@ impl X86Code {
     ) {
         for s in bc.instrs.windows(2) {
             match s {
-                &[ref a, ref b] => {
+                [ref a, ref b] => {
                     if a.memonic == i386::Memonic::Push && b.memonic == i386::Memonic::Return {
                         if let i386::Operand::Imm32s(delta) = a.operands[0] {
                             let absolute_ip = (delta as u32).checked_sub(pe.code_addr).unwrap_or(0);
@@ -767,14 +767,14 @@ impl X86Code {
                 lowest = jump;
             }
         }
-        return lowest;
+        lowest
     }
 
     fn from_bytes(
-        _name: String,
+        _name: &str,
         offset: &mut usize,
         pe: &peff::PE,
-        trampolines: &Vec<X86Trampoline>,
+        trampolines: &[X86Trampoline],
         vinstrs: &mut Vec<Instr>,
     ) -> Fallible<()> {
         let section = &pe.code[*offset..];
@@ -786,7 +786,7 @@ impl X86Code {
         let mut external_jumps = HashSet::new();
         external_jumps.insert(*offset);
 
-        while external_jumps.len() > 0 {
+        while !external_jumps.is_empty() {
             println!(
                 "We are currently at {} with external jumps: {:?}",
                 *offset, external_jumps
@@ -839,13 +839,13 @@ impl X86Code {
                 }));
                 *offset += bc_size;
 
-                if external_jumps.len() == 0 {
+                if external_jumps.is_empty() {
                     return Ok(());
                 }
             }
 
             // If we have no more jumps, continue looking for instructions.
-            if external_jumps.len() == 0
+            if external_jumps.is_empty()
                 || Self::lowest_jump(&external_jumps) < *offset
                 || *offset >= pe.code.len()
             {
@@ -889,7 +889,7 @@ impl X86Code {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn format_section(offset: usize, length: usize, _bc: &i386::ByteCode, pe: &peff::PE) -> String {
@@ -897,11 +897,11 @@ impl X86Code {
         let tags = reverse::get_all_tags(pe);
         let mut v = Vec::new();
         reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
-        return v.iter().collect::<String>();
+        v.iter().collect::<String>()
     }
 
     fn size(&self) -> usize {
-        return self.code.len() + 2;
+        self.code.len() + 2
     }
 
     fn at_offset(&self) -> usize {
@@ -914,12 +914,12 @@ impl X86Code {
         } else {
             self.offset
         };
-        return format!(
+        format!(
             "@{:04X} X86Code: {}\n{}",
             self.offset,
             self.formatted,
             self.bytecode.show_relative(show_offset).trim()
-        );
+        )
     }
 }
 
@@ -938,19 +938,19 @@ impl UnkCE {
         assert_eq!(data[1], 0);
         // Note: no default for arrays larger than 32 elements.
         let s = &data[2..];
-        return Ok(Self {
+        Ok(Self {
             offset,
             data: [
-                s[00], s[01], s[02], s[03], s[04], s[05], s[06], s[07], s[08], s[09], s[10], s[11],
-                s[12], s[13], s[14], s[15], s[16], s[17], s[18], s[19], s[20], s[21], s[22], s[23],
-                s[24], s[25], s[26], s[27], s[28], s[29], s[30], s[31], s[32], s[33], s[34], s[35],
-                s[36], s[37],
+                s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8], s[9], s[10], s[11], s[12],
+                s[13], s[14], s[15], s[16], s[17], s[18], s[19], s[20], s[21], s[22], s[23], s[24],
+                s[25], s[26], s[27], s[28], s[29], s[30], s[31], s[32], s[33], s[34], s[35], s[36],
+                s[37],
             ],
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -994,17 +994,17 @@ impl UnkBC {
             _ => bail!("unknown section BC flags: {}", flags),
         };
         let data = data[4..length].to_owned();
-        return Ok(UnkBC {
+        Ok(UnkBC {
             offset,
             flags,
             unk0,
             length,
             data,
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return self.length;
+        self.length
     }
 
     fn at_offset(&self) -> usize {
@@ -1042,17 +1042,17 @@ impl Unk40 {
         let words: &[u16] = unsafe { mem::transmute(&data[2..]) };
         let count = words[0] as usize;
         let length = 4 + count * 2;
-        let data = words[1..count + 1].to_owned();
-        return Ok(Unk40 {
+        let data = words[1..=count].to_owned();
+        Ok(Unk40 {
             offset,
             count,
             length,
             data,
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return self.length;
+        self.length
     }
 
     fn at_offset(&self) -> usize {
@@ -1080,14 +1080,14 @@ impl UnkF6 {
     fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
-        return Ok(Self {
+        Ok(Self {
             offset,
             data: clone_into_array(&data[1..Self::SIZE]),
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -1120,15 +1120,15 @@ impl UnkJumpIfLowDetail {
         assert_eq!(data[0], Self::MAGIC);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[1..]) };
         let offset_to_next = word_ref[0] as usize;
-        return Ok(Self {
+        Ok(Self {
             offset,
             offset_to_next,
             data: clone_into_array(&data[1..Self::SIZE]),
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -1137,7 +1137,7 @@ impl UnkJumpIfLowDetail {
 
     pub fn next_offset(&self) -> usize {
         // Our start offset + our size + 1 + offset_to_next.
-        return self.offset + 4 + 2 + self.offset_to_next;
+        self.offset + 4 + 2 + self.offset_to_next
     }
 
     fn show(&self) -> String {
@@ -1164,6 +1164,7 @@ impl UnkJumpIfLowDetail {
 // 0x41 + 0xCF + 6 => 0x116 points past textured polys.
 
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub struct F2_JumpIfNotShown {
     pub offset: usize,
     pub offset_to_next: usize,
@@ -1179,14 +1180,14 @@ impl F2_JumpIfNotShown {
         assert_eq!(data[1], 0x00);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
         let offset_to_next = word_ref[0] as usize;
-        return Ok(Self {
+        Ok(Self {
             offset,
             offset_to_next,
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -1195,7 +1196,7 @@ impl F2_JumpIfNotShown {
 
     pub fn next_offset(&self) -> usize {
         // Our start offset + our size + offset_to_next.
-        return self.offset + Self::SIZE + self.offset_to_next;
+        self.offset + Self::SIZE + self.offset_to_next
     }
 
     fn show(&self) -> String {
@@ -1211,6 +1212,7 @@ impl F2_JumpIfNotShown {
 }
 
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub struct UnkC8_JumpOnDetailLevel {
     pub offset: usize,
     pub unk0: u16,
@@ -1247,17 +1249,17 @@ impl UnkC8_JumpOnDetailLevel {
         let unk0 = word_ref[0];
         let unk1 = word_ref[1];
         let offset_to_next = word_ref[2] as usize;
-        return Ok(Self {
+        Ok(Self {
             offset,
             unk0,
             unk1,
             offset_to_next,
             data: clone_into_array(&data[2..Self::SIZE]),
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return Self::SIZE;
+        Self::SIZE
     }
 
     fn at_offset(&self) -> usize {
@@ -1266,7 +1268,7 @@ impl UnkC8_JumpOnDetailLevel {
 
     pub fn next_offset(&self) -> usize {
         // Our start offset + our size + 1 + offset_to_next.
-        return self.offset + Self::SIZE + self.offset_to_next;
+        self.offset + Self::SIZE + self.offset_to_next
     }
 
     pub fn show(&self) -> String {
@@ -1294,16 +1296,16 @@ pub struct TrailerUnknown {
 impl TrailerUnknown {
     pub const MAGIC: u8 = 0x00;
 
-    fn from_bytes(offset: usize, code: &[u8], trampolines: &Vec<X86Trampoline>) -> Fallible<Self> {
+    fn from_bytes(offset: usize, code: &[u8], trampolines: &[X86Trampoline]) -> Fallible<Self> {
         let data = &code[offset..code.len() - trampolines.len() * X86Trampoline::SIZE];
-        return Ok(Self {
+        Ok(Self {
             offset,
             data: data.to_owned(),
-        });
+        })
     }
 
     fn size(&self) -> usize {
-        return self.data.len();
+        self.data.len()
     }
 
     fn at_offset(&self) -> usize {
@@ -1336,14 +1338,14 @@ impl TrailerUnknown {
             sec_start = sec_end;
         }
 
-        let out = format_sections(&self.data, &sections, &mut vec![], ShowMode::AllPerLine);
+        let out = format_sections(&self.data, &sections, &mut vec![], &ShowMode::AllPerLine);
         let mut s = format!("Trailer @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
         let mut off = 0;
         for (line, section) in out.iter().zip(sections) {
             s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
             off += section.length;
         }
-        return s;
+        s
     }
 }
 
@@ -1355,7 +1357,7 @@ pub struct UnknownUnknown {
 
 impl UnknownUnknown {
     fn size(&self) -> usize {
-        return self.data.len();
+        self.data.len()
     }
 
     fn at_offset(&self) -> usize {
@@ -1400,14 +1402,14 @@ impl UnknownUnknown {
             sec_start = sec_end;
         }
 
-        let out = format_sections(&self.data, &sections, &mut vec![], ShowMode::AllPerLine);
+        let out = format_sections(&self.data, &sections, &mut vec![], &ShowMode::AllPerLine);
         let mut s = format!("Unknown @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
         let mut off = 0;
         for (line, section) in out.iter().zip(sections) {
             s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
             off += section.length;
         }
-        return s;
+        s
     }
 }
 
@@ -1418,12 +1420,12 @@ pub struct Pad1E {
 impl Pad1E {
     pub const MAGIC: u8 = 0x1E;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        return Ok(Pad1E { offset });
+    fn from_bytes(offset: usize, _code: &[u8]) -> Fallible<Self> {
+        Ok(Pad1E { offset })
     }
 
     fn size(&self) -> usize {
-        return 1;
+        1
     }
 
     fn at_offset(&self) -> usize {
@@ -1458,14 +1460,14 @@ macro_rules! opaque_instr {
                     ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0,
                     "expected 1-byte instr or 0 in hi byte"
                 );
-                return Ok(Self {
+                Ok(Self {
                     offset,
                     data: clone_into_array(&data[0..Self::SIZE]),
-                });
+                })
             }
 
             fn size(&self) -> usize {
-                return Self::SIZE;
+                Self::SIZE
             }
 
             fn at_offset(&self) -> usize {
@@ -1538,6 +1540,7 @@ opaque_instr!(UnkEE, 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
 
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub enum Instr {
     Header(Header),
 
@@ -1601,49 +1604,49 @@ pub enum Instr {
 macro_rules! impl_for_all_instr {
     ($self:ident, $f:ident) => {
         match $self {
-            &Instr::Header(ref i) => i.$f(),
-            &Instr::Unk06(ref i) => i.$f(),
-            &Instr::Unk08(ref i) => i.$f(),
-            &Instr::Unk0C(ref i) => i.$f(),
-            &Instr::Unk0E(ref i) => i.$f(),
-            &Instr::Unk10(ref i) => i.$f(),
-            &Instr::Unk12(ref i) => i.$f(),
-            &Instr::Pad1E(ref i) => i.$f(),
-            &Instr::Unk2E(ref i) => i.$f(),
-            &Instr::Unk46(ref i) => i.$f(),
-            &Instr::Unk48(ref i) => i.$f(),
-            &Instr::Unk4E(ref i) => i.$f(),
-            &Instr::Unk66(ref i) => i.$f(),
-            &Instr::Unk6C(ref i) => i.$f(),
-            &Instr::Unk78(ref i) => i.$f(),
-            &Instr::Unk7A(ref i) => i.$f(),
-            &Instr::UnkA6(ref i) => i.$f(),
-            &Instr::UnkAC(ref i) => i.$f(),
-            &Instr::UnkB2(ref i) => i.$f(),
-            &Instr::UnkB8(ref i) => i.$f(),
-            &Instr::UnkC4(ref i) => i.$f(),
-            &Instr::UnkC8_JumpOnDetailLevel(ref i) => i.$f(),
-            &Instr::UnkCA(ref i) => i.$f(),
-            &Instr::UnkCE(ref i) => i.$f(),
-            &Instr::UnkD0(ref i) => i.$f(),
-            &Instr::UnkDA(ref i) => i.$f(),
-            &Instr::UnkE4(ref i) => i.$f(),
-            &Instr::UnkEA(ref i) => i.$f(),
-            &Instr::UnkEE(ref i) => i.$f(),
-            &Instr::F2_JumpIfNotShown(ref i) => i.$f(),
-            &Instr::UnkF6(ref i) => i.$f(),
-            &Instr::UnkJumpIfLowDetail(ref i) => i.$f(),
-            &Instr::UnkBC(ref i) => i.$f(),
-            &Instr::Unk40(ref i) => i.$f(),
-            &Instr::TrailerUnknown(ref i) => i.$f(),
-            &Instr::TextureIndex(ref i) => i.$f(),
-            &Instr::TextureRef(ref i) => i.$f(),
-            &Instr::SourceRef(ref i) => i.$f(),
-            &Instr::VertexBuf(ref i) => i.$f(),
-            &Instr::Facet(ref i) => i.$f(),
-            &Instr::X86Code(ref i) => i.$f(),
-            &Instr::X86Trampoline(ref i) => i.$f(),
-            &Instr::UnknownUnknown(ref i) => i.$f(),
+            Instr::Header(ref i) => i.$f(),
+            Instr::Unk06(ref i) => i.$f(),
+            Instr::Unk08(ref i) => i.$f(),
+            Instr::Unk0C(ref i) => i.$f(),
+            Instr::Unk0E(ref i) => i.$f(),
+            Instr::Unk10(ref i) => i.$f(),
+            Instr::Unk12(ref i) => i.$f(),
+            Instr::Pad1E(ref i) => i.$f(),
+            Instr::Unk2E(ref i) => i.$f(),
+            Instr::Unk46(ref i) => i.$f(),
+            Instr::Unk48(ref i) => i.$f(),
+            Instr::Unk4E(ref i) => i.$f(),
+            Instr::Unk66(ref i) => i.$f(),
+            Instr::Unk6C(ref i) => i.$f(),
+            Instr::Unk78(ref i) => i.$f(),
+            Instr::Unk7A(ref i) => i.$f(),
+            Instr::UnkA6(ref i) => i.$f(),
+            Instr::UnkAC(ref i) => i.$f(),
+            Instr::UnkB2(ref i) => i.$f(),
+            Instr::UnkB8(ref i) => i.$f(),
+            Instr::UnkC4(ref i) => i.$f(),
+            Instr::UnkC8_JumpOnDetailLevel(ref i) => i.$f(),
+            Instr::UnkCA(ref i) => i.$f(),
+            Instr::UnkCE(ref i) => i.$f(),
+            Instr::UnkD0(ref i) => i.$f(),
+            Instr::UnkDA(ref i) => i.$f(),
+            Instr::UnkE4(ref i) => i.$f(),
+            Instr::UnkEA(ref i) => i.$f(),
+            Instr::UnkEE(ref i) => i.$f(),
+            Instr::F2_JumpIfNotShown(ref i) => i.$f(),
+            Instr::UnkF6(ref i) => i.$f(),
+            Instr::UnkJumpIfLowDetail(ref i) => i.$f(),
+            Instr::UnkBC(ref i) => i.$f(),
+            Instr::Unk40(ref i) => i.$f(),
+            Instr::TrailerUnknown(ref i) => i.$f(),
+            Instr::TextureIndex(ref i) => i.$f(),
+            Instr::TextureRef(ref i) => i.$f(),
+            Instr::SourceRef(ref i) => i.$f(),
+            Instr::VertexBuf(ref i) => i.$f(),
+            Instr::Facet(ref i) => i.$f(),
+            Instr::X86Code(ref i) => i.$f(),
+            Instr::X86Trampoline(ref i) => i.$f(),
+            Instr::UnknownUnknown(ref i) => i.$f(),
         }
     };
 }
@@ -1677,7 +1680,7 @@ impl CpuShape {
         // Do default relocation to a high address. This makes offsets appear
         // 0-based and tags all local pointers with an obvious flag.
         pe.relocate(SHAPE_LOAD_BASE)?;
-        let mut trampolines = Self::find_trampolines(&pe)?;
+        let trampolines = Self::find_trampolines(&pe)?;
 
         let mut instrs = Self::_read_sections(&pe, &trampolines)?;
         let mut tramp_instr = trampolines
@@ -1686,12 +1689,11 @@ impl CpuShape {
             .collect::<Vec<_>>();
         instrs.append(&mut tramp_instr);
 
-        let shape = CpuShape {
+        Ok(CpuShape {
             instrs,
             trampolines,
             pe,
-        };
-        return Ok(shape);
+        })
     }
 
     fn find_trampolines(pe: &peff::PE) -> Fallible<Vec<X86Trampoline>> {
@@ -1707,10 +1709,10 @@ impl CpuShape {
             offset -= 6;
         }
         trampolines.reverse();
-        return Ok(trampolines);
+        Ok(trampolines)
     }
 
-    fn _read_sections(pe: &peff::PE, trampolines: &Vec<X86Trampoline>) -> Fallible<Vec<Instr>> {
+    fn _read_sections(pe: &peff::PE, trampolines: &[X86Trampoline]) -> Fallible<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
@@ -1733,13 +1735,13 @@ impl CpuShape {
         //            }
         //        }
 
-        return Ok(instrs);
+        Ok(instrs)
     }
 
     fn read_instr(
         offset: &mut usize,
         pe: &peff::PE,
-        trampolines: &Vec<X86Trampoline>,
+        trampolines: &[X86Trampoline],
         instrs: &mut Vec<Instr>,
     ) -> Fallible<()> {
         match pe.code[*offset] {
@@ -1791,7 +1793,7 @@ impl CpuShape {
                         name = source.source.clone();
                     }
                 }
-                X86Code::from_bytes(name, offset, pe, trampolines, instrs)?;
+                X86Code::from_bytes(&name, offset, pe, trampolines, instrs)?;
             }
             // Zero is the magic for the trailer (sans trampolines).
             0 => {
@@ -1814,7 +1816,7 @@ impl CpuShape {
                 //bail!("unknown instruction 0x{:02X} at 0x{:04X}: {}", vop, offset, bs2s(&pe.code[*offset..])),
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     // Map an offset in bytes from the beginning of the virtual instruction stream
@@ -1846,19 +1848,19 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
     for instr in instrs.iter() {
         match kind {
             0xF2 => {
-                if let &Instr::F2_JumpIfNotShown(ref _x) = instr {
+                if let Instr::F2_JumpIfNotShown(ref _x) = instr {
                     return Some(instr);
                 }
             }
             0x42 => {
-                if let &Instr::SourceRef(ref _x) = instr {
+                if let Instr::SourceRef(ref _x) = instr {
                     return Some(instr);
                 }
             }
             _ => {}
         }
     }
-    return None;
+    None
 }
 
 #[cfg(test)]
@@ -1891,7 +1893,8 @@ mod tests {
                 "At: {}:{:13} @ {}",
                 game,
                 name,
-                omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
             );
 
             let lib = omni.library(game);
@@ -1926,7 +1929,7 @@ mod tests {
         //     println!("{}", v);
         // }
 
-        return Ok(());
+        Ok(())
     }
 
     // struct ObjectInfo {

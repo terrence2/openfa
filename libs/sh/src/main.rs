@@ -13,20 +13,21 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate clap;
+extern crate failure;
 extern crate i386;
 extern crate reverse;
 extern crate sh;
 extern crate simplelog;
 
 use clap::{App, Arg};
-use reverse::{b2h, bs2s};
+use failure::Fallible;
+use reverse::b2h;
 use sh::{CpuShape, Instr};
 use simplelog::*;
-use std::collections::HashMap;
-use std::fs;
 use std::io::prelude::*;
+use std::{collections::HashMap, fs};
 
-fn main() {
+fn main() -> Fallible<()> {
     let matches = App::new("OpenFA shape tool")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
@@ -37,52 +38,44 @@ fn main() {
                 .takes_value(false)
                 .required(false)
                 .conflicts_with_all(&["last"]),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("last")
                 .long("--last")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("unknown")
                 .long("--unknown")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("a6")
                 .long("--a6")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("c8")
                 .long("--c8")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("f2")
                 .long("--f2")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("memory")
                 .long("--memory")
                 .takes_value(false)
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("INPUT")
                 .help("The shape(s) to show")
                 .multiple(true)
                 .required(true),
-        )
-        .get_matches();
+        ).get_matches();
 
-    let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+    TermLogger::init(LevelFilter::Trace, Config::default())?;
 
     for name in matches.values_of("INPUT").unwrap() {
         let mut fp = fs::File::open(name).unwrap();
@@ -214,6 +207,8 @@ fn main() {
         //            }
         //        }
     }
+
+    Ok(())
 }
 
 fn format_unk(xs: &[u8]) -> String {
@@ -227,7 +222,7 @@ fn format_unk(xs: &[u8]) -> String {
             b2h(x, &mut out);
         }
     }
-    return out.iter().collect::<String>();
+    out.iter().collect()
 }
 
 fn _find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
@@ -236,5 +231,5 @@ fn _find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
             return Some(instr);
         }
     }
-    return None;
+    None
 }
