@@ -24,7 +24,9 @@ use clap::{App, Arg, SubCommand};
 use failure::Error;
 use humansize::{file_size_opts as options, FileSize};
 use std::{
-    fs::{create_dir, remove_file, File}, io::Write, path::Path,
+    fs::{create_dir, remove_file, File},
+    io::Write,
+    path::Path,
 };
 
 fn main() -> Result<(), Error> {
@@ -41,8 +43,7 @@ fn main() -> Result<(), Error> {
                         .required(true)
                         .multiple(true),
                 ),
-        )
-        .subcommand(
+        ).subcommand(
             SubCommand::with_name("unpack")
                 .about("unpack the given lib files")
                 .arg(
@@ -53,21 +54,19 @@ fn main() -> Result<(), Error> {
                         .takes_value(true)
                         .value_name("DIR")
                         .help("output into the given directory"),
-                )
-                .arg(
+                ).arg(
                     Arg::with_name("INPUT")
                         .help("Sets the input libs to unpack")
                         .required(true)
                         .multiple(true),
                 ),
-        )
-        .get_matches();
+        ).get_matches();
 
     if let Some(matches) = matches.subcommand_matches("ls") {
         let inputs = matches.values_of("INPUT").unwrap();
         let multi_input = inputs.len() > 1;
         for (i, input) in inputs.enumerate() {
-            let libfile = lib::LibStack::from_paths(&vec![Path::new(input).to_owned()])?;
+            let libfile = lib::LibStack::from_paths(&[Path::new(input).to_owned()])?;
             if multi_input {
                 if i != 0 {
                     println!();
@@ -113,7 +112,7 @@ fn main() -> Result<(), Error> {
                 .file_name()
                 .expect("no filename in library");
             let outdir = output.join(libname);
-            let libfile = lib::LibStack::from_paths(&vec![Path::new(input).to_owned()])?;
+            let libfile = lib::LibStack::from_paths(&[Path::new(input).to_owned()])?;
             if !outdir.exists() {
                 create_dir(&outdir)?;
             }
@@ -125,10 +124,10 @@ fn main() -> Result<(), Error> {
                     remove_file(&outfilename)?;
                 }
                 let mut fp = File::create(outfilename)?;
-                fp.write(&content)?;
+                fp.write_all(&content)?;
             }
         }
     }
 
-    return Ok(());
+    Ok(())
 }
