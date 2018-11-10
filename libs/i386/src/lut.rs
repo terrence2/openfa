@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 
 // Specifies where to find the operand.
@@ -251,7 +252,7 @@ lazy_static! {
          0xF2u8,
          0xF3u8]
             .iter()
-            .map(|&n| n)
+            .cloned()
             .collect()
     };
 
@@ -282,12 +283,12 @@ lazy_static! {
          0xFE,
          0xFF]
             .iter()
-            .map(|&n| n)
+            .cloned()
             .collect()
     };
 
     pub static ref HAS_INLINE_REG: HashSet<u16> = {
-        [0x50, 0x58, 0xB8].iter().map(|&n| n).collect()
+        [0x50, 0x58, 0xB8].iter().cloned().collect()
     };
 
     #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -379,6 +380,6 @@ lazy_static! {
         for &(ref op, ref ext, ref def) in ops.iter() {
             out.insert((*op, *ext), (*def).clone());
         }
-        return out;
+        out
     };
 }

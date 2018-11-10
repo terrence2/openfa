@@ -12,11 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate failure;
-#[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate log;
 extern crate reverse;
 

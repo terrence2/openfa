@@ -12,7 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{Error, Fallible};
+#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+
+use failure::{bail, ensure, Error, Fail, Fallible};
 use lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use reverse::bs2s;
 use std::{fmt, mem};
@@ -48,9 +50,10 @@ impl DisassemblyError {
             let mut file = File::create(tmp_name).unwrap();
             file.write_all(&code[0..]).unwrap();
 
-            return true;
+            true
+        } else {
+            false
         }
-        return false;
     }
 }
 
@@ -330,7 +333,7 @@ impl OperandDecodeState {
         //println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
         self.modrm = Some(b);
 
-        return Ok(out);
+        Ok(out)
     }
 }
 
@@ -350,7 +353,7 @@ impl Operand {
         desc: &OperandDef,
         state: &mut OperandDecodeState,
     ) -> Fallible<Self> {
-        return match desc.method {
+        match desc.method {
             AddressingMethod::E => Self::from_bytes_mode_E(code, ip, desc, state),
             AddressingMethod::G => Self::from_bytes_mode_G(code, ip, desc, state),
             AddressingMethod::I => Self::from_bytes_mode_I(code, ip, desc, state),
@@ -361,7 +364,7 @@ impl Operand {
             AddressingMethod::Y => Self::from_bytes_mode_Y(code, ip, desc, state),
             AddressingMethod::Z => Self::from_bytes_mode_Z(state),
             AddressingMethod::Imp => Self::from_bytes_mode_Imp(desc, state),
-        };
+        }
     }
 
     fn from_bytes_mode_E(
@@ -395,7 +398,7 @@ impl Operand {
                 let disp8 = Self::read1(code, ip)?;
                 Operand::Memory(MemRef::base_plus_displacement(
                     base,
-                    disp8 as i8 as i32,
+                    i32::from(disp8 as i8),
                     MemRef::size_for_type(desc.ty, state)?,
                     &state.prefix,
                 ))
@@ -447,8 +450,8 @@ impl Operand {
         state: &mut OperandDecodeState,
     ) -> Fallible<Self> {
         Ok(match desc.ty {
-            OperandType::b => Operand::Imm32(Self::read1(code, ip)? as u32),
-            OperandType::bs => Operand::Imm32s(Self::read1(code, ip)? as i8 as i32),
+            OperandType::b => Operand::Imm32(u32::from(Self::read1(code, ip)?)),
+            OperandType::bs => Operand::Imm32s(i32::from(Self::read1(code, ip)? as i8)),
             OperandType::v => Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?,
             OperandType::vs => Self::read_n_32(code, ip, state.prefix.toggle_operand_size, true)?,
             _ => unreachable!(),
@@ -462,7 +465,7 @@ impl Operand {
         state: &mut OperandDecodeState,
     ) -> Fallible<Self> {
         Ok(match desc.ty {
-            OperandType::bs => Operand::Imm32s(Self::read1(code, ip)? as i8 as i32),
+            OperandType::bs => Operand::Imm32s(i32::from(Self::read1(code, ip)? as i8)),
             OperandType::v => Self::read_n_32(code, ip, state.prefix.toggle_operand_size, false)?,
             _ => unreachable!(),
         })
@@ -604,9 +607,9 @@ impl Operand {
         Ok(if toggle_size {
             let uw = Self::read2(code, ip)?;
             if sign_extend {
-                Operand::Imm32s(uw as i16 as i32)
+                Operand::Imm32s(i32::from(uw as i16))
             } else {
-                Operand::Imm32(uw as u32)
+                Operand::Imm32(u32::from(uw))
             }
         } else {
             let ud = Self::read4(code, ip)?;
@@ -625,7 +628,7 @@ impl Operand {
         );
         let b = code[*ip];
         *ip += 1;
-        return Ok(b);
+        Ok(b)
     }
 
     fn read2(code: &[u8], ip: &mut usize) -> Fallible<u16> {
@@ -636,7 +639,7 @@ impl Operand {
         let r: &[u16] = unsafe { mem::transmute(&code[*ip..]) };
         let w = r[0];
         *ip += 2;
-        return Ok(w);
+        Ok(w)
     }
 
     fn read4(code: &[u8], ip: &mut usize) -> Fallible<u32> {
@@ -647,11 +650,11 @@ impl Operand {
         let r: &[u32] = unsafe { mem::transmute(&code[*ip..]) };
         let dw = r[0];
         *ip += 4;
-        return Ok(dw);
+        Ok(dw)
     }
 
     fn modrm(b: u8) -> (u8, u8, u8) {
-        return (b >> 6, (b >> 3) & 0b111, b & 0b111);
+        (b >> 6, (b >> 3) & 0b111, b & 0b111)
     }
 
     pub fn size(&self) -> u8 {
@@ -673,18 +676,18 @@ impl Operand {
 
     fn show_relative(&self, base: usize, show_target: bool) -> String {
         match self {
-            &Operand::Register(ref r) => format!("{:?}", r),
-            &Operand::Imm32(x) => if show_target {
-                format!("0x{:X} -> 0x{:X}", x, x as usize + base)
+            Operand::Register(ref r) => format!("{:?}", r),
+            Operand::Imm32(ref x) => if show_target {
+                format!("0x{:X} -> 0x{:X}", x, *x as usize + base)
             } else {
                 format!("0x{:X}", x)
             },
-            &Operand::Imm32s(x) => if show_target {
-                format!("0x{:X} -> 0x{:X}", x, x as i64 + base as i64)
+            Operand::Imm32s(ref x) => if show_target {
+                format!("0x{:X} -> 0x{:X}", x, i64::from(*x) + base as i64)
             } else {
                 format!("0x{:X}", x)
             },
-            &Operand::Memory(ref mr) => format!("{}", mr),
+            Operand::Memory(ref mr) => format!("{}", mr),
         }
     }
 }
@@ -693,10 +696,10 @@ impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         //write!(f, "{}", self.show_relative(0, false))
         match self {
-            &Operand::Register(ref r) => write!(f, "{:?}", r),
-            &Operand::Imm32(x) => write!(f, "0x{:X}", x),
-            &Operand::Imm32s(x) => write!(f, "0x{:X}", x),
-            &Operand::Memory(ref mr) => write!(f, "{}", mr),
+            Operand::Register(ref r) => write!(f, "{:?}", r),
+            Operand::Imm32(x) => write!(f, "0x{:X}", x),
+            Operand::Imm32s(x) => write!(f, "0x{:X}", x),
+            Operand::Memory(ref mr) => write!(f, "{}", mr),
         }
     }
 }
@@ -726,7 +729,7 @@ impl OpPrefix {
             0xF3 => self.toggle_repeat = true,
             _ => unreachable!(),
         }
-        return self;
+        self
     }
 
     fn from_bytes(code: &[u8], ip: &mut usize) -> Self {
@@ -735,7 +738,7 @@ impl OpPrefix {
             prefix = prefix.apply(code[*ip]);
             *ip += 1;
         }
-        return prefix;
+        prefix
     }
 }
 
@@ -748,11 +751,11 @@ pub struct Instr {
 
 impl Instr {
     pub fn size(&self) -> usize {
-        return self.raw.len();
+        self.raw.len()
     }
 
     pub fn op(&self, i: usize) -> &Operand {
-        return &self.operands[i];
+        &self.operands[i]
     }
 
     fn read_op(code: &[u8], ip: &mut usize) -> Fallible<(u16, u8)> {
@@ -760,11 +763,11 @@ impl Instr {
             code.len() > *ip,
             DisassemblyError::TooShort { phase: "read_op" }
         );
-        let mut op = code[*ip] as u16;
+        let mut op = u16::from(code[*ip]);
         *ip += 1;
         if op == 0x0Fu16 {
             op <<= 8;
-            op |= code[*ip] as u16;
+            op |= u16::from(code[*ip]);
             *ip += 1;
         }
         let op_ext = if USE_REG_OPCODES.contains(&op) {
@@ -779,10 +782,10 @@ impl Instr {
         } else {
             0
         };
-        return Ok((op, op_ext));
+        Ok((op, op_ext))
     }
 
-    fn lookup_op<'a>(op: &(u16, u8), ip: &mut usize) -> Fallible<&'a OpCodeDef> {
+    fn lookup_op<'a>(op: (u16, u8), ip: &mut usize) -> Fallible<&'a OpCodeDef> {
         if OPCODES.contains_key(&op) {
             return Ok(&OPCODES[&op]);
         }
@@ -790,13 +793,11 @@ impl Instr {
         // If there is no exact match, then this may be an opcode with the reg embedded in
         // the low bits, so retry with those masked off.
         let base_op = (op.0 & !0b111, 0);
-        if HAS_INLINE_REG.contains(&base_op.0) {
-            if OPCODES.contains_key(&base_op) {
-                return Ok(&OPCODES[&base_op]);
-            }
+        if HAS_INLINE_REG.contains(&base_op.0) && OPCODES.contains_key(&base_op) {
+            return Ok(&OPCODES[&base_op]);
         }
 
-        return Err(DisassemblyError::UnknownOpcode { ip: *ip, op: *op }.into());
+        Err(DisassemblyError::UnknownOpcode { ip: *ip, op }.into())
     }
 
     pub fn decode_one(code: &[u8], ip: &mut usize) -> Fallible<Instr> {
@@ -806,7 +807,7 @@ impl Instr {
 
         let op = Self::read_op(code, ip)?;
 
-        let opcode_desc = Self::lookup_op(&op, ip)?;
+        let opcode_desc = Self::lookup_op(op, ip)?;
 
         let mut operands = Vec::new();
         let mut decode_state = OperandDecodeState::initial(prefix, op.0);
@@ -818,11 +819,11 @@ impl Instr {
                 &mut decode_state,
             )?);
         }
-        return Ok(Instr {
+        Ok(Instr {
             memonic: opcode_desc.memonic,
             operands,
             raw: code[initial_ip..*ip].to_vec(),
-        });
+        })
     }
 
     pub fn show_relative(&self, base: usize) -> String {
@@ -835,11 +836,11 @@ impl Instr {
         let mut s = format!("{:23} {:?}(", bs2s(&self.raw), self.memonic);
         for (i, op) in self.operands.iter().enumerate() {
             if i != 0 {
-                s += &format!(", ");
+                s += ", ";
             }
             s += &op.show_relative(base + self.size(), show_target);
         }
-        return s + &format!(")");
+        s + ")"
     }
 }
 
@@ -853,7 +854,7 @@ impl fmt::Display for Instr {
             write!(f, "{}", op)?;
         }
         write!(f, ")")?;
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -879,11 +880,11 @@ impl ByteCode {
             instrs.push(instr);
         }
 
-        return Ok(Self {
+        Ok(Self {
             start_addr: 0,
             size: Self::compute_size(&instrs) as u32,
             instrs,
-        });
+        })
     }
 
     pub fn disassemble_to_ret(at_offset: usize, code: &[u8], verbose: bool) -> Fallible<Self> {
@@ -903,19 +904,19 @@ impl ByteCode {
                 break;
             }
         }
-        return Ok(Self {
+        Ok(Self {
             start_addr: at_offset as u32,
             size: Self::compute_size(&instrs) as u32,
             instrs,
-        });
+        })
     }
 
-    fn compute_size(instrs: &Vec<Instr>) -> usize {
+    fn compute_size(instrs: &[Instr]) -> usize {
         let mut sz = 0;
         for instr in instrs.iter() {
             sz += instr.size();
         }
-        return sz;
+        sz
     }
 
     pub fn show_relative(&self, base: usize) -> String {
@@ -930,7 +931,7 @@ impl ByteCode {
             );
             pos += instr.size();
         }
-        return s;
+        s
     }
 }
 
@@ -941,7 +942,7 @@ impl fmt::Display for ByteCode {
             writeln!(f, "  @{:02X}: {}", pos, instr)?;
             pos += instr.size();
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -952,7 +953,7 @@ mod tests {
     use std::io::prelude::*;
 
     #[test]
-    fn it_works() {
+    fn it_works() -> Fallible<()> {
         let paths = fs::read_dir("./test_data/x86").unwrap();
         for i in paths {
             let entry = i.unwrap();
@@ -971,5 +972,7 @@ mod tests {
             }
             bc.unwrap();
         }
+
+        Ok(())
     }
 }
