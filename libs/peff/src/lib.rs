@@ -12,14 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+
 extern crate bitflags;
 extern crate failure;
-#[macro_use]
 extern crate log;
 extern crate packed_struct;
 
 use bitflags::bitflags;
 use failure::{bail, ensure, Fail, Fallible};
+use log::trace;
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
 
@@ -89,7 +91,8 @@ impl PE {
             data[0] == 0x4d && data[1] == 0x5a,
             "not a dos program file header"
         );
-        let pe_offset_ptr: *const u32 = data[0x3c..].as_ptr() as *const _;
+        let pe_offset_ptr: *const u32 =
+            unsafe { mem::transmute(data[0x3c..].as_ptr() as *const u8) };
         let pe_offset = unsafe { *pe_offset_ptr } as usize;
 
         ensure!(
@@ -299,7 +302,7 @@ impl PE {
                 ((*name).to_owned(), SectionInfo::from_header(header))
             }).collect::<HashMap<String, SectionInfo>>();
 
-        return Ok(PE {
+        Ok(PE {
             thunks,
             relocs,
             code: code.to_owned(),
@@ -307,7 +310,7 @@ impl PE {
             image_base: win.image_base(),
             code_vaddr: code_section.virtual_address(),
             code_addr: code_section.virtual_address(),
-        });
+        })
     }
 
     fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Fallible<Vec<Thunk>> {
@@ -378,7 +381,8 @@ impl PE {
                 "import name table not in idata"
             );
             let name_table_offset = name_table_rva as usize - section.virtual_address() as usize;
-            let hint_ptr: *const u16 = idata[name_table_offset..].as_ptr() as *const _;
+            let hint_ptr: *const u16 =
+                unsafe { mem::transmute(idata[name_table_offset..].as_ptr() as *const u8) };
             let hint: u16 = unsafe { *hint_ptr };
             ensure!(hint == 0, "hint table entries are not supported");
             let name = Self::read_name(&idata[name_table_offset + 2..])?;
@@ -402,7 +406,7 @@ impl PE {
             thunks.push(thunk);
             ordinal += 1;
         }
-        return Ok(thunks);
+        Ok(thunks)
     }
 
     fn read_name(n: &[u8]) -> Fallible<String> {
@@ -410,7 +414,7 @@ impl PE {
             .iter()
             .position(|&c| c == 0)
             .ok_or::<PEError>(PEError::NameUnending {})?;
-        return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
+        Ok(str::from_utf8(&n[..end_offset])?.to_owned())
     }
 
     fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Fallible<Vec<u32>> {
@@ -425,14 +429,14 @@ impl PE {
                     (base_reloc.block_size() as usize - mem::size_of::<BaseRelocation>()) / 2;
                 let relocs: &[u16] =
                     unsafe { mem::transmute(&relocs[mem::size_of::<BaseRelocation>()..]) };
-                for i in 0..reloc_cnt {
-                    let flags = (relocs[i] & 0xF000) >> 12;
+                for reloc in relocs.iter().take(reloc_cnt) {
+                    let flags = (reloc & 0xF000) >> 12;
                     if flags == 0 {
                         continue;
                     }
-                    let offset = relocs[i] & 0x0FFF;
+                    let offset = reloc & 0x0FFF;
                     ensure!(flags == 3, "only 32bit relocations are supported");
-                    let rva = base_reloc.page_rva() + offset as u32;
+                    let rva = base_reloc.page_rva() + u32::from(offset);
                     trace!("Base Reloc: {:04X} + {:04X}", base_reloc.page_rva(), offset);
                     ensure!(
                         rva >= code_section.virtual_address(),
@@ -442,13 +446,13 @@ impl PE {
                         rva < code_section.virtual_address() + code_section.virtual_size(),
                         "relocation not in CODE"
                     );
-                    let code_offset =
-                        (base_reloc.page_rva() - code_section.virtual_address()) + offset as u32;
+                    let code_offset = (base_reloc.page_rva() - code_section.virtual_address())
+                        + u32::from(offset);
                     out.push(code_offset);
                 }
             }
         }
-        return Ok(out);
+        Ok(out)
     }
 
     pub fn relocate(&mut self, addr: u32) -> Fallible<()> {
@@ -488,7 +492,7 @@ impl PE {
             thunk.vaddr = delta.apply(thunk.vaddr);
         }
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn relocate_pointer(&self, addr: u32) -> u32 {
@@ -597,46 +601,46 @@ packed_struct!(SectionHeader {
 
 bitflags! {
     struct SectionFlags : u32 {
-        const _1 = 0x00000001;  // Reserved for future use.
-        const _2 = 0x00000002;  // Reserved for future use.
-        const _3 = 0x00000004;  // Reserved for future use.
-        const IMAGE_SCN_TYPE_NO_PAD = 0x00000008;  // The section should not be padded to the next boundary. This flag is obsolete and is replaced by IMAGE_SCN_ALIGN_1BYTES. This is valid only for object files.
-        const _5 = 0x00000010;  // Reserved for future use.
-        const IMAGE_SCN_CNT_CODE = 0x00000020;  // The section contains executable code.
-        const IMAGE_SCN_CNT_INITIALIZED_DATA = 0x00000040;  // The section contains initialized data.
-        const IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x00000080;  // The section contains uninitialized data.
-        const IMAGE_SCN_LNK_OTHER = 0x00000100;  // Reserved for future use.
-        const IMAGE_SCN_LNK_INFO = 0x00000200; // The section contains comments or other information. The .drectve section has this type. This is valid for object files only.
-        const _B = 0x00000400;  // Reserved for future use.
-        const IMAGE_SCN_LNK_REMOVE = 0x00000800;  // The section will not become part of the image. This is valid only for object files.
-        const IMAGE_SCN_LNK_COMDAT = 0x00001000;  // The section contains COMDAT data. For more information, see COMDAT Sections (Object Only). This is valid only for object files.
-        const IMAGE_SCN_GPREL = 0x00008000;  // The section contains data referenced through the global pointer (GP).
-        const IMAGE_SCN_MEM_PURGEABLE = 0x00020000;  // Reserved for future use.
-        const IMAGE_SCN_MEM_16BIT = 0x00020000;  // Reserved for future use.
-        const IMAGE_SCN_MEM_LOCKED = 0x00040000;  // Reserved for future use.
-        const IMAGE_SCN_MEM_PRELOAD = 0x00080000;  // Reserved for future use.
-        const IMAGE_SCN_ALIGN_1BYTES = 0x00100000;  // Align data on a 1-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_2BYTES = 0x00200000;  // Align data on a 2-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_4BYTES = 0x00300000;  // Align data on a 4-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_8BYTES = 0x00400000;  // Align data on an 8-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_16BYTES = 0x00500000;  // Align data on a 16-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_32BYTES = 0x00600000;  // Align data on a 32-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_64BYTES = 0x00700000;  // Align data on a 64-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_128BYTES = 0x00800000;  // Align data on a 128-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_256BYTES = 0x00900000;  // Align data on a 256-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_512BYTES = 0x00A00000;  // Align data on a 512-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_1024BYTES = 0x00B00000;  // Align data on a 1024-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_2048BYTES = 0x00C00000;  // Align data on a 2048-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_4096BYTES = 0x00D00000;  // Align data on a 4096-byte boundary. Valid only for object files.
-        const IMAGE_SCN_ALIGN_8192BYTES = 0x00E00000;  // Align data on an 8192-byte boundary. Valid only for object files.
-        const IMAGE_SCN_LNK_NRELOC_OVFL = 0x01000000;  // The section contains extended relocations.
-        const IMAGE_SCN_MEM_DISCARDABLE = 0x02000000;  // The section can be discarded as needed.
-        const IMAGE_SCN_MEM_NOT_CACHED = 0x04000000;  // The section cannot be cached.
-        const IMAGE_SCN_MEM_NOT_PAGED = 0x08000000;  // The section is not pageable.
-        const IMAGE_SCN_MEM_SHARED = 0x10000000;  // The section can be shared in memory.
-        const IMAGE_SCN_MEM_EXECUTE = 0x20000000;  // The section can be executed as code.
-        const IMAGE_SCN_MEM_READ = 0x40000000;  // The section can be read.
-        const IMAGE_SCN_MEM_WRITE = 0x80000000;  // The section can be written to.
+        const _1 = 0x0000_0001;  // Reserved for future use.
+        const _2 = 0x0000_0002;  // Reserved for future use.
+        const _3 = 0x0000_0004;  // Reserved for future use.
+        const IMAGE_SCN_TYPE_NO_PAD = 0x0000_0008;  // The section should not be padded to the next boundary. This flag is obsolete and is replaced by IMAGE_SCN_ALIGN_1BYTES. This is valid only for object files.
+        const _5 = 0x0000_0010;  // Reserved for future use.
+        const IMAGE_SCN_CNT_CODE = 0x0000_0020;  // The section contains executable code.
+        const IMAGE_SCN_CNT_INITIALIZED_DATA = 0x0000_0040;  // The section contains initialized data.
+        const IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x0000_0080;  // The section contains uninitialized data.
+        const IMAGE_SCN_LNK_OTHER = 0x0000_0100;  // Reserved for future use.
+        const IMAGE_SCN_LNK_INFO = 0x0000_0200; // The section contains comments or other information. The .drectve section has this type. This is valid for object files only.
+        const _B = 0x0000_0400;  // Reserved for future use.
+        const IMAGE_SCN_LNK_REMOVE = 0x0000_0800;  // The section will not become part of the image. This is valid only for object files.
+        const IMAGE_SCN_LNK_COMDAT = 0x0000_1000;  // The section contains COMDAT data. For more information, see COMDAT Sections (Object Only). This is valid only for object files.
+        const IMAGE_SCN_GPREL = 0x0000_8000;  // The section contains data referenced through the global pointer (GP).
+        const IMAGE_SCN_MEM_PURGEABLE = 0x0002_0000;  // Reserved for future use.
+        const IMAGE_SCN_MEM_16BIT = 0x0002_0000;  // Reserved for future use.
+        const IMAGE_SCN_MEM_LOCKED = 0x0004_0000;  // Reserved for future use.
+        const IMAGE_SCN_MEM_PRELOAD = 0x0008_0000;  // Reserved for future use.
+        const IMAGE_SCN_ALIGN_1BYTES = 0x0010_0000;  // Align data on a 1-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_2BYTES = 0x0020_0000;  // Align data on a 2-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_4BYTES = 0x0030_0000;  // Align data on a 4-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_8BYTES = 0x0040_0000;  // Align data on an 8-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_16BYTES = 0x0050_0000;  // Align data on a 16-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_32BYTES = 0x0060_0000;  // Align data on a 32-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_64BYTES = 0x0070_0000;  // Align data on a 64-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_128BYTES = 0x0080_0000;  // Align data on a 128-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_256BYTES = 0x0090_0000;  // Align data on a 256-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_512BYTES = 0x00A0_0000;  // Align data on a 512-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_1024BYTES = 0x00B0_0000;  // Align data on a 1024-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_2048BYTES = 0x00C0_0000;  // Align data on a 2048-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_4096BYTES = 0x00D0_0000;  // Align data on a 4096-byte boundary. Valid only for object files.
+        const IMAGE_SCN_ALIGN_8192BYTES = 0x00E0_0000;  // Align data on an 8192-byte boundary. Valid only for object files.
+        const IMAGE_SCN_LNK_NRELOC_OVFL = 0x0100_0000;  // The section contains extended relocations.
+        const IMAGE_SCN_MEM_DISCARDABLE = 0x0200_0000;  // The section can be discarded as needed.
+        const IMAGE_SCN_MEM_NOT_CACHED = 0x0400_0000;  // The section cannot be cached.
+        const IMAGE_SCN_MEM_NOT_PAGED = 0x0800_0000;  // The section is not pageable.
+        const IMAGE_SCN_MEM_SHARED = 0x1000_0000;  // The section can be shared in memory.
+        const IMAGE_SCN_MEM_EXECUTE = 0x2000_0000;  // The section can be executed as code.
+        const IMAGE_SCN_MEM_READ = 0x4000_0000;  // The section can be read.
+        const IMAGE_SCN_MEM_WRITE = 0x8000_0000;  // The section can be written to.
     }
 }
 
