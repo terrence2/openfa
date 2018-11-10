@@ -79,7 +79,7 @@ impl Palette {
             }
         }
         let img = image::ImageRgb8(buf);
-        img.save(&format!("{}.png", name))?;
+        img.save(name.to_owned() + ".png")?;
         Ok(())
     }
 }
