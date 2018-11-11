@@ -12,29 +12,25 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
 
-extern crate md5;
-#[macro_use]
 extern crate bitflags;
 extern crate clap;
-#[macro_use]
 extern crate failure;
 extern crate i386;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
 extern crate lay;
+extern crate lazy_static;
+extern crate log;
+extern crate md5;
 extern crate pal;
 extern crate peff;
 extern crate reverse;
 extern crate simplelog;
 
 use clap::{App, Arg};
-use failure::Error;
+use failure::{bail, Error};
 use lay::Layer;
-use pal::Palette;
-use reverse::{b2b, b2h, bs2s, Color, Escape};
+use reverse::{b2h, Color, Escape};
 use std::{fs, io::Read, mem, path::Path};
 
 fn main() -> Result<(), Error> {
@@ -48,14 +44,12 @@ fn main() -> Result<(), Error> {
                 .short("-w")
                 .help("Wrap at 32 bytes")
                 .required(false),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("INPUT")
                 .help("The layer(s) to show")
                 .multiple(true)
                 .required(true),
-        )
-        .get_matches();
+        ).get_matches();
 
     // let step = 0x40;
     // for i in 0..0x100 {
@@ -72,12 +66,12 @@ fn main() -> Result<(), Error> {
         fp.read_to_end(&mut data).unwrap();
 
         let mut pe = peff::PE::parse(&data)?;
-        pe.relocate(0x00000000)?;
+        pe.relocate(0x0000_0000)?;
 
         println!("RELOCS: {:?}", pe.relocs);
         println!("THUNKS: {:?}", pe.thunks);
 
-        let lay = Layer::from_pe(Path::new(name).file_stem().unwrap().to_str().unwrap(), &pe)?;
+        let _lay = Layer::from_pe(Path::new(name).file_stem().unwrap().to_str().unwrap(), &pe)?;
 
         let mut extents = Vec::new();
         for reloc in pe.relocs {
@@ -100,7 +94,7 @@ fn main() -> Result<(), Error> {
             if is_extent_end(i, &extents) {
                 Escape::new().put(&mut out);
             }
-            if !matches.is_present("no-wrap") && (i + 0) % 32 == 0 {
+            if !matches.is_present("no-wrap") && i % 32 == 0 {
                 out.push('\n');
                 for c in format!("{:04X}| ", i).chars() {
                     out.push(c);
@@ -110,7 +104,7 @@ fn main() -> Result<(), Error> {
                 match u {
                     0 => {
                         let ptr: &[u32] = unsafe { mem::transmute(&pe.code[i..i + 4]) };
-                        let p = ptr[0] - 0x00000000;
+                        let p = ptr[0];
                         extents.push((2, p + 4, p + 0x100));
                         extents.push((3, p, p + 4));
                         // let pal_data = &pe.code[p as usize..p as usize + 0x300];
@@ -138,10 +132,10 @@ fn main() -> Result<(), Error> {
         //println!("{:25}: {}", name, bs2s(&pe.code));
     }
 
-    return Ok(());
+    Ok(())
 }
 
-fn is_extent_start(i: usize, extents: &Vec<(u8, u32, u32)>) -> Option<u8> {
+fn is_extent_start(i: usize, extents: &[(u8, u32, u32)]) -> Option<u8> {
     let mut out = None;
     for &(kind, st, _) in extents.iter() {
         if i as u32 == st {
@@ -154,14 +148,14 @@ fn is_extent_start(i: usize, extents: &Vec<(u8, u32, u32)>) -> Option<u8> {
             }
         }
     }
-    return out;
+    out
 }
 
-fn is_extent_end(i: usize, extents: &Vec<(u8, u32, u32)>) -> bool {
+fn is_extent_end(i: usize, extents: &[(u8, u32, u32)]) -> bool {
     for &(_, _, ed) in extents.iter() {
         if i as u32 == ed {
             return true;
         }
     }
-    return false;
+    false
 }

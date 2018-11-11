@@ -12,24 +12,20 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate bitflags;
-#[macro_use]
 extern crate failure;
 extern crate i386;
-#[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate log;
-#[macro_use]
-extern crate packed_struct;
 extern crate md5;
+extern crate packed_struct;
 extern crate pal;
 extern crate peff;
 extern crate reverse;
 extern crate simplelog;
 
-use failure::Error;
+use failure::{ensure, Fallible};
+use packed_struct::packed_struct;
 use pal::Palette;
 use reverse::bs2s;
 use std::{fs, mem, str};
@@ -73,8 +69,8 @@ packed_struct!(LayerPlaneHeader {
     _2 => maybeFogUpdateThunk: u32,
     _3 => horizonProcThunk: u32,
     // FE 1F 38 0E 70 62 00 00 30 0B 01 00 18 47 E8 B8 
-    _4 => unk0E38: u16,
-    _5 => unk1FFE: u16,
+    _4 => unk1FFE: u16,
+    _5 => unk0E38: u16,
     _6 => unk00006270: u32,
     _7 => unk00010B30: u32,
     _8 => unkB8E84718: u32,
@@ -109,10 +105,20 @@ const EMPTY_PAL_PLANE: [u8; 0x23F] = [
 ];
 
 impl Layer {
-    pub fn from_pe(prefix: &str, pe: &peff::PE) -> Result<(), Error> {
-        println!("IN IN IN: {}", prefix);
-        fs::create_dir("dump");
-        fs::create_dir(format!("dump/{}", prefix));
+    pub fn from_bytes(data: &[u8]) -> Fallible<Layer> {
+        let mut pe = peff::PE::parse(data)?;
+        pe.relocate(0xAA00_0000)?;
+        Layer::from_pe("", &pe)
+    }
+
+    pub fn from_pe(prefix: &str, pe: &peff::PE) -> Fallible<Layer> {
+        let dump_stuff = false;
+
+        if dump_stuff {
+            fs::create_dir("dump")?;
+            fs::create_dir(format!("dump/{}", prefix))?;
+        }
+
         let data = &pe.code;
 
         let header_ptr: *const LayerHeader = data.as_ptr() as *const _;
@@ -132,7 +138,7 @@ impl Layer {
 
         let first_size = 0x100 + 46;
         let first_addr = header.ptrFirst();
-        let first_data = &data[first_addr as usize..first_addr as usize + first_size];
+        let _first_data = &data[first_addr as usize..first_addr as usize + first_size];
 
         let mut offset = first_addr as usize + first_size;
         loop {
@@ -145,11 +151,37 @@ impl Layer {
             }
 
             let plane_data = &data[offset..offset + hdr_size];
-            let plane_ptr: *const LayerPlaneHeader = unsafe { mem::transmute(plane_data.as_ptr()) };
+            //let plane_ptr: *const LayerPlaneHeader = unsafe { mem::transmute(plane_data.as_ptr()) };
+            let plane_ptr: *const LayerPlaneHeader = plane_data.as_ptr() as *const LayerPlaneHeader;
             let plane: &LayerPlaneHeader = unsafe { &*plane_ptr };
+            println!("INFO: {}", bs2s(plane_data));
+            ensure!(
+                plane.unkMaybe66() == 0x66 || plane.unkMaybe66() == 0,
+                "expected 66"
+            );
+            ensure!(
+                plane.unkMaybe2DD() == 0x2DD || plane.unkMaybe2DD() == 0,
+                "expected 2DD"
+            );
+            ensure!(
+                plane.maybeFogUpdateThunk() == 0x2A46 || plane.maybeFogUpdateThunk() == 0,
+                "expected 0x2A46"
+            );
+            ensure!(
+                plane.horizonProcThunk() != 0,
+                "expected horizon proc thunk to be set"
+            );
+            ensure!(plane.unk1FFE() == 0x1FFE, "expected 1FFE");
+            ensure!(plane.unk0E38() == 0x0E38, "expected 0E38");
+            ensure!(plane.unk00006270() == 0x6270, "expected 6270");
+            ensure!(plane.unk00010B30() == 0x10B30, "expected 10B30");
+            ensure!(plane.unkB8E84718() == 0xB8E84718, "expected B8E84718");
+
+            println!("PLANE9: {}", bs2s(&plane.unkFillAndShape()));
+            //println!("PLANE: {}", str::from_utf8(&plane.unkFillAndShape())?);
             //assert!(str::from_utf8(&plane.shape())?.starts_with("wave1.SH"));
             //println!("SHAPE: {}", str::from_utf8(&plane.shape())?);
-            let mut plane_pal: Vec<u8> = data[offset + hdr_size..offset + hdr_size + pal_size]
+            let plane_pal: Vec<u8> = data[offset + hdr_size..offset + hdr_size + pal_size]
                 .to_owned()
                 .to_vec();
             // for i in 0..0x36 {
@@ -158,32 +190,38 @@ impl Layer {
             let mut pal_b: Vec<u8> = EMPTY_PAL_PLANE.to_owned().to_vec();
             pal_b.append(&mut EMPTY_PAL_PLANE.to_owned().to_vec());
             pal_b.append(&mut plane_pal.to_owned());
-            let pal = Palette::from_bytes(&pal_b)?;
-            pal.dump_png(&format!(
-                "dump/{}/pal-{}-{:04X}",
-                prefix,
-                "planes",
-                offset + hdr_size
-            )).unwrap();
+            if dump_stuff {
+                let pal = Palette::from_bytes(&pal_b)?;
+                pal.dump_png(&format!(
+                    "dump/{}/pal-{}-{:04X}",
+                    prefix,
+                    "planes",
+                    offset + hdr_size
+                )).unwrap();
+            }
 
             offset += plane_size;
         }
 
         // decode 7 palettes at ptrSecond
         offset = header.ptrSecond() as usize;
-        let pal_data = &data[offset..offset + 0x300];
-        let pal = Palette::from_bytes(pal_data)?;
-        pal.dump_png(&format!("dump/{}/pal-second{}-{:04X}", prefix, "0", offset))
-            .unwrap();
+        if dump_stuff {
+            let pal_data = &data[offset..offset + 0x300];
+            let pal = Palette::from_bytes(pal_data)?;
+            pal.dump_png(&format!("dump/{}/pal-second{}-{:04X}", prefix, "0", offset))
+                .unwrap();
+        }
         offset += 0x300;
         for i in 0..18 {
             let pal_data = &data[offset..offset + 0x100];
             let mut pal_b: Vec<u8> = EMPTY_PAL_PLANE.to_owned().to_vec();
             pal_b.append(&mut EMPTY_PAL_PLANE.to_owned().to_vec());
             pal_b.append(&mut pal_data.to_owned());
-            let pal = Palette::from_bytes_prescaled(&pal_b)?;
-            pal.dump_png(&format!("dump/{}/pal-second{}-{:04X}", prefix, i, offset))
-                .unwrap();
+            if dump_stuff {
+                let pal = Palette::from_bytes_prescaled(&pal_b)?;
+                pal.dump_png(&format!("dump/{}/pal-second{}-{:04X}", prefix, i, offset))
+                    .unwrap();
+            }
             offset += 0x100;
         }
 
@@ -212,7 +250,7 @@ impl Layer {
             ("ptr71", header.ptrSecond()),
             ("ptrFirst", header.ptrFirst()),
         ];
-        fs::create_dir(prefix);
+        fs::create_dir(prefix)?;
         for &(name, addr) in addrs.iter() {
             let pal_data = &data[addr as usize..addr as usize + 0x100];
             let digest = md5::compute(pal_data);
@@ -226,14 +264,29 @@ impl Layer {
         }
         */
 
-        return Ok(());
+        Ok(Layer {})
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::io::Read;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn it_works() -> Fallible<()> {
+        let paths = fs::read_dir("./test_data")?;
+        for i in paths {
+            let entry = i?;
+            let path = format!("{}", entry.path().display());
+            if path.ends_with("LAY") {
+                let mut fp = fs::File::open(entry.path())?;
+                let mut data = Vec::new();
+                fp.read_to_end(&mut data)?;
+                let lay = Layer::from_bytes(&data)?;
+            }
+        }
+
+        Ok(())
     }
 }
