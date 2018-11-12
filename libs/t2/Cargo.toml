@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-failure = "0.1"
-image = "0.18"
+failure = ">= 0.1.2"
+image = ">= 0.18"
 packed_struct = { path = "../packed_struct/" }
 reverse = { path = "../reverse/" }

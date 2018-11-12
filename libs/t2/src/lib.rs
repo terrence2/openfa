@@ -120,9 +120,8 @@ extern crate failure;
 extern crate image;
 extern crate reverse;
 
-use failure::Error;
+use failure::{ensure, Fallible};
 use std::cmp;
-use std::fs;
 use std::{mem, str};
 
 pub struct Sample {
@@ -169,17 +168,17 @@ pub struct Terrain {
     pub samples: Vec<Sample>,
     _extra: Vec<u8>,
 }
-const MAGIC: &[u8] = &['B' as u8, 'I' as u8, 'T' as u8, '2' as u8];
+const MAGIC: &[u8] = &[b'B', b'I', b'T', b'2'];
 
-fn read_name(n: &[u8]) -> Result<String, Error> {
+fn read_name(n: &[u8]) -> Fallible<String> {
     let end_offset: usize = n.iter().position(|&c| c == 0).unwrap_or(n.len() - 1);
-    return Ok(str::from_utf8(&n[..end_offset])?.to_owned());
+    Ok(str::from_utf8(&n[..end_offset])?.to_owned())
 }
 
 impl Terrain {
-    fn from_bytes(data: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let magic = &data[0..4];
-        assert_eq!(magic, MAGIC);
+        ensure!(magic == MAGIC, "missing magic");
 
         // Followed by 80 bytes of name / description.
         let name = read_name(&data[4..84])?;
@@ -211,7 +210,7 @@ impl Terrain {
         let mut samples = Vec::new();
 
         for i in 0..npix {
-            let kind = entries[i * 3 + 0];
+            let kind = entries[i * 3];
             let mods = entries[i * 3 + 1];
             let height = entries[i * 3 + 2];
             samples.push(Sample::new(kind, mods, height))
@@ -225,10 +224,10 @@ impl Terrain {
             samples,
             _extra: extra,
         };
-        return Ok(terrain);
+        Ok(terrain)
     }
 
-    fn make_debug_images(&self, path: &str) {
+    fn make_debug_images(&self, path: &str) -> Fallible<()> {
         let mut metabuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
         let mut heightbuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
         for (pos, sample) in self.samples.iter().enumerate() {
@@ -269,35 +268,35 @@ impl Terrain {
         }
 
         let img = image::ImageRgb8(metabuf);
-        let ref mut fout = fs::File::create(path.to_owned() + ".meta.png").unwrap();
-        img.save(fout, image::PNG).unwrap();
+        img.save(path.to_owned() + ".meta.png")?;
 
         let img = image::ImageRgb8(heightbuf);
-        let ref mut fout = fs::File::create(path.to_owned() + ".height.png").unwrap();
-        img.save(fout, image::PNG).unwrap();
+        img.save(path.to_owned() + ".height.png")?;
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use std::fs;
     use std::io::prelude::*;
 
     #[test]
-    fn it_works() {
+    fn it_works() -> Fallible<()> {
         let mut rv: Vec<String> = Vec::new();
-        let paths = fs::read_dir("./test_data").unwrap();
+        let paths = fs::read_dir("./test_data")?;
         for i in paths {
-            let entry = i.unwrap();
+            let entry = i?;
             let path = format!("{}", entry.path().display());
             if path.ends_with("T2") {
-                let mut fp = fs::File::open(entry.path()).unwrap();
+                let mut fp = fs::File::open(entry.path())?;
                 let mut data = Vec::new();
-                fp.read_to_end(&mut data).unwrap();
-                let terrain = Terrain::from_bytes(&data).unwrap();
+                fp.read_to_end(&mut data)?;
+                let terrain = Terrain::from_bytes(&data)?;
                 assert!(terrain.pic_file.len() > 0);
-                terrain.make_debug_images(&path);
+                terrain.make_debug_images(&path)?;
             }
         }
         rv.sort();
@@ -305,5 +304,7 @@ mod tests {
         for v in rv {
             println!("{}", v);
         }
+
+        Ok(())
     }
 }
