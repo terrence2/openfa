@@ -12,6 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+
 extern crate bitflags;
 extern crate failure;
 extern crate peff;
