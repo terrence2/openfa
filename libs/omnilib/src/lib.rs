@@ -76,6 +76,10 @@ impl OmniLib {
         return Ok(out);
     }
 
+    pub fn libraries(&self) -> Vec<&LibStack> {
+        self.stacks.values().collect()
+    }
+
     pub fn library(&self, libname: &str) -> &LibStack {
         return &self.stacks[libname];
     }

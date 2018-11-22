@@ -4,9 +4,9 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-failure = "0.1.2"
-mint = "0.5"
-nalgebra = "0.16"
+failure = ">= 0.1.2"
+mint = ">= 0.5"
+nalgebra = ">= 0.16"
 xt = { path = "../xt" }
 lay = { path = "../lay" }
 pic = { path = "../pic" }

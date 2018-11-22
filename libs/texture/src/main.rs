@@ -17,34 +17,21 @@ extern crate gpu;
 extern crate image;
 extern crate vulkano;
 extern crate vulkano_shaders;
-extern crate vulkano_win;
 extern crate winit;
+extern crate texture;
 
-use std::sync::Arc;
-
-use failure::{bail, err_msg, Fallible};
+use texture::TextureManager;
+use failure::Fallible;
 use gpu::{GraphicsConfigBuilder, GraphicsWindow};
-use image::{ImageBuffer, Rgba};
+use std::{path::Path, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
     descriptor::descriptor_set::PersistentDescriptorSet,
-    device::{Device, DeviceExtensions, Features, Queue},
-    format::{ClearValue, Format},
-    framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass},
-    image::{Dimensions, StorageImage, SwapchainImage},
+    framebuffer::Subpass,
     impl_vertex,
-    instance::{Instance, InstanceExtensions, PhysicalDevice},
-    pipeline::{viewport::Viewport, ComputePipeline, GraphicsPipeline},
-    single_pass_renderpass, swapchain,
-    swapchain::{
-        acquire_next_image, AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain,
-        SwapchainCreationError,
-    },
-    sync,
-    sync::{FlushError, GpuFuture},
+    pipeline::GraphicsPipeline,
+    sync::GpuFuture,
 };
-use vulkano_win::VkSurfaceBuild;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -78,6 +65,7 @@ mod fs {
             #version 450
 
             layout(location = 0) out vec4 f_color;
+            layout(set = 0, binding = 0) uniform sampler2D tex;
 
             void main() {
                 f_color = vec4(1.0, 0.0, 0.0, 1.0);
@@ -87,7 +75,12 @@ mod fs {
 }
 
 pub fn main() -> Fallible<()> {
+    let library = lib::LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+
+    let texman = TextureManager::new(&library)?;
+    let (texture, tex_future) = texman.load_texture("FLARE.PIC", window.queue())?;
+    let sampler = TextureManager::make_sampler(window.device())?;
 
     // Resources
     let vertex_buffer = {
@@ -120,9 +113,13 @@ pub fn main() -> Fallible<()> {
             ).build(window.device())?,
     );
 
-    //let mut recreate_swapchain = false;
+    let set = Arc::new(
+        PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_sampled_image(texture.clone(), sampler.clone())?
+            .build()?
+    );
 
-    //let mut previous_frame_end = Box::new(sync::now(window.device())) as Box<GpuFuture>;
+    tex_future.then_signal_fence_and_flush();
 
     loop {
         window.drive_frame(|command_buffer, dynamic_state| {
@@ -130,69 +127,10 @@ pub fn main() -> Fallible<()> {
                 pipeline.clone(),
                 dynamic_state,
                 vertex_buffer.clone(),
-                (),
+                set.clone(),
                 (),
             )?)
-        });
-
-//        previous_frame_end.cleanup_finished();
-//
-//        // Whenever the window resizes we need to recreate everything dependent on the window size.
-//        // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
-//        if recreate_swapchain {
-//            window.handle_resize();
-//        }
-
-//        let (image_num, acquire_future) = match acquire_next_image(window.swapchain(), None) {
-//            Ok(r) => r,
-//            Err(AcquireError::OutOfDate) => {
-//                recreate_swapchain = true;
-//                continue;
-//            }
-//            Err(err) => panic!("{:?}", err),
-//        };
-//
-//        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
-//            window.device(),
-//            window.queue().family(),
-//        )?.begin_render_pass(
-//            window.framebuffer(image_num),
-//            false,
-//            vec![[0.0, 0.0, 1.0, 1.0].into()],
-//        )?.draw(
-//            pipeline.clone(),
-//            window.dynamic_state(),
-//            vertex_buffer.clone(),
-//            (),
-//            (),
-//        )?.end_render_pass()?
-//        .build()?;
-//
-//        let future = previous_frame_end
-//            .join(acquire_future)
-//            .then_execute(window.queue(), command_buffer)?
-//            // The color output is now expected to contain our triangle. But in order to show it on
-//            // the screen, we have to *present* the image by calling `present`.
-//            //
-//            // This function does not actually present the image immediately. Instead it submits a
-//            // present command at the end of the queue. This means that it will only be presented once
-//            // the GPU has finished executing the command buffer that draws the triangle.
-//            .then_swapchain_present(window.queue(), window.swapchain(), image_num)
-//            .then_signal_fence_and_flush();
-//
-//        match future {
-//            Ok(future) => {
-//                previous_frame_end = Box::new(future) as Box<_>;
-//            }
-//            Err(FlushError::OutOfDate) => {
-//                recreate_swapchain = true;
-//                previous_frame_end = Box::new(sync::now(window.device())) as Box<_>;
-//            }
-//            Err(e) => {
-//                println!("{:?}", e);
-//                previous_frame_end = Box::new(sync::now(window.device())) as Box<_>;
-//            }
-//        }
+        })?;
 
         let mut done = false;
         window.events_loop.poll_events(|ev| match ev {
@@ -203,13 +141,15 @@ pub fn main() -> Fallible<()> {
             winit::Event::WindowEvent {
                 event: winit::WindowEvent::Resized(_),
                 ..
-            } => /*recreate_swapchain = true*/ (),
+            } =>
+            /*recreate_swapchain = true*/
+            {
+                ()
+            }
             _ => (),
         });
         if done {
             return Ok(());
         }
     }
-
-    Ok(())
 }

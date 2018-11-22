@@ -18,68 +18,79 @@ extern crate image;
 extern crate lib;
 extern crate pal;
 extern crate pic;
+extern crate vulkano;
 
 use failure::Fallible;
-use gpu::GPU;
+use gpu::{GraphicsConfigBuilder, GraphicsWindow};
 use image::RgbaImage;
 use lib::LibStack;
 use pal::Palette;
 use pic::decode_pic;
+use std::sync::Arc;
+use vulkano::{
+    device::{Queue, Device},
+    format::Format,
+    image::{Dimensions, ImmutableImage},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
+    sync::GpuFuture,
+};
 
 pub struct TextureManager<'a> {
-    base_palette: Palette,
-    gpu: &'a GPU,
+    system_palette: Palette,
     library: &'a LibStack,
 }
 
 impl<'a> TextureManager<'a> {
-    pub fn new(library: &'a LibStack, gpu: &'a GPU) -> Fallible<Self> {
+    pub fn new(library: &'a LibStack) -> Fallible<Self> {
         let bytes = library.load("PALETTE.PAL")?;
-        let base_palette = Palette::from_bytes(&bytes)?;
+        let system_palette = Palette::from_bytes(&bytes)?;
         return Ok(TextureManager {
-            base_palette,
-            gpu,
+            system_palette,
             library,
         });
     }
 
-    pub fn load_texture(&self, name: &str) -> Fallible<()> {
-        let bytes = self.library.load(name)?;
-        let img = decode_pic(&self.base_palette, &bytes)?.to_rgba();
+    pub fn load_texture(
+        &self,
+        filename: &str,
+        queue: Arc<Queue>,
+    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+        let data = self.library.load(filename)?;
+        let image_buf = decode_pic(&self.system_palette, &data)?.to_rgba();
+        let image_dim = image_buf.dimensions();
+        let image_data = image_buf.into_raw().clone();
 
-        //return self.upload_texture(gpu, img);
+        let dimensions = Dimensions::Dim2d {
+            width: image_dim.0,
+            height: image_dim.1,
+        };
+        let (texture, tex_future) = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            Format::R8G8B8A8Uint,
+            queue,
+        )?;
 
-        
-
-        return Ok(());
+        return Ok((texture, Box::new(tex_future) as Box<GpuFuture>));
     }
 
-    // fn upload_texture(&self, gpu: &'a Gpu, img: RgbaImage) -> Fallible<()> {
-    //     let (width, height) = img.dimensions();
-    //     let kind = img::Kind::D2(width as img::Size, height as img::Size, 1, 1);
-    //     let row_alignment_mask = gpu.limits().min_buffer_copy_pitch_alignment as u32 - 1;
-    //     let image_stride = 4u32;
-    //     let row_pitch = (width * image_stride + row_alignment_mask) & !row_alignment_mask;
-    //     let upload_size = (height * row_pitch) as u64;
+    pub fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
+        let sampler = Sampler::new(
+            device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )?;
 
-    //     // Convert the image into the format the GPU wants while copying it into
-    //     // a GPU controlled region of memory, typically still on the CPU.
-    //     let buf = gpu.create_upload_buffer(upload_size)?;
-    //     gpu.with_mapped_upload_buffer(&buf, |data| {
-    //         for y in 0..height as usize {
-    //             let from_off = y * (width as usize) * (image_stride as usize);
-    //             let to_off = (y + 1) * (width as usize) * (image_stride as usize);
-    //             let row = &(*img)[from_off..to_off];
-    //             let dest_base = y * (row_pitch as usize);
-    //             data[dest_base..dest_base + row.len()].copy_from_slice(row);
-    //         }
-    //     })?;
-
-    //     // Start copying the image to the GPU.
-    //     let buf = gpu.create_image(kind)?;
-
-    //     return Ok(());
-    // }
+        Ok(sampler)
+    }
 }
 
 #[cfg(test)]
@@ -89,12 +100,11 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let mut win = gfx::Window::new(800, 600, "test-texture")?;
-        win.select_any_adapter()?;
+        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let lib = lib::LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
-        let texman = TextureManager::new(&lib, win.gpu()?)?;
+        let texman = TextureManager::new(&lib)?;
 
-        let _foo = texman.load_texture("FLARE.PIC")?;
+        let _foo = texman.load_texture("FLARE.PIC", window.queue())?;
 
         return Ok(());
     }

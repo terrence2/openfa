@@ -20,20 +20,15 @@ extern crate winit;
 use failure::{bail, err_msg, Fallible};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
-    descriptor::descriptor_set::PersistentDescriptorSet,
-    device::{Device, DeviceExtensions, Features, Queue, RawDeviceExtensions},
-    format::{ClearValue, Format},
-    framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass},
-    image::{traits::ImageAccess, Dimensions, StorageImage, SwapchainImage},
-    impl_vertex,
-    instance::{Instance, InstanceExtensions, PhysicalDevice},
-    pipeline::{viewport::Viewport, ComputePipeline, GraphicsPipeline},
-    single_pass_renderpass, swapchain,
+    command_buffer::{AutoCommandBufferBuilder, DynamicState},
+    device::{Device, Features, Queue, RawDeviceExtensions},
+    framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract},
+    image::traits::ImageAccess,
+    instance::{Instance, PhysicalDevice},
+    pipeline::viewport::Viewport,
+    single_pass_renderpass,
     swapchain::{
         acquire_next_image, AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain,
-        SwapchainCreationError,
     },
     sync,
     sync::{FlushError, GpuFuture},
@@ -71,6 +66,12 @@ impl GraphicsConfigBuilder {
     }
 }
 
+impl Default for GraphicsConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 struct SizeDependent {
     swapchain: Arc<Swapchain<Window>>,
     framebuffers: Vec<Arc<FramebufferAbstract + Send + Sync>>,
@@ -79,10 +80,10 @@ struct SizeDependent {
 
 impl SizeDependent {
     fn new(
-        device: Arc<Device>,
-        surface: Arc<Surface<Window>>,
-        queue: Arc<Queue>,
-        config: &GraphicsConfig,
+        device: &Arc<Device>,
+        surface: &Arc<Surface<Window>>,
+        queue: &Arc<Queue>,
+        _config: &GraphicsConfig,
     ) -> Fallible<Self> {
         let caps = surface.capabilities(device.physical_device())?;
 
@@ -104,7 +105,7 @@ impl SizeDependent {
             GraphicsWindow::surface_dimensions(surface)?,
             1,
             caps.supported_usage_flags,
-            &queue,
+            queue,
             SurfaceTransform::Identity,
             alpha,
             PresentMode::Fifo,
@@ -149,7 +150,7 @@ impl SizeDependent {
         })
     }
 
-    fn handle_resize(&mut self, surface: Arc<Surface<Window>>) -> Fallible<()> {
+    fn handle_resize(&mut self, surface: &Arc<Surface<Window>>) -> Fallible<()> {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
 
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
@@ -177,7 +178,7 @@ impl SizeDependent {
 
 pub struct GraphicsWindow {
     // Permanent resources
-    instance: Arc<Instance>,
+    _instance: Arc<Instance>,
     device: Arc<Device>,
     queues: Vec<Arc<Queue>>,
     pub events_loop: EventsLoop,
@@ -196,7 +197,7 @@ impl GraphicsWindow {
     pub fn new(config: &GraphicsConfig) -> Fallible<Self> {
         let instance = Instance::new(None, &vulkano_win::required_extensions(), None)?;
 
-        let mut events_loop = EventsLoop::new();
+        let events_loop = EventsLoop::new();
 
         let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone())?;
 
@@ -222,10 +223,10 @@ impl GraphicsWindow {
         let queues = queues.collect::<Vec<_>>();
 
         let recreatable =
-            SizeDependent::new(device.clone(), surface.clone(), queues[0].clone(), config)?;
+            SizeDependent::new(&device.clone(), &surface.clone(), &queues[0].clone(), config)?;
 
         let mut window = GraphicsWindow {
-            instance: instance.clone(),
+            _instance: instance.clone(),
             device,
             queues,
             events_loop,
@@ -255,11 +256,11 @@ impl GraphicsWindow {
     }
 
     pub fn dimensions(&self) -> Fallible<[f32; 2]> {
-        let dim = Self::surface_dimensions(self.surface.clone())?;
+        let dim = Self::surface_dimensions(&self.surface)?;
         Ok([dim[0] as f32, dim[1] as f32])
     }
 
-    pub fn surface_dimensions(surface: Arc<Surface<Window>>) -> Fallible<[u32; 2]> {
+    pub fn surface_dimensions(surface: &Arc<Surface<Window>>) -> Fallible<[u32; 2]> {
         if let Some(dimensions) = surface.window().get_inner_size() {
             let dim: (u32, u32) = dimensions
                 .to_physical(surface.window().get_hidpi_factor())
@@ -302,7 +303,7 @@ impl GraphicsWindow {
             depth_range: 0.0..1.0,
         }]);
 
-        self.recreatable.handle_resize(self.surface.clone())
+        self.recreatable.handle_resize(&self.surface)
     }
 
     pub fn drive_frame<F>(&mut self, draw: F) -> Fallible<()>
@@ -317,7 +318,7 @@ impl GraphicsWindow {
         // Maybe resize
         if self.dirty_size {
             self.dirty_size = false;
-            self.handle_resize();
+            self.handle_resize()?;
         }
 
         // Grab the next image in the swapchain.

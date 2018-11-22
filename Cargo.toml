@@ -4,8 +4,26 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-pal = { path = "libs/pal/" }
-pic = { path = "libs/pic/" }
-sh = { path = "libs/sh/" }
+#entity = { path = "libs/entity/" }
+i386 = { path = "libs/i386/" }
+jt = { path = "libs/jt/" }
+lay = { path = "libs/lay/" }
+lib = { path = "libs/lib/" }
+lzss = { path = "libs/lzss/" }
+mm = { path = "libs/mm/" }
+nt = { path = "libs/nt/" }
+omnilib = { path = "libs/omnilib/" }
 ot = { path = "libs/ot/" }
-entity = { path = "libs/entity/" }
+packed_struct = { path = "libs/packed_struct/" }
+pal = { path = "libs/pal/" }
+peff = { path = "libs/peff/" }
+pic = { path = "libs/pic/" }
+pkware = { path = "libs/pkware/" }
+pt = { path = "libs/pt/" }
+#resource = { path = "libs/resource/" }
+reverse = { path = "libs/reverse/" }
+sh = { path = "libs/sh/" }
+t2 = { path = "libs/t2/" }
+texture = { path = "libs/texture/" }
+#window = { path = "libs/window/" }
+#xt = { path = "libs/xt/" }

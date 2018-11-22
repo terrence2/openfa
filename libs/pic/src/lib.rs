@@ -16,7 +16,6 @@ extern crate failure;
 extern crate image;
 extern crate packed_struct;
 extern crate pal;
-extern crate reverse;
 
 use failure::{ensure, Fallible};
 use image::{DynamicImage, ImageRgba8};
