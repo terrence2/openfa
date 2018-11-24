@@ -13,17 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate failure;
-extern crate gpu;
 extern crate image;
+extern crate texture;
 extern crate vulkano;
 extern crate vulkano_shaders;
+extern crate window;
 extern crate winit;
-extern crate texture;
 
-use texture::TextureManager;
 use failure::Fallible;
-use gpu::{GraphicsConfigBuilder, GraphicsWindow};
 use std::{path::Path, sync::Arc};
+use texture::TextureManager;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     descriptor::descriptor_set::PersistentDescriptorSet,
@@ -32,6 +31,7 @@ use vulkano::{
     pipeline::GraphicsPipeline,
     sync::GpuFuture,
 };
+use window::{GraphicsConfigBuilder, GraphicsWindow};
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -117,7 +117,7 @@ pub fn main() -> Fallible<()> {
     let set = Arc::new(
         PersistentDescriptorSet::start(pipeline.clone(), 0)
             .add_sampled_image(texture.clone(), sampler.clone())?
-            .build()?
+            .build()?,
     );
 
     loop {

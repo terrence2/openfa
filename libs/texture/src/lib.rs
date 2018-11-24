@@ -13,12 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 extern crate failure;
-extern crate gpu;
 extern crate image;
 extern crate lib;
 extern crate pal;
 extern crate pic;
 extern crate vulkano;
+extern crate window;
 
 use failure::Fallible;
 use lib::LibStack;
@@ -26,7 +26,7 @@ use pal::Palette;
 use pic::decode_pic;
 use std::sync::Arc;
 use vulkano::{
-    device::{Queue, Device},
+    device::{Device, Queue},
     format::Format,
     image::{Dimensions, ImmutableImage},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
@@ -100,13 +100,13 @@ extern crate omnilib;
 mod tests {
     use super::*;
     use omnilib::OmniLib;
-    use gpu::{GraphicsConfigBuilder, GraphicsWindow};
+    use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn it_works() -> Fallible<()> {
         let mut futures = Vec::new();
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let omni = OmniLib::new_for_test()?;//_in_games(vec!["FA"])?;
+        let omni = OmniLib::new_for_test()?; //_in_games(vec!["FA"])?;
         for lib in omni.libraries() {
             let texman = TextureManager::new(&lib)?;
             let (_texture, future) = texman.load_texture("FLARE.PIC", window.queue())?;
@@ -115,7 +115,6 @@ mod tests {
 
         for f in futures {
             let rv = f.then_signal_semaphore_and_flush()?.cleanup_finished();
-
         }
 
         return Ok(());
