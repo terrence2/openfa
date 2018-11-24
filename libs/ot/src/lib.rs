@@ -12,24 +12,21 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
 extern crate bitflags;
-#[macro_use]
 extern crate failure;
 extern crate nalgebra;
 extern crate num_traits;
-extern crate resource;
-extern crate texture;
+extern crate asset;
 
 #[macro_use]
 pub mod parse;
 
-use failure::Fallible;
+use bitflags::bitflags;
+use failure::{bail, ensure, Fallible};
 use nalgebra::Point3;
 pub use parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromField, Repr};
-use resource::{CpuShape, ResourceManager, Sound, HUD};
 use std::{collections::HashMap, mem, rc::Rc};
-use texture::TextureManager;
+use asset::AssetLoader;
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -261,8 +258,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
 impl ObjectType {
     pub fn from_str(
         data: &str,
-        resman: &ResourceManager,
-        texman: &TextureManager,
+        asset_loader: &AssetLoader,
     ) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
@@ -271,7 +267,7 @@ impl ObjectType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        return Self::from_lines((), &obj_lines, &pointers, resman, texman);
+        return Self::from_lines((), &obj_lines, &pointers, asset_loader);
     }
 
     pub fn file_name(&self) -> &str {
@@ -301,7 +297,6 @@ mod tests {
                 omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let texman = TextureManager::new_headless(lib)?;
             let resman = ResourceManager::new_headless(lib)?;
             let contents = lib.load_text(name)?;
             let ot = ObjectType::from_str(&contents, &resman, &texman)?;

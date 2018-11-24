@@ -8,9 +8,10 @@ failure = ">= 0.1.2"
 mint = ">= 0.5"
 nalgebra = ">= 0.16"
 xt = { path = "../xt" }
-lay = { path = "../lay" }
-pic = { path = "../pic" }
-t2 = { path = "../t2" }
+#lay = { path = "../lay" }
+#pic = { path = "../pic" }
+#t2 = { path = "../t2" }
+asset = { path = "../asset" }
 
 [dev-dependencies]
 omnilib = { path = "../omnilib" }

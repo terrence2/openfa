@@ -17,11 +17,11 @@ extern crate lib;
 
 use failure::{err_msg, Fallible};
 use lib::LibStack;
-use std::{collections::HashMap, fs, path::Path};
+use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
 /// Hold multiple LibStacks at once: e.g. for visiting resources from multiple games at once.
 pub struct OmniLib {
-    stacks: HashMap<String, LibStack>,
+    stacks: HashMap<String, Arc<LibStack>>,
 }
 
 impl OmniLib {
@@ -38,7 +38,7 @@ impl OmniLib {
             // let libs = LibStack::from_file_search(&path)?;
             let path = Path::new("../../test_data/unpacked/").join(dir);
             let libs = LibStack::from_dir_search(&path)?;
-            stacks.insert(dir.to_owned(), libs);
+            stacks.insert(dir.to_owned(), Arc::new(libs));
         }
         return Ok(Self { stacks });
     }
@@ -59,7 +59,7 @@ impl OmniLib {
                 .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
                 .to_owned();
             let libs = LibStack::from_dir_search(&entry.path())?;
-            stacks.insert(name, libs);
+            stacks.insert(name, Arc::new(libs));
         }
         return Ok(Self { stacks });
     }
@@ -76,8 +76,8 @@ impl OmniLib {
         return Ok(out);
     }
 
-    pub fn libraries(&self) -> Vec<&LibStack> {
-        self.stacks.values().collect()
+    pub fn libraries(&self) -> Vec<Arc<LibStack>> {
+        self.stacks.values().cloned().collect()
     }
 
     pub fn library(&self, libname: &str) -> &LibStack {

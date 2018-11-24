@@ -8,8 +8,7 @@ bitflags = "1.0"
 failure = ">= 0.1.2"
 num-traits = ">= 0.2.5"
 nalgebra = ">= 0.16.0"
-resource = { path = "../resource" }
-texture = { path = "../texture" }
+asset = { path = "../asset" }
 
 [dev-dependencies]
 omnilib = { path = "../omnilib" }

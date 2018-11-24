@@ -80,6 +80,7 @@ pub fn main() -> Fallible<()> {
 
     let texman = TextureManager::new(&library)?;
     let (texture, tex_future) = texman.load_texture("FLARE.PIC", window.queue())?;
+    tex_future.then_signal_fence_and_flush()?.cleanup_finished();
     let sampler = TextureManager::make_sampler(window.device())?;
 
     // Resources
@@ -118,8 +119,6 @@ pub fn main() -> Fallible<()> {
             .add_sampled_image(texture.clone(), sampler.clone())?
             .build()?
     );
-
-    tex_future.then_signal_fence_and_flush();
 
     loop {
         window.drive_frame(|command_buffer, dynamic_state| {

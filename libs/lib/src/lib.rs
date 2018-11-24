@@ -524,7 +524,7 @@ impl LibStack {
         if let Some(info) = self.index.get(filename) {
             return Ok(info.stat(filename, &self.libs)?);
         }
-        bail!("no such file {} in index", filename);
+        bail!("no such file {} in index", filename)
     }
 
     pub fn load(&self, filename: &str) -> Fallible<Cow<[u8]>> {
@@ -532,7 +532,7 @@ impl LibStack {
         if let Some(info) = self.index.get(filename) {
             return Ok(info.load(&self.libs)?);
         }
-        bail!("no such file {} in index", filename);
+        bail!("no such file {} in index", filename)
     }
 
     pub fn load_text(&self, filename: &str) -> Fallible<Cow<str>> {
@@ -554,7 +554,7 @@ impl LibStack {
             let contents = fileref.load(&self.libs)?.to_vec();
             return Ok(String::from_cp437(contents, &CP437_CONTROL));
         }
-        bail!("libstack: no masked file {:?}/{}", libpath, filename);
+        bail!("libstack: no masked file {:?}/{}", libpath, filename)
     }
 
     /// Find all files with filename that have been masked.

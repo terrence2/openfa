@@ -12,12 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use failure::{err_msg, Fallible, Error};
+pub use failure::{bail, ensure, err_msg, Fallible, Error};
 use num_traits::{cast::AsPrimitive, Num};
 use std::{collections::HashMap, marker, str, str::FromStr};
 pub use std::any::TypeId;
-pub use resource::{AI, CpuShape, HUD, Sound, ResourceManager};
-pub use texture::TextureManager;
+pub use asset::AssetLoader;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FieldType {
@@ -127,7 +126,7 @@ impl FieldValue {
             FieldType::DWord => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
             FieldType::Ptr => {
                 let values = pointers[s].iter().map(|&v| v.to_owned()).collect::<Vec<String>>();
-                FieldValue::Ptr(s.to_owned(), values) 
+                FieldValue::Ptr(s.to_owned(), values)
             }
             FieldType::Symbol => FieldValue::Symbol(s.to_owned()),
             FieldType::XWord => bail!("xword is not a valid concrete type")
@@ -297,16 +296,16 @@ pub enum Repr {
 #[macro_export]
 macro_rules! make_storage_type {
     (AI, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::AI>>>
+        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
     };
     (Shape, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::CpuShape>>>
+        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
     };
     (Sound, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::Sound>>>
+        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
     };
     (HUD, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<$crate::parse::HUD>>>
+        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
     };
     ($_:ident, $field_type:path) => {
         $field_type
@@ -358,7 +357,7 @@ macro_rules! make_consume_fields {
         }
     };
 
-    (Ptr, AI, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, AI, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if $rows[0].value().pointer().is_err() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
@@ -367,11 +366,11 @@ macro_rules! make_consume_fields {
             let (sym, values) = $rows[0].value().pointer()?;
             ensure!(sym.ends_with("ctName"), "expected ctName in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($resman.load_ai(&name)?), 1)
+            (Some($asset_loader.load_ai(&name)?), 1)
         }
     };
 
-    (Ptr, Shape, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, Shape, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if $rows[0].value().pointer().is_err() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
@@ -381,11 +380,11 @@ macro_rules! make_consume_fields {
             ensure!(sym.ends_with("hape"), "expected shape in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             println!("NAME: {}", name);
-            (Some($resman.load_sh(&name)?), 1)
+            (Some($asset_loader.load_sh(&name)?), 1)
         }
     };
 
-    (Ptr, Sound, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, Sound, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
@@ -394,11 +393,11 @@ macro_rules! make_consume_fields {
             let (sym, values) = $rows[0].value().pointer()?;
             ensure!(sym.ends_with("ound"), "expected sound in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($resman.load_sound(&name)?), 1)
+            (Some($asset_loader.load_sound(&name)?), 1)
         }
     };
 
-    (Ptr, HUD, $_ft:path, $rows:expr, $pointers:ident, $resman:ident) => {
+    (Ptr, HUD, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().pointer().is_ok() {
             ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
@@ -407,7 +406,7 @@ macro_rules! make_consume_fields {
             let (sym, values) = $rows[0].value().pointer()?;
             ensure!(sym == "hudName", "expected hud in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($resman.load_hud(&name)?), 1)
+            (Some($asset_loader.load_hud(&name)?), 1)
         }
     };
 }
@@ -458,8 +457,7 @@ macro_rules! make_type_struct {
                 $parent: $parent_ty,
                 lines: &Vec<&str>,
                 pointers: &HashMap<&str, Vec<&str>>,
-                resman: &$crate::parse::ResourceManager,
-                texman: &$crate::parse::TextureManager
+                asset_loader: &$crate::parse::AssetLoader
             ) -> Fallible<Self> {
                 let file_version = $version_ty::from_len(lines.len())?;
 
@@ -479,7 +477,7 @@ macro_rules! make_type_struct {
                     // Take a field if it exists in this version of the format.
                     let field_version = $version_ty::$version_supported;
                     let $field_name = if field_version <= file_version {
-                        let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, resman);
+                        let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, asset_loader);
 
                         // Validate all consumed fields
                         for i in 0..count {
@@ -493,7 +491,7 @@ macro_rules! make_type_struct {
                         $default_value
                     };
                 );*
-                
+
                 return Ok(Self {
                     $parent,
                     $(

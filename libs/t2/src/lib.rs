@@ -176,7 +176,7 @@ fn read_name(n: &[u8]) -> Fallible<String> {
 }
 
 impl Terrain {
-    fn from_bytes(data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let magic = &data[0..4];
         ensure!(magic == MAGIC, "missing magic");
 

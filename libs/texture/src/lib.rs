@@ -21,8 +21,6 @@ extern crate pic;
 extern crate vulkano;
 
 use failure::Fallible;
-use gpu::{GraphicsConfigBuilder, GraphicsWindow};
-use image::RgbaImage;
 use lib::LibStack;
 use pal::Palette;
 use pic::decode_pic;
@@ -60,6 +58,8 @@ impl<'a> TextureManager<'a> {
         let image_dim = image_buf.dimensions();
         let image_data = image_buf.into_raw().clone();
 
+        println!("X: {}", image_dim.0 * image_dim.1);
+
         let dimensions = Dimensions::Dim2d {
             width: image_dim.0,
             height: image_dim.1,
@@ -94,17 +94,29 @@ impl<'a> TextureManager<'a> {
 }
 
 #[cfg(test)]
+extern crate omnilib;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use omnilib::OmniLib;
+    use gpu::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn it_works() -> Fallible<()> {
+        let mut futures = Vec::new();
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let lib = lib::LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
-        let texman = TextureManager::new(&lib)?;
+        let omni = OmniLib::new_for_test()?;//_in_games(vec!["FA"])?;
+        for lib in omni.libraries() {
+            let texman = TextureManager::new(&lib)?;
+            let (_texture, future) = texman.load_texture("FLARE.PIC", window.queue())?;
+            futures.push(future);
+        }
 
-        let _foo = texman.load_texture("FLARE.PIC", window.queue())?;
+        for f in futures {
+            let rv = f.then_signal_semaphore_and_flush()?.cleanup_finished();
+
+        }
 
         return Ok(());
     }

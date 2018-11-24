@@ -13,14 +13,14 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-#[macro_use]
+extern crate asset;
 extern crate failure;
 extern crate nalgebra;
 extern crate xt;
 
 use failure::{err_msg, Fallible};
 use nalgebra::{Point3, Vector3};
-use std::str::FromStr;
+use std::{sync::Arc, str::FromStr};
 use xt::{parse, TypeManager, TypeRef};
 
 pub enum Nationality {
@@ -466,7 +466,7 @@ pub struct TDic {
 
 #[allow(dead_code)]
 pub struct MissionMap {
-    map_name: String,
+    map: Arc<Terrain>,
     //map: T2,
     layer_name: String,
     //layer: Layer,
@@ -480,7 +480,7 @@ impl MissionMap {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
-        let mut map_name = None;
+        let mut map = None;
         //let mut map: Option<Terrain> = None;
         let mut layer_name = None;
         let mut wind = Some((0, 0));
@@ -507,9 +507,9 @@ impl MissionMap {
 
             match parts[0] {
                 "map" => {
-                    assert_eq!(map_name, None);
-                    map_name = Some(parts[1]);
-                    //map = tm.load_t2(map_name.to_uppercase());
+                    assert_eq!(map, None);
+                    let map_name = Some(parts[1]);
+                    map = asset_manager.load_t2(map_name.to_uppercase())?;
                 }
                 "layer" => {
                     assert_eq!(layer_name, None);
@@ -703,10 +703,10 @@ impl MissionMap {
             }
         }
 
-        ensure!(map_name.is_some(), "mission map must have a 'map' key");
+        ensure!(map.is_some(), "mission map must have a 'map' key");
         ensure!(layer_name.is_some(), "mission map must have a 'layer' key");
         return Ok(MissionMap {
-            map_name: map_name.unwrap().to_owned(),
+            map,
             layer_name: layer_name.unwrap().to_owned(),
             wind: wind.unwrap(),
             view: view.unwrap(),
