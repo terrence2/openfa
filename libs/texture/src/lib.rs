@@ -67,7 +67,7 @@ impl<'a> TextureManager<'a> {
         let (texture, tex_future) = ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
-            Format::R8G8B8A8Uint,
+            Format::R8G8B8A8Srgb,
             queue,
         )?;
 

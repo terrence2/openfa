@@ -21,12 +21,13 @@ use failure::{bail, err_msg, Fallible};
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
-    device::{Device, Features, Queue, RawDeviceExtensions},
+    device::{Device, Queue, RawDeviceExtensions},
     framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract},
     image::traits::ImageAccess,
     instance::{Instance, PhysicalDevice},
     pipeline::viewport::Viewport,
     single_pass_renderpass,
+    ordered_passes_renderpass, // FIXME: remove when we upgrade to 11
     swapchain::{
         acquire_next_image, AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain,
     },
@@ -195,7 +196,8 @@ pub struct GraphicsWindow {
 
 impl GraphicsWindow {
     pub fn new(config: &GraphicsConfig) -> Fallible<Self> {
-        let instance = Instance::new(None, &vulkano_win::required_extensions(), None)?;
+        let extensions = vulkano_win::required_extensions();
+        let instance = Instance::new(None, &extensions, None)?;
 
         let events_loop = EventsLoop::new();
 
@@ -216,7 +218,7 @@ impl GraphicsWindow {
 
         let (device, queues) = Device::new(
             physical,
-            &Features::none(),
+            physical.supported_features(),
             RawDeviceExtensions::supported_by_device_raw(physical)?,
             [(queue_family, 0.5)].iter().cloned(),
         )?;
@@ -383,7 +385,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let gpu = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
         Ok(())
     }

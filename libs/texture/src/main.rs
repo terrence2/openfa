@@ -17,6 +17,8 @@ extern crate image;
 extern crate texture;
 extern crate vulkano;
 extern crate vulkano_shaders;
+#[macro_use]
+extern crate vulkano_shader_derive;
 extern crate window;
 extern crate winit;
 
@@ -33,6 +35,11 @@ use vulkano::{
 };
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 
+use image::ImageFormat;
+use vulkano::format::Format;
+use vulkano::image::ImmutableImage;
+use vulkano::image::Dimensions;
+
 #[derive(Copy, Clone)]
 struct Vertex {
     position: [f32; 2],
@@ -40,38 +47,68 @@ struct Vertex {
 
 impl_vertex!(Vertex, position);
 
+//mod vs {
+//    use vulkano_shaders::shader;
+//
+//    shader! {
+//        ty: "vertex",
+//        src: "
+//            #version 450
+//
+//            layout(location = 0) in vec2 position;
+//
+//            void main() {
+//                gl_Position = vec4(position, 0.0, 1.0);
+//            }"
+//    }
+//}
 mod vs {
-    use vulkano_shaders::shader;
-
-    shader! {
-        ty: "vertex",
-        src: "
-            #version 450
-
-            layout(location = 0) in vec2 position;
-
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }"
-    }
+    #[derive(VulkanoShader)]
+    #[ty = "vertex"]
+    #[src = "
+#version 450
+layout(location = 0) in vec2 position;
+layout(location = 0) out vec2 tex_coords;
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    tex_coords = position + vec2(0.5);
+}
+"]
+    #[allow(dead_code)]
+    struct Dummy;
 }
 
+//mod fs {
+//    use vulkano_shaders::shader;
+//
+//    shader! {
+//        ty: "fragment",
+//        src: "
+//            #version 450
+//
+//            layout(location = 0) out vec4 f_color;
+//            layout(set = 0, binding = 0) uniform sampler2D tex;
+//
+//            void main() {
+//                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+//            }
+//            "
+//    }
+//}
 mod fs {
-    use vulkano_shaders::shader;
-
-    shader! {
-        ty: "fragment",
-        src: "
-            #version 450
-
-            layout(location = 0) out vec4 f_color;
-            layout(set = 0, binding = 0) uniform sampler2D tex;
-
-            void main() {
-                f_color = vec4(1.0, 0.0, 0.0, 1.0);
-            }
-            "
-    }
+    #[derive(VulkanoShader)]
+    #[ty = "fragment"]
+    #[src = "
+#version 450
+layout(location = 0) in vec2 tex_coords;
+layout(location = 0) out vec4 f_color;
+layout(set = 0, binding = 0) uniform sampler2D tex;
+void main() {
+    f_color = texture(tex, tex_coords);
+}
+"]
+    #[allow(dead_code)]
+    struct Dummy;
 }
 
 pub fn main() -> Fallible<()> {
@@ -85,20 +122,21 @@ pub fn main() -> Fallible<()> {
 
     // Resources
     let vertex_buffer = {
-        let vertex1 = Vertex {
-            position: [-0.5, -0.5],
-        };
-        let vertex2 = Vertex {
-            position: [0.0, 0.5],
-        };
-        let vertex3 = Vertex {
-            position: [0.5, -0.25],
-        };
-        CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            vec![vertex1, vertex2, vertex3].into_iter(),
-        )?
+        let verts = vec![
+            Vertex {
+                position: [-0.5, -0.5],
+            },
+            Vertex {
+                position: [-0.5, 0.5],
+            },
+            Vertex {
+                position: [0.5, -0.5],
+            },
+            Vertex {
+                position: [0.5, 0.5],
+            },
+        ];
+        CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?
     };
     let vs = vs::Shader::load(window.device())?;
     let fs = fs::Shader::load(window.device())?;
@@ -107,8 +145,10 @@ pub fn main() -> Fallible<()> {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
+            .triangle_strip()
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
+            .blend_alpha_blending()
             .render_pass(
                 Subpass::from(window.render_pass(), 0).expect("gfx: did not find a render pass"),
             ).build(window.device())?,
