@@ -9,6 +9,6 @@ glfw = "0.19"
 image = "0.18"
 kiss3d = "0.15"
 nalgebra = "0.15"
-pal = { path = "../../libs/pal/" }
-pic = { path = "../../libs/pic/" }
-sh = { path = "../../libs/sh/" }
+pal = { path = "../../libs/pal" }
+pic = { path = "../../libs/pic" }
+sh = { path = "../../libs/sh" }

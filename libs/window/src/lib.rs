@@ -25,9 +25,9 @@ use vulkano::{
     framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract},
     image::traits::ImageAccess,
     instance::{Instance, PhysicalDevice},
+    ordered_passes_renderpass, // FIXME: remove when we upgrade to 11
     pipeline::viewport::Viewport,
     single_pass_renderpass,
-    ordered_passes_renderpass, // FIXME: remove when we upgrade to 11
     swapchain::{
         acquire_next_image, AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain,
     },
@@ -109,7 +109,7 @@ impl SizeDependent {
             queue,
             SurfaceTransform::Identity,
             alpha,
-            PresentMode::Fifo,
+            PresentMode::Relaxed,
             true,
             None,
         )?;
@@ -224,8 +224,12 @@ impl GraphicsWindow {
         )?;
         let queues = queues.collect::<Vec<_>>();
 
-        let recreatable =
-            SizeDependent::new(&device.clone(), &surface.clone(), &queues[0].clone(), config)?;
+        let recreatable = SizeDependent::new(
+            &device.clone(),
+            &surface.clone(),
+            &queues[0].clone(),
+            config,
+        )?;
 
         let mut window = GraphicsWindow {
             _instance: instance.clone(),
@@ -272,6 +276,12 @@ impl GraphicsWindow {
         bail!("unable to get window size")
     }
 
+    // Note: width over height
+    pub fn aspect_ratio(&self) -> Fallible<f32> {
+        let dim = self.dimensions()?;
+        Ok(dim[1] / dim[0])
+    }
+
     pub fn device(&self) -> Arc<Device> {
         self.device.clone()
     }
@@ -280,20 +290,20 @@ impl GraphicsWindow {
         self.queues[0].clone()
     }
 
-    pub fn dynamic_state(&self) -> &DynamicState {
-        &self.dynamic_state
-    }
-
     pub fn render_pass(&self) -> Arc<RenderPassAbstract + Send + Sync> {
         self.recreatable.render_pass.clone()
     }
 
-    pub fn swapchain(&self) -> Arc<Swapchain<Window>> {
+    fn swapchain(&self) -> Arc<Swapchain<Window>> {
         self.recreatable.swapchain.clone()
     }
 
-    pub fn framebuffer(&self, offset: usize) -> Arc<FramebufferAbstract + Send + Sync> {
+    fn framebuffer(&self, offset: usize) -> Arc<FramebufferAbstract + Send + Sync> {
         self.recreatable.framebuffers[offset].clone()
+    }
+
+    pub fn note_resize(&mut self) {
+        self.dirty_size = true;
     }
 
     pub fn handle_resize(&mut self) -> Fallible<()> {
