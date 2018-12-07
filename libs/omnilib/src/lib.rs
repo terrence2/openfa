@@ -40,7 +40,7 @@ impl OmniLib {
             let libs = LibStack::from_dir_search(&path)?;
             stacks.insert(dir.to_owned(), Arc::new(libs));
         }
-        return Ok(Self { stacks });
+        Ok(Self { stacks })
     }
 
     // LibStack from_dir_search in every subdir in the given path.
@@ -61,7 +61,7 @@ impl OmniLib {
             let libs = LibStack::from_dir_search(&entry.path())?;
             stacks.insert(name, Arc::new(libs));
         }
-        return Ok(Self { stacks });
+        Ok(Self { stacks })
     }
 
     pub fn find_matching(&self, glob: &str) -> Fallible<Vec<(String, String)>> {
@@ -73,7 +73,7 @@ impl OmniLib {
             }
         }
         out.sort();
-        return Ok(out);
+        Ok(out)
     }
 
     pub fn libraries(&self) -> Vec<Arc<LibStack>> {
@@ -81,18 +81,18 @@ impl OmniLib {
     }
 
     pub fn library(&self, libname: &str) -> &LibStack {
-        return &self.stacks[libname];
+        &self.stacks[libname]
     }
 
     pub fn path(&self, libname: &str, name: &str) -> Fallible<String> {
-        return Ok(self
+        Ok(self
             .library(libname)
             .stat(name)?
             .path
             .ok_or_else(|| err_msg("no path for name"))?
             .to_str()
             .ok_or_else(|| err_msg("path with invalid characters"))?
-            .to_owned());
+            .to_owned())
     }
 }
 
