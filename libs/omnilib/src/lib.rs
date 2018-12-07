@@ -33,7 +33,7 @@ impl OmniLib {
         let mut stacks = HashMap::new();
         for dir in dirs {
             // This is super slow in debug mode because decompressors
-            // get bulit with the options of whatever crate we're actually building.
+            // get built with the options of whatever crate we're actually building.
             // let path = Path::new("../../test_data/packed/").join(dir);
             // let libs = LibStack::from_file_search(&path)?;
             let path = Path::new("../../test_data/unpacked/").join(dir);
