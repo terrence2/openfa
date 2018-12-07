@@ -2,7 +2,6 @@ OpenFA
 ------
 An attempt at an open-source re-implementation of the Janes Fighters Anthology's engine.
 
-
 | Extension | Asset           | Status   |
 | --------- |:--------------- | -------- |
 | 11K       | Sound           | Standard |

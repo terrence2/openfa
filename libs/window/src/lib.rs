@@ -22,10 +22,10 @@ use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     device::{Device, Queue, RawDeviceExtensions},
+    format::Format,
     framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract},
-    image::traits::ImageAccess,
+    image::{attachment::AttachmentImage, traits::ImageAccess},
     instance::{Instance, PhysicalDevice},
-    ordered_passes_renderpass, // FIXME: remove when we upgrade to 11
     pipeline::viewport::Viewport,
     single_pass_renderpass,
     swapchain::{
@@ -98,12 +98,16 @@ impl SizeDependent {
         // FIXME: search our formats for something suitable.
         let format = caps.supported_formats[0].0;
 
+        let dimensions = GraphicsWindow::surface_dimensions(surface)?;
+
+        let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
+
         let (swapchain, images) = Swapchain::new(
             device.clone(),
             surface.clone(),
             caps.min_image_count,
             format,
-            GraphicsWindow::surface_dimensions(surface)?,
+            dimensions,
             1,
             caps.supported_usage_flags,
             queue,
@@ -124,25 +128,28 @@ impl SizeDependent {
                     store: Store,
                     format: images[0].format(),
                     samples: 1,
+                },
+                depth: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::D16Unorm,
+                    samples: 1,
                 }
             },
             pass: {
                 color: [color],
-                depth_stencil: {}
+                depth_stencil: {depth}
             }
         )?);
 
-        let framebuffers = images
-            .iter()
-            .map(|image| {
-                Arc::new(
-                    Framebuffer::start(render_pass.clone())
-                        .add(image.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                ) as Arc<FramebufferAbstract + Send + Sync>
-            }).collect::<Vec<_>>();
+        let mut framebuffers = Vec::new();
+        for image in &images {
+            let framebuffer = Framebuffer::start(render_pass.clone())
+                .add(image.clone())?
+                .add(depth_buffer.clone())?
+                .build()?;
+            framebuffers.push(Arc::new(framebuffer) as Arc<FramebufferAbstract + Send + Sync>);
+        }
 
         Ok(SizeDependent {
             swapchain,
@@ -151,27 +158,23 @@ impl SizeDependent {
         })
     }
 
-    fn handle_resize(&mut self, surface: &Arc<Surface<Window>>) -> Fallible<()> {
+    fn handle_resize(&mut self, device: &Arc<Device>, surface: &Arc<Surface<Window>>) -> Fallible<()> {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
+
+        let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
 
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
         self.swapchain = swapchain;
 
-        // Note: The format for rendering should not change with size changes. If it does we're
-        // going to need to re-architect, but given that the pipelines depend on render_pass...
-        //ensure!(render_pass.format() == images[0].format(), "gfx: size change modified format");
-
-        self.framebuffers = images
-            .iter()
-            .map(|image| {
-                Arc::new(
-                    Framebuffer::start(self.render_pass.clone())
-                        .add(image.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                ) as Arc<FramebufferAbstract + Send + Sync>
-            }).collect::<Vec<_>>();
+        let mut framebuffers = Vec::new();
+        for image in &images {
+            let framebuffer = Framebuffer::start(self.render_pass.clone())
+                .add(image.clone())?
+                .add(depth_buffer.clone())?
+                .build()?;
+            framebuffers.push(Arc::new(framebuffer) as Arc<FramebufferAbstract + Send + Sync>);
+        }
+        self.framebuffers = framebuffers;
 
         Ok(())
     }
@@ -315,7 +318,7 @@ impl GraphicsWindow {
             depth_range: 0.0..1.0,
         }]);
 
-        self.recreatable.handle_resize(&self.surface)
+        self.recreatable.handle_resize(&self.device, &self.surface)
     }
 
     pub fn drive_frame<F>(&mut self, draw: F) -> Fallible<()>
@@ -351,7 +354,7 @@ impl GraphicsWindow {
         )?.begin_render_pass(
             self.framebuffer(image_num),
             false,
-            vec![[0.0, 0.0, 1.0, 1.0].into()],
+            vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
         )?;
         let command_buffer = draw(command_buffer, &self.dynamic_state)?
             .end_render_pass()?

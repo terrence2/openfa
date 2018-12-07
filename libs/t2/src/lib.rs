@@ -41,9 +41,11 @@
 // of sorts.
 //
 // Pixel format:
-//   kind: u8 =>  0xFF for water, or 0xDX or 0xCX for land. I'm not sure what the bottom nibble is.
-//                It is 2 for almost all maps. Some have 0-A here. Only the Vietnam map has 0xC in
-//                the top nibble. I'll need to map these and see if there are any correspondences.
+//   color: u8 =>  0xFF (transparent) for water, or 0xDX or 0xCX for land. These are all mapped to
+//                 FF00FF in the default palette. Palette data from LAY files need to be overlayed
+//                 into the palette before it is used. The limited color range is probably because
+//                 the palette is used to simulate time-of-day; selecting a full and realistic
+//                 sunset and sunrise ramp for lots of colors would have been hugely difficult.
 //   flags: u8 => appears to modify the section of land or water. Seems to correspond to terrain
 //                features or buildings. Water is mostly 0 near-shores and 1 when away from land.
 //                This is probably meant to control if we draw wave.sh on it or not. There are also
@@ -121,39 +123,38 @@ extern crate image;
 extern crate reverse;
 
 use failure::{ensure, Fallible};
-use std::cmp;
 use std::{mem, str};
 
 pub struct Sample {
-    kind: u8,
-    modifiers: u8,
+    pub color: u8,
+    pub modifiers: u8,
     pub height: u8,
 }
 
 impl Sample {
-    fn new(kind: u8, modifiers: u8, height: u8) -> Self {
+    fn new(color: u8, modifiers: u8, height: u8) -> Self {
         assert!(
-            kind == 0xFF
-                || kind == 0xD0
-                || kind == 0xD1
-                || kind == 0xD2
-                || kind == 0xD3
-                || kind == 0xD4
-                || kind == 0xD5
-                || kind == 0xD7
-                || kind == 0xD6
-                || kind == 0xD8
-                || kind == 0xD9
-                || kind == 0xDA
-                || kind == 0xC2
-                || kind == 0xC4
-                || kind == 0xC5
-                || kind == 0xC6
-                || kind == 0xC7
+            color == 0xFF
+                || color == 0xD0
+                || color == 0xD1
+                || color == 0xD2
+                || color == 0xD3
+                || color == 0xD4
+                || color == 0xD5
+                || color == 0xD7
+                || color == 0xD6
+                || color == 0xD8
+                || color == 0xD9
+                || color == 0xDA
+                || color == 0xC2
+                || color == 0xC4
+                || color == 0xC5
+                || color == 0xC6
+                || color == 0xC7
         );
         assert!(modifiers <= 14 || modifiers == 16);
         Sample {
-            kind,
+            color,
             modifiers,
             height,
         }
@@ -163,8 +164,8 @@ impl Sample {
 pub struct Terrain {
     pub name: String,
     pub pic_file: String,
-    pub width: usize,
-    pub height: usize,
+    pub width: u32,
+    pub height: u32,
     pub samples: Vec<Sample>,
     _extra: Vec<u8>,
 }
@@ -197,9 +198,9 @@ impl Terrain {
         // 24  25       28  29       32  33     35      37           41           45
         // 00  20 00 00 00  20 00 00 00  95 00  03 00   00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
         let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
-        let width = dwords[0] as usize;
-        let height = dwords[1] as usize;
-        let npix = width * height;
+        let width = dwords[0];
+        let height = dwords[1];
+        let npix = (width * height) as usize;
 
         // Followed by many 3-byte entries.
         // How many? 4 fewer than 258 * 258 (for the normal size).
@@ -210,10 +211,10 @@ impl Terrain {
         let mut samples = Vec::new();
 
         for i in 0..npix {
-            let kind = entries[i * 3];
-            let mods = entries[i * 3 + 1];
+            let color = entries[i * 3];
+            let modifiers = entries[i * 3 + 1];
             let height = entries[i * 3 + 2];
-            samples.push(Sample::new(kind, mods, height))
+            samples.push(Sample::new(color, modifiers, height))
         }
         let extra = data[data_end..].to_owned();
         let terrain = Terrain {
@@ -227,7 +228,10 @@ impl Terrain {
         Ok(terrain)
     }
 
+    #[cfg(test)]
     fn make_debug_images(&self, path: &str) -> Fallible<()> {
+        use std::cmp;
+
         let mut metabuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
         let mut heightbuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
         for (pos, sample) in self.samples.iter().enumerate() {
@@ -244,15 +248,15 @@ impl Terrain {
                     ],
                 }
             };
-            if sample.kind == 0xFF {
+            if sample.color == 0xFF {
                 if sample.modifiers <= 1 {
                     metaclr.data[2] = 0xFF;
                 } else {
                     metaclr.data = [0xff, 0x00, 0xff];
                 }
             }
-            let w = (pos % self.width) as u32;
-            let h = (self.height - (pos / self.width) - 1) as u32;
+            let w = (pos % self.width as usize) as u32;
+            let h = (self.height as usize - (pos / self.width as usize) - 1) as u32;
             metabuf.put_pixel(w, h, metaclr);
             heightbuf.put_pixel(
                 w,

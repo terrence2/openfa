@@ -25,7 +25,8 @@ pub struct Palette {
 
 impl Palette {
     pub fn from_bytes(data: &[u8]) -> Fallible<Palette> {
-        Self::from_bytes_with_scale(data, 3)
+        // The VGA palette contains 6 bit colors, so we need to scale by 4.
+        Self::from_bytes_with_scale(data, 4)
     }
 
     pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Palette> {
@@ -82,6 +83,53 @@ impl Palette {
         img.save(name.to_owned() + ".png")?;
         Ok(())
     }
+
+    /// Show the given data as if it were colors for a palette. Ignores short data, data that
+    /// ends with a truncated color, and data that is too long.
+    pub fn dump_partial(data: &[u8], scale: u8, name: &str) -> Fallible<()> {
+        let size = 80;
+        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+
+        // Dump a haze everywhere so we know what was unset.
+        for i in 0..16 {
+            for j in 0..16 {
+                let off = (j << 4 | i) as usize;
+                for ip in 0..size {
+                    for jp in 0..size {
+                        let c = (255 * ((ip + (jp % 2)) % 2)) as u8;
+                        let pixel = Rgb([c, c, c]);
+                        buf.put_pixel(i * size + ip, j * size + jp, pixel.to_rgb());
+                    }
+                }
+            }
+        }
+
+        let mut off = 0;
+        for i in 0..16 {
+            for j in 0..16 {
+                for ip in 0..size {
+                    for jp in 0..size {
+                        let pixel = if off + 2 < data.len() {
+                            Rgb([data[off] * scale, data[off + 1] * scale, data[off + 2] * scale])
+                        } else if off < data.len() {
+                            let c = (255 * ((ip + (jp % 2)) % 2)) as u8;
+                            Rgb([c, 0, c])
+                        } else {
+                            let c = (255 * ((ip + (jp % 2)) % 2)) as u8;
+                            Rgb([c, c, c])
+                        };
+                        buf.put_pixel(j * size + ip, i * size + jp, pixel);
+                    }
+                }
+                off += 3;
+            }
+        }
+
+        let img = image::ImageRgb8(buf);
+        img.save(name.to_owned() + ".png")?;
+        Ok(())
+    }
+
 }
 
 #[cfg(test)]
