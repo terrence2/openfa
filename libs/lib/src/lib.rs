@@ -15,7 +15,7 @@
 
 // Load LIB files; find files in them; hand out immutable pointers on request.
 
-#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+#![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
 extern crate codepage_437;
 extern crate failure;
