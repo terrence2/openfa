@@ -12,11 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use failure::{bail, ensure, err_msg, Fallible, Error};
-use num_traits::{cast::AsPrimitive, Num};
-use std::{collections::HashMap, marker, str, str::FromStr};
-pub use std::any::TypeId;
 pub use asset::AssetLoader;
+pub use failure::{bail, ensure, err_msg, Error, Fallible};
+use num_traits::Num;
+pub use std::any::TypeId;
+use std::{collections::HashMap, str};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FieldType {
@@ -84,21 +84,21 @@ impl FieldNumber {
     pub fn byte(&self) -> Fallible<u8> {
         match self {
             FieldNumber::Byte(b) => Ok(*b),
-            _ => bail!("not a byte")
+            _ => bail!("not a byte"),
         }
     }
 
     pub fn word(&self) -> Fallible<u16> {
         match self {
             FieldNumber::Word(w) => Ok(*w),
-            _ => bail!("not a word")
+            _ => bail!("not a word"),
         }
     }
 
     pub fn dword(&self) -> Fallible<u32> {
         match self {
             FieldNumber::DWord(dw) => Ok(*dw),
-            _ => bail!("not a dword")
+            _ => bail!("not a dword"),
         }
     }
 
@@ -119,17 +119,49 @@ pub enum FieldValue {
 }
 
 impl FieldValue {
-    fn from_kind_and_str(kind: &FieldType, s: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+    fn from_kind_and_str(
+        kind: &FieldType,
+        raw_values: Vec<&str>,
+        pointers: &HashMap<&str, Vec<&str>>,
+    ) -> Fallible<Self> {
+        // In USNF, some sound names are represented inline as `byte NN NN NN NN NNN NN NN NNN`.
+        // We want to upgrade these automatically to a FieldValue::Ptr when we see them.
+        if raw_values.len() > 1 {
+            ensure!(*kind == FieldType::Byte, "expected byte N N N");
+            let mut ptr = String::new();
+            for s in raw_values {
+                let n = s.parse::<u8>()?;
+                if n == 0 {
+                    break;
+                }
+                ptr.push(n as char);
+            }
+            if ptr.is_empty() {
+                return Ok(FieldValue::Numeric((Repr::Dec, FieldNumber::DWord(0))));
+            }
+            return Ok(FieldValue::Ptr(
+                ":sound".to_owned(),
+                vec![format!("string \"{}\"", ptr)],
+            ));
+        }
+
+        let s = raw_values
+            .first()
+            .ok_or_else(|| err_msg("missing or incorrect field value"))?
+            .trim();
         let value = match kind {
             FieldType::Byte => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
             FieldType::Word => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
             FieldType::DWord => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
             FieldType::Ptr => {
-                let values = pointers[s].iter().map(|&v| v.to_owned()).collect::<Vec<String>>();
+                let values = pointers[s]
+                    .iter()
+                    .map(|&v| v.to_owned())
+                    .collect::<Vec<String>>();
                 FieldValue::Ptr(s.to_owned(), values)
             }
             FieldType::Symbol => FieldValue::Symbol(s.to_owned()),
-            FieldType::XWord => bail!("xword is not a valid concrete type")
+            FieldType::XWord => bail!("xword is not a valid concrete type"),
         };
         return Ok(value);
     }
@@ -137,21 +169,21 @@ impl FieldValue {
     pub fn numeric(&self) -> Fallible<FieldNumber> {
         match self {
             FieldValue::Numeric((_, num)) => Ok(*num),
-            _ => bail!("not a number")
+            _ => bail!("not a number"),
         }
     }
 
     pub fn pointer(&self) -> Fallible<(String, Vec<String>)> {
         match self {
             FieldValue::Ptr(s, v) => Ok((s.clone(), v.clone())),
-            _ => bail!("not a pointer")
+            _ => bail!("not a pointer"),
         }
     }
 
     pub fn symbol(&self) -> Fallible<String> {
         match self {
             FieldValue::Symbol(s) => Ok(s.clone()),
-            _ => bail!("not a symbol field")
+            _ => bail!("not a symbol field"),
         }
     }
 
@@ -176,32 +208,31 @@ impl FieldValue {
 pub struct FieldRow {
     kind: FieldType,
     value: FieldValue,
-    comment: Option<String>
+    comment: Option<String>,
 }
 
 impl FieldRow {
     pub fn from_line(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
-        let mut a = line.splitn(2, ';');
-        let mut b = a.next()
+        let mut parts = line.splitn(2, ';');
+        let mut words = parts
+            .next()
             .ok_or_else(|| err_msg("empty line"))?
-            .splitn(2, ' ');
-        let comment = a.next().map(|s| s.trim().to_owned());
+            .split(' ')
+            .filter(|s| !s.is_empty());
+        let comment = parts.next().map(|s| s.trim().to_owned());
         let kind = FieldType::from_str(
-            b.next()
+            words
+                .next()
                 .ok_or_else(|| err_msg("missing or incorrect field kind"))?
                 .trim(),
         )?;
-        let value = FieldValue::from_kind_and_str(
-            &kind,
-            b.next()
-                .ok_or_else(|| err_msg("missing or incorrect field value"))?
-                .trim(),
-            pointers,
-        )?;
+        let raw_values = words.collect::<Vec<&str>>();
+        println!("vs: {:?}", raw_values);
+        let value = FieldValue::from_kind_and_str(&kind, raw_values, pointers)?;
         return Ok(FieldRow {
             kind,
             value,
-            comment
+            comment,
         });
     }
 
@@ -273,8 +304,8 @@ pub fn hex(n: &str) -> Fallible<u32> {
 
 pub fn maybe_hex<T>(n: &str) -> Fallible<T>
 where
-    T: ::num_traits::Num + ::std::str::FromStr,
-    <T as ::num_traits::Num>::FromStrRadixErr: 'static + ::std::error::Error + Send + Sync,
+    T: Num + ::std::str::FromStr,
+    <T as Num>::FromStrRadixErr: 'static + ::std::error::Error + Send + Sync,
     <T as ::std::str::FromStr>::Err: 'static + ::std::error::Error + Send + Sync,
 {
     ensure!(n.is_ascii(), "non-ascii in number");
@@ -340,27 +371,34 @@ macro_rules! make_consume_fields {
         ($rows[0].value().numeric()?.word()? as i16 as $field_type, 1)
     };
     (DWord, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        ($rows[0].value().numeric()?.dword()? as i32 as $field_type, 1)
+        (
+            $rows[0].value().numeric()?.dword()? as i32 as $field_type,
+            1,
+        )
     };
 
     ($_t:ident, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        (<$field_type as $crate::parse::FromField>::from_field(&$rows[0])?, 1)
+        (
+            <$field_type as $crate::parse::FromField>::from_field(&$rows[0])?,
+            1,
+        )
     };
 
-    (Word, Vec3, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
-        {
-            let x = $rows[0].value().numeric()?.word()? as i16 as f32;
-            let y = $rows[1].value().numeric()?.word()? as i16 as f32;
-            let z = $rows[2].value().numeric()?.word()? as i16 as f32;
-            let p = Point3::new(x, y, z);
-            (p, 3)
-        }
-    };
+    (Word, Vec3, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {{
+        let x = $rows[0].value().numeric()?.word()? as i16 as f32;
+        let y = $rows[1].value().numeric()?.word()? as i16 as f32;
+        let z = $rows[2].value().numeric()?.word()? as i16 as f32;
+        let p = Point3::new(x, y, z);
+        (p, 3)
+    }};
 
     (Ptr, AI, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if $rows[0].value().pointer().is_err() {
-            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            ensure!(
+                $rows[0].value().numeric()?.dword()? == 0u32,
+                "null pointer must be dword 0"
+            );
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
@@ -373,7 +411,10 @@ macro_rules! make_consume_fields {
     (Ptr, Shape, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if $rows[0].value().pointer().is_err() {
-            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            ensure!(
+                $rows[0].value().numeric()?.dword()? == 0u32,
+                "null pointer must be dword 0"
+            );
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
@@ -387,10 +428,14 @@ macro_rules! make_consume_fields {
     (Ptr, Sound, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().pointer().is_ok() {
-            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            ensure!(
+                $rows[0].value().numeric()?.dword()? == 0u32,
+                "null pointer must be dword 0"
+            );
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
+            println!("SYM: {:?}, VALUES: {:?}", sym, values);
             ensure!(sym.ends_with("ound"), "expected sound in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($asset_loader.load_sound(&name)?), 1)
@@ -400,7 +445,10 @@ macro_rules! make_consume_fields {
     (Ptr, HUD, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
         // Null ptr is represented as `DWord 0`.
         if !$rows[0].value().pointer().is_ok() {
-            ensure!($rows[0].value().numeric()?.dword()? == 0u32, "null pointer must be dword 0");
+            ensure!(
+                $rows[0].value().numeric()?.dword()? == 0u32,
+                "null pointer must be dword 0"
+            );
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
@@ -423,18 +471,28 @@ macro_rules! make_validate_field_repr {
 #[macro_export]
 macro_rules! make_validate_field_type {
     (Ptr, $row:expr, $field_name:expr) => {
-        ensure!($row.value().field_type() == $crate::parse::FieldType::Ptr ||
-                $row.value().field_type() == $crate::parse::FieldType::DWord,
-            "expected {} to have ptr or dword field_type", $field_name);
+        ensure!(
+            $row.value().field_type() == $crate::parse::FieldType::Ptr
+                || $row.value().field_type() == $crate::parse::FieldType::DWord,
+            "expected {} to have ptr or dword field_type",
+            $field_name
+        );
     };
     (XWord, $row:expr, $field_name:expr) => {
-        ensure!($row.value().field_type() == $crate::parse::FieldType::Word ||
-                $row.value().field_type() == $crate::parse::FieldType::DWord,
-            "expected {} to have word or dword field_type", $field_name);
+        ensure!(
+            $row.value().field_type() == $crate::parse::FieldType::Word
+                || $row.value().field_type() == $crate::parse::FieldType::DWord,
+            "expected {} to have word or dword field_type",
+            $field_name
+        );
     };
     ($row_type:ident, $row:expr, $field_name:expr) => {
-        ensure!($row.value().field_type() == $crate::parse::FieldType::$row_type,
-            "expected {} to have {:?} field_type", $field_name, $crate::parse::FieldType::$row_type);
+        ensure!(
+            $row.value().field_type() == $crate::parse::FieldType::$row_type,
+            "expected {} to have {:?} field_type",
+            $field_name,
+            $crate::parse::FieldType::$row_type
+        );
     };
 }
 
@@ -470,13 +528,17 @@ macro_rules! make_type_struct {
 
                 let mut offset = 0;
                 $(
-                    // Validate comment.
-                    println!("{:?} == {}", rows[offset].comment(), $comment);
-                    ensure!(rows[offset].comment().is_none() || rows[offset].comment().unwrap().starts_with($comment), "non-matching comment");
-
                     // Take a field if it exists in this version of the format.
                     let field_version = $version_ty::$version_supported;
-                    let $field_name = if field_version <= file_version {
+                    let $field_name = if rows.len() == offset {
+                        // May be missing the last row -- the hud name -- in USNF/USMF.
+                        ensure!($comment == "hudName", "only expected missing hudName field");
+                        // FIXME dispatch to something that can produce a good HUD when needed.
+                        $default_value
+                    } else if field_version <= file_version {
+                        // Validate comment only on present rows.
+                        ensure!(rows[offset].comment().is_none() || rows[offset].comment().unwrap().starts_with($comment), "non-matching comment");
+
                         let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, asset_loader);
 
                         // Validate all consumed fields
@@ -491,6 +553,7 @@ macro_rules! make_type_struct {
                         $default_value
                     };
                 );*
+                ensure!(offset >= rows.len(), "did not read all rows");
 
                 return Ok(Self {
                     $parent,
@@ -556,7 +619,6 @@ pub fn unpack_name(names: Vec<String>) -> Fallible<String> {
     );
     return Ok(names[0].clone());
 }
-
 
 // The obj_class field is sometimes written as 32 bits, sign extended. We can drop the top half.
 pub fn consume_obj_class(actual: &(FieldType, &str, Option<&str>)) -> Fallible<u16> {

@@ -12,21 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate bitflags;
-extern crate failure;
-extern crate nalgebra;
-extern crate num_traits;
-extern crate asset;
-
-#[macro_use]
 pub mod parse;
 
+pub use crate::parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromField, Repr};
+use asset::AssetLoader;
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
 use nalgebra::Point3;
-pub use parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromField, Repr};
-use std::{collections::HashMap, mem, rc::Rc};
-use asset::AssetLoader;
+use std::{collections::HashMap, mem};
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -148,9 +141,9 @@ bitflags! {
     }
 }
 
-struct ObjectNames {
-    short_name: String,
-    long_name: String,
+pub struct ObjectNames {
+    _short_name: String,
+    _long_name: String,
     file_name: String,
 }
 
@@ -160,8 +153,8 @@ impl FromField for ObjectNames {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
         Ok(ObjectNames {
-            short_name: parse::string(&values[0])?,
-            long_name: parse::string(&values[1])?,
+            _short_name: parse::string(&values[0])?,
+            _long_name: parse::string(&values[1])?,
             file_name: parse::string(&values[2])?,
         })
     }
@@ -195,7 +188,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Word,  [Dec],        "instanceSize", Unsigned, instance_size,            u16, V0, panic!()), // word 0 ; instanceSize
     (Ptr,   [Sym],            "ot_names",   Struct, ot_names,         ObjectNames, V0, panic!()), // ptr ot_names
     (DWord, [Dec,Hex],           "flags", Unsigned, flags,                    u32, V0, panic!()), // dword $20c21 ; flags
-    (Word,  [Hex],           "obj_class",   Struct, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
+    (Word,  [Dec,Hex],       "obj_class",   Struct, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
     (Ptr,   [Dec,Sym],           "shape",    Shape, shape,               CpuShape, V0, panic!()), // ptr shape
     (Ptr,   [Dec,Sym],     "shadowShape",    Shape, shadow_shape,        CpuShape, V0, panic!()), // dword 0
     (DWord, [Dec],                    "", Unsigned, unk8,                     u32, V2, 0),        // dword 0
@@ -256,10 +249,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
 }];
 
 impl ObjectType {
-    pub fn from_str(
-        data: &str,
-        asset_loader: &AssetLoader,
-    ) -> Fallible<Self> {
+    pub fn from_str(data: &str, asset_loader: &AssetLoader) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -294,12 +284,13 @@ mod tests {
                 "At: {}:{:13} @ {}",
                 game,
                 name,
-                omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let resman = ResourceManager::new_headless(lib)?;
+            let assets = AssetLoader::new(lib)?;
             let contents = lib.load_text(name)?;
-            let ot = ObjectType::from_str(&contents, &resman, &texman)?;
+            let ot = ObjectType::from_str(&contents, &assets)?;
             // Only one misspelling in 2500 files.
             assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
