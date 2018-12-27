@@ -20,6 +20,7 @@ use ot::{
 };
 use std::collections::HashMap;
 
+#[allow(dead_code)]
 struct ProjectileNames {
     short_name: String,
     long_name: String,
@@ -68,23 +69,10 @@ impl ProjectileTypeVersion {
     }
 }
 
-struct ProjectilesInPod(u16);
-
-impl FromField for ProjectilesInPod {
-    type Produces = ProjectilesInPod;
-    fn from_field(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
-    ) -> Fallible<Self::Produces> {
-        Ok(ProjectilesInPod(field.value().numeric()?.word()?))
-    }
-}
-
 make_type_struct![
-ProjectileType(obj: ObjectType, version: ProjectileTypeVersion) {                    // AA11.JT
+ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                    // AA11.JT
     (DWord, [Dec,Hex],               "flags", Unsigned, flags0,                    u32, V0, panic!()), // dword $1204f ; flags
-    (XWord, [Dec],              "projsInPod",   Struct, projs_in_pod, ProjectilesInPod, V0, panic!()), // word 1 ; projsInPod
+    (Num,   [Dec],              "projsInPod", Unsigned, projs_in_pod,              u32, V0, panic!()), // word 1 ; projsInPod // or byte 1
     (Byte,  [Dec],              "structType", Unsigned, struct_type,                u8, V0, panic!()), // byte 10 ; structType
     (Ptr,   [Sym],                "si_names",   Struct, si_names,      ProjectileNames, V0, panic!()), // ptr si_names
     (Word,  [Dec],                  "weight", Unsigned, weight,                    u16, V0, panic!()), // word 0 ; weight
@@ -186,6 +174,7 @@ impl ProjectileType {
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
         let obj = ObjectType::from_lines((), &obj_lines, &pointers, assets)?;
         let proj_lines = parse::find_section(&lines, "PROJ_TYPE")?;
+        println!("NLINES: {}", proj_lines.len());
         return Self::from_lines(obj, &proj_lines, &pointers, assets);
     }
 }
@@ -202,13 +191,7 @@ mod tests {
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
-            "FA",
-            // "ATF",
-            // "ATFGOLD",
-            // "ATFNATO",
-            // "USNF",
-            // "MF",
-            // "USNF97",
+            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF97", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.JT")?.iter() {
             println!(
@@ -222,7 +205,7 @@ mod tests {
             let assets = AssetLoader::new(lib)?;
             let contents = omni.library(game).load_text(name)?;
             let jt = ProjectileType::from_str(&contents, &assets)?;
-            assert!(jt.obj.file_name() == *name || *name == "SMALLARM.JT");
+            assert!(jt.ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:08X} <> {} <> {}",
             //     game, name, jt.unk0, jt.obj.long_name, name
