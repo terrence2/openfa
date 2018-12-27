@@ -1,6 +1,7 @@
 [package]
 name = "mm"
 version = "0.1.0"
+edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
