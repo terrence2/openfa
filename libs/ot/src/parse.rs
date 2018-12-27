@@ -227,7 +227,6 @@ impl FieldRow {
                 .trim(),
         )?;
         let raw_values = words.collect::<Vec<&str>>();
-        println!("vs: {:?}", raw_values);
         let value = FieldValue::from_kind_and_str(&kind, raw_values, pointers)?;
         return Ok(FieldRow {
             kind,
@@ -345,7 +344,7 @@ macro_rules! make_storage_type {
 
 pub trait FromField {
     type Produces;
-    fn from_field(field: &FieldRow) -> Fallible<Self::Produces>;
+    fn from_field(field: &FieldRow, pointers: &HashMap<&str, Vec<&str>>, assets: &AssetLoader) -> Fallible<Self::Produces>;
 }
 
 #[macro_export]
@@ -377,9 +376,9 @@ macro_rules! make_consume_fields {
         )
     };
 
-    ($_t:ident, Struct, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    ($_t:ident, Struct, $field_type:path, $rows:expr, $pointers:ident, $assets:ident) => {
         (
-            <$field_type as $crate::parse::FromField>::from_field(&$rows[0])?,
+            <$field_type as $crate::parse::FromField>::from_field(&$rows[0], $pointers, $assets)?,
             1,
         )
     };
@@ -435,7 +434,6 @@ macro_rules! make_consume_fields {
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
-            println!("SYM: {:?}, VALUES: {:?}", sym, values);
             ensure!(sym.ends_with("ound"), "expected sound in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($asset_loader.load_sound(&name)?), 1)
@@ -513,7 +511,7 @@ macro_rules! make_type_struct {
         impl $structname {
             pub fn from_lines(
                 $parent: $parent_ty,
-                lines: &Vec<&str>,
+                lines: &[&str],
                 pointers: &HashMap<&str, Vec<&str>>,
                 asset_loader: &$crate::parse::AssetLoader
             ) -> Fallible<Self> {

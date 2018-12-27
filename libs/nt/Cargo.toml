@@ -1,13 +1,13 @@
 [package]
 name = "nt"
 version = "0.1.0"
+edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
 ot = { path = "../ot" }
-resource = { path = "../resource" }
-texture = { path = "../texture" }
+asset = { path = "../asset" }
 
 [dev-dependencies]
 omnilib = { path = "../omnilib" }

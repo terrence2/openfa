@@ -41,7 +41,7 @@ impl TypeTag {
 
 impl FromField for TypeTag {
     type Produces = TypeTag;
-    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
         TypeTag::new(field.value().numeric()?.byte()?)
     }
 }
@@ -82,7 +82,7 @@ impl ObjectKind {
 
 impl FromField for ObjectKind {
     type Produces = ObjectKind;
-    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
         ObjectKind::new(field.value().numeric()?.word()?)
     }
 }
@@ -116,7 +116,7 @@ impl ProcKind {
 
 impl FromField for ProcKind {
     type Produces = ProcKind;
-    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
         ProcKind::new(&field.value().symbol()?)
     }
 }
@@ -142,19 +142,19 @@ bitflags! {
 }
 
 pub struct ObjectNames {
-    _short_name: String,
-    _long_name: String,
+    short_name: String,
+    long_name: String,
     file_name: String,
 }
 
 impl FromField for ObjectNames {
     type Produces = ObjectNames;
-    fn from_field(field: &FieldRow) -> Fallible<ObjectNames> {
+    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<ObjectNames> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
         Ok(ObjectNames {
-            _short_name: parse::string(&values[0])?,
-            _long_name: parse::string(&values[1])?,
+            short_name: parse::string(&values[0])?,
+            long_name: parse::string(&values[1])?,
             file_name: parse::string(&values[2])?,
         })
     }
@@ -262,6 +262,14 @@ impl ObjectType {
 
     pub fn file_name(&self) -> &str {
         return &self.ot_names.file_name;
+    }
+
+    pub fn short_name(&self) -> &str {
+        return &self.ot_names.short_name;
+    }
+
+    pub fn long_name(&self) -> &str {
+        return &self.ot_names.long_name;
     }
 }
 
