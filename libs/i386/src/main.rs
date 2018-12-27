@@ -32,7 +32,8 @@ fn main() -> Fallible<()> {
                 .help("The files to disassemble")
                 .multiple(true)
                 .required(true),
-        ).get_matches();
+        )
+        .get_matches();
 
     for name in matches
         .values_of("INPUT")

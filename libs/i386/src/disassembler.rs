@@ -12,14 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+#![allow(clippy::transmute_ptr_to_ptr)]
 
+use crate::lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use failure::{bail, ensure, Error, Fail, Fallible};
-use lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use reverse::bs2s;
 use std::{fmt, mem};
 
-pub use lut::{Memonic, HAS_INLINE_REG, OPCODES, PREFIX_CODES, USE_REG_OPCODES};
+pub use crate::lut::{Memonic, HAS_INLINE_REG, OPCODES, PREFIX_CODES, USE_REG_OPCODES};
 
 #[derive(Debug, Fail)]
 pub enum DisassemblyError {
@@ -268,11 +268,13 @@ impl MemRef {
     fn size_for_type(ty: OperandType, state: &OperandDecodeState) -> Fallible<u8> {
         Ok(match ty {
             OperandType::b => 1,
-            OperandType::v => if state.prefix.toggle_operand_size {
-                2
-            } else {
-                4
-            },
+            OperandType::v => {
+                if state.prefix.toggle_operand_size {
+                    2
+                } else {
+                    4
+                }
+            }
             _ => bail!("size_for_type for handled operand type: {:?}", ty),
         })
     }
@@ -677,16 +679,20 @@ impl Operand {
     fn show_relative(&self, base: usize, show_target: bool) -> String {
         match self {
             Operand::Register(ref r) => format!("{:?}", r),
-            Operand::Imm32(ref x) => if show_target {
-                format!("0x{:X} -> 0x{:X}", x, *x as usize + base)
-            } else {
-                format!("0x{:X}", x)
-            },
-            Operand::Imm32s(ref x) => if show_target {
-                format!("0x{:X} -> 0x{:X}", x, i64::from(*x) + base as i64)
-            } else {
-                format!("0x{:X}", x)
-            },
+            Operand::Imm32(ref x) => {
+                if show_target {
+                    format!("0x{:X} -> 0x{:X}", x, *x as usize + base)
+                } else {
+                    format!("0x{:X}", x)
+                }
+            }
+            Operand::Imm32s(ref x) => {
+                if show_target {
+                    format!("0x{:X} -> 0x{:X}", x, i64::from(*x) + base as i64)
+                } else {
+                    format!("0x{:X}", x)
+                }
+            }
             Operand::Memory(ref mr) => format!("{}", mr),
         }
     }

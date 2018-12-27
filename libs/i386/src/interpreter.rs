@@ -12,13 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
-#![cfg_attr(feature = "cargo-clippy", allow(new_without_default_derive))]
+#![allow(clippy::new_without_default_derive, clippy::transmute_ptr_to_ptr)]
 
-use disassembler::{ByteCode, MemRef, Memonic, Operand, Reg};
+use crate::{
+    disassembler::{ByteCode, MemRef, Memonic, Operand, Reg},
+    lut::{ConditionCode, ConditionCode1, ConditionCode2, FlagKind},
+};
 use failure::{bail, ensure, Fallible};
 use log::trace;
-use lut::{ConditionCode, ConditionCode1, ConditionCode2, FlagKind};
 use std::{collections::HashMap, mem};
 
 pub enum ExitInfo {
