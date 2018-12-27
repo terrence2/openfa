@@ -12,18 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate ot;
-extern crate resource;
-extern crate texture;
-
-use failure::Fallible;
-use ot::{parse, parse::FieldRow, parse::FromField, ObjectType};
+use asset::AssetLoader;
+use failure::{bail, ensure, Fallible};
+use ot::{
+    make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
+    make_validate_field_type, parse, parse::FieldRow, parse::FromField, ObjectType,
+};
 use std::collections::HashMap;
-use resource::ResourceManager;
-use texture::TextureManager;
 
 struct ProjectileNames {
     short_name: String,
@@ -33,7 +28,11 @@ struct ProjectileNames {
 
 impl FromField for ProjectileNames {
     type Produces = ProjectileNames;
-    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+    fn from_field(
+        field: &FieldRow,
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<Self::Produces> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "si_names", "expected pointer to si_names");
         ensure!(values.len() >= 2, "expected at least 2 names in si_names");
@@ -45,7 +44,7 @@ impl FromField for ProjectileNames {
         Ok(ProjectileNames {
             short_name: parse::string(&values[0])?,
             long_name: parse::string(&values[1])?,
-            file_name
+            file_name,
         })
     }
 }
@@ -73,7 +72,11 @@ struct ProjectilesInPod(u16);
 
 impl FromField for ProjectilesInPod {
     type Produces = ProjectilesInPod;
-    fn from_field(field: &FieldRow) -> Fallible<Self::Produces> {
+    fn from_field(
+        field: &FieldRow,
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<Self::Produces> {
         Ok(ProjectilesInPod(field.value().numeric()?.word()?))
     }
 }
@@ -173,10 +176,7 @@ ProjectileType(obj: ObjectType, version: ProjectileTypeVersion) {               
 }];
 
 impl ProjectileType {
-    pub fn from_str(data: &str,
-        resman: &ResourceManager,
-        texman: &TextureManager,
-    ) -> Fallible<Self> {
+    pub fn from_str(data: &str, assets: &AssetLoader) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -184,9 +184,9 @@ impl ProjectileType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        let obj = ObjectType::from_lines((), &obj_lines, &pointers, resman, texman)?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers, assets)?;
         let proj_lines = parse::find_section(&lines, "PROJ_TYPE")?;
-        return Self::from_lines(obj, &proj_lines, &pointers, resman, texman);
+        return Self::from_lines(obj, &proj_lines, &pointers, assets);
     }
 }
 
@@ -196,8 +196,8 @@ extern crate omnilib;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnilib::OmniLib;
     use failure::Error;
+    use omnilib::OmniLib;
 
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
@@ -211,12 +211,17 @@ mod tests {
             // "USNF97",
         ])?;
         for (game, name) in omni.find_matching("*.JT")?.iter() {
-            println!("At: {}:{:13} @ {}", game, name, omni.path(game, name).or::<Error>(Ok("<none>".to_string()))?);
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
+            );
             let lib = omni.library(game);
-            let texman = TextureManager::new(lib)?;
-            let resman = ResourceManager::new_headless(lib)?;
+            let assets = AssetLoader::new(lib)?;
             let contents = omni.library(game).load_text(name)?;
-            let jt = ProjectileType::from_str(&contents, &resman, &texman)?;
+            let jt = ProjectileType::from_str(&contents, &assets)?;
             assert!(jt.obj.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:08X} <> {} <> {}",
