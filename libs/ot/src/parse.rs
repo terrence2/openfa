@@ -102,6 +102,14 @@ impl FieldNumber {
         }
     }
 
+    pub fn unsigned(&self) -> Fallible<u32> {
+        match self {
+            FieldNumber::DWord(dw) => Ok(*dw),
+            FieldNumber::Word(w) => Ok(*w as u32),
+            FieldNumber::Byte(b) => Ok(*b as u32),
+        }
+    }
+
     pub fn field_type(&self) -> FieldType {
         match self {
             FieldNumber::DWord(_) => FieldType::DWord,
@@ -124,7 +132,7 @@ impl FieldValue {
         raw_values: Vec<&str>,
         pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<Self> {
-        // In USNF, some sound names are represented inline as `byte NN NN NN NN NNN NN NN NNN`.
+        // In USNF, ptr names are represented inline as `byte NN NN NN NN NNN NN NN NNN`.
         // We want to upgrade these automatically to a FieldValue::Ptr when we see them.
         if raw_values.len() > 1 {
             ensure!(*kind == FieldType::Byte, "expected byte N N N");
@@ -140,7 +148,7 @@ impl FieldValue {
                 return Ok(FieldValue::Numeric((Repr::Dec, FieldNumber::DWord(0))));
             }
             return Ok(FieldValue::Ptr(
-                ":sound".to_owned(),
+                ":unknown".to_owned(),
                 vec![format!("string \"{}\"", ptr)],
             ));
         }
@@ -362,6 +370,9 @@ macro_rules! make_consume_fields {
     (DWord, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.dword()? as $field_type, 1)
     };
+    (Num, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+        ($rows[0].value().numeric()?.unsigned()? as $field_type, 1)
+    };
 
     (Byte, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
         ($rows[0].value().numeric()?.byte()? as i8 as $field_type, 1)
@@ -401,7 +412,7 @@ macro_rules! make_consume_fields {
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym.ends_with("ctName"), "expected ctName in ptr name");
+            ensure!(sym == ":unknown" || sym.ends_with("ctName"), "expected ctName in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($asset_loader.load_ai(&name)?), 1)
         }
@@ -419,7 +430,6 @@ macro_rules! make_consume_fields {
             let (sym, values) = $rows[0].value().pointer()?;
             ensure!(sym.ends_with("hape"), "expected shape in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
-            println!("NAME: {}", name);
             (Some($asset_loader.load_sh(&name)?), 1)
         }
     };
@@ -434,7 +444,7 @@ macro_rules! make_consume_fields {
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym.ends_with("ound"), "expected sound in ptr name");
+            ensure!(sym == ":unknown" || sym.ends_with("ound"), "expected sound in ptr name");
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($asset_loader.load_sound(&name)?), 1)
         }
@@ -476,11 +486,12 @@ macro_rules! make_validate_field_type {
             $field_name
         );
     };
-    (XWord, $row:expr, $field_name:expr) => {
+    (Num, $row:expr, $field_name:expr) => {
         ensure!(
             $row.value().field_type() == $crate::parse::FieldType::Word
-                || $row.value().field_type() == $crate::parse::FieldType::DWord,
-            "expected {} to have word or dword field_type",
+                || $row.value().field_type() == $crate::parse::FieldType::DWord
+                || $row.value().field_type() == $crate::parse::FieldType::Byte,
+            "expected {} to have numeric field_type",
             $field_name
         );
     };
@@ -528,12 +539,11 @@ macro_rules! make_type_struct {
                 $(
                     // Take a field if it exists in this version of the format.
                     let field_version = $version_ty::$version_supported;
-                    let $field_name = if rows.len() == offset {
-                        // May be missing the last row -- the hud name -- in USNF/USMF.
-                        ensure!($comment == "hudName", "only expected missing hudName field");
-                        // FIXME dispatch to something that can produce a good HUD when needed.
-                        $default_value
-                    } else if field_version <= file_version {
+                    let $field_name = if field_version <= file_version {
+                        if offset == rows.len() {
+                            bail!("ran out of data before end")
+                        }
+
                         // Validate comment only on present rows.
                         ensure!(rows[offset].comment().is_none() || rows[offset].comment().unwrap().starts_with($comment), "non-matching comment");
 

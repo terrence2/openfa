@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetLoader;
-use failure::{ensure, Fallible};
+use failure::{bail, ensure, Fallible};
+use nalgebra::Point3;
 use ot::{
     make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
     make_validate_field_type,
@@ -82,16 +83,14 @@ impl FromField for HardpointDefault {
 
 make_type_struct![
 HardpointType(parent: (), version: HardpointTypeVersion) {
-    (Word, [Hex], "", Unsigned, flags,           u16,    V0, panic!()), // word $8
-    (Word, [Dec], "", Unsigned, unk1,            u16,    V0, panic!()), // word 0
-    (Word, [Dec], "", Unsigned, unk2,            u16,    V0, panic!()), // word 30
-    (Word, [Dec], "", Unsigned, unk3,            u16,    V0, panic!()), // word 0
-    (Word, [Dec], "", Unsigned, unk4,            u16,    V0, panic!()), // word 0
-    (Word, [Dec], "", Unsigned, unk5,            u16,    V0, panic!()), // word 0
-    (Word, [Dec], "", Unsigned, unk6,            u16,    V0, panic!()), // word 0
-    (Word, [Dec], "", Unsigned, unk7,            u16,    V0, panic!()), // word 16380
-    (Ptr,  [Dec, Sym], "", Struct,   default_loadout, HardpointDefault, V0, panic!()), // ptr defaultTypeName0
-    (Byte, [Dec], "", Unsigned, unk9,            u8,     V0, panic!()), // byte 0
-    (Word, [Dec], "", Unsigned, unk10,           u16,    V0, panic!()), // word 32767
-    (Byte, [Dec], "", Unsigned, unk11,           u8,     V0, panic!())  // byte 0
+    (Word, [Dec, Hex],            "flags", Unsigned,         flags,              u16, V0, panic!()), // word $8    ; flags
+    (Word, [Dec],                  "pos.", Vec3,              unk1,      Point3<f32>, V0, panic!()), // word 0     ; pos.x
+    (Word, [Dec],                 "slewH", Unsigned,          unk4,              u16, V0, panic!()), // word 0     ; slewH
+    (Word, [Dec],                 "slewP", Unsigned,          unk5,              u16, V0, panic!()), // word 0     ; slewP
+    (Word, [Dec],            "slewLimitH", Unsigned,          unk6,              u16, V0, panic!()), // word 0     ; slewLimitH
+    (Word, [Dec],            "slewLimitP", Unsigned,          unk7,              u16, V0, panic!()), // word 16380 ; slewLimitP
+    (Ptr,  [Dec, Sym], "defaultTypeName0", Struct, default_loadout, HardpointDefault, V0, panic!()), // ptr defaultTypeName0
+    (Byte, [Dec],             "maxWeight", Unsigned,          unk9,               u8, V0, panic!()), // byte 0     ; maxWeight
+    (Word, [Dec],              "maxItems", Unsigned,         unk10,              u16, V0, panic!()), // word 32767 ; maxItems
+    (Byte, [Dec],                  "name", Unsigned,         unk11,               u8, V0, panic!())  // byte 0     ; name
 }];

@@ -16,7 +16,7 @@ mod hardpoint;
 
 use crate::hardpoint::HardpointType;
 use asset::AssetLoader;
-use failure::{ensure, Fallible};
+use failure::{bail, ensure, Fallible};
 use ot::{
     make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
     make_validate_field_type, parse,
@@ -25,15 +25,19 @@ use ot::{
 };
 use std::collections::HashMap;
 
-// We can detect the version by the number of lines.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum NpcTypeVersion {
-    V0,
+    V0, // USNF, MF, ATF, ATFNATO
+    V1, // FA, USNF97, ATFGOLD
 }
 
 impl NpcTypeVersion {
-    fn from_len(_: usize) -> Fallible<Self> {
-        Ok(NpcTypeVersion::V0)
+    fn from_len(cnt: usize) -> Fallible<Self> {
+        Ok(match cnt {
+            9 => NpcTypeVersion::V1,
+            7 => NpcTypeVersion::V0,
+            x => bail!("unknown npc version with {} lines", x),
+        })
     }
 }
 
@@ -69,15 +73,15 @@ impl FromField for Hardpoints {
 
 make_type_struct![
 NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
-    (DWord, [Hex],            "flags", Unsigned, flags,             u32, V0, panic!()), // dword $0 ; flags
+    (DWord, [Hex],            "flags", Unsigned, flags,             u32, V1, 0),        // dword $0   ; flags
     (Ptr,   [Dec, Sym],            "",       AI, ct_name,            AI, V0, panic!()), // ptr ctName
-    (Byte,  [Dec], "searchFrequencyT", Unsigned, search_frequency_t, u8, V0, panic!()), // byte 40 ; searchFrequencyT
-    (Byte,  [Dec],   "unreadyAttackT", Unsigned, unready_attack_t,   u8, V0, panic!()), // byte 100 ; unreadyAttackT
-    (Byte,  [Dec],          "attackT", Unsigned, attack_t,           u8, V0, panic!()), // byte 80 ; attackT
-    (Word,  [Dec],        "retargetT", Unsigned, retarget_t,        u16, V0, panic!()), // word 32767 ; retargetT
-    (Word,  [Dec],         "zoneDist", Unsigned, zone_dist,         u16, V0, panic!()), // word 0 ; zoneDist
-    (Byte,  [Dec],         "numHards", Unsigned, num_hards,          u8, V0, panic!()), // byte 3 ; numHards
-	(Ptr,   [Sym],                 "",   Struct, hards,      Hardpoints, V0, panic!())  // ptr hards
+    (Byte,  [Dec], "searchFrequencyT", Unsigned, search_frequency_t, u8, V0, panic!()), // byte 40    ; searchFrequencyT
+    (Byte,  [Dec],   "unreadyAttackT", Unsigned, unready_attack_t,   u8, V0, panic!()), // byte 100   ; unreadyAttackT
+    (Byte,  [Dec],          "attackT", Unsigned, attack_t,           u8, V0, panic!()), // byte 80    ; attackT
+    (Word,  [Dec],        "retargetT", Unsigned, retarget_t,        u16, V1, 32767),    // word 32767 ; retargetT
+    (Num,   [Dec],         "zoneDist", Unsigned, zone_dist,         u16, V0, panic!()), // word 0     ; zoneDist
+    (Byte,  [Dec],         "numHards", Unsigned, num_hards,          u8, V0, panic!()), // byte 3     ; numHards
+	(Ptr,   [Sym],            "hards",   Struct, hards,      Hardpoints, V0, panic!())  // ptr hards
 }];
 
 impl NpcType {
@@ -94,35 +98,6 @@ impl NpcType {
         let npc = Self::from_lines(obj, &npc_lines, &pointers, assets)?;
         return Ok(npc);
     }
-
-    // pub fn from_lines(
-    //     obj: ObjectType,
-    //     lines: &Vec<&str>,
-    //     pointers: &HashMap<&str, Vec<&str>>,
-    // ) -> Fallible<Self> {
-    //     let hardpoint_count = parse::byte(lines[7])? as usize;
-    //     let hardpoint_lines = parse::follow_pointer(lines[8], pointers)?;
-    //     let mut hardpoints = Vec::new();
-    //     for chunk in hardpoint_lines.chunks(12) {
-    //         hardpoints.push(Hardpoint::from_lines(chunk, pointers)?);
-    //     }
-    //     ensure!(
-    //         hardpoint_count == hardpoints.len(),
-    //         "wrong number of hardpoints"
-    //     );
-
-    //     return Ok(NpcType {
-    //         obj,
-    //         unk0: parse::dword(lines[0])?,
-    //         behavior: parse::maybe_load_resource(lines[1], pointers)?,
-    //         unk_search_frequency_time: parse::byte(lines[2])?,
-    //         unk_unready_attack_time: parse::byte(lines[3])?,
-    //         unk_attack_time: parse::byte(lines[4])?,
-    //         unk_retarget_time: parse::word(lines[5])?,
-    //         unk_zone_distance: parse::word(lines[6])?,
-    //         hardpoints,
-    //     });
-    // }
 }
 
 pub struct HardPoint {}
@@ -138,7 +113,9 @@ mod tests {
 
     #[test]
     fn can_parse_all_npc_types() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
+        ])?;
         for (game, name) in omni.find_matching("*.[NP]T")?.iter() {
             println!(
                 "At: {}:{:13} @ {}",
