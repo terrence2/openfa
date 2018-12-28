@@ -350,9 +350,14 @@ macro_rules! make_storage_type {
     };
 }
 
-pub trait FromField {
+pub trait FromRow {
     type Produces;
-    fn from_field(field: &FieldRow, pointers: &HashMap<&str, Vec<&str>>, assets: &AssetLoader) -> Fallible<Self::Produces>;
+    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>, assets: &AssetLoader) -> Fallible<Self::Produces>;
+}
+
+pub trait FromRows {
+    type Produces;
+    fn from_rows(rows: &[FieldRow], pointers: &HashMap<&str, Vec<&str>>, assets: &AssetLoader) -> Fallible<(Self::Produces, usize)>;
 }
 
 #[macro_export]
@@ -387,11 +392,14 @@ macro_rules! make_consume_fields {
         )
     };
 
-    ($_t:ident, Struct, $field_type:path, $rows:expr, $pointers:ident, $assets:ident) => {
+    ($_t:ident, Custom, $field_type:path, $rows:expr, $pointers:ident, $assets:ident) => {
         (
-            <$field_type as $crate::parse::FromField>::from_field(&$rows[0], $pointers, $assets)?,
+            <$field_type as $crate::parse::FromRow>::from_row(&$rows[0], $pointers, $assets)?,
             1,
         )
+    };
+    ($_t:ident, CustomN, $field_type:path, $rows:expr, $pointers:ident, $assets:ident) => {
+        <$field_type as $crate::parse::FromRows>::from_rows($rows, $pointers, $assets)?
     };
 
     (Word, Vec3, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {{
@@ -512,7 +520,7 @@ macro_rules! make_type_struct {
     }) => {
         #[allow(dead_code)]
         pub struct $structname {
-            $parent: $parent_ty,
+            pub $parent: $parent_ty,
 
             $(
                 $field_name: make_storage_type!($parse_type, $field_type)

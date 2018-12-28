@@ -12,73 +12,207 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#[macro_use]
-extern crate failure;
-extern crate nt;
-extern crate ot;
+mod envelope;
 
-use failure::Fallible;
+use crate::envelope::Envelope;
+use asset::AssetLoader;
+use failure::{bail, ensure, Fallible};
 use nt::NpcType;
-use ot::parse;
+use ot::{
+    make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
+    make_validate_field_type, parse,
+    parse::{FieldRow, FromRow, FromRows},
+    ObjectType,
+};
 use std::collections::HashMap;
 
-#[allow(dead_code)]
-pub struct EnvelopeCoord {
-    speed: i16,
-    altitude: u32,
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+enum PlaneTypeVersion {
+    V0, // USNF
+    V1, // ATFGOLD (and all others?)
 }
 
-impl EnvelopeCoord {
-    pub fn from_lines(lines: &[&str], _pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
-        return Ok(EnvelopeCoord {
-            speed: parse::word(lines[0])?,
-            altitude: parse::dword(lines[1])?,
-        });
+impl PlaneTypeVersion {
+    fn from_len(cnt: usize) -> Fallible<Self> {
+        Ok(match cnt {
+            146 => PlaneTypeVersion::V1,
+            130 => PlaneTypeVersion::V0,
+            x => bail!("unknown pt version with {} lines", x),
+        })
+    }
+}
+
+// Wrap Vec<HP> so that we can impl FromRow.
+pub struct Envelopes {
+    #[allow(dead_code)]
+    all: Vec<Envelope>,
+}
+
+impl FromRow for Envelopes {
+    type Produces = Envelopes;
+    fn from_row(
+        row: &FieldRow,
+        pointers: &HashMap<&str, Vec<&str>>,
+        assets: &AssetLoader,
+    ) -> Fallible<Self::Produces> {
+        let (_name, lines) = row.value().pointer()?;
+        let mut off = 0usize;
+        let mut envs = Vec::new();
+
+        ensure!(lines.len() % 44 == 0, "expected 44 lines per envelope");
+        while off < lines.len() {
+            let lns = lines[off..off + 44]
+                .iter()
+                .map(|v| v.as_ref())
+                .collect::<Vec<_>>();
+            let env = Envelope::from_lines((), &lns, pointers, assets)?;
+            envs.push(env);
+            off += 44;
+        }
+        return Ok(Envelopes { all: envs });
     }
 }
 
 #[allow(dead_code)]
-pub struct Envelope {
-    g_load: i16,     // word -4 ; env [ii].gload
-    count: i16,      // word 6 ; env [ii].count
-    stall_lift: i16, // word 2 ; env [ii].stallLift
-    max_speed: i16,  // word 4 ; env [ii].maxSpeed
-    shape: [EnvelopeCoord; 20],
+struct SystemDamage {
+    damage_limit: [u8; 45],
 }
 
-impl Envelope {
-    pub fn from_lines(lines: &[&str], pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
-        return Ok(Envelope {
-            g_load: parse::word(lines[0])?,
-            count: parse::word(lines[1])?,
-            stall_lift: parse::word(lines[2])?,
-            max_speed: parse::word(lines[3])?,
-            shape: [
-                EnvelopeCoord::from_lines(&lines[4..6], pointers)?,
-                EnvelopeCoord::from_lines(&lines[6..8], pointers)?,
-                EnvelopeCoord::from_lines(&lines[8..10], pointers)?,
-                EnvelopeCoord::from_lines(&lines[10..12], pointers)?,
-                EnvelopeCoord::from_lines(&lines[12..14], pointers)?,
-                EnvelopeCoord::from_lines(&lines[14..16], pointers)?,
-                EnvelopeCoord::from_lines(&lines[16..18], pointers)?,
-                EnvelopeCoord::from_lines(&lines[18..20], pointers)?,
-                EnvelopeCoord::from_lines(&lines[20..22], pointers)?,
-                EnvelopeCoord::from_lines(&lines[22..24], pointers)?,
-                EnvelopeCoord::from_lines(&lines[24..26], pointers)?,
-                EnvelopeCoord::from_lines(&lines[26..28], pointers)?,
-                EnvelopeCoord::from_lines(&lines[28..30], pointers)?,
-                EnvelopeCoord::from_lines(&lines[30..32], pointers)?,
-                EnvelopeCoord::from_lines(&lines[32..34], pointers)?,
-                EnvelopeCoord::from_lines(&lines[34..36], pointers)?,
-                EnvelopeCoord::from_lines(&lines[36..38], pointers)?,
-                EnvelopeCoord::from_lines(&lines[38..40], pointers)?,
-                EnvelopeCoord::from_lines(&lines[40..42], pointers)?,
-                EnvelopeCoord::from_lines(&lines[42..44], pointers)?,
-            ],
-        });
+impl FromRows for SystemDamage {
+    type Produces = SystemDamage;
+
+    fn from_rows(
+        rows: &[FieldRow],
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<(Self::Produces, usize)> {
+        let mut damage_limit = [0; 45];
+        for (i, row) in rows[..45].iter().enumerate() {
+            damage_limit[i] = row.value().numeric()?.byte()?;
+        }
+        Ok((Self { damage_limit }, 45))
     }
 }
 
+#[allow(dead_code)]
+struct PhysBounds {
+    min: f32,
+    max: f32,
+    acc: f32,
+    dacc: f32,
+}
+
+impl FromRows for PhysBounds {
+    type Produces = PhysBounds;
+
+    fn from_rows(
+        rows: &[FieldRow],
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<(Self::Produces, usize)> {
+        Ok((
+            Self {
+                min: rows[0].value().numeric()?.word()? as i16 as f32,
+                max: rows[1].value().numeric()?.word()? as i16 as f32,
+                acc: rows[2].value().numeric()?.word()? as i16 as f32,
+                dacc: rows[3].value().numeric()?.word()? as i16 as f32,
+            },
+            4,
+        ))
+    }
+}
+
+impl Default for PhysBounds {
+    fn default() -> Self {
+        Self {
+            min: 0f32,
+            max: 0f32,
+            acc: 0f32,
+            dacc: 0f32,
+        }
+    }
+}
+
+make_type_struct![
+PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
+(Num,   [Dec, Hex],        "flags",Unsigned, flags, u32, V0, panic!()), // dword $2d ; flags
+(Ptr,   [Sym],               "env",  Custom, envelopes,      Envelopes, V0, panic!()),  // ptr env
+(Word,  [Dec],            "envMin",  Signed, envMin,               i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
+(Word,  [Dec],            "envMax",  Signed, envMax,               i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
+(Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,  u16, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
+(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,        u16, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
+(Word,  [Dec],            "_bv.x.", CustomN, bv_x,          PhysBounds, V0, panic!()),
+(Word,  [Dec],            "_bv.y.", CustomN, bv_y,          PhysBounds, V0, panic!()),
+(Word,  [Dec],            "_bv.z.", CustomN, bv_z,          PhysBounds, V0, panic!()),
+(Word,  [Dec],           "_brv.x.", CustomN, brv_x,         PhysBounds, V0, panic!()),
+(Word,  [Dec],           "_brv.y.", CustomN, brv_y,         PhysBounds, V0, panic!()),
+(Word,  [Dec],           "_brv.z.", CustomN, brv_z,         PhysBounds, V0, panic!()),
+(Word,  [Dec],          "gpullAOA",  Signed, gpullAOA,             i16, V0, panic!()), // word 20 ; gpullAOA
+(Word,  [Dec],       "lowAOASpeed",  Signed, lowAOASpeed,          i16, V0, panic!()), // word 70 ; lowAOASpeed
+(Word,  [Dec],       "lowAOAPitch",  Signed, lowAOAPitch,          i16, V0, panic!()), // word 15 ; lowAOAPitch
+(Word,  [Dec], "turbulencePercent",  Signed, turbulencePercent,    i16, V1, 0),        // word 149 ; turbulencePercent
+(Word,  [Dec],     "rudderYaw.min",  Signed, rudderYaw_min,        i16, V0, panic!()), // word -1 ; rudderYaw.min
+(Word,  [Dec],     "rudderYaw.max",  Signed, rudderYaw_max,        i16, V0, panic!()), // word 1 ; rudderYaw.max
+(Word,  [Dec],     "rudderYaw.acc",  Signed, rudderYaw_acc,        i16, V0, panic!()), // word 1 ; rudderYaw.acc
+(Word,  [Dec],    "rudderYaw.dacc",  Signed, rudderYaw_dacc,       i16, V0, panic!()), // word 3 ; rudderYaw.dacc
+(Word,  [Dec],        "rudderSlip",  Signed, rudderSlip,           i16, V0, panic!()), // word 10 ; rudderSlip
+(Word,  [Dec],        "rudderDrag",  Signed, rudderDrag,           i16, V0, panic!()), // word 128 ; rudderDrag
+(Word,  [Dec],        "rudderBank",  Signed, rudderBank,           i16, V0, panic!()), // word 5 ; rudderBank
+(Word,  [Dec],        "puffRot.x.", CustomN, puffRot_x,     PhysBounds, V1, Default::default()),
+(Word,  [Dec],        "puffRot.y.", CustomN, puffRot_y,     PhysBounds, V1, Default::default()),
+(Word,  [Dec],        "puffRot.z.", CustomN, puffRot_z,     PhysBounds, V1, Default::default()),
+(Word,  [Dec], "stallWarningDelay",  Signed, stallWarningDelay,    i16, V0, panic!()), // word 512 ; stallWarningDelay
+(Word,  [Dec],        "stallDelay",  Signed, stallDelay,           i16, V0, panic!()), // word 512 ; stallDelay
+(Word,  [Dec],     "stallSeverity",  Signed, stallSeverity,        i16, V0, panic!()), // word 256 ; stallSeverity
+(Word,  [Dec],    "stallPitchDown",  Signed, stallPitchDown,       i16, V0, panic!()), // word 30 ; stallPitchDown
+(Word,  [Dec],         "spinEntry",  Signed, spinEntry,            i16, V0, panic!()), // word 2 ; spinEntry
+(Word,  [Dec],          "spinExit",  Signed, spinExit,             i16, V0, panic!()), // word -2 ; spinExit
+(Word,  [Dec],        "spinYawLow",  Signed, spinYawLow,           i16, V0, panic!()), // word 120 ; spinYawLow
+(Word,  [Dec],       "spinYawHigh",  Signed, spinYawHigh,          i16, V0, panic!()), // word 180 ; spinYawHigh
+(Word,  [Dec],        "spinAOALow",  Signed, spinAOALow,           i16, V0, panic!()), // word 30 ; spinAOALow
+(Word,  [Dec],       "spinAOAHigh",  Signed, spinAOAHigh,          i16, V0, panic!()), // word 70 ; spinAOAHigh
+(Word,  [Dec],       "spinBankLow",  Signed, spinBankLow,          i16, V0, panic!()), // word 15 ; spinBankLow
+(Word,  [Dec],      "spinBankHigh",  Signed, spinBankHigh,         i16, V0, panic!()), // word 5 ; spinBankHigh
+(Word,  [Dec],         "gearPitch",  Signed, gearPitch,            i16, V0, panic!()), // word 0 ; gearPitch
+(Word,  [Dec], "crashSpeedForward",  Signed, crashSpeedForward,    i16, V0, panic!()), // word 330 ; crashSpeedForward
+(Word,  [Dec],    "crashSpeedSide",  Signed, crashSpeedSide,       i16, V0, panic!()), // word 51 ; crashSpeedSide
+(Word,  [Dec],"crashSpeedVertical",  Signed, crashSpeedVertical,   i16, V0, panic!()), // word 95 ; crashSpeedVertical
+(Word,  [Dec],        "crashPitch",  Signed, crashPitch,           i16, V0, panic!()), // word 25 ; crashPitch
+(Word,  [Dec],         "crashRoll",  Signed, crashRoll,            i16, V0, panic!()), // word 10 ; crashRoll
+(Byte,  [Dec],           "engines",Unsigned, engines,               u8, V0, panic!()), // byte 1 ; engines
+(Word,  [Dec],         "negGLimit",  Signed, negGLimit,            i16, V0, panic!()), // word 2560 ; negGLimit
+(DWord, [Dec],            "thrust",Unsigned, thrust,               u32, V0, panic!()), // dword 17687 ; thrust
+(DWord, [Dec],         "aftThrust",Unsigned, aftThrust,            u32, V0, panic!()), // dword 0 ; aftThrust
+(Word,  [Dec],       "throttleAcc",  Signed, throttleAcc,          i16, V0, panic!()), // word 40 ; throttleAcc
+(Word,  [Dec],      "throttleDacc",  Signed, throttleDacc,         i16, V0, panic!()), // word 60 ; throttleDacc
+(Word,  [Dec],         "vtLimitUp",  Signed, vtLimitUp,            i16, V1, 0),        // word -60 ; vtLimitUp
+(Word,  [Dec],       "vtLimitDown",  Signed, vtLimitDown,          i16, V1, 0),        // word -120 ; vtLimitDown
+(Word,  [Dec],           "vtSpeed",  Signed, vtSpeed,              i16, V1, 0),        // word 100 ; vtSpeed
+(Word,  [Dec],   "fuelConsumption",  Signed, fuelConsumption,      i16, V0, panic!()), // word 1 ; fuelConsumption
+(Word,  [Dec],"aftFuelConsumption",  Signed, aftFuelConsumption,   i16, V0, panic!()), // word 0 ; aftFuelConsumption
+(DWord, [Dec],      "internalFuel",Unsigned, internalFuel,         u32, V0, panic!()), // dword 6200 ; internalFuel
+(Word,  [Dec],          "coefDrag",  Signed, coefDrag,             i16, V0, panic!()), // word 256 ; coefDrag
+(Word,  [Dec],        "_gpullDrag",  Signed, _gpullDrag,           i16, V0, panic!()), // word 12 ; _gpullDrag
+(Word,  [Dec],     "airBrakesDrag",  Signed, airBrakesDrag,        i16, V0, panic!()), // word 256 ; airBrakesDrag
+(Word,  [Dec],   "wheelBrakesDrag",  Signed, wheelBrakesDrag,      i16, V0, panic!()), // word 102 ; wheelBrakesDrag
+(Word,  [Dec],         "flapsDrag",  Signed, flapsDrag,            i16, V0, panic!()), // word 0 ; flapsDrag
+(Word,  [Dec],          "gearDrag",  Signed, gearDrag,             i16, V0, panic!()), // word 23 ; gearDrag
+(Word,  [Dec],           "bayDrag",  Signed, bayDrag,              i16, V0, panic!()), // word 0 ; bayDrag
+(Word,  [Dec],         "flapsLift",  Signed, flapsLift,            i16, V0, panic!()), // word 0 ; flapsLift
+(Word,  [Dec],        "loadedDrag",  Signed, loadedDrag,           i16, V0, panic!()), // word 30 ; loadedDrag
+(Word,  [Dec],   "loadedGpullDrag",  Signed, loadedGpullDrag,      i16, V0, panic!()), // word 13 ; loadedGpullDrag
+(Word,  [Dec],    "loadedElevator",  Signed, loadedElevator,       i16, V0, panic!()), // word 40 ; loadedElevator
+(Word,  [Dec],     "loadedAileron",  Signed, loadedAileron,        i16, V0, panic!()), // word 40 ; loadedAileron
+(Word,  [Dec],      "loadedRudder",  Signed, loadedRudder,         i16, V0, panic!()), // word 40 ; loadedRudder
+(Word,  [Dec],"structureWarnLimit",  Signed, structureWarnLimit,   i16, V0, panic!()), // word 2560 ; structureWarnLimit
+(Word,  [Dec],    "structureLimit",  Signed, structureLimit,       i16, V0, panic!()), // word 5120 ; structureLimit
+(Byte,  [Dec],  "systemDamage [i]", CustomN, systemDamage,SystemDamage, V0, panic!()), // byte 20 ; systemDamage [i] ...
+(Word,  [Dec],     "miscPerFlight",  Signed, miscPerFlight,        i16, V0, panic!()), // word 10 ; miscPerFlight
+(Word,  [Dec],  "repairMultiplier",  Signed, repairMultiplier,     i16, V0, panic!()), // word 10 ; repairMultiplier
+(DWord, [Dec],  "maxTakeoffWeight",Unsigned, maxTakeoffWeight,     u32, V0, panic!())  // dword 16000 ; maxTakeoffWeight
+}];
+
+/*
 #[allow(dead_code)]
 pub struct PlaneType {
     pub npc: NpcType,
@@ -190,180 +324,32 @@ pub struct PlaneType {
     unk_maintainence_multiplier: i16,  //word 10 ; repairMultiplier
     unk_max_takeoff_weight: u32,       //dword 34500 ; MTOW (Max Take-Off Weight)
 }
+*/
 
 impl PlaneType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_str(data: &str, assets: &AssetLoader) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
             "not a type file"
         );
         let pointers = parse::find_pointers(&lines)?;
-        return Self::from_lines(&lines, &pointers);
-    }
+        let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers, assets)?;
+        let npc_lines = parse::find_section(&lines, "NPC_TYPE")?;
+        let npc = NpcType::from_lines(obj, &npc_lines, &pointers, assets)?;
 
-    fn from_lines(lines: &Vec<&str>, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
-        let npc = NpcType::from_lines(lines, pointers)?;
-        let lines = parse::find_section(&lines, "PLANE_TYPE")?;
+        // The :hards and :env pointer sections are inside of the PLANE_TYPE section
+        // for some reason, so filter those out by finding the first :foo.
+        let plane_lines = parse::find_section(&lines, "PLANE_TYPE")?
+            .iter()
+            .map(|&l| l)
+            .take_while(|&l| !l.starts_with(':'))
+            .collect::<Vec<&str>>();
+        println!("lineS: {}", plane_lines.len());
+        let plane = Self::from_lines(npc, &plane_lines, &pointers, &assets)?;
 
-        let envelope_lines = parse::follow_pointer(lines[1], pointers)?;
-        let mut envelope = Vec::new();
-        for chunk in envelope_lines.chunks(44) {
-            envelope.push(Envelope::from_lines(chunk, pointers)?);
-        }
-
-        return Ok(PlaneType {
-            npc,
-
-            unk_flags: parse::dword(lines[0])?,
-            envelope,
-            negative_envelopes: parse::word(lines[2])?,
-            positive_envelopes: parse::word(lines[3])?,
-            max_speed_sea_level: parse::word(lines[4])?,
-            max_speed_36a: parse::word(lines[5])?,
-            unk6: parse::word(lines[6])?,
-            unk7: parse::word(lines[7])?,
-            unk8: parse::word(lines[8])?,
-            unk9: parse::word(lines[9])?,
-            unk10: parse::word(lines[10])?,
-            unk11: parse::word(lines[11])?,
-            unk12: parse::word(lines[12])?,
-            unk13: parse::word(lines[13])?,
-            unk14: parse::word(lines[14])?,
-            unk15: parse::word(lines[15])?,
-            unk16: parse::word(lines[16])?,
-            unk17: parse::word(lines[17])?,
-            unk18: parse::word(lines[18])?,
-            unk19: parse::word(lines[19])?,
-            unk20: parse::word(lines[20])?,
-            unk21: parse::word(lines[21])?,
-            unk22: parse::word(lines[22])?,
-            unk23: parse::word(lines[23])?,
-            unk24: parse::word(lines[24])?,
-            unk25: parse::word(lines[25])?,
-            unk26: parse::word(lines[26])?,
-            unk27: parse::word(lines[27])?,
-            unk28: parse::word(lines[28])?,
-            unk29: parse::word(lines[29])?,
-            unk30: parse::word(lines[30])?,
-            unk31: parse::word(lines[31])?,
-            unk32: parse::word(lines[32])?,
-            unk33: parse::word(lines[33])?,
-            unk34: parse::word(lines[34])?,
-            unk35: parse::word(lines[35])?,
-            unk36: parse::word(lines[36])?,
-            unk37: parse::word(lines[37])?,
-            unk38: parse::word(lines[38])?,
-            unk39: parse::word(lines[39])?,
-            unk40: parse::word(lines[40])?,
-            unk41: parse::word(lines[41])?,
-            unk42: parse::word(lines[42])?,
-            unk43: parse::word(lines[43])?,
-            unk44: parse::word(lines[44])?,
-            unk45: parse::word(lines[45])?,
-            unk46: parse::word(lines[46])?,
-            unk47: parse::word(lines[47])?,
-            unk48: parse::word(lines[48])?,
-            unk49: parse::word(lines[49])?,
-            unk50: parse::word(lines[50])?,
-            unk51: parse::word(lines[51])?,
-            unk52: parse::word(lines[52])?,
-            unk53: parse::word(lines[53])?,
-            unk54: parse::word(lines[54])?,
-            unk55: parse::word(lines[55])?,
-            unk56: parse::word(lines[56])?,
-            unk57: parse::word(lines[57])?,
-            unk58: parse::word(lines[58])?,
-            unk59: parse::word(lines[59])?,
-            unk60: parse::word(lines[60])?,
-            unk61: parse::word(lines[61])?,
-            unk62: parse::word(lines[62])?,
-            unk63: parse::word(lines[63])?,
-            unk64: parse::word(lines[64])?,
-            unk65: parse::word(lines[65])?,
-            unk66: parse::word(lines[66])?,
-            unk67: parse::word(lines[67])?,
-            unk68: parse::word(lines[68])?,
-            unk69: parse::word(lines[69])?,
-            unk70: parse::word(lines[70])?,
-            unk_engine_count: parse::byte(lines[71])?,
-            unk72: parse::word(lines[72])?,
-            unk_thrust_100: parse::dword(lines[73])?,
-            unk_thrust_after: parse::dword(lines[74])?,
-            unk75: parse::word(lines[75])?,
-            unk76: parse::word(lines[76])?,
-            unk77: parse::word(lines[77])?,
-            unk78: parse::word(lines[78])?,
-            unk79: parse::word(lines[79])?,
-            unk80: parse::word(lines[80])?,
-            unk81: parse::word(lines[81])?,
-            unk_fuel_capacity: parse::dword(lines[82])?,
-            unk83: parse::word(lines[83])?,
-            unk84: parse::word(lines[84])?,
-            unk_air_brake_drag: parse::word(lines[85])?,
-            unk_wheel_brake_drag: parse::word(lines[86])?,
-            unk_flap_drag: parse::word(lines[87])?,
-            unk_gear_drag: parse::word(lines[88])?,
-            unk_bay_drag: parse::word(lines[89])?,
-            unk_flaps_lift: parse::word(lines[90])?,
-            unk_loadout_drag: parse::word(lines[91])?,
-            unk_loadout_g_drag: parse::word(lines[92])?,
-            unk93: parse::word(lines[93])?,
-            unk94: parse::word(lines[94])?,
-            unk95: parse::word(lines[95])?,
-            structural_speed_warning: parse::word(lines[96])?,
-            structural_speed_limit: parse::word(lines[97])?,
-            unk_system_maintainence: [
-                parse::byte(lines[98])?,
-                parse::byte(lines[99])?,
-                parse::byte(lines[100])?,
-                parse::byte(lines[101])?,
-                parse::byte(lines[102])?,
-                parse::byte(lines[103])?,
-                parse::byte(lines[104])?,
-                parse::byte(lines[105])?,
-                parse::byte(lines[106])?,
-                parse::byte(lines[107])?,
-                parse::byte(lines[108])?,
-                parse::byte(lines[109])?,
-                parse::byte(lines[110])?,
-                parse::byte(lines[111])?,
-                parse::byte(lines[112])?,
-                parse::byte(lines[113])?,
-                parse::byte(lines[114])?,
-                parse::byte(lines[115])?,
-                parse::byte(lines[116])?,
-                parse::byte(lines[117])?,
-                parse::byte(lines[118])?,
-                parse::byte(lines[119])?,
-                parse::byte(lines[120])?,
-                parse::byte(lines[121])?,
-                parse::byte(lines[122])?,
-                parse::byte(lines[123])?,
-                parse::byte(lines[124])?,
-                parse::byte(lines[125])?,
-                parse::byte(lines[126])?,
-                parse::byte(lines[127])?,
-                parse::byte(lines[128])?,
-                parse::byte(lines[129])?,
-                parse::byte(lines[130])?,
-                parse::byte(lines[131])?,
-                parse::byte(lines[132])?,
-                parse::byte(lines[133])?,
-                parse::byte(lines[134])?,
-                parse::byte(lines[135])?,
-                parse::byte(lines[136])?,
-                parse::byte(lines[137])?,
-                parse::byte(lines[138])?,
-                parse::byte(lines[139])?,
-                parse::byte(lines[140])?,
-                parse::byte(lines[141])?,
-                parse::byte(lines[142])?,
-            ],
-            unk_maintainence_per_mission: parse::word(lines[143])?,
-            unk_maintainence_multiplier: parse::word(lines[144])?,
-            unk_max_takeoff_weight: parse::dword(lines[145])?,
-        });
+        return Ok(plane);
     }
 }
 
@@ -373,19 +359,32 @@ extern crate omnilib;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use failure::Error;
     use omnilib::OmniLib;
 
     #[test]
     fn it_can_parse_all_plane_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
+        ])?;
         for (game, name) in omni.find_matching("*.PT")?.iter() {
-            let contents = omni.library(game).load_text(name)?;
-            let pt = PlaneType::from_str(&contents)?;
-            assert_eq!(pt.npc.obj.file_name, *name);
             println!(
-                "{}:{:13}> {:08X} <> {}",
-                game, name, pt.unk_max_takeoff_weight, pt.npc.obj.long_name
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
             );
+            let lib = omni.library(game);
+            let assets = AssetLoader::new(lib)?;
+            let contents = omni.library(game).load_text(name)?;
+            let pt = PlaneType::from_str(&contents, &assets)?;
+            assert_eq!(pt.nt.ot.file_name(), *name);
+            //println!("{}:{} - tow:{}, min:{}, max:{}, acc:{}, dacc:{}", game, name, pt.maxTakeoffWeight, pt.bv_y.min, pt.bv_y.max, pt.bv_y.acc, pt.bv_y.dacc);
+            //            println!(
+            //                "{}:{:13}> {:08X} <> {}",
+            //                game, name, pt.unk_max_takeoff_weight, pt.npc.obj.long_name
+            //            );
         }
         return Ok(());
     }

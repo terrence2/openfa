@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod parse;
 
-pub use crate::parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromField, Repr};
+pub use crate::parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromRow, Repr};
 use asset::AssetLoader;
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
@@ -39,9 +39,9 @@ impl TypeTag {
     }
 }
 
-impl FromField for TypeTag {
+impl FromRow for TypeTag {
     type Produces = TypeTag;
-    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
         TypeTag::new(field.value().numeric()?.byte()?)
     }
 }
@@ -80,9 +80,9 @@ impl ObjectKind {
     }
 }
 
-impl FromField for ObjectKind {
+impl FromRow for ObjectKind {
     type Produces = ObjectKind;
-    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
         ObjectKind::new(field.value().numeric()?.word()?)
     }
 }
@@ -114,9 +114,9 @@ impl ProcKind {
     }
 }
 
-impl FromField for ProcKind {
+impl FromRow for ProcKind {
     type Produces = ProcKind;
-    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
         ProcKind::new(&field.value().symbol()?)
     }
 }
@@ -147,9 +147,9 @@ pub struct ObjectNames {
     file_name: String,
 }
 
-impl FromField for ObjectNames {
+impl FromRow for ObjectNames {
     type Produces = ObjectNames;
-    fn from_field(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<ObjectNames> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<ObjectNames> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
         Ok(ObjectNames {
@@ -183,12 +183,12 @@ impl ObjectTypeVersion {
 
 make_type_struct![
 ObjectType(parent: (), version: ObjectTypeVersion) {
-    (Byte,  [Dec],          "structType",   Struct, struct_type,          TypeTag, V0, panic!()), // byte 1 ; structType
+    (Byte,  [Dec],          "structType",   Custom, struct_type,          TypeTag, V0, panic!()), // byte 1 ; structType
     (Word,  [Dec],            "typeSize", Unsigned, type_size,                u16, V0, panic!()), // word 166 ; typeSize
     (Word,  [Dec],        "instanceSize", Unsigned, instance_size,            u16, V0, panic!()), // word 0 ; instanceSize
-    (Ptr,   [Sym],            "ot_names",   Struct, ot_names,         ObjectNames, V0, panic!()), // ptr ot_names
+    (Ptr,   [Sym],            "ot_names",   Custom, ot_names,         ObjectNames, V0, panic!()), // ptr ot_names
     (DWord, [Dec,Hex],           "flags", Unsigned, flags,                    u32, V0, panic!()), // dword $20c21 ; flags
-    (Word,  [Dec,Hex],       "obj_class",   Struct, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
+    (Word,  [Dec,Hex],       "obj_class",   Custom, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
     (Ptr,   [Dec,Sym],           "shape",    Shape, shape,               CpuShape, V0, panic!()), // ptr shape
     (Ptr,   [Dec,Sym],     "shadowShape",    Shape, shadow_shape,        CpuShape, V0, panic!()), // dword 0
     (DWord, [Dec],                    "", Unsigned, unk8,                     u32, V2, 0),        // dword 0
@@ -229,7 +229,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (DWord, [Dec,Car],           "_dacc", Unsigned, deceleration,             u32, V0, panic!()), // dword ^0 ; _dacc
     (DWord, [Dec,Hex,Car],      "minAlt",   Signed, min_altitude,             i32, V0, panic!()), // in feet? // dword ^0 ; minAlt
     (DWord, [Dec,Hex,Car],      "maxAlt",   Signed, max_altitude,             i32, V0, panic!()), // dword ^0 ; maxAlt
-    (Symbol,[Sym],            "utilProc",   Struct, util_proc,           ProcKind, V0, panic!()), // symbol _OBJProc	; utilProc
+    (Symbol,[Sym],            "utilProc",   Custom, util_proc,           ProcKind, V0, panic!()), // symbol _OBJProc	; utilProc
     // Sound Info
     (Ptr,   [Dec,Sym],       "loopSound",    Sound, loop_sound,             Sound, V0, panic!()), // dword 0
     (Ptr,   [Dec,Sym],     "secondSound",    Sound, second_sound,           Sound, V0, panic!()), // dword 0

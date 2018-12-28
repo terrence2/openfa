@@ -6,6 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
+asset = { path = "../asset" }
 nt = { path = "../nt" }
 ot = { path = "../ot" }
 

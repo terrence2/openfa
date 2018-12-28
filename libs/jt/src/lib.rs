@@ -16,7 +16,7 @@ use asset::AssetLoader;
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
-    make_validate_field_type, parse, parse::FieldRow, parse::FromField, ObjectType,
+    make_validate_field_type, parse, parse::{FieldRow, FromRow}, ObjectType,
 };
 use std::collections::HashMap;
 
@@ -27,9 +27,9 @@ struct ProjectileNames {
     file_name: Option<String>,
 }
 
-impl FromField for ProjectileNames {
+impl FromRow for ProjectileNames {
     type Produces = ProjectileNames;
-    fn from_field(
+    fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
         _assets: &AssetLoader,
@@ -74,7 +74,7 @@ ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                
     (DWord, [Dec,Hex],               "flags", Unsigned, flags0,                    u32, V0, panic!()), // dword $1204f ; flags
     (Num,   [Dec],              "projsInPod", Unsigned, projs_in_pod,              u32, V0, panic!()), // word 1 ; projsInPod // or byte 1
     (Byte,  [Dec],              "structType", Unsigned, struct_type,                u8, V0, panic!()), // byte 10 ; structType
-    (Ptr,   [Sym],                "si_names",   Struct, si_names,      ProjectileNames, V0, panic!()), // ptr si_names
+    (Ptr,   [Sym],                "si_names",   Custom, si_names,      ProjectileNames, V0, panic!()), // ptr si_names
     (Word,  [Dec],                  "weight", Unsigned, weight,                    u16, V0, panic!()), // word 0 ; weight
     (Byte,  [Dec,Hex],               "flags", Unsigned, flags1,                     u8, V0, panic!()), // byte $0 ; flags
     (Byte,  [Dec],                     "sig", Unsigned, sig,                        u8, V0, panic!()), // byte 2 ; sig

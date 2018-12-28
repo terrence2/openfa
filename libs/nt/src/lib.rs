@@ -20,7 +20,7 @@ use failure::{bail, ensure, Fallible};
 use ot::{
     make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
     make_validate_field_type, parse,
-    parse::{FieldRow, FromField},
+    parse::{FieldRow, FromRow},
     ObjectType,
 };
 use std::collections::HashMap;
@@ -47,9 +47,9 @@ pub struct Hardpoints {
     all: Vec<HardpointType>,
 }
 
-impl FromField for Hardpoints {
+impl FromRow for Hardpoints {
     type Produces = Hardpoints;
-    fn from_field(
+    fn from_row(
         field: &FieldRow,
         pointers: &HashMap<&str, Vec<&str>>,
         assets: &AssetLoader,
@@ -81,7 +81,7 @@ NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
     (Word,  [Dec],        "retargetT", Unsigned, retarget_t,        u16, V1, 32767),    // word 32767 ; retargetT
     (Num,   [Dec],         "zoneDist", Unsigned, zone_dist,         u16, V0, panic!()), // word 0     ; zoneDist
     (Byte,  [Dec],         "numHards", Unsigned, num_hards,          u8, V0, panic!()), // byte 3     ; numHards
-	(Ptr,   [Sym],            "hards",   Struct, hards,      Hardpoints, V0, panic!())  // ptr hards
+	(Ptr,   [Sym],            "hards",   Custom, hards,      Hardpoints, V0, panic!())  // ptr hards
 }];
 
 impl NpcType {
