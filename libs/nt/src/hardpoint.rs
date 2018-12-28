@@ -84,13 +84,13 @@ impl FromRow for HardpointDefault {
 make_type_struct![
 HardpointType(parent: (), version: HardpointTypeVersion) {
     (Word, [Dec, Hex],            "flags", Unsigned, flags,                        u16, V0, panic!()), // word $8    ; flags
-    (Word, [Dec],                  "pos.",     Vec3, unk1,                 Point3<f32>, V0, panic!()), // word 0     ; pos.x
-    (Word, [Dec],                 "slewH", Unsigned, unk4,                         u16, V0, panic!()), // word 0     ; slewH
-    (Word, [Dec],                 "slewP", Unsigned, unk5,                         u16, V0, panic!()), // word 0     ; slewP
-    (Word, [Dec],            "slewLimitH", Unsigned, unk6,                         u16, V0, panic!()), // word 0     ; slewLimitH
-    (Word, [Dec],            "slewLimitP", Unsigned, unk7,                         u16, V0, panic!()), // word 16380 ; slewLimitP
+    (Word, [Dec],                  "pos.",     Vec3, pos,                  Point3<f32>, V0, panic!()), // word 0     ; pos.{x,y,z}
+    (Word, [Dec],                 "slewH", Unsigned, slewH,                        u16, V0, panic!()), // word 0     ; slewH
+    (Word, [Dec],                 "slewP", Unsigned, slewP,                        u16, V0, panic!()), // word 0     ; slewP
+    (Word, [Dec],            "slewLimitH", Unsigned, slewLimitH,                   u16, V0, panic!()), // word 0     ; slewLimitH
+    (Word, [Dec],            "slewLimitP", Unsigned, slewLimitP,                   u16, V0, panic!()), // word 16380 ; slewLimitP
     (Ptr,  [Dec, Sym], "defaultTypeName0",   Custom, default_loadout, HardpointDefault, V0, panic!()), // ptr defaultTypeName0
-    (Byte, [Dec],             "maxWeight", Unsigned, unk9,                          u8, V0, panic!()), // byte 0     ; maxWeight
-    (Word, [Dec],              "maxItems", Unsigned, unk10,                        u16, V0, panic!()), // word 32767 ; maxItems
-    (Byte, [Dec],                  "name", Unsigned, unk11,                         u8, V0, panic!())  // byte 0     ; name
+    (Byte, [Dec],             "maxWeight", Unsigned, maxWeight,                     u8, V0, panic!()), // byte 0     ; maxWeight
+    (Word, [Dec],              "maxItems", Unsigned, maxItems,                     u16, V0, panic!()), // word 32767 ; maxItems
+    (Byte, [Dec],                  "name", Unsigned, name,                          u8, V0, panic!())  // byte 0     ; name
 }];
