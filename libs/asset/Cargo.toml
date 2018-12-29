@@ -1,14 +1,14 @@
 [package]
-name = "ot"
+name = "asset"
 version = "0.1.0"
 edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-bitflags = "1.0"
 failure = ">= 0.1.2"
-nalgebra = ">= 0.16.0"
-asset = { path = "../asset" }
+lay = { path = "../lay" }
+lib = { path = "../lib" }
+t2 = { path = "../t2" }
 
 [dev-dependencies]
 omnilib = { path = "../omnilib" }

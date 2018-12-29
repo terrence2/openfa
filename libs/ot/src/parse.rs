@@ -14,7 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub use asset::AssetLoader;
 pub use failure::{bail, ensure, err_msg, Error, Fallible};
-use num_traits::Num;
 pub use std::any::TypeId;
 use std::{collections::HashMap, str};
 
@@ -292,37 +291,6 @@ pub fn find_section<'a>(lines: &Vec<&'a str>, section_tag: &str) -> Fallible<Vec
     return Ok(out);
 }
 
-pub fn follow_pointer<'a>(
-    line: &'a str,
-    pointers: &'a HashMap<&'a str, Vec<&'a str>>,
-) -> Fallible<&'a Vec<&'a str>> {
-    let name = ptr(line)?;
-    match pointers.get(name) {
-        Some(v) => return Ok(v),
-        None => bail!("no pointer {} in pointers", name),
-    }
-}
-
-pub fn hex(n: &str) -> Fallible<u32> {
-    ensure!(n.is_ascii(), "non-ascii in number");
-    ensure!(n.starts_with("$"), "expected hex to start with $");
-    return Ok(u32::from_str_radix(&n[1..], 16)?);
-}
-
-pub fn maybe_hex<T>(n: &str) -> Fallible<T>
-where
-    T: Num + ::std::str::FromStr,
-    <T as Num>::FromStrRadixErr: 'static + ::std::error::Error + Send + Sync,
-    <T as ::std::str::FromStr>::Err: 'static + ::std::error::Error + Send + Sync,
-{
-    ensure!(n.is_ascii(), "non-ascii in number");
-    return Ok(if n.starts_with('$') {
-        T::from_str_radix(&n[1..], 16)?
-    } else {
-        n.parse::<T>()?
-    });
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Repr {
     Dec,
@@ -334,16 +302,16 @@ pub enum Repr {
 #[macro_export]
 macro_rules! make_storage_type {
     (AI, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
+        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
     };
     (Shape, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
+        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
     };
     (Sound, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
+        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
     };
     (HUD, $_ft:path) => {
-        std::option::Option<std::rc::Rc<std::boxed::Box<u32>>>
+        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
     };
     ($_:ident, $field_type:path) => {
         $field_type
@@ -352,12 +320,20 @@ macro_rules! make_storage_type {
 
 pub trait FromRow {
     type Produces;
-    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>, assets: &AssetLoader) -> Fallible<Self::Produces>;
+    fn from_row(
+        row: &FieldRow,
+        pointers: &HashMap<&str, Vec<&str>>,
+        assets: &AssetLoader,
+    ) -> Fallible<Self::Produces>;
 }
 
 pub trait FromRows {
     type Produces;
-    fn from_rows(rows: &[FieldRow], pointers: &HashMap<&str, Vec<&str>>, assets: &AssetLoader) -> Fallible<(Self::Produces, usize)>;
+    fn from_rows(
+        rows: &[FieldRow],
+        pointers: &HashMap<&str, Vec<&str>>,
+        assets: &AssetLoader,
+    ) -> Fallible<(Self::Produces, usize)>;
 }
 
 #[macro_export]
@@ -420,7 +396,10 @@ macro_rules! make_consume_fields {
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym == ":unknown" || sym.ends_with("ctName"), "expected ctName in ptr name");
+            ensure!(
+                sym == ":unknown" || sym.ends_with("ctName"),
+                "expected ctName in ptr name"
+            );
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($asset_loader.load_ai(&name)?), 1)
         }
@@ -452,7 +431,10 @@ macro_rules! make_consume_fields {
             (None, 1)
         } else {
             let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym == ":unknown" || sym.ends_with("ound"), "expected sound in ptr name");
+            ensure!(
+                sym == ":unknown" || sym.ends_with("ound"),
+                "expected sound in ptr name"
+            );
             let name = $crate::parse::string(&values[0])?.to_uppercase();
             (Some($asset_loader.load_sound(&name)?), 1)
         }
@@ -523,7 +505,7 @@ macro_rules! make_type_struct {
             pub $parent: $parent_ty,
 
             $(
-                $field_name: make_storage_type!($parse_type, $field_type)
+                $field_name: $crate::make_storage_type!($parse_type, $field_type)
             ),*
         }
 
@@ -555,12 +537,12 @@ macro_rules! make_type_struct {
                         // Validate comment only on present rows.
                         ensure!(rows[offset].comment().is_none() || rows[offset].comment().unwrap().starts_with($comment), "non-matching comment");
 
-                        let (intermediate, count) = make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, asset_loader);
+                        let (intermediate, count) = $crate::make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, asset_loader);
 
                         // Validate all consumed fields
                         for i in 0..count {
-                            make_validate_field_repr!([ $( $row_format ),* ], &rows[offset + i], stringify!($field_name));
-                            make_validate_field_type!($row_type, &rows[offset + i], stringify!($field_name));
+                            $crate::make_validate_field_repr!([ $( $row_format ),* ], &rows[offset + i], stringify!($field_name));
+                            $crate::make_validate_field_type!($row_type, &rows[offset + i], stringify!($field_name));
                         }
 
                         offset += count;
@@ -582,117 +564,6 @@ macro_rules! make_type_struct {
     }
 }
 
-// Note: this has to copy in all cases to return because USNF bakes data in
-// inline. We could probably get away with Cow<Vec<Cow<str>>>, but there aren't
-// enough instances to bother.
-pub fn consume_ptr<'a>(
-    offset: usize,
-    comment: &'static str,
-    actual: &(FieldType, &'a str, Option<&'a str>),
-    pointers: &'a HashMap<&'a str, Vec<&'a str>>,
-) -> Fallible<Vec<String>> {
-    // Normally this will be Ptr. In cases where there is no value to point to,
-    // this will instead be set to dword 0.
-    if actual.0 == FieldType::DWord {
-        ensure!(actual.1 == "0", "dword in pointer with non-null value");
-        return Ok(Vec::new());
-    }
-    // In USNF, some pointer table data was stored inline. These are tagged as
-    // byte, even though there are a bunch of bytes here.
-    if actual.0 == FieldType::Byte {
-        let mut acc = Vec::new();
-        for s in actual.1.split(' ') {
-            let n = s.parse::<u8>()?;
-            acc.push(n as char);
-        }
-        let sym = acc.drain(..).collect::<String>();
-        return Ok(vec![sym]);
-    }
-    // Otherwise, go look in the pointers table for the given sym name.
-    ensure!(
-        actual.0 == FieldType::Ptr,
-        "expected field type pointer in follow_pointer at line {} ({})",
-        offset,
-        comment
-    );
-    let tblref = pointers
-        .get(actual.1)
-        .ok_or_else(|| err_msg(format!("no pointer named {} in pointers", actual.1)))?;
-    let copy = tblref
-        .iter()
-        .map(|&s| s.to_owned())
-        .collect::<Vec<String>>();
-    return Ok(copy);
-}
-
-// The pointer follow above gets us a list of names. Many users expect exactly
-// one name. This function encodes that expectation and returns the name.
-pub fn unpack_name(names: Vec<String>) -> Fallible<String> {
-    ensure!(
-        names.len() == 1,
-        "expected a single name under pointer, found {:?}",
-        names
-    );
-    return Ok(names[0].clone());
-}
-
-// The obj_class field is sometimes written as 32 bits, sign extended. We can drop the top half.
-pub fn consume_obj_class(actual: &(FieldType, &str, Option<&str>)) -> Fallible<u16> {
-    ensure!(
-        actual.0 == FieldType::Word,
-        "obj_class should have word type"
-    );
-    if let Some(c) = actual.2 {
-        ensure!(c == "obj_class", "obj_class not where we expected it");
-    }
-    return Ok(if actual.1.starts_with('$') {
-        u32::from_str_radix(&actual.1[1..], 16)? as u16
-    } else {
-        actual.1.parse::<i32>()? as u32 as u16
-    });
-}
-
-pub fn byte(line: &str) -> Fallible<u8> {
-    let parts = line.split_whitespace().collect::<Vec<&str>>();
-    ensure!(parts.len() == 2, "expected 2 parts");
-    ensure!(parts[0] == "byte", "expected byte type");
-    return Ok(match parts[1].parse::<u8>() {
-        Ok(n) => n,
-        Err(_) => hex(parts[1])? as u8,
-    });
-}
-
-pub fn word(line: &str) -> Fallible<i16> {
-    let parts = line.split_whitespace().collect::<Vec<&str>>();
-    ensure!(parts.len() == 2, "expected 2 parts");
-    ensure!(parts[0] == "word", "expected word type");
-    return Ok(match parts[1].parse::<i16>() {
-        Ok(n) => n,
-        Err(_) => hex(parts[1])? as u16 as i16,
-    });
-}
-
-pub fn dword(line: &str) -> Fallible<u32> {
-    let parts = line.split_whitespace().collect::<Vec<&str>>();
-    ensure!(parts.len() == 2, "expected 2 parts");
-    ensure!(parts[0] == "dword", "expected dword type");
-    return Ok(match parts[1].parse::<u32>() {
-        Ok(n) => n,
-        Err(_) => {
-            if parts[1].starts_with("$") {
-                hex(parts[1])?
-            } else {
-                assert!(parts[1].starts_with("^"));
-                // FIXME: ^ is meaningful
-                //   ^0 => 0
-                //   ^250_000 => 64_000_000
-                // units of 256?
-                parts[1][1..].parse::<u32>()?
-            }
-        }
-    });
-}
-
 pub fn string(line: &str) -> Fallible<String> {
     let parts = line.splitn(2, " ").collect::<Vec<&str>>();
     ensure!(parts.len() == 2, "expected 2 parts");
@@ -707,45 +578,12 @@ pub fn string(line: &str) -> Fallible<String> {
     return Ok(unquoted);
 }
 
-pub fn ptr(line: &str) -> Fallible<&str> {
-    let parts = line.split_whitespace().collect::<Vec<&str>>();
-    ensure!(parts.len() == 2, "expected 2 parts");
-    ensure!(parts[0] == "ptr", "expected ptr type");
-    return Ok(parts[1]);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_byte() {
-        assert_eq!(byte("byte 0").unwrap(), 0);
-        assert_eq!(byte("byte 255").unwrap(), 255);
-        assert!(byte("-1").is_err());
-    }
-
-    #[test]
-    fn parse_word() {
-        assert_eq!(word("word 0").unwrap(), 0);
-        assert_eq!(word("word -0").unwrap(), 0);
-        assert_eq!(word("word -32768").unwrap(), -32768);
-        assert_eq!(word("word 32767").unwrap(), 32767);
-        assert_eq!(word("word $0000").unwrap(), 0);
-        assert_eq!(word("word $FFFF").unwrap(), -1);
-        assert_eq!(word("word $7FFF").unwrap(), 32767);
-        assert_eq!(word("word $8000").unwrap(), -32768);
-        assert_eq!(word("word $ffff8000").unwrap(), -32768);
-        assert!(word("word -32769").is_err());
-        assert!(word("word 32768").is_err());
-    }
-
-    #[test]
-    fn parse_dword() {
-        assert_eq!(dword("dword 0").unwrap(), 0);
-        assert_eq!(dword("dword $0").unwrap(), 0);
-        assert_eq!(dword("dword ^0").unwrap(), 0);
-        assert_eq!(dword("dword $FFFFFFFF").unwrap(), u32::max_value());
+    fn parse_string() {
         assert_eq!(string("string \"\"").unwrap(), "");
         assert_eq!(string("string \"foo\"").unwrap(), "foo");
         assert_eq!(string("string \"foo bar baz\"").unwrap(), "foo bar baz");
@@ -753,5 +591,42 @@ mod tests {
         assert!(string("string \"foo").is_err());
         assert!(string("string foo\"").is_err());
         assert!(string("string foo").is_err());
+    }
+}
+
+#[cfg(test)]
+extern crate omnilib;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use failure::Error;
+    use omnilib::OmniLib;
+
+    #[test]
+    fn can_parse_all_entity_types() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
+        ])?;
+        for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
+            );
+            let lib = omni.library(game);
+            let assets = AssetLoader::new(lib)?;
+            let contents = lib.load_text(name)?;
+            let ot = ObjectType::from_str(&contents, &assets)?;
+            // Only one misspelling in 2500 files.
+            assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
+            // println!(
+            //     "{}:{:13}> {:?} <> {}",
+            //     game, name, ot.explosion_type, ot.long_name
+            // );
+        }
+        return Ok(());
     }
 }

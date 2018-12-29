@@ -19,8 +19,8 @@ use asset::AssetLoader;
 use failure::{bail, ensure, Fallible};
 use nt::NpcType;
 use ot::{
-    make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
-    make_validate_field_type, parse,
+    make_type_struct,
+    parse,
     parse::{FieldRow, FromRow, FromRows},
     ObjectType,
 };

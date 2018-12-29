@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod parse;
 
-pub use crate::parse::{consume_obj_class, consume_ptr, FieldRow, FieldType, FromRow, Repr};
+pub use crate::parse::{FieldRow, FieldType, FromRow, Repr};
 use asset::AssetLoader;
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
@@ -41,7 +41,11 @@ impl TypeTag {
 
 impl FromRow for TypeTag {
     type Produces = TypeTag;
-    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
+    fn from_row(
+        field: &FieldRow,
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<Self::Produces> {
         TypeTag::new(field.value().numeric()?.byte()?)
     }
 }
@@ -82,7 +86,11 @@ impl ObjectKind {
 
 impl FromRow for ObjectKind {
     type Produces = ObjectKind;
-    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
+    fn from_row(
+        field: &FieldRow,
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<Self::Produces> {
         ObjectKind::new(field.value().numeric()?.word()?)
     }
 }
@@ -116,7 +124,11 @@ impl ProcKind {
 
 impl FromRow for ProcKind {
     type Produces = ProcKind;
-    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<Self::Produces> {
+    fn from_row(
+        field: &FieldRow,
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<Self::Produces> {
         ProcKind::new(&field.value().symbol()?)
     }
 }
@@ -149,7 +161,11 @@ pub struct ObjectNames {
 
 impl FromRow for ObjectNames {
     type Produces = ObjectNames;
-    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>, _assets: &AssetLoader) -> Fallible<ObjectNames> {
+    fn from_row(
+        field: &FieldRow,
+        _pointers: &HashMap<&str, Vec<&str>>,
+        _assets: &AssetLoader,
+    ) -> Fallible<ObjectNames> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
         Ok(ObjectNames {

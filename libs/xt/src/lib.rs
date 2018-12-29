@@ -12,23 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
-#[macro_use]
-extern crate failure;
-extern crate jt;
-extern crate lib;
-extern crate nt;
-extern crate ot;
-extern crate pt;
-
-use failure::Fallible;
+use asset::AssetLoader;
+use failure::{bail, Fallible};
 use jt::ProjectileType;
 use lib::LibStack;
 use nt::NpcType;
 pub use ot::parse;
 use ot::ObjectType;
 use pt::PlaneType;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{sync::Arc, cell::RefCell, collections::HashMap, rc::Rc};
 
 // A generic type.
 pub enum Type {
@@ -42,9 +34,9 @@ impl Type {
     pub fn ot(&self) -> &ObjectType {
         return match self {
             Type::OT(ref ot) => &ot,
-            Type::JT(ref jt) => &jt.obj,
-            Type::NT(ref nt) => &nt.obj,
-            Type::PT(ref pt) => &pt.npc.obj,
+            Type::JT(ref jt) => &jt.ot,
+            Type::NT(ref nt) => &nt.ot,
+            Type::PT(ref pt) => &pt.nt.ot,
         };
     }
 
@@ -58,7 +50,7 @@ impl Type {
     pub fn nt(&self) -> Fallible<&NpcType> {
         return Ok(match self {
             Type::NT(ref nt) => &nt,
-            Type::PT(ref pt) => &pt.npc,
+            Type::PT(ref pt) => &pt.nt,
             _ => bail!("Type: not an npc"),
         });
     }
@@ -71,8 +63,8 @@ impl Type {
     }
 }
 
-// Any single type is likely used by multiple game entities at once so we cache
-// type loads aggresively and hand out a Ref to an immutable, shared global
+// Any single type is likely used by multiple game objects at once so we cache
+// type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
 #[derive(Clone)]
 pub struct TypeRef(Rc<Box<Type>>);
@@ -101,17 +93,21 @@ impl TypeRef {
 
 // Knows how to load a type from a game library. Keeps a cached copy and hands
 // out a pointer to the type.
-pub struct TypeManager<'a> {
+pub struct TypeManager {
     // The library to load from.
-    library: &'a LibStack,
+    library: Arc<Box<LibStack>>,
+
+    // The asset loader.
+    assets: Arc<Box<AssetLoader>>,
 
     // Cache immutable resources. Use interior mutability for ease of use.
     cache: RefCell<HashMap<String, TypeRef>>,
 }
 
-impl<'a> TypeManager<'a> {
-    pub fn new(library: &'a LibStack) -> Fallible<TypeManager> {
+impl TypeManager {
+    pub fn new(library: Arc<Box<LibStack>>, assets: Arc<Box<AssetLoader>>) -> Fallible<TypeManager> {
         return Ok(TypeManager {
+            assets,
             library,
             cache: RefCell::new(HashMap::new()),
         });
@@ -126,19 +122,19 @@ impl<'a> TypeManager<'a> {
         let ext = name.rsplitn(2, ".").collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
-                let ot = ObjectType::from_str(&content)?;
+                let ot = ObjectType::from_str(&content, &self.assets)?;
                 Type::OT(ot)
             }
             "JT" => {
-                let ot = ProjectileType::from_str(&content)?;
+                let ot = ProjectileType::from_str(&content, &self.assets)?;
                 Type::JT(ot)
             }
             "NT" => {
-                let ot = NpcType::from_str(&content)?;
+                let ot = NpcType::from_str(&content, &self.assets)?;
                 Type::NT(ot)
             }
             "PT" => {
-                let ot = PlaneType::from_str(&content)?;
+                let ot = PlaneType::from_str(&content, &self.assets)?;
                 Type::PT(ot)
             }
             _ => bail!("resource: unknown type {}", name),
@@ -151,8 +147,41 @@ impl<'a> TypeManager<'a> {
         }
         panic!("unreachable")
     }
+}
 
-    pub fn library(&self) -> &LibStack {
-        return self.library;
+#[cfg(test)]
+extern crate omnilib;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use failure::Error;
+    use omnilib::OmniLib;
+
+    #[test]
+    fn can_parse_all_entity_types() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
+        ])?;
+        for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
+            );
+            let lib = omni.library(game);
+            let assets = Arc::new(Box::new(AssetLoader::new(lib)?));
+            let types = TypeManager::new(lib.to_owned(), assets)?;
+            let ty = types.load(name)?;
+            // Only one misspelling in 2500 files.
+            assert!(ty.ot().file_name() == *name || *name == "SMALLARM.JT");
+            // println!(
+            //     "{}:{:13}> {:?} <> {}",
+            //     game, name, ot.explosion_type, ot.long_name
+            // );
+        }
+        return Ok(());
     }
 }

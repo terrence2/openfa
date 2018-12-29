@@ -15,8 +15,8 @@
 use asset::AssetLoader;
 use failure::{bail, ensure, Fallible};
 use ot::{
-    make_consume_fields, make_storage_type, make_type_struct, make_validate_field_repr,
-    make_validate_field_type, parse, parse::{FieldRow, FromRow}, ObjectType,
+    make_type_struct,
+    parse, parse::{FieldRow, FromRow}, ObjectType,
 };
 use std::collections::HashMap;
 

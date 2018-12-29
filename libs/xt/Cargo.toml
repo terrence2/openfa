@@ -6,8 +6,12 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
+asset = { path = "../asset" }
 lib = { path = "../lib" }
 jt = { path = "../jt" }
 nt = { path = "../nt" }
 ot = { path = "../ot" }
 pt = { path = "../pt" }
+
+[dev-dependencies]
+omnilib = { path = "../omnilib" }

@@ -21,7 +21,7 @@ use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
 /// Hold multiple LibStacks at once: e.g. for visiting resources from multiple games at once.
 pub struct OmniLib {
-    stacks: HashMap<String, Arc<LibStack>>,
+    stacks: HashMap<String, Arc<Box<LibStack>>>,
 }
 
 impl OmniLib {
@@ -38,7 +38,7 @@ impl OmniLib {
             // let libs = LibStack::from_file_search(&path)?;
             let path = Path::new("../../test_data/unpacked/").join(dir);
             let libs = LibStack::from_dir_search(&path)?;
-            stacks.insert(dir.to_owned(), Arc::new(libs));
+            stacks.insert(dir.to_owned(), Arc::new(Box::new(libs)));
         }
         Ok(Self { stacks })
     }
@@ -59,7 +59,7 @@ impl OmniLib {
                 .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
                 .to_owned();
             let libs = LibStack::from_dir_search(&entry.path())?;
-            stacks.insert(name, Arc::new(libs));
+            stacks.insert(name, Arc::new(Box::new(libs)));
         }
         Ok(Self { stacks })
     }
@@ -76,12 +76,12 @@ impl OmniLib {
         Ok(out)
     }
 
-    pub fn libraries(&self) -> Vec<Arc<LibStack>> {
+    pub fn libraries(&self) -> Vec<Arc<Box<LibStack>>> {
         self.stacks.values().cloned().collect()
     }
 
-    pub fn library(&self, libname: &str) -> &LibStack {
-        &self.stacks[libname]
+    pub fn library(&self, libname: &str) -> Arc<Box<LibStack>> {
+        self.stacks[libname].clone()
     }
 
     pub fn path(&self, libname: &str, name: &str) -> Fallible<String> {

@@ -12,16 +12,28 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
-extern crate asset;
-extern crate failure;
-extern crate nalgebra;
-extern crate xt;
-
-use failure::{err_msg, Fallible};
+use asset::AssetLoader;
+use failure::{bail, ensure, err_msg, Fallible};
 use nalgebra::{Point3, Vector3};
 use std::{sync::Arc, str::FromStr};
-use xt::{parse, TypeManager, TypeRef};
+use xt::{TypeManager, TypeRef};
+use t2::Terrain;
+use num_traits::Num;
+use lib::LibStack;
+
+pub fn maybe_hex<T>(n: &str) -> Fallible<T>
+where
+    T: Num + ::std::str::FromStr,
+    <T as Num>::FromStrRadixErr: 'static + ::std::error::Error + Send + Sync,
+    <T as ::std::str::FromStr>::Err: 'static + ::std::error::Error + Send + Sync,
+{
+    ensure!(n.is_ascii(), "non-ascii in number");
+    return Ok(if n.starts_with('$') {
+        T::from_str_radix(&n[1..], 16)?
+    } else {
+        n.parse::<T>()?
+    });
+}
 
 pub enum Nationality {
     Unk0 = 0,
@@ -127,7 +139,7 @@ pub struct ObjectInst {
 }
 
 impl ObjectInst {
-    fn from_lines(lines: &[&str], offset: &mut usize, tm: &TypeManager) -> Fallible<Self> {
+    fn from_lines(lines: &[&str], offset: &mut usize, types: &TypeManager) -> Fallible<Self> {
         let mut ty = None;
         let mut name = None;
         let mut pos = None;
@@ -145,7 +157,7 @@ impl ObjectInst {
             let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
             match parts[0].trim_left() {
                 "type" => {
-                    ty = Some(tm.load(parts[1].trim())?);
+                    ty = Some(types.load(parts[1].trim())?);
                 }
                 "name" => name = Some(parts[1].to_owned()),
                 "pos" => {
@@ -173,7 +185,7 @@ impl ObjectInst {
                 "nationality3" => {
                     nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
                 }
-                "flags" => flags = parse::maybe_hex::<u16>(parts[1])?,
+                "flags" => flags = maybe_hex::<u16>(parts[1])?,
                 "speed" => speed = parts[1].parse::<i32>()? as f32,
                 "alias" => alias = parts[1].parse::<i32>()?,
                 "skill" => skill = Some(parts[1].parse::<u8>()?),
@@ -181,9 +193,9 @@ impl ObjectInst {
                     let subparts = parts[1].split(' ').collect::<Vec<&str>>();
                     assert!(ty.is_some());
                     react = Some((
-                        parse::maybe_hex::<u16>(subparts[0])?,
-                        parse::maybe_hex::<u16>(subparts[1])?,
-                        parse::maybe_hex::<u16>(subparts[2])?,
+                        maybe_hex::<u16>(subparts[0])?,
+                        maybe_hex::<u16>(subparts[1])?,
+                        maybe_hex::<u16>(subparts[2])?,
                     ));
                 }
                 "searchDist" => search_dist = Some(parts[1].parse::<u32>()?),
@@ -257,7 +269,7 @@ impl SpecialInst {
                 "name" => name = Some(parts[1].to_owned()),
                 "color" => color = Some(parts[1].parse::<u8>()?),
                 "icon" => icon = Some(parts[1].parse::<i32>()?),
-                "flags" => flags = Some(parse::maybe_hex::<u16>(parts[1])?),
+                "flags" => flags = Some(maybe_hex::<u16>(parts[1])?),
                 _ => {
                     bail!("unknown special key: {}", parts[0]);
                 }
@@ -466,7 +478,7 @@ pub struct TDic {
 
 #[allow(dead_code)]
 pub struct MissionMap {
-    map: Arc<Terrain>,
+    map: Arc<Box<Terrain>>,
     //map: T2,
     layer_name: String,
     //layer: Layer,
@@ -476,12 +488,11 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str, tm: &TypeManager) -> Fallible<Self> {
+    pub fn from_str(s: &str, lib: Arc<Box<LibStack>>, types: &TypeManager, assets: Arc<Box<AssetLoader>>) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
         let mut map = None;
-        //let mut map: Option<Terrain> = None;
         let mut layer_name = None;
         let mut wind = Some((0, 0));
         let mut view = None;
@@ -507,9 +518,8 @@ impl MissionMap {
 
             match parts[0] {
                 "map" => {
-                    assert_eq!(map, None);
-                    let map_name = Some(parts[1]);
-                    map = asset_manager.load_t2(map_name.to_uppercase())?;
+                    assert!(map.is_none());
+                    map = Some(assets.load_t2(&parts[1].to_uppercase())?);
                 }
                 "layer" => {
                     assert_eq!(layer_name, None);
@@ -606,7 +616,7 @@ impl MissionMap {
                 }
                 "obj" => {
                     offset += 1;
-                    let obj = ObjectInst::from_lines(&lines, &mut offset, tm)?;
+                    let obj = ObjectInst::from_lines(&lines, &mut offset, types)?;
                     objects.push(obj);
                 }
                 "special" => {
@@ -699,14 +709,14 @@ impl MissionMap {
         for tmap in tmaps.iter() {
             match tmap.loc {
                 TLoc::Index(i) => assert!((i as usize) < tdics.len()),
-                TLoc::Name(ref n) => assert!(tm.library().file_exists(n)),
+                TLoc::Name(ref n) => assert!(lib.file_exists(n)),
             }
         }
 
         ensure!(map.is_some(), "mission map must have a 'map' key");
         ensure!(layer_name.is_some(), "mission map must have a 'layer' key");
         return Ok(MissionMap {
-            map,
+            map: map.unwrap(),
             layer_name: layer_name.unwrap().to_owned(),
             wind: wind.unwrap(),
             view: view.unwrap(),
@@ -728,9 +738,11 @@ mod tests {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
         for (game, name) in omni.find_matching("*.MM")?.iter() {
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
-            let type_man = TypeManager::new(omni.library(game))?;
-            let contents = omni.library(game).load_text(name)?;
-            let _mm = MissionMap::from_str(&contents, &type_man).unwrap();
+            let lib = omni.library(game);
+            let assets = Arc::new(Box::new(AssetLoader::new(lib.clone())?));
+            let types = TypeManager::new(omni.library(game), assets.clone())?;
+            let contents = lib.load_text(name)?;
+            let _mm = MissionMap::from_str(&contents, lib.clone(), &types, assets.clone())?;
         }
         return Ok(());
     }
