@@ -157,7 +157,7 @@ impl ObjectInst {
             let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
             match parts[0].trim_left() {
                 "type" => {
-                    ty = Some(types.load(parts[1].trim())?);
+                    ty = Some(types.load(&parts[1].trim().to_uppercase())?);
                 }
                 "name" => name = Some(parts[1].to_owned()),
                 "pos" => {
@@ -845,9 +845,9 @@ mod tests {
             "USNF97",
             "ATFGOLD",
             "ATFNATO",
-            //"ATF",
-            //"MF",
-            //"USNF"
+            "ATF",
+            "MF",
+            "USNF"
         ])?;
         for (game, name) in omni.find_matching("*.MM")?.iter() {
             if game == "ATFGOLD" {
@@ -855,6 +855,11 @@ mod tests {
                     continue;
                 }
             }
+            if name == "$VARF.MM" {
+                // This looks a fragment of an MM used for... something?
+                continue;
+            }
+
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let assets = Arc::new(Box::new(AssetLoader::new(lib.clone())?));
