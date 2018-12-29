@@ -78,6 +78,9 @@ pub struct Priority {
 
 impl Priority {
     fn from_path(path: &Path) -> Fallible<Self> {
+        if path.ends_with("installdir") {
+            return Ok(Self { priority: 0, version: 0 });
+        }
         lazy_static! {
             static ref PRIO_RE: Regex =
                 Regex::new(r"(\d+)([a-zA-Z]?)").expect("failed to create regex");
@@ -609,6 +612,7 @@ impl LibStack {
             }
             if child.path().extension() == Some(OsStr::new("lib"))
                 || child.path().extension() == Some(OsStr::new("LIB"))
+                || child.path().ends_with("installdir")
             {
                 out.push(child.path());
             } else {

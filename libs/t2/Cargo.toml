@@ -9,3 +9,6 @@ failure = ">= 0.1.2"
 image = ">= 0.18"
 packed_struct = { path = "../packed_struct/" }
 reverse = { path = "../reverse/" }
+
+[dev-dependencies]
+omnilib = { path = "../omnilib" }

@@ -56,9 +56,18 @@
 //                  not employed here. Seems a waste. Graphed out, whiteness seems to line up with
 //                  the taller points, so I'm pretty sure this is just a simple height-map.
 
-/* Header usage:
+/* color byte usage:
 Mostly D2. Some maps have D0 -> DA.
 Only Viet has C2->C7.
+
+These appear to be palette indexes into a part of the palette that is not filled
+in in the default palette. These parts of the palette appear to come from LAY files,
+allowing the game to change the color to simulate sunrise, sunset, and nighttime
+effects just by swapping around the palette.
+
+At a guess the newer maps only have a single color either because they were not complete
+or because they were leaning more heavily on texture mapping.
+
 Pakistan          D2
 Persian Gulf      D2
 Panama            D2
@@ -75,7 +84,6 @@ The Baltics       D2
 Falkland Islands  D2
 Kuril Islands     D0, D1, D2, D3, D4, D5, D6, D7, D8
 Ukraine           D0, D2, D3, D4, D6, D7, D8, D9
-t
 */
 
 /* Flag byte usage on land
@@ -117,12 +125,8 @@ Falkland Islands   {3, 1, 0}
 Kuril Islands      {0, 1}
 Ukraine            {0, 1}
 */
-
-extern crate failure;
-extern crate image;
-extern crate reverse;
-
-use failure::{ensure, Fallible};
+use failure::{bail, ensure, Fallible};
+use packed_struct::packed_struct;
 use std::{mem, str};
 
 pub struct Sample {
@@ -169,17 +173,252 @@ pub struct Terrain {
     pub samples: Vec<Sample>,
     _extra: Vec<u8>,
 }
-const MAGIC: &[u8] = &[b'B', b'I', b'T', b'2'];
 
 fn read_name(n: &[u8]) -> Fallible<String> {
     let end_offset: usize = n.iter().position(|&c| c == 0).unwrap_or(n.len() - 1);
     Ok(str::from_utf8(&n[..end_offset])?.to_owned())
 }
 
+const MAGIC_BITE: &[u8] = &[b'B', b'I', b'T', b'E'];
+
+packed_struct!(BITEHeader0 {
+    _0 => magic: [u8; 4],
+
+    _1 => pic_file: [u8; 16],
+
+    _2a => pad0a: [u8; 32],
+    _2b => pad0b: [u8; 6],
+
+    _3 => unk0: u32,
+    _4 => unk1: u32,
+    _5 => unk2: u32,
+    _6 => unk3: u32,
+
+    _7 => pad1: [u32; 19],
+
+    _8 => pad2: u16,
+
+    _9 => unkA: u16,
+    _A => unkB: u16,
+    _B => unkC: u16,
+
+    _C => lastByte: u32,
+
+    _D => width: u16 as usize,
+    _E => height: u16 as usize,
+
+    _F => unkI: u16,
+    _10 => unkJ: u16,
+    _11 => unkK: u16
+});
+
+packed_struct!(BITEHeader1 {
+    _0 => magic: [u8; 4],
+
+    // Note: we have to split this up because Debug is only
+    // implemented up through array sizes of 32.
+    _1a => name0: [u8; 32],
+    _1b => name1: [u8; 32],
+    _1c => name2: [u8; 16],
+
+    _3 => pic_file: [u8; 15],
+    _4 => unk0: u32,
+    _5 => unk1: u32,
+    _6 => unk2: u32,
+    _7 => unk3: u32,
+    _8 => unk4: u32,
+    _9 => unkPad: u16,
+    _10 => unkA: u16,
+    _11 => unkB: u16,
+    _12 => unkC: u16,
+    _13 => lastByte: u32,
+    _14 => width: u16 as usize,
+    _15 => height: u16 as usize,
+    _16 => unkI: u16,
+    _17 => unkJ: u16,
+    _18 => unkK: u16
+});
+
+const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
+
 impl Terrain {
     pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let magic = &data[0..4];
-        ensure!(magic == MAGIC, "missing magic");
+        if magic == MAGIC_BITE {
+            return Self::from_bite(data);
+        }
+        if magic == MAGIC_BIT2 {
+            return Self::from_bytes_format2(data);
+        }
+
+        bail!(
+            "do not know how to parse a T2 with magic header of {:?}",
+            magic
+        )
+    }
+
+    /*
+    The earlier BITE format has the pic right after the magic and a big
+    string of 0 bytes in the middle of the important bits.
+
+    USNF:UKR.T2
+                          PIC@4
+    00000000  42 49 54 45 75 6b 72 2e  50 49 43 00 00 00 00 00  |BITEukr.PIC.....|
+    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                                             AAAAAAAAAAA BBBBB
+    00000030  00 00 00 00 00 00 00 00  00 00 00 19 00 00 00 00  |................|
+              BBBBB CCCCCCCCCCC DDDDDDDDDDDD 1           2
+    00000040  00 00 00 19 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                    3           4            5           6
+    00000050  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                    7           8            9           A
+    00000060  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                    B           C            D           E
+    00000070  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                    F           10           11          12
+    00000080  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                    13          PA DD  AA AA BB BB CC CC LL LL
+    00000090  00 00 00 00 00 00 00 00  08 00 1a 00 1a 00 50 fe  |..............P.|
+              LL LL WW WW HH HH II II  JJ JJ KK KK END@AC
+    000000a0  01 00 d0 00 d0 00 10 00  0d 00 0d 00 50 03 00 00  |............P...|
+    000000b0  50 06 00 00 50 09 00 00  50 0c 00 00 50 0f 00 00  |P...P...P...P...|
+    000000c0  50 12 00 00 50 15 00 00  50 18 00 00 50 1b 00 00  |P...P...P...P...|
+
+    After USNF, it looks like the BITE format changed without changing the
+    magic word. Now there is a description / name after the magic and the pic
+    is moved lower. There is also a big block of zeros removed from the middle.
+
+    ATFNATO:BAL.T2
+    BITE
+                          0            4           8
+                          20 00 00 00  00 00 00 00 20 00 00 00  |.... ....... ...|
+              12          16           20 21 AA 23 BB 25 CC
+    00000070  00 00 00 00 00 00 00 00  00 08 00 20 00 20 00 8d  8d,01,03 is the start of the last row
+              29       WW 33 HH HH II  II JJ JJ KK KK oo oo oo
+    00000080  04 03 00 00 01 00 01 10  00 10 00 10 00 8d 04 00  |................|
+              oo
+    00000090  00 8d 07 00 00 8d 0a 00  00 8d 0d 00 00 8d 10 00  |................|
+    ..
+    00000470  00 8d ef 02 00 8d f2 02  00 8d f5 02 00 8d f8 02  |................|
+                                                      << -- >>
+    00000480  00 8d fb 02 00 8d fe 02  00 8d 01 03 00 d2 00 00  |................|
+              << -- >> << -- >> << --  >>
+    00000490  d2 00 00 d2 00 00 d2 00  00 d2 00 00 d2 00 00 d2  |................|
+    ...
+
+    MF:UKR.T2
+    00000000  42 49 54 45 55 6b 72 61  69 6e 65 00 00 00 00 00  |BITEUkraine.....|
+    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    *
+                          PIC@54
+    00000050  00 00 00 00 75 6b 72 2e  50 49 43 00 00 00 00 00  |....ukr.PIC.....|
+                       HDR@63
+    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
+    00000070  00 00 00 00 00 00 00 00  00 08 00 1a 00 1a 00 31  |...............1|
+                                                      END@8D
+    00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
+    00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
+    000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
+    */
+    fn from_bite(data: &[u8]) -> Fallible<Self> {
+        // Between USNF and MF, the format of the header changed without changing the
+        // magic BITE, so we need to do a bit of digging to find out which header to use.
+        // The newer format adds a description, so if there is a .PIC after the magic
+        // then it is the older format.
+        let maybe_pic = read_name(&data[4..19])?;
+        if maybe_pic.ends_with(".PIC") {
+            return Self::from_bite0(data);
+        }
+        Self::from_bite1(data)
+    }
+
+    fn from_bite0(data: &[u8]) -> Fallible<Self> {
+        let header_ptr: *const BITEHeader0 = data.as_ptr() as *const _;
+        let header: &BITEHeader0 = unsafe { &*header_ptr };
+        ensure!(header.magic() == MAGIC_BITE, "missing magic");
+
+        let pic_file = read_name(&header.pic_file())?;
+
+        // We can now skip the row offsets block to get to the height entries.
+        let offsets_start = mem::size_of::<BITEHeader0>();
+        let offsets_size = header.height() * mem::size_of::<u32>();
+        let num_pix = header.width() * header.height();
+        let data_start = offsets_start + offsets_size;
+        let data_end = data_start + num_pix * 3;
+        let entries = &data[data_start..data_end];
+
+        let mut samples = Vec::new();
+        for i in 0..num_pix {
+            let color = entries[i * 3];
+            let modifiers = entries[i * 3 + 1];
+            let height = entries[i * 3 + 2];
+            samples.push(Sample::new(color, modifiers, height))
+        }
+
+        let terrain = Terrain {
+            name: "Ukraine".to_owned(),
+            pic_file,
+            width: header.width() as u32,
+            height: header.height() as u32,
+            samples,
+            _extra: data[data_end..].to_vec(),
+        };
+        Ok(terrain)
+    }
+
+    fn from_bite1(data: &[u8]) -> Fallible<Self> {
+        let header_ptr: *const BITEHeader1 = data.as_ptr() as *const _;
+        let header: &BITEHeader1 = unsafe { &*header_ptr };
+        ensure!(header.magic() == MAGIC_BITE, "missing magic");
+
+        let name = read_name(&header.name0())?
+            + &read_name(&header.name1())?
+            + &read_name(&header.name2())?;
+        let pic_file = read_name(&header.pic_file())?;
+
+        // We can now skip the row offsets block to get to the height entries.
+        let offsets_start = mem::size_of::<BITEHeader1>();
+        let offsets_size = header.height() * mem::size_of::<u32>();
+        let num_pix = header.width() * header.height();
+        let data_start = offsets_start + offsets_size;
+        let data_end = data_start + num_pix * 3;
+        let entries = &data[data_start..data_end];
+
+        let mut samples = Vec::new();
+        for i in 0..num_pix {
+            let color = entries[i * 3];
+            let modifiers = entries[i * 3 + 1];
+            let height = entries[i * 3 + 2];
+            samples.push(Sample::new(color, modifiers, height))
+        }
+
+        let terrain = Terrain {
+            name,
+            pic_file,
+            width: header.width() as u32,
+            height: header.height() as u32,
+            samples,
+            _extra: data[data_end..].to_vec(),
+        };
+        Ok(terrain)
+    }
+
+    /*
+    ATFGOLD:BAL.T2
+    BIT2
+                          0            4           8
+                          20 00 00 00  00 00 00 00 20 00 00 00  |.... ....... ...|
+              12          16           20 21 AA AA AA 25 BB BB
+    00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 20 00 00  |............. ..|
+              BB 29 CC CC CC DD DD EE  EE WW WW WW WW HH HH HH
+    00000080  00 20 00 00 00 95 00 03  00 00 01 00 00 00 01 00  |. ..............|
+              HH ?? ?? ?? ?? << -- >>  << -- >> << -- >>
+    00000090  00 95 00 00 00 d2 00 00  d2 00 00 d2 00 00 d2 00  |................|
+    */
+    fn from_bytes_format2(data: &[u8]) -> Fallible<Self> {
+        let magic = &data[0..4];
+        ensure!(magic == MAGIC_BIT2, "missing magic");
 
         // Followed by 80 bytes of name / description.
         let name = read_name(&data[4..84])?;
@@ -195,8 +434,8 @@ impl Terrain {
         // 0            4            8            12           16          20  21
         // 20 00 00 00  00 00 00 00  20 00 00 00  00 00 00 00  00 00 00 00 00  08 00 00
         //
-        // 24  25       28  29       32  33     35      37           41           45
-        // 00  20 00 00 00  20 00 00 00  95 00  03 00   00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
+        // 24  25       28  29       32  33     35         37           41           45
+        // 00  20 00 00 00  20 00 00 00  95 00  03 00  >>  00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
         let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
         let width = dwords[0];
         let height = dwords[1];
@@ -284,31 +523,19 @@ impl Terrain {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::fs;
-    use std::io::prelude::*;
+    use omnilib::OmniLib;
 
     #[test]
-    fn it_works() -> Fallible<()> {
-        let mut rv: Vec<String> = Vec::new();
-        let paths = fs::read_dir("./test_data")?;
-        for i in paths {
-            let entry = i?;
-            let path = format!("{}", entry.path().display());
-            if path.ends_with("T2") {
-                let mut fp = fs::File::open(entry.path())?;
-                let mut data = Vec::new();
-                fp.read_to_end(&mut data)?;
-                let terrain = Terrain::from_bytes(&data)?;
-                assert!(terrain.pic_file.len() > 0);
-                terrain.make_debug_images(&path)?;
-            }
+    fn it_can_parse_all_t2_files() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
+        ])?;
+        for (game, name) in omni.find_matching("*.T2")?.iter() {
+            println!("AT: {}:{} @ {}", game, name, omni.path(game, name)?);
+            let lib = omni.library(game);
+            let contents = lib.load(name)?;
+            let _terrain = Terrain::from_bytes(&contents)?;
         }
-        rv.sort();
-
-        for v in rv {
-            println!("{}", v);
-        }
-
         Ok(())
     }
 }

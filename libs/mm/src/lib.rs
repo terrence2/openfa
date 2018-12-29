@@ -14,12 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetLoader;
 use failure::{bail, ensure, err_msg, Fallible};
-use nalgebra::{Point3, Vector3};
-use std::{sync::Arc, str::FromStr};
-use xt::{TypeManager, TypeRef};
-use t2::Terrain;
-use num_traits::Num;
 use lib::LibStack;
+use nalgebra::{Point3, Vector3};
+use num_traits::Num;
+use std::{str::FromStr, sync::Arc};
+use t2::Terrain;
+use xt::{TypeManager, TypeRef};
 
 pub fn maybe_hex<T>(n: &str) -> Fallible<T>
 where
@@ -210,9 +210,8 @@ impl ObjectInst {
                 err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
             })?,
             name,
-            pos: pos.ok_or_else(|| {
-                err_msg(format!("mm:obj: pos not set in obj ending {}", *offset))
-            })?,
+            pos: pos
+                .ok_or_else(|| err_msg(format!("mm:obj: pos not set in obj ending {}", *offset)))?,
             angle,
             nationality: nationality.ok_or_else(|| {
                 err_msg(format!(
@@ -488,7 +487,12 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str, lib: Arc<Box<LibStack>>, types: &TypeManager, assets: Arc<Box<AssetLoader>>) -> Fallible<Self> {
+    pub fn from_str(
+        s: &str,
+        lib: Arc<Box<LibStack>>,
+        types: &TypeManager,
+        assets: Arc<Box<AssetLoader>>,
+    ) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
@@ -519,7 +523,9 @@ impl MissionMap {
             match parts[0] {
                 "map" => {
                     assert!(map.is_none());
-                    map = Some(assets.load_t2(&parts[1].to_uppercase())?);
+                    let raw = &parts[1].to_uppercase();
+                    let filename = Self::get_t2_name_for_map(raw, &lib)?;
+                    map = Some(assets.load_t2(&filename)?);
                 }
                 "layer" => {
                     assert_eq!(layer_name, None);
@@ -560,7 +566,7 @@ impl MissionMap {
                             break;
                         }
                     }
-                    println!("S1: {}", sides.len());
+                    //println!("S1: {}", sides.len());
                 }
                 "sides2" => {
                     // Same as `sides`, but with hex values. Same 0 or 128 assertion.
@@ -576,7 +582,7 @@ impl MissionMap {
                         sides.push(side);
                         offset = next_offset;
                     }
-                    println!("S2: {}", sides.len());
+                    //println!("S2: {}", sides.len());
                 }
                 "sides3" => {
                     // Same as `sides2`.
@@ -592,7 +598,7 @@ impl MissionMap {
                         sides.push(side);
                         offset = next_offset;
                     }
-                    println!("S3: {}", sides.len());
+                    //println!("S3: {}", sides.len());
                 }
                 "sides4" => {
                     // Same as `sides2`.
@@ -608,7 +614,7 @@ impl MissionMap {
                         sides.push(side);
                         offset = next_offset;
                     }
-                    println!("S4: {}", sides.len());
+                    //println!("S4: {}", sides.len());
                 }
                 "historicalera" => {
                     let historical_era = u8::from_str(parts[1])?;
@@ -723,6 +729,105 @@ impl MissionMap {
             time: time.unwrap(),
         });
     }
+
+    // These are all of the terrains and map references in the base games.
+    // FA:
+    //     FA_2.LIB:
+    //         EGY.T2, FRA.T2, VLA.T2, BAL.T2, UKR.T2, KURILE.T2, TVIET.T2
+    //         APA.T2, CUB.T2, GRE.T2, IRA.T2, LFA.T2, NSK.T2, PGU.T2, SPA.T2, WTA.T2
+    //     MM refs:
+    //         // Campaign missions?
+    //         $bal[0-7].T2
+    //         $egy[1-9].T2
+    //         $fra[0-9].T2
+    //         $vla[1-8].T2
+    //         ~ukr[1-8].T2
+    //         // Freeform missions and ???; map editor layouts maybe?
+    //         ~apaf.T2, apa.T2
+    //         ~balf.T2, bal.T2
+    //         ~cubf.T2, cub.T2
+    //         ~egyf.T2, egy.T2
+    //         ~fraf.T2, fra.T2
+    //         ~gref.T2, gre.T2
+    //         ~iraf.T2, ira.T2
+    //         ~kurile.T2, kurile.T2
+    //         ~lfaf.T2, lfa.T2
+    //         ~nskf.T2, nsk.T2
+    //         ~pguf.T2, pgu.T2
+    //         ~spaf.T2, spa.T2
+    //         ~tviet.T2, tviet.T2
+    //         ~ukrf.T2, ukr.T2
+    //         ~vlaf.T2, vla.T2
+    //         ~wtaf.T2, wta.T2
+    //    M refs:
+    //         $bal[0-7].T2
+    //         $egy[1-8].T2
+    //         $fra[0-3,6-9].T2
+    //         $vla[1-8].T2
+    //         ~bal[0,2,3,6,7].T2
+    //         ~egy[1,2,4,7].T2
+    //         ~fra[3,9].T2
+    //         ~ukr[1-8].T2
+    //         ~vla[1,2,5].T2
+    //         bal.T2, cub.T2, egy.T2, fra.T2, kurile.T2, tviet.T2, ukr.T2, vla.T2
+    // USNF97:
+    //     USNF_2.LIB: UKR.T2, ~UKR[1-8].T2, KURILE.T2, VIET.T2
+    //     MM refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
+    //     M  refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
+    // ATFGOLD:
+    //     ATF_2.LIB: EGY.T2, FRA.T2, VLA.T2, BAL.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2
+    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    //     INVALID: kurile.T2, ~ukr[1-8].T2, ukr.T2, viet.T2
+    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2,
+    //              ~bal[2,6].T2, bal.T2, ~egy4.T2, egy.T2, fra.T2, vla.T2
+    //     INVALID: ukr.T2
+    // ATFNATO:
+    //     installdir: EGY.T2, FRA.T2, VLA.T2, BAL.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2,
+    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    //     M  refs: egy.T2, fra.T2, vla.T2, bal.T2,
+    //              $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    // ATF:
+    //     installdir: EGY.T2, FRA.T2, VLA.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2,
+    //              $egy[1-8].T2, $fra[0-9].T2, $vla[1-8].T2
+    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, egy.T2
+    // MF:
+    //     installdir: UKR.T2, $UKR[1-8].T2, KURILE.T2
+    //     MM+M refs: ukr.T2, $ukr[1-8].T2, kurile.T2
+    // USNF:
+    //     installdir: UKR.T2, $UKR[1-8].T2
+    //     MM+M refs: ukr.T2, $ukr[1-8].T2
+    pub fn get_t2_name_for_map(raw: &str, lib: &Arc<Box<LibStack>>) -> Fallible<String> {
+        if lib.file_exists(raw) {
+            return Ok(raw.to_owned());
+        }
+
+        // ~KURILE.T2 && ~TVIET.T2
+        if raw.starts_with('~') && lib.file_exists(&raw[1..]) {
+            return Ok(raw[1..].to_owned());
+        }
+
+        let parts = raw.split('.').collect::<Vec<&str>>();
+        let sym = parts[0];
+        if sym.len() == 5 {
+            let ss = sym.chars().next().unwrap();
+            let se = sym.chars().rev().take(1).collect::<String>();
+            println!("SYM: {}, ss: {}, se: {}", sym, ss, se);
+            ensure!(
+                ss == '~' || ss == '$',
+                "expected non-literal map name to start with $ or ~"
+            );
+            ensure!(
+                se == "F" || se.parse::<u8>().is_ok(),
+                "expected non-literal map name to end with f or a number"
+            );
+            return Ok(sym[1..=3].to_owned() + ".T2");
+        }
+
+        bail!("no map file matching {} found", raw)
+    }
 }
 
 #[cfg(test)]
@@ -735,8 +840,21 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA",
+            "USNF97",
+            "ATFGOLD",
+            "ATFNATO",
+            //"ATF",
+            //"MF",
+            //"USNF"
+        ])?;
         for (game, name) in omni.find_matching("*.MM")?.iter() {
+            if game == "ATFGOLD" {
+                if name.contains("UKR") || name == "KURILE.MM" || name == "VIET.MM" {
+                    continue;
+                }
+            }
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let assets = Arc::new(Box::new(AssetLoader::new(lib.clone())?));
