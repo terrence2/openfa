@@ -837,13 +837,7 @@ mod tests {
     #[test]
     fn it_can_parse_all_mm_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
-            "FA",
-            "USNF97",
-            "ATFGOLD",
-            "ATFNATO",
-            "ATF",
-            "MF",
-            "USNF"
+            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.MM")?.iter() {
             if game == "ATFGOLD" {

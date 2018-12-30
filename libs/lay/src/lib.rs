@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
-use packed_struct::packed_struct;
 use lib::Library;
+use packed_struct::packed_struct;
 use pal::Palette;
 use std::{fs, mem, str, sync::Arc};
 //use reverse::bs2s;
@@ -101,7 +101,7 @@ impl Layer {
 
         assert_eq!(header.unkPtr00x100(), header.unkPtr04());
         assert_eq!(header.unkPtr00x100(), header.unkPtr20x100());
-        assert_eq!(header.unkPtr00x100(), header.unkPtr50x100());
+        assert!(header.unkPtr00x100() == header.unkPtr50x100() || header.unkPtr00x100() + 0x100 == header.unkPtr50x100());
 
         // This segment of data counts up from 00 to FF and is present in every single LAY.
         // It makes little sense as a LUT because if you have the value itself? It is always
@@ -120,9 +120,9 @@ impl Layer {
         if dump_stuff {
             let name = format!("dump/{}/first_data", prefix);
             println!("Dumping {}", name);
-//            Palette::dump_partial(&first_data, 1, &name.clone())?;
-//            Palette::dump_partial(&first_data[22 * 3..], 4, &(name.clone() + "0"))?;
-//            Palette::dump_partial(&first_data[22 * 3 + 1..], 4, &(name.clone() + "1"))?;
+            // Palette::dump_partial(&first_data, 1, &name.clone())?;
+            // Palette::dump_partial(&first_data[22 * 3..], 4, &(name.clone() + "0"))?;
+            // Palette::dump_partial(&first_data[22 * 3 + 1..], 4, &(name.clone() + "1"))?;
             Palette::dump_partial(&first_data[22 * 3 + 2..], 4, &(name.clone() + "2"))?;
         }
 
@@ -152,8 +152,11 @@ impl Layer {
                 "expected 2DD"
             );
             ensure!(
-                plane.maybeFogUpdateThunk() == 0x2A46 || plane.maybeFogUpdateThunk() == 0,
-                "expected 0x2A46"
+                plane.maybeFogUpdateThunk() == 0x2A46
+                    || plane.maybeFogUpdateThunk() == 0x2646
+                    || plane.maybeFogUpdateThunk() == 0,
+                "expected 0x2A46 or 0x2646, not 0x{:4X}",
+                plane.maybeFogUpdateThunk()
             );
             ensure!(
                 plane.horizonProcThunk() != 0,
@@ -246,13 +249,7 @@ mod tests {
     #[test]
     fn it_can_parse_all_lay_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
-            "FA",
-            "USNF97",
-            "ATFGOLD",
-            "ATFNATO",
-            "ATF",
-            "MF",
-            //"USNF"
+            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.LAY")?.iter() {
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
