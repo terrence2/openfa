@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use asset::AssetLoader;
+pub use asset::AssetManager;
 pub use failure::{bail, ensure, err_msg, Error, Fallible};
 pub use std::any::TypeId;
 use std::{collections::HashMap, str};
@@ -323,7 +323,7 @@ pub trait FromRow {
     fn from_row(
         row: &FieldRow,
         pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetLoader,
+        assets: &AssetManager,
     ) -> Fallible<Self::Produces>;
 }
 
@@ -332,7 +332,7 @@ pub trait FromRows {
     fn from_rows(
         rows: &[FieldRow],
         pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetLoader,
+        assets: &AssetManager,
     ) -> Fallible<(Self::Produces, usize)>;
 }
 
@@ -514,7 +514,7 @@ macro_rules! make_type_struct {
                 $parent: $parent_ty,
                 lines: &[&str],
                 pointers: &HashMap<&str, Vec<&str>>,
-                asset_loader: &$crate::parse::AssetLoader
+                asset_loader: &$crate::parse::AssetManager
             ) -> Fallible<Self> {
                 let file_version = $version_ty::from_len(lines.len())?;
 
@@ -591,42 +591,5 @@ mod tests {
         assert!(string("string \"foo").is_err());
         assert!(string("string foo\"").is_err());
         assert!(string("string foo").is_err());
-    }
-}
-
-#[cfg(test)]
-extern crate omnilib;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use failure::Error;
-    use omnilib::OmniLib;
-
-    #[test]
-    fn can_parse_all_entity_types() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
-            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
-        ])?;
-        for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                name,
-                omni.path(game, name)
-                    .or::<Error>(Ok("<none>".to_string()))?
-            );
-            let lib = omni.library(game);
-            let assets = AssetLoader::new(lib)?;
-            let contents = lib.load_text(name)?;
-            let ot = ObjectType::from_str(&contents, &assets)?;
-            // Only one misspelling in 2500 files.
-            assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
-            // println!(
-            //     "{}:{:13}> {:?} <> {}",
-            //     game, name, ot.explosion_type, ot.long_name
-            // );
-        }
-        return Ok(());
     }
 }

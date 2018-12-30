@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetLoader;
+use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use nalgebra::Point3;
 use ot::{
@@ -60,7 +60,7 @@ impl FromRow for HardpointDefault {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         if !field.value().pointer().is_ok() {
             ensure!(

@@ -15,7 +15,7 @@
 pub mod parse;
 
 pub use crate::parse::{FieldRow, FieldType, FromRow, Repr};
-use asset::AssetLoader;
+use asset::AssetManager;
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
 use nalgebra::Point3;
@@ -44,7 +44,7 @@ impl FromRow for TypeTag {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         TypeTag::new(field.value().numeric()?.byte()?)
     }
@@ -89,7 +89,7 @@ impl FromRow for ObjectKind {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         ObjectKind::new(field.value().numeric()?.word()?)
     }
@@ -127,7 +127,7 @@ impl FromRow for ProcKind {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         ProcKind::new(&field.value().symbol()?)
     }
@@ -164,7 +164,7 @@ impl FromRow for ObjectNames {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<ObjectNames> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
@@ -262,7 +262,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
 }];
 
 impl ObjectType {
-    pub fn from_str(data: &str, asset_loader: &AssetLoader) -> Fallible<Self> {
+    pub fn from_str(data: &str, asset_loader: &AssetManager) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -309,7 +309,7 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetLoader::new(lib)?;
+            let assets = AssetManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
             let ot = ObjectType::from_str(&contents, &assets)?;
             // Only one misspelling in 2500 files.

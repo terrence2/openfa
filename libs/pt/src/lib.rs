@@ -15,7 +15,7 @@
 mod envelope;
 
 use crate::envelope::Envelope;
-use asset::AssetLoader;
+use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use nt::NpcType;
 use ot::{
@@ -53,7 +53,7 @@ impl FromRow for Envelopes {
     fn from_row(
         row: &FieldRow,
         pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetLoader,
+        assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         let (_name, lines) = row.value().pointer()?;
         let mut off = 0usize;
@@ -84,7 +84,7 @@ impl FromRows for SystemDamage {
     fn from_rows(
         rows: &[FieldRow],
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<(Self::Produces, usize)> {
         let mut damage_limit = [0; 45];
         for (i, row) in rows[..45].iter().enumerate() {
@@ -108,7 +108,7 @@ impl FromRows for PhysBounds {
     fn from_rows(
         rows: &[FieldRow],
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<(Self::Produces, usize)> {
         Ok((
             Self {
@@ -327,7 +327,7 @@ pub struct PlaneType {
 */
 
 impl PlaneType {
-    pub fn from_str(data: &str, assets: &AssetLoader) -> Fallible<Self> {
+    pub fn from_str(data: &str, assets: &AssetManager) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -376,8 +376,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetLoader::new(lib)?;
-            let contents = omni.library(game).load_text(name)?;
+            let assets = AssetManager::new(lib.clone())?;
+            let contents = lib.load_text(name)?;
             let pt = PlaneType::from_str(&contents, &assets)?;
             assert_eq!(pt.nt.ot.file_name(), *name);
             //println!("{}:{} - tow:{}, min:{}, max:{}, acc:{}, dacc:{}", game, name, pt.maxTakeoffWeight, pt.bv_y.min, pt.bv_y.max, pt.bv_y.acc, pt.bv_y.dacc);

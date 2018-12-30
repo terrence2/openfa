@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetLoader;
+use asset::AssetManager;
 use failure::{bail, ensure, err_msg, Fallible};
 use lay::Layer;
 use lib::Library;
@@ -490,7 +490,7 @@ impl MissionMap {
         s: &str,
         lib: Arc<Box<Library>>,
         types: &TypeManager,
-        assets: Arc<Box<AssetLoader>>,
+        assets: Arc<Box<AssetManager>>,
     ) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
@@ -830,9 +830,6 @@ impl MissionMap {
 }
 
 #[cfg(test)]
-extern crate omnilib;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use omnilib::OmniLib;
@@ -861,8 +858,8 @@ mod tests {
 
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
-            let assets = Arc::new(Box::new(AssetLoader::new(lib.clone())?));
-            let types = TypeManager::new(omni.library(game), assets.clone())?;
+            let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
+            let types = TypeManager::new(lib.clone(), assets.clone())?;
             let contents = lib.load_text(name)?;
             let _mm = MissionMap::from_str(&contents, lib.clone(), &types, assets.clone())?;
         }

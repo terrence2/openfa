@@ -15,7 +15,7 @@
 mod hardpoint;
 
 use crate::hardpoint::HardpointType;
-use asset::AssetLoader;
+use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_type_struct,
@@ -52,7 +52,7 @@ impl FromRow for Hardpoints {
     fn from_row(
         field: &FieldRow,
         pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetLoader,
+        assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         let (_name, lines) = field.value().pointer()?;
         let mut off = 0usize;
@@ -85,7 +85,7 @@ NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
 }];
 
 impl NpcType {
-    pub fn from_str(data: &str, assets: &AssetLoader) -> Fallible<Self> {
+    pub fn from_str(data: &str, assets: &AssetManager) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -125,8 +125,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetLoader::new(lib)?;
-            let contents = omni.library(game).load_text(name)?;
+            let assets = AssetManager::new(lib.clone())?;
+            let contents = lib.load_text(name)?;
             let nt = NpcType::from_str(&contents, &assets)?;
             assert_eq!(nt.ot.file_name(), *name);
             println!(

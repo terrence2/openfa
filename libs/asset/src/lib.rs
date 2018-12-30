@@ -25,7 +25,7 @@ use lib::Library;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use t2::Terrain;
 
-pub struct AssetLoader {
+pub struct AssetManager {
     lib: Arc<Box<Library>>,
 
     cache_ai: RefCell<HashMap<String, Arc<Box<u32>>>>,
@@ -33,9 +33,9 @@ pub struct AssetLoader {
     cache_terrain: RefCell<HashMap<String, Arc<Box<Terrain>>>>,
 }
 
-impl AssetLoader {
+impl AssetManager {
     pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
-        Ok(AssetLoader {
+        Ok(AssetManager {
             lib,
             cache_ai: RefCell::new(HashMap::new()),
             cache_layer: RefCell::new(HashMap::new()),
@@ -101,7 +101,7 @@ mod tests {
     fn it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
         for lib in omni.libraries() {
-            let asset_loader = AssetLoader::new(lib.clone())?;
+            let asset_loader = AssetManager::new(lib.clone())?;
             for filename in lib.find_matching("*.T2")? {
                 println!("name: {:?}", filename);
                 let foo = asset_loader.load_t2(&filename)?;

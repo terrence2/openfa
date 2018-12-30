@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetLoader;
+use asset::AssetManager;
 use clap::{App, Arg};
 use failure::Fallible;
 use lay::Layer;
@@ -201,7 +201,7 @@ pub fn main() -> Fallible<()> {
 
     let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let assets = Arc::new(Box::new(AssetLoader::new(lib.clone())?));
+    let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
     let types = TypeManager::new(lib.clone(), assets.clone())?;
     let contents = lib.load_text(&opt.input)?;
     let mm = MissionMap::from_str(&contents, lib.clone(), &types, assets.clone())?;

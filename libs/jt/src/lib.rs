@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetLoader;
+use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_type_struct,
@@ -32,7 +32,7 @@ impl FromRow for ProjectileNames {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetLoader,
+        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "si_names", "expected pointer to si_names");
@@ -164,7 +164,7 @@ ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                
 }];
 
 impl ProjectileType {
-    pub fn from_str(data: &str, assets: &AssetLoader) -> Fallible<Self> {
+    pub fn from_str(data: &str, assets: &AssetManager) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -178,9 +178,6 @@ impl ProjectileType {
         return Self::from_lines(obj, &proj_lines, &pointers, assets);
     }
 }
-
-#[cfg(test)]
-extern crate omnilib;
 
 #[cfg(test)]
 mod tests {
@@ -202,8 +199,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetLoader::new(lib)?;
-            let contents = omni.library(game).load_text(name)?;
+            let assets = AssetManager::new(lib.clone())?;
+            let contents = lib.load_text(name)?;
             let jt = ProjectileType::from_str(&contents, &assets)?;
             assert!(jt.ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(

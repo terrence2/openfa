@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetLoader;
+use asset::AssetManager;
 use failure::{bail, Fallible};
 use jt::ProjectileType;
 use lib::Library;
@@ -98,14 +98,14 @@ pub struct TypeManager {
     library: Arc<Box<Library>>,
 
     // The asset loader.
-    assets: Arc<Box<AssetLoader>>,
+    assets: Arc<Box<AssetManager>>,
 
     // Cache immutable resources. Use interior mutability for ease of use.
     cache: RefCell<HashMap<String, TypeRef>>,
 }
 
 impl TypeManager {
-    pub fn new(library: Arc<Box<Library>>, assets: Arc<Box<AssetLoader>>) -> Fallible<TypeManager> {
+    pub fn new(library: Arc<Box<Library>>, assets: Arc<Box<AssetManager>>) -> Fallible<TypeManager> {
         return Ok(TypeManager {
             assets,
             library,
@@ -172,8 +172,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = Arc::new(Box::new(AssetLoader::new(lib)?));
-            let types = TypeManager::new(lib.to_owned(), assets)?;
+            let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
+            let types = TypeManager::new(lib.clone(), assets)?;
             let ty = types.load(name)?;
             // Only one misspelling in 2500 files.
             assert!(ty.ot().file_name() == *name || *name == "SMALLARM.JT");
