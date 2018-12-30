@@ -340,7 +340,7 @@ pub enum LibraryData {
     Dir(LibDir),
 }
 
-pub struct Library {
+pub struct LibraryPack {
     // The assigned key. The key is used to avoid a circular reference
     // from the FileInfo structures back to the owning index.
     _libkey: usize,
@@ -356,7 +356,7 @@ pub struct Library {
     data: LibraryData,
 }
 
-impl Library {
+impl LibraryPack {
     pub fn from_path(priority: &Priority, libkey: usize, path: &Path) -> Fallible<Self> {
         let data = if path.is_file() {
             LibraryData::File(LibFile::from_path(libkey, path)?)
@@ -365,7 +365,7 @@ impl Library {
         } else {
             bail!("library: tried to open non-file");
         };
-        Ok(Library {
+        Ok(LibraryPack {
             _libkey: libkey,
             path: path.to_owned(),
             _priority: priority.to_owned(),
@@ -420,14 +420,14 @@ pub enum FileRef {
 }
 
 impl FileRef {
-    pub fn owning_library<'a>(&self, libs: &'a [Library]) -> &'a Library {
+    pub fn owning_pack<'a>(&self, libs: &'a [LibraryPack]) -> &'a LibraryPack {
         match self {
             FileRef::Packed(ref fileinfo) => &libs[fileinfo.libkey],
             FileRef::Unpacked(ref fileinfo) => &libs[fileinfo.libkey],
         }
     }
 
-    pub fn load<'a>(&self, libs: &'a [Library]) -> Fallible<Cow<'a, [u8]>> {
+    pub fn load<'a>(&self, libs: &'a [LibraryPack]) -> Fallible<Cow<'a, [u8]>> {
         match self {
             FileRef::Packed(ref fileinfo) => {
                 let lib = &libs[fileinfo.libkey];
@@ -440,7 +440,7 @@ impl FileRef {
         }
     }
 
-    pub fn stat(&self, filename: &str, libs: &[Library]) -> Fallible<StatInfo> {
+    pub fn stat(&self, filename: &str, libs: &[LibraryPack]) -> Fallible<StatInfo> {
         match self {
             FileRef::Packed(ref fileinfo) => {
                 let lib = &libs[fileinfo.libkey];
@@ -454,9 +454,9 @@ impl FileRef {
     }
 }
 
-pub struct LibStack {
+pub struct Library {
     // Offset into this vec is the libkey. This should be sorted by priority.
-    libs: Vec<Library>,
+    libs: Vec<LibraryPack>,
 
     // Global index mapping file names to FileInfo.
     index: HashMap<String, FileRef>,
@@ -465,7 +465,7 @@ pub struct LibStack {
     masked: Vec<(String, FileRef)>,
 }
 
-impl LibStack {
+impl Library {
     pub fn from_paths(libpaths: &[PathBuf]) -> Fallible<Self> {
         // Ensure that all libs in the stack have a unique priority.
         let mut priorities = HashMap::new();
@@ -489,7 +489,7 @@ impl LibStack {
         // avoid a second hash lookup in the load path.
         let mut libs = Vec::new();
         for (libkey, prio) in sorted_priorities.iter().enumerate() {
-            libs.push(Library::from_path(&prio, libkey, priorities[prio])?);
+            libs.push(LibraryPack::from_path(&prio, libkey, priorities[prio])?);
         }
 
         // Build the global index from names to direct references.
@@ -551,7 +551,7 @@ impl LibStack {
             if name != filename {
                 continue;
             }
-            if libpath != fileref.owning_library(&self.libs).path.clone() {
+            if libpath != fileref.owning_pack(&self.libs).path.clone() {
                 continue;
             }
             let contents = fileref.load(&self.libs)?.to_vec();
@@ -567,7 +567,7 @@ impl LibStack {
             if name != filename {
                 continue;
             }
-            out.push(fileref.owning_library(&self.libs).path.clone());
+            out.push(fileref.owning_pack(&self.libs).path.clone());
         }
         Ok(out)
     }
@@ -629,7 +629,7 @@ mod tests {
 
     #[test]
     fn can_load_all_files_in_all_libfiles() -> Fallible<()> {
-        let libs = LibStack::from_file_search(Path::new("../../test_data/packed/FA"))?;
+        let libs = Library::from_file_search(Path::new("../../test_data/packed/FA"))?;
         for name in libs.find_matching("*")?.iter() {
             println!("At: {}", name);
             let data = libs.load(name)?;
@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn can_load_all_files_in_all_libdirs() -> Fallible<()> {
-        let libs = LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
+        let libs = Library::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
         for name in libs.find_matching("*")?.iter() {
             println!("At: {}", name);
             let data = libs.load(name)?;
@@ -651,7 +651,7 @@ mod tests {
 
     #[test]
     fn mask_lower_priority_files() -> Fallible<()> {
-        let libs = LibStack::from_dir_search(Path::new("./test_data/masking"))?;
+        let libs = Library::from_dir_search(Path::new("./test_data/masking"))?;
         let txt = libs.load_text("FILE.TXT")?;
         assert_eq!(txt, "20b\n");
         let libpaths = libs.find_masked("FILE.TXT")?;

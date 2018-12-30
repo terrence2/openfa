@@ -1,20 +1,17 @@
 [package]
 name = "texture"
 version = "0.1.0"
+edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1.2"
 image = ">= 0.18"
-vulkano = "^ 0.10"
-vulkano-shaders = "^ 0.10"
-vulkano-shader-derive = "^ 0.10"
-vulkano-win = "^ 0.10"
-winit = "^ 0.17"
-window = { path = "../window" }
 lib = { path = "../lib" }
 pal = { path = "../pal" }
 pic = { path = "../pic" }
+render = { path = "../render" }
 
 [dev-dependencies]
 omnilib = { path = "../omnilib" }
+window = { path = "../window" }

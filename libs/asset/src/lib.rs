@@ -21,12 +21,12 @@
 // Open question: are we responsible for upload to the GPU? If not, who is?
 use failure::{Fallible};
 use lay::Layer;
-use lib::LibStack;
+use lib::Library;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use t2::Terrain;
 
 pub struct AssetLoader {
-    lib: Arc<Box<LibStack>>,
+    lib: Arc<Box<Library>>,
 
     cache_ai: RefCell<HashMap<String, Arc<Box<u32>>>>,
     cache_layer: RefCell<HashMap<String, Arc<Box<Layer>>>>,
@@ -34,7 +34,7 @@ pub struct AssetLoader {
 }
 
 impl AssetLoader {
-    pub fn new(lib: Arc<Box<LibStack>>) -> Fallible<Self> {
+    pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
         Ok(AssetLoader {
             lib,
             cache_ai: RefCell::new(HashMap::new()),

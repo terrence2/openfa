@@ -16,12 +16,12 @@ extern crate failure;
 extern crate lib;
 
 use failure::{err_msg, Fallible};
-use lib::LibStack;
+use lib::Library;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
 /// Hold multiple LibStacks at once: e.g. for visiting resources from multiple games at once.
 pub struct OmniLib {
-    stacks: HashMap<String, Arc<Box<LibStack>>>,
+    stacks: HashMap<String, Arc<Box<Library>>>,
 }
 
 impl OmniLib {
@@ -35,15 +35,15 @@ impl OmniLib {
             // This is super slow in debug mode because decompressors
             // get built with the options of whatever crate we're actually building.
             // let path = Path::new("../../test_data/packed/").join(dir);
-            // let libs = LibStack::from_file_search(&path)?;
+            // let libs = Library::from_file_search(&path)?;
             let path = Path::new("../../test_data/unpacked/").join(dir);
-            let libs = LibStack::from_dir_search(&path)?;
+            let libs = Library::from_dir_search(&path)?;
             stacks.insert(dir.to_owned(), Arc::new(Box::new(libs)));
         }
         Ok(Self { stacks })
     }
 
-    // LibStack from_dir_search in every subdir in the given path.
+    // Library from_dir_search in every subdir in the given path.
     pub fn from_subdirs(path: &Path) -> Fallible<Self> {
         let mut stacks = HashMap::new();
         for entry in fs::read_dir(path)? {
@@ -58,7 +58,7 @@ impl OmniLib {
                 .to_str()
                 .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
                 .to_owned();
-            let libs = LibStack::from_dir_search(&entry.path())?;
+            let libs = Library::from_dir_search(&entry.path())?;
             stacks.insert(name, Arc::new(Box::new(libs)));
         }
         Ok(Self { stacks })
@@ -76,11 +76,11 @@ impl OmniLib {
         Ok(out)
     }
 
-    pub fn libraries(&self) -> Vec<Arc<Box<LibStack>>> {
+    pub fn libraries(&self) -> Vec<Arc<Box<Library>>> {
         self.stacks.values().cloned().collect()
     }
 
-    pub fn library(&self, libname: &str) -> Arc<Box<LibStack>> {
+    pub fn library(&self, libname: &str) -> Arc<Box<Library>> {
         self.stacks[libname].clone()
     }
 

@@ -22,7 +22,7 @@ extern crate sh;
 extern crate t2;
 
 use failure::Fallible;
-use lib::LibStack;
+use lib::Library;
 
 //pub use bi::AI;
 //pub use hud::HUD;
@@ -59,7 +59,7 @@ impl Sound {
 
 pub struct ResourceManager<'a> {
     // The library to load from.
-    library: &'a LibStack,
+    library: &'a Library,
 
     // cache_ai: RefCell<HashMap<String, Rc<Box<AI>>>>,
     // cache_hud: RefCell<HashMap<String, Rc<Box<HUD>>>>,
@@ -71,7 +71,7 @@ pub struct ResourceManager<'a> {
 
 impl<'a> ResourceManager<'a> {
     // Create without gfx state management -- generally for tests.
-    pub fn new_headless(library: &'a LibStack) -> Fallible<Self> {
+    pub fn new_headless(library: &'a Library) -> Fallible<Self> {
         return Ok(ResourceManager {
             library,
             // cache_ai: RefCell::new(HashMap::new()),
@@ -118,7 +118,7 @@ impl<'a> ResourceManager<'a> {
     //     Ok(Rc::new(Box::new(AI {})))
     // }
 
-    pub fn library(&self) -> &LibStack {
+    pub fn library(&self) -> &Library {
         return self.library;
     }
 }
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_load_direct() -> Fallible<()> {
-        let lib = LibStack::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
+        let lib = Library::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
         let rm = ResourceManager::new_headless(&lib)?;
         let _sh = rm.load_sh("F22.SH")?;
         //assert_eq!(ot.short_name, "Runway 2");

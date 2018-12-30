@@ -17,84 +17,49 @@ extern crate image;
 extern crate lib;
 extern crate pal;
 extern crate pic;
-extern crate vulkano;
-extern crate window;
+extern crate render;
 
 use failure::Fallible;
-use lib::LibStack;
+use lib::Library;
 use pal::Palette;
 use pic::decode_pic;
 use std::sync::Arc;
-use vulkano::{
-    device::{Device, Queue},
-    format::Format,
-    image::{Dimensions, ImmutableImage},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
-    sync::GpuFuture,
-};
+use render::Renderer;
 
 pub struct TextureManager<'a> {
     system_palette: Palette,
-    library: &'a LibStack,
+    library: &'a Library,
+    renderer: Arc<Renderer>,
 }
 
 impl<'a> TextureManager<'a> {
-    pub fn new(library: &'a LibStack) -> Fallible<Self> {
+    pub fn new(library: &'a Library, renderer: Arc<Renderer>) -> Fallible<Self> {
         let bytes = library.load("PALETTE.PAL")?;
         let system_palette = Palette::from_bytes(&bytes)?;
         return Ok(TextureManager {
             system_palette,
             library,
+            renderer
         });
     }
 
     pub fn load_texture(
         &self,
-        filename: &str,
-        queue: Arc<Queue>,
-    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+        filename: &str
+    ) -> Fallible<usize> {
         let data = self.library.load(filename)?;
         let image_buf = decode_pic(&self.system_palette, &data)?.to_rgba();
-        let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
 
-        println!("X: {}", image_dim.0 * image_dim.1);
-
-        let dimensions = Dimensions::Dim2d {
-            width: image_dim.0,
-            height: image_dim.1,
-        };
-        let (texture, tex_future) = ImmutableImage::from_iter(
-            image_data.iter().cloned(),
-            dimensions,
-            Format::R8G8B8A8Srgb,
-            queue,
-        )?;
-
-        return Ok((texture, Box::new(tex_future) as Box<GpuFuture>));
-    }
-
-    pub fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Linear,
-            Filter::Linear,
-            MipmapMode::Nearest,
-            SamplerAddressMode::Repeat,
-            SamplerAddressMode::Repeat,
-            SamplerAddressMode::Repeat,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
+        let id = self.renderer.upload_texture(image_buf)?;
+        Ok(id)
     }
 }
 
 #[cfg(test)]
 extern crate omnilib;
+
+#[cfg(test)]
+extern crate window;
 
 #[cfg(test)]
 mod tests {
@@ -104,17 +69,12 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let mut futures = Vec::new();
-        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let window = Arc::new(GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?);
+        let renderer = Arc::new(Renderer::new(window.clone()));
         let omni = OmniLib::new_for_test()?; //_in_games(vec!["FA"])?;
         for lib in omni.libraries() {
-            let texman = TextureManager::new(&lib)?;
-            let (_texture, future) = texman.load_texture("FLARE.PIC", window.queue())?;
-            futures.push(future);
-        }
-
-        for f in futures {
-            let rv = f.then_signal_semaphore_and_flush()?.cleanup_finished();
+            let texman = TextureManager::new(&lib, renderer.clone())?;
+            let tex_id = texman.load_texture("FLARE.PIC")?;
         }
 
         return Ok(());

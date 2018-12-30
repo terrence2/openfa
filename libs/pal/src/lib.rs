@@ -93,7 +93,6 @@ impl Palette {
         // Dump a haze everywhere so we know what was unset.
         for i in 0..16 {
             for j in 0..16 {
-                let off = (j << 4 | i) as usize;
                 for ip in 0..size {
                     for jp in 0..size {
                         let c = (255 * ((ip + (jp % 2)) % 2)) as u8;
@@ -147,7 +146,7 @@ mod tests {
         assert_eq!(
             pal.rgb(1)?,
             Rgb {
-                data: [189, 0, 189]
+                data: [252, 0, 252]
             }
         );
         Ok(())

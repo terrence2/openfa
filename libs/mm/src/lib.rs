@@ -15,7 +15,7 @@
 use asset::AssetLoader;
 use failure::{bail, ensure, err_msg, Fallible};
 use lay::Layer;
-use lib::LibStack;
+use lib::Library;
 use nalgebra::{Point3, Vector3};
 use num_traits::Num;
 use std::{str::FromStr, sync::Arc};
@@ -488,7 +488,7 @@ pub struct MissionMap {
 impl MissionMap {
     pub fn from_str(
         s: &str,
-        lib: Arc<Box<LibStack>>,
+        lib: Arc<Box<Library>>,
         types: &TypeManager,
         assets: Arc<Box<AssetLoader>>,
     ) -> Fallible<Self> {
@@ -798,7 +798,7 @@ impl MissionMap {
     // USNF:
     //     installdir: UKR.T2, $UKR[1-8].T2
     //     MM+M refs: ukr.T2, $ukr[1-8].T2
-    pub fn get_t2_name_for_map(raw: &str, lib: &Arc<Box<LibStack>>) -> Fallible<String> {
+    pub fn get_t2_name_for_map(raw: &str, lib: &Arc<Box<Library>>) -> Fallible<String> {
         if lib.file_exists(raw) {
             return Ok(raw.to_owned());
         }

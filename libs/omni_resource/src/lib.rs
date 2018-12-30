@@ -17,7 +17,7 @@ extern crate lib;
 extern crate resource_manager;
 
 use failure::{err_msg, Fallible};
-use lib::LibStack;
+use lib::Library;
 use resource_manager::ResourceManager;
 use std::{collections::HashMap, fs, path::Path};
 
@@ -35,14 +35,14 @@ impl OmniResource {
         let mut stacks = HashMap::new();
         for dir in dirs {
             let path = Path::new("../../test_data/unpacked/").join(dir);
-            let libs = LibStack::from_dir_search(&path)?;
+            let libs = Library::from_dir_search(&path)?;
             let rm = ResourceManager::new_headless(libs)?;
             stacks.insert(dir.to_owned(), rm);
         }
         return Ok(Self { stacks });
     }
 
-    // LibStack from_dir_search in every subdir in the given path.
+    // Library from_dir_search in every subdir in the given path.
     pub fn from_subdirs(path: &Path) -> Fallible<Self> {
         let mut stacks = HashMap::new();
         for entry in fs::read_dir(path)? {
@@ -57,7 +57,7 @@ impl OmniResource {
                 .to_str()
                 .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
                 .to_owned();
-            let libs = LibStack::from_dir_search(&entry.path())?;
+            let libs = Library::from_dir_search(&entry.path())?;
             let rm = ResourceManager::new_headless(libs)?;
             stacks.insert(name, rm);
         }

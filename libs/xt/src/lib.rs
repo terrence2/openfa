@@ -15,7 +15,7 @@
 use asset::AssetLoader;
 use failure::{bail, Fallible};
 use jt::ProjectileType;
-use lib::LibStack;
+use lib::Library;
 use nt::NpcType;
 pub use ot::parse;
 use ot::ObjectType;
@@ -95,7 +95,7 @@ impl TypeRef {
 // out a pointer to the type.
 pub struct TypeManager {
     // The library to load from.
-    library: Arc<Box<LibStack>>,
+    library: Arc<Box<Library>>,
 
     // The asset loader.
     assets: Arc<Box<AssetLoader>>,
@@ -105,7 +105,7 @@ pub struct TypeManager {
 }
 
 impl TypeManager {
-    pub fn new(library: Arc<Box<LibStack>>, assets: Arc<Box<AssetLoader>>) -> Fallible<TypeManager> {
+    pub fn new(library: Arc<Box<Library>>, assets: Arc<Box<AssetLoader>>) -> Fallible<TypeManager> {
         return Ok(TypeManager {
             assets,
             library,
