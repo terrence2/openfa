@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetLoader;
 use failure::{bail, ensure, err_msg, Fallible};
+use lay::Layer;
 use lib::LibStack;
 use nalgebra::{Point3, Vector3};
 use num_traits::Num;
@@ -477,10 +478,8 @@ pub struct TDic {
 
 #[allow(dead_code)]
 pub struct MissionMap {
-    map: Arc<Box<Terrain>>,
-    //map: T2,
-    layer_name: String,
-    //layer: Layer,
+    pub map: Arc<Box<Terrain>>,
+    pub layer: Arc<Box<Layer>>,
     wind: (i16, i16),
     view: (u32, u32, u32),
     time: (u8, u8),
@@ -497,7 +496,7 @@ impl MissionMap {
         assert_eq!(lines[0], "textFormat");
 
         let mut map = None;
-        let mut layer_name = None;
+        let mut layer = None;
         let mut wind = Some((0, 0));
         let mut view = None;
         let mut time = None;
@@ -528,8 +527,8 @@ impl MissionMap {
                     map = Some(assets.load_t2(&filename)?);
                 }
                 "layer" => {
-                    assert_eq!(layer_name, None);
-                    layer_name = Some(parts[1]);
+                    let filename = &parts[1].to_uppercase();
+                    layer = Some(assets.load_lay(&filename)?);
                 }
                 "clouds" => {
                     ensure!(parts[1] == "0", "expected 0 clouds value");
@@ -720,10 +719,10 @@ impl MissionMap {
         }
 
         ensure!(map.is_some(), "mission map must have a 'map' key");
-        ensure!(layer_name.is_some(), "mission map must have a 'layer' key");
+        ensure!(layer.is_some(), "mission map must have a 'layer' key");
         return Ok(MissionMap {
             map: map.unwrap(),
-            layer_name: layer_name.unwrap().to_owned(),
+            layer: layer.unwrap(),
             wind: wind.unwrap(),
             view: view.unwrap(),
             time: time.unwrap(),
@@ -839,7 +838,7 @@ mod tests {
     use omnilib::OmniLib;
 
     #[test]
-    fn it_works() -> Fallible<()> {
+    fn it_can_parse_all_mm_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(vec![
             "FA",
             "USNF97",
@@ -867,6 +866,7 @@ mod tests {
             let contents = lib.load_text(name)?;
             let _mm = MissionMap::from_str(&contents, lib.clone(), &types, assets.clone())?;
         }
+
         return Ok(());
     }
 }

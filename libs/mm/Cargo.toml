@@ -11,7 +11,7 @@ nalgebra = ">= 0.16"
 num-traits = ">= 0.2.5"
 lib = { path = "../lib" }
 xt = { path = "../xt" }
-#lay = { path = "../lay" }
+lay = { path = "../lay" }
 #pic = { path = "../pic" }
 t2 = { path = "../t2" }
 asset = { path = "../asset" }
