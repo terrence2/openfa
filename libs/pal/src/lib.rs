@@ -59,11 +59,30 @@ impl Palette {
     }
 
     pub fn rgb(&self, index: usize) -> Fallible<Rgb<u8>> {
-        //ensure!(index < self.entries.len(), "index outside of palette");
-        if index >= self.entries.len() {
-            return Ok(Rgb { data: [0, 0, 0] });
-        }
+        ensure!(index < self.entries.len(), "index outside of palette");
+        // if index >= self.entries.len() {
+        //     return Ok(Rgb { data: [0, 0, 0] });
+        // }
         Ok(self.entries[index].to_rgb())
+    }
+
+    pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Fallible<()> {
+        let mut dst_i = offset;
+        for src_i in 0..other.entries.len() {
+            //println!("at 0x{:02X}: {:?}", dst_i, other.entries[src_i]);
+            self.entries[dst_i] = other.entries[src_i];
+            dst_i += 1;
+        }
+        Ok(())
+    }
+
+    // Slice from [start to end), half-open.
+    pub fn slice(&self, start: usize, end: usize) -> Fallible<Palette> {
+        let slice = self.entries[start..end].to_owned();
+        Ok(Palette {
+            color_count: slice.len(),
+            entries: slice,
+        })
     }
 
     pub fn dump_png(&self, name: &str) -> Fallible<()> {
@@ -128,7 +147,6 @@ impl Palette {
         img.save(name.to_owned() + ".png")?;
         Ok(())
     }
-
 }
 
 #[cfg(test)]

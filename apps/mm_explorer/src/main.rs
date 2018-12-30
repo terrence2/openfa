@@ -13,9 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetManager;
-use clap::{App, Arg};
 use failure::Fallible;
-use lay::Layer;
 use omnilib::OmniLib;
 use mm::MissionMap;
 use nalgebra::{Isometry3, Matrix4, Orthographic3, Perspective3, Point3, Rotation3, Vector3};
@@ -194,12 +192,12 @@ struct Opt {
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
 
-    let mut omnilib = OmniLib::new_for_test()?;
+    let omnilib = OmniLib::new_for_test()?;
     let lib = omnilib.library(&opt.game);
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-    let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
+    let mut base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
     let types = TypeManager::new(lib.clone(), assets.clone())?;
@@ -208,22 +206,22 @@ pub fn main() -> Fallible<()> {
 
     let terrain = mm.map;
 
-    /*
-    let layers = lib.find_matching("*.LAY")?;
+    // FIXME: this is 100% wrong.
+    // I think we want to copy the last 3 rows 1 row up; Then we need to use something to find
+    // to detect where water is and do... something.
+    let layer_data = mm.layer.for_index(mm.layer_index + 2);
+    base_palette.overlay_at(layer_data, 0xC0)?;
+    let slice = layer_data.slice(0x20, 0x30)?;
+    base_palette.overlay_at(&slice, 0xD0)?;
 
-    println!("LAYER: {}", layers[0]);
-    let layer_bytes = lib.load(&layers[0])?;
-    let layer = Layer::from_bytes(&layer_bytes)?;
-
-    let terrains = &lib.find_matching("*.T2")?;
-    let terrain = Terrain::from_bytes(&lib.load(&terrains[0])?)?;
-    */
+    base_palette.dump_png("base_palette")?;
 
     let mut verts = Vec::new();
     for (i, s) in terrain.samples.iter().enumerate() {
         let i = i as u32;
         let x = (i % terrain.width) as f32 / (terrain.width as f32) - 0.5;
         let z = (i / terrain.width) as f32 / (terrain.height as f32) - 0.5;
+        let h = -(s.height as f32) / (256.0f32 * 2f32);
 
         //        let mut metaclr = if s.modifiers == 16 {
         //            [1f32, 0f32, 1f32]
@@ -236,10 +234,11 @@ pub fn main() -> Fallible<()> {
         //        };
 
         let c = base_palette.rgb(s.color as usize)?;
+        //println!("Mapped 0x{:02X} to {:?}", s.color, c);
 
         verts.push(Vertex {
-            position: [x, -(s.height as f32) / 128.0f32, z],
-            color: [c[0] as f32, c[1] as f32, c[2] as f32],
+            position: [x, h, z],
+            color: [c[0] as f32 / 255f32, c[1] as f32 / 255f32, c[2] as f32 / 255f32],
         });
     }
     let vertex_buffer =

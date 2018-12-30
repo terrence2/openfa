@@ -72,17 +72,25 @@ packed_struct!(LayerPlaneHeader {
     // 0x6F bytes
 });
 
-pub struct Layer {}
+pub struct Layer {
+    fragments: Vec<Palette>,
+}
 
 impl Layer {
+    pub fn for_index(&self, index: usize) -> &Palette {
+        &self.fragments[index]
+    }
+
     pub fn from_bytes(data: &[u8], lib: Arc<Box<Library>>) -> Fallible<Layer> {
         let mut pe = peff::PE::parse(data)?;
         pe.relocate(0x0000_0000)?;
         Layer::from_pe("inval", &pe, lib)
     }
 
-    pub fn from_pe(prefix: &str, pe: &peff::PE, lib: Arc<Box<Library>>) -> Fallible<Layer> {
+    fn from_pe(prefix: &str, pe: &peff::PE, lib: Arc<Box<Library>>) -> Fallible<Layer> {
         assert!(prefix.len() > 0);
+
+        let mut fragments = Vec::new();
 
         let pal_data = lib.load("PALETTE.PAL")?;
         let palette_digest = md5::compute(&pal_data);
@@ -105,7 +113,8 @@ impl Layer {
 
         // This segment of data counts up from 00 to FF and is present in every single LAY.
         // It makes little sense as a LUT because if you have the value itself? It is always
-        // referenced from the first pointer, so maybe it is some weird indirect LUT?
+        // referenced from the first pointer, so maybe it's some weird indirect LUT using
+        // the fact that this data is loaded with PE relocation?
         let ramp_addr = header.unkPtr00x100();
         let ramp_data = &data[ramp_addr as usize..ramp_addr as usize + 0x100];
         let ramp_digest = md5::compute(ramp_data);
@@ -117,13 +126,14 @@ impl Layer {
         let first_size = 0x100 + 46;
         let first_addr = header.ptrFirst();
         let first_data = &data[first_addr as usize..first_addr as usize + first_size];
+        let first_pal_data = &first_data[22 * 3 + 2..];
+        let first_pal = Palette::from_bytes(&first_pal_data[0..(16 * 3 + 13) * 3])?;
+        fragments.push(first_pal);
         if dump_stuff {
+            // Seems to be correct for CLOUD and FOG, but really dark for DAY.
             let name = format!("dump/{}/first_data", prefix);
             println!("Dumping {}", name);
-            // Palette::dump_partial(&first_data, 1, &name.clone())?;
-            // Palette::dump_partial(&first_data[22 * 3..], 4, &(name.clone() + "0"))?;
-            // Palette::dump_partial(&first_data[22 * 3 + 1..], 4, &(name.clone() + "1"))?;
-            Palette::dump_partial(&first_data[22 * 3 + 2..], 4, &(name.clone() + "2"))?;
+            Palette::dump_partial(first_pal_data, 4, &(name.clone() + "2"))?;
         }
 
         let mut plane_offset = 0;
@@ -172,6 +182,9 @@ impl Layer {
             //println!("PLANE: {}", str::from_utf8(&plane.unkFillAndShape())?);
             //assert!(str::from_utf8(&plane.shape())?.starts_with("wave1.SH"));
             //println!("SHAPE: {}", str::from_utf8(&plane.shape())?);
+            let pal_data = &data[offset + hdr_size + 1..offset + hdr_size + 0xC1];
+            let pal = Palette::from_bytes(pal_data)?;
+            fragments.push(pal);
             if dump_stuff {
                 // Dump after the fixed header... we claim the palette only extends for 0xC1 bytes...
                 let name = format!("dump/{}/first-{}", prefix, plane_offset);
@@ -182,8 +195,23 @@ impl Layer {
                 //     &(name.clone() + "-0"),
                 // )?;
 
+                // 0
+                //   CLOUD: white
+                //   DAY: sunrise or sunset?
+                //   FOG: white with blue ramp
+                // 1
+                //   CLOUD: white with blue ramp
+                //   DAY: fully lit
+                //   FOG: black
+                // 2
+                //   CLOUD: black
+                //   DAY: sunrise or sunset
+                // 3
+                //   DAY: very dark, but clearly has color... twilight?
+                // 4
+                //   DAY: black
                 Palette::dump_partial(
-                    &data[offset + hdr_size + 1..offset + hdr_size + 0xC1],
+                    pal_data,
                     4,
                     &(name.clone() + "-1"),
                 )?;
@@ -219,6 +247,7 @@ impl Layer {
         }
 
         // decode 7 palettes at ptrSecond
+        // These are all gray scales. Maybe for the skybox?
         offset = header.ptrSecond() as usize;
         assert_eq!(palette_digest, md5::compute(&data[offset..offset + 0x300]));
         if dump_stuff {
@@ -237,7 +266,7 @@ impl Layer {
             offset += 0x100;
         }
 
-        Ok(Layer {})
+        Ok(Layer { fragments })
     }
 }
 

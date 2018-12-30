@@ -480,6 +480,7 @@ pub struct TDic {
 pub struct MissionMap {
     pub map: Arc<Box<Terrain>>,
     pub layer: Arc<Box<Layer>>,
+    pub layer_index: usize,
     wind: (i16, i16),
     view: (u32, u32, u32),
     time: (u8, u8),
@@ -497,6 +498,7 @@ impl MissionMap {
 
         let mut map = None;
         let mut layer = None;
+        let mut layer_index = None;
         let mut wind = Some((0, 0));
         let mut view = None;
         let mut time = None;
@@ -527,7 +529,16 @@ impl MissionMap {
                     map = Some(assets.load_t2(&filename)?);
                 }
                 "layer" => {
+                    // The following are used in FA:
+                    //    cloud1b.LAY 1
+                    //    day2b.LAY 0
+                    //    day2b.LAY 4
+                    //    day2e.LAY 0
+                    //    day2f.LAY 0
+                    //    day2.LAY 0
+                    //    day2v.LAY 0
                     let filename = &parts[1].to_uppercase();
+                    layer_index = Some(parts[2].parse::<usize>()?);
                     layer = Some(assets.load_lay(&filename)?);
                 }
                 "clouds" => {
@@ -723,6 +734,7 @@ impl MissionMap {
         return Ok(MissionMap {
             map: map.unwrap(),
             layer: layer.unwrap(),
+            layer_index: layer_index.unwrap(),
             wind: wind.unwrap(),
             view: view.unwrap(),
             time: time.unwrap(),
