@@ -20,6 +20,7 @@
 //
 // Open question: are we responsible for upload to the GPU? If not, who is?
 use failure::{Fallible};
+use lay::Layer;
 use lib::LibStack;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use t2::Terrain;
@@ -28,6 +29,7 @@ pub struct AssetLoader {
     lib: Arc<Box<LibStack>>,
 
     cache_ai: RefCell<HashMap<String, Arc<Box<u32>>>>,
+    cache_layer: RefCell<HashMap<String, Arc<Box<Layer>>>>,
     cache_terrain: RefCell<HashMap<String, Arc<Box<Terrain>>>>,
 }
 
@@ -36,6 +38,7 @@ impl AssetLoader {
         Ok(AssetLoader {
             lib,
             cache_ai: RefCell::new(HashMap::new()),
+            cache_layer: RefCell::new(HashMap::new()),
             cache_terrain: RefCell::new(HashMap::new()),
         })
     }
@@ -49,6 +52,17 @@ impl AssetLoader {
                 .insert(filename.to_owned(), Arc::new(Box::new(ai)));
         }
         Ok(self.cache_ai.borrow()[filename].clone())
+    }
+
+    pub fn load_lay(&self, filename: &str) -> Fallible<Arc<Box<Layer>>> {
+        if !self.cache_layer.borrow().contains_key(filename) {
+            let data = self.lib.load(filename)?;
+            let layer = Layer::from_bytes(&data)?;
+            self.cache_layer
+                .borrow_mut()
+                .insert(filename.to_owned(), Arc::new(Box::new(layer)));
+        }
+        Ok(self.cache_layer.borrow()[filename].clone())
     }
 
     pub fn load_t2(&self, filename: &str) -> Fallible<Arc<Box<Terrain>>> {
