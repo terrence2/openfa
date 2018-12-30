@@ -1,0 +1,24 @@
+[package]
+name = "mm_explorer"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+nalgebra = "0.16"
+clap = "= 2.32"
+failure = ">= 0.1.2"
+structopt = ">= 0.2"
+vulkano = "^ 0.11.1"
+vulkano-shaders = "^ 0.11.1"
+vulkano-win = "^ 0.11.1"
+winit = "^ 0.18"
+asset = { path = "../../libs/asset" }
+lay = { path = "../../libs/lay" }
+mm = { path = "../../libs/mm" }
+omnilib = { path = "../../libs/omnilib" }
+pal = { path = "../../libs/pal" }
+render = { path = "../../libs/render" }
+t2 = { path = "../../libs/t2" }
+xt = { path = "../../libs/xt" }
+window = { path = "../../libs/window" }
