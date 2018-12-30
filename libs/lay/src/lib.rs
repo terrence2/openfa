@@ -12,23 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate bitflags;
-extern crate failure;
-extern crate i386;
-extern crate lazy_static;
-extern crate log;
-extern crate md5;
-extern crate packed_struct;
-extern crate pal;
-extern crate peff;
-extern crate reverse;
-extern crate simplelog;
-
 use failure::{ensure, Fallible};
 use packed_struct::packed_struct;
 use pal::Palette;
-use reverse::bs2s;
 use std::{fs, mem, str};
+//use reverse::bs2s;
 
 packed_struct!(LayerHeader {
      _0 => unkPtr00x100: u32, // Ramp
@@ -84,27 +72,6 @@ packed_struct!(LayerPlaneHeader {
 });
 
 pub struct Layer {}
-
-const EMPTY_PAL_PLANE: [u8; 0x23F] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
 
 impl Layer {
     pub fn from_bytes(data: &[u8]) -> Fallible<Layer> {
@@ -166,7 +133,7 @@ impl Layer {
         let mut offset = first_addr as usize + first_size;
         loop {
             let plane_size = 0x160;
-            let pal_size = 0xc1;
+            let _pal_size = 0xc1;
             let hdr_size = mem::size_of::<LayerPlaneHeader>();
             // 0xc1 + 0x6f = 0x130 bytes
             // 0x130 / 16 => 19
@@ -229,7 +196,7 @@ impl Layer {
             }
 
             // Why 0xc1 bytes here?
-            //            let plane_pal: Vec<u8> = data[offset + hdr_size..offset + hdr_size + pal_size]
+            //            let plane_pal: Vec<u8> = data[offset + hdr_size..offset + hdr_size + _pal_size]
             //                .to_owned()
             //                .to_vec();
             //
@@ -255,18 +222,17 @@ impl Layer {
         offset = header.ptrSecond() as usize;
         assert_eq!(palette_digest, md5::compute(&data[offset..offset + 0x300]));
         if dump_stuff {
-            let pal_data = &data[offset..offset + 0x300];
             let name = format!("dump/{}/second-0", prefix);
             println!("dumping {}", name);
             Palette::dump_partial(&data[offset..offset + 0x300], 4, &name)?;
         }
         offset += 0x300;
         for i in 0..18 {
-            let pal_data = &data[offset..offset + 0x100];
+            //let pal_data = &data[offset..offset + 0x100];
             if dump_stuff {
                 let name = format!("dump/{}/second-{}", prefix, i + 1);
                 println!("dumping {}", name);
-                Palette::dump_partial(&data[offset..offset + 0x100], 1, &name);
+                Palette::dump_partial(&data[offset..offset + 0x100], 1, &name)?;
             }
             offset += 0x100;
         }
