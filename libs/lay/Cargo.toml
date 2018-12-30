@@ -19,3 +19,6 @@ i386 = { path = "../i386" }
 lib = { path = "../lib" }
 peff = { path = "../peff" }
 reverse = { path = "../reverse" }
+
+[dev-dependencies]
+omnilib = { path = "../omnilib" }

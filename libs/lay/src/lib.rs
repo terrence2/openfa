@@ -109,9 +109,8 @@ const EMPTY_PAL_PLANE: [u8; 0x23F] = [
 impl Layer {
     pub fn from_bytes(data: &[u8]) -> Fallible<Layer> {
         let mut pe = peff::PE::parse(data)?;
-        //pe.relocate(0xAA00_0000)?;
         pe.relocate(0x0000_0000)?;
-        Layer::from_pe("", &pe)
+        Layer::from_pe("inval", &pe)
     }
 
     pub fn from_pe(prefix: &str, pe: &peff::PE) -> Fallible<Layer> {
@@ -124,7 +123,7 @@ impl Layer {
         fp.read_to_end(&mut pal_data)?;
         let palette_digest = md5::compute(&pal_data);
 
-        let dump_stuff = true;
+        let dump_stuff = false;
 
         if dump_stuff {
             fs::create_dir("dump").unwrap_or(());
@@ -264,62 +263,13 @@ impl Layer {
         offset += 0x300;
         for i in 0..18 {
             let pal_data = &data[offset..offset + 0x100];
-            let name = format!("dump/{}/second-{}", prefix, i + 1);
-            println!("dumping {}", name);
-            Palette::dump_partial(&data[offset..offset + 0x100], 1, &name);
-            /*
-            let mut pal_b: Vec<u8> = EMPTY_PAL_PLANE.to_owned().to_vec();
-            pal_b.append(&mut EMPTY_PAL_PLANE.to_owned().to_vec());
-            pal_b.append(&mut pal_data.to_owned());
             if dump_stuff {
-                Palette::dump_partial(
-                    &pal_b,
-                    1,
-                    &format!("dump/{}/pal-second{}-{:04X}", prefix, i, offset),
-                ).unwrap();
+                let name = format!("dump/{}/second-{}", prefix, i + 1);
+                println!("dumping {}", name);
+                Palette::dump_partial(&data[offset..offset + 0x100], 1, &name);
             }
-            */
             offset += 0x100;
         }
-
-        /*
-        let addrs = vec![
-            ("ptr00", header.unkPtr00x100()),
-            ("ptr01", header.unkPtr01()),
-            ("ptr02", header.unkPtr02()),
-            ("ptr03", header.unkPtr03()),
-            ("ptr04", header.unkPtr04()),
-            ("ptr20", header.unkPtr20x100()),
-            ("ptr21", header.unkPtr21x100()),
-            ("ptr22", header.unkPtr22x100()),
-            ("ptr23", header.unkPtr23x100()),
-            ("ptr24", header.unkPtr24x100()),
-            ("ptr25", header.unkPtr25x100()),
-            ("ptr26", header.unkPtr26x100()),
-            ("ptr50", header.unkPtr50x100()),
-            ("ptr51", header.unkPtr51x100()),
-            ("ptr52", header.unkPtr52x100()),
-            ("ptr53", header.unkPtr53x100()),
-            ("ptr54", header.unkPtr54x100()),
-            ("ptr55", header.unkPtr55x100()),
-            ("ptr56", header.unkPtr56x100()),
-            //header.unkPtr70(),
-            ("ptr71", header.ptrSecond()),
-            ("ptrFirst", header.ptrFirst()),
-        ];
-        fs::create_dir(prefix)?;
-        for &(name, addr) in addrs.iter() {
-            let pal_data = &data[addr as usize..addr as usize + 0x100];
-            let digest = md5::compute(pal_data);
-            println!("At: {}, {:04X}, {:x}", name, addr, digest);
-            let mut foo = pal_data.to_owned();
-            foo.append(&mut pal_data.to_owned());
-            foo.append(&mut pal_data.to_owned());
-            println!("len: {:04X}", foo.len());
-            let pal = Palette::from_bytes_prescaled(&foo)?;
-            pal.dump_png(&format!("dump/{}/pal-{}-{:04X}", prefix, name, addr));
-        }
-        */
 
         Ok(Layer {})
     }
@@ -329,25 +279,26 @@ impl Layer {
 mod tests {
     use super::*;
     use std::io::Read;
+    use omnilib::OmniLib;
 
     #[test]
-    fn it_works() -> Fallible<()> {
-        let paths = fs::read_dir("./test_data")?;
-        for i in paths {
-            let entry = i?;
-            let path = format!("{}", entry.path().display());
-            if path.ends_with("LAY") {
-                let mut fp = fs::File::open(entry.path())?;
-                let mut data = Vec::new();
-                fp.read_to_end(&mut data)?;
-
-                let mut pe = peff::PE::parse(&data)?;
-                pe.relocate(0x0000_0000)?;
-
-                Layer::from_pe(entry.path().file_stem().unwrap().to_str().unwrap(), &pe)?;
-            }
+    fn it_can_parse_all_lay_files() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(vec![
+            "FA",
+            "USNF97",
+//            "ATFGOLD",
+//            "ATFNATO",
+//            "ATF",
+//            "MF",
+//            "USNF"
+        ])?;
+        for (game, name) in omni.find_matching("*.LAY")?.iter() {
+            println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
+            let lib = omni.library(game);
+            let data = lib.load(name)?;
+            let _lay = Layer::from_bytes(&data)?;
         }
 
-        Ok(())
+        return Ok(());
     }
 }
