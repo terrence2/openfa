@@ -14,8 +14,9 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
 use packed_struct::packed_struct;
+use lib::Library;
 use pal::Palette;
-use std::{fs, mem, str};
+use std::{fs, mem, str, sync::Arc};
 //use reverse::bs2s;
 
 packed_struct!(LayerHeader {
@@ -74,20 +75,16 @@ packed_struct!(LayerPlaneHeader {
 pub struct Layer {}
 
 impl Layer {
-    pub fn from_bytes(data: &[u8]) -> Fallible<Layer> {
+    pub fn from_bytes(data: &[u8], lib: Arc<Box<Library>>) -> Fallible<Layer> {
         let mut pe = peff::PE::parse(data)?;
         pe.relocate(0x0000_0000)?;
-        Layer::from_pe("inval", &pe)
+        Layer::from_pe("inval", &pe, lib)
     }
 
-    pub fn from_pe(prefix: &str, pe: &peff::PE) -> Fallible<Layer> {
+    pub fn from_pe(prefix: &str, pe: &peff::PE, lib: Arc<Box<Library>>) -> Fallible<Layer> {
         assert!(prefix.len() > 0);
 
-        use std::fs::File;
-        use std::io::Read;
-        let mut fp = File::open("PALETTE.PAL")?;
-        let mut pal_data = Vec::new();
-        fp.read_to_end(&mut pal_data)?;
+        let pal_data = lib.load("PALETTE.PAL")?;
         let palette_digest = md5::compute(&pal_data);
 
         let dump_stuff = false;
@@ -176,11 +173,11 @@ impl Layer {
                 // Dump after the fixed header... we claim the palette only extends for 0xC1 bytes...
                 let name = format!("dump/{}/first-{}", prefix, plane_offset);
                 println!("dumping pal+ {}", name);
-//                Palette::dump_partial(
-//                    &data[offset + hdr_size..offset + hdr_size + 0xC0],
-//                    4,
-//                    &(name.clone() + "-0"),
-//                )?;
+                // Palette::dump_partial(
+                //     &data[offset + hdr_size..offset + hdr_size + 0xC0],
+                //     4,
+                //     &(name.clone() + "-0"),
+                // )?;
 
                 Palette::dump_partial(
                     &data[offset + hdr_size + 1..offset + hdr_size + 0xC1],
@@ -188,11 +185,11 @@ impl Layer {
                     &(name.clone() + "-1"),
                 )?;
 
-//                Palette::dump_partial(
-//                    &data[offset + hdr_size + 2..offset + hdr_size + 0xC2],
-//                    4,
-//                    &(name.clone() + "-2"),
-//                )?;
+                // Palette::dump_partial(
+                //     &data[offset + hdr_size + 2..offset + hdr_size + 0xC2],
+                //     4,
+                //     &(name.clone() + "-2"),
+                // )?;
             }
 
             // Why 0xc1 bytes here?
@@ -244,7 +241,6 @@ impl Layer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Read;
     use omnilib::OmniLib;
 
     #[test]
@@ -252,17 +248,17 @@ mod tests {
         let omni = OmniLib::new_for_test_in_games(vec![
             "FA",
             "USNF97",
-//            "ATFGOLD",
-//            "ATFNATO",
-//            "ATF",
-//            "MF",
-//            "USNF"
+            "ATFGOLD",
+            "ATFNATO",
+            "ATF",
+            "MF",
+            //"USNF"
         ])?;
         for (game, name) in omni.find_matching("*.LAY")?.iter() {
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let _lay = Layer::from_bytes(&data)?;
+            let _lay = Layer::from_bytes(&data, lib.clone())?;
         }
 
         return Ok(());

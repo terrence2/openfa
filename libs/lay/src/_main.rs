@@ -14,19 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
 
-extern crate bitflags;
-extern crate clap;
-extern crate failure;
-extern crate i386;
-extern crate lay;
-extern crate lazy_static;
-extern crate log;
-extern crate md5;
-extern crate pal;
-extern crate peff;
-extern crate reverse;
-extern crate simplelog;
-
 use clap::{App, Arg};
 use failure::{bail, Error};
 use lay::Layer;
@@ -44,12 +31,14 @@ fn main() -> Result<(), Error> {
                 .short("-w")
                 .help("Wrap at 32 bytes")
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("INPUT")
                 .help("The layer(s) to show")
                 .multiple(true)
                 .required(true),
-        ).get_matches();
+        )
+        .get_matches();
 
     // let step = 0x40;
     // for i in 0..0x100 {
@@ -71,7 +60,7 @@ fn main() -> Result<(), Error> {
         println!("RELOCS: {:?}", pe.relocs);
         println!("THUNKS: {:?}", pe.thunks);
 
-        let _lay = Layer::from_pe(Path::new(name).file_stem().unwrap().to_str().unwrap(), &pe)?;
+        let _lay = Layer::from_pe(Path::new(name).file_stem().unwrap().to_str().unwrap(), &pe, lib)?;
 
         let mut extents = Vec::new();
         for reloc in pe.relocs {
