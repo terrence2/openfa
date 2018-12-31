@@ -31,6 +31,7 @@ use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, err_msg, Fallible};
 use glob::{MatchOptions, Pattern};
 use lazy_static::lazy_static;
+use log::trace;
 use memmap::{Mmap, MmapOptions};
 use packed_struct::packed_struct;
 use regex::Regex;
@@ -79,7 +80,10 @@ pub struct Priority {
 impl Priority {
     fn from_path(path: &Path) -> Fallible<Self> {
         if path.ends_with("installdir") {
-            return Ok(Self { priority: 0, version: 0 });
+            return Ok(Self {
+                priority: 0,
+                version: 0,
+            });
         }
         lazy_static! {
             static ref PRIO_RE: Regex =
@@ -168,6 +172,7 @@ packed_struct!(LibEntry {
 
 impl LibFile {
     pub fn from_path(key: usize, path: &Path) -> Fallible<Self> {
+        trace!("opening lib file {:?} with key {}", path, key);
         let fp = fs::File::open(path)?;
         let map = unsafe { MmapOptions::new().map(&fp)? };
 
@@ -285,6 +290,7 @@ pub struct LibDir {
 
 impl LibDir {
     pub fn from_path(libkey: usize, path: &Path) -> Fallible<Self> {
+        trace!("using libdir {:?} with key {}", path, libkey);
         let mut local_index = HashMap::new();
         for entry in fs::read_dir(path)? {
             let entry = entry?;
@@ -303,7 +309,8 @@ impl LibDir {
                         "libdir: non-utf8 characters in file: {:?}",
                         filename,
                     ))
-                })?.to_owned();
+                })?
+                .to_owned();
             let rv = local_index.insert(
                 name,
                 UnpackedFileInfo {
@@ -533,6 +540,13 @@ impl Library {
     pub fn load(&self, filename: &str) -> Fallible<Cow<[u8]>> {
         ensure!(!filename.is_empty(), "cannot load empty file");
         if let Some(info) = self.index.get(filename) {
+            trace!(
+                "loading {} ({} b) with compression {:?} ({} b)",
+                filename,
+                info.stat(filename, &self.libs)?.unpacked_size,
+                info.stat(filename, &self.libs)?.compression,
+                info.stat(filename, &self.libs)?.packed_size
+            );
             return Ok(info.load(&self.libs)?);
         }
         bail!("no such file {} in index", filename)

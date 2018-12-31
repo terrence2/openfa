@@ -14,10 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetManager;
 use failure::Fallible;
-use omnilib::OmniLib;
+use log::{info, trace};
 use mm::MissionMap;
 use nalgebra::{Isometry3, Matrix4, Orthographic3, Perspective3, Point3, Rotation3, Vector3};
+use omnilib::OmniLib;
 use pal::Palette;
+use simplelog::{Config, LevelFilter, TermLogger};
 use std::{
     f32::consts::PI,
     path::{Path, PathBuf},
@@ -48,7 +50,7 @@ mod vs {
     use vulkano_shaders::shader;
 
     shader! {
-        ty: "vertex",
+    ty: "vertex",
         src: "
             #version 450
 
@@ -73,7 +75,7 @@ mod fs {
     use vulkano_shaders::shader;
 
     shader! {
-        ty: "fragment",
+    ty: "fragment",
         src: "
             #version 450
 
@@ -142,6 +144,9 @@ pub struct ArcBallCamera {
     yaw: f32,
     pitch: f32,
     projection: Perspective3<f32>,
+
+    in_rotate: bool,
+    in_move: bool,
 }
 
 impl ArcBallCamera {
@@ -152,6 +157,8 @@ impl ArcBallCamera {
             yaw: 0f32,
             pitch: PI / 2f32,
             projection: Perspective3::new(1f32 / aspect_ratio, PI / 2f32, 0.01f32, 10.0f32),
+            in_rotate: false,
+            in_move: false,
         }
     }
 
@@ -171,26 +178,67 @@ impl ArcBallCamera {
     }
 
     pub fn on_mousemove(&mut self, x: f32, y: f32) {
-        self.yaw += x as f32 * 0.5 * (3.14 / 180.0);
+        if self.in_rotate {
+            self.yaw += x as f32 * 0.5 * (3.14 / 180.0);
 
-        self.pitch += y as f32 * (3.14 / 180.0);
-        self.pitch = self.pitch.min(PI - 0.001f32).max(0.001f32);
+            self.pitch += y as f32 * (3.14 / 180.0);
+            self.pitch = self.pitch.min(PI - 0.001f32).max(0.001f32);
+        }
+
+        if self.in_move {
+            let eye = self.eye();
+            let dir = nalgebra::normalize(&(self.target - eye));
+            let tangent = nalgebra::normalize(&Vector3::y().cross(&dir));
+            let bitangent = dir.cross(&tangent);
+            let mult = (self.distance / 1000.0).min(0.01);
+            self.target = self.target + tangent * (x * mult) + bitangent * (y * mult);
+        }
+    }
+
+    pub fn on_mousescroll(&mut self, x: f32, y: f32) {
+        // up/down is y
+        //   Up is negative
+        //   Down is positive
+        //   Works in steps of 15 for my mouse.
+        self.distance += y / 100f32;
+        self.distance = self.distance.max(0.01);
+    }
+
+    pub fn on_mousebutton_down(&mut self, id: u32) {
+        match id {
+            1 => self.in_rotate = true,
+            3 => self.in_move = true,
+            _ => trace!("button down: {}", id),
+        }
+    }
+
+    pub fn on_mousebutton_up(&mut self, id: u32) {
+        match id {
+            1 => self.in_rotate = false,
+            3 => self.in_move = false,
+            _ => trace!("button up: {}", id),
+        }
     }
 }
-
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "mm_explorer", about = "Show the contents of an mm file")]
 struct Opt {
-    #[structopt(short="g", long="game", default_value="FA", help="The game libraries to load.")]
+    #[structopt(
+        short = "g",
+        long = "game",
+        default_value = "FA",
+        help = "The game libraries to load."
+    )]
     game: String,
 
-    #[structopt(help="Will load it from game, or look at last component of path")]
+    #[structopt(help = "Will load it from game, or look at last component of path")]
     input: String,
 }
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
+    TermLogger::init(LevelFilter::Trace, Config::default())?;
 
     let omnilib = OmniLib::new_for_test()?;
     let lib = omnilib.library(&opt.game);
@@ -206,13 +254,9 @@ pub fn main() -> Fallible<()> {
 
     let terrain = mm.map;
 
-    // FIXME: this is 100% wrong.
-    // I think we want to copy the last 3 rows 1 row up; Then we need to use something to find
-    // to detect where water is and do... something.
+    // I'm not sure why we want to copy at 0xA0, but things line up if we do.
     let layer_data = mm.layer.for_index(mm.layer_index + 2);
-    base_palette.overlay_at(layer_data, 0xC0)?;
-    let slice = layer_data.slice(0x20, 0x30)?;
-    base_palette.overlay_at(&slice, 0xD0)?;
+    base_palette.overlay_at(layer_data, 0xA0)?;
 
     base_palette.dump_png("base_palette")?;
 
@@ -238,7 +282,11 @@ pub fn main() -> Fallible<()> {
 
         verts.push(Vertex {
             position: [x, h, z],
-            color: [c[0] as f32 / 255f32, c[1] as f32 / 255f32, c[2] as f32 / 255f32],
+            color: [
+                c[0] as f32 / 255f32,
+                c[1] as f32 / 255f32,
+                c[2] as f32 / 255f32,
+            ],
         });
     }
     let vertex_buffer =
@@ -284,7 +332,8 @@ pub fn main() -> Fallible<()> {
             .blend_alpha_blending()
             .render_pass(
                 Subpass::from(window.render_pass(), 0).expect("gfx: did not find a render pass"),
-            ).build(window.device())?,
+            )
+            .build(window.device())?,
     );
 
     //    let set = Arc::new(
@@ -313,9 +362,10 @@ pub fn main() -> Fallible<()> {
         })?;
 
         use winit::{
-            DeviceEvent::{Key, MouseMotion},
+            DeviceEvent::{Button, Key, MouseMotion, MouseWheel},
+            ElementState,
             Event::{DeviceEvent, WindowEvent},
-            KeyboardInput, VirtualKeyCode,
+            KeyboardInput, MouseScrollDelta, VirtualKeyCode,
             WindowEvent::{CloseRequested, Destroyed, Resized},
         };
 
@@ -340,16 +390,31 @@ pub fn main() -> Fallible<()> {
             } => {
                 camera.on_mousemove(x as f32, y as f32);
             }
+            DeviceEvent {
+                event: MouseWheel { delta: MouseScrollDelta::LineDelta(x, y) },
+                ..
+            } => camera.on_mousescroll(x, y),
+            DeviceEvent {
+                event: Button { button: id, state: ElementState::Pressed },
+                ..
+            } => camera.on_mousebutton_down(id),
+            DeviceEvent {
+                event: Button { button: id, state: ElementState::Released },
+                ..
+            } => camera.on_mousebutton_up(id),
 
             // Keyboard
             DeviceEvent {
                 event:
-                Key(KeyboardInput {
-                        virtual_keycode: Some(VirtualKeyCode::Escape),
+                    Key(KeyboardInput {
+                        virtual_keycode: Some(keycode),
                         ..
                     }),
                 ..
-            } => done = true,
+            } => match keycode {
+                VirtualKeyCode::Escape => done = true,
+                _ => trace!("unknown keycode: {:?}", keycode),
+            },
 
             _ => (),
         });

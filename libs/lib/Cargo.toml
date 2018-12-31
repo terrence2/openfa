@@ -21,6 +21,7 @@ failure = ">= 0.1.2"
 glob = ">= 0.2"
 humansize = ">= 1.0.1"
 lazy_static = ">= 1.0"
+log = ">= 0.4"
 memmap = ">= 0.6"
 regex = ">= 1"
 lzss = { path = "../lzss" }

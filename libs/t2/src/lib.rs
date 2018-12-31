@@ -126,16 +126,36 @@ Kuril Islands      {0, 1}
 Ukraine            {0, 1}
 */
 use failure::{bail, ensure, Fallible};
+use log::trace;
 use packed_struct::packed_struct;
 use std::{mem, str};
 
+#[derive(Copy, Clone)]
 pub struct Sample {
     pub color: u8,
     pub modifiers: u8,
     pub height: u8,
 }
 
+impl Default for Sample {
+    fn default() -> Self {
+        Self {
+            color: 0xD0,
+            modifiers: 0,
+            height: 0,
+        }
+    }
+}
+
 impl Sample {
+    fn from_bytes(data: &[u8]) -> Self {
+        Self {
+            color: data[0],
+            modifiers: data[1],
+            height: data[2],
+        }
+    }
+
     fn new(color: u8, modifiers: u8, height: u8) -> Self {
         assert!(
             color == 0xFF
@@ -207,9 +227,9 @@ packed_struct!(BITEHeader0 {
     _D => width: u16 as usize,
     _E => height: u16 as usize,
 
-    _F => unkI: u16,
-    _10 => unkJ: u16,
-    _11 => unkK: u16
+    _F => unkI: u16 as usize,
+    _10 => unkJ: u16 as usize,
+    _11 => unkK: u16 as usize
 });
 
 packed_struct!(BITEHeader1 {
@@ -231,12 +251,31 @@ packed_struct!(BITEHeader1 {
     _10 => unkA: u16,
     _11 => unkB: u16,
     _12 => unkC: u16,
+
     _13 => lastByte: u32,
+
     _14 => width: u16 as usize,
     _15 => height: u16 as usize,
-    _16 => unkI: u16,
-    _17 => unkJ: u16,
-    _18 => unkK: u16
+
+    _16 => unkI: u16 as usize,
+    _17 => unkJ: u16 as usize,
+    _18 => unkK: u16 as usize
+});
+
+packed_struct!(BIT2Header {
+    _0 => magic: [u8; 4],
+
+    // Actually 80 bytes, but slit up because Debug is not implemented for arrays past 32.
+    _1a => name0: [u8; 32],
+    _1b => name1: [u8; 32],
+    _1c => name2: [u8; 16],
+
+    _2 => pic_file:  [u8; 15],
+
+    _3 => unk0: u32,
+    _4 => unk1: u32,
+    _5 => unk2: u32,
+    _6 => unk3: u32
 });
 
 const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
@@ -248,7 +287,7 @@ impl Terrain {
             return Self::from_bite(data);
         }
         if magic == MAGIC_BIT2 {
-            return Self::from_bytes_format2(data);
+            return Self::from_bit2(data);
         }
 
         bail!(
@@ -320,6 +359,49 @@ impl Terrain {
     00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
     00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
     000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
+
+    ATF:FRA.T2
+    00000000  42 49 54 45 46 72 61 6e  63 65 00 00 00 00 00 00  |BITEFrance......|
+    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    *
+    00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
+    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
+                                          AAAAA BBBBB CCCCC LL
+    00000070  00 00 00 00 00 00 00 00  00 08 00 1a 00 1a 00 31  |...............1|
+              LLLLLLLL WWWWW HHHHH IIIIII JJJJJ KKKKK
+    00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
+    00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
+    000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
+
+    10 = stride
+    d = offset?
+
+    The french map is:
+        Total (/208):
+           miles ->      290 (1.4)
+           meters -> 466,710 (2243)
+           feet -> 1,531,000 (7360)
+
+           miles ->      300 (1.44)
+           meters -> 482,803 (2321)
+           feet -> 1,584,000 (7615)
+
+    Possible scales:
+        0x0008 => 8
+        0x0800 => 2048
+
+        0x00000019 => 25
+        0x00001900 => 6400
+        0x00190000 => 1638400
+        0x19000000 => 419,430,400
+
+        0x001a => 26
+        0x1a00 => 6656
+
+        0x000d => 13
+        0x0010 => 16
+
+        //
     */
     fn from_bite(data: &[u8]) -> Fallible<Self> {
         // Between USNF and MF, the format of the header changed without changing the
@@ -385,6 +467,31 @@ impl Terrain {
         let data_end = data_start + num_pix * 3;
         let entries = &data[data_start..data_end];
 
+        // 10 => block size
+        // d => block count
+
+        let mut off = 0;
+
+        // For each block in the input.
+        let mut samples = vec![Default::default(); num_pix];
+        let blkSize = header.unkI();
+        for blkx in 0..header.unkJ() {
+            for blky in 0..header.unkK() {
+                // For each pixel in the block from top to bottom...
+                for i in 0..blkSize {
+                    for j in 0..blkSize {
+                        let data = &entries[off..off + 3];
+                        off += 3;
+                        let x_pos = blkx * blkSize + i;
+                        let y_pos = blky * blkSize + j;
+                        let index = y_pos * header.width() as usize + x_pos;
+                        samples[index] = Sample::from_bytes(data);
+                    }
+                }
+            }
+        }
+
+        /*
         let mut samples = Vec::new();
         for i in 0..num_pix {
             let color = entries[i * 3];
@@ -392,6 +499,7 @@ impl Terrain {
             let height = entries[i * 3 + 2];
             samples.push(Sample::new(color, modifiers, height))
         }
+        */
 
         let terrain = Terrain {
             name,
@@ -415,8 +523,47 @@ impl Terrain {
     00000080  00 20 00 00 00 95 00 03  00 00 01 00 00 00 01 00  |. ..............|
               HH ?? ?? ?? ?? << -- >>  << -- >> << -- >>
     00000090  00 95 00 00 00 d2 00 00  d2 00 00 d2 00 00 d2 00  |................|
+
+
+    00000000  42 49 54 32 46 72 61 6e  63 65 00 00 00 00 00 00  |BIT2France......|
+    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    *
+    00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
+                       XXXXXXXXXXX BBBBBB BBBBB YYYYY DDDDDDDD
+    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
+              DD EEEEEEEEEEE QQQQQQQQQQQQ FFFFFFFFFFF GGGGGGGG
+    00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 1a 00 00  |................|
+              GG VVVVVVVVVVV LLLLLLLLLLLL WWWWWWWWWWW HHHHHHHH
+    00000080  00 19 00 00 00 15 e8 01  00 d0 00 00 00 c8 00 00  |................|
+              HH KKKKKKKKKKK << -- >>  << -- >> << -- >> << --
+    00000090  00 95 00 00 00 d3 00 00  d3 00 00 d3 00 00 d3 00  |................|
+
+    The french map is:
+        Total (/208):
+           miles ->      290 (1.4)
+           meters -> 466,710 (2243)
+           feet -> 1,531,000 (7360)
+
+           miles ->      300 (1.44)
+           meters -> 482,803 (2321)
+           feet -> 1,584,000 (7615)
+
+    Possible scales:
+        0x00000008 => 8
+        0x00000800 => 2048
+        0x00080000 => 524288
+
+        0x00000019 => 25
+        0x00001900 => 6400
+        0x00190000 => 1638400
+        0x19000000 => 419,430,400
+
+        0x0000001a => 26
+        0x00001a00 => 6656
+        0x001a0000 => 1703936
     */
-    fn from_bytes_format2(data: &[u8]) -> Fallible<Self> {
+
+    fn from_bit2(data: &[u8]) -> Fallible<Self> {
         let magic = &data[0..4];
         ensure!(magic == MAGIC_BIT2, "missing magic");
 
@@ -439,6 +586,7 @@ impl Terrain {
         let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
         let width = dwords[0];
         let height = dwords[1];
+        trace!("terrain size: {}x{}", width, height);
         let npix = (width * height) as usize;
 
         // Followed by many 3-byte entries.
@@ -534,7 +682,8 @@ mod test {
             println!("AT: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let contents = lib.load(name)?;
-            let _terrain = Terrain::from_bytes(&contents)?;
+            let terrain = Terrain::from_bytes(&contents)?;
+            terrain.make_debug_images(&format!("dump/{}_{}", game, name))?;
         }
         Ok(())
     }

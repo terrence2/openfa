@@ -839,6 +839,21 @@ impl MissionMap {
 
         bail!("no map file matching {} found", raw)
     }
+
+    // This is a slightly harder problem then getting the T2, because even though ~FOON.T2
+    // might exist for ~FOON.MM, we need to look up FOO[i-k].PIC.
+    pub fn get_base_name_for_map(raw: &str, lib: &Arc<Box<Library>>) -> Fallible<String> {
+        let mut name = raw.split('.').next().ok_or_else(|| err_msg("expected a dotted name"))?;
+        if name.starts_with('~') || name.starts_with('$') {
+            name = &name[1..];
+        }
+        let se = name.chars().rev().take(1).collect::<String>();
+        if se.parse::<u8>().is_ok() {
+            name = &name[..name.len() - 1];
+        }
+
+        Ok(name.to_owned())
+    }
 }
 
 #[cfg(test)]

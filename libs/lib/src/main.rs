@@ -43,7 +43,8 @@ fn main() -> Result<(), Error> {
                         .required(true)
                         .multiple(true),
                 ),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("unpack")
                 .about("unpack the given lib files")
                 .arg(
@@ -54,13 +55,15 @@ fn main() -> Result<(), Error> {
                         .takes_value(true)
                         .value_name("DIR")
                         .help("output into the given directory"),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("INPUT")
                         .help("Sets the input libs to unpack")
                         .required(true)
                         .multiple(true),
                 ),
-        ).get_matches();
+        )
+        .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("ls") {
         let inputs = matches.values_of("INPUT").unwrap();

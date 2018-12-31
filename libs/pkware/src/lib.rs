@@ -39,11 +39,7 @@
 
   Mark Adler    madler@alumni.caltech.edu
  */
-
-#![cfg_attr(feature = "benchmark", feature(test))]
-extern crate failure;
-extern crate lazy_static;
-
+use log::trace;
 use failure::{bail, ensure, Fallible};
 use lazy_static::lazy_static;
 
@@ -156,6 +152,8 @@ lazy_static! {
 // Note: constructing all 3 vectors takes ~1us; not really worth optimizating
 // further as they are cached by lazy_static!.
 fn construct(rep: &[u8]) -> Fallible<Huffman> {
+    trace!("constructing huffman tables");
+
     let mut length = [0usize; 256]; /* code lengths */
 
     /* convert compact repeat counts into symbol bit length list */
