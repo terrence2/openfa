@@ -15,6 +15,7 @@
 use crate::{util::maybe_hex, waypoint::Waypoint};
 use failure::{bail, err_msg, Fallible};
 use nalgebra::{Point3, Vector3};
+use xt::{TypeManager, TypeRef};
 
 pub enum Nationality {
     Unk0 = 0,
@@ -103,7 +104,7 @@ impl Nationality {
 
 #[allow(dead_code)]
 pub struct ObjectInfo {
-    type_name: String,
+    xt: TypeRef,
     name: Option<String>,
     pos: Point3<f32>,
     angle: Vector3<f32>,
@@ -120,7 +121,11 @@ pub struct ObjectInfo {
 }
 
 impl ObjectInfo {
-    pub(crate) fn from_lines(lines: &[&str], offset: &mut usize) -> Fallible<Self> {
+    pub(crate) fn from_lines(
+        lines: &[&str],
+        offset: &mut usize,
+        type_manager: &TypeManager,
+    ) -> Fallible<Self> {
         let mut type_name = None;
         let mut name = None;
         let mut pos = None;
@@ -187,9 +192,9 @@ impl ObjectInfo {
             *offset += 1;
         }
         return Ok(ObjectInfo {
-            type_name: type_name.ok_or_else(|| {
+            xt: type_manager.load(&type_name.ok_or_else(|| {
                 err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
-            })?,
+            })?.to_uppercase())?,
             name,
             pos: pos
                 .ok_or_else(|| err_msg(format!("mm:obj: pos not set in obj ending {}", *offset)))?,

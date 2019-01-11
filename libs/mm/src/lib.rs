@@ -19,7 +19,8 @@ mod waypoint;
 
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
 use failure::{bail, ensure, err_msg, Fallible};
-use std::{str::FromStr};
+use std::str::FromStr;
+use xt::TypeManager;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TLoc {
@@ -64,7 +65,7 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str) -> Fallible<Self> {
+    pub fn from_str(s: &str, type_manager: &TypeManager) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
@@ -192,7 +193,7 @@ impl MissionMap {
                 }
                 "obj" => {
                     offset += 1;
-                    let obj = ObjectInfo::from_lines(&lines, &mut offset)?;
+                    let obj = ObjectInfo::from_lines(&lines, &mut offset, type_manager)?;
                     objects.push(obj);
                 }
                 "special" => {
@@ -332,8 +333,9 @@ mod tests {
                 omni.path(game, name).unwrap_or("<unknown>".to_owned())
             );
             let lib = omni.library(game);
+            let type_manager = TypeManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
-            let _mm = MissionMap::from_str(&contents)?;
+            let _mm = MissionMap::from_str(&contents, &type_manager)?;
         }
 
         Ok(())
