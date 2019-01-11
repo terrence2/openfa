@@ -12,12 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate failure;
-extern crate vulkano;
-extern crate vulkano_win;
-extern crate winit;
-
 use failure::{bail, err_msg, Fallible};
+use log::trace;
 use std::{collections::VecDeque, sync::Arc};
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -37,6 +33,7 @@ use vulkano::{
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
 
+#[derive(Debug)]
 pub struct GraphicsConfig {
     device_index: usize,
     samples: usize,
@@ -63,6 +60,7 @@ impl GraphicsConfigBuilder {
     }
 
     pub fn build(self) -> GraphicsConfig {
+        trace!("{:?}", self.0);
         self.0
     }
 }
@@ -100,7 +98,8 @@ impl SizeDependent {
 
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
 
-        let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
+        let depth_buffer =
+            AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
 
         let (swapchain, images) = Swapchain::new(
             device.clone(),
@@ -150,6 +149,7 @@ impl SizeDependent {
                 .build()?;
             framebuffers.push(Arc::new(framebuffer) as Arc<FramebufferAbstract + Send + Sync>);
         }
+        trace!("created {} frame buffers", framebuffers.len());
 
         Ok(SizeDependent {
             swapchain,
@@ -158,10 +158,15 @@ impl SizeDependent {
         })
     }
 
-    fn handle_resize(&mut self, device: &Arc<Device>, surface: &Arc<Surface<Window>>) -> Fallible<()> {
+    fn handle_resize(
+        &mut self,
+        device: &Arc<Device>,
+        surface: &Arc<Surface<Window>>,
+    ) -> Fallible<()> {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
 
-        let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
+        let depth_buffer =
+            AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
 
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
         self.swapchain = swapchain;
@@ -199,13 +204,16 @@ pub struct GraphicsWindow {
 
 impl GraphicsWindow {
     pub fn new(config: &GraphicsConfig) -> Fallible<Self> {
+        trace!("GraphicsWindow::new");
         let extensions = vulkano_win::required_extensions();
         let instance = Instance::new(None, &extensions, None)?;
 
         let events_loop = EventsLoop::new();
 
+        trace!("creating vulcan surface");
         let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone())?;
 
+        trace!("using device index {}", config.device_index);
         let physical = PhysicalDevice::from_index(&instance, config.device_index)
             .ok_or_else(|| err_msg(format!("gpu: no device at index {}", config.device_index)))?;
 
@@ -226,6 +234,7 @@ impl GraphicsWindow {
             [(queue_family, 0.5)].iter().cloned(),
         )?;
         let queues = queues.collect::<Vec<_>>();
+        trace!("created device for {}", device.physical_device().name());
 
         let recreatable = SizeDependent::new(
             &device.clone(),
@@ -351,7 +360,8 @@ impl GraphicsWindow {
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
             self.device(),
             self.queue().family(),
-        )?.begin_render_pass(
+        )?
+        .begin_render_pass(
             self.framebuffer(image_num),
             false,
             vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
