@@ -22,6 +22,7 @@
 use failure::{Fallible};
 use lay::Layer;
 use lib::Library;
+use log::trace;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use t2::Terrain;
 
@@ -35,6 +36,7 @@ pub struct AssetManager {
 
 impl AssetManager {
     pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
+        trace!("AssetManager::new");
         Ok(AssetManager {
             lib,
             cache_ai: RefCell::new(HashMap::new()),
