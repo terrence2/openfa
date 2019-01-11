@@ -12,15 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
 use failure::{bail, Fallible};
 use jt::ProjectileType;
 use lib::Library;
+use log::trace;
 use nt::NpcType;
 pub use ot::parse;
 use ot::ObjectType;
 use pt::PlaneType;
-use std::{sync::Arc, cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 // A generic type.
 pub enum Type {
@@ -97,17 +97,16 @@ pub struct TypeManager {
     // The library to load from.
     library: Arc<Box<Library>>,
 
-    // The asset loader.
-    assets: Arc<Box<AssetManager>>,
-
     // Cache immutable resources. Use interior mutability for ease of use.
     cache: RefCell<HashMap<String, TypeRef>>,
 }
 
 impl TypeManager {
-    pub fn new(library: Arc<Box<Library>>, assets: Arc<Box<AssetManager>>) -> Fallible<TypeManager> {
+    pub fn new(
+        library: Arc<Box<Library>>,
+    ) -> Fallible<TypeManager> {
+        trace!("TypeManager::new");
         return Ok(TypeManager {
-            assets,
             library,
             cache: RefCell::new(HashMap::new()),
         });
@@ -122,19 +121,19 @@ impl TypeManager {
         let ext = name.rsplitn(2, ".").collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
-                let ot = ObjectType::from_str(&content, &self.assets)?;
+                let ot = ObjectType::from_str(&content)?;
                 Type::OT(ot)
             }
             "JT" => {
-                let ot = ProjectileType::from_str(&content, &self.assets)?;
+                let ot = ProjectileType::from_str(&content)?;
                 Type::JT(ot)
             }
             "NT" => {
-                let ot = NpcType::from_str(&content, &self.assets)?;
+                let ot = NpcType::from_str(&content)?;
                 Type::NT(ot)
             }
             "PT" => {
-                let ot = PlaneType::from_str(&content, &self.assets)?;
+                let ot = PlaneType::from_str(&content)?;
                 Type::PT(ot)
             }
             _ => bail!("resource: unknown type {}", name),
@@ -160,7 +159,7 @@ mod tests {
 
     #[test]
     fn can_parse_all_entity_types() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
         ])?;
         for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
@@ -172,8 +171,7 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
-            let types = TypeManager::new(lib.clone(), assets)?;
+            let types = TypeManager::new(lib.clone())?;
             let ty = types.load(name)?;
             // Only one misspelling in 2500 files.
             assert!(ty.ot().file_name() == *name || *name == "SMALLARM.JT");

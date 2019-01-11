@@ -15,7 +15,6 @@
 mod envelope;
 
 use crate::envelope::Envelope;
-use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use nt::NpcType;
 use ot::{
@@ -52,8 +51,7 @@ impl FromRow for Envelopes {
     type Produces = Envelopes;
     fn from_row(
         row: &FieldRow,
-        pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetManager,
+        pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<Self::Produces> {
         let (_name, lines) = row.value().pointer()?;
         let mut off = 0usize;
@@ -65,7 +63,7 @@ impl FromRow for Envelopes {
                 .iter()
                 .map(|v| v.as_ref())
                 .collect::<Vec<_>>();
-            let env = Envelope::from_lines((), &lns, pointers, assets)?;
+            let env = Envelope::from_lines((), &lns, pointers)?;
             envs.push(env);
             off += 44;
         }
@@ -83,8 +81,7 @@ impl FromRows for SystemDamage {
 
     fn from_rows(
         rows: &[FieldRow],
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
+        _pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<(Self::Produces, usize)> {
         let mut damage_limit = [0; 45];
         for (i, row) in rows[..45].iter().enumerate() {
@@ -107,8 +104,7 @@ impl FromRows for PhysBounds {
 
     fn from_rows(
         rows: &[FieldRow],
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
+        _pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<(Self::Produces, usize)> {
         Ok((
             Self {
@@ -327,7 +323,7 @@ pub struct PlaneType {
 */
 
 impl PlaneType {
-    pub fn from_str(data: &str, assets: &AssetManager) -> Fallible<Self> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -335,9 +331,9 @@ impl PlaneType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        let obj = ObjectType::from_lines((), &obj_lines, &pointers, assets)?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
         let npc_lines = parse::find_section(&lines, "NPC_TYPE")?;
-        let npc = NpcType::from_lines(obj, &npc_lines, &pointers, assets)?;
+        let npc = NpcType::from_lines(obj, &npc_lines, &pointers)?;
 
         // The :hards and :env pointer sections are inside of the PLANE_TYPE section
         // for some reason, so filter those out by finding the first :foo.
@@ -347,7 +343,7 @@ impl PlaneType {
             .take_while(|&l| !l.starts_with(':'))
             .collect::<Vec<&str>>();
         println!("lineS: {}", plane_lines.len());
-        let plane = Self::from_lines(npc, &plane_lines, &pointers, &assets)?;
+        let plane = Self::from_lines(npc, &plane_lines, &pointers)?;
 
         return Ok(plane);
     }
@@ -364,7 +360,7 @@ mod tests {
 
     #[test]
     fn it_can_parse_all_plane_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.PT")?.iter() {
@@ -376,9 +372,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
-            let pt = PlaneType::from_str(&contents, &assets)?;
+            let pt = PlaneType::from_str(&contents)?;
             assert_eq!(pt.nt.ot.file_name(), *name);
             //println!("{}:{} - tow:{}, min:{}, max:{}, acc:{}, dacc:{}", game, name, pt.maxTakeoffWeight, pt.bv_y.min, pt.bv_y.max, pt.bv_y.acc, pt.bv_y.dacc);
             //            println!(

@@ -12,12 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use nalgebra::Point3;
 use ot::{
     make_type_struct,
-    parse::{FieldRow, FromRow},
+    parse::{parse_string, FieldRow, FromRow},
 };
 use std::collections::HashMap;
 
@@ -59,8 +58,7 @@ impl FromRow for HardpointDefault {
     type Produces = HardpointDefault;
     fn from_row(
         field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
+        _pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<Self::Produces> {
         if !field.value().pointer().is_ok() {
             ensure!(
@@ -74,7 +72,7 @@ impl FromRow for HardpointDefault {
                 sym.starts_with("defaultTypeName"),
                 "expected defaultTypeName in ptr name"
             );
-            let name = ot::parse::string(&values[0])?.to_uppercase();
+            let name = parse_string(&values[0])?.to_uppercase();
             Ok(HardpointDefault::new(name))
         }
     }

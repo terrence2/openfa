@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use asset::AssetManager;
 pub use failure::{bail, ensure, err_msg, Error, Fallible};
 pub use std::any::TypeId;
 use std::{collections::HashMap, str};
@@ -301,17 +300,8 @@ pub enum Repr {
 
 #[macro_export]
 macro_rules! make_storage_type {
-    (AI, $_ft:path) => {
-        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
-    };
-    (Shape, $_ft:path) => {
-        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
-    };
-    (Sound, $_ft:path) => {
-        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
-    };
-    (HUD, $_ft:path) => {
-        std::option::Option<std::sync::Arc<std::boxed::Box<u32>>>
+    (PtrStr, $_ft:path) => {
+        std::option::Option<std::string::String>
     };
     ($_:ident, $field_type:path) => {
         $field_type
@@ -320,11 +310,7 @@ macro_rules! make_storage_type {
 
 pub trait FromRow {
     type Produces;
-    fn from_row(
-        row: &FieldRow,
-        pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetManager,
-    ) -> Fallible<Self::Produces>;
+    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self::Produces>;
 }
 
 pub trait FromRows {
@@ -332,53 +318,52 @@ pub trait FromRows {
     fn from_rows(
         rows: &[FieldRow],
         pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetManager,
     ) -> Fallible<(Self::Produces, usize)>;
 }
 
 #[macro_export]
 macro_rules! make_consume_fields {
-    (Byte, Bool, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Byte, Bool, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.byte()? != 0, 1)
     };
 
-    (Byte, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Byte, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.byte()? as $field_type, 1)
     };
-    (Word, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Word, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.word()? as $field_type, 1)
     };
-    (DWord, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (DWord, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.dword()? as $field_type, 1)
     };
-    (Num, Unsigned, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Num, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.unsigned()? as $field_type, 1)
     };
 
-    (Byte, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Byte, Signed, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.byte()? as i8 as $field_type, 1)
     };
-    (Word, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (Word, Signed, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.word()? as i16 as $field_type, 1)
     };
-    (DWord, Signed, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {
+    (DWord, Signed, $field_type:path, $rows:expr, $_p:ident) => {
         (
             $rows[0].value().numeric()?.dword()? as i32 as $field_type,
             1,
         )
     };
 
-    ($_t:ident, Custom, $field_type:path, $rows:expr, $pointers:ident, $assets:ident) => {
+    ($_t:ident, Custom, $field_type:path, $rows:expr, $pointers:ident) => {
         (
-            <$field_type as $crate::parse::FromRow>::from_row(&$rows[0], $pointers, $assets)?,
+            <$field_type as $crate::parse::FromRow>::from_row(&$rows[0], $pointers)?,
             1,
         )
     };
-    ($_t:ident, CustomN, $field_type:path, $rows:expr, $pointers:ident, $assets:ident) => {
-        <$field_type as $crate::parse::FromRows>::from_rows($rows, $pointers, $assets)?
+    ($_t:ident, CustomN, $field_type:path, $rows:expr, $pointers:ident) => {
+        <$field_type as $crate::parse::FromRows>::from_rows($rows, $pointers)?
     };
 
-    (Word, Vec3, $field_type:path, $rows:expr, $_p:ident, $_r:ident) => {{
+    (Word, Vec3, $field_type:path, $rows:expr, $_p:ident) => {{
         let x = $rows[0].value().numeric()?.word()? as i16 as f32;
         let y = $rows[1].value().numeric()?.word()? as i16 as f32;
         let z = $rows[2].value().numeric()?.word()? as i16 as f32;
@@ -386,7 +371,7 @@ macro_rules! make_consume_fields {
         (p, 3)
     }};
 
-    (Ptr, AI, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
+    (Ptr, PtrStr, $_ft:path, $rows:expr, $pointers:ident) => {
         // Null ptr is represented as `DWord 0`.
         if $rows[0].value().pointer().is_err() {
             ensure!(
@@ -395,64 +380,9 @@ macro_rules! make_consume_fields {
             );
             (None, 1)
         } else {
-            let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(
-                sym == ":unknown" || sym.ends_with("ctName"),
-                "expected ctName in ptr name"
-            );
-            let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($asset_loader.load_ai(&name)?), 1)
-        }
-    };
-
-    (Ptr, Shape, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
-        // Null ptr is represented as `DWord 0`.
-        if $rows[0].value().pointer().is_err() {
-            ensure!(
-                $rows[0].value().numeric()?.dword()? == 0u32,
-                "null pointer must be dword 0"
-            );
-            (None, 1)
-        } else {
-            let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym.ends_with("hape"), "expected shape in ptr name");
-            let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($asset_loader.load_sh(&name)?), 1)
-        }
-    };
-
-    (Ptr, Sound, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
-        // Null ptr is represented as `DWord 0`.
-        if !$rows[0].value().pointer().is_ok() {
-            ensure!(
-                $rows[0].value().numeric()?.dword()? == 0u32,
-                "null pointer must be dword 0"
-            );
-            (None, 1)
-        } else {
-            let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(
-                sym == ":unknown" || sym.ends_with("ound"),
-                "expected sound in ptr name"
-            );
-            let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($asset_loader.load_sound(&name)?), 1)
-        }
-    };
-
-    (Ptr, HUD, $_ft:path, $rows:expr, $pointers:ident, $asset_loader:ident) => {
-        // Null ptr is represented as `DWord 0`.
-        if !$rows[0].value().pointer().is_ok() {
-            ensure!(
-                $rows[0].value().numeric()?.dword()? == 0u32,
-                "null pointer must be dword 0"
-            );
-            (None, 1)
-        } else {
-            let (sym, values) = $rows[0].value().pointer()?;
-            ensure!(sym == "hudName", "expected hud in ptr name");
-            let name = $crate::parse::string(&values[0])?.to_uppercase();
-            (Some($asset_loader.load_hud(&name)?), 1)
+            let (_sym, values) = $rows[0].value().pointer()?;
+            let name = $crate::parse::parse_string(&values[0])?.to_uppercase();
+            (Some(name), 1)
         }
     };
 }
@@ -513,8 +443,7 @@ macro_rules! make_type_struct {
             pub fn from_lines(
                 $parent: $parent_ty,
                 lines: &[&str],
-                pointers: &HashMap<&str, Vec<&str>>,
-                asset_loader: &$crate::parse::AssetManager
+                pointers: &HashMap<&str, Vec<&str>>
             ) -> Fallible<Self> {
                 let file_version = $version_ty::from_len(lines.len())?;
 
@@ -537,7 +466,7 @@ macro_rules! make_type_struct {
                         // Validate comment only on present rows.
                         ensure!(rows[offset].comment().is_none() || rows[offset].comment().unwrap().starts_with($comment), "non-matching comment");
 
-                        let (intermediate, count) = $crate::make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers, asset_loader);
+                        let (intermediate, count) = $crate::make_consume_fields!($row_type, $parse_type, $field_type, &rows[offset..], pointers);
 
                         // Validate all consumed fields
                         for i in 0..count {
@@ -564,7 +493,7 @@ macro_rules! make_type_struct {
     }
 }
 
-pub fn string(line: &str) -> Fallible<String> {
+pub fn parse_string(line: &str) -> Fallible<String> {
     let parts = line.splitn(2, " ").collect::<Vec<&str>>();
     ensure!(parts.len() == 2, "expected 2 parts");
     ensure!(parts[0] == "string", "expected string type");
@@ -583,13 +512,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_string() {
-        assert_eq!(string("string \"\"").unwrap(), "");
-        assert_eq!(string("string \"foo\"").unwrap(), "foo");
-        assert_eq!(string("string \"foo bar baz\"").unwrap(), "foo bar baz");
-        assert_eq!(string("string \"foo\"bar\"baz\"").unwrap(), "foo\"bar\"baz");
-        assert!(string("string \"foo").is_err());
-        assert!(string("string foo\"").is_err());
-        assert!(string("string foo").is_err());
+    fn test_parse_string() {
+        assert_eq!(parse_string("string \"\"").unwrap(), "");
+        assert_eq!(parse_string("string \"foo\"").unwrap(), "foo");
+        assert_eq!(
+            parse_string("string \"foo bar baz\"").unwrap(),
+            "foo bar baz"
+        );
+        assert_eq!(
+            parse_string("string \"foo\"bar\"baz\"").unwrap(),
+            "foo\"bar\"baz"
+        );
+        assert!(parse_string("string \"foo").is_err());
+        assert!(parse_string("string foo\"").is_err());
+        assert!(parse_string("string foo").is_err());
     }
 }

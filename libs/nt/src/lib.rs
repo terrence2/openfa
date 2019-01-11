@@ -15,7 +15,6 @@
 mod hardpoint;
 
 use crate::hardpoint::HardpointType;
-use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_type_struct,
@@ -52,7 +51,6 @@ impl FromRow for Hardpoints {
     fn from_row(
         field: &FieldRow,
         pointers: &HashMap<&str, Vec<&str>>,
-        assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         let (_name, lines) = field.value().pointer()?;
         let mut off = 0usize;
@@ -63,7 +61,7 @@ impl FromRow for Hardpoints {
                 .iter()
                 .map(|v| v.as_ref())
                 .collect::<Vec<_>>();
-            let ht = HardpointType::from_lines((), &lns, pointers, assets)?;
+            let ht = HardpointType::from_lines((), &lns, pointers)?;
             hards.push(ht);
             off += 12;
         }
@@ -74,7 +72,7 @@ impl FromRow for Hardpoints {
 make_type_struct![
 NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
     (DWord, [Hex],            "flags", Unsigned, flags,             u32, V1, 0),        // dword $0   ; flags
-    (Ptr,   [Dec, Sym],            "",       AI, ct_name,            AI, V0, panic!()), // ptr ctName
+    (Ptr,   [Dec, Sym],            "",   PtrStr, ct_name,        String, V0, panic!()), // ptr ctName
     (Byte,  [Dec], "searchFrequencyT", Unsigned, search_frequency_t, u8, V0, panic!()), // byte 40    ; searchFrequencyT
     (Byte,  [Dec],   "unreadyAttackT", Unsigned, unready_attack_t,   u8, V0, panic!()), // byte 100   ; unreadyAttackT
     (Byte,  [Dec],          "attackT", Unsigned, attack_t,           u8, V0, panic!()), // byte 80    ; attackT
@@ -85,7 +83,7 @@ NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
 }];
 
 impl NpcType {
-    pub fn from_str(data: &str, assets: &AssetManager) -> Fallible<Self> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -93,9 +91,9 @@ impl NpcType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        let obj = ObjectType::from_lines((), &obj_lines, &pointers, assets)?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
         let npc_lines = parse::find_section(&lines, "NPC_TYPE")?;
-        let npc = Self::from_lines(obj, &npc_lines, &pointers, assets)?;
+        let npc = Self::from_lines(obj, &npc_lines, &pointers)?;
         return Ok(npc);
     }
 }
@@ -113,7 +111,7 @@ mod tests {
 
     #[test]
     fn can_parse_all_npc_types() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.[NP]T")?.iter() {
@@ -125,9 +123,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
-            let nt = NpcType::from_str(&contents, &assets)?;
+            let nt = NpcType::from_str(&contents)?;
             assert_eq!(nt.ot.file_name(), *name);
             println!(
                 "{}:{:13}> {:?} <> {}",

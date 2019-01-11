@@ -14,8 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod parse;
 
-pub use crate::parse::{FieldRow, FieldType, FromRow, Repr};
-use asset::AssetManager;
+pub use crate::parse::{parse_string, FieldRow, FieldType, FromRow, Repr};
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
 use nalgebra::Point3;
@@ -44,7 +43,6 @@ impl FromRow for TypeTag {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         TypeTag::new(field.value().numeric()?.byte()?)
     }
@@ -89,7 +87,6 @@ impl FromRow for ObjectKind {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         ObjectKind::new(field.value().numeric()?.word()?)
     }
@@ -127,7 +124,6 @@ impl FromRow for ProcKind {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
     ) -> Fallible<Self::Produces> {
         ProcKind::new(&field.value().symbol()?)
     }
@@ -161,17 +157,13 @@ pub struct ObjectNames {
 
 impl FromRow for ObjectNames {
     type Produces = ObjectNames;
-    fn from_row(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
-    ) -> Fallible<ObjectNames> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Fallible<ObjectNames> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
         Ok(ObjectNames {
-            short_name: parse::string(&values[0])?,
-            long_name: parse::string(&values[1])?,
-            file_name: parse::string(&values[2])?,
+            short_name: parse::parse_string(&values[0])?,
+            long_name: parse::parse_string(&values[1])?,
+            file_name: parse::parse_string(&values[2])?,
         })
     }
 }
@@ -205,8 +197,8 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Ptr,   [Sym],            "ot_names",   Custom, ot_names,         ObjectNames, V0, panic!()), // ptr ot_names
     (DWord, [Dec,Hex],           "flags", Unsigned, flags,                    u32, V0, panic!()), // dword $20c21 ; flags
     (Word,  [Dec,Hex],       "obj_class",   Custom, obj_class,         ObjectKind, V0, panic!()), // word $40 ; obj_class
-    (Ptr,   [Dec,Sym],           "shape",    Shape, shape,               CpuShape, V0, panic!()), // ptr shape
-    (Ptr,   [Dec,Sym],     "shadowShape",    Shape, shadow_shape,        CpuShape, V0, panic!()), // dword 0
+    (Ptr,   [Dec,Sym],           "shape",   PtrStr, shape,                 String, V0, panic!()), // ptr shape
+    (Ptr,   [Dec,Sym],     "shadowShape",   PtrStr, shadow_shape,          String, V0, panic!()), // dword 0
     (DWord, [Dec],                    "", Unsigned, unk8,                     u32, V2, 0),        // dword 0
     (DWord, [Dec],                    "", Unsigned, unk9,                     u32, V2, 0),        // dword 0
     (Word,  [Dec],       "dmgDebrisPos.",     Vec3, dmg_debris_pos,   Point3<f32>, V2, Point3::new(0f32, 0f32, 0f32)), // word 0 ; dmgDebrisPos.x
@@ -247,10 +239,10 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (DWord, [Dec,Hex,Car],      "maxAlt",   Signed, max_altitude,             i32, V0, panic!()), // dword ^0 ; maxAlt
     (Symbol,[Sym],            "utilProc",   Custom, util_proc,           ProcKind, V0, panic!()), // symbol _OBJProc	; utilProc
     // Sound Info
-    (Ptr,   [Dec,Sym],       "loopSound",    Sound, loop_sound,             Sound, V0, panic!()), // dword 0
-    (Ptr,   [Dec,Sym],     "secondSound",    Sound, second_sound,           Sound, V0, panic!()), // dword 0
-    (Ptr,   [Dec,Sym],   "engineOnSound",    Sound, engine_on_sound,        Sound, V1, None), // TODO: figure out what the default was in USNF. // dword 0
-    (Ptr,   [Dec,Sym],  "engineOffSound",    Sound, engine_off_sound,       Sound, V1, None),     // dword 0
+    (Ptr,   [Dec,Sym],       "loopSound",   PtrStr, loop_sound,            String, V0, panic!()), // dword 0
+    (Ptr,   [Dec,Sym],     "secondSound",   PtrStr, second_sound,          String, V0, panic!()), // dword 0
+    (Ptr,   [Dec,Sym],   "engineOnSound",   PtrStr, engine_on_sound,       String, V1, None), // TODO: figure out what the default was in USNF. // dword 0
+    (Ptr,   [Dec,Sym],  "engineOffSound",   PtrStr, engine_off_sound,      String, V1, None),     // dword 0
     (Byte,  [Dec],           "doDoppler",     Bool, do_doppler,              bool, V0, panic!()), // byte 1 ; doDoppler
     (Word,  [Dec],          "maxSndDist", Unsigned, max_snd_dist,             u16, V0, panic!()), // in feet? // word 7000 ; maxSndDist
     (Word,  [Dec], "maxPlusDopplerPitch",   Signed, max_plus_doppler_pitch,   i16, V0, panic!()), // word 25 ; maxPlusDopplerPitch
@@ -258,11 +250,11 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Word,  [Dec],     "minDopplerSpeed",   Signed, min_doppler_speed,        i16, V0, panic!()), // word 20 ; minDopplerSpeed
     (Word,  [Dec],     "maxDopplerSpeed",   Signed, max_doppler_speed,        i16, V0, panic!()), // word 1000 ; maxDopplerSpeed
     (Word,  [Dec],         "viewOffset.",     Vec3, unk_rear_view_pos,Point3<f32>, V0, panic!()), // word 0 ; viewOffset.x
-    (Ptr,   [Dec,Sym],         "hudName",      HUD, hud,                      HUD, V2, None) // dword 0
+    (Ptr,   [Dec,Sym],         "hudName",   PtrStr, hud,                   String, V2, None) // dword 0
 }];
 
 impl ObjectType {
-    pub fn from_str(data: &str, asset_loader: &AssetManager) -> Fallible<Self> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -270,7 +262,7 @@ impl ObjectType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        return Self::from_lines((), &obj_lines, &pointers, asset_loader);
+        return Self::from_lines((), &obj_lines, &pointers);
     }
 
     pub fn file_name(&self) -> &str {
@@ -297,7 +289,7 @@ mod tests {
 
     #[test]
     fn can_parse_all_entity_types() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
         ])?;
         for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
@@ -309,9 +301,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
-            let ot = ObjectType::from_str(&contents, &assets)?;
+            let ot = ObjectType::from_str(&contents)?;
             // Only one misspelling in 2500 files.
             assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(

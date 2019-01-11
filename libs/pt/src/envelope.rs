@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_type_struct,
@@ -46,8 +45,7 @@ impl FromRows for EnvelopeShape {
     type Produces = EnvelopeShape;
     fn from_rows(
         rows: &[FieldRow],
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
+        _pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<(Self::Produces, usize)> {
         let mut shape = Vec::new();
         for j in 0..20 {

@@ -12,11 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_type_struct,
-    parse, parse::{FieldRow, FromRow}, ObjectType,
+    parse, parse::{parse_string, FieldRow, FromRow}, ObjectType,
 };
 use std::collections::HashMap;
 
@@ -31,20 +30,19 @@ impl FromRow for ProjectileNames {
     type Produces = ProjectileNames;
     fn from_row(
         field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-        _assets: &AssetManager,
+        _pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<Self::Produces> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "si_names", "expected pointer to si_names");
         ensure!(values.len() >= 2, "expected at least 2 names in si_names");
         let file_name = if values.len() == 3 {
-            Some(parse::string(&values[2])?)
+            Some(parse_string(&values[2])?)
         } else {
             None
         };
         Ok(ProjectileNames {
-            short_name: parse::string(&values[0])?,
-            long_name: parse::string(&values[1])?,
+            short_name: parse_string(&values[0])?,
+            long_name: parse_string(&values[1])?,
             file_name,
         })
     }
@@ -156,7 +154,7 @@ ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                
     (Byte,  [Dec],      "sideHitFuzeFailure", Unsigned, side_hit_fuze_failure,      u8, V0, panic!()), // byte 0 ; sideHitFuzeFailure
     (Byte,  [Dec],          "expTypeForLand", Unsigned, exp_type_for_land,          u8, V0, panic!()), // byte 21 ; expTypeForLand
     (Byte,  [Dec],         "expTypeForWater", Unsigned, exp_type_for_water,         u8, V0, panic!()), // byte 34 ; expTypeForWater
-    (Ptr,   [Sym],               "fireSound",    Sound, fire_sound,              Sound, V0, panic!()), // ptr fireSound
+    (Ptr,   [Sym],               "fireSound",   PtrStr, fire_sound,             String, V0, panic!()), // ptr fireSound
     (Word,  [Dec],              "maxSndDist", Unsigned, max_snd_dist,              u16, V0, panic!()), // word 6000 ; maxSndDist
     (Word,  [Dec],                 "freqAdj", Unsigned, freq_adj,                  u16, V0, panic!()), // word 0 ; freqAdj
     (Word,  [Dec],  "collateralDamageRadius", Unsigned, collateral_damage_radius,  u16, V1, 0),        // word 750 ; collateralDamageRadius
@@ -164,7 +162,7 @@ ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                
 }];
 
 impl ProjectileType {
-    pub fn from_str(data: &str, assets: &AssetManager) -> Fallible<Self> {
+    pub fn from_str(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -172,10 +170,10 @@ impl ProjectileType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        let obj = ObjectType::from_lines((), &obj_lines, &pointers, assets)?;
+        let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
         let proj_lines = parse::find_section(&lines, "PROJ_TYPE")?;
         println!("NLINES: {}", proj_lines.len());
-        return Self::from_lines(obj, &proj_lines, &pointers, assets);
+        return Self::from_lines(obj, &proj_lines, &pointers);
     }
 }
 
@@ -187,7 +185,7 @@ mod tests {
 
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF97", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.JT")?.iter() {
@@ -199,9 +197,8 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let assets = AssetManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
-            let jt = ProjectileType::from_str(&contents, &assets)?;
+            let jt = ProjectileType::from_str(&contents)?;
             assert!(jt.ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:08X} <> {} <> {}",
