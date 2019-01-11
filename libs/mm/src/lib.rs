@@ -12,462 +12,37 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
+mod obj;
+mod special;
+mod util;
+mod waypoint;
+
+use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
 use failure::{bail, ensure, err_msg, Fallible};
-use lay::Layer;
-use lib::Library;
-use nalgebra::{Point3, Vector3};
-use num_traits::Num;
-use std::{str::FromStr, sync::Arc};
-use t2::Terrain;
-use xt::{TypeManager, TypeRef};
+use std::{str::FromStr};
 
-pub fn maybe_hex<T>(n: &str) -> Fallible<T>
-where
-    T: Num + ::std::str::FromStr,
-    <T as Num>::FromStrRadixErr: 'static + ::std::error::Error + Send + Sync,
-    <T as ::std::str::FromStr>::Err: 'static + ::std::error::Error + Send + Sync,
-{
-    ensure!(n.is_ascii(), "non-ascii in number");
-    return Ok(if n.starts_with('$') {
-        T::from_str_radix(&n[1..], 16)?
-    } else {
-        n.parse::<T>()?
-    });
-}
-
-pub enum Nationality {
-    Unk0 = 0,
-    Unk1 = 1,
-    Unk3 = 3,
-    Unk4 = 4,
-    Unk5 = 5,
-    Unk7 = 7,
-    Unk8 = 8,
-    Unk10 = 10,
-    Unk11 = 11,
-    Unk12 = 12,
-    Unk13 = 13,
-    Unk15 = 15,
-    Unk16 = 16,
-    Unk17 = 17,
-    Unk21 = 21,
-    Unk22 = 22,
-    Unk25 = 25,
-    Unk26 = 26,
-    Unk27 = 27,
-    Unk28 = 28,
-    Unk36 = 36,
-    Unk39 = 39,
-    Unk40 = 40,
-    Unk130 = 130,
-    Unk131 = 131,
-    Unk137 = 137,
-    Unk138 = 138,
-    Unk142 = 142,
-    Unk147 = 147,
-    Unk148 = 148,
-    Unk151 = 151,
-    Unk152 = 152,
-    Unk161 = 161,
-    Unk162 = 162,
-    Unk165 = 165,
-    Unk169 = 169,
-    Unk185 = 185,
-}
-
-impl Nationality {
-    fn from_ordinal(n: usize) -> Fallible<Self> {
-        return Ok(match n {
-            0 => Nationality::Unk0,
-            1 => Nationality::Unk1,
-            3 => Nationality::Unk3,
-            4 => Nationality::Unk4,
-            5 => Nationality::Unk5,
-            7 => Nationality::Unk7,
-            8 => Nationality::Unk8,
-            10 => Nationality::Unk10,
-            11 => Nationality::Unk11,
-            12 => Nationality::Unk12,
-            13 => Nationality::Unk13,
-            15 => Nationality::Unk15,
-            16 => Nationality::Unk16,
-            17 => Nationality::Unk17,
-            21 => Nationality::Unk21,
-            22 => Nationality::Unk22,
-            25 => Nationality::Unk25,
-            26 => Nationality::Unk26,
-            27 => Nationality::Unk27,
-            28 => Nationality::Unk28,
-            36 => Nationality::Unk36,
-            39 => Nationality::Unk39,
-            40 => Nationality::Unk40,
-            130 => Nationality::Unk130,
-            131 => Nationality::Unk131,
-            137 => Nationality::Unk137,
-            138 => Nationality::Unk138,
-            142 => Nationality::Unk142,
-            147 => Nationality::Unk147,
-            148 => Nationality::Unk148,
-            151 => Nationality::Unk151,
-            152 => Nationality::Unk152,
-            161 => Nationality::Unk161,
-            162 => Nationality::Unk162,
-            165 => Nationality::Unk165,
-            169 => Nationality::Unk169,
-            185 => Nationality::Unk185,
-            _ => bail!("nationality: do not know {}", n),
-        });
-    }
-}
-
-#[allow(dead_code)]
-pub struct ObjectInst {
-    ty: TypeRef,
-    name: Option<String>,
-    pos: Point3<f32>,
-    angle: Vector3<f32>,
-    nationality: Nationality,
-    flags: u16,
-    speed: f32,
-    alias: i32,
-    // NT only.
-    skill: Option<u8>,
-    react: Option<(u16, u16, u16)>,
-    search_dist: Option<u32>,
-    // PT only.
-    waypoints: Option<Vec<Waypoint>>,
-}
-
-impl ObjectInst {
-    fn from_lines(lines: &[&str], offset: &mut usize, types: &TypeManager) -> Fallible<Self> {
-        let mut ty = None;
-        let mut name = None;
-        let mut pos = None;
-        let mut angle = Vector3::new(0f32, 0f32, 0f32);
-        let mut nationality = None;
-        let mut flags = 0u16;
-        let mut speed = 0f32;
-        let mut alias = 0i32;
-        // NT only.
-        let mut skill = None;
-        let mut react = None;
-        let mut search_dist = None;
-
-        while lines[*offset].trim() != "." {
-            let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
-            match parts[0].trim_left() {
-                "type" => {
-                    ty = Some(types.load(&parts[1].trim().to_uppercase())?);
-                }
-                "name" => name = Some(parts[1].to_owned()),
-                "pos" => {
-                    let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    pos = Some(Point3::new(
-                        ns[0].parse::<i32>()? as f32,
-                        ns[1].parse::<i32>()? as f32,
-                        ns[2].parse::<i32>()? as f32,
-                    ));
-                }
-                "angle" => {
-                    let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    angle = Vector3::new(
-                        ns[0].parse::<i32>()? as f32,
-                        ns[1].parse::<i32>()? as f32,
-                        ns[2].parse::<i32>()? as f32,
-                    );
-                }
-                "nationality" => {
-                    nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
-                }
-                "nationality2" => {
-                    nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
-                }
-                "nationality3" => {
-                    nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
-                }
-                "flags" => flags = maybe_hex::<u16>(parts[1])?,
-                "speed" => speed = parts[1].parse::<i32>()? as f32,
-                "alias" => alias = parts[1].parse::<i32>()?,
-                "skill" => skill = Some(parts[1].parse::<u8>()?),
-                "react" => {
-                    let subparts = parts[1].split(' ').collect::<Vec<&str>>();
-                    assert!(ty.is_some());
-                    react = Some((
-                        maybe_hex::<u16>(subparts[0])?,
-                        maybe_hex::<u16>(subparts[1])?,
-                        maybe_hex::<u16>(subparts[2])?,
-                    ));
-                }
-                "searchDist" => search_dist = Some(parts[1].parse::<u32>()?),
-                _ => {
-                    bail!("unknown obj key: {}", parts[0]);
-                }
-            }
-            *offset += 1;
-        }
-        return Ok(ObjectInst {
-            ty: ty.ok_or_else(|| {
-                err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
-            })?,
-            name,
-            pos: pos
-                .ok_or_else(|| err_msg(format!("mm:obj: pos not set in obj ending {}", *offset)))?,
-            angle,
-            nationality: nationality.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:obj: nationality not set in obj ending {}",
-                    *offset
-                ))
-            })?,
-            flags,
-            speed,
-            alias,
-            skill,
-            react,
-            search_dist,
-            waypoints: None,
-        });
-    }
-}
-
-// special
-//         pos 1347582 0 315393
-//         name ^ASea of Japan^A
-//         color 48
-//         icon -1
-//         flags $0
-//         .
-#[allow(dead_code)]
-struct SpecialInst {
-    pos: Point3<f32>,
-    name: String,
-    color: u8,
-    icon: i32,
-    flags: u16,
-}
-
-impl SpecialInst {
-    fn from_lines(lines: &[&str], offset: &mut usize) -> Fallible<Self> {
-        let mut pos = None;
-        let mut name = None;
-        let mut color = None;
-        let mut icon = None;
-        let mut flags = None;
-
-        while lines[*offset].trim() != "." {
-            let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
-            match parts[0].trim_left() {
-                "pos" => {
-                    let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    pos = Some(Point3::new(
-                        ns[0].parse::<i32>()? as f32,
-                        ns[1].parse::<i32>()? as f32,
-                        ns[2].parse::<i32>()? as f32,
-                    ));
-                }
-                "name" => name = Some(parts[1].to_owned()),
-                "color" => color = Some(parts[1].parse::<u8>()?),
-                "icon" => icon = Some(parts[1].parse::<i32>()?),
-                "flags" => flags = Some(maybe_hex::<u16>(parts[1])?),
-                _ => {
-                    bail!("unknown special key: {}", parts[0]);
-                }
-            }
-            *offset += 1;
-        }
-        return Ok(SpecialInst {
-            pos: pos.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: pos not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            name: name.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: name not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            color: color.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: color not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            icon: icon.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: icon not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            flags: flags.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: flags not set in special ending {}",
-                    *offset
-                ))
-            })?,
-        });
-    }
-}
-
-// w_index 0
-// w_flags 1
-// w_goal 0
-// w_next 0
-// w_pos2 0   0   -36199 15000 1734859
-// w_speed 0
-// w_wng 0 0 0 0
-// w_react 0 0 0
-// w_searchDist 0
-// w_preferredTargetId 0
-// w_name ^A^A
-#[allow(dead_code)]
-pub struct Waypoint {
-    index: u8,
-    flags: u8,
-    goal: bool,
-    next: bool,
-    pos: Vector3<f32>,
-    speed: usize,
-    wng: [u16; 4],
-    react: [u32; 3],
-    search_dist: u8,
-    // preferred_target_id: 0
-    // name: ""
-}
-
-impl Waypoint {
-    fn from_lines(lines: &[&str], offset: &mut usize) -> Fallible<Self> {
-        let mut index = None;
-        let mut flags = None;
-        let mut goal = None;
-        let mut next = None;
-        let mut pos = None;
-        let mut speed = None;
-        let mut wng = None;
-        let mut react = None;
-        let mut search_dist = None;
-
-        while lines[*offset].trim() != "." {
-            let parts = lines[*offset]
-                .trim()
-                .split(' ')
-                .filter(|&s| s != "")
-                .collect::<Vec<&str>>();
-            if parts.len() == 0 {
-                break;
-            }
-            match parts[0].trim_left() {
-                "w_index" => index = Some(parts[1].parse::<u8>()?),
-                "w_flags" => flags = Some(parts[1].parse::<u8>()?),
-                "w_goal" => goal = Some(parts[1] == "1"),
-                "w_next" => next = Some(parts[1] == "1"),
-                "w_pos2" => {
-                    assert_eq!(parts[1].parse::<u8>()?, 0);
-                    assert_eq!(parts[2].parse::<u8>()?, 0);
-                    pos = Some(Vector3::new(
-                        parts[3].parse::<f32>()?,
-                        parts[4].parse::<f32>()?,
-                        parts[5].parse::<f32>()?,
-                    ));
-                }
-                "w_speed" => speed = Some(parts[1].parse::<usize>()?),
-                "w_wng" => {
-                    wng = Some([
-                        parts[1].parse::<u16>()?,
-                        parts[2].parse::<u16>()?,
-                        parts[3].parse::<u16>()?,
-                        parts[4].parse::<u16>()?,
-                    ]);
-                }
-                "w_react" => {
-                    react = Some([
-                        parts[1].parse::<u32>()?,
-                        parts[2].parse::<u32>()?,
-                        parts[3].parse::<u32>()?,
-                    ]);
-                }
-                "w_searchDist" => search_dist = Some(parts[1].parse::<u8>()?),
-                "w_preferredTargetId" => assert_eq!(parts[1], "0"),
-                "w_name" => assert_eq!(parts[1], "\x01\x01"),
-                _ => {
-                    bail!("unknown waypoint key: {}", parts[0]);
-                }
-            }
-            *offset += 1;
-        }
-        *offset += 1;
-        return Ok(Waypoint {
-            index: index.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: index not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            flags: flags.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: flags not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            goal: goal.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: goal not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            next: next.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: next not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            pos: pos.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: pos not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            speed: speed.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: speed not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            wng: wng.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: wng not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            react: react.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: react not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-            search_dist: search_dist.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:waypoint: searchDist not set in waypoint ending at {}",
-                    *offset
-                ))
-            })?,
-        });
-    }
-}
-
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TLoc {
     Index(usize),
     Name(String),
 }
 
+impl TLoc {
+    pub fn pic_file(&self, base: &str) -> String {
+        match self {
+            TLoc::Index(ref i) => format!("{}{}.PIC", base, i),
+            TLoc::Name(ref s) => s.to_owned(),
+        }
+    }
+}
+
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct TMap {
     pos0: i16,
     pos1: i16,
     unk: u8,
-    loc: TLoc,
+    pub loc: TLoc,
 }
 
 #[allow(dead_code)]
@@ -478,26 +53,23 @@ pub struct TDic {
 
 #[allow(dead_code)]
 pub struct MissionMap {
-    pub map: Arc<Box<Terrain>>,
-    pub layer: Arc<Box<Layer>>,
+    pub map_name: String,
+    pub layer_name: String,
     pub layer_index: usize,
-    wind: (i16, i16),
-    view: (u32, u32, u32),
-    time: (u8, u8),
+    pub tmaps: Vec<TMap>,
+    pub tdics: Vec<TDic>,
+    pub wind: (i16, i16),
+    pub view: (u32, u32, u32),
+    pub time: (u8, u8),
 }
 
 impl MissionMap {
-    pub fn from_str(
-        s: &str,
-        lib: Arc<Box<Library>>,
-        types: &TypeManager,
-        assets: Arc<Box<AssetManager>>,
-    ) -> Fallible<Self> {
+    pub fn from_str(s: &str) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
-        let mut map = None;
-        let mut layer = None;
+        let mut map_name = None;
+        let mut layer_name = None;
         let mut layer_index = None;
         let mut wind = Some((0, 0));
         let mut view = None;
@@ -506,7 +78,6 @@ impl MissionMap {
         let mut objects = Vec::new();
         let mut specials = Vec::new();
         let mut tmaps = Vec::new();
-
         let mut tdics = Vec::new();
 
         let mut offset = 1;
@@ -523,23 +94,12 @@ impl MissionMap {
 
             match parts[0] {
                 "map" => {
-                    assert!(map.is_none());
-                    let raw = &parts[1].to_uppercase();
-                    let filename = Self::get_t2_name_for_map(raw, &lib)?;
-                    map = Some(assets.load_t2(&filename)?);
+                    assert!(map_name.is_none());
+                    map_name = Some(parts[1].to_owned());
                 }
                 "layer" => {
-                    // The following are used in FA:
-                    //    cloud1b.LAY 1
-                    //    day2b.LAY 0
-                    //    day2b.LAY 4
-                    //    day2e.LAY 0
-                    //    day2f.LAY 0
-                    //    day2.LAY 0
-                    //    day2v.LAY 0
-                    let filename = &parts[1].to_uppercase();
+                    layer_name = Some(parts[1].to_owned());
                     layer_index = Some(parts[2].parse::<usize>()?);
-                    layer = Some(assets.load_lay(&filename)?);
                 }
                 "clouds" => {
                     ensure!(parts[1] == "0", "expected 0 clouds value");
@@ -632,12 +192,12 @@ impl MissionMap {
                 }
                 "obj" => {
                     offset += 1;
-                    let obj = ObjectInst::from_lines(&lines, &mut offset, types)?;
+                    let obj = ObjectInfo::from_lines(&lines, &mut offset)?;
                     objects.push(obj);
                 }
                 "special" => {
                     offset += 1;
-                    let special = SpecialInst::from_lines(&lines, &mut offset)?;
+                    let special = SpecialInfo::from_lines(&lines, &mut offset)?;
                     specials.push(special);
                 }
                 "tmap" => tmaps.push(TMap {
@@ -723,136 +283,24 @@ impl MissionMap {
         }
 
         for tmap in tmaps.iter() {
-            match tmap.loc {
-                TLoc::Index(i) => assert!((i as usize) < tdics.len()),
-                TLoc::Name(ref n) => assert!(lib.file_exists(n)),
+            if let TLoc::Index(i) = tmap.loc {
+                ensure!(
+                    (i as usize) < tdics.len(),
+                    "expected at tdict for each tmap index"
+                );
             }
         }
 
-        ensure!(map.is_some(), "mission map must have a 'map' key");
-        ensure!(layer.is_some(), "mission map must have a 'layer' key");
         return Ok(MissionMap {
-            map: map.unwrap(),
-            layer: layer.unwrap(),
-            layer_index: layer_index.unwrap(),
-            wind: wind.unwrap(),
-            view: view.unwrap(),
-            time: time.unwrap(),
+            map_name: map_name.ok_or_else(|| err_msg("mm must have a 'map' key"))?,
+            layer_name: layer_name.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
+            layer_index: layer_index.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
+            wind: wind.ok_or_else(|| err_msg("mm must have a 'wind' key"))?,
+            view: view.ok_or_else(|| err_msg("mm must have a 'view' key"))?,
+            time: time.ok_or_else(|| err_msg("mm must have a 'time' key"))?,
+            tmaps,
+            tdics,
         });
-    }
-
-    // These are all of the terrains and map references in the base games.
-    // FA:
-    //     FA_2.LIB:
-    //         EGY.T2, FRA.T2, VLA.T2, BAL.T2, UKR.T2, KURILE.T2, TVIET.T2
-    //         APA.T2, CUB.T2, GRE.T2, IRA.T2, LFA.T2, NSK.T2, PGU.T2, SPA.T2, WTA.T2
-    //     MM refs:
-    //         // Campaign missions?
-    //         $bal[0-7].T2
-    //         $egy[1-9].T2
-    //         $fra[0-9].T2
-    //         $vla[1-8].T2
-    //         ~ukr[1-8].T2
-    //         // Freeform missions and ???; map editor layouts maybe?
-    //         ~apaf.T2, apa.T2
-    //         ~balf.T2, bal.T2
-    //         ~cubf.T2, cub.T2
-    //         ~egyf.T2, egy.T2
-    //         ~fraf.T2, fra.T2
-    //         ~gref.T2, gre.T2
-    //         ~iraf.T2, ira.T2
-    //         ~kurile.T2, kurile.T2
-    //         ~lfaf.T2, lfa.T2
-    //         ~nskf.T2, nsk.T2
-    //         ~pguf.T2, pgu.T2
-    //         ~spaf.T2, spa.T2
-    //         ~tviet.T2, tviet.T2
-    //         ~ukrf.T2, ukr.T2
-    //         ~vlaf.T2, vla.T2
-    //         ~wtaf.T2, wta.T2
-    //    M refs:
-    //         $bal[0-7].T2
-    //         $egy[1-8].T2
-    //         $fra[0-3,6-9].T2
-    //         $vla[1-8].T2
-    //         ~bal[0,2,3,6,7].T2
-    //         ~egy[1,2,4,7].T2
-    //         ~fra[3,9].T2
-    //         ~ukr[1-8].T2
-    //         ~vla[1,2,5].T2
-    //         bal.T2, cub.T2, egy.T2, fra.T2, kurile.T2, tviet.T2, ukr.T2, vla.T2
-    // USNF97:
-    //     USNF_2.LIB: UKR.T2, ~UKR[1-8].T2, KURILE.T2, VIET.T2
-    //     MM refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
-    //     M  refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
-    // ATFGOLD:
-    //     ATF_2.LIB: EGY.T2, FRA.T2, VLA.T2, BAL.T2
-    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2
-    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
-    //     INVALID: kurile.T2, ~ukr[1-8].T2, ukr.T2, viet.T2
-    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2,
-    //              ~bal[2,6].T2, bal.T2, ~egy4.T2, egy.T2, fra.T2, vla.T2
-    //     INVALID: ukr.T2
-    // ATFNATO:
-    //     installdir: EGY.T2, FRA.T2, VLA.T2, BAL.T2
-    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2,
-    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
-    //     M  refs: egy.T2, fra.T2, vla.T2, bal.T2,
-    //              $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2
-    // ATF:
-    //     installdir: EGY.T2, FRA.T2, VLA.T2
-    //     MM refs: egy.T2, fra.T2, vla.T2,
-    //              $egy[1-8].T2, $fra[0-9].T2, $vla[1-8].T2
-    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, egy.T2
-    // MF:
-    //     installdir: UKR.T2, $UKR[1-8].T2, KURILE.T2
-    //     MM+M refs: ukr.T2, $ukr[1-8].T2, kurile.T2
-    // USNF:
-    //     installdir: UKR.T2, $UKR[1-8].T2
-    //     MM+M refs: ukr.T2, $ukr[1-8].T2
-    pub fn get_t2_name_for_map(raw: &str, lib: &Arc<Box<Library>>) -> Fallible<String> {
-        if lib.file_exists(raw) {
-            return Ok(raw.to_owned());
-        }
-
-        // ~KURILE.T2 && ~TVIET.T2
-        if raw.starts_with('~') && lib.file_exists(&raw[1..]) {
-            return Ok(raw[1..].to_owned());
-        }
-
-        let parts = raw.split('.').collect::<Vec<&str>>();
-        let sym = parts[0];
-        if sym.len() == 5 {
-            let ss = sym.chars().next().unwrap();
-            let se = sym.chars().rev().take(1).collect::<String>();
-            println!("SYM: {}, ss: {}, se: {}", sym, ss, se);
-            ensure!(
-                ss == '~' || ss == '$',
-                "expected non-literal map name to start with $ or ~"
-            );
-            ensure!(
-                se == "F" || se.parse::<u8>().is_ok(),
-                "expected non-literal map name to end with f or a number"
-            );
-            return Ok(sym[1..=3].to_owned() + ".T2");
-        }
-
-        bail!("no map file matching {} found", raw)
-    }
-
-    // This is a slightly harder problem then getting the T2, because even though ~FOON.T2
-    // might exist for ~FOON.MM, we need to look up FOO[i-k].PIC.
-    pub fn get_base_name_for_map(raw: &str, lib: &Arc<Box<Library>>) -> Fallible<String> {
-        let mut name = raw.split('.').next().ok_or_else(|| err_msg("expected a dotted name"))?;
-        if name.starts_with('~') || name.starts_with('$') {
-            name = &name[1..];
-        }
-        let se = name.chars().rev().take(1).collect::<String>();
-        if se.parse::<u8>().is_ok() {
-            name = &name[..name.len() - 1];
-        }
-
-        Ok(name.to_owned())
     }
 }
 
@@ -863,7 +311,7 @@ mod tests {
 
     #[test]
     fn it_can_parse_all_mm_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.MM")?.iter() {
@@ -877,14 +325,17 @@ mod tests {
                 continue;
             }
 
-            println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
+            println!(
+                "At: {}:{} @ {}",
+                game,
+                name,
+                omni.path(game, name).unwrap_or("<unknown>".to_owned())
+            );
             let lib = omni.library(game);
-            let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
-            let types = TypeManager::new(lib.clone(), assets.clone())?;
             let contents = lib.load_text(name)?;
-            let _mm = MissionMap::from_str(&contents, lib.clone(), &types, assets.clone())?;
+            let _mm = MissionMap::from_str(&contents)?;
         }
 
-        return Ok(());
+        Ok(())
     }
 }
