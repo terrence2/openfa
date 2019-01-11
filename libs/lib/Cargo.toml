@@ -15,11 +15,9 @@ opt-level = 2
 opt-level = 2
 
 [dependencies]
-clap = ">= 2.32"
 codepage-437 = ">= 0.1.0"
 failure = ">= 0.1.2"
 glob = ">= 0.2"
-humansize = ">= 1.0.1"
 lazy_static = ">= 1.0"
 log = ">= 0.4"
 memmap = ">= 0.6"

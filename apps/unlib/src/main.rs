@@ -14,12 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Unpack lib files.
-
-extern crate clap;
-extern crate failure;
-extern crate humansize;
-extern crate lib;
-
 use clap::{App, Arg, SubCommand};
 use failure::Error;
 use humansize::{file_size_opts as options, FileSize};
@@ -30,7 +24,7 @@ use std::{
 };
 
 fn main() -> Result<(), Error> {
-    let matches = App::new("openfa lib unpacker")
+    let matches = App::new("FightersAnthology engine lib unpacker")
         .version("0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("List and unpack part or all of an EA lib file or files")
