@@ -18,6 +18,7 @@ extern crate image;
 use failure::{ensure, Fallible};
 use image::{Pixel, Rgb, Rgba};
 
+#[derive(Clone)]
 pub struct Palette {
     pub color_count: usize,
     entries: Vec<Rgba<u8>>,
