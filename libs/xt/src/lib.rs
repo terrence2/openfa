@@ -114,9 +114,11 @@ impl TypeManager {
 
     pub fn load(&self, name: &str) -> Fallible<TypeRef> {
         if let Some(item) = self.cache.borrow().get(name) {
+            trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());
         };
 
+        trace!("TypeManager::load({})", name);
         let content = self.library.load_text(name)?;
         let ext = name.rsplitn(2, ".").collect::<Vec<&str>>();
         let item = match ext[0] {
