@@ -19,7 +19,7 @@ mod waypoint;
 
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
 use failure::{bail, ensure, err_msg, Fallible};
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 use xt::TypeManager;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -37,12 +37,29 @@ impl TLoc {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
+pub enum MapOrientation {
+    Unk0,
+    Unk1,
+    FlipS,
+    RotateCCW,
+}
+
+impl MapOrientation {
+    pub fn new(n: u8) -> Fallible<Self> {
+        Ok(match n {
+            0 => MapOrientation::Unk0,
+            1 => MapOrientation::Unk1,
+            2 => MapOrientation::FlipS,
+            3 => MapOrientation::RotateCCW,
+            _ => bail!("invalid orientation"),
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct TMap {
-    pos0: i16,
-    pos1: i16,
-    unk: u8,
+    pub orientation: MapOrientation,
     pub loc: TLoc,
 }
 
@@ -57,7 +74,7 @@ pub struct MissionMap {
     pub map_name: String,
     pub layer_name: String,
     pub layer_index: usize,
-    pub tmaps: Vec<TMap>,
+    pub tmaps: HashMap<(u32, u32), TMap>,
     pub tdics: Vec<TDic>,
     pub wind: (i16, i16),
     pub view: (u32, u32, u32),
@@ -78,7 +95,7 @@ impl MissionMap {
         let mut sides = Vec::new();
         let mut objects = Vec::new();
         let mut specials = Vec::new();
-        let mut tmaps = Vec::new();
+        let mut tmaps = HashMap::new();
         let mut tdics = Vec::new();
 
         let mut offset = 1;
@@ -201,18 +218,28 @@ impl MissionMap {
                     let special = SpecialInfo::from_lines(&lines, &mut offset)?;
                     specials.push(special);
                 }
-                "tmap" => tmaps.push(TMap {
-                    pos0: parts[1].parse::<i16>()?,
-                    pos1: parts[2].parse::<i16>()?,
-                    unk: parts[4].trim_right().parse::<u8>()?,
-                    loc: TLoc::Index(parts[3].parse::<usize>()?),
-                }),
-                "tmap_named" => tmaps.push(TMap {
-                    pos0: parts[2].parse::<i16>()?,
-                    pos1: parts[3].parse::<i16>()?,
-                    unk: 0,
-                    loc: TLoc::Name(format!("{}.PIC", parts[1].to_uppercase())),
-                }),
+                "tmap" => {
+                    let x = parts[1].parse::<i16>()? as u32;
+                    let y = parts[2].parse::<i16>()? as u32;
+                    tmaps.insert(
+                        (x, y),
+                        TMap {
+                            orientation: MapOrientation::new(parts[4].trim_right().parse::<u8>()?)?,
+                            loc: TLoc::Index(parts[3].parse::<usize>()?),
+                        },
+                    );
+                }
+                "tmap_named" => {
+                    let x = parts[2].parse::<i16>()? as u32;
+                    let y = parts[3].parse::<i16>()? as u32;
+                    tmaps.insert(
+                        (x, y),
+                        TMap {
+                            orientation: MapOrientation::new(1)?,
+                            loc: TLoc::Name(format!("{}.PIC", parts[1].to_uppercase())),
+                        },
+                    );
+                }
                 "tdic" => {
                     offset += 1;
                     fn line_to_bits(line: &str) -> Fallible<Vec<u8>> {
@@ -284,7 +311,7 @@ impl MissionMap {
         }
 
         for tmap in tmaps.iter() {
-            if let TLoc::Index(i) = tmap.loc {
+            if let TLoc::Index(i) = tmap.1.loc {
                 ensure!(
                     (i as usize) < tdics.len(),
                     "expected at tdict for each tmap index"

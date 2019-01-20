@@ -24,7 +24,7 @@ pub struct OmniLib {
 
 // Tests run dramatically slower when using the libs because we cannot force sub-libraries to
 // be built with optimizations if we are building the using library without them.
-const USE_LIB: bool = true;
+const USE_LIB: bool = false;
 
 impl OmniLib {
     pub fn new_for_test() -> Fallible<Self> {

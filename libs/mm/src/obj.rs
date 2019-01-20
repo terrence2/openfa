@@ -192,9 +192,13 @@ impl ObjectInfo {
             *offset += 1;
         }
         return Ok(ObjectInfo {
-            xt: type_manager.load(&type_name.ok_or_else(|| {
-                err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
-            })?.to_uppercase())?,
+            xt: type_manager.load(
+                &type_name
+                    .ok_or_else(|| {
+                        err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
+                    })?
+                    .to_uppercase(),
+            )?,
             name,
             pos: pos
                 .ok_or_else(|| err_msg(format!("mm:obj: pos not set in obj ending {}", *offset)))?,

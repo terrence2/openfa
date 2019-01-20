@@ -182,7 +182,7 @@ impl Layer {
             //println!("PLANE: {}", str::from_utf8(&plane.unkFillAndShape())?);
             //assert!(str::from_utf8(&plane.shape())?.starts_with("wave1.SH"));
             //println!("SHAPE: {}", str::from_utf8(&plane.shape())?);
-            let pal_data = &data[offset + hdr_size + 1..offset + hdr_size + 0xC1];
+            let pal_data = &data[offset + hdr_size + 1 - 0..offset + hdr_size + 0xC0 + 1 - 0];
             let pal = Palette::from_bytes(pal_data)?;
             fragments.push(pal);
             if dump_stuff {

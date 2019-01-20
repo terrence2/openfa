@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 failure = ">= 0.1.2"
+image = "= 0.20.1"
 log = ">= 0.4"
 nalgebra = "0.16"
 simplelog = "^0.5.0"
@@ -15,8 +16,11 @@ vulkano-shaders = "^ 0.11.1"
 vulkano-win = "^ 0.11.1"
 winit = "^ 0.18"
 asset = { path = "../../libs/asset" }
+lay = { path = "../../libs/lay" }
+lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
+pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 render = { path = "../../libs/render" }
 t2 = { path = "../../libs/t2" }
