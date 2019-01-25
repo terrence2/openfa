@@ -235,7 +235,7 @@ impl MissionMap {
                     tmaps.insert(
                         (x, y),
                         TMap {
-                            orientation: MapOrientation::new(1)?,
+                            orientation: MapOrientation::new(0)?,
                             loc: TLoc::Name(format!("{}.PIC", parts[1].to_uppercase())),
                         },
                     );
