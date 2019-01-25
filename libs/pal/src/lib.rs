@@ -70,7 +70,9 @@ impl Palette {
     pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Fallible<()> {
         let mut dst_i = offset;
         for src_i in 0..other.entries.len() {
-            //println!("at 0x{:02X}: {:?}", dst_i, other.entries[src_i]);
+            if dst_i >= self.entries.len() {
+                break;
+            }
             self.entries[dst_i] = other.entries[src_i];
             dst_i += 1;
         }
