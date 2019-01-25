@@ -78,11 +78,7 @@ impl ArcBallCamera {
         //   Up is negative
         //   Down is positive
         //   Works in steps of 15 for my mouse.
-        self.distance += if self.distance > 0f32 {
-            y / 200f32
-        } else {
-            y / 1200f32
-        };
+        self.distance *= if y > 0f32 { 1.1f32 } else { 0.9f32 };
         self.distance = self.distance.max(0.01);
     }
 
