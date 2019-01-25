@@ -21,14 +21,14 @@ use image::{ImageBuffer, Rgba};
 use lay::Layer;
 use lib::Library;
 use log::trace;
-use mm::{MissionMap, TLoc, MapOrientation};
+use mm::{MapOrientation, MissionMap, TLoc};
 use nalgebra::{Isometry3, Matrix4};
 use omnilib::OmniLib;
 use pal::Palette;
 use pic::decode_pic;
 use render::ArcBallCamera;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2::Terrain;
 use vulkano::{
@@ -104,22 +104,27 @@ mod fs {
 
             layout(set = 0, binding = 0) uniform sampler2D tex;
 
-float sRGB(float x) {
-    if (x <= 0.00031308)
-        return 12.92 * x;
-    else
-        return 1.055*pow(x,(1.0 / 2.4) ) - 0.055;
-}
+            float _linear_to_sRGB_inner(float x) {
+                if (x <= 0.00031308)
+                    return 12.92 * x;
+                else
+                    return 1.055*pow(x,(1.0 / 2.4) ) - 0.055;
+            }
 
-vec4 sRGB_v3(vec4 c) {
-    return vec4(sRGB(c.r),sRGB(c.g),sRGB(c.b),sRGB(c.a));
-}
+            vec4 linear_to_sRGB(vec4 c) {
+                return vec4(
+                    _linear_to_sRGB_inner(c.r),
+                    _linear_to_sRGB_inner(c.g),
+                    _linear_to_sRGB_inner(c.b),
+                    _linear_to_sRGB_inner(c.a)
+                );
+            }
 
             void main() {
                 if (v_tex_coord.x == 0.0) {
                     f_color = v_color;
                 } else {
-                    f_color = sRGB_v3(texture(tex, v_tex_coord));
+                    f_color = linear_to_sRGB(texture(tex, v_tex_coord));
                 }
             }
             "
@@ -294,6 +299,10 @@ pub fn get_base_name_for_map(raw: &str) -> Fallible<String> {
     Ok(name.to_owned())
 }
 
+struct PaletteOverlayRenderer {
+    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "mm_explorer", about = "Show the contents of an mm file")]
 struct Opt {
@@ -327,7 +336,7 @@ pub fn main() -> Fallible<()> {
     ///////////////////////////////////////////////////////////
     //let (mut pipeline, mut pds, mut vertex_buffer, mut index_buffer) = build_terrain_render_resources(&mm, assets.clone(), lib.clone(), &window, &vs, &fs)?;
     let renderer = TerrainRenderer::new(mm, &assets, &lib, &window)?;
-    let (mut pipeline, mut pds, mut vertex_buffer, mut index_buffer) = renderer.render(&window)?;
+    let (mut pds, mut vertex_buffer, mut index_buffer) = renderer.render(&window, 0, 0, 0, 0)?;
     ///////////////////////////////////////////////////////////
 
     let mut push_constants = vs::ty::PushConstantData::new();
@@ -336,12 +345,17 @@ pub fn main() -> Fallible<()> {
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?);
 
     let mut need_reset = false;
+    let mut e0_off = 0;
+    let mut f1_off = 0;
+    let mut c2_off = 0;
+    let mut d3_off = 0;
     loop {
+        let loop_start = Instant::now();
+
         if need_reset == true {
             need_reset = false;
-            //let (pipeline2, pds2, vertex_buffer2, index_buffer2) = build_terrain_render_resources(&mm, assets.clone(), lib.clone(), &window, &vs, &fs)?;
-            let (pipeline2, pds2, vertex_buffer2, index_buffer2) = renderer.render(&window)?;
-            pipeline = pipeline2;
+            let (pds2, vertex_buffer2, index_buffer2) =
+                renderer.render(&window, e0_off, f1_off, c2_off, d3_off)?;
             pds = pds2;
             vertex_buffer = vertex_buffer2;
             index_buffer = index_buffer2;
@@ -351,7 +365,7 @@ pub fn main() -> Fallible<()> {
 
         window.drive_frame(|command_buffer, dynamic_state| {
             Ok(command_buffer.draw_indexed(
-                pipeline.clone(),
+                renderer.pipeline.clone(),
                 dynamic_state,
                 vec![vertex_buffer.clone()],
                 index_buffer.clone(),
@@ -405,17 +419,26 @@ pub fn main() -> Fallible<()> {
                 ..
             } => camera.on_mousebutton_up(id),
 
-            // Keyboard
+            // Keyboard Press
             DeviceEvent {
                 event:
                     Key(KeyboardInput {
                         virtual_keycode: Some(keycode),
+                        state: ElementState::Pressed,
                         ..
                     }),
                 ..
             } => match keycode {
                 VirtualKeyCode::Escape => done = true,
                 VirtualKeyCode::R => need_reset = true,
+                VirtualKeyCode::Y => e0_off += 1,
+                VirtualKeyCode::H => e0_off -= 1,
+                VirtualKeyCode::U => f1_off += 1,
+                VirtualKeyCode::J => f1_off -= 1,
+                VirtualKeyCode::I => c2_off += 1,
+                VirtualKeyCode::K => c2_off -= 1,
+                VirtualKeyCode::O => d3_off += 1,
+                VirtualKeyCode::L => d3_off -= 1,
                 _ => trace!("unknown keycode: {:?}", keycode),
             },
 
@@ -427,6 +450,17 @@ pub fn main() -> Fallible<()> {
         if resized {
             window.note_resize()
         }
+
+        let offsets = format!("e0:{} f1:{} c2:{} d3:{}", e0_off, f1_off, c2_off, d3_off);
+        window.debug_text(1800f32, 25f32, 30f32, [1f32, 0f32, 0f32, 1f32], &offsets);
+
+        let ft = loop_start.elapsed();
+        let ts = format!(
+            "{}.{} ms",
+            ft.as_secs() * 1000 + ft.subsec_millis() as u64,
+            ft.subsec_micros()
+        );
+        window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
     }
 }
 
@@ -436,8 +470,9 @@ struct TerrainRenderer {
     layer: Arc<Box<Layer>>,
     pic_data: HashMap<TLoc, Vec<u8>>,
     base_palette: Palette,
-    vs: vs::Shader,
-    fs: fs::Shader,
+    //    vs: vs::Shader,
+    //    fs: fs::Shader,
+    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 }
 
 impl TerrainRenderer {
@@ -474,22 +509,42 @@ impl TerrainRenderer {
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;
 
+        let pipeline = Arc::new(
+            GraphicsPipeline::start()
+                .vertex_input_single_buffer::<Vertex>()
+                .vertex_shader(vs.main_entry_point(), ())
+                .triangle_strip()
+                .cull_mode_back()
+                .front_face_counter_clockwise()
+                .viewports_dynamic_scissors_irrelevant(1)
+                .fragment_shader(fs.main_entry_point(), ())
+                .depth_stencil_simple_depth()
+                .blend_alpha_blending()
+                .render_pass(
+                    Subpass::from(window.render_pass(), 0)
+                        .expect("gfx: did not find a render pass"),
+                )
+                .build(window.device())?,
+        );
+
         Ok(Self {
             mm,
             terrain,
             layer,
             pic_data,
             base_palette,
-            vs,
-            fs,
+            pipeline,
         })
     }
 
     fn render(
         &self,
         window: &GraphicsWindow,
+        e0_off: i32,
+        f1_off: i32,
+        c2_off: i32,
+        d3_off: i32,
     ) -> Fallible<(
-        Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         Arc<dyn DescriptorSet + Send + Sync>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
         Arc<CpuAccessibleBuffer<[u32]>>,
@@ -503,14 +558,10 @@ impl TerrainRenderer {
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        palette.overlay_at(&r1, 0xF0)?;
-        palette.overlay_at(&r0, 0xE0)?;
-
-        // I'm pretty sure this is correct.
-        palette.overlay_at(&r3, 0xD0)?;
-
-        palette.overlay_at(&r2, 0xC0)?;
-        //palette.overlay_at(&r2, 0xC1)?;
+        palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
+        palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
+        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
+        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
 
         palette.dump_png("terrain_palette")?;
 
@@ -548,31 +599,13 @@ impl TerrainRenderer {
         let (vertex_buffer, index_buffer) =
             self.upload_terrain_textured_simple(&atlas, &palette, window)?;
 
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(self.vs.main_entry_point(), ())
-                .triangle_strip()
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(self.fs.main_entry_point(), ())
-                .depth_stencil_simple_depth()
-                .blend_alpha_blending()
-                .render_pass(
-                    Subpass::from(window.render_pass(), 0)
-                        .expect("gfx: did not find a render pass"),
-                )
-                .build(window.device())?,
-        );
-
         let pds = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), 0)
+            PersistentDescriptorSet::start(self.pipeline.clone(), 0)
                 .add_sampled_image(texture.clone(), sampler.clone())?
                 .build()?,
         );
 
-        Ok((pipeline, pds, vertex_buffer, index_buffer))
+        Ok((pds, vertex_buffer, index_buffer))
     }
 
     fn sample_at(&self, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
@@ -634,10 +667,10 @@ impl TerrainRenderer {
                             let zi = zi_base + z_off;
                             let xi = xi_base + x_off;
                             let (position, samp_color) = self.sample_at(palette, xi, zi);
-//                            let color = match tmap.orientation {
-//                                MapOrientation::Unk0 => [0f32, 1f32, 0f32, 1f32],
-//                                _ => samp_color,
-//                            };
+                            //                            let color = match tmap.orientation {
+                            //                                MapOrientation::Unk0 => [0f32, 1f32, 0f32, 1f32],
+                            //                                _ => samp_color,
+                            //                            };
 
                             verts.push(Vertex {
                                 position,
