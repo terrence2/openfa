@@ -15,7 +15,11 @@
 
 /// Renders raw assets into GPU primitives.
 mod arc_ball_camera;
+mod t2;
 
+pub use crate::{arc_ball_camera::ArcBallCamera, t2::t2_renderer::T2Renderer};
+
+/*
 use failure::Fallible;
 use image::{ImageBuffer, Rgba};
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
@@ -28,7 +32,6 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-pub use crate::arc_ball_camera::ArcBallCamera;
 
 pub struct Renderer {
     window: Arc<GraphicsWindow>,
@@ -116,3 +119,4 @@ mod tests {
         Ok(())
     }
 }
+*/

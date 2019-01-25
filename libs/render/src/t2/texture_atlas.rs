@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
 use failure::{bail, ensure, Fallible};
 use image::{DynamicImage, GenericImage, GenericImageView};
 use log::trace;
@@ -23,11 +22,6 @@ pub struct TexCoord {
     pub s: f32,
     pub t: f32,
 }
-
-//pub struct TexPosition {
-//    x: u32,
-//    y: u32,
-//}
 
 pub struct Frame {
     pub coord0: TexCoord,
@@ -217,7 +211,6 @@ impl TextureAtlas {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::get_base_name_for_map;
     use asset::AssetManager;
     use lay::Layer;
     use mm::MissionMap;
@@ -256,7 +249,7 @@ mod test {
             let layer = assets.load_lay(&mm.layer_name.to_uppercase())?;
 
             let mut pic_data = HashMap::new();
-            let base_name = get_base_name_for_map(&mm.map_name)?.to_uppercase();
+            let base_name = mm.get_base_texture_name()?;
             for (_pos, tmap) in &mm.tmaps {
                 if !pic_data.contains_key(&tmap.loc) {
                     let name = tmap.loc.pic_file(&base_name);

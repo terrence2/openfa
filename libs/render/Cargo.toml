@@ -13,4 +13,16 @@ vulkano = "^ 0.11.1"
 vulkano-shaders = "^ 0.11.1"
 vulkano-win = "^ 0.11.1"
 winit = "^ 0.18"
+mm = { path = "../../libs/mm" }
+pal = { path = "../../libs/pal" }
 window = { path = "../window" }
+t2 = { path = "../../libs/t2" }
+lay = { path = "../../libs/lay" }
+asset = { path = "../../libs/asset" }
+lib = { path = "../../libs/lib" }
+pic = { path = "../../libs/pic" }
+
+[dev-dependencies]
+simplelog = "^0.5.0"
+omnilib = { path = "../../libs/omnilib" }
+xt = { path = "../../libs/xt" }

@@ -330,6 +330,126 @@ impl MissionMap {
             tdics,
         });
     }
+
+    // These are all of the terrains and map references in the base games.
+    // FA:
+    //     FA_2.LIB:
+    //         EGY.T2, FRA.T2, VLA.T2, BAL.T2, UKR.T2, KURILE.T2, TVIET.T2
+    //         APA.T2, CUB.T2, GRE.T2, IRA.T2, LFA.T2, NSK.T2, PGU.T2, SPA.T2, WTA.T2
+    //     MM refs:
+    //         // Campaign missions?
+    //         $bal[0-7].T2
+    //         $egy[1-9].T2
+    //         $fra[0-9].T2
+    //         $vla[1-8].T2
+    //         ~ukr[1-8].T2
+    //         // Freeform missions and ???; map editor layouts maybe?
+    //         ~apaf.T2, apa.T2
+    //         ~balf.T2, bal.T2
+    //         ~cubf.T2, cub.T2
+    //         ~egyf.T2, egy.T2
+    //         ~fraf.T2, fra.T2
+    //         ~gref.T2, gre.T2
+    //         ~iraf.T2, ira.T2
+    //         ~kurile.T2, kurile.T2
+    //         ~lfaf.T2, lfa.T2
+    //         ~nskf.T2, nsk.T2
+    //         ~pguf.T2, pgu.T2
+    //         ~spaf.T2, spa.T2
+    //         ~tviet.T2, tviet.T2
+    //         ~ukrf.T2, ukr.T2
+    //         ~vlaf.T2, vla.T2
+    //         ~wtaf.T2, wta.T2
+    //    M refs:
+    //         $bal[0-7].T2
+    //         $egy[1-8].T2
+    //         $fra[0-3,6-9].T2
+    //         $vla[1-8].T2
+    //         ~bal[0,2,3,6,7].T2
+    //         ~egy[1,2,4,7].T2
+    //         ~fra[3,9].T2
+    //         ~ukr[1-8].T2
+    //         ~vla[1,2,5].T2
+    //         bal.T2, cub.T2, egy.T2, fra.T2, kurile.T2, tviet.T2, ukr.T2, vla.T2
+    // USNF97:
+    //     USNF_2.LIB: UKR.T2, ~UKR[1-8].T2, KURILE.T2, VIET.T2
+    //     MM refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
+    //     M  refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
+    // ATFGOLD:
+    //     ATF_2.LIB: EGY.T2, FRA.T2, VLA.T2, BAL.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2
+    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    //     INVALID: kurile.T2, ~ukr[1-8].T2, ukr.T2, viet.T2
+    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2,
+    //              ~bal[2,6].T2, bal.T2, ~egy4.T2, egy.T2, fra.T2, vla.T2
+    //     INVALID: ukr.T2
+    // ATFNATO:
+    //     installdir: EGY.T2, FRA.T2, VLA.T2, BAL.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2,
+    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    //     M  refs: egy.T2, fra.T2, vla.T2, bal.T2,
+    //              $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    // ATF:
+    //     installdir: EGY.T2, FRA.T2, VLA.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2,
+    //              $egy[1-8].T2, $fra[0-9].T2, $vla[1-8].T2
+    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, egy.T2
+    // MF:
+    //     installdir: UKR.T2, $UKR[1-8].T2, KURILE.T2
+    //     MM+M refs: ukr.T2, $ukr[1-8].T2, kurile.T2
+    // USNF:
+    //     installdir: UKR.T2, $UKR[1-8].T2
+    //     MM+M refs: ukr.T2, $ukr[1-8].T2
+    pub fn find_t2_for_map(&self, file_exists: &Fn(&str) -> bool) -> Fallible<String> {
+        let raw = self.map_name.to_uppercase();
+
+        if file_exists(&raw) {
+            return Ok(raw.to_owned());
+        }
+
+        // ~KURILE.T2 && ~TVIET.T2
+        if raw.starts_with('~') && file_exists(&raw[1..]) {
+            return Ok(raw[1..].to_owned());
+        }
+
+        let parts = raw.split('.').collect::<Vec<&str>>();
+        let base = parts[0];
+        if base.len() == 5 {
+            let sigil = base.chars().next().unwrap();
+            ensure!(
+                sigil == '~' || sigil == '$',
+                "expected non-literal map name to start with $ or ~"
+            );
+            let suffix = base.chars().rev().take(1).collect::<String>();
+            ensure!(
+                suffix == "F" || suffix.parse::<u8>().is_ok(),
+                "expected non-literal map name to end with f or a number"
+            );
+            return Ok(base[1..=3].to_owned() + ".T2");
+        }
+
+        bail!("no map file matching {} found", raw)
+    }
+
+    // This is a slightly different problem then getting the T2, because even though ~ABCn.T2
+    // might exist for ~ABCn.MM, we need to look up ABCi.PIC without the tilda.
+    pub fn get_base_texture_name(&self) -> Fallible<String> {
+        let raw = self.map_name.to_uppercase();
+        let mut name = raw
+            .split('.')
+            .next()
+            .ok_or_else(|| err_msg("expected a dotted name"))?;
+        if name.starts_with('~') || name.starts_with('$') {
+            name = &name[1..];
+        }
+        name = &name[0..3];
+        let se = name.chars().rev().take(1).collect::<String>();
+        if se.parse::<u8>().is_ok() {
+            name = &name[..name.len() - 1];
+        }
+
+        Ok(name.to_owned())
+    }
 }
 
 #[cfg(test)]
@@ -362,7 +482,9 @@ mod tests {
             let lib = omni.library(game);
             let type_manager = TypeManager::new(lib.clone())?;
             let contents = lib.load_text(name)?;
-            let _mm = MissionMap::from_str(&contents, &type_manager)?;
+            let mm = MissionMap::from_str(&contents, &type_manager)?;
+            assert_eq!(mm.get_base_texture_name()?.len(), 3);
+            assert!(mm.find_t2_for_map(&|s| lib.file_exists(s))?.ends_with(".T2"));
         }
 
         Ok(())
