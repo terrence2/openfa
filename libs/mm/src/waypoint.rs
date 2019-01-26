@@ -59,7 +59,7 @@ impl Waypoint {
                 .split(' ')
                 .filter(|&s| s != "")
                 .collect::<Vec<&str>>();
-            if parts.len() == 0 {
+            if parts.is_empty() {
                 break;
             }
             match parts[0].trim_left() {
@@ -102,7 +102,7 @@ impl Waypoint {
             *offset += 1;
         }
         *offset += 1;
-        return Ok(Waypoint {
+        Ok(Waypoint {
             index: index.ok_or_else(|| {
                 err_msg(format!(
                     "mm:waypoint: index not set in waypoint ending at {}",
@@ -157,6 +157,6 @@ impl Waypoint {
                     *offset
                 ))
             })?,
-        });
+        })
     }
 }

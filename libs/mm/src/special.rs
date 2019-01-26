@@ -61,7 +61,7 @@ impl SpecialInfo {
             }
             *offset += 1;
         }
-        return Ok(SpecialInfo {
+        Ok(SpecialInfo {
             pos: pos.ok_or_else(|| {
                 err_msg(format!(
                     "mm:special: pos not set in special ending {}",
@@ -92,6 +92,6 @@ impl SpecialInfo {
                     *offset
                 ))
             })?,
-        });
+        })
     }
 }

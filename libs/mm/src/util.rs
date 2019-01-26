@@ -22,9 +22,9 @@ where
     <T as ::std::str::FromStr>::Err: 'static + ::std::error::Error + Send + Sync,
 {
     ensure!(n.is_ascii(), "non-ascii in number");
-    return Ok(if n.starts_with('$') {
+    Ok(if n.starts_with('$') {
         T::from_str_radix(&n[1..], 16)?
     } else {
         n.parse::<T>()?
-    });
+    })
 }

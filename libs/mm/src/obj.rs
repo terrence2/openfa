@@ -59,7 +59,7 @@ pub enum Nationality {
 
 impl Nationality {
     fn from_ordinal(n: usize) -> Fallible<Self> {
-        return Ok(match n {
+        Ok(match n {
             0 => Nationality::Unk0,
             1 => Nationality::Unk1,
             3 => Nationality::Unk3,
@@ -98,7 +98,7 @@ impl Nationality {
             169 => Nationality::Unk169,
             185 => Nationality::Unk185,
             _ => bail!("nationality: do not know {}", n),
-        });
+        })
     }
 }
 
@@ -191,7 +191,7 @@ impl ObjectInfo {
             }
             *offset += 1;
         }
-        return Ok(ObjectInfo {
+        Ok(ObjectInfo {
             xt: type_manager.load(
                 &type_name
                     .ok_or_else(|| {
@@ -216,6 +216,6 @@ impl ObjectInfo {
             react,
             search_dist,
             waypoints: None,
-        });
+        })
     }
 }

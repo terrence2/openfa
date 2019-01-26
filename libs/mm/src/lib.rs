@@ -12,6 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#![allow(clippy::cyclomatic_complexity)]
+
 mod obj;
 mod special;
 mod util;
@@ -46,7 +48,7 @@ pub enum MapOrientation {
 }
 
 impl MapOrientation {
-    pub fn new(n: u8) -> Fallible<Self> {
+    pub fn from_byte(n: u8) -> Fallible<Self> {
         Ok(match n {
             0 => MapOrientation::Unk0,
             1 => MapOrientation::Unk1,
@@ -162,7 +164,7 @@ impl MissionMap {
                     loop {
                         let next_offset = offset + 1;
                         let trimmed = lines[next_offset].trim();
-                        if !trimmed.starts_with("$") {
+                        if !trimmed.starts_with('$') {
                             break;
                         }
                         let side = u8::from_str_radix(&trimmed[1..], 16)?;
@@ -178,7 +180,7 @@ impl MissionMap {
                     loop {
                         let next_offset = offset + 1;
                         let trimmed = lines[next_offset].trim();
-                        if !trimmed.starts_with("$") {
+                        if !trimmed.starts_with('$') {
                             break;
                         }
                         let side = u8::from_str_radix(&trimmed[1..], 16)?;
@@ -194,7 +196,7 @@ impl MissionMap {
                     loop {
                         let next_offset = offset + 1;
                         let trimmed = lines[next_offset].trim();
-                        if !trimmed.starts_with("$") {
+                        if !trimmed.starts_with('$') {
                             break;
                         }
                         let side = u8::from_str_radix(&trimmed[1..], 16)?;
@@ -224,7 +226,9 @@ impl MissionMap {
                     tmaps.insert(
                         (x, y),
                         TMap {
-                            orientation: MapOrientation::new(parts[4].trim_right().parse::<u8>()?)?,
+                            orientation: MapOrientation::from_byte(
+                                parts[4].trim_right().parse::<u8>()?,
+                            )?,
                             loc: TLoc::Index(parts[3].parse::<usize>()?),
                         },
                     );
@@ -235,7 +239,7 @@ impl MissionMap {
                     tmaps.insert(
                         (x, y),
                         TMap {
-                            orientation: MapOrientation::new(0)?,
+                            orientation: MapOrientation::from_byte(0)?,
                             loc: TLoc::Name(format!("{}.PIC", parts[1].to_uppercase())),
                         },
                     );
@@ -247,9 +251,9 @@ impl MissionMap {
                         for s in line.split(' ') {
                             out.push(s.trim().parse::<u8>()?);
                         }
-                        return Ok(out);
+                        Ok(out)
                     }
-                    let r0 = line_to_bits(lines[offset + 0])?;
+                    let r0 = line_to_bits(lines[offset])?;
                     let r1 = line_to_bits(lines[offset + 1])?;
                     let r2 = line_to_bits(lines[offset + 2])?;
                     let r3 = line_to_bits(lines[offset + 3])?;
@@ -319,7 +323,7 @@ impl MissionMap {
             }
         }
 
-        return Ok(MissionMap {
+        Ok(MissionMap {
             map_name: map_name.ok_or_else(|| err_msg("mm must have a 'map' key"))?,
             layer_name: layer_name.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
             layer_index: layer_index.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
@@ -328,7 +332,7 @@ impl MissionMap {
             time: time.ok_or_else(|| err_msg("mm must have a 'time' key"))?,
             tmaps,
             tdics,
-        });
+        })
     }
 
     // These are all of the terrains and map references in the base games.
@@ -484,7 +488,9 @@ mod tests {
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &type_manager)?;
             assert_eq!(mm.get_base_texture_name()?.len(), 3);
-            assert!(mm.find_t2_for_map(&|s| lib.file_exists(s))?.ends_with(".T2"));
+            assert!(mm
+                .find_t2_for_map(&|s| lib.file_exists(s))?
+                .ends_with(".T2"));
         }
 
         Ok(())
