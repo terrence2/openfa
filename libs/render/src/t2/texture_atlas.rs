@@ -47,7 +47,6 @@ impl Frame {
                 let (s0, s1, t0, t1) = (self.coord0.s, self.coord1.s, self.coord0.t, self.coord1.t);
                 Ok([s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)])
             }
-            _ => bail!("unknown orientation"),
         }
     }
 }
@@ -217,12 +216,18 @@ mod test {
     use omnilib::OmniLib;
     use pal::Palette;
     use pic::decode_pic;
-    use simplelog::{Config, LevelFilter, TermLogger};
+    use std::path::Path;
     use xt::TypeManager;
 
     #[test]
     fn test_it_works() -> Fallible<()> {
-        TermLogger::init(LevelFilter::Trace, Config::default())?;
+        //use simplelog::{Config, LevelFilter, TermLogger};
+        //TermLogger::init(LevelFilter::Trace, Config::default())?;
+
+        if !Path::new("dump").exists() {
+            std::fs::create_dir("dump")?;
+        }
+
         let omni = OmniLib::new_for_test_in_games(&[
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
@@ -242,7 +247,7 @@ mod test {
             );
             let lib = omni.library(game);
             let assets = AssetManager::new(lib.clone())?;
-            let types = TypeManager::new(lib.clone())?;
+            let types = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &types)?;
 
@@ -259,14 +264,14 @@ mod test {
             let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
             let palette = load_palette(&base_palette, &layer, mm.layer_index)?;
 
-            let mut foo = mm
+            let all_texture_start_coords = mm
                 .tmaps
                 .keys()
                 .map(|&v| v.clone())
                 .collect::<Vec<(u32, u32)>>();
-            for &(x, y) in &foo {
-                assert!(x % 4 == 0);
-                assert!(y % 4 == 0);
+            for &(x, y) in &all_texture_start_coords {
+                assert_eq!(x % 4, 0);
+                assert_eq!(y % 4, 0);
             }
 
             // Load all images with our new palette.

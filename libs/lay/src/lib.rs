@@ -73,12 +73,21 @@ packed_struct!(LayerPlaneHeader {
 });
 
 pub struct Layer {
+    data: Vec<u8>,
+    frag_offsets: Vec<usize>,
     fragments: Vec<Palette>,
 }
 
 impl Layer {
-    pub fn for_index(&self, index: usize) -> &Palette {
-        &self.fragments[index]
+    pub fn for_index(&self, index: usize, offset: i32) -> Fallible<Palette> {
+        let base = if offset >= 0 {
+            self.frag_offsets[index] + (offset as usize)
+        } else {
+            self.frag_offsets[index] - (-offset as usize)
+        };
+        let slice = &self.data[base..base + 0xC0];
+        Palette::from_bytes(slice)
+        //return self.fragments[index].clone();
     }
 
     pub fn from_bytes(data: &[u8], lib: Arc<Box<Library>>) -> Fallible<Layer> {
@@ -90,6 +99,7 @@ impl Layer {
     fn from_pe(prefix: &str, pe: &peff::PE, lib: Arc<Box<Library>>) -> Fallible<Layer> {
         assert!(prefix.len() > 0);
 
+        let mut frag_offsets = Vec::new();
         let mut fragments = Vec::new();
 
         let pal_data = lib.load("PALETTE.PAL")?;
@@ -128,6 +138,7 @@ impl Layer {
         let first_data = &data[first_addr as usize..first_addr as usize + first_size];
         let first_pal_data = &first_data[22 * 3 + 2..];
         let first_pal = Palette::from_bytes(&first_pal_data[0..(16 * 3 + 13) * 3])?;
+        frag_offsets.push(header.ptrFirst() as usize + 22 * 3 + 2);
         fragments.push(first_pal);
         if dump_stuff {
             // Seems to be correct for CLOUD and FOG, but really dark for DAY.
@@ -184,6 +195,7 @@ impl Layer {
             //println!("SHAPE: {}", str::from_utf8(&plane.shape())?);
             let pal_data = &data[offset + hdr_size + 1 - 0..offset + hdr_size + 0xC0 + 1 - 0];
             let pal = Palette::from_bytes(pal_data)?;
+            frag_offsets.push(offset + hdr_size + 1usize);
             fragments.push(pal);
             if dump_stuff {
                 // Dump after the fixed header... we claim the palette only extends for 0xC1 bytes...
@@ -266,7 +278,7 @@ impl Layer {
             offset += 0x100;
         }
 
-        Ok(Layer { fragments })
+        Ok(Layer { data: data.to_vec(), frag_offsets, fragments })
     }
 }
 

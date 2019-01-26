@@ -156,6 +156,7 @@ pub struct T2Renderer {
     layer: Arc<Box<Layer>>,
     pic_data: HashMap<TLoc, Vec<u8>>,
     base_palette: Palette,
+    pub used_palette: Palette,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     push_constants: vs::ty::PushConstantData,
     pds: Option<Arc<dyn DescriptorSet + Send + Sync>>,
@@ -170,6 +171,7 @@ impl T2Renderer {
         lib: &Arc<Box<Library>>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
+        trace!("T2Renderer::new");
         let terrain_name = mm.find_t2_for_map(&|s| lib.file_exists(s))?;
         let terrain = assets.load_t2(&terrain_name)?;
 
@@ -221,18 +223,20 @@ impl T2Renderer {
             terrain,
             layer,
             pic_data,
-            base_palette,
+            base_palette: base_palette.clone(),
+            used_palette: base_palette,
             pipeline,
             push_constants: vs::ty::PushConstantData::new(),
             pds: None,
             vertex_buffer: None,
             index_buffer: None,
         };
-        let (pds, vertex_buffer, index_buffer) =
-            t2_renderer.regenerate_with_palette_parameters(window, 0, 0, 0, 0)?;
+        let (pds, vertex_buffer, index_buffer, palette) =
+            t2_renderer.regenerate_with_palette_parameters(window, 0, 0, 0, 0, 0)?;
         t2_renderer.vertex_buffer = Some(vertex_buffer);
         t2_renderer.index_buffer = Some(index_buffer);
         t2_renderer.pds = Some(pds);
+        t2_renderer.used_palette = palette;
 
         Ok(t2_renderer)
     }
@@ -259,22 +263,25 @@ impl T2Renderer {
     pub fn set_palette_parameters(
         &mut self,
         window: &GraphicsWindow,
+        lay_base: i32,
         e0_off: i32,
         f1_off: i32,
         c2_off: i32,
         d3_off: i32,
     ) -> Fallible<()> {
-        let (pds, vertex_buffer, index_buffer) =
-            self.regenerate_with_palette_parameters(window, e0_off, f1_off, c2_off, d3_off)?;
+        let (pds, vertex_buffer, index_buffer, palette) =
+            self.regenerate_with_palette_parameters(window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
         self.pds = Some(pds);
         self.vertex_buffer = Some(vertex_buffer);
         self.index_buffer = Some(index_buffer);
+        self.used_palette = palette;
         Ok(())
     }
 
     fn regenerate_with_palette_parameters(
         &self,
         window: &GraphicsWindow,
+        lay_base: i32,
         e0_off: i32,
         f1_off: i32,
         c2_off: i32,
@@ -283,22 +290,29 @@ impl T2Renderer {
         Arc<dyn DescriptorSet + Send + Sync>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
         Arc<CpuAccessibleBuffer<[u32]>>,
+        Palette
     )> {
         // Note: we need to really find the right palette.
         let mut palette = self.base_palette.clone();
-        let layer_data = self.layer.for_index(self.mm.layer_index + 2);
+        let layer_data = self.layer.for_index(self.mm.layer_index + 2, lay_base)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
+        //palette.overlay_at(&r2, (0xC0 + 1) as usize)?;
+        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
+//        if c2_off > 0 {
+//            palette.overlay_at(&r2.slice((0x10 - c2_off) as usize, 0x10)?, (0xC0) as usize)?;
+//        }
+//        palette.overlay_at(&r2.slice(2, 8)?, (0xC0 + 6) as usize)?;
+
+        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
         palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
         palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
-        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
-        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
 
-        palette.dump_png("terrain_palette")?;
+        //palette.dump_png("terrain_palette")?;
 
         // Texture counts for all FA T2's.
         // APA: 68 x 256 (6815744 texels)
@@ -327,9 +341,9 @@ impl T2Renderer {
 
         let atlas = TextureAtlas::new(pics)?;
 
-        let (texture, tex_future) = upload_texture_rgba(window, atlas.img.to_rgba())?;
+        let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
         tex_future.then_signal_fence_and_flush()?.cleanup_finished();
-        let sampler = make_sampler(window.device())?;
+        let sampler = Self::make_sampler(window.device())?;
 
         let (vertex_buffer, index_buffer) =
             self.upload_terrain_textured_simple(&atlas, &palette, window)?;
@@ -340,7 +354,7 @@ impl T2Renderer {
                 .build()?,
         );
 
-        Ok((pds, vertex_buffer, index_buffer))
+        Ok((pds, vertex_buffer, index_buffer, palette))
     }
 
     fn sample_at(&self, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
@@ -468,42 +482,42 @@ impl T2Renderer {
 
         Ok((vertex_buffer, index_buffer))
     }
-}
 
-pub fn upload_texture_rgba(
-    window: &GraphicsWindow,
-    image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
-    let image_dim = image_buf.dimensions();
-    let image_data = image_buf.into_raw().clone();
+    fn upload_texture_rgba(
+        window: &GraphicsWindow,
+        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+        let image_dim = image_buf.dimensions();
+        let image_data = image_buf.into_raw().clone();
 
-    let dimensions = Dimensions::Dim2d {
-        width: image_dim.0,
-        height: image_dim.1,
-    };
-    let (texture, tex_future) = ImmutableImage::from_iter(
-        image_data.iter().cloned(),
-        dimensions,
-        Format::R8G8B8A8Srgb,
-        window.queue(),
-    )?;
-    return Ok((texture, Box::new(tex_future) as Box<GpuFuture>));
-}
+        let dimensions = Dimensions::Dim2d {
+            width: image_dim.0,
+            height: image_dim.1,
+        };
+        let (texture, tex_future) = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            Format::R8G8B8A8Srgb,
+            window.queue(),
+        )?;
+        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
+    }
 
-pub fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-    let sampler = Sampler::new(
-        device.clone(),
-        Filter::Nearest,
-        Filter::Nearest,
-        MipmapMode::Nearest,
-        SamplerAddressMode::ClampToEdge,
-        SamplerAddressMode::ClampToEdge,
-        SamplerAddressMode::ClampToEdge,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-    )?;
+    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
+        let sampler = Sampler::new(
+            device.clone(),
+            Filter::Nearest,
+            Filter::Nearest,
+            MipmapMode::Nearest,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )?;
 
-    Ok(sampler)
+        Ok(sampler)
+    }
 }

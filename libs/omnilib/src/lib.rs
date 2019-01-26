@@ -112,8 +112,8 @@ mod tests {
     #[test]
     fn test_omnilib_from_dir() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
-        let pal = omni.find_matching("PALETTE.PAL")?;
-        assert!(!pal.is_empty());
+        let palettes = omni.find_matching("PALETTE.PAL")?;
+        assert!(!palettes.is_empty());
         Ok(())
     }
 }
