@@ -46,21 +46,13 @@ impl HardpointDefault {
     }
 }
 
-// TODO: do we want to load these here or leave it to a higher level?
-//enum Loadout {
-//    GAS(Fueltank),
-//    SEE(Sensor),
-//    ECM(Ecm),
-//    JT(ProjectileType),
-//}
-
 impl FromRow for HardpointDefault {
     type Produces = HardpointDefault;
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>
     ) -> Fallible<Self::Produces> {
-        if !field.value().pointer().is_ok() {
+        if field.value().pointer().is_err() {
             ensure!(
                 field.value().numeric()?.dword()? == 0u32,
                 "null pointer must be dword 0"

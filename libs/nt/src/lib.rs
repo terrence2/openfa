@@ -65,7 +65,7 @@ impl FromRow for Hardpoints {
             hards.push(ht);
             off += 12;
         }
-        return Ok(Hardpoints { all: hards });
+        Ok(Hardpoints { all: hards })
     }
 }
 
@@ -83,7 +83,7 @@ NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
 }];
 
 impl NpcType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -94,7 +94,7 @@ impl NpcType {
         let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
         let npc_lines = parse::find_section(&lines, "NPC_TYPE")?;
         let npc = Self::from_lines(obj, &npc_lines, &pointers)?;
-        return Ok(npc);
+        Ok(npc)
     }
 }
 
@@ -124,7 +124,7 @@ mod tests {
             );
             let lib = omni.library(game);
             let contents = lib.load_text(name)?;
-            let nt = NpcType::from_str(&contents)?;
+            let nt = NpcType::from_text(&contents)?;
             assert_eq!(nt.ot.file_name(), *name);
             println!(
                 "{}:{:13}> {:?} <> {}",

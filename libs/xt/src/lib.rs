@@ -121,7 +121,7 @@ impl TypeManager {
         let ext = name.rsplitn(2, '.').collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
-                let ot = ObjectType::from_str(&content)?;
+                let ot = ObjectType::from_text(&content)?;
                 Type::OT(Box::new(ot))
             }
             "JT" => {
@@ -129,7 +129,7 @@ impl TypeManager {
                 Type::JT(Box::new(jt))
             }
             "NT" => {
-                let nt = NpcType::from_str(&content)?;
+                let nt = NpcType::from_text(&content)?;
                 Type::NT(Box::new(nt))
             }
             "PT" => {
