@@ -30,11 +30,11 @@ pub enum TypeTag {
 }
 
 impl TypeTag {
-    pub fn new(n: u8) -> Fallible<TypeTag> {
+    pub fn from_byte(n: u8) -> Fallible<TypeTag> {
         if n != 1 && n != 3 && n != 5 && n != 7 {
             bail!("unknown TypeTag {}", n);
         }
-        return Ok(unsafe { mem::transmute(n) });
+        Ok(unsafe { mem::transmute(n) })
     }
 }
 
@@ -44,7 +44,7 @@ impl FromRow for TypeTag {
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<Self::Produces> {
-        TypeTag::new(field.value().numeric()?.byte()?)
+        TypeTag::from_byte(field.value().numeric()?.byte()?)
     }
 }
 
@@ -63,8 +63,8 @@ enum ObjectKind {
 }
 
 impl ObjectKind {
-    fn new(x: u16) -> Fallible<Self> {
-        return match x {
+    fn from_word(x: u16) -> Fallible<Self> {
+        match x {
             0b1000_0000_0000_0000 => Ok(ObjectKind::Fighter),
             0b0100_0000_0000_0000 => Ok(ObjectKind::Bomber),
             0b0010_0000_0000_0000 => Ok(ObjectKind::Ship),
@@ -78,7 +78,7 @@ impl ObjectKind {
             // There is a mistaken 0 entry in $BLDR.JT when it was first introduced in ATF Nato Fighters.
             0b0000_0000_0000_0000 => Ok(ObjectKind::Projectile),
             _ => bail!("unknown ObjectKind {}", x),
-        };
+        }
     }
 }
 
@@ -88,7 +88,7 @@ impl FromRow for ObjectKind {
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<Self::Produces> {
-        ObjectKind::new(field.value().numeric()?.word()?)
+        ObjectKind::from_word(field.value().numeric()?.word()?)
     }
 }
 
@@ -104,8 +104,8 @@ pub enum ProcKind {
 }
 
 impl ProcKind {
-    fn new(s: &str) -> Fallible<ProcKind> {
-        return Ok(match s {
+    fn from_symbol(s: &str) -> Fallible<ProcKind> {
+        Ok(match s {
             "_OBJProc" => ProcKind::OBJ,
             "_PLANEProc" => ProcKind::PLANE,
             "_CARRIERProc" => ProcKind::CARRIER,
@@ -115,7 +115,7 @@ impl ProcKind {
             "_STRIPProc" => ProcKind::STRIP,
             "_CATGUYProc" => ProcKind::CATGUY,
             _ => bail!("Unexpected proc kind: {}", s),
-        });
+        })
     }
 }
 
@@ -125,7 +125,7 @@ impl FromRow for ProcKind {
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<Self::Produces> {
-        ProcKind::new(&field.value().symbol()?)
+        ProcKind::from_symbol(&field.value().symbol()?)
     }
 }
 
@@ -179,13 +179,13 @@ enum ObjectTypeVersion {
 
 impl ObjectTypeVersion {
     fn from_len(n: usize) -> Fallible<Self> {
-        return Ok(match n {
+        Ok(match n {
             49 => ObjectTypeVersion::V0,
             51 => ObjectTypeVersion::V1,
             63 => ObjectTypeVersion::V2,
             64 => ObjectTypeVersion::V3,
             _ => bail!("unknown object type version for length: {}", n),
-        });
+        })
     }
 }
 
@@ -254,7 +254,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
 }];
 
 impl ObjectType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -262,19 +262,19 @@ impl ObjectType {
         );
         let pointers = parse::find_pointers(&lines)?;
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
-        return Self::from_lines((), &obj_lines, &pointers);
+        Self::from_lines((), &obj_lines, &pointers)
     }
 
     pub fn file_name(&self) -> &str {
-        return &self.ot_names.file_name;
+        &self.ot_names.file_name
     }
 
     pub fn short_name(&self) -> &str {
-        return &self.ot_names.short_name;
+        &self.ot_names.short_name
     }
 
     pub fn long_name(&self) -> &str {
-        return &self.ot_names.long_name;
+        &self.ot_names.long_name
     }
 }
 
@@ -302,13 +302,9 @@ mod tests {
             );
             let lib = omni.library(game);
             let contents = lib.load_text(name)?;
-            let ot = ObjectType::from_str(&contents)?;
+            let ot = ObjectType::from_text(&contents)?;
             // Only one misspelling in 2500 files.
             assert!(ot.file_name() == *name || *name == "SMALLARM.JT");
-            // println!(
-            //     "{}:{:13}> {:?} <> {}",
-            //     game, name, ot.explosion_type, ot.long_name
-            // );
         }
         return Ok(());
     }
