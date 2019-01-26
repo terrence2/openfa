@@ -301,13 +301,8 @@ impl T2Renderer {
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        //palette.overlay_at(&r2, (0xC0 + 1) as usize)?;
+        // FIXME: this is close except on TVIET, which needs some fiddling around 0xC0.
         palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
-//        if c2_off > 0 {
-//            palette.overlay_at(&r2.slice((0x10 - c2_off) as usize, 0x10)?, (0xC0) as usize)?;
-//        }
-//        palette.overlay_at(&r2.slice(2, 8)?, (0xC0 + 6) as usize)?;
-
         palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
         palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
         palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
