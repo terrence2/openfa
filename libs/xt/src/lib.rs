@@ -24,42 +24,42 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 // A generic type.
 pub enum Type {
-    JT(ProjectileType),
-    NT(NpcType),
-    OT(ObjectType),
-    PT(PlaneType),
+    JT(Box<ProjectileType>),
+    NT(Box<NpcType>),
+    OT(Box<ObjectType>),
+    PT(Box<PlaneType>),
 }
 
 impl Type {
     pub fn ot(&self) -> &ObjectType {
-        return match self {
+        match self {
             Type::OT(ref ot) => &ot,
             Type::JT(ref jt) => &jt.ot,
             Type::NT(ref nt) => &nt.ot,
             Type::PT(ref pt) => &pt.nt.ot,
-        };
+        }
     }
 
     pub fn jt(&self) -> Fallible<&ProjectileType> {
-        return Ok(match self {
+        Ok(match self {
             Type::JT(ref jt) => &jt,
             _ => bail!("Type: not a projectile"),
-        });
+        })
     }
 
     pub fn nt(&self) -> Fallible<&NpcType> {
-        return Ok(match self {
+        Ok(match self {
             Type::NT(ref nt) => &nt,
             Type::PT(ref pt) => &pt.nt,
             _ => bail!("Type: not an npc"),
-        });
+        })
     }
 
     pub fn pt(&self) -> Fallible<&PlaneType> {
-        return Ok(match self {
+        Ok(match self {
             Type::PT(ref pt) => &pt,
             _ => bail!("Type: not a plane"),
-        });
+        })
     }
 }
 
@@ -67,11 +67,11 @@ impl Type {
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
 #[derive(Clone)]
-pub struct TypeRef(Rc<Box<Type>>);
+pub struct TypeRef(Rc<Type>);
 
 impl TypeRef {
     fn new(item: Type) -> Self {
-        TypeRef(Rc::new(Box::new(item)))
+        TypeRef(Rc::new(item))
     }
 
     pub fn ot(&self) -> &ObjectType {
@@ -102,14 +102,12 @@ pub struct TypeManager {
 }
 
 impl TypeManager {
-    pub fn new(
-        library: Arc<Box<Library>>,
-    ) -> Fallible<TypeManager> {
+    pub fn new(library: Arc<Box<Library>>) -> TypeManager {
         trace!("TypeManager::new");
-        return Ok(TypeManager {
+        TypeManager {
             library,
             cache: RefCell::new(HashMap::new()),
-        });
+        }
     }
 
     pub fn load(&self, name: &str) -> Fallible<TypeRef> {
@@ -120,23 +118,23 @@ impl TypeManager {
 
         trace!("TypeManager::load({})", name);
         let content = self.library.load_text(name)?;
-        let ext = name.rsplitn(2, ".").collect::<Vec<&str>>();
+        let ext = name.rsplitn(2, '.').collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
                 let ot = ObjectType::from_str(&content)?;
-                Type::OT(ot)
+                Type::OT(Box::new(ot))
             }
             "JT" => {
-                let ot = ProjectileType::from_str(&content)?;
-                Type::JT(ot)
+                let jt = ProjectileType::from_str(&content)?;
+                Type::JT(Box::new(jt))
             }
             "NT" => {
-                let ot = NpcType::from_str(&content)?;
-                Type::NT(ot)
+                let nt = NpcType::from_str(&content)?;
+                Type::NT(Box::new(nt))
             }
             "PT" => {
-                let ot = PlaneType::from_str(&content)?;
-                Type::PT(ot)
+                let pt = PlaneType::from_str(&content)?;
+                Type::PT(Box::new(pt))
             }
             _ => bail!("resource: unknown type {}", name),
         };
@@ -173,7 +171,7 @@ mod tests {
                     .or::<Error>(Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
-            let types = TypeManager::new(lib.clone())?;
+            let types = TypeManager::new(lib.clone());
             let ty = types.load(name)?;
             // Only one misspelling in 2500 files.
             assert!(ty.ot().file_name() == *name || *name == "SMALLARM.JT");
@@ -182,6 +180,6 @@ mod tests {
             //     game, name, ot.explosion_type, ot.long_name
             // );
         }
-        return Ok(());
+        Ok(())
     }
 }
