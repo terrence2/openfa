@@ -27,7 +27,7 @@ use bitflags::bitflags;
 use failure::{bail, ensure, Fail, Fallible};
 use lazy_static::lazy_static;
 use log::{info, trace};
-use reverse::{bs2s, Color, Escape};
+use reverse::{bs2s, p2s, Color, Escape};
 use std::{cmp, collections::HashSet, fmt, mem, str};
 
 #[derive(Debug, Fail)]
@@ -87,18 +87,6 @@ impl FacetFlags {
     }
 }
 
-use std::convert::AsMut;
-
-fn clone_into_array<A, T>(slice: &[T]) -> A
-where
-    A: Sized + Default + AsMut<[T]>,
-    T: Clone,
-{
-    let mut a = Default::default();
-    <A as AsMut<[T]>>::as_mut(&mut a).clone_from_slice(slice);
-    a
-}
-
 fn read_name(n: &[u8]) -> Fallible<String> {
     let end_offset: usize = n
         .iter()
@@ -127,6 +115,10 @@ impl TextureRef {
 
     fn size(&self) -> usize {
         Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "E2"
     }
 
     fn at_offset(&self) -> usize {
@@ -197,6 +189,10 @@ impl TextureIndex {
         Self::SIZE
     }
 
+    fn magic(&self) -> &'static str {
+        "E0"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
@@ -228,6 +224,10 @@ impl SourceRef {
 
     fn size(&self) -> usize {
         2 + self.source.len() + 1
+    }
+
+    fn magic(&self) -> &'static str {
+        "42"
     }
 
     fn at_offset(&self) -> usize {
@@ -290,6 +290,10 @@ impl VertexBuf {
 
     fn size(&self) -> usize {
         6 + self.verts.len() * 6
+    }
+
+    fn magic(&self) -> &'static str {
+        "VertexBuf(82)"
     }
 
     fn at_offset(&self) -> usize {
@@ -505,6 +509,10 @@ impl Facet {
         self.length
     }
 
+    fn magic(&self) -> &'static str {
+        "Facet(FC)"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
@@ -642,11 +650,15 @@ impl X86Trampoline {
                 return Ok(thunk.name.clone());
             }
         }
-        bail!("did not find thunk with a target of {:08X}", target);
+        bail!("did not find thunk with a target of {:08X}", target)
     }
 
     fn size(&self) -> usize {
         6
+    }
+
+    fn magic(&self) -> &'static str {
+        "Tramp"
     }
 
     fn at_offset(&self) -> usize {
@@ -772,6 +784,49 @@ impl X86Code {
         lowest
     }
 
+    /*
+    fn from_bytes(
+        _name: &str,
+        offset: &mut usize,
+        pe: &peff::PE,
+        trampolines: &[X86Trampoline],
+        vinstrs: &mut Vec<Instr>,
+    ) -> Fallible<()> {
+        let section = &pe.code[*offset..];
+        assert_eq!(section[0], Self::MAGIC);
+        assert_eq!(section[1], 0);
+        *offset += 2;
+
+        // Decode the block of instructions up to ret.
+        let code = &pe.code[*offset..];
+        let maybe_bc =
+            i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + *offset, code);
+        if let Err(e) = maybe_bc {
+            i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
+            bail!("Don't know how to disassemble at {}", *offset);
+        }
+        let bc = maybe_bc?;
+
+        // Insert the instruction.
+        let bc_size = bc.size as usize;
+        let have_header = pe.code[*offset - 2] == 0xF0;
+        let section_offset = if have_header { *offset - 2 } else { *offset };
+        let section_length = bc_size + if have_header { 2 } else { 0 };
+        vinstrs.push(Instr::X86Code(X86Code {
+            offset: section_offset,
+            length: section_length,
+            code_offset: *offset,
+            code: code[0..bc_size].to_owned(),
+            formatted: Self::format_section(section_offset, section_length, &bc, pe),
+            bytecode: bc,
+            have_header,
+        }));
+        *offset += bc_size;
+
+        // If the next block is an interpreter instruction...
+    }
+    */
+
     fn from_bytes(
         _name: &str,
         offset: &mut usize,
@@ -820,8 +875,9 @@ impl X86Code {
                     file.write_all(actual_code)?;
                 }
 
-                trace!("Decoded block:\n{}", bc);
+                trace!("decoded {} instructions", bc.instrs.len());
                 Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
+                trace!("new external jumps: {:?}", external_jumps);
 
                 // Insert the instruction.
                 let bc_size = bc.size as usize;
@@ -839,7 +895,32 @@ impl X86Code {
                 }));
                 *offset += bc_size;
 
+                // The block after the ret may be a word code, or a data block, or another
+                // instruction for us to decode.
+                if pe.code[*offset + 1] != 0 {
+                    trace!("trying next offset");
+                    let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
+                    if let Err(e) = maybe_bc {
+                        trace!("offset after RET is probably external data; check this to see if it might actually be bytecode");
+                        i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
+                    } else {
+                        // Create an external jump to ourself to continue decoding.
+                        external_jumps.insert(*offset);
+                    }
+                }
+
                 if external_jumps.is_empty() {
+                    /*
+                    trace!("trying next offset");
+                    let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
+                    if let Err(e) = maybe_bc {
+                        trace!("offset after RET is not code");
+                        i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
+                        return Ok(());
+                    } else {
+                        external_jumps.insert(*offset);
+                    }
+                    */
                     return Ok(());
                 }
             }
@@ -871,18 +952,19 @@ impl X86Code {
                 return Ok(());
             }
 
-            if have_raw_data {
+            if have_raw_data && *offset < Self::lowest_jump(&external_jumps) {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                println!(
-                    "UNKNOWN DATA @{:04X}: {}",
+                // FIXME: insert this as an instruction?
+                trace!(
+                    "Adding data block @{:04X}: {}",
                     *offset,
                     bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
                 );
                 let end = Self::lowest_jump(&external_jumps);
-                //println!("Read data from {:04X} -> {:04X}", *offset, end);
-                vinstrs.push(Instr::UnknownUnknown(UnknownUnknown {
+                vinstrs.push(Instr::UnknownData(UnknownData {
                     offset: *offset,
+                    length: end - *offset,
                     data: pe.code[*offset..end].to_vec(),
                 }));
                 *offset = end;
@@ -904,6 +986,10 @@ impl X86Code {
         self.code.len() + 2
     }
 
+    fn magic(&self) -> &'static str {
+        "F0"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
@@ -915,7 +1001,7 @@ impl X86Code {
             self.offset
         };
         format!(
-            "@{:04X} X86Code: {}\n{}",
+            "@{:04X} X86Code: {}\n  {}",
             self.offset,
             self.formatted,
             self.bytecode.show_relative(show_offset).trim()
@@ -953,6 +1039,10 @@ impl UnkCE {
         Self::SIZE
     }
 
+    fn magic(&self) -> &'static str {
+        "CE"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
@@ -971,10 +1061,11 @@ impl fmt::Debug for UnkCE {
 #[derive(Debug)]
 pub struct UnkBC {
     pub offset: usize,
+    unk_header: u8,
     flags: u8,
     unk0: u8,
     length: usize,
-    data: Vec<u8>,
+    data: *const u8,
 }
 
 impl UnkBC {
@@ -984,6 +1075,7 @@ impl UnkBC {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
+        let unk_header = data[1];
         let flags = data[2];
         let unk0 = data[3];
         let length = match flags {
@@ -993,13 +1085,14 @@ impl UnkBC {
             0x08 => 6,
             _ => bail!("unknown section BC flags: {}", flags),
         };
-        let data = data[4..length].to_owned();
         Ok(UnkBC {
             offset,
+            unk_header,
             flags,
             unk0,
             length,
-            data,
+            //data: data[4..length].to_owned(),
+            data: data.as_ptr(),
         })
     }
 
@@ -1007,18 +1100,29 @@ impl UnkBC {
         self.length
     }
 
+    fn magic(&self) -> &'static str {
+        "BC"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
 
-    fn show(&self) -> String {
+    pub fn show(&self) -> String {
         format!(
-            "UnkBC @ {:04X}: flags:{}, unk0:{}, len:{}, data:{}",
+            "@{:04X} {}UnkBC{}: {}{}{}   | {}{}{} (hdr:{:02X}, flags:{:02X}, ?unk0?:{:02X})",
             self.offset,
+            Escape::new().fg(Color::Red).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 1).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Red),
+            p2s(self.data, 1, self.length),
+            Escape::new(),
+            self.unk_header,
             self.flags,
             self.unk0,
-            self.length,
-            bs2s(&self.data)
         )
     }
 }
@@ -1055,6 +1159,10 @@ impl Unk40 {
         self.length
     }
 
+    fn magic(&self) -> &'static str {
+        "40"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
@@ -1070,7 +1178,7 @@ impl Unk40 {
 #[derive(Debug)]
 pub struct UnkF6 {
     pub offset: usize,
-    pub data: [u8; 6],
+    data: *const u8,
 }
 
 impl UnkF6 {
@@ -1082,7 +1190,7 @@ impl UnkF6 {
         assert_eq!(data[0], Self::MAGIC);
         Ok(Self {
             offset,
-            data: clone_into_array(&data[1..Self::SIZE]),
+            data: data.as_ptr(),
         })
     }
 
@@ -1090,20 +1198,35 @@ impl UnkF6 {
         Self::SIZE
     }
 
+    fn magic(&self) -> &'static str {
+        "F6"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
 
-    fn show(&self) -> String {
-        format!("UnkF6 @ {:04X}: {}", self.offset, bs2s(&self.data))
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}UnkF6{}: {}{}{}   | {}{}{}",
+            self.offset,
+            Escape::new().fg(Color::Red).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 1).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Red),
+            p2s(self.data, 1, Self::SIZE),
+            Escape::new(),
+        )
     }
 }
 
 #[derive(Debug)]
-pub struct UnkJumpIfLowDetail {
+pub struct Unk38 {
     pub offset: usize,
-    pub offset_to_next: usize,
-    pub data: [u8; 2],
+    pub unk0: usize,
+    data: *const u8,
 }
 
 // I think this probably means something like: fastforward to "next_offset" if
@@ -1111,7 +1234,7 @@ pub struct UnkJumpIfLowDetail {
 // polys in F22, a big rock in ROCKB, and the textured polys in BUNK.
 //
 // This probably works with UNKC8 somehow: in BUNK
-impl UnkJumpIfLowDetail {
+impl Unk38 {
     pub const MAGIC: u8 = 0x38;
     pub const SIZE: usize = 3;
 
@@ -1119,11 +1242,11 @@ impl UnkJumpIfLowDetail {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[1..]) };
-        let offset_to_next = word_ref[0] as usize;
+        let unk0 = word_ref[0] as usize;
         Ok(Self {
             offset,
-            offset_to_next,
-            data: clone_into_array(&data[1..Self::SIZE]),
+            unk0,
+            data: data.as_ptr(),
         })
     }
 
@@ -1131,21 +1254,27 @@ impl UnkJumpIfLowDetail {
         Self::SIZE
     }
 
+    fn magic(&self) -> &'static str {
+        "38"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
 
-    pub fn next_offset(&self) -> usize {
-        // Our start offset + our size + 1 + offset_to_next.
-        self.offset + 4 + 2 + self.offset_to_next
-    }
-
-    fn show(&self) -> String {
+    pub fn show(&self) -> String {
         format!(
-            "UnkJumpIfLowDetail @ {:04X}: {:X} => {:X}",
+            "@{:04X} {}Unk38{}: {}{}{}   | {}{}{} (?unk0?:{:04X})",
             self.offset,
-            self.offset_to_next,
-            self.next_offset()
+            Escape::new().fg(Color::Red).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 1).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Red),
+            p2s(self.data, 1, Self::SIZE),
+            Escape::new(),
+            self.unk0,
         )
     }
 }
@@ -1167,6 +1296,7 @@ impl UnkJumpIfLowDetail {
 #[allow(non_camel_case_types)]
 pub struct F2_JumpIfNotShown {
     pub offset: usize,
+    data: *const u8,
     pub offset_to_next: usize,
 }
 
@@ -1182,12 +1312,17 @@ impl F2_JumpIfNotShown {
         let offset_to_next = word_ref[0] as usize;
         Ok(Self {
             offset,
+            data: data.as_ptr(),
             offset_to_next,
         })
     }
 
     fn size(&self) -> usize {
         Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "F2"
     }
 
     fn at_offset(&self) -> usize {
@@ -1199,11 +1334,17 @@ impl F2_JumpIfNotShown {
         self.offset + Self::SIZE + self.offset_to_next
     }
 
-    fn show(&self) -> String {
+    pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}   F2{}: jump-if-not-shown: delta: {:04X}, target: {:04X}",
+            "@{:04X} {}UnkF2{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::BrightBlue).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::BrightBlue),
+            p2s(self.data, 2, Self::SIZE),
             Escape::new(),
             self.offset_to_next,
             self.next_offset()
@@ -1218,7 +1359,7 @@ pub struct UnkC8_JumpOnDetailLevel {
     pub unk0: u16,
     pub unk1: u16,
     pub offset_to_next: usize,
-    pub data: [u8; 8],
+    data: *const u8,
 }
 
 impl UnkC8_JumpOnDetailLevel {
@@ -1254,12 +1395,16 @@ impl UnkC8_JumpOnDetailLevel {
             unk0,
             unk1,
             offset_to_next,
-            data: clone_into_array(&data[0..Self::SIZE]),
+            data: data[0..Self::SIZE].as_ptr(),
         })
     }
 
     fn size(&self) -> usize {
         Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "C8"
     }
 
     fn at_offset(&self) -> usize {
@@ -1279,11 +1424,11 @@ impl UnkC8_JumpOnDetailLevel {
             Escape::new(),
 
             Escape::new().fg(Color::BrightBlue).bold(),
-            bs2s(&self.data[..2]).trim(),
+            p2s(self.data, 0, 2).trim(),
             Escape::new(),
 
             Escape::new().fg(Color::BrightBlue),
-            bs2s(&self.data[2..]),
+            p2s(self.data, 2, Self::SIZE),
             Escape::new(),
 
             self.unk0,
@@ -1315,6 +1460,10 @@ impl TrailerUnknown {
 
     fn size(&self) -> usize {
         self.data.len()
+    }
+
+    fn magic(&self) -> &'static str {
+        "Trailer"
     }
 
     fn at_offset(&self) -> usize {
@@ -1359,6 +1508,63 @@ impl TrailerUnknown {
 }
 
 #[derive(Debug)]
+pub struct UnknownData {
+    pub offset: usize,
+    pub length: usize,
+    pub data: Vec<u8>,
+}
+
+impl UnknownData {
+    fn size(&self) -> usize {
+        self.data.len()
+    }
+
+    fn magic(&self) -> &'static str {
+        "Data"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn show(&self) -> String {
+        use reverse::{format_sections, Section, ShowMode};
+        let mut sections = Vec::new();
+        let mut sec_start = self.offset;
+        // make a first section to align to word boundary if needed
+        if sec_start % 4 != 0 {
+            let sec_end = self.offset + 4 - (sec_start % 4);
+            sections.push(Section::new(
+                0x0000,
+                sec_start - self.offset,
+                sec_end - sec_start,
+            ));
+            sec_start = sec_end;
+        }
+
+        while sec_start < self.offset + self.data.len() {
+            let sec_end = cmp::min(sec_start + 16, self.offset + self.data.len());
+            sections.push(Section::new(
+                0x0000,
+                sec_start - self.offset,
+                sec_end - sec_start,
+            ));
+            //println!("{} => {}", sec_start - self.offset, sec_end - self.offset,);
+            sec_start = sec_end;
+        }
+
+        let out = format_sections(&self.data, &sections, &mut vec![], &ShowMode::AllPerLine);
+        let mut s = format!("Unknown @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
+        let mut off = 0;
+        for (line, section) in out.iter().zip(sections) {
+            s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
+            off += section.length;
+        }
+        s
+    }
+}
+
+#[derive(Debug)]
 pub struct UnknownUnknown {
     pub offset: usize,
     pub data: Vec<u8>,
@@ -1367,6 +1573,10 @@ pub struct UnknownUnknown {
 impl UnknownUnknown {
     fn size(&self) -> usize {
         self.data.len()
+    }
+
+    fn magic(&self) -> &'static str {
+        "Unknown"
     }
 
     fn at_offset(&self) -> usize {
@@ -1437,6 +1647,10 @@ impl Pad1E {
         1
     }
 
+    fn magic(&self) -> &'static str {
+        "1E"
+    }
+
     fn at_offset(&self) -> usize {
         self.offset
     }
@@ -1452,10 +1666,10 @@ impl Pad1E {
 }
 
 macro_rules! opaque_instr {
-    ($name:ident, $magic:expr, $size:expr) => {
+    ($name:ident, $magic_str: expr, $magic:expr, $size:expr) => {
         pub struct $name {
             pub offset: usize,
-            pub data: [u8; $size],
+            data: *const u8,
         }
 
         impl $name {
@@ -1465,18 +1679,23 @@ macro_rules! opaque_instr {
             fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
                 let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
+                ensure!(data[1] == 0 || data[1] == 0xFF, "not a word code instruction");
                 ensure!(
                     ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0,
                     "expected 1-byte instr or 0 in hi byte"
                 );
                 Ok(Self {
                     offset,
-                    data: clone_into_array(&data[0..Self::SIZE]),
+                    data: data.as_ptr(),
                 })
             }
 
             fn size(&self) -> usize {
                 Self::SIZE
+            }
+
+            fn magic(&self) -> &'static str {
+                $magic_str
             }
 
             fn at_offset(&self) -> usize {
@@ -1496,10 +1715,10 @@ macro_rules! opaque_instr {
                     stringify!($name),
                     Escape::new(),
                     Escape::new().fg(clr).bold(),
-                    bs2s(&self.data[..2]).trim(),
+                    p2s(self.data, 0, 2).trim(),
                     Escape::new(),
                     Escape::new().fg(clr),
-                    bs2s(&self.data[2..]),
+                    p2s(self.data, 2, Self::SIZE),
                     Escape::new()
                 )
             }
@@ -1512,40 +1731,41 @@ macro_rules! opaque_instr {
                     "{} @{:04X}: {}",
                     stringify!($name),
                     self.offset,
-                    bs2s(&self.data[..2]),
+                    p2s(self.data, 0, 2),
                 )
             }
         }
     };
 }
 
-opaque_instr!(Header, 0xFF, 14);
-opaque_instr!(Unk06, 0x06, 21);
-opaque_instr!(Unk08, 0x08, 4);
-opaque_instr!(Unk0C, 0x0C, 17);
-opaque_instr!(Unk0E, 0x0E, 17);
-opaque_instr!(Unk10, 0x10, 17);
-opaque_instr!(Unk12, 0x12, 4);
-opaque_instr!(Unk2E, 0x2E, 4);
-opaque_instr!(Unk46, 0x46, 2);
-opaque_instr!(Unk48, 0x48, 4);
-opaque_instr!(Unk4E, 0x4E, 2);
-opaque_instr!(Unk66, 0x66, 10);
-opaque_instr!(Unk6C, 0x6C, 13);
-opaque_instr!(Unk78, 0x78, 12);
-opaque_instr!(Unk7A, 0x7A, 10);
-opaque_instr!(UnkA6, 0xA6, 6);
-opaque_instr!(UnkAC, 0xAC, 4);
-opaque_instr!(UnkB2, 0xB2, 2);
-opaque_instr!(UnkB8, 0xB8, 4);
-opaque_instr!(UnkC4, 0xC4, 16);
-//opaque_instr!(UnkC8, 0xC8, 8);
-opaque_instr!(UnkCA, 0xCA, 4);
-opaque_instr!(UnkD0, 0xD0, 4);
-opaque_instr!(UnkDA, 0xDA, 4);
-opaque_instr!(UnkE4, 0xE4, 20);
-opaque_instr!(UnkEA, 0xEA, 8);
-opaque_instr!(UnkEE, 0xEE, 2);
+opaque_instr!(Unk4E, "4E", 0x4E, 2); // 6 instances
+opaque_instr!(Unk08, "08", 0x08, 4); // 7 instances
+opaque_instr!(UnkB2, "B2", 0xB2, 2); // 9 instances
+
+opaque_instr!(Header, "Header", 0xFF, 14);
+opaque_instr!(Unk06, "06", 0x06, 21);
+opaque_instr!(Unk0C, "0C", 0x0C, 17);
+opaque_instr!(Unk0E, "0E", 0x0E, 17);
+opaque_instr!(Unk10, "10", 0x10, 17);
+opaque_instr!(Unk12, "12", 0x12, 4);
+opaque_instr!(Unk2E, "2E", 0x2E, 4);
+opaque_instr!(Unk46, "46", 0x46, 2);
+opaque_instr!(Unk48, "48", 0x48, 4);
+opaque_instr!(Unk66, "66", 0x66, 10);
+opaque_instr!(Unk6C, "6C", 0x6C, 13);
+opaque_instr!(Unk78, "78", 0x78, 12);
+opaque_instr!(Unk7A, "7A", 0x7A, 10);
+opaque_instr!(UnkA6, "A6", 0xA6, 6);
+opaque_instr!(UnkAC, "AC", 0xAC, 4);
+opaque_instr!(UnkB8, "B8", 0xB8, 4);
+opaque_instr!(UnkC4, "C4", 0xC4, 16);
+//opaque_instr!(UnkC8, "C8", 0xC8, 8);
+opaque_instr!(UnkCA, "CA", 0xCA, 4);
+opaque_instr!(UnkD0, "D0", 0xD0, 4);
+opaque_instr!(UnkDA, "DA", 0xDA, 4);
+opaque_instr!(UnkE4, "E4", 0xE4, 20);
+opaque_instr!(UnkEA, "EA", 0xEA, 8);
+opaque_instr!(UnkEE, "EE", 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
 
 #[derive(Debug)]
@@ -1586,7 +1806,7 @@ pub enum Instr {
     // Fixed size, without wasted 0 byte after header.
     Pad1E(Pad1E),
     UnkF6(UnkF6),
-    UnkJumpIfLowDetail(UnkJumpIfLowDetail),
+    Unk38(Unk38),
 
     // Variable size.
     UnkBC(UnkBC),
@@ -1608,6 +1828,7 @@ pub enum Instr {
     X86Code(X86Code),
     X86Trampoline(X86Trampoline),
     UnknownUnknown(UnknownUnknown),
+    UnknownData(UnknownData),
 }
 
 macro_rules! impl_for_all_instr {
@@ -1644,7 +1865,7 @@ macro_rules! impl_for_all_instr {
             Instr::UnkEE(ref i) => i.$f(),
             Instr::F2_JumpIfNotShown(ref i) => i.$f(),
             Instr::UnkF6(ref i) => i.$f(),
-            Instr::UnkJumpIfLowDetail(ref i) => i.$f(),
+            Instr::Unk38(ref i) => i.$f(),
             Instr::UnkBC(ref i) => i.$f(),
             Instr::Unk40(ref i) => i.$f(),
             Instr::TrailerUnknown(ref i) => i.$f(),
@@ -1656,6 +1877,7 @@ macro_rules! impl_for_all_instr {
             Instr::X86Code(ref i) => i.$f(),
             Instr::X86Trampoline(ref i) => i.$f(),
             Instr::UnknownUnknown(ref i) => i.$f(),
+            Instr::UnknownData(ref i) => i.$f(),
         }
     };
 }
@@ -1667,6 +1889,10 @@ impl Instr {
 
     pub fn size(&self) -> usize {
         impl_for_all_instr!(self, size)
+    }
+
+    pub fn magic(&self) -> &'static str {
+        impl_for_all_instr!(self, magic)
     }
 
     pub fn at_offset(&self) -> usize {
@@ -1799,7 +2025,7 @@ impl CpuShape {
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
             F2_JumpIfNotShown::MAGIC => consume_instr!(F2_JumpIfNotShown, pe, offset, instrs),
-            UnkJumpIfLowDetail::MAGIC => consume_instr!(UnkJumpIfLowDetail, pe, offset, instrs),
+            Unk38::MAGIC => consume_instr!(Unk38, pe, offset, instrs),
             TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, instrs),
             TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, instrs),
             SourceRef::MAGIC => consume_instr!(SourceRef, pe, offset, instrs),
@@ -1892,20 +2118,63 @@ mod tests {
     use i386::ExitInfo;
     use omnilib::OmniLib;
     use simplelog::{Config, LevelFilter, TermLogger};
-    use std::fs;
+    use std::{collections::HashMap, fs};
     use std::io::prelude::*;
+
+    fn offset_of_trailer(shape: &CpuShape) -> Option<usize> {
+        let mut offset = None;
+        for (_i, instr) in shape.instrs.iter().enumerate() {
+            if let Instr::TrailerUnknown(trailer) = instr {
+                assert_eq!(offset, None, "multiple trailers");
+                offset = Some(trailer.offset);
+            }
+        }
+        return offset;
+    }
+
+    fn last_non_tramp_instr(shape: &CpuShape) -> &Instr {
+        for instr in shape.instrs.iter().rev() {
+            if let Instr::X86Trampoline(_tramp) = instr {
+                continue;
+            } else {
+                return instr;
+            }
+        }
+        panic!("no non-trampoline instructions");
+    }
+
+    #[allow(dead_code)]
+    fn compute_instr_freqs(shape: &CpuShape, freq: &mut HashMap<&'static str, usize>) {
+        for instr in &shape.instrs {
+            let name = instr.magic();
+            let cnt = if let Some(cnt) = freq.get(name) {
+                cnt + 1
+            } else {
+                1
+            };
+            freq.insert(name, cnt);
+        }
+    }
+
+    #[allow(dead_code)]
+    fn show_instr_freqs(freq: &HashMap<&'static str, usize>) {
+        let mut freqs = freq.iter().map(|(&k, &v)| (k, v)).collect::<Vec<(&'static str, usize)>>();
+        freqs.sort_by_key(|(_, f)| *f);
+        for (k, v) in freqs {
+            println!("{}: {}", k, v);
+        }
+    }
 
     #[test]
     fn it_works() -> Fallible<()> {
-        //let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+        let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 
         let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "ATFGOLD", "USNF97",
-            //"ATF",
-            //"ATFNATO",
-            //"MF",
-            "USNF",
+            "FA", "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
         ])?;
+
+        #[allow(unused_variables, unused_mut)]
+        let mut freq: HashMap<&'static str, usize> = HashMap::new();
 
         for (game, name) in omni.find_matching("*.SH")?.iter() {
             println!(
@@ -1918,35 +2187,25 @@ mod tests {
 
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let _shape = CpuShape::from_data(&data)?;
+            let shape = CpuShape::from_data(&data)?;
+
+            //compute_instr_freqs(&shape, &mut freq);
+
+            if let Some(_offset) = offset_of_trailer(&shape) {
+                // TODO: check that any UnkF2's target is equal to this offset.
+            } else {
+                // There must be a trailing unknown unknowns.
+                let last = last_non_tramp_instr(&shape);
+                if let Instr::UnknownUnknown(unk) = last {
+                    // ok
+                    println!("Unknown {:02X}: {} {}", unk.data[0], name, bs2s(&unk.data));
+                } else {
+                    assert!(false, "no trailing unknown when no trailer");
+                }
+            }
         }
 
-        // let mut rv: Vec<String> = Vec::new();
-        // let paths = fs::read_dir("./test_data").unwrap();
-        // for i in paths {
-        //     let entry = i.unwrap();
-        //     let path = format!("{}", entry.path().display());
-        //     //println!("AT: {}", path);
-
-        //     //if path == "./test_data/MIG21.SH" {
-        //     if true {
-        //         let mut fp = fs::File::open(entry.path()).unwrap();
-        //         let mut data = Vec::new();
-        //         fp.read_to_end(&mut data).unwrap();
-
-        //         let shape = CpuShape::from_data(&data).unwrap();
-        //     }
-
-        //     //assert_eq!(format!("./test_data/{}", t.object.file_name), path);
-        //     //rv.push(format!("{:?} <> {} <> {}",
-        //     //                t.object.unk_explosion_type,
-        //     //                t.object.long_name, path));
-        // }
-        // rv.sort();
-
-        // for v in rv {
-        //     println!("{}", v);
-        // }
+        //show_instr_freqs(&freq);
 
         Ok(())
     }

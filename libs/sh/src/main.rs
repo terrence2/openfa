@@ -40,6 +40,12 @@ fn main() -> Fallible<()> {
                 .conflicts_with_all(&["last"]),
         )
         .arg(
+            Arg::with_name("matching")
+                .long("--matching")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("last")
                 .long("--last")
                 .takes_value(false)
@@ -97,6 +103,14 @@ fn main() -> Fallible<()> {
             for (i, instr) in shape.instrs.iter().enumerate() {
                 println!("{:3}: {}", i, instr.show());
             }
+        } else if matches.is_present("matching") {
+            let target = matches.value_of("matching").unwrap();
+            for (i, instr) in shape.instrs.iter().enumerate() {
+                if instr.magic() == target {
+                    println!("{}: {}", name, instr.show());
+                }
+            }
+
         } else if matches.is_present("last") {
             let fmt = shape
                 .instrs

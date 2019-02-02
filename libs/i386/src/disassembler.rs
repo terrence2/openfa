@@ -16,6 +16,7 @@
 
 use crate::lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use failure::{bail, ensure, Error, Fail, Fallible};
+use log::trace;
 use reverse::bs2s;
 use std::{fmt, mem};
 
@@ -34,14 +35,14 @@ impl DisassemblyError {
         if let Some(&DisassemblyError::UnknownOpcode { ip, op: (op, ext) }) =
             e.downcast_ref::<DisassemblyError>()
         {
-            println!("Unknown OpCode: {:2X} /{}", op, ext);
+            trace!("Unknown OpCode: {:2X} /{}", op, ext);
             let line1 = bs2s(&code[0..]);
             let mut line2 = String::new();
             for _ in 0..(ip - 1) * 3 {
                 line2 += "-";
             }
             line2 += "^";
-            println!("{}\n{}", line1, line2);
+            trace!("{}\n{}", line1, line2);
 
             use std::fs::File;
             use std::io::*;
@@ -727,24 +728,24 @@ impl OpPrefix {
         }
     }
 
-    fn apply(mut self, b: u8) -> Self {
+    fn apply(mut self, b: u8) -> Fallible<Self> {
         match b {
             0x64 => self.use_fs_segment = true,
             0x66 => self.toggle_operand_size = true,
             0x67 => self.toggle_address_size = true,
             0xF3 => self.toggle_repeat = true,
-            _ => unreachable!(),
+            _ => bail!("not an op prefix: {}", b),
         }
-        self
+        Ok(self)
     }
 
-    fn from_bytes(code: &[u8], ip: &mut usize) -> Self {
+    fn from_bytes(code: &[u8], ip: &mut usize) -> Fallible<Self> {
         let mut prefix = Self::default();
         while *ip < code.len() && PREFIX_CODES.contains(&code[*ip]) {
-            prefix = prefix.apply(code[*ip]);
+            prefix = prefix.apply(code[*ip])?;
             *ip += 1;
         }
-        prefix
+        Ok(prefix)
     }
 }
 
@@ -809,7 +810,7 @@ impl Instr {
     pub fn decode_one(code: &[u8], ip: &mut usize) -> Fallible<Instr> {
         let initial_ip = *ip;
 
-        let prefix = OpPrefix::from_bytes(code, ip);
+        let prefix = OpPrefix::from_bytes(code, ip)?;
 
         let op = Self::read_op(code, ip)?;
 
@@ -893,17 +894,13 @@ impl ByteCode {
         })
     }
 
-    pub fn disassemble_to_ret(at_offset: usize, code: &[u8], verbose: bool) -> Fallible<Self> {
-        if verbose {
-            println!("Disassembling: {}", bs2s(code));
-        }
+    pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Fallible<Self> {
+        trace!("Disassembling ->Ret @{:04X}: {}...", at_offset, bs2s(&code[..10.min(code.len())]));
         let mut instrs = Vec::new();
         let mut ip = 0usize;
         while ip < code.len() {
             let instr = Instr::decode_one(code, &mut ip)?;
-            if verbose {
-                println!("  @{}: {}", ip, instr);
-            }
+            trace!("  @{}: {}", ip, instr);
             let is_ret = instr.memonic == Memonic::Return;
             instrs.push(instr);
             if is_ret {
@@ -914,6 +911,23 @@ impl ByteCode {
             start_addr: at_offset as u32,
             size: Self::compute_size(&instrs) as u32,
             instrs,
+        })
+    }
+
+    pub fn disassemble_one(at_offset: usize, code: &[u8]) -> Fallible<Self> {
+        trace!("Disassembling One @{:04X}: {}...", at_offset, bs2s(&code[..10.min(code.len())]));
+        let mut instrs = Vec::new();
+        let mut ip = 0usize;
+        while ip < code.len() {
+            let instr = Instr::decode_one(code, &mut ip)?;
+            trace!("  @{}: {}", ip, instr);
+            instrs.push(instr);
+            break;
+        }
+        Ok(Self {
+            start_addr: at_offset as u32,
+            size: Self::compute_size(&instrs) as u32,
+            instrs
         })
     }
 
