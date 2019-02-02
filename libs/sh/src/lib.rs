@@ -739,6 +739,7 @@ impl X86Code {
         }
     }
 
+    /*
     fn find_external_absolute(
         _base: usize,
         pe: &peff::PE,
@@ -759,6 +760,7 @@ impl X86Code {
             }
         }
     }
+    */
 
     fn lowest_jump(jumps: &HashSet<usize>) -> usize {
         let mut lowest = usize::max_value();
@@ -787,20 +789,18 @@ impl X86Code {
         external_jumps.insert(*offset);
 
         while !external_jumps.is_empty() {
-            println!(
+            trace!(
                 "We are currently at {} with external jumps: {:?}",
-                *offset, external_jumps
+                *offset,
+                external_jumps
             );
             if external_jumps.contains(&offset) {
                 external_jumps.remove(&offset);
-                println!("IP REACHED EXTERNAL JUMP");
+                trace!("IP REACHED EXTERNAL JUMP");
 
                 let code = &pe.code[*offset..];
-                let maybe_bc = i386::ByteCode::disassemble_to_ret(
-                    SHAPE_LOAD_BASE as usize + *offset,
-                    code,
-                    true,
-                );
+                let maybe_bc =
+                    i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + *offset, code);
                 if let Err(e) = maybe_bc {
                     i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
                     bail!("Don't know how to disassemble at {}", *offset);
@@ -820,7 +820,7 @@ impl X86Code {
                     file.write_all(actual_code)?;
                 }
 
-                println!("Decoded block:\n{}", bc);
+                trace!("Decoded block:\n{}", bc);
                 Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
 
                 // Insert the instruction.
@@ -1218,7 +1218,7 @@ pub struct UnkC8_JumpOnDetailLevel {
     pub unk0: u16,
     pub unk1: u16,
     pub offset_to_next: usize,
-    pub data: [u8; 6],
+    pub data: [u8; 8],
 }
 
 impl UnkC8_JumpOnDetailLevel {
@@ -1237,7 +1237,7 @@ impl UnkC8_JumpOnDetailLevel {
     // 14   bullet, tracer, wtrbuf
     // 18   moth, que
     // 19   missles, buildings, bridges, mooses, ships... basically everything?
-    // 1E   buildings, missles, ships, etc.
+    // 1E   buildings, missiles, ships, etc.
     // 21   planes... all of them
     // distance at which it should be shown?
 
@@ -1254,7 +1254,7 @@ impl UnkC8_JumpOnDetailLevel {
             unk0,
             unk1,
             offset_to_next,
-            data: clone_into_array(&data[2..Self::SIZE]),
+            data: clone_into_array(&data[0..Self::SIZE]),
         })
     }
 
@@ -1273,10 +1273,19 @@ impl UnkC8_JumpOnDetailLevel {
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}UnkC8{}: jump-on-detail-level: {:04X}, {:04X} delta: {:04X}, target: {:04X}",
+            "@{:04X} {}UnkC8{}: {}{}{}| {}{}{} (jump-on-detail-level: ?dist?:{:04X}, kind:{:04X} delta:{:04X}, target:{:04X})",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
+
+            Escape::new().fg(Color::BrightBlue).bold(),
+            bs2s(&self.data[..2]).trim(),
+            Escape::new(),
+
+            Escape::new().fg(Color::BrightBlue),
+            bs2s(&self.data[2..]),
+            Escape::new(),
+
             self.unk0,
             self.unk1,
             self.offset_to_next,
@@ -1682,7 +1691,7 @@ impl CpuShape {
         pe.relocate(SHAPE_LOAD_BASE)?;
         let trampolines = Self::find_trampolines(&pe)?;
 
-        let mut instrs = Self::_read_sections(&pe, &trampolines)?;
+        let mut instrs = Self::read_sections(&pe, &trampolines)?;
         let mut tramp_instr = trampolines
             .iter()
             .map(|t| Instr::X86Trampoline(t.to_owned()))
@@ -1694,6 +1703,16 @@ impl CpuShape {
             trampolines,
             pe,
         })
+    }
+
+    pub fn all_textures(&self) -> HashSet<String> {
+        let mut uniq = HashSet::new();
+        for instr in &self.instrs {
+            if let Instr::TextureRef(tex) = instr {
+                uniq.insert(tex.filename.to_owned());
+            }
+        }
+        return uniq;
     }
 
     fn find_trampolines(pe: &peff::PE) -> Fallible<Vec<X86Trampoline>> {
@@ -1712,18 +1731,18 @@ impl CpuShape {
         Ok(trampolines)
     }
 
-    fn _read_sections(pe: &peff::PE, trampolines: &[X86Trampoline]) -> Fallible<Vec<Instr>> {
+    fn read_sections(pe: &peff::PE, trampolines: &[X86Trampoline]) -> Fallible<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         while offset < pe.code.len() {
-            println!(
-                "AT: {:04X}: {}",
-                offset,
-                bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)])
-            );
+            // trace!(
+            //     "Decoding At: {:04X}: {}",
+            //     offset,
+            //     bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)])
+            // );
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
             Self::read_instr(&mut offset, pe, trampolines, &mut instrs)?;
-            println!("=>: {}", instrs.last().unwrap().show());
+            trace!("=>: {}", instrs.last().unwrap().show());
         }
 
         // Assertions.
@@ -1829,7 +1848,7 @@ impl CpuShape {
             }
             cur_offset += instr.size();
         }
-        bail!("no instruction at absolute offset: {:08X}", abs_offset);
+        bail!("no instruction at absolute offset: {:08X}", abs_offset)
     }
 
     pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Fallible<usize> {
@@ -1840,7 +1859,7 @@ impl CpuShape {
             }
             b_offset += instr.size() as u32;
         }
-        bail!("no instruction at x86_offset: {:08X}", x86_offset);
+        bail!("no instruction at x86_offset: {:08X}", x86_offset)
     }
 }
 
@@ -1880,7 +1899,7 @@ mod tests {
     fn it_works() -> Fallible<()> {
         //let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATFGOLD", "USNF97",
             //"ATF",
             //"ATFNATO",

@@ -38,44 +38,52 @@ fn main() -> Fallible<()> {
                 .takes_value(false)
                 .required(false)
                 .conflicts_with_all(&["last"]),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("last")
                 .long("--last")
                 .takes_value(false)
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("unknown")
                 .long("--unknown")
                 .takes_value(false)
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("a6")
                 .long("--a6")
                 .takes_value(false)
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("c8")
                 .long("--c8")
                 .takes_value(false)
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("f2")
                 .long("--f2")
                 .takes_value(false)
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("memory")
                 .long("--memory")
                 .takes_value(false)
                 .required(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("INPUT")
                 .help("The shape(s) to show")
                 .multiple(true)
                 .required(true),
-        ).get_matches();
+        )
+        .get_matches();
 
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
+    TermLogger::init(LevelFilter::Info, Config::default())?;
 
     for name in matches.values_of("INPUT").unwrap() {
         let mut fp = fs::File::open(name).unwrap();
