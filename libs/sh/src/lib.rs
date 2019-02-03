@@ -251,8 +251,7 @@ impl SourceRef {
 pub struct VertexBuf {
     pub offset: usize,
     pub unk0: u16,
-    pub raw_verts: Vec<[u16; 3]>,
-    pub verts: Vec<[f32; 3]>,
+    pub verts: Vec<[i16; 3]>,
 }
 
 impl VertexBuf {
@@ -263,27 +262,18 @@ impl VertexBuf {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let head: &[u16] = unsafe { mem::transmute(&data[2..6]) };
-        let words: &[u16] = unsafe { mem::transmute(&data[6..]) };
+        let words: &[i16] = unsafe { mem::transmute(&data[6..]) };
         let mut buf = VertexBuf {
             offset,
             unk0: head[2],
-            raw_verts: Vec::new(),
             verts: Vec::new(),
         };
-        fn s2f(s: u16) -> f32 {
-            f32::from(s as i16)
-        }
         let nverts = head[0] as usize;
         for i in 0..nverts {
-            let x = s2f(words[i * 3]);
-            let y = s2f(words[i * 3 + 1]);
-            let z = s2f(words[i * 3 + 2]);
-            buf.verts.push([x, y, z]);
-
             let x = words[i * 3];
             let y = words[i * 3 + 1];
             let z = words[i * 3 + 2];
-            buf.raw_verts.push([x, y, z]);
+            buf.verts.push([x, y, z]);
         }
         Ok(buf)
     }
@@ -302,9 +292,9 @@ impl VertexBuf {
 
     fn show(&self) -> String {
         let s = self
-            .raw_verts
+            .verts
             .iter()
-            .map(|v| format!("({:04X},{:04X},{:04X})", v[0], v[1], v[2]))
+            .map(|v| format!("({},{},{})", v[0], v[1], v[2]))
             .collect::<Vec<String>>()
             .join(", ");
         format!(
