@@ -81,7 +81,7 @@ impl TextureAtlas {
         let atlas_height = (num_down * size) + num_down + 1;
 
         trace!(
-            "TextureAtlas::trivial: {} images, {} across, {}x{} pixels",
+            "t2::TextureAtlas::trivial: {} images, {} across, {}x{} pixels",
             sources.len(),
             num_across,
             atlas_width,
@@ -103,7 +103,7 @@ impl TextureAtlas {
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
 
             trace!(
-                "TextureAtlas::trivial: {:?} @ {}x{}",
+                "t2::TextureAtlas::trivial: {:?} @ {}x{}",
                 tloc,
                 cursor_x,
                 cursor_y
@@ -149,7 +149,7 @@ impl TextureAtlas {
         let atlas_height = (num_down * size) + (2 * num_down) + 2;
 
         trace!(
-            "TextureAtlas::complex: {} squares, {} across, {}x{} pixels",
+            "t2::TextureAtlas::complex: {} squares, {} across, {}x{} pixels",
             square_count,
             num_across,
             atlas_width,
@@ -189,7 +189,7 @@ impl TextureAtlas {
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
 
             trace!(
-                "TextureAtlas::complex: {:?} @ {}x{}",
+                "t2::TextureAtlas::complex: {:?} @ {}x{}",
                 tloc,
                 target_x,
                 target_y
@@ -297,7 +297,7 @@ mod test {
     ) -> Fallible<Palette> {
         // Note: we need to really find the right palette.
         let mut palette = base_palette.clone();
-        let layer_data = layer.for_index(layer_index + 2);
+        let layer_data = layer.for_index(layer_index + 2, 0)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;

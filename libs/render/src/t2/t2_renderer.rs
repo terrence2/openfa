@@ -91,27 +91,11 @@ mod fs {
 
             layout(set = 0, binding = 0) uniform sampler2D tex;
 
-            float _linear_to_sRGB_inner(float x) {
-                if (x <= 0.00031308)
-                    return 12.92 * x;
-                else
-                    return 1.055*pow(x,(1.0 / 2.4) ) - 0.055;
-            }
-
-            vec4 linear_to_sRGB(vec4 c) {
-                return vec4(
-                    _linear_to_sRGB_inner(c.r),
-                    _linear_to_sRGB_inner(c.g),
-                    _linear_to_sRGB_inner(c.b),
-                    _linear_to_sRGB_inner(c.a)
-                );
-            }
-
             void main() {
                 if (v_tex_coord.x == 0.0) {
                     f_color = v_color;
                 } else {
-                    f_color = linear_to_sRGB(texture(tex, v_tex_coord));
+                    f_color = texture(tex, v_tex_coord);
                 }
             }
             "
@@ -269,8 +253,8 @@ impl T2Renderer {
         c2_off: i32,
         d3_off: i32,
     ) -> Fallible<()> {
-        let (pds, vertex_buffer, index_buffer, palette) =
-            self.regenerate_with_palette_parameters(window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
+        let (pds, vertex_buffer, index_buffer, palette) = self
+            .regenerate_with_palette_parameters(window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
         self.pds = Some(pds);
         self.vertex_buffer = Some(vertex_buffer);
         self.index_buffer = Some(index_buffer);
@@ -290,7 +274,7 @@ impl T2Renderer {
         Arc<dyn DescriptorSet + Send + Sync>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
         Arc<CpuAccessibleBuffer<[u32]>>,
-        Palette
+        Palette,
     )> {
         // Note: we need to really find the right palette.
         let mut palette = self.base_palette.clone();
@@ -492,7 +476,7 @@ impl T2Renderer {
         let (texture, tex_future) = ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
-            Format::R8G8B8A8Srgb,
+            Format::R8G8B8A8Unorm,
             window.queue(),
         )?;
         Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
