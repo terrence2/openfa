@@ -105,7 +105,7 @@ fn main() -> Fallible<()> {
             }
         } else if matches.is_present("matching") {
             let target = matches.value_of("matching").unwrap();
-            for (i, instr) in shape.instrs.iter().enumerate() {
+            for instr in &shape.instrs {
                 if instr.magic() == target {
                     println!("{}: {}", name, instr.show());
                 }

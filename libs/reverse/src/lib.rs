@@ -71,6 +71,15 @@ pub fn bs2s(bs: &[u8]) -> String {
     v.iter().collect::<String>()
 }
 
+pub fn p2s(bs: *const u8, start: usize, end: usize) -> String {
+    let mut v = Vec::new();
+    for i in start..end {
+        b2h(unsafe { *bs.offset(i as isize) }, &mut v);
+        v.push(' ');
+    }
+    v.iter().collect::<String>()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
     Black = 30,

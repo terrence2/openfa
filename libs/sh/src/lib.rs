@@ -308,7 +308,7 @@ impl VertexBuf {
             .collect::<Vec<String>>()
             .join(", ");
         format!(
-            "@{:04X} {}VxBuf{}: {}{} ({:b}){} => {}verts -> {}{}{}",
+            "@{:04X} {}VxBuf: 82 00{}| {}{} ({:b}){} => {}verts -> {}{}{}",
             self.offset,
             Escape::new().fg(Color::Magenta).bold(),
             Escape::new(),
@@ -542,7 +542,7 @@ impl Facet {
             .collect::<Vec<String>>()
             .join(", ");
         format!(
-            "@{:04X} {}Facet{}: {}{}{} - {}{}{} - [{}{}{}] - {}{:?}{}",
+            "@{:04X} {}Facet: FC{}   | {}{}{} - {}{}{} - [{}{}{}] - {}{:?}{}",
             self.offset,
             Escape::new().fg(Color::Cyan).bold(),
             Escape::new(),
@@ -1061,6 +1061,55 @@ impl fmt::Debug for UnkCE {
 #[derive(Debug)]
 pub struct UnkBC {
     pub offset: usize,
+    pub unk_header: u8,
+    data: *const u8,
+}
+
+impl UnkBC {
+    pub const MAGIC: u8 = 0xBC;
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+        let data = &code[offset..];
+        assert_eq!(data[0], Self::MAGIC);
+
+        let unk_header = data[1];
+        Ok(UnkBC {
+            offset,
+            unk_header,
+            data: data.as_ptr(),
+        })
+    }
+
+    fn size(&self) -> usize {
+        2
+    }
+
+    fn magic(&self) -> &'static str {
+        "BC"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}UnkBC{}: {}{}{}| (hdr:{:02X})",
+            self.offset,
+            Escape::new().fg(Color::Red).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            self.unk_header,
+        )
+    }
+}
+
+/*
+#[derive(Debug)]
+pub struct UnkBC {
+    pub offset: usize,
     unk_header: u8,
     flags: u8,
     unk0: u8,
@@ -1126,6 +1175,7 @@ impl UnkBC {
         )
     }
 }
+*/
 
 #[derive(Debug)]
 pub struct Unk40 {
@@ -1635,16 +1685,23 @@ impl UnknownUnknown {
 #[derive(Debug)]
 pub struct Pad1E {
     offset: usize,
+    length: usize,
+    data: *const u8,
 }
 impl Pad1E {
     pub const MAGIC: u8 = 0x1E;
 
-    fn from_bytes(offset: usize, _code: &[u8]) -> Fallible<Self> {
-        Ok(Pad1E { offset })
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+        let mut cnt = 0;
+        while code[offset + cnt] == 0x1E {
+            cnt += 1;
+        }
+        assert!(cnt > 0);
+        Ok(Pad1E { offset, length: cnt, data: (&code[offset..]).as_ptr() })
     }
 
     fn size(&self) -> usize {
-        1
+        self.length
     }
 
     fn magic(&self) -> &'static str {
@@ -1656,12 +1713,32 @@ impl Pad1E {
     }
 
     fn show(&self) -> String {
-        format!(
-            "@{:04X} {}Pad1E: 1E{}",
-            self.offset,
-            Escape::new().dimmed(),
-            Escape::new()
-        )
+        if self.length == 1 {
+            format!(
+                "@{:04X} {}Pad1E: 1E{}   |",
+                self.offset,
+                Escape::new().dimmed(),
+                Escape::new()
+            )
+        } else if self.length == 2 {
+            format!(
+                "@{:04X} {}Pad1E: 1E 1E{}|",
+                self.offset,
+                Escape::new().dimmed(),
+                Escape::new()
+            )
+        } else {
+            format!(
+                "@{:04X} {}Pad1E: 1E 1E{}| {}{}{}",
+                self.offset,
+                Escape::new().dimmed(),
+                Escape::new(),
+                Escape::new().dimmed(),
+                p2s(self.data, 2, self.size()),
+                Escape::new()
+            )
+
+        }
     }
 }
 
@@ -1669,7 +1746,7 @@ macro_rules! opaque_instr {
     ($name:ident, $magic_str: expr, $magic:expr, $size:expr) => {
         pub struct $name {
             pub offset: usize,
-            data: *const u8,
+            pub data: *const u8,
         }
 
         impl $name {
@@ -1749,12 +1826,16 @@ opaque_instr!(Unk0E, "0E", 0x0E, 17);
 opaque_instr!(Unk10, "10", 0x10, 17);
 opaque_instr!(Unk12, "12", 0x12, 4);
 opaque_instr!(Unk2E, "2E", 0x2E, 4);
+opaque_instr!(Unk3A, "3A", 0x3A, 6);
+opaque_instr!(Unk44, "44", 0x44, 4);
 opaque_instr!(Unk46, "46", 0x46, 2);
 opaque_instr!(Unk48, "48", 0x48, 4);
 opaque_instr!(Unk66, "66", 0x66, 10);
 opaque_instr!(Unk6C, "6C", 0x6C, 13);
+opaque_instr!(Unk72, "72", 0x72, 4);
 opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
+opaque_instr!(Unk96, "96", 0x96, 6);
 opaque_instr!(UnkA6, "A6", 0xA6, 6);
 opaque_instr!(UnkAC, "AC", 0xAC, 4);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
@@ -1762,8 +1843,12 @@ opaque_instr!(UnkC4, "C4", 0xC4, 16);
 //opaque_instr!(UnkC8, "C8", 0xC8, 8);
 opaque_instr!(UnkCA, "CA", 0xCA, 4);
 opaque_instr!(UnkD0, "D0", 0xD0, 4);
+opaque_instr!(UnkD2, "D2", 0xD2, 8);
 opaque_instr!(UnkDA, "DA", 0xDA, 4);
+opaque_instr!(UnkDC, "DC", 0xDC, 12);
 opaque_instr!(UnkE4, "E4", 0xE4, 20);
+opaque_instr!(UnkE6, "E6", 0xE6, 10);
+opaque_instr!(UnkE8, "E8", 0xE8, 6);
 opaque_instr!(UnkEA, "EA", 0xEA, 8);
 opaque_instr!(UnkEE, "EE", 0xEE, 2);
 //opaque_instr!(UnkF2, 0xF2, 4);
@@ -1781,13 +1866,17 @@ pub enum Instr {
     Unk10(Unk10),
     Unk12(Unk12),
     Unk2E(Unk2E),
+    Unk3A(Unk3A),
+    Unk44(Unk44),
     Unk46(Unk46),
     Unk48(Unk48),
     Unk4E(Unk4E),
     Unk66(Unk66),
     Unk6C(Unk6C),
+    Unk72(Unk72),
     Unk78(Unk78),
     Unk7A(Unk7A),
+    Unk96(Unk96),
     UnkA6(UnkA6),
     UnkAC(UnkAC),
     UnkB2(UnkB2),
@@ -1797,8 +1886,12 @@ pub enum Instr {
     UnkCA(UnkCA),
     UnkCE(UnkCE),
     UnkD0(UnkD0),
+    UnkD2(UnkD2),
     UnkDA(UnkDA),
+    UnkDC(UnkDC),
     UnkE4(UnkE4),
+    UnkE6(UnkE6),
+    UnkE8(UnkE8),
     UnkEA(UnkEA),
     UnkEE(UnkEE),
     F2_JumpIfNotShown(F2_JumpIfNotShown),
@@ -1843,13 +1936,17 @@ macro_rules! impl_for_all_instr {
             Instr::Unk12(ref i) => i.$f(),
             Instr::Pad1E(ref i) => i.$f(),
             Instr::Unk2E(ref i) => i.$f(),
+            Instr::Unk3A(ref i) => i.$f(),
+            Instr::Unk44(ref i) => i.$f(),
             Instr::Unk46(ref i) => i.$f(),
             Instr::Unk48(ref i) => i.$f(),
             Instr::Unk4E(ref i) => i.$f(),
             Instr::Unk66(ref i) => i.$f(),
             Instr::Unk6C(ref i) => i.$f(),
+            Instr::Unk72(ref i) => i.$f(),
             Instr::Unk78(ref i) => i.$f(),
             Instr::Unk7A(ref i) => i.$f(),
+            Instr::Unk96(ref i) => i.$f(),
             Instr::UnkA6(ref i) => i.$f(),
             Instr::UnkAC(ref i) => i.$f(),
             Instr::UnkB2(ref i) => i.$f(),
@@ -1859,8 +1956,12 @@ macro_rules! impl_for_all_instr {
             Instr::UnkCA(ref i) => i.$f(),
             Instr::UnkCE(ref i) => i.$f(),
             Instr::UnkD0(ref i) => i.$f(),
+            Instr::UnkD2(ref i) => i.$f(),
             Instr::UnkDA(ref i) => i.$f(),
+            Instr::UnkDC(ref i) => i.$f(),
             Instr::UnkE4(ref i) => i.$f(),
+            Instr::UnkE6(ref i) => i.$f(),
+            Instr::UnkE8(ref i) => i.$f(),
             Instr::UnkEA(ref i) => i.$f(),
             Instr::UnkEE(ref i) => i.$f(),
             Instr::F2_JumpIfNotShown(ref i) => i.$f(),
@@ -1999,14 +2100,18 @@ impl CpuShape {
             Unk12::MAGIC => consume_instr!(Unk12, pe, offset, instrs),
             Pad1E::MAGIC => consume_instr!(Pad1E, pe, offset, instrs),
             Unk2E::MAGIC => consume_instr!(Unk2E, pe, offset, instrs),
+            Unk3A::MAGIC => consume_instr!(Unk3A, pe, offset, instrs),
             Unk40::MAGIC => consume_instr!(Unk40, pe, offset, instrs),
+            Unk44::MAGIC => consume_instr!(Unk44, pe, offset, instrs),
             Unk46::MAGIC => consume_instr!(Unk46, pe, offset, instrs),
             Unk48::MAGIC => consume_instr!(Unk48, pe, offset, instrs),
             Unk4E::MAGIC => consume_instr!(Unk4E, pe, offset, instrs),
             Unk66::MAGIC => consume_instr!(Unk66, pe, offset, instrs),
             Unk6C::MAGIC => consume_instr!(Unk6C, pe, offset, instrs),
+            Unk72::MAGIC => consume_instr!(Unk72, pe, offset, instrs),
             Unk78::MAGIC => consume_instr!(Unk78, pe, offset, instrs),
             Unk7A::MAGIC => consume_instr!(Unk7A, pe, offset, instrs),
+            Unk96::MAGIC => consume_instr!(Unk96, pe, offset, instrs),
             UnkA6::MAGIC => consume_instr!(UnkA6, pe, offset, instrs),
             UnkAC::MAGIC => consume_instr!(UnkAC, pe, offset, instrs),
             UnkB2::MAGIC => consume_instr!(UnkB2, pe, offset, instrs),
@@ -2019,8 +2124,12 @@ impl CpuShape {
             UnkCA::MAGIC => consume_instr!(UnkCA, pe, offset, instrs),
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, instrs),
             UnkD0::MAGIC => consume_instr!(UnkD0, pe, offset, instrs),
+            UnkD2::MAGIC => consume_instr!(UnkD2, pe, offset, instrs),
             UnkDA::MAGIC => consume_instr!(UnkDA, pe, offset, instrs),
+            UnkDC::MAGIC => consume_instr!(UnkDC, pe, offset, instrs),
             UnkE4::MAGIC => consume_instr!(UnkE4, pe, offset, instrs),
+            UnkE6::MAGIC => consume_instr!(UnkE6, pe, offset, instrs),
+            UnkE8::MAGIC => consume_instr!(UnkE8, pe, offset, instrs),
             UnkEA::MAGIC => consume_instr!(UnkEA, pe, offset, instrs),
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
@@ -2167,7 +2276,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+        let _ = TermLogger::init(LevelFilter::Info, Config::default()).unwrap();
 
         let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
@@ -2198,7 +2307,7 @@ mod tests {
                 let last = last_non_tramp_instr(&shape);
                 if let Instr::UnknownUnknown(unk) = last {
                     // ok
-                    println!("Unknown {:02X}: {} {}", unk.data[0], name, bs2s(&unk.data));
+                    println!("Unknown {:02X} {:02X}: {} {}", unk.data[0], unk.data[1], name, bs2s(&unk.data));
                 } else {
                     assert!(false, "no trailing unknown when no trailer");
                 }
