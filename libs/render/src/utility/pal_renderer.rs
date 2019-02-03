@@ -121,7 +121,11 @@ impl PalRenderer {
                     tex_coord: [0.0, 0.0],
                 },
                 Vertex {
-                    position: [-1.0 + pad, -1.0 + (size / window.aspect_ratio()?) + pad, 1.0],
+                    position: [
+                        -1.0 + pad,
+                        -1.0 + (size / window.aspect_ratio()?) + pad,
+                        1.0,
+                    ],
                     tex_coord: [0.0, 1.0],
                 },
                 Vertex {
@@ -129,7 +133,11 @@ impl PalRenderer {
                     tex_coord: [1.0, 0.0],
                 },
                 Vertex {
-                    position: [-1.0 + size + pad, -1.0 + (size / window.aspect_ratio()?) + pad, 1.0],
+                    position: [
+                        -1.0 + size + pad,
+                        -1.0 + (size / window.aspect_ratio()?) + pad,
+                        1.0,
+                    ],
                     tex_coord: [1.0, 1.0],
                 },
             ]
