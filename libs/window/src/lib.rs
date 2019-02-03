@@ -338,7 +338,7 @@ impl GraphicsWindow {
         self.dynamic_state.viewports = Some(vec![Viewport {
             origin: [0.0, 0.0],
             dimensions: dim,
-            depth_range: 0.0..1.0,
+            depth_range: 1.0..0.0,
         }]);
 
         self.recreatable.handle_resize(&self.device, &self.queues[0], &self.surface)
@@ -378,7 +378,7 @@ impl GraphicsWindow {
         .begin_render_pass(
             self.framebuffer(image_num),
             false,
-            vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
+            vec![[0.0, 0.0, 1.0, 1.0].into(), 0f32.into()],
         )?;
         let command_buffer = draw(command_buffer, &self.dynamic_state)?
             .end_render_pass()?

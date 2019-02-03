@@ -34,7 +34,7 @@ use vulkano::{
     framebuffer::Subpass,
     image::{Dimensions, ImmutableImage},
     impl_vertex,
-    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
+    pipeline::{depth_stencil::{Compare, DepthStencil, DepthBounds}, GraphicsPipeline, GraphicsPipelineAbstract},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
@@ -193,7 +193,13 @@ impl T2Renderer {
                 .front_face_counter_clockwise()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
-                .depth_stencil_simple_depth()
+                .depth_stencil(DepthStencil {
+                    depth_write: true,
+                    depth_compare: Compare::GreaterOrEqual,
+                    depth_bounds_test: DepthBounds::Disabled,
+                    stencil_front: Default::default(),
+                    stencil_back: Default::default()
+                })
                 .blend_alpha_blending()
                 .render_pass(
                     Subpass::from(window.render_pass(), 0)

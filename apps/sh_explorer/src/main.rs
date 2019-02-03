@@ -18,7 +18,9 @@ use log::trace;
 use mm::MissionMap;
 use nalgebra::Isometry3;
 use omnilib::OmniLib;
-use render::{ArcBallCamera, PalRenderer, T2Renderer};
+use pal::Palette;
+use render::{ArcBallCamera, PalRenderer, ShRenderer};
+use sh::CpuShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -30,7 +32,6 @@ use winit::{
     KeyboardInput, MouseScrollDelta, VirtualKeyCode,
     WindowEvent::{CloseRequested, Destroyed, Resized},
 };
-use xt::TypeManager;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "mm_explorer", about = "Show the contents of an mm file")]
@@ -47,7 +48,7 @@ struct Opt {
     input: String,
 }
 
-pub fn main() -> Fallible<()> {
+fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Trace, Config::default())?;
 
@@ -56,26 +57,15 @@ pub fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-    let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
-    let types = TypeManager::new(lib.clone());
+    let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
+    let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
-    let contents = lib.load_text(&opt.input)?;
-    let mm = MissionMap::from_str(&contents, &types)?;
+    let sh = CpuShape::from_data(&lib.load(&opt.input)?)?;
+    sh_renderer.add_shape_to_render("foo", &sh, &lib, &window)?;
 
-    ///////////////////////////////////////////////////////////
-    let mut t2_renderer = T2Renderer::new(mm, &assets, &lib, &window)?;
-    let mut lay_base = -3;
-    let mut e0_off = -1;
-    let mut f1_off = -1;
-    let mut c2_off = 0;
-    let mut d3_off = 0;
-    t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-    let mut pal_renderer = PalRenderer::new(&window)?;
-    pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
-    ///////////////////////////////////////////////////////////
-
-    let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.001f32, 3.40282347e+38f32);
+    //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
+    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.40282347e+38f32);
+    camera.set_distance(40f32);
 
     let mut need_reset = false;
     loop {
@@ -83,16 +73,16 @@ pub fn main() -> Fallible<()> {
 
         if need_reset == true {
             need_reset = false;
-            t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-            pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
+            // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
+            // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
         }
 
-        t2_renderer.set_projection(camera.projection_for(model));
+        sh_renderer.set_view(camera.view_matrix());
+        sh_renderer.set_projection(camera.projection_matrix());
 
         window.drive_frame(|command_buffer, dynamic_state| {
             let cb = command_buffer;
-            let cb = t2_renderer.render(cb, dynamic_state)?;
-            let cb = pal_renderer.render(cb, dynamic_state)?;
+            let cb = sh_renderer.render(cb, dynamic_state)?;
             Ok(cb)
         })?;
 
@@ -154,16 +144,6 @@ pub fn main() -> Fallible<()> {
                 VirtualKeyCode::Escape => done = true,
                 VirtualKeyCode::Q => done = true,
                 VirtualKeyCode::R => need_reset = true,
-                VirtualKeyCode::T => lay_base += 1,
-                VirtualKeyCode::G => lay_base -= 1,
-                VirtualKeyCode::Y => c2_off += 1,
-                VirtualKeyCode::H => c2_off -= 1,
-                VirtualKeyCode::U => d3_off += 1,
-                VirtualKeyCode::J => d3_off -= 1,
-                VirtualKeyCode::I => e0_off += 1,
-                VirtualKeyCode::K => e0_off -= 1,
-                VirtualKeyCode::O => f1_off += 1,
-                VirtualKeyCode::L => f1_off -= 1,
                 _ => trace!("unknown keycode: {:?}", keycode),
             },
 
@@ -176,9 +156,6 @@ pub fn main() -> Fallible<()> {
             window.note_resize()
         }
 
-        let offsets = format!("base: lay:{} c2:{} d3:{} e0:{} f1:{}", lay_base, c2_off, d3_off, e0_off, f1_off);
-        window.debug_text(1800f32, 25f32, 30f32, [1f32, 0.5f32, 0.5f32, 1f32], &offsets);
-
         let ft = loop_start.elapsed();
         let ts = format!(
             "{}.{} ms",
@@ -187,4 +164,5 @@ pub fn main() -> Fallible<()> {
         );
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
     }
+    Ok(())
 }

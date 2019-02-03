@@ -1,29 +1,26 @@
 [package]
-name = "render"
+name = "sh_explorer"
 version = "0.1.0"
-edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 failure = ">= 0.1.2"
-image = ">= 0.18"
+image = "= 0.20.1"
 log = ">= 0.4"
 nalgebra = "0.16"
+simplelog = "^0.5.0"
+structopt = ">= 0.2"
 vulkano = "^ 0.11.1"
 vulkano-shaders = "^ 0.11.1"
 vulkano-win = "^ 0.11.1"
 winit = "^ 0.18"
 asset = { path = "../../libs/asset" }
-lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
-pal = { path = "../../libs/pal" }
-pic = { path = "../../libs/pic" }
-sh = { path = "../../libs/sh" }
-t2 = { path = "../../libs/t2" }
-window = { path = "../window" }
-
-[dev-dependencies]
-simplelog = "^0.5.0"
 omnilib = { path = "../../libs/omnilib" }
-xt = { path = "../../libs/xt" }
+pic = { path = "../../libs/pic" }
+pal = { path = "../../libs/pal" }
+render = { path = "../../libs/render" }
+sh = { path = "../../libs/sh" }
+window = { path = "../../libs/window" }
