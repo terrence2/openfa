@@ -916,14 +916,8 @@ impl ByteCode {
 
     pub fn disassemble_one(at_offset: usize, code: &[u8]) -> Fallible<Self> {
         trace!("Disassembling One @{:04X}: {}...", at_offset, bs2s(&code[..10.min(code.len())]));
-        let mut instrs = Vec::new();
         let mut ip = 0usize;
-        while ip < code.len() {
-            let instr = Instr::decode_one(code, &mut ip)?;
-            trace!("  @{}: {}", ip, instr);
-            instrs.push(instr);
-            break;
-        }
+        let instrs = vec![Instr::decode_one(code, &mut ip)?];
         Ok(Self {
             start_addr: at_offset as u32,
             size: Self::compute_size(&instrs) as u32,

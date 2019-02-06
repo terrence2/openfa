@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+#![allow(clippy::transmute_ptr_to_ptr)]
 
 extern crate bitflags;
 extern crate failure;
@@ -691,12 +691,10 @@ mod tests {
     use super::*;
     use failure::Error;
     use omnilib::OmniLib;
-    use std::fs;
-    use std::io::prelude::*;
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
         ])?;
 

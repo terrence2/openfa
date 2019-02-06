@@ -251,6 +251,7 @@ mod test {
         window.drive_frame(|command_buffer, dynamic_state| {
             pal_renderer.render(command_buffer, dynamic_state)
         })?;
+        std::mem::drop(window);
         Ok(())
     }
 

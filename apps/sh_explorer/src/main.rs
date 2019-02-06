@@ -57,18 +57,18 @@ fn main() -> Fallible<()> {
     let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
-    let sh = CpuShape::from_data(&lib.load(&opt.input)?)?;
+    let sh = CpuShape::from_bytes(&lib.load(&opt.input)?)?;
     sh_renderer.add_shape_to_render("foo", &sh, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.40282347e+38f32);
+    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
     camera.set_distance(40f32);
 
     let mut need_reset = false;
     loop {
         let loop_start = Instant::now();
 
-        if need_reset == true {
+        if need_reset {
             need_reset = false;
             // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
@@ -156,7 +156,7 @@ fn main() -> Fallible<()> {
         let ft = loop_start.elapsed();
         let ts = format!(
             "{}.{} ms",
-            ft.as_secs() * 1000 + ft.subsec_millis() as u64,
+            ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);

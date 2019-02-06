@@ -34,7 +34,10 @@ use vulkano::{
     framebuffer::Subpass,
     image::{Dimensions, ImmutableImage},
     impl_vertex,
-    pipeline::{depth_stencil::{Compare, DepthStencil, DepthBounds}, GraphicsPipeline, GraphicsPipelineAbstract},
+    pipeline::{
+        depth_stencil::{Compare, DepthBounds, DepthStencil},
+        GraphicsPipeline, GraphicsPipelineAbstract,
+    },
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
@@ -171,7 +174,7 @@ impl T2Renderer {
 
         let mut pic_data = HashMap::new();
         let texture_base_name = mm.get_base_texture_name()?;
-        for (_pos, tmap) in &mm.tmaps {
+        for tmap in mm.tmaps.values() {
             if !pic_data.contains_key(&tmap.loc) {
                 let name = tmap.loc.pic_file(&texture_base_name);
                 let data = lib.load(&name)?.to_vec();
@@ -198,7 +201,7 @@ impl T2Renderer {
                     depth_compare: Compare::GreaterOrEqual,
                     depth_bounds_test: DepthBounds::Disabled,
                     stencil_front: Default::default(),
-                    stencil_back: Default::default()
+                    stencil_back: Default::default(),
                 })
                 .blend_alpha_blending()
                 .render_pass(
@@ -344,7 +347,7 @@ impl T2Renderer {
 
     fn sample_at(&self, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
         let offset = (zi * self.terrain.width + xi) as usize;
-        let s = if offset < self.terrain.samples.len() {
+        let sample = if offset < self.terrain.samples.len() {
             self.terrain.samples[offset]
         } else {
             let offset = ((zi - 1) * self.terrain.width + xi) as usize;
@@ -358,20 +361,20 @@ impl T2Renderer {
 
         let x = xi as f32 / (self.terrain.width as f32) - 0.5;
         let z = zi as f32 / (self.terrain.height as f32) - 0.5;
-        let h = -(s.height as f32) / (256.0f32 * 2f32);
+        let h = -f32::from(sample.height) / 512f32;
 
-        let mut c = palette.rgba(s.color as usize).unwrap();
-        if s.color == 0xFF {
-            c.data[3] = 0;
+        let mut color = palette.rgba(sample.color as usize).unwrap();
+        if sample.color == 0xFF {
+            color.data[3] = 0;
         }
 
         (
             [x, h, z],
             [
-                c[0] as f32 / 255f32,
-                c[1] as f32 / 255f32,
-                c[2] as f32 / 255f32,
-                c[3] as f32 / 255f32,
+                f32::from(color[0]) / 255f32,
+                f32::from(color[1]) / 255f32,
+                f32::from(color[2]) / 255f32,
+                f32::from(color[3]) / 255f32,
             ],
         )
     }
@@ -434,8 +437,8 @@ impl T2Renderer {
                 for row in 0..4 {
                     let row_off = row * 5;
 
-                    indices.push(base + row_off + 0);
-                    indices.push(base + row_off + 0);
+                    indices.push(base + row_off);
+                    indices.push(base + row_off);
 
                     for column in 0..5 {
                         indices.push(base + row_off + column);

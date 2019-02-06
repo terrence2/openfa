@@ -125,6 +125,8 @@ Falkland Islands   {3, 1, 0}
 Kuril Islands      {0, 1}
 Ukraine            {0, 1}
 */
+#![allow(clippy::transmute_ptr_to_ptr)]
+
 use failure::{bail, ensure, Fallible};
 use log::trace;
 use packed_struct::packed_struct;
@@ -474,16 +476,16 @@ impl Terrain {
 
         // For each block in the input.
         let mut samples = vec![Default::default(); num_pix];
-        let blkSize = header.unkI();
+        let blk_size = header.unkI();
         for blkx in 0..header.unkJ() {
             for blky in 0..header.unkK() {
                 // For each pixel in the block from top to bottom...
-                for i in 0..blkSize {
-                    for j in 0..blkSize {
+                for i in 0..blk_size {
+                    for j in 0..blk_size {
                         let data = &entries[off..off + 3];
                         off += 3;
-                        let x_pos = blkx * blkSize + i;
-                        let y_pos = blky * blkSize + j;
+                        let x_pos = blkx * blk_size + i;
+                        let y_pos = blky * blk_size + j;
                         let index = y_pos * header.width() as usize + x_pos;
                         samples[index] = Sample::from_bytes(data);
                     }
@@ -675,7 +677,7 @@ mod test {
 
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec![
+        let omni = OmniLib::new_for_test_in_games(&[
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.T2")?.iter() {

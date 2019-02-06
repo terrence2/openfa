@@ -31,7 +31,10 @@ use vulkano::{
     framebuffer::Subpass,
     image::{Dimensions, ImmutableImage},
     impl_vertex,
-    pipeline::{depth_stencil::{Compare, DepthStencil, DepthBounds}, GraphicsPipeline, GraphicsPipelineAbstract},
+    pipeline::{
+        depth_stencil::{Compare, DepthBounds, DepthStencil},
+        GraphicsPipeline, GraphicsPipelineAbstract,
+    },
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
@@ -195,7 +198,7 @@ impl ShRenderer {
                     depth_compare: Compare::GreaterOrEqual,
                     depth_bounds_test: DepthBounds::Disabled,
                     stencil_front: Default::default(),
-                    stencil_back: Default::default()
+                    stencil_back: Default::default(),
                 })
                 .blend_alpha_blending()
                 .render_pass(
@@ -280,6 +283,7 @@ impl ShRenderer {
                 Instr::UnkC4(c4) => {
                     // C4 00   FF FF   13 00   E4 FF    00 00   00 00   00 00    7D 02
                     //            -1      19     -28        0       0     ang      637
+                    #[allow(clippy::cast_ptr_alignment)] // the entire point of word codes
                     let vp = unsafe { std::slice::from_raw_parts(c4.data as *const u16, 7) };
                     //let vp: &[i16] = unsafe { mem::transmute(&c4.data.offset(2)) };
                     println!(
@@ -287,12 +291,12 @@ impl ShRenderer {
                         vp[0], vp[1], vp[2], vp[3], vp[4], vp[5], vp[6],
                     );
                     _xform = [
-                        vp[0] as f32,
-                        vp[1] as f32,
-                        vp[2] as f32,
-                        vp[3] as f32,
-                        vp[4] as f32,
-                        vp[5] as f32,
+                        f32::from(vp[0]),
+                        f32::from(vp[1]),
+                        f32::from(vp[2]),
+                        f32::from(vp[3]),
+                        f32::from(vp[4]),
+                        f32::from(vp[5]),
                     ];
                 }
                 Instr::VertexBuf(buf) => {
@@ -344,11 +348,11 @@ impl ShRenderer {
                                 facet,
                                 vert_pool.len()
                             );
-                            let mut v = vert_pool[*index as usize].clone();
+                            let mut v = vert_pool[*index as usize];
                             if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
                                 assert!(active_frame.is_some());
                                 let frame = active_frame.unwrap();
-                                v.tex_coord = frame.tex_coord_at(tex_coord);
+                                v.tex_coord = frame.tex_coord_at(*tex_coord);
                             }
                             verts.push(v);
                             indices.push(v_base);
@@ -459,8 +463,9 @@ impl ShRenderer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use window::GraphicsConfigBuilder;
     use omnilib::OmniLib;
+    use sh::CpuShape;
+    use window::GraphicsConfigBuilder;
 
     #[test]
     fn it_can_render_shapes() -> Fallible<()> {
@@ -468,10 +473,13 @@ mod test {
         let omnilib = OmniLib::new_for_test()?;
         let lib = omnilib.library("FA");
         let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
-        let sh_renderer = ShRenderer::new(system_palette, &window)?;
+        let sh = CpuShape::from_bytes(&lib.load("BNK1.SH")?)?;
+        let mut sh_renderer = ShRenderer::new(system_palette, &window)?;
+        sh_renderer.add_shape_to_render("foo", &sh, &lib, &window)?;
         window.drive_frame(|command_buffer, dynamic_state| {
             sh_renderer.render(command_buffer, dynamic_state)
         })?;
+        std::mem::drop(window);
         Ok(())
     }
 }

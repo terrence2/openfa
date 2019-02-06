@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+#![allow(clippy::transmute_ptr_to_ptr)]
 
 extern crate bitflags;
 extern crate failure;
@@ -71,10 +71,11 @@ pub fn bs2s(bs: &[u8]) -> String {
     v.iter().collect::<String>()
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn p2s(bs: *const u8, start: usize, end: usize) -> String {
     let mut v = Vec::new();
     for i in start..end {
-        b2h(unsafe { *bs.offset(i as isize) }, &mut v);
+        b2h(unsafe { *bs.add(i) }, &mut v);
         v.push(' ');
     }
     v.iter().collect::<String>()
@@ -380,7 +381,7 @@ impl Section {
     // }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
+#[allow(clippy::cyclomatic_complexity)]
 pub fn format_sections(
     code: &[u8],
     sections: &[Section],

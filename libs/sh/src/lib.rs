@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![cfg_attr(feature = "cargo-clippy", allow(transmute_ptr_to_ptr))]
+#![allow(clippy::transmute_ptr_to_ptr)]
 
 extern crate bitflags;
 extern crate failure;
@@ -2000,7 +2000,7 @@ macro_rules! consume_instr {
 }
 
 impl CpuShape {
-    pub fn from_data(data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let mut pe = peff::PE::parse(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
@@ -2029,7 +2029,7 @@ impl CpuShape {
                 uniq.insert(tex.filename.to_owned());
             }
         }
-        return uniq;
+        uniq
     }
 
     fn find_trampolines(pe: &peff::PE) -> Fallible<Vec<X86Trampoline>> {
@@ -2286,7 +2286,7 @@ mod tests {
 
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let shape = CpuShape::from_data(&data)?;
+            let shape = CpuShape::from_bytes(&data)?;
 
             //compute_instr_freqs(&shape, &mut freq);
 
@@ -2357,7 +2357,7 @@ mod tests {
         // };
         let exp_base = 0x77000000;
 
-        let shape = CpuShape::from_data(&data).unwrap();
+        let shape = CpuShape::from_bytes(&data).unwrap();
         let mut interp = i386::Interpreter::new();
         for tramp in shape.trampolines.iter() {
             if !tramp.is_data {

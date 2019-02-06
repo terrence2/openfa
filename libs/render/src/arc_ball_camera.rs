@@ -76,9 +76,9 @@ impl ArcBallCamera {
 
     pub fn on_mousemove(&mut self, x: f32, y: f32) {
         if self.in_rotate {
-            self.yaw += x as f32 * 0.5 * (3.14 / 180.0);
+            self.yaw += x * 0.5 * (PI / 180f32);
 
-            self.pitch += y as f32 * (3.14 / 180.0);
+            self.pitch += y * (PI / 180f32);
             self.pitch = self.pitch.min(PI - 0.001f32).max(0.001f32);
         }
 

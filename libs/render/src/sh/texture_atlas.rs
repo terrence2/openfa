@@ -30,11 +30,11 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn tex_coord_at(&self, raw: &[u16; 2]) -> [f32; 2] {
+    pub fn tex_coord_at(&self, raw: [u16; 2]) -> [f32; 2] {
         // The raw coords are in terms of bitmap pixels, so normalize first.
         let n = TexCoord {
-            s: raw[0] as f32 / self.width,
-            t: 1f32 - raw[1] as f32 / self.height,
+            s: f32::from(raw[0]) / self.width,
+            t: 1f32 - f32::from(raw[1]) / self.height,
         };
 
         // Project the normalized numbers above into the frame.
@@ -53,7 +53,7 @@ pub struct TextureAtlas {
 impl TextureAtlas {
     pub fn new(mut sources: Vec<(String, DynamicImage)>) -> Fallible<Self> {
         // Note that sources may be empty if the model is untextured.
-        if sources.len() == 0 {
+        if sources.is_empty() {
             return Ok(Self {
                 img: DynamicImage::new_rgba8(1, 1),
                 frames: HashMap::new(),

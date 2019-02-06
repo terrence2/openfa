@@ -140,7 +140,7 @@ impl TextureAtlas {
             "expected count of 128x128 images to be divisible by 4"
         );
         let square_count = count256 + (count128 / 4);
-        let num_across = (square_count as f64).sqrt().ceil() as u32;
+        let num_across = f64::from(square_count).sqrt().ceil() as u32;
         let extra = num_across * num_across - square_count as u32;
         let num_down = num_across - (extra / num_across);
 
@@ -281,10 +281,10 @@ mod test {
                 pics.push((tloc.clone(), pic));
             }
 
-            let atlas = TextureAtlas::new(pics)?;
-            atlas
-                .img
-                .save(&format!("dump/atlas-{}-{}.png", game, base_name))?;
+            let _atlas = TextureAtlas::new(pics)?;
+            // atlas
+            //     .img
+            //     .save(&format!("dump/atlas-{}-{}.png", game, base_name))?;
         }
 
         Ok(())
@@ -315,5 +315,4 @@ mod test {
 
         Ok(palette)
     }
-
 }
