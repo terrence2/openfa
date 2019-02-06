@@ -12,14 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
 use failure::Fallible;
 use log::trace;
-use mm::MissionMap;
-use nalgebra::Isometry3;
 use omnilib::OmniLib;
 use pal::Palette;
-use render::{ArcBallCamera, PalRenderer, ShRenderer};
+use render::{ArcBallCamera, ShRenderer};
 use sh::CpuShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant};
@@ -164,5 +161,4 @@ fn main() -> Fallible<()> {
         );
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
     }
-    Ok(())
 }

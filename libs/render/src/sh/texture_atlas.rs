@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use failure::Fallible;
 use image::{DynamicImage, GenericImage, GenericImageView};
 use log::trace;
 use std::collections::HashMap;
@@ -54,9 +54,8 @@ impl TextureAtlas {
     pub fn new(mut sources: Vec<(String, DynamicImage)>) -> Fallible<Self> {
         // Note that sources may be empty if the model is untextured.
         if sources.len() == 0 {
-            let mut img = DynamicImage::new_rgba8(1, 1);
             return Ok(Self {
-                img,
+                img: DynamicImage::new_rgba8(1, 1),
                 frames: HashMap::new(),
             });
         }
@@ -67,7 +66,7 @@ impl TextureAtlas {
         // Pre-pass to get a width and height.
         let mut atlas_width = 0;
         let mut atlas_height = 0;
-        for (name, img) in &sources {
+        for (_name, img) in &sources {
             assert_eq!(img.width(), 256);
             atlas_width += img.width() + 1;
             atlas_height = atlas_height.max(img.height());

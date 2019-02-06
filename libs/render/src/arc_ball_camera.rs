@@ -71,8 +71,7 @@ impl ArcBallCamera {
     }
 
     pub fn projection_for(&self, model: Isometry3<f32>) -> Matrix4<f32> {
-        let mut p = self.projection.as_matrix();
-        p * (model * self.view()).to_homogeneous()
+        self.projection.as_matrix() * (model * self.view()).to_homogeneous()
     }
 
     pub fn on_mousemove(&mut self, x: f32, y: f32) {

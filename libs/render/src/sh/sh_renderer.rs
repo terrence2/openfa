@@ -21,7 +21,7 @@ use nalgebra::Matrix4;
 use pal::Palette;
 use pic::decode_pic;
 use sh::{CpuShape, FacetFlags, Instr};
-use std::{collections::HashMap, mem, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -229,19 +229,19 @@ impl ShRenderer {
 
     pub fn add_shape_to_render(
         &mut self,
-        name: &str,
+        _name: &str,
         sh: &CpuShape,
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<()> {
-        let mut xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
+        let mut _xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
 
         let mut textures = Vec::new();
         for filename in sh.all_textures() {
             let img = decode_pic(&self.system_palette, &lib.load(&filename.to_uppercase())?)?;
             textures.push((filename, img));
         }
-        let mut atlas = TextureAtlas::new(textures)?;
+        let atlas = TextureAtlas::new(textures)?;
         let mut active_frame = None;
 
         // The current pool of vertices.
@@ -252,15 +252,15 @@ impl ShRenderer {
         let mut indices = Vec::new();
         let mut verts = Vec::new();
 
-        let mut byte_offset = 0;
+        let mut _byte_offset = 0;
         let mut offset = 0;
         while offset < sh.instrs.len() {
             let instr = &sh.instrs[offset];
             println!("At: {} => {}", offset, instr.show());
 
             match instr {
-                Instr::Header(hdr) => {
-                    xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
+                Instr::Header(_hdr) => {
+                    _xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
                 }
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
@@ -286,7 +286,7 @@ impl ShRenderer {
                         "v: ({}, {}, {}), ang: ({}, {}, {}), ?: {}",
                         vp[0], vp[1], vp[2], vp[3], vp[4], vp[5], vp[6],
                     );
-                    xform = [
+                    _xform = [
                         vp[0] as f32,
                         vp[1] as f32,
                         vp[2] as f32,
@@ -359,7 +359,7 @@ impl ShRenderer {
                 _ => {}
             }
             offset += 1;
-            byte_offset += instr.size();
+            _byte_offset += instr.size();
         }
 
         trace!(
@@ -460,10 +460,14 @@ impl ShRenderer {
 mod test {
     use super::*;
     use window::GraphicsConfigBuilder;
+    use omnilib::OmniLib;
 
     #[test]
     fn it_can_render_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let omnilib = OmniLib::new_for_test()?;
+        let lib = omnilib.library("FA");
+        let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
         let sh_renderer = ShRenderer::new(system_palette, &window)?;
         window.drive_frame(|command_buffer, dynamic_state| {
             sh_renderer.render(command_buffer, dynamic_state)
