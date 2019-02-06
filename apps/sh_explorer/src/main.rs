@@ -150,7 +150,8 @@ fn main() -> Fallible<()> {
             return Ok(());
         }
         if resized {
-            window.note_resize()
+            window.note_resize();
+            camera.set_aspect_ratio(window.aspect_ratio()?);
         }
 
         let ft = loop_start.elapsed();

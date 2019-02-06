@@ -22,21 +22,24 @@ pub struct ArcBallCamera {
     yaw: f32,
     pitch: f32,
     projection: Perspective3<f32>,
-
+    fovy: f32,
+    znear: f32,
+    zfar: f32,
     in_rotate: bool,
     in_move: bool,
 }
 
 impl ArcBallCamera {
     pub fn new(aspect_ratio: f32, znear: f32, zfar: f32) -> Self {
-        // 0.001f32, 10.0f32
         Self {
             target: Point3::new(0f32, 0f32, 0f32),
             distance: 1f32,
             yaw: PI / 2f32,
             pitch: 3f32 * PI / 4f32,
             projection: Perspective3::new(1f32 / aspect_ratio, PI / 2f32, znear, zfar),
-            //projection: Perspective3::new(1f32 / aspect_ratio, PI / 2f32, zfar, znear),
+            fovy: PI / 2f32,
+            znear,
+            zfar,
             in_rotate: false,
             in_move: false,
         }
@@ -49,6 +52,10 @@ impl ArcBallCamera {
     pub fn set_angle(&mut self, pitch: f32, yaw: f32) {
         self.pitch = pitch;
         self.yaw = yaw;
+    }
+
+    pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
+        self.projection = Perspective3::new(1f32 / aspect_ratio, self.fovy, self.znear, self.zfar)
     }
 
     fn eye(&self) -> Point3<f32> {
@@ -71,7 +78,7 @@ impl ArcBallCamera {
     }
 
     pub fn projection_for(&self, model: Isometry3<f32>) -> Matrix4<f32> {
-        self.projection.as_matrix() * (model * self.view()).to_homogeneous()
+        self.projection_matrix() * (model * self.view()).to_homogeneous()
     }
 
     pub fn on_mousemove(&mut self, x: f32, y: f32) {
