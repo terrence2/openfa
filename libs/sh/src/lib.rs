@@ -26,7 +26,7 @@ extern crate simplelog;
 use bitflags::bitflags;
 use failure::{bail, ensure, Fail, Fallible};
 use lazy_static::lazy_static;
-use log::{info, trace};
+use log::trace;
 use reverse::{bs2s, p2s, Color, Escape};
 use std::{cmp, collections::HashSet, fmt, mem, str};
 
@@ -707,7 +707,7 @@ impl X86Code {
         match op {
             i386::Operand::Imm32s(delta) => {
                 if *delta < 0 {
-                    info!("Skipping loop of {} bytes", *delta);
+                    trace!("Skipping loop of {} bytes", *delta);
                     0
                 } else {
                     *delta as u32 as usize
@@ -900,6 +900,7 @@ impl X86Code {
                 }
 
                 if external_jumps.is_empty() {
+                    trace!("no more external jumps: exiting");
                     /*
                     trace!("trying next offset");
                     let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
@@ -920,6 +921,7 @@ impl X86Code {
                 || Self::lowest_jump(&external_jumps) < *offset
                 || *offset >= pe.code.len()
             {
+                trace!("no more external jumps: breaking");
                 break;
             }
 
@@ -938,8 +940,11 @@ impl X86Code {
                 *offset = saved_offset;
                 have_raw_data = true;
             } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
-                //bail!("found trailer while we still have external jumps to track down")
+                //bail!("found trailer while we still have external jumps to track down");
                 return Ok(());
+//                vinstrs.pop();
+//                *offset = saved_offset;
+//                have_raw_data = true;
             }
 
             if have_raw_data && *offset < Self::lowest_jump(&external_jumps) {
@@ -1334,13 +1339,13 @@ impl Unk38 {
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
-pub struct F2_JumpIfNotShown {
+pub struct UnkF2{
     pub offset: usize,
     data: *const u8,
     pub offset_to_next: usize,
 }
 
-impl F2_JumpIfNotShown {
+impl UnkF2 {
     pub const MAGIC: u8 = 0xF2;
     pub const SIZE: usize = 4;
 
@@ -1884,7 +1889,7 @@ pub enum Instr {
     UnkE8(UnkE8),
     UnkEA(UnkEA),
     UnkEE(UnkEE),
-    F2_JumpIfNotShown(F2_JumpIfNotShown),
+    UnkF2(UnkF2),
 
     // Fixed size, without wasted 0 byte after header.
     Pad1E(Pad1E),
@@ -1954,7 +1959,7 @@ macro_rules! impl_for_all_instr {
             Instr::UnkE8(ref i) => i.$f(),
             Instr::UnkEA(ref i) => i.$f(),
             Instr::UnkEE(ref i) => i.$f(),
-            Instr::F2_JumpIfNotShown(ref i) => i.$f(),
+            Instr::UnkF2(ref i) => i.$f(),
             Instr::UnkF6(ref i) => i.$f(),
             Instr::Unk38(ref i) => i.$f(),
             Instr::UnkBC(ref i) => i.$f(),
@@ -2065,7 +2070,7 @@ impl CpuShape {
         // Assertions.
         //        {
         //            let instr = find_first_instr(0xF2, &instrs);
-        //            if let Some(&Instr::F2_JumpIfNotShown(ref jmp)) = instr {
+        //            if let Some(&Instr::UnkF2(ref jmp)) = instr {
         //                let tgt = _find_instr_at_offset(jmp.next_offset(), &instrs);
         //                assert!(tgt.is_some());
         //            }
@@ -2123,7 +2128,7 @@ impl CpuShape {
             UnkEA::MAGIC => consume_instr!(UnkEA, pe, offset, instrs),
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
-            F2_JumpIfNotShown::MAGIC => consume_instr!(F2_JumpIfNotShown, pe, offset, instrs),
+            UnkF2::MAGIC => consume_instr!(UnkF2, pe, offset, instrs),
             Unk38::MAGIC => consume_instr!(Unk38, pe, offset, instrs),
             TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, instrs),
             TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, instrs),
@@ -2192,7 +2197,7 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
     for instr in instrs.iter() {
         match kind {
             0xF2 => {
-                if let Instr::F2_JumpIfNotShown(ref _x) = instr {
+                if let Instr::UnkF2(ref _x) = instr {
                     return Some(instr);
                 }
             }
@@ -2229,6 +2234,15 @@ mod tests {
             }
         }
         return offset;
+    }
+
+    fn find_f2_target(shape: &CpuShape) -> Option<usize> {
+        for instr in shape.instrs.iter().rev() {
+            if let Instr::UnkF2(f2) = instr {
+                return Some(f2.next_offset());
+            }
+        }
+        None
     }
 
     fn last_non_tramp_instr(shape: &CpuShape) -> &Instr {
@@ -2290,7 +2304,36 @@ mod tests {
 
             //compute_instr_freqs(&shape, &mut freq);
 
-            if let Some(_offset) = offset_of_trailer(&shape) {
+            if let Some(offset) = offset_of_trailer(&shape) {
+                if let Some(f2_target) = find_f2_target(&shape) {
+                    if offset != f2_target {
+                        println!("INCOMPLETE: {}:{}", game, name);
+                        let exceptions = vec![
+                            ("ATF", "CATGUY.SH"),
+                            ("ATF", "F18.SH"),
+                            ("ATF", "SOLDIER.SH"),
+                            ("ATFGOLD", "CATGUY.SH"),
+                            ("ATFGOLD", "SOLDIER.SH"),
+                            ("ATFNATO", "CATGUY.SH"),
+                            ("ATFNATO", "F18.SH"),
+                            ("ATFNATO", "SOLDIER.SH"),
+                            ("FA", "CATGUY.SH"),
+                            ("FA", "SOLDIER.SH"),
+                            ("MF", "CATGUY.SH"),
+                            ("MF", "F18.SH"),
+                            ("MF", "SOLDIER.SH"),
+                            ("USNF", "CATGUY.SH"),
+                            ("USNF", "F18.SH"),
+                            ("USNF", "SOLDIER.SH"),
+                            ("USNF97", "CATGUY.SH"),
+                            ("USNF97", "F18.SH"),
+                            ("USNF97", "SOLDIER.SH"),
+                        ];
+                        use std::collections::HashSet;
+                        assert!(exceptions.iter().cloned().collect::<HashSet<_>>().contains(&(&game, &name)));
+                    }
+                    //assert!(offset == f2_target);
+                }
                 // TODO: check that any UnkF2's target is equal to this offset.
             } else {
                 // There must be a trailing unknown unknowns.
@@ -2337,6 +2380,7 @@ mod tests {
     // }
 
     #[test]
+    #[ignore] // We don't actually know what the memory should look like past this.
     fn virtual_interp() {
         let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
 

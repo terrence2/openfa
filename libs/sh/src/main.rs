@@ -89,7 +89,7 @@ fn main() -> Fallible<()> {
         )
         .get_matches();
 
-    TermLogger::init(LevelFilter::Info, Config::default())?;
+    TermLogger::init(LevelFilter::Trace, Config::default())?;
 
     for name in matches.values_of("INPUT").unwrap() {
         let mut fp = fs::File::open(name).unwrap();
@@ -97,7 +97,7 @@ fn main() -> Fallible<()> {
         fp.read_to_end(&mut data).unwrap();
         //println!("At: {}", name);
 
-        let shape = CpuShape::from_data(&data).unwrap();
+        let shape = CpuShape::from_bytes(&data).unwrap();
 
         if matches.is_present("all") {
             for (i, instr) in shape.instrs.iter().enumerate() {
@@ -137,7 +137,7 @@ fn main() -> Fallible<()> {
             }
         } else if matches.is_present("f2") {
             for i in shape.instrs.iter() {
-                if let sh::Instr::F2_JumpIfNotShown(unk) = i {
+                if let sh::Instr::UnkF2(unk) = i {
                     let abs_offset = unk.offset + 4 + unk.offset_to_next;
                     let off = shape.map_absolute_offset_to_instr_offset(abs_offset);
                     if off.is_ok() {
