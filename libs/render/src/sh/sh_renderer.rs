@@ -268,7 +268,7 @@ impl ShRenderer {
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
                 }
-                Instr::F2_JumpIfNotShown(f2) => {
+                Instr::UnkF2(f2) => {
                     //                    if f2.next_offset() > self.end_at_offset {
                     //                        self.end_at_offset = f2.next_offset();
                     //                    }

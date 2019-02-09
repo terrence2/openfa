@@ -99,7 +99,7 @@ impl<'a> ResourceManager<'a> {
         };
 
         let content = self.library.load(name)?;
-        let sh = CpuShape::from_data(&content)?;
+        let sh = CpuShape::from_bytes(&content)?;
         self.cache_sh
             .borrow_mut()
             .insert(name.to_owned(), Rc::new(Box::new(sh)));
