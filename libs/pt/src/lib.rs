@@ -67,7 +67,7 @@ impl FromRow for Envelopes {
             envs.push(env);
             off += 44;
         }
-        return Ok(Envelopes { all: envs });
+        Ok(Envelopes { all: envs })
     }
 }
 
@@ -108,10 +108,10 @@ impl FromRows for PhysBounds {
     ) -> Fallible<(Self::Produces, usize)> {
         Ok((
             Self {
-                min: rows[0].value().numeric()?.word()? as i16 as f32,
-                max: rows[1].value().numeric()?.word()? as i16 as f32,
-                acc: rows[2].value().numeric()?.word()? as i16 as f32,
-                dacc: rows[3].value().numeric()?.word()? as i16 as f32,
+                min: f32::from(rows[0].value().numeric()?.word()? as i16),
+                max: f32::from(rows[1].value().numeric()?.word()? as i16),
+                acc: f32::from(rows[2].value().numeric()?.word()? as i16),
+                dacc: f32::from(rows[3].value().numeric()?.word()? as i16),
             },
             4,
         ))
@@ -208,122 +208,8 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (DWord, [Dec],  "maxTakeoffWeight",Unsigned, maxTakeoffWeight,     u32, V0, panic!())  // dword 16000 ; maxTakeoffWeight
 }];
 
-/*
-#[allow(dead_code)]
-pub struct PlaneType {
-    pub npc: NpcType,
-
-    // Awacs links, and thrust vectoring [$2011 (prefix of 20)- provides ATA link,
-    // $4011 (prefix of 40)- provides ATG link, $6011 (prefix of 60)- provides ATA & ATG links,
-    // $91 horizontal axis thrust vectoring, $591 horizontal and vertical thrust vectoring,
-    // ex: $4591 - 3d thrust vectoring /w ATG link]
-    unk_flags: u32,
-    envelope: Vec<Envelope>,       //ptr env
-    negative_envelopes: i16,       //word -4 ; Number of Negative G Envelopes
-    positive_envelopes: i16,       //word 9 ; Number of Maximum G Envelopes
-    max_speed_sea_level: i16,      //word 1340 ; Max Speed @ Sea-Level (Mph)
-    max_speed_36a: i16,            //word 1934 ; Max Speed @ 36K Feet (Mph)
-    unk6: i16,                     //word -73 ; _bv.x.min
-    unk7: i16,                     //word 0 ; _bv.x.max
-    unk8: i16,                     //word 73 ; Acceleration on Runway
-    unk9: i16,                     //word 73 ; Deceleration on Runway(?)
-    unk10: i16,                    //word -146 ; _bv.y.min
-    unk11: i16,                    //word 146 ; _bv.y.max
-    unk12: i16,                    //word 7 ; _bv.y.acc
-    unk13: i16,                    //word 7 ; _bv.y.dacc
-    unk14: i16,                    //word -146 ; _bv.z.min
-    unk15: i16,                    //word 146 ; _bv.z.max
-    unk16: i16,                    //word 73 ; _bv.z.acc
-    unk17: i16,                    //word 73 ; _bv.z.dacc
-    unk18: i16,                    //word -270 ; Roll Speed(?)
-    unk19: i16,                    //word 270 ; Roll Speed(?)
-    unk20: i16,                    //word 362 ; Pull Up or Down Rate(?)
-    unk21: i16,                    //word 724 ; Pull Up or Down Rate(?)
-    unk22: i16,                    //word 0 ; _brv.y.min
-    unk23: i16,                    //word 0 ; _brv.y.max
-    unk24: i16,                    //word 9 ; G-Pull Accelleration Rate(?)
-    unk25: i16,                    //word 9 ; G-Pull Deceleration Rate(?)
-    unk26: i16,                    //word -45 ; Yaw Speed On Runway
-    unk27: i16,                    //word 45 ; Yaw Speed on Runway
-    unk28: i16,                    //word 90 ; Yaw Accelleration on Runway
-    unk29: i16,                    //word 90 ; Yaw Deceleration on Runway
-    unk30: i16,                    //word 7 ; AoA G pull limit when plane exeeds 9 G's
-    unk31: i16,                    //word 50 ; AoA speed limit when plane exeeds 9 G's
-    unk32: i16,                    //word 10 ; AoA pitch limit when plane exeeds 9 G's
-    unk33: i16,                    //word 115 ; Turbulence Percentage
-    unk34: i16,                    //word -4 ; Rudder Min Yaw limit
-    unk35: i16,                    //word 4 ; Rudder Max Yaw limit
-    unk36: i16,                    //word 4 ; Degrees yaw/sec when rudder is fully deflected
-    unk37: i16,                    //word 9 ; Degrees yaw/sec when rudder returns to neutral
-    unk38: i16,                    //word 6 ; Rudder Slip deg/sec when rudder is fully deflected
-    unk39: i16,                    //word 108 ; Rudder Drag when rudder is fully deflected
-    unk40: i16,                    //word 60 ; Roll in deg/sec when rudder is fully deflected
-    unk41: i16,                    //word -90 ; puffRot.x.min
-    unk42: i16,                    //word 90 ; puffRot.x.max
-    unk43: i16,                    //word 362 ; Pull Up or Down Rate II(?)
-    unk44: i16,                    //word 724 ; Pull Up or Down Rate II(?)
-    unk45: i16,                    //word -90 ; puffRot.y.min
-    unk46: i16,                    //word 90 ; puffRot.y.max
-    unk47: i16,                    //word 362 ; Pull Up or Down Rate III(?)
-    unk48: i16,                    //word 724 ; Pull Up or Down Rate III(?)
-    unk49: i16,                    //word -90 ; puffRot.z.min
-    unk50: i16,                    //word 90 ; puffRot.z.max
-    unk51: i16,                    //word 362 ; Pull Up or Down Speed IV(?)
-    unk52: i16,                    //word 724 ; Pull Up or Down Speed IV(?)
-    unk53: i16,                    //word 512 ; Stall Warning delay in clocks (1 clock = 1/256 sec)
-    unk54: i16,                    //word 512 ; Stall Delay/Duration
-    unk55: i16,                    //word 222 ; Stall Severity
-    unk56: i16,                    //word 30 ; Stall Pitch-Down in deg/sec
-    unk57: i16,                    //word 2 ; Ease of entry into Spin
-    unk58: i16,                    //word -2 ; Ease of exit from Spin
-    unk59: i16,                    //word 120 ; Sping yaw low
-    unk60: i16,                    //word 180 ; Sping yaw high
-    unk61: i16,                    //word 30 ; Spin AoA low
-    unk62: i16,                    //word 70 ; Spin AoA high
-    unk63: i16,                    //word 15 ; Spin bank low
-    unk64: i16,                    //word 5 ; Spin bank high
-    unk65: i16, //word 0 ; Gear Pitch (Pitch of plane when on ground, relative to the horizon.  Ex: a taildragger)
-    unk66: i16, //word 325 ; Max safe landing speed
-    unk67: i16, //word 31 ; Max landing side speed
-    unk68: i16, //word 45 ; Max rate of decent on landing
-    unk69: i16, //word 12 ; Max pitch on landing
-    unk70: i16, //word 8 ; Max landing roll (distance plane rolls-out after touchdown)
-    unk_engine_count: u8, //byte 1 ; Number of Engines
-    unk72: i16, //word 0 ; negGLimit
-    unk_thrust_100: u32, //dword 14800 ; Military Thrust in lbs
-    unk_thrust_after: u32, //dword 23800 ; Afterburning Thrust in lbs
-    unk75: i16, //word 20 ; Throttle Acceleration in percent/sec
-    unk76: i16, //word 30 ; Throttle Deceleration in percent/sec
-    unk77: i16, //word 0 ; Min Thrust Vectoring Angle (-60 = 60º)
-    unk78: i16, //word 0 ; Max Thrust Vectoring down-angle (-90 = full downward, -180 = full forward)
-    unk79: i16, //word 0 ; Thrust vectoring speed in degrees per second
-    unk80: i16, //word 1 ; Fuel consumption @ Military Power
-    unk81: i16, //word 14 ; Fuel consumption @ Afterburning power
-    unk_fuel_capacity: u32, //dword 6972 ; Fuel capacity in lbs
-    unk83: i16, //word 190 ; Aerodynamic Drag (bigger the number, more aerodyn. drag)
-    unk84: i16, //word 96 ; G-pull drag (increase in drag due to G-pull)
-    unk_air_brake_drag: i16, //word 125 ; Airbrake Drag
-    unk_wheel_brake_drag: i16, //word 44 ; Wheel Brake Drag
-    unk_flap_drag: i16, //word 76 ; Flap Drag
-    unk_gear_drag: i16, //word 23 ; Gear Drag
-    unk_bay_drag: i16, //word 0 ; Weapons-Bay Drag
-    unk_flaps_lift: i16, //word 15 ; Flaps Lift
-    unk_loadout_drag: i16, //word 60 ; Drag increase when fully loaded
-    unk_loadout_g_drag: i16, //word 33 ; G-pull Drag increase when fully loaded
-    unk93: i16, //word 50 ; Extra load on elevators when fully loaded
-    unk94: i16, //word 50 ; Extra load on ailerons when fully loaded
-    unk95: i16, //word 60 ; Extra load on rudder when fully loaded
-    structural_speed_warning: i16, //word 2560 ; Structural Speed Limit Warning
-    structural_speed_limit: i16, //word 5120 ; Structural Speed Limit
-    unk_system_maintainence: [u8; 45],
-    unk_maintainence_per_mission: i16, //word 10 ; miscPerFlight
-    unk_maintainence_multiplier: i16,  //word 10 ; repairMultiplier
-    unk_max_takeoff_weight: u32,       //dword 34500 ; MTOW (Max Take-Off Weight)
-}
-*/
-
 impl PlaneType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -339,13 +225,12 @@ impl PlaneType {
         // for some reason, so filter those out by finding the first :foo.
         let plane_lines = parse::find_section(&lines, "PLANE_TYPE")?
             .iter()
-            .map(|&l| l)
             .take_while(|&l| !l.starts_with(':'))
-            .collect::<Vec<&str>>();
-        println!("lineS: {}", plane_lines.len());
+            .cloned()
+            .collect::<Vec<_>>();
         let plane = Self::from_lines(npc, &plane_lines, &pointers)?;
 
-        return Ok(plane);
+        Ok(plane)
     }
 }
 
@@ -373,7 +258,7 @@ mod tests {
             );
             let lib = omni.library(game);
             let contents = lib.load_text(name)?;
-            let pt = PlaneType::from_str(&contents)?;
+            let pt = PlaneType::from_text(&contents)?;
             assert_eq!(pt.nt.ot.file_name(), *name);
             //println!("{}:{} - tow:{}, min:{}, max:{}, acc:{}, dacc:{}", game, name, pt.maxTakeoffWeight, pt.bv_y.min, pt.bv_y.max, pt.bv_y.acc, pt.bv_y.dacc);
             //            println!(
@@ -381,6 +266,6 @@ mod tests {
             //                game, name, pt.unk_max_takeoff_weight, pt.npc.obj.long_name
             //            );
         }
-        return Ok(());
+        Ok(())
     }
 }

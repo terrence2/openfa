@@ -125,7 +125,7 @@ impl TypeManager {
                 Type::OT(Box::new(ot))
             }
             "JT" => {
-                let jt = ProjectileType::from_str(&content)?;
+                let jt = ProjectileType::from_text(&content)?;
                 Type::JT(Box::new(jt))
             }
             "NT" => {
@@ -133,7 +133,7 @@ impl TypeManager {
                 Type::NT(Box::new(nt))
             }
             "PT" => {
-                let pt = PlaneType::from_str(&content)?;
+                let pt = PlaneType::from_text(&content)?;
                 Type::PT(Box::new(pt))
             }
             _ => bail!("resource: unknown type {}", name),

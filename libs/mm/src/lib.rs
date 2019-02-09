@@ -484,7 +484,7 @@ mod tests {
                 omni.path(game, name).unwrap_or("<unknown>".to_owned())
             );
             let lib = omni.library(game);
-            let type_manager = TypeManager::new(lib.clone())?;
+            let type_manager = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &type_manager)?;
             assert_eq!(mm.get_base_texture_name()?.len(), 3);

@@ -49,7 +49,7 @@ impl FromRows for EnvelopeShape {
     ) -> Fallible<(Self::Produces, usize)> {
         let mut shape = Vec::new();
         for j in 0..20 {
-            let speed = rows[j * 2].value().numeric()?.word()? as u32 as i32 as f32;
+            let speed = u32::from(rows[j * 2].value().numeric()?.word()?) as i32 as f32;
             let altitude = rows[j * 2 + 1].value().numeric()?.dword()? as i32 as f32;
             shape.push(EnvelopeCoord { speed, altitude });
         }

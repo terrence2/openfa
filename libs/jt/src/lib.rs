@@ -58,12 +58,12 @@ enum ProjectileTypeVersion {
 
 impl ProjectileTypeVersion {
     fn from_len(n: usize) -> Fallible<Self> {
-        return Ok(match n {
+        Ok(match n {
             81 => ProjectileTypeVersion::V0,
             84 => ProjectileTypeVersion::V1,
             90 => ProjectileTypeVersion::V2,
             _ => bail!("unknown projectile type version for length: {}", n),
-        });
+        })
     }
 }
 
@@ -162,7 +162,7 @@ ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                
 }];
 
 impl ProjectileType {
-    pub fn from_str(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Fallible<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -172,8 +172,7 @@ impl ProjectileType {
         let obj_lines = parse::find_section(&lines, "OBJ_TYPE")?;
         let obj = ObjectType::from_lines((), &obj_lines, &pointers)?;
         let proj_lines = parse::find_section(&lines, "PROJ_TYPE")?;
-        println!("NLINES: {}", proj_lines.len());
-        return Self::from_lines(obj, &proj_lines, &pointers);
+        Self::from_lines(obj, &proj_lines, &pointers)
     }
 }
 
@@ -198,13 +197,13 @@ mod tests {
             );
             let lib = omni.library(game);
             let contents = lib.load_text(name)?;
-            let jt = ProjectileType::from_str(&contents)?;
+            let jt = ProjectileType::from_text(&contents)?;
             assert!(jt.ot.file_name() == *name || *name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:08X} <> {} <> {}",
             //     game, name, jt.unk0, jt.obj.long_name, name
             // );
         }
-        return Ok(());
+        Ok(())
     }
 }
