@@ -14,19 +14,11 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-extern crate bitflags;
-extern crate failure;
-extern crate i386;
-extern crate lazy_static;
-extern crate log;
-extern crate peff;
-extern crate reverse;
-extern crate simplelog;
-
 use bitflags::bitflags;
 use failure::{bail, ensure, Fail, Fallible};
 use lazy_static::lazy_static;
 use log::trace;
+use i386::{Operand, Memonic, ByteCode};
 use reverse::{bs2s, p2s, Color, Escape};
 use std::{cmp, collections::HashSet, fmt, mem, str};
 
@@ -676,36 +668,25 @@ pub struct X86Code {
     pub code_offset: usize,
     pub code: Vec<u8>,
     pub formatted: String,
-    pub bytecode: i386::ByteCode,
+    pub bytecode: ByteCode,
     pub have_header: bool,
 }
 
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
-    // External, but excluding trampolines.
-    fn find_external_jumps(
-        base: usize,
-        pe: &peff::PE,
-        bc: &i386::ByteCode,
-        external_jumps: &mut HashSet<usize>,
-    ) {
-        Self::find_external_relative(base, pe, bc, external_jumps);
-        //Self::find_external_absolute(base, pe, bc, external_jumps);
-    }
-
     fn instr_is_relative_jump(instr: &i386::Instr) -> bool {
         match instr.memonic {
-            i386::Memonic::Call => true,
-            i386::Memonic::Jump => true,
-            i386::Memonic::Jcc(ref _cc) => true,
+            Memonic::Call => true,
+            Memonic::Jump => true,
+            Memonic::Jcc(ref _cc) => true,
             _ => false,
         }
     }
 
-    fn operand_to_offset(op: &i386::Operand) -> usize {
+    fn operand_to_offset(op: &Operand) -> usize {
         match op {
-            i386::Operand::Imm32s(delta) => {
+            Operand::Imm32s(delta) => {
                 if *delta < 0 {
                     trace!("Skipping loop of {} bytes", *delta);
                     0
@@ -713,7 +694,7 @@ impl X86Code {
                     *delta as u32 as usize
                 }
             }
-            i386::Operand::Imm32(delta) => *delta as usize,
+            Operand::Imm32(delta) => *delta as usize,
             _ => {
                 trace!("Detected indirect jump target: {}", op);
                 0
@@ -721,10 +702,10 @@ impl X86Code {
         }
     }
 
-    fn find_external_relative(
+    // Note: excluding return-to-trampoline
+    fn find_external_jumps(
         base: usize,
-        _pe: &peff::PE,
-        bc: &i386::ByteCode,
+        bc: &ByteCode,
         external_jumps: &mut HashSet<usize>,
     ) {
         let mut ip = 0;
@@ -741,29 +722,6 @@ impl X86Code {
         }
     }
 
-    /*
-    fn find_external_absolute(
-        _base: usize,
-        pe: &peff::PE,
-        bc: &i386::ByteCode,
-        external_jumps: &mut HashSet<usize>,
-    ) {
-        for s in bc.instrs.windows(2) {
-            match s {
-                [ref a, ref b] => {
-                    if a.memonic == i386::Memonic::Push && b.memonic == i386::Memonic::Return {
-                        if let i386::Operand::Imm32s(delta) = a.operands[0] {
-                            let absolute_ip = (delta as u32).checked_sub(pe.code_addr).unwrap_or(0);
-                            external_jumps.insert(absolute_ip as usize);
-                        }
-                    }
-                }
-                _ => panic!("expected 2 elements in window"),
-            }
-        }
-    }
-    */
-
     fn lowest_jump(jumps: &HashSet<usize>) -> usize {
         let mut lowest = usize::max_value();
         for &jump in jumps {
@@ -774,48 +732,31 @@ impl X86Code {
         lowest
     }
 
-    /*
-    fn from_bytes(
-        _name: &str,
-        offset: &mut usize,
-        pe: &peff::PE,
-        trampolines: &[X86Trampoline],
-        vinstrs: &mut Vec<Instr>,
-    ) -> Fallible<()> {
-        let section = &pe.code[*offset..];
-        assert_eq!(section[0], Self::MAGIC);
-        assert_eq!(section[1], 0);
-        *offset += 2;
-
-        // Decode the block of instructions up to ret.
-        let code = &pe.code[*offset..];
+    fn disassemble_to_ret(code: &[u8], offset: usize) -> Fallible<ByteCode> {
         let maybe_bc =
-            i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + *offset, code);
+            i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + offset, code);
         if let Err(e) = maybe_bc {
-            i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
-            bail!("Don't know how to disassemble at {}", *offset);
+            i386::DisassemblyError::maybe_show(&e, &code);
+            bail!("Don't know how to disassemble at {}", offset);
         }
-        let bc = maybe_bc?;
+        maybe_bc
+    }
 
-        // Insert the instruction.
+    fn make_code(bc: ByteCode, pe: &peff::PE, offset: usize) -> Instr {
         let bc_size = bc.size as usize;
-        let have_header = pe.code[*offset - 2] == 0xF0;
-        let section_offset = if have_header { *offset - 2 } else { *offset };
+        let have_header = pe.code[offset - 2] == 0xF0;
+        let section_offset = if have_header { offset - 2 } else { offset };
         let section_length = bc_size + if have_header { 2 } else { 0 };
-        vinstrs.push(Instr::X86Code(X86Code {
+        Instr::X86Code(X86Code {
             offset: section_offset,
             length: section_length,
-            code_offset: *offset,
-            code: code[0..bc_size].to_owned(),
+            code_offset: offset,
+            code: pe.code[offset..offset + bc_size].to_owned(),
             formatted: Self::format_section(section_offset, section_length, &bc, pe),
             bytecode: bc,
             have_header,
-        }));
-        *offset += bc_size;
-
-        // If the next block is an interpreter instruction...
+        })
     }
-    */
 
     fn from_bytes(
         _name: &str,
@@ -841,53 +782,21 @@ impl X86Code {
             );
             if external_jumps.contains(&offset) {
                 external_jumps.remove(&offset);
-                trace!("IP REACHED EXTERNAL JUMP");
+                trace!("ip reached external jump");
 
-                let code = &pe.code[*offset..];
-                let maybe_bc =
-                    i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + *offset, code);
-                if let Err(e) = maybe_bc {
-                    i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
-                    bail!("Don't know how to disassemble at {}", *offset);
-                }
-                let bc = maybe_bc?;
-
-                // Dump all decoded segments for testing the disassembler.
-                if false {
-                    use std::{fs::File, io::Write};
-                    let src = match find_first_instr(0x42, vinstrs) {
-                        Some(Instr::SourceRef(ref sr)) => sr.source.clone(),
-                        _ => "unknown".to_owned(),
-                    };
-                    let actual_code = &pe.code[*offset..*offset + bc.size as usize];
-                    let mut file =
-                        File::create(&format!("../i386/test_data/{}-{}.x86", src, *offset))?;
-                    file.write_all(actual_code)?;
-                }
-
+                let bc = Self::disassemble_to_ret(&pe.code[*offset..], *offset)?;
                 trace!("decoded {} instructions", bc.instrs.len());
-                Self::find_external_jumps(*offset, pe, &bc, &mut external_jumps);
+
+                Self::find_external_jumps(*offset, &bc, &mut external_jumps);
                 trace!("new external jumps: {:?}", external_jumps);
 
-                // Insert the instruction.
                 let bc_size = bc.size as usize;
-                let have_header = pe.code[*offset - 2] == 0xF0;
-                let section_offset = if have_header { *offset - 2 } else { *offset };
-                let section_length = bc_size + if have_header { 2 } else { 0 };
-                vinstrs.push(Instr::X86Code(X86Code {
-                    offset: section_offset,
-                    length: section_length,
-                    code_offset: *offset,
-                    code: code[0..bc_size].to_owned(),
-                    formatted: Self::format_section(section_offset, section_length, &bc, pe),
-                    bytecode: bc,
-                    have_header,
-                }));
+                vinstrs.push(Self::make_code(bc, pe, *offset));
                 *offset += bc_size;
 
-                // The block after the ret may be a word code, or a data block, or another
-                // instruction for us to decode.
-                if pe.code[*offset + 1] != 0 {
+                // The block after the ret may be a virtual instr, or a data block, or another
+                // x86 instruction for us to decode.
+                if external_jumps.is_empty() {
                     trace!("trying next offset");
                     let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
                     if let Err(e) = maybe_bc {
@@ -897,22 +806,6 @@ impl X86Code {
                         // Create an external jump to ourself to continue decoding.
                         external_jumps.insert(*offset);
                     }
-                }
-
-                if external_jumps.is_empty() {
-                    trace!("no more external jumps: exiting");
-                    /*
-                    trace!("trying next offset");
-                    let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
-                    if let Err(e) = maybe_bc {
-                        trace!("offset after RET is not code");
-                        i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
-                        return Ok(());
-                    } else {
-                        external_jumps.insert(*offset);
-                    }
-                    */
-                    return Ok(());
                 }
             }
 
@@ -925,11 +818,11 @@ impl X86Code {
                 break;
             }
 
-            // Otherwise, we are between code segments. There may be instructions
-            // here, or maybe just some raw data. Look for an instruction and if
+            // Otherwise, we are between code segments. There may be vinstrs
+            // here, or maybe just some raw data. Look for a vinstr and if
             // there is one, decode it. Otherwise treat it as raw data.
 
-            // We do not expect another F0 while we have external jumps to find.
+            // Note: We do not expect another F0 while we have external jumps to find.
             let saved_offset = *offset;
             let mut have_raw_data = false;
             let maybe = CpuShape::read_instr(offset, pe, trampolines, vinstrs);
@@ -940,17 +833,16 @@ impl X86Code {
                 *offset = saved_offset;
                 have_raw_data = true;
             } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
-                //bail!("found trailer while we still have external jumps to track down");
-                return Ok(());
-//                vinstrs.pop();
-//                *offset = saved_offset;
-//                have_raw_data = true;
+                // We still have external jumps to track down, so our data blob just
+                // happened to contain zeros. Keep going.
+                vinstrs.pop();
+                *offset = saved_offset;
+                have_raw_data = true;
             }
 
             if have_raw_data && *offset < Self::lowest_jump(&external_jumps) {
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
-                // FIXME: insert this as an instruction?
                 trace!(
                     "Adding data block @{:04X}: {}",
                     *offset,
