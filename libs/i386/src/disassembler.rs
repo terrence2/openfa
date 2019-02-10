@@ -258,6 +258,24 @@ impl MemRef {
         }
     }
 
+    fn full(
+        scale: u8,
+        index: Reg,
+        base: Reg,
+        displacement: i32,
+        size: u8,
+        prefix: &OpPrefix,
+    ) -> Self {
+        MemRef {
+            displacement,
+            base: Some(base),
+            index: Some(index),
+            scale,
+            segment: Self::segment(prefix),
+            size,
+        }
+    }
+
     fn segment(prefix: &OpPrefix) -> Option<Reg> {
         if prefix.use_fs_segment {
             Some(Reg::FS)
@@ -276,6 +294,7 @@ impl MemRef {
                     4
                 }
             }
+            OperandType::w => 2,
             _ => bail!("size_for_type for handled operand type: {:?}", ty),
         })
     }
@@ -338,6 +357,59 @@ impl OperandDecodeState {
 
         Ok(out)
     }
+
+    fn read_sib(&mut self, mod_: u8, code: &[u8], ip: &mut usize) -> Fallible<(u8, Reg, Reg)> {
+        ensure!(
+            code.len() > *ip,
+            DisassemblyError::TooShort {
+                phase: "op read sib"
+            }
+        );
+        let sib = code[*ip];
+        *ip += 1;
+
+        let scale = sib >> 6;
+        let index = (sib & 0b00111000) >> 3;
+        let base = sib & 0b00000111;
+
+        let scale = match scale {
+            0 => 1,
+            1 => 2,
+            2 => 4,
+            4 => 8,
+            _ => panic!("scale out of range"),
+        };
+        let index = match index {
+            0 => Reg::EAX,
+            1 => Reg::ECX,
+            2 => Reg::EDX,
+            3 => Reg::EBX,
+            4 => bail!("illegal index register in SIB"),
+            5 => Reg::EBP,
+            6 => Reg::ESI,
+            7 => Reg::EDI,
+            _ => panic!("index out of range"),
+        };
+        let base = match base {
+            0 => Reg::EAX,
+            1 => Reg::ECX,
+            2 => Reg::EDX,
+            3 => Reg::EBX,
+            4 => Reg::ESP,
+            5 => {
+                if mod_ == 0 {
+                    bail!("displacement only base in SIB; maybe technically legal?")
+                } else {
+                    Reg::EBP
+                }
+            },
+            6 => Reg::ESI,
+            7 => Reg::EDI,
+            _ => panic!("base out of range"),
+        };
+
+        return Ok((scale, index, base));
+    }
 }
 
 #[derive(Debug)]
@@ -377,8 +449,12 @@ impl Operand {
         state: &mut OperandDecodeState,
     ) -> Fallible<Self> {
         assert!(!state.prefix.toggle_address_size);
-        let (mode, _reg, rm) = state.read_modrm(code, ip)?;
-        Ok(match mode {
+        let (mod_, _reg, rm) = state.read_modrm(code, ip)?;
+        // Mod indicates the size of the displacement field after the instruction. We've split
+        // on mod for now since most addressing uses no displacement and it's simpler this way,
+        // but in theory we should combine these and apply displacement from mod only after
+        // constructing the operand.
+        Ok(match mod_ {
             0b00 => match rm {
                 0 | 1 | 2 | 3 | 6 | 7 => match desc.ty {
                     OperandType::b => {
@@ -389,6 +465,17 @@ impl Operand {
                     }
                     _ => unreachable!(),
                 },
+                4 => {
+                    let (scale, index, base) = state.read_sib(mod_, code, ip)?;
+                    Operand::Memory(MemRef::full(
+                        scale,
+                        index,
+                        base,
+                        0,
+                        MemRef::size_for_type(desc.ty, state)?,
+                        &state.prefix,
+                    ))
+                }
                 5 => Operand::Memory(MemRef::displacement(
                     Self::read4(code, ip)? as i32,
                     MemRef::size_for_type(desc.ty, state)?,
@@ -895,7 +982,11 @@ impl ByteCode {
     }
 
     pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Fallible<Self> {
-        trace!("Disassembling ->Ret @{:04X}: {}...", at_offset, bs2s(&code[..10.min(code.len())]));
+        trace!(
+            "Disassembling ->Ret @{:04X}: {}...",
+            at_offset,
+            bs2s(&code[..100.min(code.len())])
+        );
         let mut instrs = Vec::new();
         let mut ip = 0usize;
         while ip < code.len() {
@@ -915,13 +1006,17 @@ impl ByteCode {
     }
 
     pub fn disassemble_one(at_offset: usize, code: &[u8]) -> Fallible<Self> {
-        trace!("Disassembling One @{:04X}: {}...", at_offset, bs2s(&code[..10.min(code.len())]));
+        trace!(
+            "Disassembling One @{:04X}: {}...",
+            at_offset,
+            bs2s(&code[..10.min(code.len())])
+        );
         let mut ip = 0usize;
         let instrs = vec![Instr::decode_one(code, &mut ip)?];
         Ok(Self {
             start_addr: at_offset as u32,
             size: Self::compute_size(&instrs) as u32,
-            instrs
+            instrs,
         })
     }
 
