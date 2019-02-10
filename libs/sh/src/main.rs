@@ -110,7 +110,6 @@ fn main() -> Fallible<()> {
                     println!("{}: {}", name, instr.show());
                 }
             }
-
         } else if matches.is_present("last") {
             let fmt = shape
                 .instrs

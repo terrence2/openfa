@@ -16,9 +16,9 @@
 
 use bitflags::bitflags;
 use failure::{bail, ensure, Fail, Fallible};
+use i386::{ByteCode, Memonic, Operand};
 use lazy_static::lazy_static;
 use log::trace;
-use i386::{Operand, Memonic, ByteCode};
 use reverse::{bs2s, p2s, Color, Escape};
 use std::{cmp, collections::HashSet, fmt, mem, str};
 
@@ -703,11 +703,7 @@ impl X86Code {
     }
 
     // Note: excluding return-to-trampoline
-    fn find_external_jumps(
-        base: usize,
-        bc: &ByteCode,
-        external_jumps: &mut HashSet<usize>,
-    ) {
+    fn find_external_jumps(base: usize, bc: &ByteCode, external_jumps: &mut HashSet<usize>) {
         let mut ip = 0;
         let ip_end = bc.size as usize;
         for instr in bc.instrs.iter() {
@@ -733,11 +729,10 @@ impl X86Code {
     }
 
     fn disassemble_to_ret(code: &[u8], offset: usize) -> Fallible<ByteCode> {
-        let maybe_bc =
-            i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + offset, code);
+        let maybe_bc = i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + offset, code);
         if let Err(e) = maybe_bc {
             i386::DisassemblyError::maybe_show(&e, &code);
-            bail!("Don't know how to disassemble at {}", offset);
+            bail!("Don't know how to disassemble at {}: {:?}", offset, e);
         }
         maybe_bc
     }
@@ -776,10 +771,16 @@ impl X86Code {
 
         while !external_jumps.is_empty() {
             trace!(
-                "We are currently at {} with external jumps: {:?}",
+                "top of loop at {:04X} with external jumps: {:?}",
                 *offset,
                 external_jumps
+                    .iter()
+                    .map(|n| format!("{:04X}", n))
+                    .collect::<Vec<_>>()
             );
+
+            // If we've found an external jump, that's good evidence that this is x86 code, so just
+            // go ahead and decode that.
             if external_jumps.contains(&offset) {
                 external_jumps.remove(&offset);
                 trace!("ip reached external jump");
@@ -798,7 +799,10 @@ impl X86Code {
                 // x86 instruction for us to decode.
                 if external_jumps.is_empty() {
                     trace!("trying next offset");
-                    let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
+                    let maybe_bc = i386::ByteCode::disassemble_one(
+                        SHAPE_LOAD_BASE as usize + *offset,
+                        &pe.code[*offset..],
+                    );
                     if let Err(e) = maybe_bc {
                         trace!("offset after RET is probably external data; check this to see if it might actually be bytecode");
                         i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
@@ -809,7 +813,7 @@ impl X86Code {
                 }
             }
 
-            // If we have no more jumps, continue looking for instructions.
+            // If we have no more jumps, continue looking for virtual instructions.
             if external_jumps.is_empty()
                 || Self::lowest_jump(&external_jumps) < *offset
                 || *offset >= pe.code.len()
@@ -819,28 +823,36 @@ impl X86Code {
             }
 
             // Otherwise, we are between code segments. There may be vinstrs
-            // here, or maybe just some raw data. Look for a vinstr and if
-            // there is one, decode it. Otherwise treat it as raw data.
+            // here, or maybe more x86 instructions, or maybe some raw data.
+            // Look for a vinstr and it there is one, decode it. Otherwise
+            // treat it as raw data.
 
             // Note: We do not expect another F0 while we have external jumps to find.
             let saved_offset = *offset;
-            let mut have_raw_data = false;
+            let mut have_vinstr = true;
             let maybe = CpuShape::read_instr(offset, pe, trampolines, vinstrs);
             if let Err(_e) = maybe {
-                have_raw_data = true;
+                have_vinstr = false;
             } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {
                 vinstrs.pop();
                 *offset = saved_offset;
-                have_raw_data = true;
+                have_vinstr = false;
             } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
                 // We still have external jumps to track down, so our data blob just
                 // happened to contain zeros. Keep going.
                 vinstrs.pop();
                 *offset = saved_offset;
-                have_raw_data = true;
+                have_vinstr = false;
             }
 
-            if have_raw_data && *offset < Self::lowest_jump(&external_jumps) {
+            if !have_vinstr && *offset < Self::lowest_jump(&external_jumps) {
+                /*
+                let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
+                if let Err(e) = maybe_bc {
+                    trace!("offset {:04X}: treating as external data; check this to see if it might actually be bytecode", *offset);
+                    i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
+                */
+
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
                 trace!(
@@ -855,6 +867,12 @@ impl X86Code {
                     data: pe.code[*offset..end].to_vec(),
                 }));
                 *offset = end;
+                /*
+                } else {
+                    // Create an external jump to ourself to continue decoding.
+                    external_jumps.insert(*offset);
+                }
+                */
             }
         }
 
@@ -1231,7 +1249,7 @@ impl Unk38 {
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
-pub struct UnkF2{
+pub struct UnkF2 {
     pub offset: usize,
     data: *const u8,
     pub offset_to_next: usize,
@@ -1584,7 +1602,11 @@ impl Pad1E {
             cnt += 1;
         }
         assert!(cnt > 0);
-        Ok(Pad1E { offset, length: cnt, data: (&code[offset..]).as_ptr() })
+        Ok(Pad1E {
+            offset,
+            length: cnt,
+            data: (&code[offset..]).as_ptr(),
+        })
     }
 
     fn size(&self) -> usize {
@@ -1624,7 +1646,6 @@ impl Pad1E {
                 p2s(self.data, 2, self.size()),
                 Escape::new()
             )
-
         }
     }
 }
@@ -1643,7 +1664,10 @@ macro_rules! opaque_instr {
             fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
                 let data = &code[offset..];
                 assert_eq!(data[0], Self::MAGIC);
-                ensure!(data[1] == 0 || data[1] == 0xFF, "not a word code instruction");
+                ensure!(
+                    data[1] == 0 || data[1] == 0xFF,
+                    "not a word code instruction"
+                );
                 ensure!(
                     ONE_BYTE_MAGIC.contains(&Self::MAGIC) || data[1] == 0,
                     "expected 1-byte instr or 0 in hi byte"
@@ -1705,18 +1729,19 @@ macro_rules! opaque_instr {
 opaque_instr!(Unk4E, "4E", 0x4E, 2); // 6 instances
 opaque_instr!(Unk08, "08", 0x08, 4); // 7 instances
 opaque_instr!(UnkB2, "B2", 0xB2, 2); // 9 instances
+opaque_instr!(Unk68, "68", 0x68, 8); // CHAFF / CATGUY (2 instances)
+opaque_instr!(Unk74, "74", 0x74, 4); // CHAFF (2 instance)
 
 opaque_instr!(Header, "Header", 0xFF, 14);
 opaque_instr!(Unk06, "06", 0x06, 21);
 opaque_instr!(Unk0C, "0C", 0x0C, 17);
 opaque_instr!(Unk0E, "0E", 0x0E, 17);
-opaque_instr!(Unk10, "10", 0x10, 17);
 opaque_instr!(Unk12, "12", 0x12, 4);
 opaque_instr!(Unk2E, "2E", 0x2E, 4);
 opaque_instr!(Unk3A, "3A", 0x3A, 6);
 opaque_instr!(Unk44, "44", 0x44, 4);
 opaque_instr!(Unk46, "46", 0x46, 2);
-opaque_instr!(Unk48, "48", 0x48, 4);
+opaque_instr!(Unk48, "48", 0x48, 4); // An internal reference of some sort. Relative offset to an instr.
 opaque_instr!(Unk66, "66", 0x66, 10);
 opaque_instr!(Unk6C, "6C", 0x6C, 13);
 opaque_instr!(Unk72, "72", 0x72, 4);
@@ -1750,7 +1775,6 @@ pub enum Instr {
     Unk08(Unk08),
     Unk0C(Unk0C),
     Unk0E(Unk0E),
-    Unk10(Unk10),
     Unk12(Unk12),
     Unk2E(Unk2E),
     Unk3A(Unk3A),
@@ -1759,8 +1783,10 @@ pub enum Instr {
     Unk48(Unk48),
     Unk4E(Unk4E),
     Unk66(Unk66),
+    Unk68(Unk68),
     Unk6C(Unk6C),
     Unk72(Unk72),
+    Unk74(Unk74),
     Unk78(Unk78),
     Unk7A(Unk7A),
     Unk96(Unk96),
@@ -1819,7 +1845,6 @@ macro_rules! impl_for_all_instr {
             Instr::Unk08(ref i) => i.$f(),
             Instr::Unk0C(ref i) => i.$f(),
             Instr::Unk0E(ref i) => i.$f(),
-            Instr::Unk10(ref i) => i.$f(),
             Instr::Unk12(ref i) => i.$f(),
             Instr::Pad1E(ref i) => i.$f(),
             Instr::Unk2E(ref i) => i.$f(),
@@ -1829,8 +1854,10 @@ macro_rules! impl_for_all_instr {
             Instr::Unk48(ref i) => i.$f(),
             Instr::Unk4E(ref i) => i.$f(),
             Instr::Unk66(ref i) => i.$f(),
+            Instr::Unk68(ref i) => i.$f(),
             Instr::Unk6C(ref i) => i.$f(),
             Instr::Unk72(ref i) => i.$f(),
+            Instr::Unk74(ref i) => i.$f(),
             Instr::Unk78(ref i) => i.$f(),
             Instr::Unk7A(ref i) => i.$f(),
             Instr::Unk96(ref i) => i.$f(),
@@ -1983,7 +2010,6 @@ impl CpuShape {
             Unk08::MAGIC => consume_instr!(Unk08, pe, offset, instrs),
             Unk0C::MAGIC => consume_instr!(Unk0C, pe, offset, instrs),
             Unk0E::MAGIC => consume_instr!(Unk0E, pe, offset, instrs),
-            Unk10::MAGIC => consume_instr!(Unk10, pe, offset, instrs),
             Unk12::MAGIC => consume_instr!(Unk12, pe, offset, instrs),
             Pad1E::MAGIC => consume_instr!(Pad1E, pe, offset, instrs),
             Unk2E::MAGIC => consume_instr!(Unk2E, pe, offset, instrs),
@@ -1994,8 +2020,10 @@ impl CpuShape {
             Unk48::MAGIC => consume_instr!(Unk48, pe, offset, instrs),
             Unk4E::MAGIC => consume_instr!(Unk4E, pe, offset, instrs),
             Unk66::MAGIC => consume_instr!(Unk66, pe, offset, instrs),
+            Unk68::MAGIC => consume_instr!(Unk68, pe, offset, instrs),
             Unk6C::MAGIC => consume_instr!(Unk6C, pe, offset, instrs),
             Unk72::MAGIC => consume_instr!(Unk72, pe, offset, instrs),
+            Unk74::MAGIC => consume_instr!(Unk74, pe, offset, instrs),
             Unk78::MAGIC => consume_instr!(Unk78, pe, offset, instrs),
             Unk7A::MAGIC => consume_instr!(Unk7A, pe, offset, instrs),
             Unk96::MAGIC => consume_instr!(Unk96, pe, offset, instrs),
@@ -2114,8 +2142,8 @@ mod tests {
     use i386::ExitInfo;
     use omnilib::OmniLib;
     use simplelog::{Config, LevelFilter, TermLogger};
-    use std::{collections::HashMap, fs};
     use std::io::prelude::*;
+    use std::{collections::HashMap, fs};
 
     fn offset_of_trailer(shape: &CpuShape) -> Option<usize> {
         let mut offset = None;
@@ -2163,7 +2191,10 @@ mod tests {
 
     #[allow(dead_code)]
     fn show_instr_freqs(freq: &HashMap<&'static str, usize>) {
-        let mut freqs = freq.iter().map(|(&k, &v)| (k, v)).collect::<Vec<(&'static str, usize)>>();
+        let mut freqs = freq
+            .iter()
+            .map(|(&k, &v)| (k, v))
+            .collect::<Vec<(&'static str, usize)>>();
         freqs.sort_by_key(|(_, f)| *f);
         for (k, v) in freqs {
             println!("{}: {}", k, v);
@@ -2222,17 +2253,28 @@ mod tests {
                             ("USNF97", "SOLDIER.SH"),
                         ];
                         use std::collections::HashSet;
-                        assert!(exceptions.iter().cloned().collect::<HashSet<_>>().contains(&(&game, &name)));
+                        assert!(exceptions
+                            .iter()
+                            .cloned()
+                            .collect::<HashSet<_>>()
+                            .contains(&(&game, &name)));
                     }
-                    //assert!(offset == f2_target);
+                //assert!(offset == f2_target);
+                } else {
+                    println!("MISSING F2: {}:{}", game, name);
                 }
-                // TODO: check that any UnkF2's target is equal to this offset.
             } else {
                 // There must be a trailing unknown unknowns.
                 let last = last_non_tramp_instr(&shape);
                 if let Instr::UnknownUnknown(unk) = last {
                     // ok
-                    println!("Unknown {:02X} {:02X}: {} {}", unk.data[0], unk.data[1], name, bs2s(&unk.data));
+                    println!(
+                        "Unknown {:02X} {:02X}: {} {}",
+                        unk.data[0],
+                        unk.data[1],
+                        name,
+                        bs2s(&unk.data)
+                    );
                 } else {
                     assert!(false, "no trailing unknown when no trailer");
                 }
