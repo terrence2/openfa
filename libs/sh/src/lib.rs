@@ -2403,54 +2403,7 @@ mod tests {
 
             if let Some(offset) = offset_of_trailer(&shape) {
                 if let Some(f2_target) = find_f2_target(&shape) {
-                    if offset != f2_target {
-                        println!("INCOMPLETE: {}:{}", game, name);
-                        let exceptions = vec![
-                            ("ATF", "CATGUY.SH"),
-                            ("ATF", "F18.SH"),
-                            ("ATF", "SOLDIER.SH"),
-                            ("ATFGOLD", "CATGUY.SH"),
-                            ("ATFGOLD", "SOLDIER.SH"),
-                            ("ATFNATO", "CATGUY.SH"),
-                            ("ATFNATO", "F18.SH"),
-                            ("ATFNATO", "SOLDIER.SH"),
-                            ("FA", "CATGUY.SH"),
-                            ("FA", "SOLDIER.SH"),
-                            ("MF", "CATGUY.SH"),
-                            ("MF", "F18.SH"),
-                            ("MF", "SOLDIER.SH"),
-                            ("USNF", "CATGUY.SH"),
-                            ("USNF", "F18.SH"),
-                            ("USNF", "SOLDIER.SH"),
-                            ("USNF97", "CATGUY.SH"),
-                            ("USNF97", "F18.SH"),
-                            ("USNF97", "SOLDIER.SH"),
-                        ];
-                        use std::collections::HashSet;
-                        assert!(exceptions
-                            .iter()
-                            .cloned()
-                            .collect::<HashSet<_>>()
-                            .contains(&(&game, &name)));
-                    }
-                //assert!(offset == f2_target);
-                } else {
-                    println!("MISSING F2: {}:{}", game, name);
-                }
-            } else {
-                // There must be a trailing unknown unknowns.
-                let last = last_non_tramp_instr(&shape);
-                if let Instr::UnknownUnknown(unk) = last {
-                    // ok
-                    //                    println!(
-                    //                        "Unknown {:02X} {:02X}: {} {}",
-                    //                        unk.data[0],
-                    //                        unk.data[1],
-                    //                        name,
-                    //                        bs2s(&unk.data)
-                    //                    );
-                } else {
-                    assert!(false, "no trailing unknown when no trailer");
+                    assert_eq!(offset, f2_target);
                 }
             }
         }
