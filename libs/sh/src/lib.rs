@@ -2163,6 +2163,25 @@ impl CpuShape {
             }
             // Zero is the magic for the trailer (sans trampolines).
             0 => {
+                // BUG: in F18.SH before ATFGOLD, there is an extraneous extra zero before an F0 section.
+                if pe.code[*offset + 1] == 0xF0 {
+                    let mut target = None;
+                    {
+                        if let Some(&Instr::UnkF2(ref f2)) = find_first_instr(0xF2, &instrs) {
+                            target = Some(f2.next_offset());
+                        }
+                    }
+                    if target != Some(*offset) {
+                        trace!("skipping trailer byte because the next byte is F0 and the F2 does not line up.");
+                        instrs.push(Instr::UnknownData(UnknownData {
+                            offset: *offset,
+                            length: 1,
+                            data: pe.code[*offset..*offset + 1].to_vec(),
+                        }));
+                        *offset += 1;
+                        return Ok(());
+                    }
+                }
                 let unk = TrailerUnknown::from_bytes(*offset, &pe.code, trampolines)?;
                 instrs.push(Instr::TrailerUnknown(unk));
                 *offset = pe.code.len();
