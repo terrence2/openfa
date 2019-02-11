@@ -36,13 +36,14 @@ impl DisassemblyError {
             e.downcast_ref::<DisassemblyError>()
         {
             trace!("Unknown OpCode: {:2X} /{}", op, ext);
-            let line1 = bs2s(&code[0..]);
+            let line1 = bs2s(&code[0..(ip + 20).min(code.len())]);
             let mut line2 = String::new();
             for _ in 0..(ip - 1) * 3 {
                 line2 += "-";
             }
             line2 += "^";
-            trace!("{}\n{}", line1, line2);
+            trace!("{}", line1);
+            trace!("{}", line2);
 
             use std::fs::File;
             use std::io::*;
@@ -841,6 +842,7 @@ pub struct Instr {
     pub memonic: Memonic,
     pub operands: Vec<Operand>,
     pub raw: Vec<u8>,
+    pub context: Option<String>,
 }
 
 impl Instr {
@@ -917,6 +919,7 @@ impl Instr {
             memonic: opcode_desc.memonic,
             operands,
             raw: code[initial_ip..*ip].to_vec(),
+            context: None,
         })
     }
 
@@ -934,7 +937,17 @@ impl Instr {
             }
             s += &op.show_relative(base + self.size(), show_target);
         }
-        s + ")"
+        s += ")";
+        if let Some(ctx) = &self.context {
+            s += " [";
+            s += ctx;
+            s += "]";
+        }
+        s
+    }
+
+    pub fn set_context(&mut self, context: &str) {
+        self.context = Some(context.to_owned());
     }
 }
 
@@ -948,6 +961,9 @@ impl fmt::Display for Instr {
             write!(f, "{}", op)?;
         }
         write!(f, ")")?;
+        if let Some(ctx) = &self.context {
+            write!(f, " {}", ctx)?;
+        }
         Ok(())
     }
 }

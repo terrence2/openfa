@@ -425,7 +425,6 @@ impl PE {
             let base_reloc_ptr: *const BaseRelocation = relocs[offset..].as_ptr() as *const _;
             let base_reloc: &BaseRelocation = unsafe { &*base_reloc_ptr };
             trace!("base reloc at {} is {:?}", offset, base_reloc);
-            //offset += 8 + base_reloc.page_rva() as usize * 2;
             if base_reloc.block_size() > 0 {
                 let reloc_cnt =
                     (base_reloc.block_size() as usize - mem::size_of::<BaseRelocation>()) / 2;

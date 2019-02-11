@@ -546,17 +546,20 @@ impl Facet {
 
 #[derive(Clone, Debug)]
 pub struct X86Trampoline {
+    // Offset is from the start of the code section.
     pub offset: usize,
 
     // The name attached to the thunk that would populate this trampoline.
     pub name: String,
 
-    // Where this trampoline would indirect to, if called.
+    // Where this trampoline would indirect to, if jumped to.
     pub target: u32,
 
-    // The jump or data reference that will be baked into code to call or load
-    // from this trampoline (e.g. offset but including the relocation).
-    pub location: u32,
+    // Shape files call into engine functions by setting up a stack frame
+    // and then returning. The target of this is always one of these trampolines
+    // stored at the tail of the PE. Store the in-memory location of the
+    // thunk for fast comparison with relocated addresses.
+    pub mem_location: u32,
 
     // Whatever tool was used to link .SH's bakes in a direct pointer to the GOT
     // PLT base (e.g. target) as the data location. Presumably when doing
@@ -579,60 +582,79 @@ pub struct X86Trampoline {
 impl X86Trampoline {
     const SIZE: usize = 6;
 
+    fn has_trampoline(offset: usize, pe: &peff::PE) -> bool {
+        pe.section_info.contains_key(".idata")
+            && pe.code.len() >= offset + 6
+            && pe.code[offset] == 0xFF
+            && pe.code[offset + 1] == 0x25
+    }
+
     fn from_pe(offset: usize, pe: &peff::PE) -> Fallible<Self> {
-        ensure!(
-            pe.code.len() >= offset + 6,
-            "not enough code in X86Trampoline::from_pe"
-        );
-        ensure!(
-            pe.code[offset] == 0xFF && pe.code[offset + 1] == 0x25,
-            "not at a trampoline"
-        );
-        ensure!(
-            pe.section_info.contains_key(".idata"),
-            "no .idata section (thunks) in pe"
-        );
+        ensure!(Self::has_trampoline(offset, pe), "not a trampoline");
         let target = {
             let vp: &[u32] = unsafe { mem::transmute(&pe.code[offset + 2..offset + 6]) };
             vp[0]
         };
-        let name = Self::find_matching_thunk(target, pe)?;
-        let is_data = DATA_RELOCATIONS.contains(&name);
+
+        let thunk = Self::find_matching_thunk(target, pe)?;
+        let is_data = DATA_RELOCATIONS.contains(&thunk.name);
         Ok(X86Trampoline {
             offset,
-            name,
+            name: thunk.name.clone(),
             target,
-            location: SHAPE_LOAD_BASE + offset as u32,
+            mem_location: SHAPE_LOAD_BASE + offset as u32,
             is_data,
         })
     }
 
-    fn find_matching_thunk(target: u32, pe: &peff::PE) -> Fallible<String> {
+    fn find_matching_thunk<'a>(addr: u32, pe: &'a peff::PE) -> Fallible<&'a peff::Thunk> {
+        // The thunk table is code and therefore should have had a relocation entry
+        // to move those pointers when we called relocate on the PE.
         trace!(
             "looking for target 0x{:X} in {} thunks",
-            target,
+            addr,
             pe.thunks.len()
         );
         for thunk in pe.thunks.iter() {
-            trace!("    {:20} @ 0x{:X}", thunk.name, thunk.vaddr);
-            if target == thunk.vaddr {
-                return Ok(thunk.name.clone());
+            if addr == thunk.vaddr {
+                return Ok(thunk);
             }
         }
-        // Not all SH files contain relocations for the thunk targets(!). This
-        // is yet more evidence that they're not actually using LoadLibrary to
-        // put shapes in memory. They're probably only using the relocation list
-        // to rewrite data access with the thunks as tags. We're using
-        // relocation, however, to help debug. So if the thunks are not
+
+        // That said, not all SH files actually contain relocations for the thunk
+        // targets(!). This is yet more evidence that they're not actually using
+        // LoadLibrary to put shapes in memory. They're probably only using the
+        // relocation list to rewrite data access with the thunks as tags. We're
+        // using relocation, however, to help decode. So if the thunks are not
         // relocated automatically we have to check the relocated value
         // manually.
-        let target = pe.relocate_pointer(target);
+        let thunk_target = pe.relocate_thunk_pointer(0xAA000000, addr);
+        trace!(
+            "looking for target 0x{:X} in {} thunks",
+            thunk_target,
+            pe.thunks.len()
+        );
         for thunk in pe.thunks.iter() {
-            if target == thunk.vaddr {
-                return Ok(thunk.name.clone());
+            if thunk_target == thunk.vaddr {
+                return Ok(thunk);
             }
         }
-        bail!("did not find thunk with a target of {:08X}", target)
+
+        // Also, in USNF, some of the thunks contain the base address already,
+        // so treat them like a normal code pointer.
+        let thunk_target = pe.relocate_pointer(0xAA000000, addr);
+        trace!(
+            "looking for target 0x{:X} in {} thunks",
+            thunk_target,
+            pe.thunks.len()
+        );
+        for thunk in pe.thunks.iter() {
+            if thunk_target == thunk.vaddr {
+                return Ok(thunk);
+            }
+        }
+
+        bail!("did not find thunk with a target of {:08X}", thunk_target)
     }
 
     fn size(&self) -> usize {
@@ -661,6 +683,13 @@ impl X86Trampoline {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum ReturnKind {
+    Interp,
+    Exec,
+    Error,
+}
+
 #[derive(Debug)]
 pub struct X86Code {
     pub offset: usize,
@@ -685,24 +714,23 @@ impl X86Code {
     }
 
     fn operand_to_offset(op: &Operand) -> usize {
-        match op {
-            Operand::Imm32s(delta) => {
-                if *delta < 0 {
-                    trace!("Skipping loop of {} bytes", *delta);
-                    0
-                } else {
-                    *delta as u32 as usize
-                }
-            }
-            Operand::Imm32(delta) => *delta as usize,
+        // Note that we cannot rely on negative jumps being encoded with a signed instr.
+        let delta = match op {
+            Operand::Imm32s(delta) => *delta as isize,
+            Operand::Imm32(delta) => *delta as i32 as isize,
             _ => {
                 trace!("Detected indirect jump target: {}", op);
                 0
             }
+        };
+        if delta < 0 {
+            trace!("Skipping loop of {} bytes", delta);
+            return 0usize;
         }
+        delta as usize
     }
 
-    // Note: excluding return-to-trampoline
+    // Note: excluding return-to-trampoline and loops.
     fn find_external_jumps(base: usize, bc: &ByteCode, external_jumps: &mut HashSet<usize>) {
         let mut ip = 0;
         let ip_end = bc.size as usize;
@@ -728,13 +756,74 @@ impl X86Code {
         lowest
     }
 
-    fn disassemble_to_ret(code: &[u8], offset: usize) -> Fallible<ByteCode> {
+    fn find_pushed_address(target: &i386::Instr) -> Fallible<u32> {
+        ensure!(target.memonic == i386::Memonic::Push, "expected push");
+        ensure!(target.operands.len() == 1, "expected one operand");
+        if let Operand::Imm32s(addr) = target.operands[0] {
+            Ok(addr as u32)
+        } else {
+            bail!("expected imm32s operand")
+        }
+    }
+
+    fn find_trampoline_for_push<'a>(
+        target: &i386::Instr,
+        trampolines: &'a [X86Trampoline],
+    ) -> Fallible<&'a X86Trampoline> {
+        let target_addr = Self::find_pushed_address(target)?;
+        for tramp in trampolines {
+            trace!(
+                "checking {:08X} against {:20} @ loc:{:08X}",
+                target_addr,
+                tramp.name,
+                tramp.mem_location
+            );
+            if target_addr == tramp.mem_location {
+                ensure!(!tramp.is_data, "calling data trampoline");
+                return Ok(tramp);
+            }
+        }
+        bail!("no matching trampoline for exit")
+    }
+
+    fn disassemble_to_ret(
+        code: &[u8],
+        offset: usize,
+        trampolines: &[X86Trampoline],
+    ) -> Fallible<(ByteCode, ReturnKind)> {
         let maybe_bc = i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + offset, code);
         if let Err(e) = maybe_bc {
             i386::DisassemblyError::maybe_show(&e, &code);
             bail!("Don't know how to disassemble at {}: {:?}", offset, e);
         }
-        maybe_bc
+        let mut bc = maybe_bc?;
+        ensure!(bc.instrs.len() >= 3, "expected at least 3 instructions");
+
+        let target = &bc.instrs[bc.instrs.len() - 2];
+        let tramp = Self::find_trampoline_for_push(target, trampolines)?;
+
+        let ret_pos = bc.instrs.len() - 1;
+        let ret = &mut bc.instrs[ret_pos];
+        ensure!(ret.memonic == i386::Memonic::Return, "expected ret");
+        ret.set_context(&tramp.name);
+
+        // The argument pointer always points to just after the code segment.
+        let arg0 = &bc.instrs[bc.instrs.len() - 3];
+        let arg0_ptr = Self::find_pushed_address(arg0)? - SHAPE_LOAD_BASE;
+        ensure!(
+            arg0_ptr as usize == offset + bc.size as usize,
+            "expected second stack arg to point after code block"
+        );
+
+        let state = if tramp.name == "do_start_interp" {
+            ReturnKind::Interp
+        } else if tramp.name == "_ErrorExit" {
+            ReturnKind::Error
+        } else {
+            ReturnKind::Exec
+        };
+
+        Ok((bc, state))
     }
 
     fn make_code(bc: ByteCode, pe: &peff::PE, offset: usize) -> Instr {
@@ -785,32 +874,28 @@ impl X86Code {
                 external_jumps.remove(&offset);
                 trace!("ip reached external jump");
 
-                let bc = Self::disassemble_to_ret(&pe.code[*offset..], *offset)?;
+                let (bc, return_state) =
+                    Self::disassemble_to_ret(&pe.code[*offset..], *offset, trampolines)?;
                 trace!("decoded {} instructions", bc.instrs.len());
 
                 Self::find_external_jumps(*offset, &bc, &mut external_jumps);
-                trace!("new external jumps: {:?}", external_jumps);
+                trace!(
+                    "new external jumps: {:?}",
+                    external_jumps
+                        .iter()
+                        .map(|n| format!("{:04X}", n))
+                        .collect::<Vec<_>>(),
+                );
 
                 let bc_size = bc.size as usize;
                 vinstrs.push(Self::make_code(bc, pe, *offset));
                 *offset += bc_size;
 
-                // The block after the ret may be a virtual instr, or a data block, or another
-                // x86 instruction for us to decode.
-                if external_jumps.is_empty() {
-                    trace!("trying next offset");
-                    let maybe_bc = i386::ByteCode::disassemble_one(
-                        SHAPE_LOAD_BASE as usize + *offset,
-                        &pe.code[*offset..],
-                    );
-                    if let Err(e) = maybe_bc {
-                        trace!("offset after RET is probably external data; check this to see if it might actually be bytecode");
-                        i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
-                    } else {
-                        // Create an external jump to ourself to continue decoding.
-                        external_jumps.insert(*offset);
-                    }
+                if return_state == ReturnKind::Exec {
+                    external_jumps.insert(*offset);
                 }
+
+                // TODO: on Error's try to print the message.
             }
 
             // If we have no more jumps, continue looking for virtual instructions.
@@ -828,6 +913,10 @@ impl X86Code {
             // treat it as raw data.
 
             // Note: We do not expect another F0 while we have external jumps to find.
+            trace!(
+                "trying vinstr at: {}",
+                bs2s(&pe.code[*offset..(*offset + 10).min(pe.code.len())])
+            );
             let saved_offset = *offset;
             let mut have_vinstr = true;
             let maybe = CpuShape::read_instr(offset, pe, trampolines, vinstrs);
@@ -1736,6 +1825,7 @@ opaque_instr!(Header, "Header", 0xFF, 14);
 opaque_instr!(Unk06, "06", 0x06, 21);
 opaque_instr!(Unk0C, "0C", 0x0C, 17);
 opaque_instr!(Unk0E, "0E", 0x0E, 17);
+opaque_instr!(Unk10, "10", 0x10, 17);
 opaque_instr!(Unk12, "12", 0x12, 4);
 opaque_instr!(Unk2E, "2E", 0x2E, 4);
 opaque_instr!(Unk3A, "3A", 0x3A, 6);
@@ -1775,6 +1865,7 @@ pub enum Instr {
     Unk08(Unk08),
     Unk0C(Unk0C),
     Unk0E(Unk0E),
+    Unk10(Unk10),
     Unk12(Unk12),
     Unk2E(Unk2E),
     Unk3A(Unk3A),
@@ -1845,6 +1936,7 @@ macro_rules! impl_for_all_instr {
             Instr::Unk08(ref i) => i.$f(),
             Instr::Unk0C(ref i) => i.$f(),
             Instr::Unk0E(ref i) => i.$f(),
+            Instr::Unk10(ref i) => i.$f(),
             Instr::Unk12(ref i) => i.$f(),
             Instr::Pad1E(ref i) => i.$f(),
             Instr::Unk2E(ref i) => i.$f(),
@@ -1957,11 +2049,15 @@ impl CpuShape {
     }
 
     fn find_trampolines(pe: &peff::PE) -> Fallible<Vec<X86Trampoline>> {
+        trace!("Looking for thunks in the following table:");
+        for thunk in pe.thunks.iter() {
+            trace!("    {:20} @ 0x{:X}", thunk.name, thunk.vaddr);
+        }
         let mut offset = pe.code.len() - 6;
         let mut trampolines = Vec::new();
         while offset > 0 {
-            let maybe_tramp = X86Trampoline::from_pe(offset, pe);
-            if let Ok(tramp) = maybe_tramp {
+            if X86Trampoline::has_trampoline(offset, pe) {
+                let tramp = X86Trampoline::from_pe(offset, pe)?;
                 trampolines.push(tramp);
             } else {
                 break;
@@ -2010,6 +2106,7 @@ impl CpuShape {
             Unk08::MAGIC => consume_instr!(Unk08, pe, offset, instrs),
             Unk0C::MAGIC => consume_instr!(Unk0C, pe, offset, instrs),
             Unk0E::MAGIC => consume_instr!(Unk0E, pe, offset, instrs),
+            Unk10::MAGIC => consume_instr!(Unk10, pe, offset, instrs),
             Unk12::MAGIC => consume_instr!(Unk12, pe, offset, instrs),
             Pad1E::MAGIC => consume_instr!(Pad1E, pe, offset, instrs),
             Unk2E::MAGIC => consume_instr!(Unk2E, pe, offset, instrs),
@@ -2268,13 +2365,13 @@ mod tests {
                 let last = last_non_tramp_instr(&shape);
                 if let Instr::UnknownUnknown(unk) = last {
                     // ok
-                    println!(
-                        "Unknown {:02X} {:02X}: {} {}",
-                        unk.data[0],
-                        unk.data[1],
-                        name,
-                        bs2s(&unk.data)
-                    );
+                    //                    println!(
+                    //                        "Unknown {:02X} {:02X}: {} {}",
+                    //                        unk.data[0],
+                    //                        unk.data[1],
+                    //                        name,
+                    //                        bs2s(&unk.data)
+                    //                    );
                 } else {
                     assert!(false, "no trailing unknown when no trailer");
                 }
@@ -2339,47 +2436,47 @@ mod tests {
         let mut interp = i386::Interpreter::new();
         for tramp in shape.trampolines.iter() {
             if !tramp.is_data {
-                interp.add_trampoline(tramp.location, &tramp.name, 1);
+                interp.add_trampoline(tramp.mem_location, &tramp.name, 1);
                 continue;
             }
             match tramp.name.as_ref() {
                 "brentObjId" => interp.add_read_port(
-                    tramp.location,
+                    tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP brentObjectId");
                         exp_base // Lowest valid (shown?) object id is 0x3E8, at least by the check EXP.sh does.
                     }),
                 ),
                 "_currentTicks" => interp.add_read_port(
-                    tramp.location,
+                    tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _currentTicks");
                         0
                     }),
                 ),
                 "viewer_x" => interp.add_read_port(
-                    tramp.location,
+                    tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP viewer_x");
                         0
                     }),
                 ),
                 "viewer_z" => interp.add_read_port(
-                    tramp.location,
+                    tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP viewer_z");
                         0
                     }),
                 ),
                 "xv32" => interp.add_read_port(
-                    tramp.location,
+                    tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP xv32");
                         0
                     }),
                 ),
                 "zv32" => interp.add_read_port(
-                    tramp.location,
+                    tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP zv32");
                         0
@@ -2387,14 +2484,14 @@ mod tests {
                 ),
                 "_effectsAllowed" => {
                     interp.add_read_port(
-                        tramp.location,
+                        tramp.mem_location,
                         Box::new(move || {
                             println!("LOOKUP _effectsAllowed");
                             0
                         }),
                     );
                     interp.add_write_port(
-                        tramp.location,
+                        tramp.mem_location,
                         Box::new(move |value| {
                             println!("SET _effectsAllowed to {}", value);
                         }),
