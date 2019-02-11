@@ -131,7 +131,11 @@ impl Palette {
                 for ip in 0..size {
                     for jp in 0..size {
                         let pixel = if off + 2 < data.len() {
-                            Rgb([data[off] * scale, data[off + 1] * scale, data[off + 2] * scale])
+                            Rgb([
+                                data[off] * scale,
+                                data[off + 1] * scale,
+                                data[off + 2] * scale,
+                            ])
                         } else if off < data.len() {
                             let c = (255 * ((ip + (jp % 2)) % 2)) as u8;
                             Rgb([c, 0, c])

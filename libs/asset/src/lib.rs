@@ -19,7 +19,7 @@
 //   3)
 //
 // Open question: are we responsible for upload to the GPU? If not, who is?
-use failure::{Fallible};
+use failure::Fallible;
 use lay::Layer;
 use lib::Library;
 use log::trace;

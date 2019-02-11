@@ -14,8 +14,9 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{bail, ensure, Fallible};
 use ot::{
-    make_type_struct,
-    parse, parse::{parse_string, FieldRow, FromRow}, ObjectType,
+    make_type_struct, parse,
+    parse::{parse_string, FieldRow, FromRow},
+    ObjectType,
 };
 use std::collections::HashMap;
 
@@ -30,7 +31,7 @@ impl FromRow for ProjectileNames {
     type Produces = ProjectileNames;
     fn from_row(
         field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>
+        _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<Self::Produces> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "si_names", "expected pointer to si_names");

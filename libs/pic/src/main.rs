@@ -35,7 +35,8 @@ fn main() -> Fallible<()> {
                 .help("The pics to convert")
                 .multiple(true)
                 .required(true),
-        ).get_matches();
+        )
+        .get_matches();
 
     let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL")?;
     let mut palette_data = Vec::new();

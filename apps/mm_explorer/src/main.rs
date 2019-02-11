@@ -83,7 +83,8 @@ pub fn main() -> Fallible<()> {
 
         if need_reset {
             need_reset = false;
-            t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
+            t2_renderer
+                .set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
         }
 
@@ -176,8 +177,17 @@ pub fn main() -> Fallible<()> {
             window.note_resize()
         }
 
-        let offsets = format!("base: lay:{} c2:{} d3:{} e0:{} f1:{}", lay_base, c2_off, d3_off, e0_off, f1_off);
-        window.debug_text(1800f32, 25f32, 30f32, [1f32, 0.5f32, 0.5f32, 1f32], &offsets);
+        let offsets = format!(
+            "base: lay:{} c2:{} d3:{} e0:{} f1:{}",
+            lay_base, c2_off, d3_off, e0_off, f1_off
+        );
+        window.debug_text(
+            1800f32,
+            25f32,
+            30f32,
+            [1f32, 0.5f32, 0.5f32, 1f32],
+            &offsets,
+        );
 
         let ft = loop_start.elapsed();
         let ts = format!(

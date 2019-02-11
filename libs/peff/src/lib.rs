@@ -300,7 +300,8 @@ impl PE {
             .iter()
             .map(|(ref name, (ref header, _))| {
                 ((*name).to_owned(), SectionInfo::from_header(header))
-            }).collect::<HashMap<String, SectionInfo>>();
+            })
+            .collect::<HashMap<String, SectionInfo>>();
 
         Ok(PE {
             thunks,
@@ -420,7 +421,11 @@ impl PE {
     fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Fallible<Vec<u32>> {
         let mut out = Vec::new();
         let mut offset = 0usize;
-        trace!("relocs section is 0x{:04X} bytes: {:?}", relocs.len(), &relocs[0..18]);
+        trace!(
+            "relocs section is 0x{:04X} bytes: {:?}",
+            relocs.len(),
+            &relocs[0..18]
+        );
         while offset < relocs.len() {
             let base_reloc_ptr: *const BaseRelocation = relocs[offset..].as_ptr() as *const _;
             let base_reloc: &BaseRelocation = unsafe { &*base_reloc_ptr };
@@ -448,7 +453,14 @@ impl PE {
                     );
                     let code_offset = (base_reloc.page_rva() - code_section.virtual_address())
                         + u32::from(reloc_offset);
-                    trace!("reloc at offset {} is {:04X} + {:04X} => rva:{:04X}, phys:{:04X}", offset, base_reloc.page_rva(), reloc_offset, rva, code_offset);
+                    trace!(
+                        "reloc at offset {} is {:04X} + {:04X} => rva:{:04X}, phys:{:04X}",
+                        offset,
+                        base_reloc.page_rva(),
+                        reloc_offset,
+                        rva,
+                        code_offset
+                    );
                     out.push(code_offset);
                 }
             }

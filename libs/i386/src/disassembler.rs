@@ -403,7 +403,7 @@ impl OperandDecodeState {
                 } else {
                     Reg::EBP
                 }
-            },
+            }
             6 => Reg::ESI,
             7 => Reg::EDI,
             _ => panic!("base out of range"),

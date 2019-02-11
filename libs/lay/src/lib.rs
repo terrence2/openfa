@@ -74,7 +74,7 @@ packed_struct!(LayerPlaneHeader {
 
 pub struct Layer {
     data: Vec<u8>,
-    frag_offsets: Vec<usize>
+    frag_offsets: Vec<usize>,
 }
 
 impl Layer {
@@ -117,7 +117,10 @@ impl Layer {
 
         assert_eq!(header.unkPtr00x100(), header.unkPtr04());
         assert_eq!(header.unkPtr00x100(), header.unkPtr20x100());
-        assert!(header.unkPtr00x100() == header.unkPtr50x100() || header.unkPtr00x100() + 0x100 == header.unkPtr50x100());
+        assert!(
+            header.unkPtr00x100() == header.unkPtr50x100()
+                || header.unkPtr00x100() + 0x100 == header.unkPtr50x100()
+        );
 
         // This segment of data counts up from 00 to FF and is present in every single LAY.
         // It makes little sense as a LUT because if you have the value itself? It is always
@@ -220,11 +223,7 @@ impl Layer {
                 //   DAY: very dark, but clearly has color... twilight?
                 // 4
                 //   DAY: black
-                Palette::dump_partial(
-                    pal_data,
-                    4,
-                    &(name.clone() + "-1"),
-                )?;
+                Palette::dump_partial(pal_data, 4, &(name.clone() + "-1"))?;
 
                 // Palette::dump_partial(
                 //     &data[offset + hdr_size + 2..offset + hdr_size + 0xC2],
@@ -276,7 +275,10 @@ impl Layer {
             offset += 0x100;
         }
 
-        Ok(Layer { data: data.to_vec(), frag_offsets })
+        Ok(Layer {
+            data: data.to_vec(),
+            frag_offsets,
+        })
     }
 }
 

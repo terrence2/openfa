@@ -50,7 +50,7 @@ impl FromRow for HardpointDefault {
     type Produces = HardpointDefault;
     fn from_row(
         field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>
+        _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<Self::Produces> {
         if field.value().pointer().is_err() {
             ensure!(

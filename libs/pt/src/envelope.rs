@@ -45,7 +45,7 @@ impl FromRows for EnvelopeShape {
     type Produces = EnvelopeShape;
     fn from_rows(
         rows: &[FieldRow],
-        _pointers: &HashMap<&str, Vec<&str>>
+        _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<(Self::Produces, usize)> {
         let mut shape = Vec::new();
         for j in 0..20 {

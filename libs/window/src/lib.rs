@@ -177,7 +177,12 @@ impl SizeDependent {
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
         self.swapchain = swapchain;
 
-        self.draw_text = DrawText::new(device.clone(), queue.clone(), self.swapchain.clone(), &images);
+        self.draw_text = DrawText::new(
+            device.clone(),
+            queue.clone(),
+            self.swapchain.clone(),
+            &images,
+        );
 
         let mut framebuffers = Vec::new();
         for image in &images {
@@ -341,7 +346,8 @@ impl GraphicsWindow {
             depth_range: 1.0..0.0,
         }]);
 
-        self.recreatable.handle_resize(&self.device, &self.queues[0], &self.surface)
+        self.recreatable
+            .handle_resize(&self.device, &self.queues[0], &self.surface)
     }
 
     pub fn drive_frame<F>(&mut self, draw: F) -> Fallible<()>

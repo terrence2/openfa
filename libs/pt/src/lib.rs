@@ -18,8 +18,7 @@ use crate::envelope::Envelope;
 use failure::{bail, ensure, Fallible};
 use nt::NpcType;
 use ot::{
-    make_type_struct,
-    parse,
+    make_type_struct, parse,
     parse::{FieldRow, FromRow, FromRows},
     ObjectType,
 };
@@ -49,10 +48,7 @@ pub struct Envelopes {
 
 impl FromRow for Envelopes {
     type Produces = Envelopes;
-    fn from_row(
-        row: &FieldRow,
-        pointers: &HashMap<&str, Vec<&str>>
-    ) -> Fallible<Self::Produces> {
+    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self::Produces> {
         let (_name, lines) = row.value().pointer()?;
         let mut off = 0usize;
         let mut envs = Vec::new();
@@ -81,7 +77,7 @@ impl FromRows for SystemDamage {
 
     fn from_rows(
         rows: &[FieldRow],
-        _pointers: &HashMap<&str, Vec<&str>>
+        _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<(Self::Produces, usize)> {
         let mut damage_limit = [0; 45];
         for (i, row) in rows[..45].iter().enumerate() {
@@ -104,7 +100,7 @@ impl FromRows for PhysBounds {
 
     fn from_rows(
         rows: &[FieldRow],
-        _pointers: &HashMap<&str, Vec<&str>>
+        _pointers: &HashMap<&str, Vec<&str>>,
     ) -> Fallible<(Self::Produces, usize)> {
         Ok((
             Self {

@@ -17,8 +17,7 @@ mod hardpoint;
 use crate::hardpoint::HardpointType;
 use failure::{bail, ensure, Fallible};
 use ot::{
-    make_type_struct,
-    parse,
+    make_type_struct, parse,
     parse::{FieldRow, FromRow},
     ObjectType,
 };
@@ -48,10 +47,7 @@ pub struct Hardpoints {
 
 impl FromRow for Hardpoints {
     type Produces = Hardpoints;
-    fn from_row(
-        field: &FieldRow,
-        pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self::Produces> {
+    fn from_row(field: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self::Produces> {
         let (_name, lines) = field.value().pointer()?;
         let mut off = 0usize;
         let mut hards = Vec::new();

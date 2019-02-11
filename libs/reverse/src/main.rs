@@ -17,20 +17,22 @@
 extern crate clap;
 extern crate reverse;
 
-use clap::{Arg, App};
+use clap::{App, Arg};
+use reverse::b2h;
 use std::fs;
 use std::io::prelude::*;
-use reverse::b2h;
 
 fn main() {
     let matches = App::new("OpenFA reversing tool")
         .version("0.0.1")
         .author("Terrence Cole <terrence.d.cole@gmail.com>")
         .about("Show hex dump of many files at once.")
-        .arg(Arg::with_name("INPUT")
-            .help("The pics to convert")
-            .multiple(true)
-            .required(true))
+        .arg(
+            Arg::with_name("INPUT")
+                .help("The pics to convert")
+                .multiple(true)
+                .required(true),
+        )
         .get_matches();
 
     let mut strs = Vec::new();

@@ -422,34 +422,40 @@ pub fn format_sections(
             }
             out.push(line.iter().collect::<String>());
         }
-        ShowMode::AllPerLine => for section in sections {
-            let mut line: Vec<char> = Vec::new();
-            accumulate_section(code, section, tags, &mut line);
-            out.push(line.iter().collect::<String>());
-        },
-        ShowMode::Unknown => for section in sections {
-            if let SectionKind::Unknown = section.kind {
+        ShowMode::AllPerLine => {
+            for section in sections {
                 let mut line: Vec<char> = Vec::new();
                 accumulate_section(code, section, tags, &mut line);
                 out.push(line.iter().collect::<String>());
             }
-        },
-        ShowMode::UnknownMinus => for (i, section) in sections.iter().enumerate() {
-            if let SectionKind::Unknown = section.kind {
-                let mut line: Vec<char> = Vec::new();
-                accumulate_section(code, section, tags, &mut line);
-                if i > 2 {
-                    accumulate_section(code, &sections[i - 3], tags, &mut line);
+        }
+        ShowMode::Unknown => {
+            for section in sections {
+                if let SectionKind::Unknown = section.kind {
+                    let mut line: Vec<char> = Vec::new();
+                    accumulate_section(code, section, tags, &mut line);
+                    out.push(line.iter().collect::<String>());
                 }
-                if i > 1 {
-                    accumulate_section(code, &sections[i - 2], tags, &mut line);
-                }
-                if i > 0 {
-                    accumulate_section(code, &sections[i - 1], tags, &mut line);
-                }
-                out.push(line.iter().collect::<String>());
             }
-        },
+        }
+        ShowMode::UnknownMinus => {
+            for (i, section) in sections.iter().enumerate() {
+                if let SectionKind::Unknown = section.kind {
+                    let mut line: Vec<char> = Vec::new();
+                    accumulate_section(code, section, tags, &mut line);
+                    if i > 2 {
+                        accumulate_section(code, &sections[i - 3], tags, &mut line);
+                    }
+                    if i > 1 {
+                        accumulate_section(code, &sections[i - 2], tags, &mut line);
+                    }
+                    if i > 0 {
+                        accumulate_section(code, &sections[i - 1], tags, &mut line);
+                    }
+                    out.push(line.iter().collect::<String>());
+                }
+            }
+        }
         ShowMode::UnknownFacet => {
             for section in sections {
                 if let SectionKind::Unknown = section.kind {
