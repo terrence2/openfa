@@ -420,43 +420,49 @@ impl PE {
     fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Fallible<Vec<u32>> {
         let mut out = Vec::new();
         let mut offset = 0usize;
+        trace!("relocs section is 0x{:04X} bytes: {:?}", relocs.len(), &relocs[0..18]);
         while offset < relocs.len() {
             let base_reloc_ptr: *const BaseRelocation = relocs[offset..].as_ptr() as *const _;
             let base_reloc: &BaseRelocation = unsafe { &*base_reloc_ptr };
-            offset += 8 + base_reloc.page_rva() as usize * 2;
+            trace!("base reloc at {} is {:?}", offset, base_reloc);
+            //offset += 8 + base_reloc.page_rva() as usize * 2;
             if base_reloc.block_size() > 0 {
                 let reloc_cnt =
                     (base_reloc.block_size() as usize - mem::size_of::<BaseRelocation>()) / 2;
                 let relocs: &[u16] =
-                    unsafe { mem::transmute(&relocs[mem::size_of::<BaseRelocation>()..]) };
+                    unsafe { mem::transmute(&relocs[offset + mem::size_of::<BaseRelocation>()..]) };
                 for reloc in relocs.iter().take(reloc_cnt) {
                     let flags = (reloc & 0xF000) >> 12;
                     if flags == 0 {
                         continue;
                     }
-                    let offset = reloc & 0x0FFF;
+                    let reloc_offset = reloc & 0x0FFF;
                     ensure!(flags == 3, "only 32bit relocations are supported");
-                    let rva = base_reloc.page_rva() + u32::from(offset);
-                    trace!("Base Reloc: {:04X} + {:04X}", base_reloc.page_rva(), offset);
+                    let rva = base_reloc.page_rva() + u32::from(reloc_offset);
                     ensure!(
                         rva >= code_section.virtual_address(),
-                        "relocation not in CODE"
+                        "relocation before CODE"
                     );
                     ensure!(
                         rva < code_section.virtual_address() + code_section.virtual_size(),
-                        "relocation not in CODE"
+                        "relocation after CODE"
                     );
                     let code_offset = (base_reloc.page_rva() - code_section.virtual_address())
-                        + u32::from(offset);
+                        + u32::from(reloc_offset);
+                    trace!("reloc at offset {} is {:04X} + {:04X} => rva:{:04X}, phys:{:04X}", offset, base_reloc.page_rva(), reloc_offset, rva, code_offset);
                     out.push(code_offset);
                 }
+            }
+            offset += base_reloc.block_size() as usize;
+            if base_reloc.block_size() == 0 {
+                break;
             }
         }
         Ok(out)
     }
 
-    pub fn relocate(&mut self, addr: u32) -> Fallible<()> {
-        let delta = RelocationDelta::new(addr, self.image_base + self.code_vaddr);
+    pub fn relocate(&mut self, target: u32) -> Fallible<()> {
+        let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
         for &reloc in self.relocs.iter() {
             let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
             let pcode: *mut u32 = dwords.as_mut_ptr();
@@ -472,7 +478,7 @@ impl PE {
         }
 
         // Note: section headers and thunks do not get image base I guess?
-        let delta = RelocationDelta::new(addr, self.code_vaddr);
+        let delta = RelocationDelta::new(target, self.code_vaddr);
         for info in self.section_info.values_mut() {
             trace!(
                 "Relocating section vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
@@ -495,14 +501,30 @@ impl PE {
         Ok(())
     }
 
-    pub fn relocate_pointer(&self, addr: u32) -> u32 {
+    // Relocates a relative pointer to a section or thunk to an absolute address,
+    // given the target load address.
+    pub fn relocate_thunk_pointer(&self, target: u32, addr: u32) -> u32 {
+        let delta = RelocationDelta::new(target, self.code_vaddr);
         trace!(
-            "Relocate: 0x{:08X}, vaddr: 0x{:08X}, addr: 0x{:08X}",
+            "Relocating pointer: 0x{:08X} + 0x{:08X} = 0x{:08X}",
             addr,
-            self.code_vaddr,
-            self.code_addr
+            delta.delta(),
+            delta.apply(addr)
         );
-        addr - self.image_base - self.code_vaddr + self.code_addr
+        delta.apply(addr)
+    }
+
+    // Relocates a relative pointer to code to an absolute address, given the
+    // target load address.
+    pub fn relocate_pointer(&self, target: u32, addr: u32) -> u32 {
+        let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
+        trace!(
+            "Relocating pointer: 0x{:08X} + 0x{:08X} = 0x{:08X}",
+            addr,
+            delta.delta(),
+            delta.apply(addr)
+        );
+        delta.apply(addr)
     }
 }
 
