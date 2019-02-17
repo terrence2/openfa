@@ -16,18 +16,18 @@ use failure::Fallible;
 use log::trace;
 use omnilib::OmniLib;
 use pal::Palette;
-use render::{ArcBallCamera, ShRenderer, DrawMode};
+use render::{ArcBallCamera, DrawMode, ShRenderer};
 use sh::CpuShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant};
 use structopt::StructOpt;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
-    DeviceEvent::{Button, Key, MouseMotion, MouseWheel},
+    DeviceEvent::{Button, MouseMotion},
     ElementState,
     Event::{DeviceEvent, WindowEvent},
-    KeyboardInput, MouseScrollDelta, VirtualKeyCode,
-    WindowEvent::{CloseRequested, Destroyed, Resized},
+    KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
+    WindowEvent::{CloseRequested, Destroyed, MouseInput, MouseWheel, Resized},
 };
 
 #[derive(Debug, StructOpt)]
@@ -86,7 +86,14 @@ fn main() -> Fallible<()> {
             need_reset = false;
             // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
-            sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
+            sh_renderer.add_shape_to_render(
+                "foo",
+                &sh,
+                stop_at_offset,
+                &draw_mode,
+                &lib,
+                &window,
+            )?;
         }
 
         sh_renderer.set_view(camera.view_matrix());
@@ -113,27 +120,31 @@ fn main() -> Fallible<()> {
             } => resized = true,
 
             // Mouse motion
+            //    Use device events instead of window events for motion, so that we can move the
+            //    mouse without worrying about leaving the window. Also for mouse-up, so
+            //    interaction ends even if we moved off window.
             DeviceEvent {
                 event: MouseMotion { delta: (x, y) },
                 ..
             } => {
                 camera.on_mousemove(x as f32, y as f32);
             }
-            DeviceEvent {
+            WindowEvent {
                 event:
-                    MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(x, y),
-                    },
-                ..
-            } => camera.on_mousescroll(x, y),
-            DeviceEvent {
-                event:
-                    Button {
+                    MouseInput {
                         button: id,
                         state: ElementState::Pressed,
+                        ..
                     },
                 ..
-            } => camera.on_mousebutton_down(id),
+            } => {
+                let id = match id {
+                    MouseButton::Left => 1,
+                    MouseButton::Right => 3,
+                    _ => 0,
+                };
+                camera.on_mousebutton_down(id)
+            }
             DeviceEvent {
                 event:
                     Button {
@@ -142,15 +153,27 @@ fn main() -> Fallible<()> {
                     },
                 ..
             } => camera.on_mousebutton_up(id),
+            WindowEvent {
+                event:
+                    MouseWheel {
+                        delta: MouseScrollDelta::LineDelta(x, y),
+                        ..
+                    },
+                ..
+            } => camera.on_mousescroll(-x, -y),
 
             // Keyboard Press
-            DeviceEvent {
+            WindowEvent {
                 event:
-                    Key(KeyboardInput {
-                        virtual_keycode: Some(keycode),
-                        state: ElementState::Pressed,
+                    winit::WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                virtual_keycode: Some(keycode),
+                                state: ElementState::Pressed,
+                                ..
+                            },
                         ..
-                    }),
+                    },
                 ..
             } => match keycode {
                 VirtualKeyCode::Escape => done = true,
@@ -186,16 +209,18 @@ fn main() -> Fallible<()> {
                     stop_at_offset = 0;
                     need_reset = true;
                 }
-                /*
                 VirtualKeyCode::Period => {
-                    draw_region = draw_region.saturating_add(1);
+                    draw_mode.distance = draw_mode.distance.saturating_add(0x10);
                     need_reset = true;
                 }
                 VirtualKeyCode::Comma => {
-                    draw_region = draw_region.saturating_sub(1);
+                    draw_mode.distance = draw_mode.distance.saturating_sub(0x10);
                     need_reset = true;
                 }
-                */
+                VirtualKeyCode::D => {
+                    draw_mode.damaged = !draw_mode.damaged;
+                    need_reset = true;
+                }
                 VirtualKeyCode::Q => done = true,
                 VirtualKeyCode::R => need_reset = true,
                 _ => trace!("unknown keycode: {:?}", keycode),
@@ -219,7 +244,10 @@ fn main() -> Fallible<()> {
         );
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
-//        let params = format!("stop:{}b, region:{}", stop_at_offset, draw_region);
-//        window.debug_text(800f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
+        let params = format!(
+            "stop:{}b, dam:{}, dist:{:04X}",
+            stop_at_offset, draw_mode.damaged, draw_mode.distance
+        );
+        window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }
 }

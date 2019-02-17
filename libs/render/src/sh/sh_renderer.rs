@@ -274,7 +274,9 @@ impl ShRenderer {
         let mut indices = Vec::new();
         let mut verts = Vec::new();
 
-        let mut jump_target = None;
+        let mut end_target = None;
+        let mut damage_target = None;
+        let mut section_close = None;
 
         let mut byte_offset = 0;
         let mut offset = 0;
@@ -285,12 +287,21 @@ impl ShRenderer {
                 trace!("reached configured stopping point");
                 break;
             }
-            if let Some(tgt) = jump_target {
-                if byte_offset < tgt {
-                    trace!("skipping @ {} -> {}", byte_offset, tgt);
-                    offset += 1;
-                    byte_offset += instr.size();
-                    continue;
+
+            if let Some(close_offset) = section_close {
+                if close_offset == byte_offset {
+                    trace!("reached section close; stopping");
+                    // FIXME: jump to end_offset
+                    break;
+                }
+            }
+            if let Some(damage_offset) = damage_target {
+                if damage_offset == byte_offset {
+                    if !draw_mode.damaged {
+                        trace!("reached damage section in non-damage draw mode; stopping");
+                        // FIXME: jump to end_offset
+                        break;
+                    }
                 }
             }
 
@@ -302,23 +313,34 @@ impl ShRenderer {
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
                 }
-                Instr::ToEnd(_end) => {
+                Instr::ToEnd(end) => {
                     // We do not ever not draw from range; maybe there is some other use of
                     // this target offset that we just don't know yet?
+                    end_target = Some(end.end_byte_offset())
                 }
                 Instr::UnkAC_ToDamage(dam) => {
+                    damage_target = Some(dam.damage_byte_offset());
                     if draw_mode.damaged {
-                        jump_target = Some(dam.damage_byte_offset())
+                        trace!("jumping to damaged model at {:04X}", dam.damage_byte_offset());
+                        byte_offset = dam.damage_byte_offset();
+                        offset = sh.bytes_to_index(byte_offset)?;
+                        continue;
                     }
                 }
                 Instr::UnkC8_JumpOnDetailLevel(c8) => {
-                    //                    if c8.next_offset() < self.subdetail_at_offset {
-                    //                        self.subdetail_at_offset = c8.next_offset();
-                    //                    }
-                    trace!("Setting stop to {:04X}", c8.next_offset());
-                    //stop_at = Some(c8.next_offset());
-                    if draw_mode.distance < c8.unk0 as usize {
-                        jump_target = Some(c8.next_offset());
+                    if draw_mode.distance > c8.unk1 as usize {
+                        // For high detail, the bytes after the c8 up to the indicated end contain
+                        // the high detail model.
+                        trace!("setting section close to {}", c8.next_offset());
+                        section_close = Some(c8.next_offset());
+                    } else {
+                        // For low detail, the bytes after the c8 end marker contain the low detail
+                        // model. We have no way to know how where the close is, so we have to
+                        // monitor and abort to end if we hit the damage section?
+                        trace!("jumping to low detail model at {:04X}", c8.next_offset());
+                        byte_offset = c8.next_offset();
+                        offset = sh.bytes_to_index(byte_offset)?;
+                        continue;
                     }
                 }
                 Instr::UnkC4(c4) => {
@@ -341,15 +363,6 @@ impl ShRenderer {
                     ];
                 }
                 Instr::VertexBuf(buf) => {
-                    // if !vert_pool.is_empty() {
-                    //     break;
-                    // }
-                    // if buf.unk0 & 1 == 1 {
-                    //     vert_pool.truncate(0);
-                    // }
-                    // if end_at_offset == buf.offset {
-                    //     vert_pool.truncate(0);
-                    // }
                     for v in &buf.verts {
                         vert_pool.push(Vertex {
                             position: [f32::from(v[0]), f32::from(-v[2]), f32::from(v[1])],
@@ -361,66 +374,12 @@ impl ShRenderer {
                 }
                 Instr::Facet(facet) => {
                     // Load all vertices in this facet into the vertex upload buffer, copying
-                    // in the color and texture coords for each face.
-
-                    /* Stripping -- incorrect
+                    // in the color and texture coords for each face. Note that the layout is
+                    // for triangle fans.
                     let mut v_base = verts.len() as u32;
                     for i in 2..facet.indices.len() {
                         // Given that most facets are very short strips, and we need to copy the
-                        // vertices anyway, it is more space efficient to just upload triangle
-                        // lists instead of trying to span safely between adjacent strips.
-                        let o = if i % 2 == 0 {
-                            [i - 2, i - 1, i]
-                        } else {
-                            [i - 3, i - 1, i]
-                        };
-                        let inds = [
-                            facet.indices[o[0]],
-                            facet.indices[o[1]],
-                            facet.indices[o[2]],
-                        ];
-                        let tcs = if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                            [
-                                facet.tex_coords[o[0]],
-                                facet.tex_coords[o[1]],
-                                facet.tex_coords[o[2]],
-                            ]
-                        } else {
-                            [[0, 0], [0, 0], [0, 0]]
-                        };
-
-                        for (index, tex_coord) in inds.iter().zip(&tcs) {
-                            ensure!(
-                                (*index as usize) < vert_pool.len(),
-                                "out-of-bounds vertex reference in facet {:?}, current pool size: {}",
-                                facet,
-                                vert_pool.len()
-                            );
-                            let mut v = vert_pool[*index as usize];
-                            let c = self.system_palette.rgba(facet.raw_material[0] as usize)?;
-                            v.color = [
-                                c.data[0] as f32 / 256f32,
-                                c.data[1] as f32 / 256f32,
-                                c.data[2] as f32 / 256f32,
-                                c.data[3] as f32 / 256f32
-                            ];
-                            if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                                assert!(active_frame.is_some());
-                                let frame = active_frame.unwrap();
-                                v.tex_coord = frame.tex_coord_at(*tex_coord);
-                            }
-                            verts.push(v);
-                            indices.push(v_base);
-                            v_base += 1;
-                        }
-                    }
-                    */
-
-                    // Triangle fans
-                    let mut v_base = verts.len() as u32;
-                    for i in 2..facet.indices.len() {
-                        // Given that most facets are very short strips, and we need to copy the
-                        // vertices anyway, it is more space efficient to just upload triangle
+                        // vertices anyway, it is probably more space efficient to just upload triangle
                         // lists instead of trying to span safely between adjacent strips.
                         let o = [0, i - 1, i];
                         let inds = [
@@ -446,13 +405,7 @@ impl ShRenderer {
                                 vert_pool.len()
                             );
                             let mut v = vert_pool[*index as usize];
-                            let c = self.system_palette.rgba(facet.raw_material[0] as usize)?;
-                            v.color = [
-                                c.data[0] as f32 / 256f32,
-                                c.data[1] as f32 / 256f32,
-                                c.data[2] as f32 / 256f32,
-                                c.data[3] as f32 / 256f32
-                            ];
+                            v.color = self.system_palette.rgba_f32(facet.color as usize)?;
                             if facet.flags.contains(FacetFlags::FILL_BACKGROUND) {
                                 v.flags = 1;
                             }

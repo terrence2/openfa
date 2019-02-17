@@ -15,12 +15,16 @@
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use bitflags::bitflags;
-use failure::{bail, ensure, Fail, Fallible};
+use failure::{bail, ensure, err_msg, Fail, Fallible};
 use i386::{ByteCode, Memonic, Operand};
 use lazy_static::lazy_static;
 use log::trace;
 use reverse::{bs2s, p2s, Color, Escape};
-use std::{cmp, collections::HashSet, fmt, mem, str};
+use std::{
+    cmp,
+    collections::{HashMap, HashSet},
+    fmt, mem, str,
+};
 
 #[derive(Debug, Fail)]
 enum ShError {
@@ -48,14 +52,6 @@ lazy_static! {
             .map(|&n| n.to_owned())
             .collect()
     };
-}
-
-/// A version of the shape for slicing/dicing on the CPU for exploration. The normal
-/// load path will go straight into GPU buffers.
-pub struct CpuShape {
-    pub instrs: Vec<Instr>,
-    pub trampolines: Vec<X86Trampoline>,
-    pub pe: peff::PE,
 }
 
 bitflags! {
@@ -313,14 +309,22 @@ pub struct Facet {
     pub data: *const u8,
     pub length: usize,
 
-    pub flags_pointer: *const u8,
+    flags_pointer: *const u8,
     pub flags: FacetFlags,
+
+    color_pointer: *const u8,
+    pub color: u8,
 
     pub mat_desc: String,
     pub raw_material: Vec<u8>,
+
+    indices_count_pointer: *const u8,
+    indices_pointer: *const u8,
+    indices_size: usize,
     pub indices: Vec<u16>,
-    pub max_index: u16,
-    pub min_index: u16,
+
+    tc_pointer: *const u8,
+    tc_size: usize,
     pub tex_coords: Vec<[u16; 2]>,
 }
 
@@ -424,37 +428,41 @@ impl Facet {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
-        let flags_offset = 1;
+        let mut off = 1;
+
+        let flags_offset = off;
         let flags_arr: &[u16] = unsafe { mem::transmute(&data[flags_offset..]) };
         assert_eq!(flags_arr[0] & 0xF000, 0u16);
         let flags = FacetFlags::from_u16(flags_arr[0]);
-
-        //let flags_word = (u16::from(data[1]) << 8) | u16::from(data[2]);
-        //let flags = FacetFlags::from_u16(flags_word);
-
-        let mut off = 3;
+        off += 2;
 
 
+        let color_offset = off;
+        let color = data[off];
+        off += 1;
 
         // Material
+        let material_offset = off;
         let material_size = if flags.contains(FacetFlags::HAVE_MATERIAL) {
             if flags.contains(FacetFlags::USE_SHORT_MATERIAL) {
-                11
+                10
             } else {
-                14
+                13
             }
         } else {
-            2
+            1
         };
         let mat_desc = bs2s(&data[off..off + material_size]);
         let raw_material = data[off..off + material_size].to_vec();
         off += material_size;
 
         // Index count.
+        let index_count_offset = off;
         let index_count = data[off] as usize;
         off += 1;
 
         // Indexes.
+        let indices_offset = off;
         let mut indices = Vec::new();
         let index_u8 = &data[off..];
         let index_u16: &[u16] = unsafe { mem::transmute(index_u8) };
@@ -468,8 +476,10 @@ impl Facet {
             };
             indices.push(index);
         }
+        let indices_size = off - indices_offset;
 
         // Tex Coords
+        let tc_offset = off;
         let mut tex_coords = Vec::new();
         if flags.contains(FacetFlags::HAVE_TEXCOORDS) {
             let tc_u8 = &data[off..];
@@ -487,18 +497,29 @@ impl Facet {
 
             assert_eq!(tex_coords.len(), indices.len());
         }
+        let tc_size = off - tc_offset;
 
         Ok(Facet {
             offset,
             data: data.as_ptr(),
             length: off,
+
             flags_pointer: (&data[flags_offset..]).as_ptr(),
             flags,
+
+            color_pointer: (&data[color_offset..]).as_ptr(),
+            color,
+
             mat_desc,
             raw_material,
-            max_index: *indices.iter().max().unwrap(),
-            min_index: *indices.iter().min().unwrap(),
+
+            indices_count_pointer: (&data[index_count_offset..]).as_ptr(),
+            indices_pointer: (&data[indices_offset..]).as_ptr(),
+            indices_size,
             indices,
+
+            tc_pointer: (&data[tc_offset..]).as_ptr(),
+            tc_size,
             tex_coords,
         })
     }
@@ -518,15 +539,18 @@ impl Facet {
     fn show(&self) -> String {
         let mut flags = format!("{:016b}", self.flags)
             .chars()
+            .skip(4)
             .collect::<Vec<char>>();
-        flags[0] = 'z';
-        flags[1] = 'z';
-        flags[2] = 'z';
-        flags[3] = 'z';
 
-        flags[5] = 'x';
-        flags[6] = 'x';
-        flags[13] = 'x';
+//        flags[0] = 'z';
+//        flags[1] = 'z';
+//        flags[2] = 'z';
+//        flags[3] = 'z';
+//
+//        flags[5] = 'x';
+//        flags[6] = 'x';
+//        flags[13] = 'x';
+
         // const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
         // const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
         // const USE_BYTE_TEXCOORDS   = 0b0000_0001_0000_0000;
@@ -535,37 +559,59 @@ impl Facet {
         // const FILL_BACKGROUND      = 0b0000_0000_0000_0010;
         // const UNK_MATERIAL_RELATED = 0b0000_0000_0000_0001;
 
-        /*
-        // const HAVE_MATERIAL      = 0b0100_0000_0000_0000;
-        // const HAVE_TEXCOORDS     = 0b0000_0100_0000_0000;
-        // const USE_SHORT_INDICES  = 0b0000_0000_0000_0100;
-        // const USE_SHORT_MATERIAL = 0b0000_0000_0000_0010;
-        // const USE_BYTE_TEXCOORDS = 0b0000_0000_0000_0001;
-        // const UNK_MATERIAL_RELATED = 0b0000_0001_0000_0000;
-        */
         let ind = self
             .indices
             .iter()
             .map(|i| format!("{:X}", i))
             .collect::<Vec<String>>()
-            .join(", ");
+            .join(",");
+
+        let tcs = self.tex_coords.iter().map(|a| format!("({:X},{:X})", a[0], a[1])).collect::<Vec<String>>().join(",");
+
         format!(
-            "@{:04X} {}Facet: FC{}   | {}{}({}){} - {}{}{} - [{}{}{}] - {}{:?}{}",
+            "@{:04X} {}Facet: FC{}   | {}{}{}({}{}{}); {}{}{}; {}{}{}; {}{:02X}{}; {}{}{} ({}{}{}); {}{}{}[{}{}{}]",
             self.offset,
             Escape::new().fg(Color::Cyan).bold(),
             Escape::new(),
+
+            // Flags
             Escape::new().fg(Color::Cyan),
             p2s(self.flags_pointer, 0, 2),
-            flags.iter().collect::<String>(),
-            Escape::new(),
-            Escape::new().fg(Color::Cyan).dimmed(),
-            self.mat_desc,
-            Escape::new(),
+            Escape::new().fg(Color::White), // (
             Escape::new().fg(Color::Cyan),
+            flags.iter().collect::<String>(),
+            Escape::new().fg(Color::White), // )
+
+            // Color
+            Escape::new().fg(Color::Cyan),
+            p2s(self.color_pointer, 0, 1).trim(),
+            Escape::new(),
+
+            // Material
+            Escape::new().fg(Color::Cyan).dimmed(),
+            self.mat_desc.trim(),
+            Escape::new(),
+
+            // Index count
+            Escape::new().fg(Color::Cyan).bold(),
+            self.indices.len(),
+            Escape::new(),
+
+            // Indices
+            Escape::new().fg(Color::Cyan).dimmed(),
+            p2s(self.indices_pointer, 0, self.indices_size).trim(),
+            Escape::new().fg(Color::White),
+            Escape::new().fg(Color::Cyan).bold(),
             ind,
             Escape::new(),
-            Escape::new().fg(Color::Cyan),
-            self.tex_coords,
+
+            // Texture Coordinates
+            Escape::new().fg(Color::Cyan).dimmed(),
+            p2s(self.tc_pointer, 0, self.tc_size),
+            Escape::new(),
+
+            Escape::new().fg(Color::Cyan).bold(),
+            tcs,
             Escape::new(),
         )
     }
@@ -1249,7 +1295,7 @@ impl Unk40 {
 #[derive(Debug)]
 pub struct UnkF6 {
     pub offset: usize,
-    data: *const u8,
+    pub data: *const u8,
 }
 
 impl UnkF6 {
@@ -1379,7 +1425,7 @@ impl ToEnd {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let delta_to_end= word_ref[0] as usize;
+        let delta_to_end = word_ref[0] as usize;
         Ok(Self {
             offset,
             data: data.as_ptr(),
@@ -1423,6 +1469,7 @@ impl ToEnd {
 }
 
 #[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub struct UnkAC_ToDamage {
     pub offset: usize,
     data: *const u8,
@@ -1547,7 +1594,7 @@ impl UnkC8_JumpOnDetailLevel {
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}UnkC8{}: {}{}{}| {}{}{} (jump-on-detail-level: ?dist?:{:04X}, kind:{:04X} delta:{:04X}, target:{:04X})",
+            "@{:04X} {}ToDet{}: {}{}{}| {}{}{} (unk0:{:04X}, unk1:{:04X} target:{:04X})",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
@@ -1562,7 +1609,6 @@ impl UnkC8_JumpOnDetailLevel {
 
             self.unk0,
             self.unk1,
-            self.offset_to_next,
             self.next_offset()
         )
     }
@@ -2112,6 +2158,13 @@ macro_rules! consume_instr {
     }};
 }
 
+pub struct CpuShape {
+    pub instrs: Vec<Instr>,
+    pub trampolines: Vec<X86Trampoline>,
+    offset_map: HashMap<usize, usize>,
+    pub pe: peff::PE,
+}
+
 impl CpuShape {
     pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let mut pe = peff::PE::parse(data)?;
@@ -2128,11 +2181,29 @@ impl CpuShape {
             .collect::<Vec<_>>();
         instrs.append(&mut tramp_instr);
 
+        // References inside shape are relative byte offsets. We map these
+        // to absolute byte offsets using the instruction offset and size
+        // which we can look up in the following table to get the instr
+        // index we need to jump to.
+        let mut offset_map = HashMap::new();
+        for (i, instr) in instrs.iter().enumerate() {
+            offset_map.insert(instr.at_offset(), i);
+        }
+
         Ok(CpuShape {
             instrs,
             trampolines,
+            offset_map,
             pe,
         })
+    }
+
+    pub fn bytes_to_index(&self, absolute_byte_offset: usize) -> Fallible<usize> {
+        // FIXME: we need to handle ERRATA here
+        Ok(*self
+            .offset_map
+            .get(&absolute_byte_offset)
+            .ok_or_else(|| err_msg("absolute byte offset {} does not point to an instruction"))?)
     }
 
     pub fn all_textures(&self) -> HashSet<String> {
