@@ -45,8 +45,9 @@ struct Vertex {
     position: [f32; 3],
     color: [f32; 4],
     tex_coord: [f32; 2],
+    flags: u32,
 }
-impl_vertex!(Vertex, position, color, tex_coord);
+impl_vertex!(Vertex, position, color, tex_coord, flags);
 
 mod vs {
     use vulkano_shaders::shader;
@@ -59,19 +60,22 @@ mod vs {
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec4 color;
             layout(location = 2) in vec2 tex_coord;
+            layout(location = 3) in uint flags;
 
             layout(push_constant) uniform PushConstantData {
               mat4 view;
               mat4 projection;
             } pc;
 
-            layout(location = 0) out vec4 v_color;
-            layout(location = 1) out vec2 v_tex_coord;
+            layout(location = 0) smooth out vec4 v_color;
+            layout(location = 1) smooth out vec2 v_tex_coord;
+            layout(location = 2) flat out uint v_flags;
 
             void main() {
                 gl_Position = pc.projection * pc.view * vec4(position, 1.0);
                 v_color = color;
                 v_tex_coord = tex_coord;
+                v_flags = flags;
             }"
     }
 }
@@ -84,8 +88,9 @@ mod fs {
         src: "
             #version 450
 
-            layout(location = 0) in vec4 v_color;
-            layout(location = 1) in vec2 v_tex_coord;
+            layout(location = 0) smooth in vec4 v_color;
+            layout(location = 1) smooth in vec2 v_tex_coord;
+            layout(location = 2) flat in uint v_flags;
 
             layout(location = 0) out vec4 f_color;
 
@@ -96,10 +101,15 @@ mod fs {
                     f_color = v_color;
                 } else {
                     vec4 tex_color = texture(tex, v_tex_coord);
-                    if (tex_color.a < 0.5)
-                        discard;
-                    else
-                        f_color = tex_color;
+
+                    if ((v_flags & 1) == 1) {
+                        f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
+                    } else {
+                        if (tex_color.a < 0.5)
+                            discard;
+                        else
+                            f_color = tex_color;
+                    }
                 }
             }
             "
@@ -171,6 +181,13 @@ pub struct ShInstance {
     index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
 }
 
+#[derive(Clone, Eq, PartialEq)]
+pub struct DrawMode {
+    pub damaged: bool,
+    pub distance: usize,
+    pub unk_mode: u16,
+}
+
 pub struct ShRenderer {
     system_palette: Arc<Palette>,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
@@ -234,6 +251,8 @@ impl ShRenderer {
         &mut self,
         _name: &str,
         sh: &CpuShape,
+        stop_at_offset: usize,
+        draw_mode: &DrawMode,
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<()> {
@@ -255,12 +274,27 @@ impl ShRenderer {
         let mut indices = Vec::new();
         let mut verts = Vec::new();
 
-        let mut _byte_offset = 0;
+        let mut jump_target = None;
+
+        let mut byte_offset = 0;
         let mut offset = 0;
         while offset < sh.instrs.len() {
             let instr = &sh.instrs[offset];
-            println!("At: {} => {}", offset, instr.show());
 
+            if offset > stop_at_offset {
+                trace!("reached configured stopping point");
+                break;
+            }
+            if let Some(tgt) = jump_target {
+                if byte_offset < tgt {
+                    trace!("skipping @ {} -> {}", byte_offset, tgt);
+                    offset += 1;
+                    byte_offset += instr.size();
+                    continue;
+                }
+            }
+
+            println!("At: {:3} => {}", offset, instr.show());
             match instr {
                 Instr::Header(_hdr) => {
                     _xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
@@ -268,17 +302,24 @@ impl ShRenderer {
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
                 }
-                Instr::UnkF2(f2) => {
-                    //                    if f2.next_offset() > self.end_at_offset {
-                    //                        self.end_at_offset = f2.next_offset();
-                    //                    }
-                    trace!("JUMP IF NOT SHOWN: {}", f2.next_offset());
+                Instr::ToEnd(_end) => {
+                    // We do not ever not draw from range; maybe there is some other use of
+                    // this target offset that we just don't know yet?
+                }
+                Instr::UnkAC_ToDamage(dam) => {
+                    if draw_mode.damaged {
+                        jump_target = Some(dam.damage_byte_offset())
+                    }
                 }
                 Instr::UnkC8_JumpOnDetailLevel(c8) => {
                     //                    if c8.next_offset() < self.subdetail_at_offset {
                     //                        self.subdetail_at_offset = c8.next_offset();
                     //                    }
-                    trace!("JUMP ON DETAIL LEVEL: {}", c8.next_offset());
+                    trace!("Setting stop to {:04X}", c8.next_offset());
+                    //stop_at = Some(c8.next_offset());
+                    if draw_mode.distance < c8.unk0 as usize {
+                        jump_target = Some(c8.next_offset());
+                    }
                 }
                 Instr::UnkC4(c4) => {
                     // C4 00   FF FF   13 00   E4 FF    00 00   00 00   00 00    7D 02
@@ -300,9 +341,9 @@ impl ShRenderer {
                     ];
                 }
                 Instr::VertexBuf(buf) => {
-                    if !vert_pool.is_empty() {
-                        break;
-                    }
+                    // if !vert_pool.is_empty() {
+                    //     break;
+                    // }
                     // if buf.unk0 & 1 == 1 {
                     //     vert_pool.truncate(0);
                     // }
@@ -314,12 +355,15 @@ impl ShRenderer {
                             position: [f32::from(v[0]), f32::from(-v[2]), f32::from(v[1])],
                             color: [0.75f32, 0.5f32, 0f32, 1f32],
                             tex_coord: [0f32, 0f32],
+                            flags: 0,
                         });
                     }
                 }
                 Instr::Facet(facet) => {
                     // Load all vertices in this facet into the vertex upload buffer, copying
                     // in the color and texture coords for each face.
+
+                    /* Stripping -- incorrect
                     let mut v_base = verts.len() as u32;
                     for i in 2..facet.indices.len() {
                         // Given that most facets are very short strips, and we need to copy the
@@ -335,11 +379,15 @@ impl ShRenderer {
                             facet.indices[o[1]],
                             facet.indices[o[2]],
                         ];
-                        let tcs = [
-                            facet.tex_coords[o[0]],
-                            facet.tex_coords[o[1]],
-                            facet.tex_coords[o[2]],
-                        ];
+                        let tcs = if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                            [
+                                facet.tex_coords[o[0]],
+                                facet.tex_coords[o[1]],
+                                facet.tex_coords[o[2]],
+                            ]
+                        } else {
+                            [[0, 0], [0, 0], [0, 0]]
+                        };
 
                         for (index, tex_coord) in inds.iter().zip(&tcs) {
                             ensure!(
@@ -349,6 +397,65 @@ impl ShRenderer {
                                 vert_pool.len()
                             );
                             let mut v = vert_pool[*index as usize];
+                            let c = self.system_palette.rgba(facet.raw_material[0] as usize)?;
+                            v.color = [
+                                c.data[0] as f32 / 256f32,
+                                c.data[1] as f32 / 256f32,
+                                c.data[2] as f32 / 256f32,
+                                c.data[3] as f32 / 256f32
+                            ];
+                            if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                                assert!(active_frame.is_some());
+                                let frame = active_frame.unwrap();
+                                v.tex_coord = frame.tex_coord_at(*tex_coord);
+                            }
+                            verts.push(v);
+                            indices.push(v_base);
+                            v_base += 1;
+                        }
+                    }
+                    */
+
+                    // Triangle fans
+                    let mut v_base = verts.len() as u32;
+                    for i in 2..facet.indices.len() {
+                        // Given that most facets are very short strips, and we need to copy the
+                        // vertices anyway, it is more space efficient to just upload triangle
+                        // lists instead of trying to span safely between adjacent strips.
+                        let o = [0, i - 1, i];
+                        let inds = [
+                            facet.indices[o[0]],
+                            facet.indices[o[1]],
+                            facet.indices[o[2]],
+                        ];
+                        let tcs = if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                            [
+                                facet.tex_coords[o[0]],
+                                facet.tex_coords[o[1]],
+                                facet.tex_coords[o[2]],
+                            ]
+                        } else {
+                            [[0, 0], [0, 0], [0, 0]]
+                        };
+
+                        for (index, tex_coord) in inds.iter().zip(&tcs) {
+                            ensure!(
+                                (*index as usize) < vert_pool.len(),
+                                "out-of-bounds vertex reference in facet {:?}, current pool size: {}",
+                                facet,
+                                vert_pool.len()
+                            );
+                            let mut v = vert_pool[*index as usize];
+                            let c = self.system_palette.rgba(facet.raw_material[0] as usize)?;
+                            v.color = [
+                                c.data[0] as f32 / 256f32,
+                                c.data[1] as f32 / 256f32,
+                                c.data[2] as f32 / 256f32,
+                                c.data[3] as f32 / 256f32
+                            ];
+                            if facet.flags.contains(FacetFlags::FILL_BACKGROUND) {
+                                v.flags = 1;
+                            }
                             if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
                                 assert!(active_frame.is_some());
                                 let frame = active_frame.unwrap();
@@ -362,8 +469,9 @@ impl ShRenderer {
                 }
                 _ => {}
             }
+
             offset += 1;
-            _byte_offset += instr.size();
+            byte_offset += instr.size();
         }
 
         trace!(

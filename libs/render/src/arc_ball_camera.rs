@@ -94,7 +94,7 @@ impl ArcBallCamera {
             let dir = (self.target - eye).normalize();
             let tangent = Vector3::y().cross(&dir).normalize();
             let bitangent = dir.cross(&tangent);
-            let mult = (self.distance / 1000.0).min(0.01);
+            let mult = (self.distance / 1000.0).max(0.01);
             self.target = self.target + tangent * (x * mult) + bitangent * (-y * mult);
         }
     }

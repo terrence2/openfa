@@ -16,7 +16,7 @@ use failure::Fallible;
 use log::trace;
 use omnilib::OmniLib;
 use pal::Palette;
-use render::{ArcBallCamera, ShRenderer};
+use render::{ArcBallCamera, ShRenderer, DrawMode};
 use sh::CpuShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant};
@@ -41,6 +41,14 @@ struct Opt {
     )]
     game: String,
 
+    #[structopt(
+        short = "s",
+        long = "stop",
+        default_value = "100000",
+        help = "Stop at this instruction."
+    )]
+    stop_at_offset: usize,
+
     #[structopt(help = "Will load it from game, or look at last component of path")]
     input: String,
 }
@@ -58,7 +66,13 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
     let sh = CpuShape::from_bytes(&lib.load(&opt.input)?)?;
-    sh_renderer.add_shape_to_render("foo", &sh, &lib, &window)?;
+    let mut stop_at_offset = opt.stop_at_offset;
+    let mut draw_mode = DrawMode {
+        damaged: true,
+        distance: 1,
+        unk_mode: 0,
+    };
+    sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -72,6 +86,7 @@ fn main() -> Fallible<()> {
             need_reset = false;
             // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
+            sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
         }
 
         sh_renderer.set_view(camera.view_matrix());
@@ -139,6 +154,48 @@ fn main() -> Fallible<()> {
                 ..
             } => match keycode {
                 VirtualKeyCode::Escape => done = true,
+                VirtualKeyCode::Right => {
+                    stop_at_offset = stop_at_offset.saturating_add(1);
+                    need_reset = true;
+                }
+                VirtualKeyCode::Left => {
+                    stop_at_offset = stop_at_offset.saturating_sub(1);
+                    need_reset = true;
+                }
+                VirtualKeyCode::Up => {
+                    stop_at_offset = stop_at_offset.saturating_add(10);
+                    need_reset = true;
+                }
+                VirtualKeyCode::Down => {
+                    stop_at_offset = stop_at_offset.saturating_sub(10);
+                    need_reset = true;
+                }
+                VirtualKeyCode::PageUp => {
+                    stop_at_offset = stop_at_offset.saturating_add(100);
+                    need_reset = true;
+                }
+                VirtualKeyCode::PageDown => {
+                    stop_at_offset = stop_at_offset.saturating_sub(100);
+                    need_reset = true;
+                }
+                VirtualKeyCode::End => {
+                    stop_at_offset = 100_000;
+                    need_reset = true;
+                }
+                VirtualKeyCode::Home => {
+                    stop_at_offset = 0;
+                    need_reset = true;
+                }
+                /*
+                VirtualKeyCode::Period => {
+                    draw_region = draw_region.saturating_add(1);
+                    need_reset = true;
+                }
+                VirtualKeyCode::Comma => {
+                    draw_region = draw_region.saturating_sub(1);
+                    need_reset = true;
+                }
+                */
                 VirtualKeyCode::Q => done = true,
                 VirtualKeyCode::R => need_reset = true,
                 _ => trace!("unknown keycode: {:?}", keycode),
@@ -161,5 +218,8 @@ fn main() -> Fallible<()> {
             ft.subsec_micros()
         );
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
+
+//        let params = format!("stop:{}b, region:{}", stop_at_offset, draw_region);
+//        window.debug_text(800f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }
 }

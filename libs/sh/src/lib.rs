@@ -60,12 +60,13 @@ pub struct CpuShape {
 
 bitflags! {
     pub struct FacetFlags : u16 {
-        const HAVE_MATERIAL      = 0b0100_0000_0000_0000;
-        const HAVE_TEXCOORDS     = 0b0000_0100_0000_0000;
-        const USE_SHORT_INDICES  = 0b0000_0000_0000_0100;
-        const USE_SHORT_MATERIAL = 0b0000_0000_0000_0010;
-        const USE_BYTE_TEXCOORDS = 0b0000_0000_0000_0001;
-        const UNK_MATERIAL_RELATED = 0b0000_0001_0000_0000;
+        const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
+        const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
+        const USE_BYTE_TEXCOORDS   = 0b0000_0001_0000_0000;
+        const HAVE_MATERIAL        = 0b0000_0000_0100_0000;
+        const HAVE_TEXCOORDS       = 0b0000_0000_0000_0100;
+        const FILL_BACKGROUND      = 0b0000_0000_0000_0010;
+        const UNK_MATERIAL_RELATED = 0b0000_0000_0000_0001;
     }
 }
 
@@ -309,9 +310,14 @@ impl VertexBuf {
 #[derive(Debug)]
 pub struct Facet {
     pub offset: usize,
+    pub data: *const u8,
     pub length: usize,
+
+    pub flags_pointer: *const u8,
     pub flags: FacetFlags,
+
     pub mat_desc: String,
+    pub raw_material: Vec<u8>,
     pub indices: Vec<u16>,
     pub max_index: u16,
     pub min_index: u16,
@@ -418,11 +424,17 @@ impl Facet {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
-        let flags_word = (u16::from(data[1]) << 8) | u16::from(data[2]);
-        assert_eq!(flags_word & 0x00F0, 0u16);
-        let flags = FacetFlags::from_u16(flags_word);
+        let flags_offset = 1;
+        let flags_arr: &[u16] = unsafe { mem::transmute(&data[flags_offset..]) };
+        assert_eq!(flags_arr[0] & 0xF000, 0u16);
+        let flags = FacetFlags::from_u16(flags_arr[0]);
+
+        //let flags_word = (u16::from(data[1]) << 8) | u16::from(data[2]);
+        //let flags = FacetFlags::from_u16(flags_word);
 
         let mut off = 3;
+
+
 
         // Material
         let material_size = if flags.contains(FacetFlags::HAVE_MATERIAL) {
@@ -435,6 +447,7 @@ impl Facet {
             2
         };
         let mat_desc = bs2s(&data[off..off + material_size]);
+        let raw_material = data[off..off + material_size].to_vec();
         off += material_size;
 
         // Index count.
@@ -477,9 +490,12 @@ impl Facet {
 
         Ok(Facet {
             offset,
+            data: data.as_ptr(),
             length: off,
+            flags_pointer: (&data[flags_offset..]).as_ptr(),
             flags,
             mat_desc,
+            raw_material,
             max_index: *indices.iter().max().unwrap(),
             min_index: *indices.iter().min().unwrap(),
             indices,
@@ -503,20 +519,30 @@ impl Facet {
         let mut flags = format!("{:016b}", self.flags)
             .chars()
             .collect::<Vec<char>>();
-        flags[8] = 'z';
-        flags[9] = 'z';
-        flags[10] = 'z';
-        flags[11] = 'z';
+        flags[0] = 'z';
+        flags[1] = 'z';
+        flags[2] = 'z';
+        flags[3] = 'z';
+
         flags[5] = 'x';
+        flags[6] = 'x';
         flags[13] = 'x';
-        flags[14] = 'x';
-        flags[14] = 'x';
+        // const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
+        // const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
+        // const USE_BYTE_TEXCOORDS   = 0b0000_0001_0000_0000;
+        // const HAVE_MATERIAL        = 0b0000_0000_0100_0000;
+        // const HAVE_TEXCOORDS       = 0b0000_0000_0000_0100;
+        // const FILL_BACKGROUND      = 0b0000_0000_0000_0010;
+        // const UNK_MATERIAL_RELATED = 0b0000_0000_0000_0001;
+
+        /*
         // const HAVE_MATERIAL      = 0b0100_0000_0000_0000;
         // const HAVE_TEXCOORDS     = 0b0000_0100_0000_0000;
         // const USE_SHORT_INDICES  = 0b0000_0000_0000_0100;
         // const USE_SHORT_MATERIAL = 0b0000_0000_0000_0010;
         // const USE_BYTE_TEXCOORDS = 0b0000_0000_0000_0001;
         // const UNK_MATERIAL_RELATED = 0b0000_0001_0000_0000;
+        */
         let ind = self
             .indices
             .iter()
@@ -524,11 +550,12 @@ impl Facet {
             .collect::<Vec<String>>()
             .join(", ");
         format!(
-            "@{:04X} {}Facet: FC{}   | {}{}{} - {}{}{} - [{}{}{}] - {}{:?}{}",
+            "@{:04X} {}Facet: FC{}   | {}{}({}){} - {}{}{} - [{}{}{}] - {}{:?}{}",
             self.offset,
             Escape::new().fg(Color::Cyan).bold(),
             Escape::new(),
             Escape::new().fg(Color::Cyan),
+            p2s(self.flags_pointer, 0, 2),
             flags.iter().collect::<String>(),
             Escape::new(),
             Escape::new().fg(Color::Cyan).dimmed(),
@@ -1337,14 +1364,13 @@ impl Unk38 {
 // 0x41 + 0xCF + 6 => 0x116 points past textured polys.
 
 #[derive(Debug)]
-#[allow(non_camel_case_types)]
-pub struct UnkF2 {
+pub struct ToEnd {
     pub offset: usize,
     data: *const u8,
-    pub offset_to_next: usize,
+    pub delta_to_end: usize,
 }
 
-impl UnkF2 {
+impl ToEnd {
     pub const MAGIC: u8 = 0xF2;
     pub const SIZE: usize = 4;
 
@@ -1353,11 +1379,11 @@ impl UnkF2 {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let offset_to_next = word_ref[0] as usize;
+        let delta_to_end= word_ref[0] as usize;
         Ok(Self {
             offset,
             data: data.as_ptr(),
-            offset_to_next,
+            delta_to_end,
         })
     }
 
@@ -1373,14 +1399,14 @@ impl UnkF2 {
         self.offset
     }
 
-    pub fn next_offset(&self) -> usize {
+    pub fn end_byte_offset(&self) -> usize {
         // Our start offset + our size + offset_to_next.
-        self.offset + Self::SIZE + self.offset_to_next
+        self.offset + Self::SIZE + self.delta_to_end
     }
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}UnkF2{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
+            "@{:04X} {}ToEnd{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
@@ -1390,8 +1416,67 @@ impl UnkF2 {
             Escape::new().fg(Color::BrightBlue),
             p2s(self.data, 2, Self::SIZE),
             Escape::new(),
-            self.offset_to_next,
-            self.next_offset()
+            self.delta_to_end,
+            self.end_byte_offset()
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct UnkAC_ToDamage {
+    pub offset: usize,
+    data: *const u8,
+    pub delta_to_damage: usize,
+}
+
+impl UnkAC_ToDamage {
+    pub const MAGIC: u8 = 0xAC;
+    pub const SIZE: usize = 4;
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+        let data = &code[offset..];
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
+        let delta_to_damage = word_ref[0] as usize;
+        Ok(Self {
+            offset,
+            data: data.as_ptr(),
+            delta_to_damage,
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "AC"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn damage_byte_offset(&self) -> usize {
+        // Our start offset + our size + offset_to_next.
+        self.offset + Self::SIZE + self.delta_to_damage
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}ToDam{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
+            self.offset,
+            Escape::new().fg(Color::BrightBlue).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::BrightBlue).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::BrightBlue),
+            p2s(self.data, 2, Self::SIZE),
+            Escape::new(),
+            self.delta_to_damage,
+            self.damage_byte_offset()
         )
     }
 }
@@ -1456,7 +1541,7 @@ impl UnkC8_JumpOnDetailLevel {
     }
 
     pub fn next_offset(&self) -> usize {
-        // Our start offset + our size + 1 + offset_to_next.
+        // Our start offset + our size + offset_to_next.
         self.offset + Self::SIZE + self.offset_to_next
     }
 
@@ -1852,7 +1937,7 @@ opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
 opaque_instr!(Unk96, "96", 0x96, 6);
 opaque_instr!(UnkA6, "A6", 0xA6, 6);
-opaque_instr!(UnkAC, "AC", 0xAC, 4);
+//opaque_instr!(UnkAC, "AC", 0xAC, 4);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
 opaque_instr!(UnkC4, "C4", 0xC4, 16);
 //opaque_instr!(UnkC8, "C8", 0xC8, 8);
@@ -1866,7 +1951,6 @@ opaque_instr!(UnkE6, "E6", 0xE6, 10);
 opaque_instr!(UnkE8, "E8", 0xE8, 6);
 opaque_instr!(UnkEA, "EA", 0xEA, 8);
 opaque_instr!(UnkEE, "EE", 0xEE, 2);
-//opaque_instr!(UnkF2, 0xF2, 4);
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
@@ -1895,7 +1979,7 @@ pub enum Instr {
     Unk7A(Unk7A),
     Unk96(Unk96),
     UnkA6(UnkA6),
-    UnkAC(UnkAC),
+    UnkAC_ToDamage(UnkAC_ToDamage),
     UnkB2(UnkB2),
     UnkB8(UnkB8),
     UnkC4(UnkC4),
@@ -1911,7 +1995,7 @@ pub enum Instr {
     UnkE8(UnkE8),
     UnkEA(UnkEA),
     UnkEE(UnkEE),
-    UnkF2(UnkF2),
+    ToEnd(ToEnd),
 
     // Fixed size, without wasted 0 byte after header.
     Pad1E(Pad1E),
@@ -1967,7 +2051,7 @@ macro_rules! impl_for_all_instr {
             Instr::Unk7A(ref i) => i.$f(),
             Instr::Unk96(ref i) => i.$f(),
             Instr::UnkA6(ref i) => i.$f(),
-            Instr::UnkAC(ref i) => i.$f(),
+            Instr::UnkAC_ToDamage(ref i) => i.$f(),
             Instr::UnkB2(ref i) => i.$f(),
             Instr::UnkB8(ref i) => i.$f(),
             Instr::UnkC4(ref i) => i.$f(),
@@ -1983,7 +2067,7 @@ macro_rules! impl_for_all_instr {
             Instr::UnkE8(ref i) => i.$f(),
             Instr::UnkEA(ref i) => i.$f(),
             Instr::UnkEE(ref i) => i.$f(),
-            Instr::UnkF2(ref i) => i.$f(),
+            Instr::ToEnd(ref i) => i.$f(),
             Instr::UnkF6(ref i) => i.$f(),
             Instr::Unk38(ref i) => i.$f(),
             Instr::UnkBC(ref i) => i.$f(),
@@ -2098,7 +2182,7 @@ impl CpuShape {
         // Assertions.
         //        {
         //            let instr = find_first_instr(0xF2, &instrs);
-        //            if let Some(&Instr::UnkF2(ref jmp)) = instr {
+        //            if let Some(&Instr::ToEnd(ref jmp)) = instr {
         //                let tgt = _find_instr_at_offset(jmp.next_offset(), &instrs);
         //                assert!(tgt.is_some());
         //            }
@@ -2138,7 +2222,7 @@ impl CpuShape {
             Unk7A::MAGIC => consume_instr!(Unk7A, pe, offset, instrs),
             Unk96::MAGIC => consume_instr!(Unk96, pe, offset, instrs),
             UnkA6::MAGIC => consume_instr!(UnkA6, pe, offset, instrs),
-            UnkAC::MAGIC => consume_instr!(UnkAC, pe, offset, instrs),
+            UnkAC_ToDamage::MAGIC => consume_instr!(UnkAC_ToDamage, pe, offset, instrs),
             UnkB2::MAGIC => consume_instr!(UnkB2, pe, offset, instrs),
             UnkB8::MAGIC => consume_instr!(UnkB8, pe, offset, instrs),
             UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, instrs),
@@ -2158,7 +2242,7 @@ impl CpuShape {
             UnkEA::MAGIC => consume_instr!(UnkEA, pe, offset, instrs),
             UnkEE::MAGIC => consume_instr!(UnkEE, pe, offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, instrs),
-            UnkF2::MAGIC => consume_instr!(UnkF2, pe, offset, instrs),
+            ToEnd::MAGIC => consume_instr!(ToEnd, pe, offset, instrs),
             Unk38::MAGIC => consume_instr!(Unk38, pe, offset, instrs),
             TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, instrs),
             TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, instrs),
@@ -2180,8 +2264,8 @@ impl CpuShape {
                 if pe.code[*offset + 1] == 0xF0 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::UnkF2(ref f2)) = find_first_instr(0xF2, &instrs) {
-                            target = Some(f2.next_offset());
+                        if let Some(&Instr::ToEnd(ref f2)) = find_first_instr(0xF2, &instrs) {
+                            target = Some(f2.end_byte_offset());
                         }
                     }
                     if target != Some(*offset) {
@@ -2201,8 +2285,8 @@ impl CpuShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::UnkF2(ref f2)) = find_first_instr(0xF2, &instrs) {
-                            target = Some(f2.next_offset());
+                        if let Some(&Instr::ToEnd(ref f2)) = find_first_instr(0xF2, &instrs) {
+                            target = Some(f2.end_byte_offset());
                         }
                     }
                     if target == Some(*offset + 2) {
@@ -2223,8 +2307,8 @@ impl CpuShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::UnkF2(ref f2)) = find_first_instr(0xF2, &instrs) {
-                            target = Some(f2.next_offset());
+                        if let Some(&Instr::ToEnd(ref f2)) = find_first_instr(0xF2, &instrs) {
+                            target = Some(f2.end_byte_offset());
                         }
                     }
 
@@ -2291,7 +2375,7 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
     for instr in instrs.iter() {
         match kind {
             0xF2 => {
-                if let Instr::UnkF2(ref _x) = instr {
+                if let Instr::ToEnd(ref _x) = instr {
                     return Some(instr);
                 }
             }
@@ -2332,22 +2416,11 @@ mod tests {
 
     fn find_f2_target(shape: &CpuShape) -> Option<usize> {
         for instr in shape.instrs.iter().rev() {
-            if let Instr::UnkF2(f2) = instr {
-                return Some(f2.next_offset());
+            if let Instr::ToEnd(f2) = instr {
+                return Some(f2.end_byte_offset());
             }
         }
         None
-    }
-
-    fn last_non_tramp_instr(shape: &CpuShape) -> &Instr {
-        for instr in shape.instrs.iter().rev() {
-            if let Instr::X86Trampoline(_tramp) = instr {
-                continue;
-            } else {
-                return instr;
-            }
-        }
-        panic!("no non-trampoline instructions");
     }
 
     #[allow(dead_code)]
@@ -2406,6 +2479,20 @@ mod tests {
                     assert_eq!(offset, f2_target);
                 }
             }
+
+            /*
+            let mut offset = 0;
+            let mut offsets = Vec::new();
+            for instr in &shape.instrs {
+                if let Instr::UnkC8_JumpOnDetailLevel(c8) = instr {
+                    offsets.push(c8.next_offset());
+                }
+                if offsets.contains(&offset) {
+                    println!("TARGET: {}", instr.show());
+                }
+                offset += instr.size();
+            }
+            */
         }
 
         //show_instr_freqs(&freq);

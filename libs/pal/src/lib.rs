@@ -59,6 +59,16 @@ impl Palette {
         Ok(self.entries[index])
     }
 
+    pub fn rgba_f32(&self, index: usize) -> Fallible<[f32; 4]> {
+        let c = self.rgba(index)?;
+        Ok([
+            c.data[0] as f32 / 256f32,
+            c.data[1] as f32 / 256f32,
+            c.data[2] as f32 / 256f32,
+            c.data[3] as f32 / 256f32
+        ])
+    }
+
     pub fn rgb(&self, index: usize) -> Fallible<Rgb<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
         // if index >= self.entries.len() {

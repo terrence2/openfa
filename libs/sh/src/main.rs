@@ -70,12 +70,6 @@ fn main() -> Fallible<()> {
                 .required(false),
         )
         .arg(
-            Arg::with_name("f2")
-                .long("--f2")
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
             Arg::with_name("memory")
                 .long("--memory")
                 .takes_value(false)
@@ -133,42 +127,6 @@ fn main() -> Fallible<()> {
                     println!("{:20} {}", name, shape.instrs[offset + 1].show());
                 }
                 offset += 1;
-            }
-        } else if matches.is_present("f2") {
-            for i in shape.instrs.iter() {
-                if let sh::Instr::UnkF2(unk) = i {
-                    let abs_offset = unk.offset + 4 + unk.offset_to_next;
-                    let off = shape.map_absolute_offset_to_instr_offset(abs_offset);
-                    if off.is_ok() {
-                        println!(
-                            "{} {:04X} : {} : {:20}",
-                            off.is_ok(),
-                            unk.offset_to_next,
-                            shape.instrs[off.unwrap()].show().trim(),
-                            name
-                        );
-                    } else {
-                        for j in shape.instrs.iter() {
-                            if let sh::Instr::TrailerUnknown(trailer) = j {
-                                if abs_offset >= trailer.offset {
-                                    println!(
-                                        "AFTER: {} {:04X} : {:20}",
-                                        off.is_ok(),
-                                        unk.offset_to_next,
-                                        name
-                                    );
-                                } else {
-                                    println!(
-                                        "BEFORE: {} {:04X} : {:20}",
-                                        off.is_ok(),
-                                        unk.offset_to_next,
-                                        name
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
             }
         } else if matches.is_present("c8") {
             for i in shape.instrs.iter() {
