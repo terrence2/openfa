@@ -304,6 +304,57 @@ impl VertexBuf {
 }
 
 #[derive(Debug)]
+pub struct Unk06 {
+    pub offset: usize,
+    pub data: *const u8,
+}
+
+impl Unk06 {
+    pub const MAGIC: u8 = 0x06;
+    pub const SIZE: usize = 21;
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+        let data = &code[offset..];
+        assert_eq!(data[0], Self::MAGIC);
+        ensure!(data[1] == 0, "not a word code instruction");
+        ensure!(data[14] == 5, "expected 5");
+        ensure!(data[15] == 0, "expected 0");
+        Ok(Self {
+            offset,
+            data: data.as_ptr(),
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "06"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn show(&self) -> String {
+        format!(
+            "@{:04X} {}{}{}: {}{}{}| {}{}{}",
+            self.offset,
+            Escape::new().fg(Color::Red).bold(),
+            stringify!(Unk06),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Red),
+            p2s(self.data, 2, Self::SIZE),
+            Escape::new()
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct Facet {
     pub offset: usize,
     pub data: *const u8,
@@ -315,7 +366,8 @@ pub struct Facet {
     color_pointer: *const u8,
     pub color: u8,
 
-    pub mat_desc: String,
+    material_pointer: *const u8,
+    material_size: usize,
     pub raw_material: Vec<u8>,
 
     indices_count_pointer: *const u8,
@@ -436,7 +488,6 @@ impl Facet {
         let flags = FacetFlags::from_u16(flags_arr[0]);
         off += 2;
 
-
         let color_offset = off;
         let color = data[off];
         off += 1;
@@ -452,7 +503,6 @@ impl Facet {
         } else {
             1
         };
-        let mat_desc = bs2s(&data[off..off + material_size]);
         let raw_material = data[off..off + material_size].to_vec();
         off += material_size;
 
@@ -510,7 +560,8 @@ impl Facet {
             color_pointer: (&data[color_offset..]).as_ptr(),
             color,
 
-            mat_desc,
+            material_pointer: (&data[material_offset..]).as_ptr(),
+            material_size,
             raw_material,
 
             indices_count_pointer: (&data[index_count_offset..]).as_ptr(),
@@ -537,19 +588,10 @@ impl Facet {
     }
 
     fn show(&self) -> String {
-        let mut flags = format!("{:016b}", self.flags)
+        let flags = format!("{:016b}", self.flags)
             .chars()
             .skip(4)
             .collect::<Vec<char>>();
-
-//        flags[0] = 'z';
-//        flags[1] = 'z';
-//        flags[2] = 'z';
-//        flags[3] = 'z';
-//
-//        flags[5] = 'x';
-//        flags[6] = 'x';
-//        flags[13] = 'x';
 
         // const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
         // const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
@@ -566,10 +608,15 @@ impl Facet {
             .collect::<Vec<String>>()
             .join(",");
 
-        let tcs = self.tex_coords.iter().map(|a| format!("({:X},{:X})", a[0], a[1])).collect::<Vec<String>>().join(",");
+        let tcs = self
+            .tex_coords
+            .iter()
+            .map(|a| format!("({:X},{:X})", a[0], a[1]))
+            .collect::<Vec<String>>()
+            .join(",");
 
         format!(
-            "@{:04X} {}Facet: FC{}   | {}{}{}({}{}{}); {}{}{}; {}{}{}; {}{:02X}{}; {}{}{} ({}{}{}); {}{}{}[{}{}{}]",
+            "@{:04X} {}Facet: FC{}   | {}{}{}({}{}{}{}{}{}_{}{}{}{}{}{}{}_{}{}{}{}{}{}{}); {}{}{}; {}{}{}; {}{:02X}{}; {}{}{} ({}{}{}); {}{}{}[{}{}{}]",
             self.offset,
             Escape::new().fg(Color::Cyan).bold(),
             Escape::new(),
@@ -578,8 +625,28 @@ impl Facet {
             Escape::new().fg(Color::Cyan),
             p2s(self.flags_pointer, 0, 2),
             Escape::new().fg(Color::White), // (
+
+            Escape::new().fg(Color::Red),
+            flags[0],
             Escape::new().fg(Color::Cyan),
-            flags.iter().collect::<String>(),
+            flags[1],
+            flags[2],
+            flags[3],
+
+            Escape::new().fg(Color::Red),
+            flags[4],
+            Escape::new().fg(Color::Cyan),
+            flags[5],
+            Escape::new().fg(Color::Red),
+            flags[6],
+            flags[7],
+
+            flags[8],
+            Escape::new().fg(Color::Cyan),
+            flags[9],
+            flags[10],
+            Escape::new().fg(Color::Magenta),
+            flags[11],
             Escape::new().fg(Color::White), // )
 
             // Color
@@ -588,8 +655,8 @@ impl Facet {
             Escape::new(),
 
             // Material
-            Escape::new().fg(Color::Cyan).dimmed(),
-            self.mat_desc.trim(),
+            Escape::new().fg(Color::Red).dimmed(),
+            p2s(self.material_pointer, 0, self.material_size),
             Escape::new(),
 
             // Index count
@@ -839,11 +906,10 @@ impl X86Code {
         }
     }
 
-    fn find_trampoline_for_push<'a>(
-        target: &i386::Instr,
-        trampolines: &'a [X86Trampoline],
-    ) -> Fallible<&'a X86Trampoline> {
-        let target_addr = Self::find_pushed_address(target)?;
+    fn find_trampoline_for_target(
+        target_addr: u32,
+        trampolines: &[X86Trampoline],
+    ) -> Fallible<&X86Trampoline> {
         for tramp in trampolines {
             trace!(
                 "checking {:08X} against {:20} @ loc:{:08X}",
@@ -872,8 +938,26 @@ impl X86Code {
         let mut bc = maybe_bc?;
         ensure!(bc.instrs.len() >= 3, "expected at least 3 instructions");
 
+        // Annotate any memory read in this block with the source.
+        for instr in bc.instrs.iter_mut() {
+            let mut s = "".to_owned();
+            for op in &instr.operands {
+                match op {
+                    Operand::Memory(ref mr) => {
+                        if let Ok(tramp) = Self::find_trampoline_for_target(mr.displacement as u32, trampolines) {
+                            s += &format!("{}", tramp.name);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            instr.set_context(&s);
+        }
+
+        // Look for the jump target to figure out where we need to continue decoding.
         let target = &bc.instrs[bc.instrs.len() - 2];
-        let tramp = Self::find_trampoline_for_push(target, trampolines)?;
+        let target_addr = Self::find_pushed_address(target)?;
+        let tramp = Self::find_trampoline_for_target(target_addr, trampolines)?;
 
         let ret_pos = bc.instrs.len() - 1;
         let ret = &mut bc.instrs[ret_pos];
@@ -964,6 +1048,8 @@ impl X86Code {
                 vinstrs.push(Self::make_code(bc, pe, *offset));
                 *offset += bc_size;
 
+                // If we're jumping into normal x86 code we should expect to resume
+                // running more code right below the call.
                 if return_state == ReturnKind::Exec {
                     external_jumps.insert(*offset);
                 }
@@ -1173,77 +1259,6 @@ impl UnkBC {
     }
 }
 
-/*
-#[derive(Debug)]
-pub struct UnkBC {
-    pub offset: usize,
-    unk_header: u8,
-    flags: u8,
-    unk0: u8,
-    length: usize,
-    data: *const u8,
-}
-
-impl UnkBC {
-    pub const MAGIC: u8 = 0xBC;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-
-        let unk_header = data[1];
-        let flags = data[2];
-        let unk0 = data[3];
-        let length = match flags {
-            0x96 => 8,
-            0x72 => 6,
-            0x68 => 10,
-            0x08 => 6,
-            _ => bail!("unknown section BC flags: {}", flags),
-        };
-        Ok(UnkBC {
-            offset,
-            unk_header,
-            flags,
-            unk0,
-            length,
-            //data: data[4..length].to_owned(),
-            data: data.as_ptr(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        self.length
-    }
-
-    fn magic(&self) -> &'static str {
-        "BC"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}UnkBC{}: {}{}{}   | {}{}{} (hdr:{:02X}, flags:{:02X}, ?unk0?:{:02X})",
-            self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
-            p2s(self.data, 0, 1).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
-            p2s(self.data, 1, self.length),
-            Escape::new(),
-            self.unk_header,
-            self.flags,
-            self.unk0,
-        )
-    }
-}
-*/
-
 #[derive(Debug)]
 pub struct Unk40 {
     pub offset: usize,
@@ -1381,7 +1396,7 @@ impl Unk38 {
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}Unk38{}: {}{}{}   | {}{}{} (?unk0?:{:04X})",
+            "@{:04X} {}Unk38{}: {}{}{}   | {}{}{} (?unk0?:{:04X}, ?tgt?:{:04X})",
             self.offset,
             Escape::new().fg(Color::Red).bold(),
             Escape::new(),
@@ -1392,6 +1407,7 @@ impl Unk38 {
             p2s(self.data, 1, Self::SIZE),
             Escape::new(),
             self.unk0,
+            self.offset + Self::SIZE + self.unk0
         )
     }
 }
@@ -1598,17 +1614,73 @@ impl UnkC8_JumpOnDetailLevel {
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
-
             Escape::new().fg(Color::BrightBlue).bold(),
             p2s(self.data, 0, 2).trim(),
             Escape::new(),
-
             Escape::new().fg(Color::BrightBlue),
             p2s(self.data, 2, Self::SIZE),
             Escape::new(),
-
             self.unk0,
             self.unk1,
+            self.next_offset()
+        )
+    }
+}
+
+//opaque_instr!(Unk12, "12", 0x12, 4);
+#[derive(Debug)]
+pub struct Unk12 {
+    pub offset: usize,
+    data: *const u8,
+    pub offset_to_next: usize,
+}
+
+impl Unk12 {
+    pub const MAGIC: u8 = 0x12;
+    pub const SIZE: usize = 4;
+
+    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+        let data = &code[offset..];
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
+        let offset_to_next = word_ref[0] as usize;
+        Ok(Self {
+            offset,
+            data: data[0..Self::SIZE].as_ptr(),
+            offset_to_next,
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "12"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        self.offset + Self::SIZE + self.offset_to_next
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}Unk12{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
+            self.offset,
+            Escape::new().fg(Color::Red).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Red),
+            p2s(self.data, 2, Self::SIZE),
+            Escape::new(),
+            self.offset_to_next,
             self.next_offset()
         )
     }
@@ -1966,11 +2038,11 @@ opaque_instr!(Unk68, "68", 0x68, 8); // CHAFF / CATGUY (2 instances)
 opaque_instr!(Unk74, "74", 0x74, 4); // CHAFF (2 instance)
 
 opaque_instr!(Header, "Header", 0xFF, 14);
-opaque_instr!(Unk06, "06", 0x06, 21);
+//opaque_instr!(Unk06, "06", 0x06, 21);
 opaque_instr!(Unk0C, "0C", 0x0C, 17);
 opaque_instr!(Unk0E, "0E", 0x0E, 17);
 opaque_instr!(Unk10, "10", 0x10, 17);
-opaque_instr!(Unk12, "12", 0x12, 4);
+//opaque_instr!(Unk12, "12", 0x12, 4);
 opaque_instr!(Unk2E, "2E", 0x2E, 4);
 opaque_instr!(Unk3A, "3A", 0x3A, 6);
 opaque_instr!(Unk44, "44", 0x44, 4);
@@ -1983,10 +2055,8 @@ opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
 opaque_instr!(Unk96, "96", 0x96, 6);
 opaque_instr!(UnkA6, "A6", 0xA6, 6);
-//opaque_instr!(UnkAC, "AC", 0xAC, 4);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
 opaque_instr!(UnkC4, "C4", 0xC4, 16);
-//opaque_instr!(UnkC8, "C8", 0xC8, 8);
 opaque_instr!(UnkCA, "CA", 0xCA, 4);
 opaque_instr!(UnkD0, "D0", 0xD0, 4);
 opaque_instr!(UnkD2, "D2", 0xD2, 8);
@@ -2545,9 +2615,22 @@ mod tests {
 
             //compute_instr_freqs(&shape, &mut freq);
 
+            // Ensure that f2 points to the trailer if it exists.
+            // And conversely that we found the trailer in the right place.
             if let Some(offset) = offset_of_trailer(&shape) {
                 if let Some(f2_target) = find_f2_target(&shape) {
                     assert_eq!(offset, f2_target);
+                }
+            }
+
+            // Ensure that all Unk12 point to a valid instruction.
+            for instr in &shape.instrs {
+                match instr {
+                    Instr::Unk12(unk) => {
+                        let index = shape.bytes_to_index(unk.next_offset())?;
+                        let _target_instr = &shape.instrs[index];
+                    }
+                    _ => {}
                 }
             }
 
