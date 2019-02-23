@@ -12,80 +12,60 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate clap;
-extern crate failure;
-extern crate i386;
-extern crate reverse;
-extern crate sh;
-extern crate simplelog;
-
-use clap::{App, Arg};
 use failure::Fallible;
 use reverse::b2h;
 use sh::{CpuShape, Instr};
 use simplelog::*;
 use std::io::prelude::*;
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, path::PathBuf};
+use structopt::StructOpt;
+
+#[derive(StructOpt, Debug)]
+#[structopt(name = "OpenFA shape slicing tool")]
+struct Opt {
+    /// Trace execution
+    #[structopt(short = "v", long = "verbose")]
+    verbose: bool,
+
+    /// Show all
+    #[structopt(short = "a", long = "all")]
+    show_all: bool,
+
+    /// Show matching instructions
+    #[structopt(short = "m", long = "matching")]
+    show_matching: Option<String>,
+
+    /// Show last instructions
+    #[structopt(short = "l", long = "last")]
+    show_last: bool,
+
+    /// Show unknown instructions
+    #[structopt(short = "u", long = "unknown")]
+    show_unknown: bool,
+
+    /// Show memory refs in x86
+    #[structopt(short = "x", long = "memory")]
+    show_memory: bool,
+
+    /// Elide the name in output
+    #[structopt(short = "n", long = "no-name")]
+    quiet: bool,
+
+    /// Files to process
+    #[structopt(name = "FILE", parse(from_os_str))]
+    files: Vec<PathBuf>
+}
 
 fn main() -> Fallible<()> {
-    let matches = App::new("OpenFA shape tool")
-        .version("0.0.1")
-        .author("Terrence Cole <terrence.d.cole@gmail.com>")
-        .about("Slice up shape data for digestion.")
-        .arg(
-            Arg::with_name("all")
-                .long("--all")
-                .takes_value(false)
-                .required(false)
-                .conflicts_with_all(&["last"]),
-        )
-        .arg(
-            Arg::with_name("matching")
-                .long("--matching")
-                .takes_value(true)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("last")
-                .long("--last")
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("unknown")
-                .long("--unknown")
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("a6")
-                .long("--a6")
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("c8")
-                .long("--c8")
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("memory")
-                .long("--memory")
-                .takes_value(false)
-                .required(false),
-        )
-        .arg(
-            Arg::with_name("INPUT")
-                .help("The shape(s) to show")
-                .multiple(true)
-                .required(true),
-        )
-        .get_matches();
+    let opt = Opt::from_args();
+    let level = if opt.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Warn
+    };
+    TermLogger::init(level, Config::default())?;
 
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
-
-    for name in matches.values_of("INPUT").unwrap() {
+    for name in &opt.files {
         let mut fp = fs::File::open(name).unwrap();
         let mut data = Vec::new();
         fp.read_to_end(&mut data).unwrap();
@@ -93,48 +73,36 @@ fn main() -> Fallible<()> {
 
         let shape = CpuShape::from_bytes(&data).unwrap();
 
-        if matches.is_present("all") {
+        if opt.show_all {
             for (i, instr) in shape.instrs.iter().enumerate() {
                 println!("{:3}: {}", i, instr.show());
             }
-        } else if matches.is_present("matching") {
-            let target = matches.value_of("matching").unwrap();
+        } else if let Some(ref target) = opt.show_matching {
             for instr in &shape.instrs {
                 if instr.magic() == target {
-                    println!("{}: {}", name, instr.show());
+                    if opt.quiet {
+                        println!("{}", instr.show());
+                    } else {
+                        println!("{:60}: {}", name.as_os_str().to_str().unwrap(), instr.show());
+                    }
                 }
             }
-        } else if matches.is_present("last") {
+        } else if opt.show_last {
             let fmt = shape
                 .instrs
                 .last()
                 .map(|i| i.show())
                 .ok_or("NO INSTRUCTIONS")
                 .unwrap();
-            println!("{:20}: {}", name, fmt);
-        } else if matches.is_present("unknown") {
+            println!("{:20}: {}", name.as_os_str().to_str().unwrap(), fmt);
+        } else if opt.show_unknown {
             for i in shape.instrs.iter() {
                 if let sh::Instr::UnknownUnknown(unk) = i {
                     //println!("{:20}: {}", name, i.show());
-                    println!("{}, {:20}", format_unk(&unk.data), name,);
+                    println!("{}, {:20}", format_unk(&unk.data), name.as_os_str().to_str().unwrap());
                 }
             }
-        } else if matches.is_present("a6") {
-            let mut offset = 0;
-            while offset < shape.instrs.len() {
-                if let sh::Instr::UnkA6(_) = shape.instrs[offset] {
-                    println!("{:20} {}", name, shape.instrs[offset].show());
-                    println!("{:20} {}", name, shape.instrs[offset + 1].show());
-                }
-                offset += 1;
-            }
-        } else if matches.is_present("c8") {
-            for i in shape.instrs.iter() {
-                if let sh::Instr::UnkC8_JumpOnDetailLevel(jmp) = i {
-                    println!("{:04X} - {} - {}", jmp.unk0, name, jmp.show());
-                }
-            }
-        } else if matches.is_present("memory") {
+        } else if opt.show_memory {
             let mut dedup = HashMap::new();
             for vinstr in shape.instrs {
                 if let sh::Instr::X86Code(x86) = vinstr {
