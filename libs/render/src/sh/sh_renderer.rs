@@ -183,9 +183,10 @@ pub struct ShInstance {
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct DrawMode {
+    pub range: Option<[usize; 2]>,
     pub damaged: bool,
-    pub distance: usize,
-    pub unk_mode: u16,
+    pub closeness: usize,
+    pub frame_number: usize,
 }
 
 pub struct ShRenderer {
@@ -283,6 +284,21 @@ impl ShRenderer {
         while offset < sh.instrs.len() {
             let instr = &sh.instrs[offset];
 
+            // Handle ranged mode before all others. No guarantee we won't be sidetracked;
+            // we may need to split this into a different runloop.
+            if let Some([start, end]) = draw_mode.range {
+                if byte_offset < start {
+                    byte_offset += instr.size();
+                    offset += 1;
+                    continue;
+                }
+                if byte_offset >= end {
+                    byte_offset += instr.size();
+                    offset += 1;
+                    continue;
+                }
+            }
+
             if offset > stop_at_offset {
                 trace!("reached configured stopping point");
                 break;
@@ -313,7 +329,7 @@ impl ShRenderer {
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
                 }
-                Instr::ToEnd(end) => {
+                Instr::PointerToObjectTrailer(end) => {
                     // We do not ever not draw from range; maybe there is some other use of
                     // this target offset that we just don't know yet?
                     end_target = Some(end.end_byte_offset())
@@ -328,7 +344,7 @@ impl ShRenderer {
                     }
                 }
                 Instr::UnkC8_JumpOnDetailLevel(c8) => {
-                    if draw_mode.distance > c8.unk1 as usize {
+                    if draw_mode.closeness > c8.unk1 as usize {
                         // For high detail, the bytes after the c8 up to the indicated end contain
                         // the high detail model.
                         trace!("setting section close to {}", c8.next_offset());
@@ -342,6 +358,16 @@ impl ShRenderer {
                         offset = sh.bytes_to_index(byte_offset)?;
                         continue;
                     }
+                }
+                Instr::Unk40(animation) => {
+                    byte_offset = animation.target_for_frame(draw_mode.frame_number);
+                    offset = sh.bytes_to_index(byte_offset)?;
+                    continue;
+                }
+                Instr::Unk48(jump) => {
+                    byte_offset = jump.target_offset();
+                    offset = sh.bytes_to_index(byte_offset)?;
+                    continue;
                 }
                 Instr::UnkC4(c4) => {
                     // C4 00   FF FF   13 00   E4 FF    00 00   00 00   00 00    7D 02

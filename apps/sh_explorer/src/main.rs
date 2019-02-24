@@ -49,6 +49,13 @@ struct Opt {
     )]
     stop_at_offset: usize,
 
+    #[structopt(
+        short = "r",
+        long = "range",
+        help = "Show only this range."
+    )]
+    ranged: Option<String>,
+
     #[structopt(help = "Will load it from game, or look at last component of path")]
     input: String,
 }
@@ -68,9 +75,14 @@ fn main() -> Fallible<()> {
     let sh = CpuShape::from_bytes(&lib.load(&opt.input)?)?;
     let mut stop_at_offset = opt.stop_at_offset;
     let mut draw_mode = DrawMode {
-        damaged: true,
-        distance: 1,
-        unk_mode: 0,
+        range: opt.ranged.map(|s| {
+            let mut parts = s.split(",");
+            [usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
+             usize::from_str_radix(parts.next().unwrap(), 16).unwrap()]
+        }),
+        damaged: false,
+        closeness: 200,
+        frame_number: 0,
     };
     sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
@@ -186,19 +198,19 @@ fn main() -> Fallible<()> {
                     need_reset = true;
                 }
                 VirtualKeyCode::Up => {
-                    stop_at_offset = stop_at_offset.saturating_add(10);
+                    stop_at_offset = stop_at_offset.saturating_add(0x10);
                     need_reset = true;
                 }
                 VirtualKeyCode::Down => {
-                    stop_at_offset = stop_at_offset.saturating_sub(10);
+                    stop_at_offset = stop_at_offset.saturating_sub(0x10);
                     need_reset = true;
                 }
                 VirtualKeyCode::PageUp => {
-                    stop_at_offset = stop_at_offset.saturating_add(100);
+                    stop_at_offset = stop_at_offset.saturating_add(0x100);
                     need_reset = true;
                 }
                 VirtualKeyCode::PageDown => {
-                    stop_at_offset = stop_at_offset.saturating_sub(100);
+                    stop_at_offset = stop_at_offset.saturating_sub(0x100);
                     need_reset = true;
                 }
                 VirtualKeyCode::End => {
@@ -210,11 +222,19 @@ fn main() -> Fallible<()> {
                     need_reset = true;
                 }
                 VirtualKeyCode::Period => {
-                    draw_mode.distance = draw_mode.distance.saturating_add(0x10);
+                    draw_mode.closeness = draw_mode.closeness.saturating_add(0x10);
                     need_reset = true;
                 }
                 VirtualKeyCode::Comma => {
-                    draw_mode.distance = draw_mode.distance.saturating_sub(0x10);
+                    draw_mode.closeness = draw_mode.closeness.saturating_sub(0x10);
+                    need_reset = true;
+                }
+                VirtualKeyCode::LBracket => {
+                    draw_mode.frame_number = draw_mode.frame_number.saturating_sub(1);
+                    need_reset = true;
+                }
+                VirtualKeyCode::RBracket => {
+                    draw_mode.frame_number = draw_mode.frame_number.saturating_add(1);
                     need_reset = true;
                 }
                 VirtualKeyCode::D => {
@@ -245,8 +265,8 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "stop:{}b, dam:{}, dist:{:04X}",
-            stop_at_offset, draw_mode.damaged, draw_mode.distance
+            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}",
+            stop_at_offset, draw_mode.damaged, draw_mode.closeness, draw_mode.frame_number
         );
         window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }
