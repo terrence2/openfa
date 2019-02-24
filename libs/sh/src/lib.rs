@@ -1770,7 +1770,7 @@ impl PointerToObjectTrailer {
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}2OEnd{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
+            "@{:04X} {}2EndO{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
@@ -1848,7 +1848,7 @@ impl UnkAC_ToDamage {
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
-pub struct UnkC8_JumpOnDetailLevel {
+pub struct UnkC8_ToLOD {
     pub offset: usize,
     pub unk0: u16,
     pub unk1: u16,
@@ -1856,7 +1856,7 @@ pub struct UnkC8_JumpOnDetailLevel {
     data: *const u8,
 }
 
-impl UnkC8_JumpOnDetailLevel {
+impl UnkC8_ToLOD {
     pub const MAGIC: u8 = 0xC8;
     pub const SIZE: usize = 8;
 
@@ -1890,13 +1890,12 @@ impl UnkC8_JumpOnDetailLevel {
     }
 
     pub fn next_offset(&self) -> usize {
-        // Our start offset + our size + offset_to_next.
         self.offset + Self::SIZE + self.offset_to_next
     }
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}ToDet{}: {}{}{}| {}{}{} (unk0:{:04X}, unk1:{:04X} target:{:04X})",
+            "@{:04X} {}ToLOD{}: {}{}{}| {}{}{} (unk0:{:04X}, unk1:{:04X} target:{:04X})",
             self.offset,
             Escape::new().fg(Color::BrightBlue).bold(),
             Escape::new(),
@@ -1908,6 +1907,72 @@ impl UnkC8_JumpOnDetailLevel {
             Escape::new(),
             self.unk0,
             self.unk1,
+            self.next_offset()
+        )
+    }
+}
+
+#[derive(Debug)]
+#[allow(non_camel_case_types)]
+pub struct UnkA6_ToDetail {
+    pub offset: usize,
+    data: *const u8,
+
+    pub offset_to_next: usize,
+
+    // This is in the range 1-3, so is probably the game detail level control, rather
+    // than a Level-of-Detail control.
+    pub level: u16,
+}
+
+impl UnkA6_ToDetail {
+    pub const MAGIC: u8 = 0xA6;
+    pub const SIZE: usize = 6;
+
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
+        let level = word_ref[1];
+        assert!(level >= 1 && level <= 3);
+        let offset_to_next = word_ref[0] as usize;
+        Ok(Self {
+            offset,
+            level,
+            offset_to_next,
+            data: data[0..Self::SIZE].as_ptr(),
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "A6"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        self.offset + Self::SIZE + self.offset_to_next
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}ToDtl{}: {}{}{}| {}{}{} (level:{:04X}, target:{:04X})",
+            self.offset,
+            Escape::new().fg(Color::BrightBlue).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::BrightBlue).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::BrightBlue),
+            p2s(self.data, 2, Self::SIZE),
+            Escape::new(),
+            self.level,
             self.next_offset()
         )
     }
@@ -2509,7 +2574,6 @@ opaque_instr!(Unk72, "72", 0x72, 4);
 opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
 opaque_instr!(Unk96, "96", 0x96, 6);
-opaque_instr!(UnkA6, "A6", 0xA6, 6);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
 opaque_instr!(UnkC4, "C4", 0xC4, 16);
 opaque_instr!(UnkCA, "CA", 0xCA, 4);
@@ -2551,12 +2615,12 @@ pub enum Instr {
     Unk78(Unk78),
     Unk7A(Unk7A),
     Unk96(Unk96),
-    UnkA6(UnkA6),
+    UnkA6_ToDetail(UnkA6_ToDetail),
     UnkAC_ToDamage(UnkAC_ToDamage),
     UnkB2(UnkB2),
     UnkB8(UnkB8),
     UnkC4(UnkC4),
-    UnkC8_JumpOnDetailLevel(UnkC8_JumpOnDetailLevel),
+    UnkC8_ToLOD(UnkC8_ToLOD),
     UnkCA(UnkCA),
     UnkCE(UnkCE),
     UnkD0(UnkD0),
@@ -2628,12 +2692,12 @@ macro_rules! impl_for_all_instr {
             Instr::Unk78(ref i) => i.$f(),
             Instr::Unk7A(ref i) => i.$f(),
             Instr::Unk96(ref i) => i.$f(),
-            Instr::UnkA6(ref i) => i.$f(),
+            Instr::UnkA6_ToDetail(ref i) => i.$f(),
             Instr::UnkAC_ToDamage(ref i) => i.$f(),
             Instr::UnkB2(ref i) => i.$f(),
             Instr::UnkB8(ref i) => i.$f(),
             Instr::UnkC4(ref i) => i.$f(),
-            Instr::UnkC8_JumpOnDetailLevel(ref i) => i.$f(),
+            Instr::UnkC8_ToLOD(ref i) => i.$f(),
             Instr::UnkCA(ref i) => i.$f(),
             Instr::UnkCE(ref i) => i.$f(),
             Instr::UnkD0(ref i) => i.$f(),
@@ -2865,7 +2929,7 @@ impl CpuShape {
             Unk78::MAGIC => consume_instr_simple!(Unk78, offset, &pe.code[*offset..end_offset], instrs),
             Unk7A::MAGIC => consume_instr_simple!(Unk7A, offset, &pe.code[*offset..end_offset], instrs),
             Unk96::MAGIC => consume_instr_simple!(Unk96, offset, &pe.code[*offset..end_offset], instrs),
-            UnkA6::MAGIC => consume_instr_simple!(UnkA6, offset, &pe.code[*offset..end_offset], instrs),
+            UnkA6_ToDetail::MAGIC => consume_instr_simple!(UnkA6_ToDetail, offset, &pe.code[*offset..end_offset], instrs),
             UnkB2::MAGIC => consume_instr_simple!(UnkB2, offset, &pe.code[*offset..end_offset], instrs),
             UnkB8::MAGIC => consume_instr_simple!(UnkB8, offset, &pe.code[*offset..end_offset], instrs),
             UnkC4::MAGIC => consume_instr_simple!(UnkC4, offset, &pe.code[*offset..end_offset], instrs),
@@ -2888,8 +2952,8 @@ impl CpuShape {
             Unk48::MAGIC => consume_instr!(Unk48, pe, offset, end_offset, instrs),
             UnkAC_ToDamage::MAGIC => consume_instr!(UnkAC_ToDamage, pe, offset, end_offset, instrs),
             UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, end_offset, instrs),
-            UnkC8_JumpOnDetailLevel::MAGIC => {
-                consume_instr!(UnkC8_JumpOnDetailLevel, pe, offset, end_offset, instrs)
+            UnkC8_ToLOD::MAGIC => {
+                consume_instr!(UnkC8_ToLOD, pe, offset, end_offset, instrs)
             }
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, end_offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, end_offset, instrs),
@@ -3139,7 +3203,7 @@ mod tests {
             let mut offset = 0;
             let mut offsets = Vec::new();
             for instr in &shape.instrs {
-                if let Instr::UnkC8_JumpOnDetailLevel(c8) = instr {
+                if let Instr::UnkC8_ToLOD(c8) = instr {
                     offsets.push(c8.next_offset());
                 }
                 if offsets.contains(&offset) {

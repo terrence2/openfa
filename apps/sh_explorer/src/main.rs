@@ -83,6 +83,7 @@ fn main() -> Fallible<()> {
         damaged: false,
         closeness: 200,
         frame_number: 0,
+        detail: 4,
     };
     sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
@@ -182,6 +183,7 @@ fn main() -> Fallible<()> {
                             KeyboardInput {
                                 virtual_keycode: Some(keycode),
                                 state: ElementState::Pressed,
+                                modifiers: mod_state,
                                 ..
                             },
                         ..
@@ -222,11 +224,19 @@ fn main() -> Fallible<()> {
                     need_reset = true;
                 }
                 VirtualKeyCode::Period => {
-                    draw_mode.closeness = draw_mode.closeness.saturating_add(0x10);
+                    if mod_state.ctrl {
+                        draw_mode.closeness = draw_mode.closeness.saturating_add(0x10);
+                    } else {
+                        draw_mode.closeness = draw_mode.closeness.saturating_add(0x1);
+                    }
                     need_reset = true;
                 }
                 VirtualKeyCode::Comma => {
-                    draw_mode.closeness = draw_mode.closeness.saturating_sub(0x10);
+                    if mod_state.ctrl {
+                        draw_mode.closeness = draw_mode.closeness.saturating_sub(0x10);
+                    } else {
+                        draw_mode.closeness = draw_mode.closeness.saturating_sub(0x1);
+                    }
                     need_reset = true;
                 }
                 VirtualKeyCode::LBracket => {

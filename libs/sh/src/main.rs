@@ -35,6 +35,10 @@ struct Opt {
     #[structopt(short = "m", long = "matching")]
     show_matching: Option<String>,
 
+    /// Show count after matching
+    #[structopt(short = "p", long = "plus", default_value = "0")]
+    show_after_matching: usize,
+
     /// Show last instructions
     #[structopt(short = "l", long = "last")]
     show_last: bool,
@@ -78,12 +82,20 @@ fn main() -> Fallible<()> {
                 println!("{:3}: {}", i, instr.show());
             }
         } else if let Some(ref target) = opt.show_matching {
-            for instr in &shape.instrs {
+            for (i, instr) in shape.instrs.iter().enumerate() {
                 if instr.magic() == target {
+                    let mut frags = vec![instr.show()];
+                    for j in 0..opt.show_after_matching {
+                        if i + 1 + j < shape.instrs.len() {
+                            frags.push(shape.instrs[i + 1 + j].show())
+                        }
+                    }
+                    let out = frags.join("; ");
+
                     if opt.quiet {
-                        println!("{}", instr.show());
+                        println!("{}", out);
                     } else {
-                        println!("{:60}: {}", name.as_os_str().to_str().unwrap(), instr.show());
+                        println!("{:60}: {}", name.as_os_str().to_str().unwrap(), out);
                     }
                 }
             }

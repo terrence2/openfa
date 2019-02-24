@@ -187,6 +187,7 @@ pub struct DrawMode {
     pub damaged: bool,
     pub closeness: usize,
     pub frame_number: usize,
+    pub detail: u16,
 }
 
 pub struct ShRenderer {
@@ -343,21 +344,37 @@ impl ShRenderer {
                         continue;
                     }
                 }
-                Instr::UnkC8_JumpOnDetailLevel(c8) => {
-                    if draw_mode.closeness > c8.unk1 as usize {
+                Instr::UnkC8_ToLOD(lod) => {
+                    if draw_mode.closeness > lod.unk1 as usize {
                         // For high detail, the bytes after the c8 up to the indicated end contain
                         // the high detail model.
-                        trace!("setting section close to {}", c8.next_offset());
-                        section_close = Some(c8.next_offset());
+                        trace!("setting section close to {}", lod.next_offset());
+                        section_close = Some(lod.next_offset());
                     } else {
                         // For low detail, the bytes after the c8 end marker contain the low detail
                         // model. We have no way to know how where the close is, so we have to
                         // monitor and abort to end if we hit the damage section?
-                        trace!("jumping to low detail model at {:04X}", c8.next_offset());
-                        byte_offset = c8.next_offset();
+                        trace!("jumping to low detail model at {:04X}", lod.next_offset());
+                        byte_offset = lod.next_offset();
                         offset = sh.bytes_to_index(byte_offset)?;
                         continue;
                     }
+                }
+                Instr::UnkA6_ToDetail(detail) => {
+                    if draw_mode.detail == detail.level {
+                        // If we are drawing in a low detail, jump to the relevant model.
+                        trace!("jumping to low detail model at {:04X}", detail.next_offset());
+                        byte_offset = detail.next_offset();
+                        offset = sh.bytes_to_index(byte_offset)?;
+                        continue;
+                    } else {
+                        // If in higher detail we want to not draw this section.
+                        trace!("setting section close to {}", detail.next_offset());
+                        section_close = Some(detail.next_offset());
+                    }
+                }
+                Instr::EndOfObject(_end) => {
+                    break;
                 }
                 Instr::Unk40(animation) => {
                     byte_offset = animation.target_for_frame(draw_mode.frame_number);
