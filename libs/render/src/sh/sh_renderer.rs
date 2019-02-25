@@ -188,6 +188,8 @@ pub struct DrawMode {
     pub closeness: usize,
     pub frame_number: usize,
     pub detail: u16,
+
+    pub gear_position: Option<u16>,
 }
 
 pub struct ShRenderer {
@@ -449,7 +451,10 @@ impl ShRenderer {
                             );
                             let mut v = vert_pool[*index as usize];
                             v.color = self.system_palette.rgba_f32(facet.color as usize)?;
-                            if facet.flags.contains(FacetFlags::FILL_BACKGROUND) {
+                            if facet.flags.contains(FacetFlags::FILL_BACKGROUND) 
+                                || facet.flags.contains(FacetFlags::UNK1)
+                                || facet.flags.contains(FacetFlags::UNK5)
+                            {
                                 v.flags = 1;
                             }
                             if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {

@@ -55,6 +55,10 @@ struct Opt {
     #[structopt(short = "n", long = "no-name")]
     quiet: bool,
 
+    /// Custom code
+    #[structopt(short = "c", long = "custom")]
+    custom: bool,
+
     /// Files to process
     #[structopt(name = "FILE", parse(from_os_str))]
     files: Vec<PathBuf>
@@ -132,6 +136,31 @@ fn main() -> Fallible<()> {
             memrefs.sort();
             for memref in memrefs.iter() {
                 println!("{} - {}", dedup[memref], memref);
+            }
+        } else if opt.custom {
+            for (offset, vinstr) in shape.instrs.iter().enumerate() {
+                if let sh::Instr::X86Code(x86) = vinstr {
+                    for instr in &x86.bytecode.instrs {
+                        for operand in &instr.operands {
+                            if let i386::Operand::Memory(memref) = operand {
+                                let d = memref.displacement as u32 as usize;
+                                if d > 0xAA000000 {
+                                    let d = d - 0xAA000000;
+                                    for tramp in &shape.trampolines {
+                                        if d == tramp.offset {
+                                            if let sh::Instr::Unk12(next) = &shape.instrs[offset + 1] {
+                                                let j = shape.map_absolute_offset_to_instr_offset(next.next_offset())?;
+                                                if let sh::Instr::VertexBuf(vxbuf) = &shape.instrs[j] {
+                                                    println!("{} : {}", tramp.name, vxbuf.unk0);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

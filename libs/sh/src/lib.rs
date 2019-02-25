@@ -56,13 +56,18 @@ lazy_static! {
 
 bitflags! {
     pub struct FacetFlags : u16 {
+        const UNK0                 = 0b0000_1000_0000_0000;
         const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
         const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
         const USE_BYTE_TEXCOORDS   = 0b0000_0001_0000_0000;
+        const UNK1                 = 0b0000_0000_1000_0000;
         const HAVE_MATERIAL        = 0b0000_0000_0100_0000;
+        const UNK2                 = 0b0000_0000_0010_0000;
+        const UNK3                 = 0b0000_0000_0001_0000;
+        const UNK4                 = 0b0000_0000_0000_1000;
         const HAVE_TEXCOORDS       = 0b0000_0000_0000_0100;
         const FILL_BACKGROUND      = 0b0000_0000_0000_0010;
-        const UNK_MATERIAL_RELATED = 0b0000_0000_0000_0001;
+        const UNK5                 = 0b0000_0000_0000_0001;
     }
 }
 
@@ -239,7 +244,7 @@ impl SourceRef {
 #[derive(Debug)]
 pub struct VertexBuf {
     pub offset: usize,
-    pub unk0: u16,
+    pub unk0: i16,
     pub verts: Vec<[i16; 3]>,
 }
 
@@ -254,7 +259,7 @@ impl VertexBuf {
         let words: &[i16] = unsafe { mem::transmute(&data[6..]) };
         let mut buf = VertexBuf {
             offset,
-            unk0: head[2],
+            unk0: head[2] as i16,
             verts: Vec::new(),
         };
         let nverts = head[0] as usize;
@@ -287,13 +292,14 @@ impl VertexBuf {
             .collect::<Vec<String>>()
             .join(", ");
         format!(
-            "@{:04X} {}VxBuf: 82 00{}| {}{} ({:b}){} => {}verts -> {}{}{}",
+            "@{:04X} {}VxBuf: 82 00{}| {}{:04X} ({:b} | {}){} => {}verts -> {}{}{}",
             self.offset,
             Escape::new().fg(Color::Magenta).bold(),
             Escape::new(),
             Escape::new().fg(Color::Magenta),
             self.unk0,
             self.unk0,
+            self.unk0 as i16,
             Escape::new(),
             self.verts.len(),
             Escape::new().fg(Color::Magenta).dimmed(),
@@ -3060,12 +3066,10 @@ impl CpuShape {
     // Map an offset in bytes from the beginning of the virtual instruction stream
     // to an offset into the virtual instructions.
     pub fn map_absolute_offset_to_instr_offset(&self, abs_offset: usize) -> Fallible<usize> {
-        let mut cur_offset = 0;
         for (instr_offset, instr) in self.instrs.iter().enumerate() {
-            if cur_offset == abs_offset {
+            if instr.at_offset() == abs_offset {
                 return Ok(instr_offset);
             }
-            cur_offset += instr.size();
         }
         bail!("no instruction at absolute offset: {:08X}", abs_offset)
     }

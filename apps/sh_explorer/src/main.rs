@@ -81,9 +81,10 @@ fn main() -> Fallible<()> {
              usize::from_str_radix(parts.next().unwrap(), 16).unwrap()]
         }),
         damaged: false,
-        closeness: 200,
+        closeness: 0x200,
         frame_number: 0,
         detail: 4,
+        gear_position: None,
     };
     sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
@@ -251,6 +252,14 @@ fn main() -> Fallible<()> {
                     draw_mode.damaged = !draw_mode.damaged;
                     need_reset = true;
                 }
+                VirtualKeyCode::G => {
+                    if draw_mode.gear_position.is_none() {
+                        draw_mode.gear_position = Some(0x10); // ?
+                    } else {
+                        draw_mode.gear_position = None;
+                    }
+                    need_reset = true;
+                }
                 VirtualKeyCode::Q => done = true,
                 VirtualKeyCode::R => need_reset = true,
                 _ => trace!("unknown keycode: {:?}", keycode),
@@ -275,8 +284,8 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}",
-            stop_at_offset, draw_mode.damaged, draw_mode.closeness, draw_mode.frame_number
+            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}",
+            stop_at_offset, draw_mode.damaged, draw_mode.closeness, draw_mode.frame_number, draw_mode.gear_position,
         );
         window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }
