@@ -61,7 +61,7 @@ struct Opt {
 
     /// Files to process
     #[structopt(name = "FILE", parse(from_os_str))]
-    files: Vec<PathBuf>
+    files: Vec<PathBuf>,
 }
 
 fn main() -> Fallible<()> {
@@ -115,7 +115,11 @@ fn main() -> Fallible<()> {
             for i in shape.instrs.iter() {
                 if let sh::Instr::UnknownUnknown(unk) = i {
                     //println!("{:20}: {}", name, i.show());
-                    println!("{}, {:20}", format_unk(&unk.data), name.as_os_str().to_str().unwrap());
+                    println!(
+                        "{}, {:20}",
+                        format_unk(&unk.data),
+                        name.as_os_str().to_str().unwrap()
+                    );
                 }
             }
         } else if opt.show_memory {
@@ -148,9 +152,15 @@ fn main() -> Fallible<()> {
                                     let d = d - 0xAA000000;
                                     for tramp in &shape.trampolines {
                                         if d == tramp.offset {
-                                            if let sh::Instr::Unk12(next) = &shape.instrs[offset + 1] {
-                                                let j = shape.map_absolute_offset_to_instr_offset(next.next_offset())?;
-                                                if let sh::Instr::VertexBuf(vxbuf) = &shape.instrs[j] {
+                                            if let sh::Instr::Unk12(next) =
+                                                &shape.instrs[offset + 1]
+                                            {
+                                                let j = shape.map_absolute_offset_to_instr_offset(
+                                                    next.next_offset(),
+                                                )?;
+                                                if let sh::Instr::VertexBuf(vxbuf) =
+                                                    &shape.instrs[j]
+                                                {
                                                     println!("{} : {}", tramp.name, vxbuf.unk0);
                                                 }
                                             }

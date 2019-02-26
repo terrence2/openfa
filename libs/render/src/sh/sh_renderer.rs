@@ -278,7 +278,7 @@ impl ShRenderer {
         let mut indices = Vec::new();
         let mut verts = Vec::new();
 
-        let mut end_target = None;
+        let mut _end_target = None;
         let mut damage_target = None;
         let mut section_close = None;
 
@@ -335,12 +335,15 @@ impl ShRenderer {
                 Instr::PointerToObjectTrailer(end) => {
                     // We do not ever not draw from range; maybe there is some other use of
                     // this target offset that we just don't know yet?
-                    end_target = Some(end.end_byte_offset())
+                    _end_target = Some(end.end_byte_offset())
                 }
                 Instr::UnkAC_ToDamage(dam) => {
                     damage_target = Some(dam.damage_byte_offset());
                     if draw_mode.damaged {
-                        trace!("jumping to damaged model at {:04X}", dam.damage_byte_offset());
+                        trace!(
+                            "jumping to damaged model at {:04X}",
+                            dam.damage_byte_offset()
+                        );
                         byte_offset = dam.damage_byte_offset();
                         offset = sh.bytes_to_index(byte_offset)?;
                         continue;
@@ -365,7 +368,10 @@ impl ShRenderer {
                 Instr::UnkA6_ToDetail(detail) => {
                     if draw_mode.detail == detail.level {
                         // If we are drawing in a low detail, jump to the relevant model.
-                        trace!("jumping to low detail model at {:04X}", detail.next_offset());
+                        trace!(
+                            "jumping to low detail model at {:04X}",
+                            detail.next_offset()
+                        );
                         byte_offset = detail.next_offset();
                         offset = sh.bytes_to_index(byte_offset)?;
                         continue;
@@ -451,7 +457,7 @@ impl ShRenderer {
                             );
                             let mut v = vert_pool[*index as usize];
                             v.color = self.system_palette.rgba_f32(facet.color as usize)?;
-                            if facet.flags.contains(FacetFlags::FILL_BACKGROUND) 
+                            if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
                                 || facet.flags.contains(FacetFlags::UNK1)
                                 || facet.flags.contains(FacetFlags::UNK5)
                             {

@@ -65,7 +65,7 @@ impl Palette {
             c.data[0] as f32 / 256f32,
             c.data[1] as f32 / 256f32,
             c.data[2] as f32 / 256f32,
-            c.data[3] as f32 / 256f32
+            c.data[3] as f32 / 256f32,
         ])
     }
 

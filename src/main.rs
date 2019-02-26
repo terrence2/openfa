@@ -1,7 +1,7 @@
 extern crate entity;
-extern crate sh;
-extern crate pic;
 extern crate pal;
+extern crate pic;
+extern crate sh;
 
 fn main() {
     println!("Hello, world!");

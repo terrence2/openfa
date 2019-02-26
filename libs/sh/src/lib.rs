@@ -586,7 +586,7 @@ impl Unk6C {
             0x38 => 13, // Normal
             0x48 => 14, // F18 -- one of our errata?
             0x50 => 16, // F8
-            _ => bail!("unexpected flag byte in 6C instruction: {:02X}", flag)
+            _ => bail!("unexpected flag byte in 6C instruction: {:02X}", flag),
         };
         Ok(Self {
             offset,
@@ -1220,7 +1220,8 @@ impl X86Code {
             for op in &instr.operands {
                 match op {
                     Operand::Memory(ref mr) => {
-                        let mt = Self::find_trampoline_for_target(mr.displacement as u32, trampolines);
+                        let mt =
+                            Self::find_trampoline_for_target(mr.displacement as u32, trampolines);
                         if let Ok(tramp) = mt {
                             context = Some(format!("{}", tramp.name));
                         }
@@ -2282,7 +2283,6 @@ impl EndOfObject {
     }
 }
 
-
 #[derive(Debug)]
 pub struct UnknownData {
     pub offset: usize,
@@ -2565,7 +2565,7 @@ opaque_instr!(UnkB2, "B2", 0xB2, 2); // 9 instances
 opaque_instr!(Unk68, "68", 0x68, 8); // CHAFF / CATGUY (2 instances)
 opaque_instr!(Unk74, "74", 0x74, 8); // CHAFF / DEBRIS (3 instance)
 
-// 6E 00| A5 30 00 00 
+// 6E 00| A5 30 00 00
 // 6E 00| 06 00 00 00 50 00 73 00 00 00
 opaque_instr!(Unk6E, "6E", 0x6E, 6); // FA:F8.SH
 opaque_instr!(Unk50, "50", 0x50, 6); // FA:F8.SH
@@ -2865,7 +2865,10 @@ impl CpuShape {
             p[0] == 1 && p[1] == 2 && p[2] == 3 && p[3] == 2 && p[4] == 1
         }
         offset -= 4;
-        ensure!(is_end(&pe.code[offset..]), "expected 12321 sequence right before trampolines");
+        ensure!(
+            is_end(&pe.code[offset..]),
+            "expected 12321 sequence right before trampolines"
+        );
         while is_end(&pe.code[offset - 4..]) {
             offset -= 4;
         }
@@ -2880,7 +2883,11 @@ impl CpuShape {
         sum
     }
 
-    fn read_sections(pe: &peff::PE, trampolines: &[X86Trampoline], trailer: &[Instr]) -> Fallible<Vec<Instr>> {
+    fn read_sections(
+        pe: &peff::PE,
+        trampolines: &[X86Trampoline],
+        trailer: &[Instr],
+    ) -> Fallible<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         let end_offset = pe.code.len() - Self::end_size(trailer);
@@ -2916,39 +2923,108 @@ impl CpuShape {
     ) -> Fallible<()> {
         let end_offset = pe.code.len() - Self::end_size(trailer);
         match pe.code[*offset] {
-            Header::MAGIC => consume_instr_simple!(Header, offset, &pe.code[*offset..end_offset], instrs),
-            Unk08::MAGIC => consume_instr_simple!(Unk08, offset, &pe.code[*offset..end_offset], instrs),
-            Unk0E::MAGIC => consume_instr_simple!(Unk0E, offset, &pe.code[*offset..end_offset], instrs),
-            Unk10::MAGIC => consume_instr_simple!(Unk10, offset, &pe.code[*offset..end_offset], instrs),
-            Unk2E::MAGIC => consume_instr_simple!(Unk2E, offset, &pe.code[*offset..end_offset], instrs),
-            Unk3A::MAGIC => consume_instr_simple!(Unk3A, offset, &pe.code[*offset..end_offset], instrs),
-            Unk44::MAGIC => consume_instr_simple!(Unk44, offset, &pe.code[*offset..end_offset], instrs),
-            Unk46::MAGIC => consume_instr_simple!(Unk46, offset, &pe.code[*offset..end_offset], instrs),
-            Unk4E::MAGIC => consume_instr_simple!(Unk4E, offset, &pe.code[*offset..end_offset], instrs),
-            Unk66::MAGIC => consume_instr_simple!(Unk66, offset, &pe.code[*offset..end_offset], instrs),
-            Unk68::MAGIC => consume_instr_simple!(Unk68, offset, &pe.code[*offset..end_offset], instrs),
-            Unk6C::MAGIC => consume_instr_simple!(Unk6C, offset, &pe.code[*offset..end_offset], instrs),
-            Unk6E::MAGIC => consume_instr_simple!(Unk6E, offset, &pe.code[*offset..end_offset], instrs),
-            Unk50::MAGIC => consume_instr_simple!(Unk50, offset, &pe.code[*offset..end_offset], instrs),
-            Unk72::MAGIC => consume_instr_simple!(Unk72, offset, &pe.code[*offset..end_offset], instrs),
-            Unk74::MAGIC => consume_instr_simple!(Unk74, offset, &pe.code[*offset..end_offset], instrs),
-            Unk78::MAGIC => consume_instr_simple!(Unk78, offset, &pe.code[*offset..end_offset], instrs),
-            Unk7A::MAGIC => consume_instr_simple!(Unk7A, offset, &pe.code[*offset..end_offset], instrs),
-            Unk96::MAGIC => consume_instr_simple!(Unk96, offset, &pe.code[*offset..end_offset], instrs),
-            UnkA6_ToDetail::MAGIC => consume_instr_simple!(UnkA6_ToDetail, offset, &pe.code[*offset..end_offset], instrs),
-            UnkB2::MAGIC => consume_instr_simple!(UnkB2, offset, &pe.code[*offset..end_offset], instrs),
-            UnkB8::MAGIC => consume_instr_simple!(UnkB8, offset, &pe.code[*offset..end_offset], instrs),
-            UnkC4::MAGIC => consume_instr_simple!(UnkC4, offset, &pe.code[*offset..end_offset], instrs),
-            UnkCA::MAGIC => consume_instr_simple!(UnkCA, offset, &pe.code[*offset..end_offset], instrs),
-            UnkD0::MAGIC => consume_instr_simple!(UnkD0, offset, &pe.code[*offset..end_offset], instrs),
-            UnkD2::MAGIC => consume_instr_simple!(UnkD2, offset, &pe.code[*offset..end_offset], instrs),
-            UnkDA::MAGIC => consume_instr_simple!(UnkDA, offset, &pe.code[*offset..end_offset], instrs),
-            UnkDC::MAGIC => consume_instr_simple!(UnkDC, offset, &pe.code[*offset..end_offset], instrs),
-            UnkE4::MAGIC => consume_instr_simple!(UnkE4, offset, &pe.code[*offset..end_offset], instrs),
-            UnkE6::MAGIC => consume_instr_simple!(UnkE6, offset, &pe.code[*offset..end_offset], instrs),
-            UnkE8::MAGIC => consume_instr_simple!(UnkE8, offset, &pe.code[*offset..end_offset], instrs),
-            UnkEA::MAGIC => consume_instr_simple!(UnkEA, offset, &pe.code[*offset..end_offset], instrs),
-            UnkEE::MAGIC => consume_instr_simple!(UnkEE, offset, &pe.code[*offset..end_offset], instrs),
+            Header::MAGIC => {
+                consume_instr_simple!(Header, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk08::MAGIC => {
+                consume_instr_simple!(Unk08, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk0E::MAGIC => {
+                consume_instr_simple!(Unk0E, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk10::MAGIC => {
+                consume_instr_simple!(Unk10, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk2E::MAGIC => {
+                consume_instr_simple!(Unk2E, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk3A::MAGIC => {
+                consume_instr_simple!(Unk3A, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk44::MAGIC => {
+                consume_instr_simple!(Unk44, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk46::MAGIC => {
+                consume_instr_simple!(Unk46, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk4E::MAGIC => {
+                consume_instr_simple!(Unk4E, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk66::MAGIC => {
+                consume_instr_simple!(Unk66, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk68::MAGIC => {
+                consume_instr_simple!(Unk68, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk6C::MAGIC => {
+                consume_instr_simple!(Unk6C, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk6E::MAGIC => {
+                consume_instr_simple!(Unk6E, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk50::MAGIC => {
+                consume_instr_simple!(Unk50, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk72::MAGIC => {
+                consume_instr_simple!(Unk72, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk74::MAGIC => {
+                consume_instr_simple!(Unk74, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk78::MAGIC => {
+                consume_instr_simple!(Unk78, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk7A::MAGIC => {
+                consume_instr_simple!(Unk7A, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            Unk96::MAGIC => {
+                consume_instr_simple!(Unk96, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkA6_ToDetail::MAGIC => consume_instr_simple!(
+                UnkA6_ToDetail,
+                offset,
+                &pe.code[*offset..end_offset],
+                instrs
+            ),
+            UnkB2::MAGIC => {
+                consume_instr_simple!(UnkB2, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkB8::MAGIC => {
+                consume_instr_simple!(UnkB8, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkC4::MAGIC => {
+                consume_instr_simple!(UnkC4, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkCA::MAGIC => {
+                consume_instr_simple!(UnkCA, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkD0::MAGIC => {
+                consume_instr_simple!(UnkD0, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkD2::MAGIC => {
+                consume_instr_simple!(UnkD2, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkDA::MAGIC => {
+                consume_instr_simple!(UnkDA, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkDC::MAGIC => {
+                consume_instr_simple!(UnkDC, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkE4::MAGIC => {
+                consume_instr_simple!(UnkE4, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkE6::MAGIC => {
+                consume_instr_simple!(UnkE6, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkE8::MAGIC => {
+                consume_instr_simple!(UnkE8, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkEA::MAGIC => {
+                consume_instr_simple!(UnkEA, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkEE::MAGIC => {
+                consume_instr_simple!(UnkEE, offset, &pe.code[*offset..end_offset], instrs)
+            }
 
             Unk06::MAGIC => consume_instr!(Unk06, pe, offset, end_offset, instrs),
             Unk0C::MAGIC => consume_instr!(Unk0C, pe, offset, end_offset, instrs),
@@ -2958,12 +3034,12 @@ impl CpuShape {
             Unk48::MAGIC => consume_instr!(Unk48, pe, offset, end_offset, instrs),
             UnkAC_ToDamage::MAGIC => consume_instr!(UnkAC_ToDamage, pe, offset, end_offset, instrs),
             UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, end_offset, instrs),
-            UnkC8_ToLOD::MAGIC => {
-                consume_instr!(UnkC8_ToLOD, pe, offset, end_offset, instrs)
-            }
+            UnkC8_ToLOD::MAGIC => consume_instr!(UnkC8_ToLOD, pe, offset, end_offset, instrs),
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, end_offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, end_offset, instrs),
-            PointerToObjectTrailer::MAGIC => consume_instr!(PointerToObjectTrailer, pe, offset, end_offset, instrs),
+            PointerToObjectTrailer::MAGIC => {
+                consume_instr!(PointerToObjectTrailer, pe, offset, end_offset, instrs)
+            }
             Unk38::MAGIC => consume_instr!(Unk38, pe, offset, end_offset, instrs),
             TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, end_offset, instrs),
             TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, end_offset, instrs),
@@ -2971,11 +3047,12 @@ impl CpuShape {
             VertexBuf::MAGIC => consume_instr!(VertexBuf, pe, offset, end_offset, instrs),
             Facet::MAGIC => consume_instr!(Facet, pe, offset, end_offset, instrs),
             X86Code::MAGIC => {
-                let name = if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, &instrs) {
-                    source.source.clone()
-                } else {
-                    "unknown_source".to_owned()
-                };
+                let name =
+                    if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, &instrs) {
+                        source.source.clone()
+                    } else {
+                        "unknown_source".to_owned()
+                    };
                 X86Code::from_bytes(&name, offset, pe, trampolines, trailer, instrs)?;
             }
             // Zero is the magic for the trailer (sans trampolines).
@@ -2985,7 +3062,9 @@ impl CpuShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::PointerToObjectTrailer(ref end_ptr)) = find_first_instr(0xF2, &instrs) {
+                        if let Some(&Instr::PointerToObjectTrailer(ref end_ptr)) =
+                            find_first_instr(0xF2, &instrs)
+                        {
                             target = Some(end_ptr.end_byte_offset());
                         }
                     }
@@ -3007,7 +3086,9 @@ impl CpuShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::PointerToObjectTrailer(ref end_ptr)) = find_first_instr(0xF2, &instrs) {
+                        if let Some(&Instr::PointerToObjectTrailer(ref end_ptr)) =
+                            find_first_instr(0xF2, &instrs)
+                        {
                             target = Some(end_ptr.end_byte_offset());
                         }
                     }
@@ -3033,7 +3114,8 @@ impl CpuShape {
                 } else if remaining[16] == 0 && remaining[17] == 0 {
                     // Cases were the block should stop rendering look more or less like:
                     // 00 .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. 00 00
-                    let obj_end = EndOfObject::from_bytes_after(*offset, &remaining[..EndOfObject::SIZE])?;
+                    let obj_end =
+                        EndOfObject::from_bytes_after(*offset, &remaining[..EndOfObject::SIZE])?;
                     instrs.push(Instr::EndOfObject(obj_end));
                     // These may occur in the middle of shapes, so we need to keep going.
                     *offset += EndOfObject::SIZE;

@@ -49,11 +49,7 @@ struct Opt {
     )]
     stop_at_offset: usize,
 
-    #[structopt(
-        short = "r",
-        long = "range",
-        help = "Show only this range."
-    )]
+    #[structopt(short = "r", long = "range", help = "Show only this range.")]
     ranged: Option<String>,
 
     #[structopt(help = "Will load it from game, or look at last component of path")]
@@ -77,8 +73,10 @@ fn main() -> Fallible<()> {
     let mut draw_mode = DrawMode {
         range: opt.ranged.map(|s| {
             let mut parts = s.split(",");
-            [usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
-             usize::from_str_radix(parts.next().unwrap(), 16).unwrap()]
+            [
+                usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
+                usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
+            ]
         }),
         damaged: false,
         closeness: 0x200,
@@ -285,7 +283,11 @@ fn main() -> Fallible<()> {
 
         let params = format!(
             "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}",
-            stop_at_offset, draw_mode.damaged, draw_mode.closeness, draw_mode.frame_number, draw_mode.gear_position,
+            stop_at_offset,
+            draw_mode.damaged,
+            draw_mode.closeness,
+            draw_mode.frame_number,
+            draw_mode.gear_position,
         );
         window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }
