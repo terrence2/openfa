@@ -1375,13 +1375,6 @@ impl X86Code {
             }
 
             if !have_vinstr && *offset < Self::lowest_jump(&external_jumps) {
-                /*
-                let maybe_bc = i386::ByteCode::disassemble_one(SHAPE_LOAD_BASE as usize + *offset, &pe.code[*offset..]);
-                if let Err(e) = maybe_bc {
-                    trace!("offset {:04X}: treating as external data; check this to see if it might actually be bytecode", *offset);
-                    i386::DisassemblyError::maybe_show(&e, &pe.code[*offset..]);
-                */
-
                 // There is no instruction here, so assume data. Find the closest jump
                 // target remaining and fast-forward there.
                 trace!(
@@ -1389,19 +1382,16 @@ impl X86Code {
                     *offset,
                     bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
                 );
-                let end = Self::lowest_jump(&external_jumps);
+                let mut end = Self::lowest_jump(&external_jumps);
+                if pe.code[end - 2] == 0xF0 && pe.code[end - 1] == 0x00 {
+                    end -= 2;
+                }
                 vinstrs.push(Instr::UnknownData(UnknownData {
                     offset: *offset,
                     length: end - *offset,
                     data: pe.code[*offset..end].to_vec(),
                 }));
                 *offset = end;
-                /*
-                } else {
-                    // Create an external jump to ourself to continue decoding.
-                    external_jumps.insert(*offset);
-                }
-                */
             }
         }
 
@@ -1417,7 +1407,7 @@ impl X86Code {
     }
 
     fn size(&self) -> usize {
-        self.code.len() + 2
+        self.length
     }
 
     fn magic(&self) -> &'static str {
@@ -3133,7 +3123,7 @@ impl CpuShape {
             _vop => {
                 let instr = UnknownUnknown {
                     offset: *offset,
-                    data: pe.code[*offset..].to_owned(),
+                    data: pe.code[*offset..end_offset].to_owned(),
                 };
                 *offset = pe.code.len();
                 instrs.push(Instr::UnknownUnknown(instr));
@@ -3284,20 +3274,13 @@ mod tests {
                     _ => {}
                 }
             }
-
-            /*
-            let mut offset = 0;
-            let mut offsets = Vec::new();
+            
+            // Ensure that all offsets and sizes line up.
+            let mut expect_offset = 0;
             for instr in &shape.instrs {
-                if let Instr::UnkC8_ToLOD(c8) = instr {
-                    offsets.push(c8.next_offset());
-                }
-                if offsets.contains(&offset) {
-                    println!("TARGET: {}", instr.show());
-                }
-                offset += instr.size();
+                assert_eq!(expect_offset, instr.at_offset());
+                expect_offset += instr.size();
             }
-            */
         }
 
         //show_instr_freqs(&freq);
