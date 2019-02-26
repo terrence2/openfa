@@ -2554,6 +2554,7 @@ opaque_instr!(Unk08, "08", 0x08, 4); // 7 instances
 opaque_instr!(UnkB2, "B2", 0xB2, 2); // 9 instances
 opaque_instr!(Unk68, "68", 0x68, 8); // CHAFF / CATGUY (2 instances)
 opaque_instr!(Unk74, "74", 0x74, 8); // CHAFF / DEBRIS (3 instance)
+opaque_instr!(Unk76, "76", 0x76, 10); // ATF:BULLET
 
 // 6E 00| A5 30 00 00
 // 6E 00| 06 00 00 00 50 00 73 00 00 00
@@ -2608,6 +2609,7 @@ pub enum Instr {
     Unk50(Unk50),
     Unk72(Unk72),
     Unk74(Unk74),
+    Unk76(Unk76),
     Unk78(Unk78),
     Unk7A(Unk7A),
     Unk96(Unk96),
@@ -2685,6 +2687,7 @@ macro_rules! impl_for_all_instr {
             Instr::Unk50(ref i) => i.$f(),
             Instr::Unk72(ref i) => i.$f(),
             Instr::Unk74(ref i) => i.$f(),
+            Instr::Unk76(ref i) => i.$f(),
             Instr::Unk78(ref i) => i.$f(),
             Instr::Unk7A(ref i) => i.$f(),
             Instr::Unk96(ref i) => i.$f(),
@@ -2961,6 +2964,9 @@ impl CpuShape {
             Unk74::MAGIC => {
                 consume_instr_simple!(Unk74, offset, &pe.code[*offset..end_offset], instrs)
             }
+            Unk76::MAGIC => {
+                consume_instr_simple!(Unk76, offset, &pe.code[*offset..end_offset], instrs)
+            }
             Unk78::MAGIC => {
                 consume_instr_simple!(Unk78, offset, &pe.code[*offset..end_offset], instrs)
             }
@@ -3129,7 +3135,7 @@ impl CpuShape {
                 instrs.push(Instr::UnknownUnknown(instr));
 
                 // Someday we'll be able to turn on this bail.
-                //bail!("unknown instruction 0x{:02X} at 0x{:04X}: {}", vop, offset, bs2s(&pe.code[*offset..])),
+                // bail!("unknown instruction 0x{:02X} at 0x{:04X}: {}", _vop, *offset, bs2s(&pe.code[*offset..]));
             }
         }
         Ok(())
