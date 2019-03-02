@@ -13,15 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::sh::texture_atlas::TextureAtlas;
-use failure::{ensure, Fallible};
+use failure::{bail, ensure, Fallible};
+use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
-use nalgebra::Matrix4;
+use nalgebra::{Matrix3, Matrix4, Vector4};
 use pal::Palette;
 use pic::decode_pic;
 use sh::{CpuShape, FacetFlags, Instr};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -189,7 +190,13 @@ pub struct DrawMode {
     pub frame_number: usize,
     pub detail: u16,
 
-    pub gear_position: Option<u16>,
+    pub gear_position: Option<u32>,
+    pub flaps_down: bool,
+    pub airbrake_extended: bool,
+    pub hook_extended: bool,
+    pub bay_open: bool,
+    pub afterburner_enabled: bool,
+    pub rudder_position: i32
 }
 
 pub struct ShRenderer {
@@ -270,6 +277,202 @@ impl ShRenderer {
         let atlas = TextureAtlas::new(textures)?;
         let mut active_frame = None;
 
+        let flaps_down = draw_mode.flaps_down;
+        let gear_position = draw_mode.gear_position;
+        let airbrake_extended = draw_mode.airbrake_extended;
+        let hook_extended = draw_mode.hook_extended;
+        let bay_open = draw_mode.bay_open;
+        let afterburner_enabled = draw_mode.afterburner_enabled;
+        let rudder_position = draw_mode.rudder_position;
+        let currentTicks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+
+        let mut c4_overlays = HashMap::new();
+
+        let call_names = vec!["do_start_interp"];
+        let mut interp = i386::Interpreter::new();
+        for tramp in sh.trampolines.iter() {
+            if call_names.contains(&tramp.name.as_ref()) {
+                interp.add_trampoline(tramp.mem_location, &tramp.name, 1);
+                continue;
+            }
+            println!("Adding read port at {:08X}", tramp.mem_location);
+            match tramp.name.as_ref() {
+                "_currentTicks" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _currentTicks");
+                        currentTicks as u32
+                    }),
+                ),
+                "_PLafterBurner" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLafterBurner");
+                        if afterburner_enabled {
+                            1
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLbayOpen" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLbayOpen");
+                        if bay_open {
+                            1
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLbrake" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLbrake");
+                        if airbrake_extended {
+                            1
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLgearDown" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLgearDown");
+                        if let Some(_) = gear_position {
+                            1
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLgearPos" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLgearPos");
+                        if let Some(p) = gear_position {
+                            p
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLhook" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLhook");
+                        if hook_extended {
+                            1
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLrightFlap" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLrightFlap");
+                        if flaps_down {
+                            0xFFFFFFFF
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLleftFlap" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLleftFlap");
+                        if flaps_down {
+                            0xFFFFFFFF
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLrudder" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLrudder");
+                        rudder_position as u32
+                    }),
+                ),
+                _ => {}
+            }
+        }
+        for instr in sh.instrs.iter() {
+            match instr {
+                // Written into by windmill with (_currentTicks & 0xFF) << 2.
+                // The frame of animation to show, maybe?
+                Instr::UnkC4(ref c4) => {
+                    let off = c4.offset;
+                    let mut over = &mut c4_overlays;
+                    interp.add_write_port(
+                        0xAA000000 + c4.offset as u32 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C4.t0 <= {:08X}", value);
+                        }),
+                    );
+                    let mut over = &mut c4_overlays;
+                    interp.add_write_port(
+                        0xAA000000 + c4.offset as u32 + 2 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C4.t1 <= {:08X}", value);
+                        }),
+                    );
+                    let mut over = &mut c4_overlays;
+                    interp.add_write_port(
+                        0xAA000000 + c4.offset as u32 + 2 + 4,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C4.t2 <= {:08X}", value);
+                        }),
+                    );
+                    let mut over = &mut c4_overlays;
+                    interp.add_write_port(
+                        0xAA000000 + c4.offset as u32 + 2 + 6,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C4.a0 <= {:08X}", value);
+                        }),
+                    );
+                    let mut over = &mut c4_overlays;
+                    interp.add_write_port(
+                        0xAA000000 + c4.offset as u32 + 2 + 8,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C4.a1 <= {:08X}", value);
+                        }),
+                    );
+                    let mut over = &mut c4_overlays;
+                    interp.add_write_port(
+                        0xAA000000 + c4.offset as u32 + 2 + 0xA,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C4.a2 <= {:08X}", value);
+                            if !over.contains_key(&off) {
+                                over.insert(off, [0f32; 6]);
+                            }
+                            /*
+                            if let Some(vs) = c4_overlays.get_mut(&c4.offset) {
+                                vs[5] = (value as i32) as f32;
+                            }
+                            */
+                        }),
+                    );
+                }
+                /*
+                Instr::UnknownUnknown(ref unk) => {
+                    interp
+                        .map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone())
+                        .unwrap();
+                }
+                */
+                Instr::X86Code(ref code) => {
+                    interp.add_code(&code.bytecode);
+                }
+                _ => {}
+            }
+        }
+
         // The current pool of vertices.
         let mut vert_pool = Vec::new();
 
@@ -281,6 +484,9 @@ impl ShRenderer {
         let mut _end_target = None;
         let mut damage_target = None;
         let mut section_close = None;
+
+        let mut unmasked_faces = HashMap::new();
+        let mut masking_faces = false;
 
         let mut byte_offset = 0;
         let mut offset = 0;
@@ -326,8 +532,40 @@ impl ShRenderer {
 
             println!("At: {:3} => {}", offset, instr.show());
             match instr {
+                Instr::X86Code(code) => {
+                    let rv = interp
+                        .interpret(0xAA000000u32 + code.code_offset as u32)
+                        .unwrap();
+                    match rv {
+                        ExitInfo::OutOfInstructions => break,
+                        ExitInfo::Trampoline(ref name, ref args) => {
+                            println!("Got trampoline return to {} with args {:?}", name, args);
+                            assert!(name == "do_start_interp");
+                            byte_offset = (args[0] - 0xAA000000u32) as usize;
+                            offset = sh
+                                .map_interpreter_offset_to_instr_offset(args[0])
+                                .unwrap();
+                            println!("Resuming at instruction {}", offset);
+                            continue;
+                        }
+                    }
+                }
+                Instr::Unk12(unk) => {
+                    unmasked_faces.insert(unk.next_offset(), [0f32; 6]);
+                }
+                Instr::UnkC4(c4) => {
+                    let xform = [
+                        f32::from(c4.t0),
+                        f32::from(c4.t1),
+                        f32::from(c4.t2),
+                        f32::from(c4.a0),
+                        f32::from(c4.a1),
+                        f32::from(c4.a2),
+                    ];
+                    unmasked_faces.insert(c4.next_offset(), xform);
+                }
                 Instr::Header(_hdr) => {
-                    _xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
+                    //_xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
                 }
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
@@ -394,29 +632,30 @@ impl ShRenderer {
                     offset = sh.bytes_to_index(byte_offset)?;
                     continue;
                 }
-                Instr::UnkC4(c4) => {
-                    // C4 00   FF FF   13 00   E4 FF    00 00   00 00   00 00    7D 02
-                    //            -1      19     -28        0       0     ang      637
-                    #[allow(clippy::cast_ptr_alignment)] // the entire point of word codes
-                    let vp = unsafe { std::slice::from_raw_parts(c4.data as *const u16, 7) };
-                    //let vp: &[i16] = unsafe { mem::transmute(&c4.data.offset(2)) };
-                    println!(
-                        "v: ({}, {}, {}), ang: ({}, {}, {}), ?: {}",
-                        vp[0], vp[1], vp[2], vp[3], vp[4], vp[5], vp[6],
-                    );
-                    _xform = [
-                        f32::from(vp[0]),
-                        f32::from(vp[1]),
-                        f32::from(vp[2]),
-                        f32::from(vp[3]),
-                        f32::from(vp[4]),
-                        f32::from(vp[5]),
-                    ];
-                }
                 Instr::VertexBuf(buf) => {
+                    let xform = if vert_pool.is_empty() {
+                        masking_faces = false;
+                        [0f32; 6]
+                    } else if unmasked_faces.contains_key(&instr.at_offset()) {
+                        masking_faces = false;
+                        unmasked_faces[&instr.at_offset()]
+                    } else {
+                        masking_faces = true;
+                        [0f32; 6]
+                    };
+                    let r2 = xform[5] / 256f32;
+                    println!("r2: {}", r2);
+                    let m = Matrix4::new(
+                        r2.cos(), -r2.sin(), 0f32,  xform[0],
+                        r2.sin(),  r2.cos(), 0f32, -xform[1],
+                            0f32,     0f32,  1f32,  xform[2],
+                            0f32,     0f32,  0f32,  1f32);
                     for v in &buf.verts {
+                        let v0 = Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
+                        let v1 = m * v0;
                         vert_pool.push(Vertex {
-                            position: [f32::from(v[0]), f32::from(-v[2]), f32::from(v[1])],
+                            //position: [f32::from(v[0]) + xform[0], f32::from(-v[2]) - xform[1], f32::from(v[1]) + xform[2]],
+                            position: [v1[0], v1[1], v1[2]],
                             color: [0.75f32, 0.5f32, 0f32, 1f32],
                             tex_coord: [0f32, 0f32],
                             flags: 0,
@@ -424,53 +663,55 @@ impl ShRenderer {
                     }
                 }
                 Instr::Facet(facet) => {
-                    // Load all vertices in this facet into the vertex upload buffer, copying
-                    // in the color and texture coords for each face. Note that the layout is
-                    // for triangle fans.
-                    let mut v_base = verts.len() as u32;
-                    for i in 2..facet.indices.len() {
-                        // Given that most facets are very short strips, and we need to copy the
-                        // vertices anyway, it is probably more space efficient to just upload triangle
-                        // lists instead of trying to span safely between adjacent strips.
-                        let o = [0, i - 1, i];
-                        let inds = [
-                            facet.indices[o[0]],
-                            facet.indices[o[1]],
-                            facet.indices[o[2]],
-                        ];
-                        let tcs = if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                            [
-                                facet.tex_coords[o[0]],
-                                facet.tex_coords[o[1]],
-                                facet.tex_coords[o[2]],
-                            ]
-                        } else {
-                            [[0, 0], [0, 0], [0, 0]]
-                        };
+                    if !masking_faces {
+                        // Load all vertices in this facet into the vertex upload buffer, copying
+                        // in the color and texture coords for each face. Note that the layout is
+                        // for triangle fans.
+                        let mut v_base = verts.len() as u32;
+                        for i in 2..facet.indices.len() {
+                            // Given that most facets are very short strips, and we need to copy the
+                            // vertices anyway, it is probably more space efficient to just upload triangle
+                            // lists instead of trying to span safely between adjacent strips.
+                            let o = [0, i - 1, i];
+                            let inds = [
+                                facet.indices[o[0]],
+                                facet.indices[o[1]],
+                                facet.indices[o[2]],
+                            ];
+                            let tcs = if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                                [
+                                    facet.tex_coords[o[0]],
+                                    facet.tex_coords[o[1]],
+                                    facet.tex_coords[o[2]],
+                                ]
+                            } else {
+                                [[0, 0], [0, 0], [0, 0]]
+                            };
 
-                        for (index, tex_coord) in inds.iter().zip(&tcs) {
-                            ensure!(
-                                (*index as usize) < vert_pool.len(),
-                                "out-of-bounds vertex reference in facet {:?}, current pool size: {}",
-                                facet,
-                                vert_pool.len()
-                            );
-                            let mut v = vert_pool[*index as usize];
-                            v.color = self.system_palette.rgba_f32(facet.color as usize)?;
-                            if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
-                                || facet.flags.contains(FacetFlags::UNK1)
-                                || facet.flags.contains(FacetFlags::UNK5)
-                            {
-                                v.flags = 1;
+                            for (index, tex_coord) in inds.iter().zip(&tcs) {
+                                ensure!(
+                                    (*index as usize) < vert_pool.len(),
+                                    "out-of-bounds vertex reference in facet {:?}, current pool size: {}",
+                                    facet,
+                                    vert_pool.len()
+                                );
+                                let mut v = vert_pool[*index as usize];
+                                v.color = self.system_palette.rgba_f32(facet.color as usize)?;
+                                if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
+                                    || facet.flags.contains(FacetFlags::UNK1)
+                                    || facet.flags.contains(FacetFlags::UNK5)
+                                {
+                                    v.flags = 1;
+                                }
+                                if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                                    assert!(active_frame.is_some());
+                                    let frame = active_frame.unwrap();
+                                    v.tex_coord = frame.tex_coord_at(*tex_coord);
+                                }
+                                verts.push(v);
+                                indices.push(v_base);
+                                v_base += 1;
                             }
-                            if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                                assert!(active_frame.is_some());
-                                let frame = active_frame.unwrap();
-                                v.tex_coord = frame.tex_coord_at(*tex_coord);
-                            }
-                            verts.push(v);
-                            indices.push(v_base);
-                            v_base += 1;
                         }
                     }
                 }

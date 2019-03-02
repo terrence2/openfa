@@ -44,10 +44,9 @@ struct Opt {
     #[structopt(
         short = "s",
         long = "stop",
-        default_value = "100000",
         help = "Stop at this instruction."
     )]
-    stop_at_offset: usize,
+    stop_at_offset: Option<usize>,
 
     #[structopt(short = "r", long = "range", help = "Show only this range.")]
     ranged: Option<String>,
@@ -69,7 +68,7 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
     let sh = CpuShape::from_bytes(&lib.load(&opt.input)?)?;
-    let mut stop_at_offset = opt.stop_at_offset;
+    let mut stop_at_offset = opt.stop_at_offset.unwrap_or(sh.length());
     let mut draw_mode = DrawMode {
         range: opt.ranged.map(|s| {
             let mut parts = s.split(",");
@@ -82,7 +81,13 @@ fn main() -> Fallible<()> {
         closeness: 0x200,
         frame_number: 0,
         detail: 4,
-        gear_position: None,
+        gear_position: Some(18),
+        flaps_down: false,
+        airbrake_extended: true,
+        hook_extended: true,
+        bay_open: false,
+        afterburner_enabled: true,
+        rudder_position: 0,
     };
     sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
@@ -181,87 +186,131 @@ fn main() -> Fallible<()> {
                         input:
                             KeyboardInput {
                                 virtual_keycode: Some(keycode),
-                                state: ElementState::Pressed,
+                                state: pressed,
                                 modifiers: mod_state,
                                 ..
                             },
                         ..
                     },
                 ..
-            } => match keycode {
-                VirtualKeyCode::Escape => done = true,
-                VirtualKeyCode::Right => {
-                    stop_at_offset = stop_at_offset.saturating_add(1);
-                    need_reset = true;
-                }
-                VirtualKeyCode::Left => {
-                    stop_at_offset = stop_at_offset.saturating_sub(1);
-                    need_reset = true;
-                }
-                VirtualKeyCode::Up => {
-                    stop_at_offset = stop_at_offset.saturating_add(0x10);
-                    need_reset = true;
-                }
-                VirtualKeyCode::Down => {
-                    stop_at_offset = stop_at_offset.saturating_sub(0x10);
-                    need_reset = true;
-                }
-                VirtualKeyCode::PageUp => {
-                    stop_at_offset = stop_at_offset.saturating_add(0x100);
-                    need_reset = true;
-                }
-                VirtualKeyCode::PageDown => {
-                    stop_at_offset = stop_at_offset.saturating_sub(0x100);
-                    need_reset = true;
-                }
-                VirtualKeyCode::End => {
-                    stop_at_offset = 100_000;
-                    need_reset = true;
-                }
-                VirtualKeyCode::Home => {
-                    stop_at_offset = 0;
-                    need_reset = true;
-                }
-                VirtualKeyCode::Period => {
-                    if mod_state.ctrl {
-                        draw_mode.closeness = draw_mode.closeness.saturating_add(0x10);
-                    } else {
-                        draw_mode.closeness = draw_mode.closeness.saturating_add(0x1);
+            } => {
+                if pressed == ElementState::Pressed {
+                    match keycode {
+                        VirtualKeyCode::Escape => done = true,
+                        VirtualKeyCode::Right => {
+                            stop_at_offset = stop_at_offset.saturating_add(1);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Left => {
+                            stop_at_offset = stop_at_offset.saturating_sub(1);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Up => {
+                            stop_at_offset = stop_at_offset.saturating_add(0x10);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Down => {
+                            stop_at_offset = stop_at_offset.saturating_sub(0x10);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::PageUp => {
+                            stop_at_offset = stop_at_offset.saturating_add(0x100);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::PageDown => {
+                            stop_at_offset = stop_at_offset.saturating_sub(0x100);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::End => {
+                            stop_at_offset = 100_000;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Home => {
+                            stop_at_offset = 0;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Period => {
+                            if mod_state.ctrl {
+                                draw_mode.closeness = draw_mode.closeness.saturating_add(0x10);
+                            } else {
+                                draw_mode.closeness = draw_mode.closeness.saturating_add(0x1);
+                            }
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Comma => {
+                            if mod_state.ctrl {
+                                draw_mode.closeness = draw_mode.closeness.saturating_sub(0x10);
+                            } else {
+                                draw_mode.closeness = draw_mode.closeness.saturating_sub(0x1);
+                            }
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::LBracket => {
+                            draw_mode.frame_number = draw_mode.frame_number.saturating_sub(1);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::RBracket => {
+                            draw_mode.frame_number = draw_mode.frame_number.saturating_add(1);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::D => {
+                            draw_mode.damaged = !draw_mode.damaged;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::G => {
+                            if draw_mode.gear_position.is_none() {
+                                draw_mode.gear_position = Some(0x10); // ?
+                            } else {
+                                draw_mode.gear_position = None;
+                            }
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::F => {
+                            draw_mode.flaps_down = !draw_mode.flaps_down;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::B => {
+                            draw_mode.airbrake_extended = !draw_mode.airbrake_extended;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::H => {
+                            draw_mode.hook_extended = !draw_mode.hook_extended;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::O => {
+                            draw_mode.bay_open = !draw_mode.bay_open;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::A => {
+                            draw_mode.afterburner_enabled = !draw_mode.afterburner_enabled;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Z => {
+                            draw_mode.rudder_position = 1;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::X => {
+                            draw_mode.rudder_position = -1;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Q => done = true,
+                        VirtualKeyCode::R => need_reset = true,
+                        _ => trace!("unknown keycode: {:?}", keycode),
                     }
-                    need_reset = true;
-                }
-                VirtualKeyCode::Comma => {
-                    if mod_state.ctrl {
-                        draw_mode.closeness = draw_mode.closeness.saturating_sub(0x10);
-                    } else {
-                        draw_mode.closeness = draw_mode.closeness.saturating_sub(0x1);
+                } else if pressed == ElementState::Released {
+                    match keycode {
+                        VirtualKeyCode::Z => {
+                            draw_mode.rudder_position = 0;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::X => {
+                            draw_mode.rudder_position = 0;
+                            need_reset = true;
+                        }
+                        _ => {}
                     }
-                    need_reset = true;
                 }
-                VirtualKeyCode::LBracket => {
-                    draw_mode.frame_number = draw_mode.frame_number.saturating_sub(1);
-                    need_reset = true;
-                }
-                VirtualKeyCode::RBracket => {
-                    draw_mode.frame_number = draw_mode.frame_number.saturating_add(1);
-                    need_reset = true;
-                }
-                VirtualKeyCode::D => {
-                    draw_mode.damaged = !draw_mode.damaged;
-                    need_reset = true;
-                }
-                VirtualKeyCode::G => {
-                    if draw_mode.gear_position.is_none() {
-                        draw_mode.gear_position = Some(0x10); // ?
-                    } else {
-                        draw_mode.gear_position = None;
-                    }
-                    need_reset = true;
-                }
-                VirtualKeyCode::Q => done = true,
-                VirtualKeyCode::R => need_reset = true,
-                _ => trace!("unknown keycode: {:?}", keycode),
-            },
+            }
 
             _ => (),
         });
@@ -282,12 +331,18 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}",
+            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{}, aft:{}, rudder:{}",
             stop_at_offset,
             draw_mode.damaged,
             draw_mode.closeness,
             draw_mode.frame_number,
             draw_mode.gear_position,
+            draw_mode.flaps_down,
+            draw_mode.airbrake_extended,
+            draw_mode.hook_extended,
+            draw_mode.bay_open,
+            draw_mode.afterburner_enabled,
+            draw_mode.rudder_position,
         );
         window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }

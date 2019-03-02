@@ -492,13 +492,13 @@ impl<'a> Interpreter<'a> {
     }
 
     fn do_compare(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
-        let a = self.get(op1)?;
-        let b = self.get(op2)?;
-        self.cf = (a as i32) < (b as i32);
+        let a = self.get(op1)? as i32;
+        let b = self.get(op2)? as i32;
+        self.cf = a < b;
         let rv = a.checked_sub(b);
         let v = if rv.is_none() {
             self.of = true;
-            a + b
+            a.wrapping_add(b)
         } else {
             self.of = false;
             rv.unwrap()

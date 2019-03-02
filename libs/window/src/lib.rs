@@ -43,6 +43,9 @@ pub struct GraphicsConfig {
 pub struct GraphicsConfigBuilder(GraphicsConfig);
 
 impl GraphicsConfigBuilder {
+    // const DEPTH_FORMAT: Format = Format::D16Unorm;
+    const DEPTH_FORMAT: Format = Format::D32Sfloat;
+
     pub fn new() -> Self {
         GraphicsConfigBuilder(GraphicsConfig {
             device_index: 0,
@@ -101,7 +104,7 @@ impl SizeDependent {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
 
         let depth_buffer =
-            AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
+            AttachmentImage::transient(device.clone(), dimensions, GraphicsConfigBuilder::DEPTH_FORMAT)?;
 
         let (swapchain, images) = Swapchain::new(
             device.clone(),
@@ -135,7 +138,7 @@ impl SizeDependent {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: GraphicsConfigBuilder::DEPTH_FORMAT,
                     samples: 1,
                 }
             },
@@ -172,7 +175,7 @@ impl SizeDependent {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
 
         let depth_buffer =
-            AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm)?;
+            AttachmentImage::transient(device.clone(), dimensions, GraphicsConfigBuilder::DEPTH_FORMAT)?;
 
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
         self.swapchain = swapchain;

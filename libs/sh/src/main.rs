@@ -161,7 +161,7 @@ fn main() -> Fallible<()> {
                                                 if let sh::Instr::VertexBuf(vxbuf) =
                                                     &shape.instrs[j]
                                                 {
-                                                    println!("{} : {}", tramp.name, vxbuf.unk0);
+                                                    println!("{} : {} : {} : {}", shape.instrs.len(), name.as_os_str().to_str().unwrap(), tramp.name, vxbuf.unk0);
                                                 }
                                             }
                                         }

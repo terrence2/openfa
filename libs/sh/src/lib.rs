@@ -2020,7 +2020,7 @@ impl Unk12 {
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}Unk12{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
+            "@{:04X} {}Unk12{}: {}{}{}| {}{}{} (target:{:04X})",
             self.offset,
             Escape::new().fg(Color::Red).bold(),
             Escape::new(),
@@ -2030,7 +2030,94 @@ impl Unk12 {
             Escape::new().fg(Color::Red),
             p2s(self.data, 2, Self::SIZE),
             Escape::new(),
-            self.offset_to_next,
+            self.next_offset()
+        )
+    }
+}
+
+// Always points to a valid instruction. Seems to take some part in
+// toggling on parts of the file that are used for showing e.g. gear
+// or afterburners in the low-poly versions.
+#[derive(Debug)]
+pub struct UnkC4 {
+    pub offset: usize,
+    data: *const u8,
+
+    pub t0: i16,
+    pub t1: i16,
+    pub t2: i16,
+    pub a0: i16,
+    pub a1: i16,
+    pub a2: i16,
+    pub offset_to_next: usize,
+}
+
+impl UnkC4 {
+    pub const MAGIC: u8 = 0xC4;
+    pub const SIZE: usize = 16;
+
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
+        let t0 = word_ref[0];
+        let t1 = word_ref[1];
+        let t2 = word_ref[2];
+        let a0 = word_ref[3];
+        let a1 = word_ref[4];
+        let a2 = word_ref[5];
+        let uword_ref: &[u16] = unsafe { mem::transmute(&data[14..]) };
+        let offset_to_next = uword_ref[0] as usize;
+        Ok(Self {
+            offset,
+            data: data[0..Self::SIZE].as_ptr(),
+            t0,
+            t1,
+            t2,
+            a0,
+            a1,
+            a2,
+            offset_to_next,
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "C4"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        self.offset + Self::SIZE + self.offset_to_next
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}UnkC4{}: {}{}{}| {}{}{} t:({}{},{},{}{}) a:({}{},{},{}{}) {}{}{} (target:{:04X})",
+            self.offset,
+            Escape::new().fg(Color::Red).bold(),
+            Escape::new(),
+            Escape::new().fg(Color::Red).bold(),
+            p2s(self.data, 0, 2).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Blue),
+            p2s(self.data, 2, Self::SIZE).trim(),
+            Escape::new(),
+            Escape::new().fg(Color::Magenta),
+            self.t0, self.t1, self.t2,
+            Escape::new(),
+            Escape::new().fg(Color::Magenta),
+            self.a0, self.a1, self.a2,
+            Escape::new(),
+            Escape::new().fg(Color::Cyan),
+            p2s(self.data, Self::SIZE - 2, Self::SIZE).trim(),
+            Escape::new(),
             self.next_offset()
         )
     }
@@ -2572,7 +2659,7 @@ opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
 opaque_instr!(Unk96, "96", 0x96, 6);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
-opaque_instr!(UnkC4, "C4", 0xC4, 16);
+//opaque_instr!(UnkC4, "C4", 0xC4, 16);
 opaque_instr!(UnkCA, "CA", 0xCA, 4);
 opaque_instr!(UnkD0, "D0", 0xD0, 4);
 opaque_instr!(UnkD2, "D2", 0xD2, 8);
@@ -3161,6 +3248,14 @@ impl CpuShape {
             b_offset += instr.size() as u32;
         }
         bail!("no instruction at x86_offset: {:08X}", x86_offset)
+    }
+
+    pub fn byte_length(&self) -> usize {
+        self.pe.code.len()
+    }
+
+    pub fn length(&self) -> usize {
+        self.instrs.len()
     }
 }
 
