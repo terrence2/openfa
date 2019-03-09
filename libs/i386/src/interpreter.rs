@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(clippy::new_without_default_derive, clippy::transmute_ptr_to_ptr)]
+#![allow(clippy::new_without_default, clippy::transmute_ptr_to_ptr)]
 
 use crate::{
     disassembler::{ByteCode, MemRef, Memonic, Operand, Reg},
@@ -182,6 +182,7 @@ impl<'a> Interpreter<'a> {
                 Memonic::Pop => self.do_pop(instr.op(0))?,
                 Memonic::Move => self.do_move(instr.op(0), instr.op(1))?,
                 Memonic::MoveStr => self.do_move_str(instr.op(0), instr.op(1))?,
+                Memonic::MoveZX => self.do_move_zx(instr.op(0), instr.op(1))?,
                 Memonic::Dec => self.do_dec(instr.op(0))?,
                 Memonic::Inc => self.do_inc(instr.op(0))?,
                 Memonic::Neg => self.do_neg(instr.op(0))?,
@@ -189,7 +190,7 @@ impl<'a> Interpreter<'a> {
                 Memonic::Adc => self.do_adc(instr.op(0), instr.op(1))?,
                 Memonic::Sub => self.do_sub(instr.op(0), instr.op(1))?,
                 Memonic::IDiv => self.do_idiv(instr.op(0), instr.op(1), instr.op(2))?,
-                Memonic::IMul => self.do_imul(instr.op(0), instr.op(1), instr.op(2))?,
+                Memonic::IMul3 => self.do_imul3(instr.op(0), instr.op(1), instr.op(2))?,
                 Memonic::IMul2 => self.do_imul2(instr.op(0), instr.op(1))?,
                 Memonic::And => self.do_and(instr.op(0), instr.op(1))?,
                 Memonic::Or => self.do_or(instr.op(0), instr.op(1))?,
@@ -338,6 +339,11 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
+    fn do_move_zx(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
+        let v = self.get(op2)?;
+        self.put(op1, v)
+    }
+
     fn do_dec(&mut self, op: &Operand) -> Fallible<()> {
         let v = self.get(op)? - 1;
         // FIXME: set flags
@@ -375,17 +381,14 @@ impl<'a> Interpreter<'a> {
         self.put(op1, (a - b) as u32)
     }
 
-    fn do_imul(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Fallible<()> {
+    fn do_imul3(&mut self, dst: &Operand, src1: &Operand, src2: &Operand) -> Fallible<()> {
         // dx:ax = ax * reg
-        let a = i64::from(self.get(op_ax)? as i32);
-        let b = i64::from(self.get(op3)? as i32);
+        let a = i64::from(self.get(src1)? as i32);
+        let b = i64::from(self.get(src2)? as i32);
         let v = a * b;
-        let va = (v & 0xFFFF_FFFF) as u32;
-        let vd = (v >> 32) as u32;
-        self.cf = vd != 0;
+        self.cf = v & 0xFFFF_FFFF == v;
         self.of = self.cf;
-        self.put(op_ax, va)?;
-        self.put(op_dx, vd)
+        self.put(dst, (v & 0xFFFF_FFFF) as u32)
     }
 
     fn do_imul2(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
@@ -395,7 +398,7 @@ impl<'a> Interpreter<'a> {
         let v = a * b;
         self.cf = v & 0xFFFF_FFFF == v;
         self.of = self.cf;
-        Ok(())
+        self.put(op1, (v & 0xFFFF_FFFF) as u32)
     }
 
     fn do_idiv(&mut self, op_dx: &Operand, op_ax: &Operand, op3: &Operand) -> Fallible<()> {
@@ -601,10 +604,11 @@ impl<'a> Interpreter<'a> {
                 "non-zero segment register in mem ref"
             );
         }
-        ensure!(
-            mem.index.is_none(),
-            "don't know how to handle index in mem read"
-        );
+        let index = if let Some(ref r) = mem.index {
+            self.registers[r.to_offset()]
+        } else {
+            0
+        } * u32::from(mem.scale);
         let base = if let Some(ref r) = mem.base {
             self.registers[r.to_offset()]
         } else {
@@ -613,11 +617,11 @@ impl<'a> Interpreter<'a> {
         //let base = mem.base.map(|r| self.registers[r.to_offset()]).unwrap_or(0);
         //let base = mem.base.map_or(0, |ref r| self.registers[r.to_offset()]);
         let addr = if mem.displacement >= 0 {
-            base + mem.displacement as u32
+            base + index + mem.displacement as u32
         } else if base > -mem.displacement as u32 {
-            base - (-mem.displacement) as u32
+            base + index - (-mem.displacement) as u32
         } else {
-            (base as i32 + mem.displacement) as u32
+            (base as i32 + index as i32 + mem.displacement) as u32
         };
         Ok(addr)
     }

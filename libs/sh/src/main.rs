@@ -142,6 +142,7 @@ fn main() -> Fallible<()> {
                 println!("{} - {}", dedup[memref], memref);
             }
         } else if opt.custom {
+            /*
             for (offset, vinstr) in shape.instrs.iter().enumerate() {
                 if let sh::Instr::X86Code(x86) = vinstr {
                     for instr in &x86.bytecode.instrs {
@@ -172,6 +173,59 @@ fn main() -> Fallible<()> {
                     }
                 }
             }
+            */
+            /*
+                1081: @4A0B X86Code: F0 00 66 83 3D 70 4D 00 AA 01 75 11 68 22 4A 00 AA 68 88 4D 00 AA C3
+                @00|4A0D: 66 83 3D 70 4D 00 AA 01  Compare([0xAA004D70], 0x1) [_PLgearDown]
+                @08|4A15: 75 11                   Jcc(Unary(Check(ZF, false)))(0x11 -> 0x4A28)
+                @0A|4A17: 68 22 4A 00 AA          Push(0xAA004A22)
+                @0F|4A1C: 68 88 4D 00 AA          Push(0xAA004D88)
+                @14|4A21: C3                      Return() [do_start_interp]
+                1082: @4A22 Unk12: 12 00| 10 00  (target:4A36)
+                1083: @4A26 X86Code: F0 00 68 33 4A 00 AA 68 88 4D 00 AA C3
+                @00|4A28: 68 33 4A 00 AA          Push(0xAA004A33)
+                @05|4A2D: 68 88 4D 00 AA          Push(0xAA004D88)
+                @0A|4A32: C3                      Return() [do_start_interp]
+            */
+
+            fn is_match(offset: usize, instrs: &[sh::Instr]) -> bool {
+                if offset > instrs.len() - 3 {
+                    return false;
+                }
+                if let sh::Instr::X86Code(sh::X86Code {
+                    have_header: true,
+                    bytecode: i386::ByteCode { instrs: bc, .. },
+                    ..
+                }) = &instrs[offset]
+                {
+                    if bc[0].memonic == i386::Memonic::Compare
+                        && bc[2].memonic == i386::Memonic::Push
+                        && bc[3].memonic == i386::Memonic::Push
+                        && bc[4].memonic == i386::Memonic::Return
+                    {
+                        if let i386::Memonic::Jcc(_cond) = bc[1].memonic {
+                            return true;
+                        }
+                    }
+                    //   && let sh::Instr::Unk12(unk12) = shape.instrs[offset + 1]
+                    //   && let sh::Instr::X86Code(x86_2) = shape.instrs[offset + 2]
+                }
+
+                false
+            }
+
+            let mut matching = 0;
+            let mut nonmatching = 0;
+            for (offset, vinstr) in shape.instrs.iter().enumerate() {
+                if let sh::Instr::X86Code(_) = vinstr {
+                    if is_match(offset, &shape.instrs) {
+                        matching += 1;
+                    } else {
+                        nonmatching += 1;
+                    }
+                }
+            }
+            println!("matching: {}, non: {}", matching, nonmatching);
         }
 
         //        for (i, instr) in shape.instrs.iter().enumerate() {

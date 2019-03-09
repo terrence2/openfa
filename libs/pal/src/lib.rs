@@ -62,10 +62,10 @@ impl Palette {
     pub fn rgba_f32(&self, index: usize) -> Fallible<[f32; 4]> {
         let c = self.rgba(index)?;
         Ok([
-            c.data[0] as f32 / 256f32,
-            c.data[1] as f32 / 256f32,
-            c.data[2] as f32 / 256f32,
-            c.data[3] as f32 / 256f32,
+            f32::from(c.data[0]) / 256f32,
+            f32::from(c.data[1]) / 256f32,
+            f32::from(c.data[2]) / 256f32,
+            f32::from(c.data[3]) / 256f32,
         ])
     }
 

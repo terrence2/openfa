@@ -127,10 +127,10 @@ impl Default for PhysBounds {
 
 make_type_struct![
 PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
-(Num,   [Dec, Hex],        "flags",Unsigned, flags, u32, V0, panic!()), // dword $2d ; flags
+(Num,   [Dec, Hex],        "flags",Unsigned, flags,                u32, V0, panic!()), // dword $2d ; flags
 (Ptr,   [Sym],               "env",  Custom, envelopes,      Envelopes, V0, panic!()),  // ptr env
-(Word,  [Dec],            "envMin",  Signed, envMin,               i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
-(Word,  [Dec],            "envMax",  Signed, envMax,               i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
+(Word,  [Dec],            "envMin",  Signed, env_min,              i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
+(Word,  [Dec],            "envMax",  Signed, env_max,              i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
 (Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,  u16, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
 (Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,        u16, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
 (Word,  [Dec],            "_bv.x.", CustomN, bv_x,          PhysBounds, V0, panic!()),
@@ -139,69 +139,69 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],           "_brv.x.", CustomN, brv_x,         PhysBounds, V0, panic!()),
 (Word,  [Dec],           "_brv.y.", CustomN, brv_y,         PhysBounds, V0, panic!()),
 (Word,  [Dec],           "_brv.z.", CustomN, brv_z,         PhysBounds, V0, panic!()),
-(Word,  [Dec],          "gpullAOA",  Signed, gpullAOA,             i16, V0, panic!()), // word 20 ; gpullAOA
-(Word,  [Dec],       "lowAOASpeed",  Signed, lowAOASpeed,          i16, V0, panic!()), // word 70 ; lowAOASpeed
-(Word,  [Dec],       "lowAOAPitch",  Signed, lowAOAPitch,          i16, V0, panic!()), // word 15 ; lowAOAPitch
-(Word,  [Dec], "turbulencePercent",  Signed, turbulencePercent,    i16, V1, 0),        // word 149 ; turbulencePercent
-(Word,  [Dec],     "rudderYaw.min",  Signed, rudderYaw_min,        i16, V0, panic!()), // word -1 ; rudderYaw.min
-(Word,  [Dec],     "rudderYaw.max",  Signed, rudderYaw_max,        i16, V0, panic!()), // word 1 ; rudderYaw.max
-(Word,  [Dec],     "rudderYaw.acc",  Signed, rudderYaw_acc,        i16, V0, panic!()), // word 1 ; rudderYaw.acc
-(Word,  [Dec],    "rudderYaw.dacc",  Signed, rudderYaw_dacc,       i16, V0, panic!()), // word 3 ; rudderYaw.dacc
-(Word,  [Dec],        "rudderSlip",  Signed, rudderSlip,           i16, V0, panic!()), // word 10 ; rudderSlip
-(Word,  [Dec],        "rudderDrag",  Signed, rudderDrag,           i16, V0, panic!()), // word 128 ; rudderDrag
-(Word,  [Dec],        "rudderBank",  Signed, rudderBank,           i16, V0, panic!()), // word 5 ; rudderBank
-(Word,  [Dec],        "puffRot.x.", CustomN, puffRot_x,     PhysBounds, V1, Default::default()),
-(Word,  [Dec],        "puffRot.y.", CustomN, puffRot_y,     PhysBounds, V1, Default::default()),
-(Word,  [Dec],        "puffRot.z.", CustomN, puffRot_z,     PhysBounds, V1, Default::default()),
-(Word,  [Dec], "stallWarningDelay",  Signed, stallWarningDelay,    i16, V0, panic!()), // word 512 ; stallWarningDelay
-(Word,  [Dec],        "stallDelay",  Signed, stallDelay,           i16, V0, panic!()), // word 512 ; stallDelay
-(Word,  [Dec],     "stallSeverity",  Signed, stallSeverity,        i16, V0, panic!()), // word 256 ; stallSeverity
-(Word,  [Dec],    "stallPitchDown",  Signed, stallPitchDown,       i16, V0, panic!()), // word 30 ; stallPitchDown
-(Word,  [Dec],         "spinEntry",  Signed, spinEntry,            i16, V0, panic!()), // word 2 ; spinEntry
-(Word,  [Dec],          "spinExit",  Signed, spinExit,             i16, V0, panic!()), // word -2 ; spinExit
-(Word,  [Dec],        "spinYawLow",  Signed, spinYawLow,           i16, V0, panic!()), // word 120 ; spinYawLow
-(Word,  [Dec],       "spinYawHigh",  Signed, spinYawHigh,          i16, V0, panic!()), // word 180 ; spinYawHigh
-(Word,  [Dec],        "spinAOALow",  Signed, spinAOALow,           i16, V0, panic!()), // word 30 ; spinAOALow
-(Word,  [Dec],       "spinAOAHigh",  Signed, spinAOAHigh,          i16, V0, panic!()), // word 70 ; spinAOAHigh
-(Word,  [Dec],       "spinBankLow",  Signed, spinBankLow,          i16, V0, panic!()), // word 15 ; spinBankLow
-(Word,  [Dec],      "spinBankHigh",  Signed, spinBankHigh,         i16, V0, panic!()), // word 5 ; spinBankHigh
-(Word,  [Dec],         "gearPitch",  Signed, gearPitch,            i16, V0, panic!()), // word 0 ; gearPitch
-(Word,  [Dec], "crashSpeedForward",  Signed, crashSpeedForward,    i16, V0, panic!()), // word 330 ; crashSpeedForward
-(Word,  [Dec],    "crashSpeedSide",  Signed, crashSpeedSide,       i16, V0, panic!()), // word 51 ; crashSpeedSide
-(Word,  [Dec],"crashSpeedVertical",  Signed, crashSpeedVertical,   i16, V0, panic!()), // word 95 ; crashSpeedVertical
-(Word,  [Dec],        "crashPitch",  Signed, crashPitch,           i16, V0, panic!()), // word 25 ; crashPitch
-(Word,  [Dec],         "crashRoll",  Signed, crashRoll,            i16, V0, panic!()), // word 10 ; crashRoll
+(Word,  [Dec],          "gpullAOA",  Signed, gpull_aoa,            i16, V0, panic!()), // word 20 ; gpullAOA
+(Word,  [Dec],       "lowAOASpeed",  Signed, low_aoa_speed,        i16, V0, panic!()), // word 70 ; lowAOASpeed
+(Word,  [Dec],       "lowAOAPitch",  Signed, low_aoa_pitch,        i16, V0, panic!()), // word 15 ; lowAOAPitch
+(Word,  [Dec], "turbulencePercent",  Signed, turbulence_percent,   i16, V1, 0),        // word 149 ; turbulencePercent
+(Word,  [Dec],     "rudderYaw.min",  Signed, rudder_yaw_min,       i16, V0, panic!()), // word -1 ; rudderYaw.min
+(Word,  [Dec],     "rudderYaw.max",  Signed, rudder_yaw_max,       i16, V0, panic!()), // word 1 ; rudderYaw.max
+(Word,  [Dec],     "rudderYaw.acc",  Signed, rudder_yaw_acc,       i16, V0, panic!()), // word 1 ; rudderYaw.acc
+(Word,  [Dec],    "rudderYaw.dacc",  Signed, rudder_yaw_dacc,      i16, V0, panic!()), // word 3 ; rudderYaw.dacc
+(Word,  [Dec],        "rudderSlip",  Signed, rudder_slip,          i16, V0, panic!()), // word 10 ; rudderSlip
+(Word,  [Dec],        "rudderDrag",  Signed, rudder_drag,          i16, V0, panic!()), // word 128 ; rudderDrag
+(Word,  [Dec],        "rudderBank",  Signed, rudder_bank,          i16, V0, panic!()), // word 5 ; rudderBank
+(Word,  [Dec],        "puffRot.x.", CustomN, puff_rot_x,    PhysBounds, V1, Default::default()),
+(Word,  [Dec],        "puffRot.y.", CustomN, puff_rot_y,    PhysBounds, V1, Default::default()),
+(Word,  [Dec],        "puffRot.z.", CustomN, puff_rot_z,    PhysBounds, V1, Default::default()),
+(Word,  [Dec], "stallWarningDelay",  Signed, stall_warning_delay,  i16, V0, panic!()), // word 512 ; stallWarningDelay
+(Word,  [Dec],        "stallDelay",  Signed, stall_delay,          i16, V0, panic!()), // word 512 ; stallDelay
+(Word,  [Dec],     "stallSeverity",  Signed, stall_severity,       i16, V0, panic!()), // word 256 ; stallSeverity
+(Word,  [Dec],    "stallPitchDown",  Signed, stall_pitch_down,     i16, V0, panic!()), // word 30 ; stallPitchDown
+(Word,  [Dec],         "spinEntry",  Signed, spin_entry,           i16, V0, panic!()), // word 2 ; spinEntry
+(Word,  [Dec],          "spinExit",  Signed, spin_exit,            i16, V0, panic!()), // word -2 ; spinExit
+(Word,  [Dec],        "spinYawLow",  Signed, spin_yaw_low,         i16, V0, panic!()), // word 120 ; spinYawLow
+(Word,  [Dec],       "spinYawHigh",  Signed, spin_yaw_high,        i16, V0, panic!()), // word 180 ; spinYawHigh
+(Word,  [Dec],        "spinAOALow",  Signed, spin_aoa_low,         i16, V0, panic!()), // word 30 ; spinAOALow
+(Word,  [Dec],       "spinAOAHigh",  Signed, spin_aoa_high,        i16, V0, panic!()), // word 70 ; spinAOAHigh
+(Word,  [Dec],       "spinBankLow",  Signed, spin_bank_low,        i16, V0, panic!()), // word 15 ; spinBankLow
+(Word,  [Dec],      "spinBankHigh",  Signed, spin_bank_high,       i16, V0, panic!()), // word 5 ; spinBankHigh
+(Word,  [Dec],         "gearPitch",  Signed, gear_pitch,           i16, V0, panic!()), // word 0 ; gearPitch
+(Word,  [Dec], "crashSpeedForward",  Signed, crash_speed_forward,  i16, V0, panic!()), // word 330 ; crashSpeedForward
+(Word,  [Dec],    "crashSpeedSide",  Signed, crash_speed_side,     i16, V0, panic!()), // word 51 ; crashSpeedSide
+(Word,  [Dec],"crashSpeedVertical",  Signed, crash_speed_vertical, i16, V0, panic!()), // word 95 ; crashSpeedVertical
+(Word,  [Dec],        "crashPitch",  Signed, crash_pitch,          i16, V0, panic!()), // word 25 ; crashPitch
+(Word,  [Dec],         "crashRoll",  Signed, crash_roll,           i16, V0, panic!()), // word 10 ; crashRoll
 (Byte,  [Dec],           "engines",Unsigned, engines,               u8, V0, panic!()), // byte 1 ; engines
-(Word,  [Dec],         "negGLimit",  Signed, negGLimit,            i16, V0, panic!()), // word 2560 ; negGLimit
+(Word,  [Dec],         "negGLimit",  Signed, neg_g_limit,          i16, V0, panic!()), // word 2560 ; negGLimit
 (DWord, [Dec],            "thrust",Unsigned, thrust,               u32, V0, panic!()), // dword 17687 ; thrust
-(DWord, [Dec],         "aftThrust",Unsigned, aftThrust,            u32, V0, panic!()), // dword 0 ; aftThrust
-(Word,  [Dec],       "throttleAcc",  Signed, throttleAcc,          i16, V0, panic!()), // word 40 ; throttleAcc
-(Word,  [Dec],      "throttleDacc",  Signed, throttleDacc,         i16, V0, panic!()), // word 60 ; throttleDacc
-(Word,  [Dec],         "vtLimitUp",  Signed, vtLimitUp,            i16, V1, 0),        // word -60 ; vtLimitUp
-(Word,  [Dec],       "vtLimitDown",  Signed, vtLimitDown,          i16, V1, 0),        // word -120 ; vtLimitDown
-(Word,  [Dec],           "vtSpeed",  Signed, vtSpeed,              i16, V1, 0),        // word 100 ; vtSpeed
-(Word,  [Dec],   "fuelConsumption",  Signed, fuelConsumption,      i16, V0, panic!()), // word 1 ; fuelConsumption
-(Word,  [Dec],"aftFuelConsumption",  Signed, aftFuelConsumption,   i16, V0, panic!()), // word 0 ; aftFuelConsumption
-(DWord, [Dec],      "internalFuel",Unsigned, internalFuel,         u32, V0, panic!()), // dword 6200 ; internalFuel
-(Word,  [Dec],          "coefDrag",  Signed, coefDrag,             i16, V0, panic!()), // word 256 ; coefDrag
-(Word,  [Dec],        "_gpullDrag",  Signed, _gpullDrag,           i16, V0, panic!()), // word 12 ; _gpullDrag
-(Word,  [Dec],     "airBrakesDrag",  Signed, airBrakesDrag,        i16, V0, panic!()), // word 256 ; airBrakesDrag
-(Word,  [Dec],   "wheelBrakesDrag",  Signed, wheelBrakesDrag,      i16, V0, panic!()), // word 102 ; wheelBrakesDrag
-(Word,  [Dec],         "flapsDrag",  Signed, flapsDrag,            i16, V0, panic!()), // word 0 ; flapsDrag
-(Word,  [Dec],          "gearDrag",  Signed, gearDrag,             i16, V0, panic!()), // word 23 ; gearDrag
-(Word,  [Dec],           "bayDrag",  Signed, bayDrag,              i16, V0, panic!()), // word 0 ; bayDrag
-(Word,  [Dec],         "flapsLift",  Signed, flapsLift,            i16, V0, panic!()), // word 0 ; flapsLift
-(Word,  [Dec],        "loadedDrag",  Signed, loadedDrag,           i16, V0, panic!()), // word 30 ; loadedDrag
-(Word,  [Dec],   "loadedGpullDrag",  Signed, loadedGpullDrag,      i16, V0, panic!()), // word 13 ; loadedGpullDrag
-(Word,  [Dec],    "loadedElevator",  Signed, loadedElevator,       i16, V0, panic!()), // word 40 ; loadedElevator
-(Word,  [Dec],     "loadedAileron",  Signed, loadedAileron,        i16, V0, panic!()), // word 40 ; loadedAileron
-(Word,  [Dec],      "loadedRudder",  Signed, loadedRudder,         i16, V0, panic!()), // word 40 ; loadedRudder
-(Word,  [Dec],"structureWarnLimit",  Signed, structureWarnLimit,   i16, V0, panic!()), // word 2560 ; structureWarnLimit
-(Word,  [Dec],    "structureLimit",  Signed, structureLimit,       i16, V0, panic!()), // word 5120 ; structureLimit
-(Byte,  [Dec],  "systemDamage [i]", CustomN, systemDamage,SystemDamage, V0, panic!()), // byte 20 ; systemDamage [i] ...
-(Word,  [Dec],     "miscPerFlight",  Signed, miscPerFlight,        i16, V0, panic!()), // word 10 ; miscPerFlight
-(Word,  [Dec],  "repairMultiplier",  Signed, repairMultiplier,     i16, V0, panic!()), // word 10 ; repairMultiplier
-(DWord, [Dec],  "maxTakeoffWeight",Unsigned, maxTakeoffWeight,     u32, V0, panic!())  // dword 16000 ; maxTakeoffWeight
+(DWord, [Dec],         "aftThrust",Unsigned, aft_thrust,           u32, V0, panic!()), // dword 0 ; aftThrust
+(Word,  [Dec],       "throttleAcc",  Signed, throttle_acc,         i16, V0, panic!()), // word 40 ; throttleAcc
+(Word,  [Dec],      "throttleDacc",  Signed, throttle_dacc,        i16, V0, panic!()), // word 60 ; throttleDacc
+(Word,  [Dec],         "vtLimitUp",  Signed, vt_limit_up,          i16, V1, 0),        // word -60 ; vtLimitUp
+(Word,  [Dec],       "vtLimitDown",  Signed, vt_limit_down,        i16, V1, 0),        // word -120 ; vtLimitDown
+(Word,  [Dec],           "vtSpeed",  Signed, vt_speed,             i16, V1, 0),        // word 100 ; vtSpeed
+(Word,  [Dec],   "fuelConsumption",  Signed, fuel_consumption,     i16, V0, panic!()), // word 1 ; fuelConsumption
+(Word,  [Dec],"aftFuelConsumption",  Signed, aft_fuel_consumption, i16, V0, panic!()), // word 0 ; aftFuelConsumption
+(DWord, [Dec],      "internalFuel",Unsigned, internal_fuel,        u32, V0, panic!()), // dword 6200 ; internalFuel
+(Word,  [Dec],          "coefDrag",  Signed, coef_drag,            i16, V0, panic!()), // word 256 ; coefDrag
+(Word,  [Dec],        "_gpullDrag",  Signed, _gpull_drag,          i16, V0, panic!()), // word 12 ; _gpullDrag
+(Word,  [Dec],     "airBrakesDrag",  Signed, air_brakes_drag,      i16, V0, panic!()), // word 256 ; airBrakesDrag
+(Word,  [Dec],   "wheelBrakesDrag",  Signed, wheel_brakes_drag,    i16, V0, panic!()), // word 102 ; wheelBrakesDrag
+(Word,  [Dec],         "flapsDrag",  Signed, flaps_drag,           i16, V0, panic!()), // word 0 ; flapsDrag
+(Word,  [Dec],          "gearDrag",  Signed, gear_drag,            i16, V0, panic!()), // word 23 ; gearDrag
+(Word,  [Dec],           "bayDrag",  Signed, bay_drag,             i16, V0, panic!()), // word 0 ; bayDrag
+(Word,  [Dec],         "flapsLift",  Signed, flaps_lift,           i16, V0, panic!()), // word 0 ; flapsLift
+(Word,  [Dec],        "loadedDrag",  Signed, loaded_drag,          i16, V0, panic!()), // word 30 ; loadedDrag
+(Word,  [Dec],   "loadedGpullDrag",  Signed, loaded_gpull_drag,    i16, V0, panic!()), // word 13 ; loadedGpullDrag
+(Word,  [Dec],    "loadedElevator",  Signed, loaded_elevator,      i16, V0, panic!()), // word 40 ; loadedElevator
+(Word,  [Dec],     "loadedAileron",  Signed, loaded_aileron,       i16, V0, panic!()), // word 40 ; loadedAileron
+(Word,  [Dec],      "loadedRudder",  Signed, loaded_rudder,        i16, V0, panic!()), // word 40 ; loadedRudder
+(Word,  [Dec],"structureWarnLimit",  Signed, structure_warn_limit, i16, V0, panic!()), // word 2560 ; structureWarnLimit
+(Word,  [Dec],    "structureLimit",  Signed, structure_limit,      i16, V0, panic!()), // word 5120 ; structureLimit
+(Byte,  [Dec],  "systemDamage [i]", CustomN, system_damage,SystemDamage,V0, panic!()), // byte 20 ; systemDamage [i] ...
+(Word,  [Dec],     "miscPerFlight",  Signed, misc_per_flight,      i16, V0, panic!()), // word 10 ; miscPerFlight
+(Word,  [Dec],  "repairMultiplier",  Signed, repair_multiplier,    i16, V0, panic!()), // word 10 ; repairMultiplier
+(DWord, [Dec],  "maxTakeoffWeight",Unsigned, max_takeoff_weight,   u32, V0, panic!())  // dword 16000 ; maxTakeoffWeight
 }];
 
 impl PlaneType {

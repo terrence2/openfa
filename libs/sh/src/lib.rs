@@ -32,7 +32,7 @@ enum ShError {
     NameUnending {},
 }
 
-const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
+pub const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
 
 lazy_static! {
     // Virtual instructions that have a one-byte header instead of
@@ -277,7 +277,7 @@ impl VertexBuf {
     }
 
     fn magic(&self) -> &'static str {
-        "VertexBuf(82)"
+        "82"
     }
 
     fn at_offset(&self) -> usize {
@@ -1045,7 +1045,7 @@ impl X86Trampoline {
         // using relocation, however, to help decode. So if the thunks are not
         // relocated automatically we have to check the relocated value
         // manually.
-        let thunk_target = pe.relocate_thunk_pointer(0xAA000000, addr);
+        let thunk_target = pe.relocate_thunk_pointer(SHAPE_LOAD_BASE, addr);
         trace!(
             "looking for target 0x{:X} in {} thunks",
             thunk_target,
@@ -1059,7 +1059,7 @@ impl X86Trampoline {
 
         // Also, in USNF, some of the thunks contain the base address already,
         // so treat them like a normal code pointer.
-        let thunk_target = pe.relocate_pointer(0xAA000000, addr);
+        let thunk_target = pe.relocate_pointer(SHAPE_LOAD_BASE, addr);
         trace!(
             "looking for target 0x{:X} in {} thunks",
             thunk_target,
@@ -1218,15 +1218,11 @@ impl X86Code {
         for instr in bc.instrs.iter_mut() {
             let mut context = None;
             for op in &instr.operands {
-                match op {
-                    Operand::Memory(ref mr) => {
-                        let mt =
-                            Self::find_trampoline_for_target(mr.displacement as u32, trampolines);
-                        if let Ok(tramp) = mt {
-                            context = Some(format!("{}", tramp.name));
-                        }
+                if let Operand::Memory(ref mr) = op {
+                    let mt = Self::find_trampoline_for_target(mr.displacement as u32, trampolines);
+                    if let Ok(tramp) = mt {
+                        context = Some(tramp.name.to_owned());
                     }
-                    _ => {}
                 }
             }
             if let Some(s) = context {
@@ -3332,7 +3328,8 @@ mod tests {
         let _ = TermLogger::init(LevelFilter::Info, Config::default()).unwrap();
 
         let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
+            "FA",
+            //"ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
         ])?;
 
         #[allow(unused_variables, unused_mut)]
@@ -3375,7 +3372,7 @@ mod tests {
                     _ => {}
                 }
             }
-            
+
             // Ensure that all offsets and sizes line up.
             let mut expect_offset = 0;
             for instr in &shape.instrs {
@@ -3565,7 +3562,7 @@ mod tests {
                 ),
                 Instr::UnknownUnknown(ref unk) => {
                     interp
-                        .map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone())
+                        .map_writable(SHAPE_LOAD_BASE + unk.offset as u32, unk.data.clone())
                         .unwrap();
                 }
                 Instr::X86Code(ref code) => {
@@ -3579,7 +3576,7 @@ mod tests {
         while offset < shape.instrs.len() {
             if let Instr::X86Code(ref code) = shape.instrs[offset] {
                 let rv = interp
-                    .interpret(0xAA000000u32 + code.code_offset as u32)
+                    .interpret(SHAPE_LOAD_BASE + code.code_offset as u32)
                     .unwrap();
                 match rv {
                     ExitInfo::OutOfInstructions => break,

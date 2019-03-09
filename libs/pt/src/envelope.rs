@@ -61,8 +61,7 @@ make_type_struct![
 Envelope(parent: (), version: EnvelopeVersion) {
 (Word, [Dec],     "env [ii].gload", Signed, gload,          i16, V0, panic!()), // word 5 ; env [ii].gload
 (Word, [Dec],     "env [ii].count", Signed, count,          i16, V0, panic!()), // word 5 ; env [ii].count
-(Word, [Dec], "env [ii].stallLift", Signed, stallLift,      i16, V0, panic!()), // word 2 ; env [ii].stallLift
-(Word, [Dec],  "env [ii].maxSpeed", Signed, maxSpeed,       i16, V0, panic!()), // word 3 ; env [ii].maxSpeed
+(Word, [Dec], "env [ii].stallLift", Signed, stall_lift,     i16, V0, panic!()), // word 2 ; env [ii].stallLift
+(Word, [Dec],  "env [ii].maxSpeed", Signed, max_speed,      i16, V0, panic!()), // word 3 ; env [ii].maxSpeed
 (Num,  [Dec], "env [ii].data [j].",CustomN, shape,EnvelopeShape, V0, panic!())  // word 300 ; env [ii].data [j].speed
-                                                                                // dword 0 ; env [ii].data [j].alt
 }];

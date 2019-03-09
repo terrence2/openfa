@@ -13,16 +13,20 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::sh::texture_atlas::TextureAtlas;
-use failure::{bail, ensure, Fallible};
+use failure::{ensure, Fallible};
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
-use nalgebra::{Matrix3, Matrix4, Vector4};
+use nalgebra::{Matrix4, Vector4};
 use pal::Palette;
 use pic::decode_pic;
 use sh::{CpuShape, FacetFlags, Instr};
-use std::{collections::HashMap, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -196,7 +200,7 @@ pub struct DrawMode {
     pub hook_extended: bool,
     pub bay_open: bool,
     pub afterburner_enabled: bool,
-    pub rudder_position: i32
+    pub rudder_position: i32,
 }
 
 pub struct ShRenderer {
@@ -204,6 +208,8 @@ pub struct ShRenderer {
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     instance: Option<ShInstance>,
 }
+
+const INST_BASE: u32 = 0x00004000;
 
 impl ShRenderer {
     pub fn new(system_palette: Arc<Palette>, window: &GraphicsWindow) -> Fallible<Self> {
@@ -284,24 +290,44 @@ impl ShRenderer {
         let bay_open = draw_mode.bay_open;
         let afterburner_enabled = draw_mode.afterburner_enabled;
         let rudder_position = draw_mode.rudder_position;
-        let currentTicks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+        let current_ticks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let mut c4_overlays = HashMap::new();
-
-        let call_names = vec!["do_start_interp"];
+        let call_names = vec!["do_start_interp", "_CATGUYDraw@4", "@HARDNumLoaded@8", "@HardpointAngle@4", "_InsectWingAngle@0"];
         let mut interp = i386::Interpreter::new();
+        let mut _v = [0u8; 0x100];
+        _v[0x8E + 1] = 0x1;
+        /*
+        let mut inst = Vec::new();
+        for i in 0..0x100 {
+            inst.push(0u8);
+        }
+        inst[0x40] = 0xFF;
+        interp
+            .map_writable(INST_BASE, inst)
+            .unwrap();
+        */
         for tramp in sh.trampolines.iter() {
             if call_names.contains(&tramp.name.as_ref()) {
                 interp.add_trampoline(tramp.mem_location, &tramp.name, 1);
                 continue;
             }
-            println!("Adding read port at {:08X}", tramp.mem_location);
+            println!(
+                "Adding port for {} at {:08X}",
+                tramp.name, tramp.mem_location
+            );
             match tramp.name.as_ref() {
                 "_currentTicks" => interp.add_read_port(
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _currentTicks");
-                        currentTicks as u32
+                        current_ticks as u32
+                    }),
+                ),
+                "_lowMemory" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _lowMemory");
+                        0
                     }),
                 ),
                 "_PLafterBurner" => interp.add_read_port(
@@ -335,6 +361,20 @@ impl ShRenderer {
                         } else {
                             0
                         }
+                    }),
+                ),
+                "_PLcanardPos" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLcanardPos");
+                        0
+                    }),
+                ),
+                "_PLdead" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLdead");
+                        0
                     }),
                 ),
                 "_PLgearDown" => interp.add_read_port(
@@ -392,6 +432,20 @@ impl ShRenderer {
                         }
                     }),
                 ),
+                "_PLrightAln" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLrightAln");
+                        0
+                    }),
+                ),
+                "_PLleftAln" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLleftAln");
+                        0
+                    }),
+                ),
                 "_PLrudder" => interp.add_read_port(
                     tramp.mem_location,
                     Box::new(move || {
@@ -399,59 +453,146 @@ impl ShRenderer {
                         rudder_position as u32
                     }),
                 ),
+                "_PLslats" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLslats");
+                        0
+                    }),
+                ),
+                "_PLstate" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLstate");
+                        0
+                    }),
+                ),
+                "_PLswingWing" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLswingWing");
+                        0
+                    }),
+                ),
+                "_PLvtOn" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLvtOn");
+                        0
+                    }),
+                ),
+
+                "_SAMcount" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _SAMcount");
+                        4
+                    }),
+                ),
+
+                "brentObjId" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP brentObjId");
+                        INST_BASE
+                    }),
+                ),
+
+                "_effectsAllowed" => {
+                    interp.add_read_port(
+                        tramp.mem_location,
+                        Box::new(move || {
+                            println!("LOOKUP _effectsAllowed");
+                            2
+                        }),
+                    );
+                    interp.add_write_port(
+                        tramp.mem_location,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE _effectsAllowed: {}", value);
+                        }),
+                    );
+                }
+                "_effects" => {
+                    interp.add_read_port(
+                        tramp.mem_location,
+                        Box::new(move || {
+                            println!("LOOKUP _effects");
+                            2
+                        }),
+                    );
+                    interp.add_write_port(
+                        tramp.mem_location,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE _effects: {}", value);
+                        }),
+                    );
+                }
+                "lighteningAllowed" => interp.add_write_port(
+                    tramp.mem_location,
+                    Box::new(move |value| {
+                        println!("WOULD UPDATE lighteningAllowed: {}", value);
+                    }),
+                ),
+                "mapAdj" => interp.add_write_port(
+                    tramp.mem_location,
+                    Box::new(move |value| {
+                        println!("WOULD UPDATE mapAdj: {}", value);
+                    }),
+                ),
+
+                "_v" => {
+                    interp
+                        .map_readonly(tramp.mem_location, &_v)
+                        .unwrap();
+                }
+
                 _ => {}
             }
         }
-        for instr in sh.instrs.iter() {
+        for instr in &sh.instrs {
             match instr {
                 // Written into by windmill with (_currentTicks & 0xFF) << 2.
                 // The frame of animation to show, maybe?
                 Instr::UnkC4(ref c4) => {
-                    let off = c4.offset;
-                    let mut over = &mut c4_overlays;
                     interp.add_write_port(
                         0xAA000000 + c4.offset as u32 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.t0 <= {:08X}", value);
                         }),
                     );
-                    let mut over = &mut c4_overlays;
                     interp.add_write_port(
                         0xAA000000 + c4.offset as u32 + 2 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.t1 <= {:08X}", value);
                         }),
                     );
-                    let mut over = &mut c4_overlays;
                     interp.add_write_port(
                         0xAA000000 + c4.offset as u32 + 2 + 4,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.t2 <= {:08X}", value);
                         }),
                     );
-                    let mut over = &mut c4_overlays;
                     interp.add_write_port(
                         0xAA000000 + c4.offset as u32 + 2 + 6,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.a0 <= {:08X}", value);
                         }),
                     );
-                    let mut over = &mut c4_overlays;
                     interp.add_write_port(
                         0xAA000000 + c4.offset as u32 + 2 + 8,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.a1 <= {:08X}", value);
                         }),
                     );
-                    let mut over = &mut c4_overlays;
                     interp.add_write_port(
                         0xAA000000 + c4.offset as u32 + 2 + 0xA,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.a2 <= {:08X}", value);
+                            /*
                             if !over.contains_key(&off) {
                                 over.insert(off, [0f32; 6]);
                             }
-                            /*
                             if let Some(vs) = c4_overlays.get_mut(&c4.offset) {
                                 vs[5] = (value as i32) as f32;
                             }
@@ -459,13 +600,91 @@ impl ShRenderer {
                         }),
                     );
                 }
-                /*
-                Instr::UnknownUnknown(ref unk) => {
+                Instr::UnkE4(ref e4) => {
+                    let mut v = Vec::new();
+                    for i in 0..sh::UnkE4::SIZE {
+                        v.push(unsafe { *e4.data.add(i) });
+                    }
+                    interp
+                        .map_writable((0xAA000000 + e4.offset) as u32, v)
+                        .unwrap();
+                    /*
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.2 <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_read_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 4,
+                        Box::new(move || {
+                            println!("LOOKUP E4.4");
+                            0
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 4,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.4 <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 6,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.6 <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 8,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.8 <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 0xA,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.A <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 0xC,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.C <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 0xE,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.E <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + e4.offset as u32 + 2 + 0x10,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE E4.E <- {:04X}", value);
+                        }),
+                    );
+                    */
+                }
+                Instr::UnkEA(ref ea) => {
+                    interp.add_write_port(
+                        0xAA000000 + ea.offset as u32 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE EA.0 <- {:04X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + ea.offset as u32 + 2 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE EA.2 <- {:04X}", value);
+                        }),
+                    );
+                }
+                Instr::UnknownData(ref unk) => {
                     interp
                         .map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone())
                         .unwrap();
                 }
-                */
                 Instr::X86Code(ref code) => {
                     interp.add_code(&code.bytecode);
                 }
@@ -540,11 +759,9 @@ impl ShRenderer {
                         ExitInfo::OutOfInstructions => break,
                         ExitInfo::Trampoline(ref name, ref args) => {
                             println!("Got trampoline return to {} with args {:?}", name, args);
-                            assert!(name == "do_start_interp");
+                            // FIXME: handle call and set up return if !do_start_interp
                             byte_offset = (args[0] - 0xAA000000u32) as usize;
-                            offset = sh
-                                .map_interpreter_offset_to_instr_offset(args[0])
-                                .unwrap();
+                            offset = sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
                             println!("Resuming at instruction {}", offset);
                             continue;
                         }
@@ -644,14 +861,27 @@ impl ShRenderer {
                         [0f32; 6]
                     };
                     let r2 = xform[5] / 256f32;
-                    println!("r2: {}", r2);
                     let m = Matrix4::new(
-                        r2.cos(), -r2.sin(), 0f32,  xform[0],
-                        r2.sin(),  r2.cos(), 0f32, -xform[1],
-                            0f32,     0f32,  1f32,  xform[2],
-                            0f32,     0f32,  0f32,  1f32);
+                        r2.cos(),
+                        -r2.sin(),
+                        0f32,
+                        xform[0],
+                        r2.sin(),
+                        r2.cos(),
+                        0f32,
+                        -xform[1],
+                        0f32,
+                        0f32,
+                        1f32,
+                        xform[2],
+                        0f32,
+                        0f32,
+                        0f32,
+                        1f32,
+                    );
                     for v in &buf.verts {
-                        let v0 = Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
+                        let v0 =
+                            Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
                         let v1 = m * v0;
                         vert_pool.push(Vertex {
                             //position: [f32::from(v[0]) + xform[0], f32::from(-v[2]) - xform[1], f32::from(v[1]) + xform[2]],
@@ -661,6 +891,7 @@ impl ShRenderer {
                             flags: 0,
                         });
                     }
+                    println!("CNT: {:04X}", vert_pool.len());
                 }
                 Instr::Facet(facet) => {
                     if !masking_faces {
@@ -689,6 +920,9 @@ impl ShRenderer {
                             };
 
                             for (index, tex_coord) in inds.iter().zip(&tcs) {
+                                if (*index as usize) >= vert_pool.len() {
+                                    break;
+                                }
                                 ensure!(
                                     (*index as usize) < vert_pool.len(),
                                     "out-of-bounds vertex reference in facet {:?}, current pool size: {}",
@@ -819,6 +1053,7 @@ impl ShRenderer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use failure::Error;
     use omnilib::OmniLib;
     use sh::CpuShape;
     use window::GraphicsConfigBuilder;
@@ -826,15 +1061,63 @@ mod test {
     #[test]
     fn it_can_render_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let omnilib = OmniLib::new_for_test()?;
-        let lib = omnilib.library("FA");
-        let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
-        let sh = CpuShape::from_bytes(&lib.load("BNK1.SH")?)?;
-        let mut sh_renderer = ShRenderer::new(system_palette, &window)?;
-        sh_renderer.add_shape_to_render("foo", &sh, &lib, &window)?;
-        window.drive_frame(|command_buffer, dynamic_state| {
-            sh_renderer.render(command_buffer, dynamic_state)
-        })?;
+        let omni = OmniLib::new_for_test_in_games(&[
+            //"USNF",
+            //"MF",
+            //"ATF",
+            //"ATFNATO",
+            //"ATFGOLD",
+            "USNF97",
+            //"FA"
+        ])?;
+        let skipped = vec![
+            "CHAFF.SH", "CRATER.SH", "DEBRIS.SH", "EXP.SH", "FIRE.SH", "FLARE.SH", "MOTHB.SH", "SMOKE.SH", "WAVE1.SH", "WAVE2.SH"
+        ];
+        for (game, name) in omni.find_matching("*.SH")?.iter() {
+            if skipped.contains(&name.as_ref()) {
+                continue;
+            }
+
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                name,
+                omni.path(game, name)
+                    .or::<Error>(Ok("<none>".to_string()))?
+            );
+
+            let lib = omni.library(game);
+            let data = lib.load(name)?;
+            let sh = CpuShape::from_bytes(&data)?;
+            let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
+            let mut sh_renderer = ShRenderer::new(system_palette, &window)?;
+
+            let mut draw_mode = DrawMode {
+                range: None,
+                damaged: false,
+                closeness: 0x200,
+                frame_number: 0,
+                detail: 4,
+                gear_position: Some(18),
+                flaps_down: false,
+                airbrake_extended: true,
+                hook_extended: true,
+                bay_open: false,
+                afterburner_enabled: true,
+                rudder_position: 0,
+            };
+            sh_renderer.add_shape_to_render(
+                &name,
+                &sh,
+                usize::max_value(),
+                &draw_mode,
+                &lib,
+                &window,
+            )?;
+            window.drive_frame(|command_buffer, dynamic_state| {
+                sh_renderer.render(command_buffer, dynamic_state)
+            })?;
+        }
         std::mem::drop(window);
         Ok(())
     }

@@ -74,12 +74,12 @@ make_type_struct![
 HardpointType(parent: (), version: HardpointTypeVersion) {
     (Word, [Dec, Hex],            "flags", Unsigned, flags,                        u16, V0, panic!()), // word $8    ; flags
     (Word, [Dec],                  "pos.",     Vec3, pos,                  Point3<f32>, V0, panic!()), // word 0     ; pos.{x,y,z}
-    (Word, [Dec],                 "slewH", Unsigned, slewH,                        u16, V0, panic!()), // word 0     ; slewH
-    (Word, [Dec],                 "slewP", Unsigned, slewP,                        u16, V0, panic!()), // word 0     ; slewP
-    (Word, [Dec],            "slewLimitH", Unsigned, slewLimitH,                   u16, V0, panic!()), // word 0     ; slewLimitH
-    (Word, [Dec],            "slewLimitP", Unsigned, slewLimitP,                   u16, V0, panic!()), // word 16380 ; slewLimitP
+    (Word, [Dec],                 "slewH", Unsigned, slew_h,                       u16, V0, panic!()), // word 0     ; slewH
+    (Word, [Dec],                 "slewP", Unsigned, slew_p,                       u16, V0, panic!()), // word 0     ; slewP
+    (Word, [Dec],            "slewLimitH", Unsigned, slew_limit_h,                 u16, V0, panic!()), // word 0     ; slewLimitH
+    (Word, [Dec],            "slewLimitP", Unsigned, slew_limit_p,                 u16, V0, panic!()), // word 16380 ; slewLimitP
     (Ptr,  [Dec, Sym], "defaultTypeName0",   Custom, default_loadout, HardpointDefault, V0, panic!()), // ptr defaultTypeName0
-    (Byte, [Dec],             "maxWeight", Unsigned, maxWeight,                     u8, V0, panic!()), // byte 0     ; maxWeight
-    (Word, [Dec],              "maxItems", Unsigned, maxItems,                     u16, V0, panic!()), // word 32767 ; maxItems
+    (Byte, [Dec],             "maxWeight", Unsigned, max_weight,                    u8, V0, panic!()), // byte 0     ; maxWeight
+    (Word, [Dec],              "maxItems", Unsigned, max_items,                    u16, V0, panic!()), // word 32767 ; maxItems
     (Byte, [Dec],                  "name", Unsigned, name,                          u8, V0, panic!())  // byte 0     ; name
 }];

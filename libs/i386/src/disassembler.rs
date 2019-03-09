@@ -370,8 +370,8 @@ impl OperandDecodeState {
         *ip += 1;
 
         let scale = sib >> 6;
-        let index = (sib & 0b00111000) >> 3;
-        let base = sib & 0b00000111;
+        let index = (sib & 0b00_111_000) >> 3;
+        let base = sib & 0b00_000_111;
 
         let scale = match scale {
             0 => 1,
@@ -409,7 +409,7 @@ impl OperandDecodeState {
             _ => panic!("base out of range"),
         };
 
-        return Ok((scale, index, base));
+        Ok((scale, index, base))
     }
 }
 

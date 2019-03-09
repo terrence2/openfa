@@ -20,55 +20,55 @@ use std::{fs, mem, str, sync::Arc};
 //use reverse::bs2s;
 
 packed_struct!(LayerHeader {
-     _0 => unkPtr00x100: u32, // Ramp
-     _1 => unkPtr01: u32,
-     _2 => unkPtr02: u32,
-     _3 => unkPtr03: u32,
-     _4 => unkPtr04: u32,
+     _0 => unk_ptr_00x100: u32, // Ramp
+     _1 => unk_ptr_01: u32,
+     _2 => unk_ptr_02: u32,
+     _3 => unk_ptr_03: u32,
+     _4 => unk_ptr_04: u32,
      _5 => seven: u32,
-     _6 => unkPtr20x100: u32, // Ramp
-     _7 => unkPtr21x100: u32,
-     _8 => unkPtr22x100: u32,
-     _9 => unkPtr23x100: u32,
-    _10 => unkPtr24x100: u32,
-    _11 => unkPtr25x100: u32,
-    _12 => unkPtr26x100: u32,
+     _6 => unk_ptr_20x100: u32, // Ramp
+     _7 => unk_ptr_21x100: u32,
+     _8 => unk_ptr_22x100: u32,
+     _9 => unk_ptr_23x100: u32,
+    _10 => unk_ptr_24x100: u32,
+    _11 => unk_ptr_25x100: u32,
+    _12 => unk_ptr_26x100: u32,
     _13 => zero30: u32,
     _14 => zero31: u32,
     _15 => zero32: u32,
     _16 => six: u32,
-    _17 => unkPtr50x100: u32, // Ramp
-    _18 => unkPtr51x100: u32,
-    _19 => unkPtr52x100: u32,
-    _20 => unkPtr53x100: u32,
-    _21 => unkPtr54x100: u32,
-    _22 => unkPtr55x100: u32,
-    _23 => unkPtr56x100: u32,
+    _17 => unk_ptr_50x100: u32, // Ramp
+    _18 => unk_ptr_51x100: u32,
+    _19 => unk_ptr_52x100: u32,
+    _20 => unk_ptr_53x100: u32,
+    _21 => unk_ptr_54x100: u32,
+    _22 => unk_ptr_55x100: u32,
+    _23 => unk_ptr_56x100: u32,
     _24 => zero60: u32,
     _25 => zero61: u32,
     _26 => zero62: u32,
-    _27 => unkPtr70: u32,
-    _28 => ptrSecond: u32,
-    _29 => ptrFirst: u32
+    _27 => unk_ptr_70: u32,
+    _28 => ptr_second: u32,
+    _29 => ptr_first: u32
 });
 
 packed_struct!(LayerPlaneHeader {
-    _0 => unkMaybe66: u32,
-    _1 => unkMaybe2DD: u32,
-    _2 => maybeFogUpdateThunk: u32,
-    _3 => horizonProcThunk: u32,
+    _0 => maybe_66: u32,
+    _1 => maybe_2dd: u32,
+    _2 => maybe_fog_update_thunk: u32,
+    _3 => horizon_proc_thunk: u32,
     // FE 1F 38 0E 70 62 00 00 30 0B 01 00 18 47 E8 B8
-    _4 => unk1FFE: u16,
-    _5 => unk0E38: u16,
-    _6 => unk00006270: u32,
-    _7 => unk00010B30: u32,
-    _8 => unkB8E84718: u32,
+    _4 => unk_1ffe: u16,
+    _5 => unk_0e38: u16,
+    _6 => unk_00006270: u32,
+    _7 => unk_00010b30: u32,
+    _8 => unk_b8e84718: u32,
     // 8 * 4 bytes => 0x20 bytes
-    _9 => unkFillAndShape: [u8; 16],
+    _9 => unk_fill_and_shape: [u8; 16],
     // 0x30 bytes
-    _10 => unkStuff0: [u8; 0x20],
+    _10 => unk_stuff0: [u8; 0x20],
     // 0x50 bytes
-    _11 => unkStuff1: [u8; 0x1F]
+    _11 => unk_stuff1: [u8; 0x1F]
     // 0x6F bytes
 });
 
@@ -115,18 +115,18 @@ impl Layer {
         let header_ptr: *const LayerHeader = data.as_ptr() as *const _;
         let header: &LayerHeader = unsafe { &*header_ptr };
 
-        assert_eq!(header.unkPtr00x100(), header.unkPtr04());
-        assert_eq!(header.unkPtr00x100(), header.unkPtr20x100());
+        assert_eq!(header.unk_ptr_00x100(), header.unk_ptr_04());
+        assert_eq!(header.unk_ptr_00x100(), header.unk_ptr_20x100());
         assert!(
-            header.unkPtr00x100() == header.unkPtr50x100()
-                || header.unkPtr00x100() + 0x100 == header.unkPtr50x100()
+            header.unk_ptr_00x100() == header.unk_ptr_50x100()
+                || header.unk_ptr_00x100() + 0x100 == header.unk_ptr_50x100()
         );
 
         // This segment of data counts up from 00 to FF and is present in every single LAY.
         // It makes little sense as a LUT because if you have the value itself? It is always
         // referenced from the first pointer, so maybe it's some weird indirect LUT using
         // the fact that this data is loaded with PE relocation?
-        let ramp_addr = header.unkPtr00x100();
+        let ramp_addr = header.unk_ptr_00x100();
         let ramp_data = &data[ramp_addr as usize..ramp_addr as usize + 0x100];
         let ramp_digest = md5::compute(ramp_data);
         assert_eq!(
@@ -135,11 +135,11 @@ impl Layer {
         );
 
         let first_size = 0x100 + 46;
-        let first_addr = header.ptrFirst();
+        let first_addr = header.ptr_first();
         let first_data = &data[first_addr as usize..first_addr as usize + first_size];
         let first_pal_data = &first_data[22 * 3 + 2..];
         let first_pal = Palette::from_bytes(&first_pal_data[0..(16 * 3 + 13) * 3])?;
-        frag_offsets.push(header.ptrFirst() as usize + 22 * 3 + 2);
+        frag_offsets.push(header.ptr_first() as usize + 22 * 3 + 2);
         _fragments.push(first_pal);
         if dump_stuff {
             // Seems to be correct for CLOUD and FOG, but really dark for DAY.
@@ -157,41 +157,41 @@ impl Layer {
             // 0xc1 + 0x6f = 0x130 bytes
             // 0x130 / 16 => 19
 
-            if offset + plane_size >= header.ptrSecond() as usize {
+            if offset + plane_size >= header.ptr_second() as usize {
                 break;
             }
 
-            // This header recurs every 0x160 bytes, 0x146 bytes after header.ptrFirst().
+            // This header recurs every 0x160 bytes, 0x146 bytes after header.ptr_first().
             let plane_data = &data[offset..offset + hdr_size];
             let plane_ptr: *const LayerPlaneHeader = plane_data.as_ptr() as *const LayerPlaneHeader;
             let plane: &LayerPlaneHeader = unsafe { &*plane_ptr };
             ensure!(
-                plane.unkMaybe66() == 0x66 || plane.unkMaybe66() == 0,
+                plane.maybe_66() == 0x66 || plane.maybe_66() == 0,
                 "expected 66"
             );
             ensure!(
-                plane.unkMaybe2DD() == 0x2DD || plane.unkMaybe2DD() == 0,
+                plane.maybe_2dd() == 0x2DD || plane.maybe_2dd() == 0,
                 "expected 2DD"
             );
             ensure!(
-                plane.maybeFogUpdateThunk() == 0x2A46
-                    || plane.maybeFogUpdateThunk() == 0x2646
-                    || plane.maybeFogUpdateThunk() == 0,
+                plane.maybe_fog_update_thunk() == 0x2A46
+                    || plane.maybe_fog_update_thunk() == 0x2646
+                    || plane.maybe_fog_update_thunk() == 0,
                 "expected 0x2A46 or 0x2646, not 0x{:4X}",
-                plane.maybeFogUpdateThunk()
+                plane.maybe_fog_update_thunk()
             );
             ensure!(
-                plane.horizonProcThunk() != 0,
+                plane.horizon_proc_thunk() != 0,
                 "expected horizon proc thunk to be set"
             );
-            ensure!(plane.unk1FFE() == 0x1FFE, "expected 1FFE");
-            ensure!(plane.unk0E38() == 0x0E38, "expected 0E38");
-            ensure!(plane.unk00006270() == 0x0000_6270, "expected 6270");
-            ensure!(plane.unk00010B30() == 0x0001_0B30, "expected 10B30");
-            ensure!(plane.unkB8E84718() == 0xB8E8_4718, "expected B8E84718");
+            ensure!(plane.unk_1ffe() == 0x1FFE, "expected 1FFE");
+            ensure!(plane.unk_0e38() == 0x0E38, "expected 0E38");
+            ensure!(plane.unk_00006270() == 0x0000_6270, "expected 6270");
+            ensure!(plane.unk_00010b30() == 0x0001_0B30, "expected 10B30");
+            ensure!(plane.unk_b8e84718() == 0xB8E8_4718, "expected B8E84718");
 
-            //println!("PLANE9: {}", bs2s(&plane.unkFillAndShape()));
-            //println!("PLANE: {}", str::from_utf8(&plane.unkFillAndShape())?);
+            //println!("PLANE9: {}", bs2s(&plane.unk_fill_and_shape()));
+            //println!("PLANE: {}", str::from_utf8(&plane.unk_fill_and_shape())?);
             //assert!(str::from_utf8(&plane.shape())?.starts_with("wave1.SH"));
             //println!("SHAPE: {}", str::from_utf8(&plane.shape())?);
             let pal_data = &data[offset + hdr_size + 1..offset + hdr_size + 1 + 0xC0];
@@ -255,9 +255,9 @@ impl Layer {
             plane_offset += 1;
         }
 
-        // decode 7 palettes at ptrSecond
+        // decode 7 palettes at ptr_second
         // These are all gray scales. Maybe for the skybox?
-        offset = header.ptrSecond() as usize;
+        offset = header.ptr_second() as usize;
         assert_eq!(palette_digest, md5::compute(&data[offset..offset + 0x300]));
         if dump_stuff {
             let name = format!("dump/{}/second-0", prefix);

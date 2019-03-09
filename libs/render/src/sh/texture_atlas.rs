@@ -67,7 +67,6 @@ impl TextureAtlas {
         let mut atlas_width = 0;
         let mut atlas_height = 0;
         for (_name, img) in &sources {
-            assert_eq!(img.width(), 256);
             atlas_width += img.width() + 1;
             atlas_height = atlas_height.max(img.height());
         }

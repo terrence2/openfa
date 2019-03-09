@@ -220,18 +220,18 @@ packed_struct!(BITEHeader0 {
 
     _8 => pad2: u16,
 
-    _9 => unkA: u16,
-    _A => unkB: u16,
-    _B => unkC: u16,
+    _9 => unk_a: u16,
+    _a => unk_b: u16,
+    _b => unk_c: u16,
 
-    _C => lastByte: u32,
+    _c => last_byte: u32,
 
-    _D => width: u16 as usize,
-    _E => height: u16 as usize,
+    _d => width: u16 as usize,
+    _e => height: u16 as usize,
 
-    _F => unkI: u16 as usize,
-    _10 => unkJ: u16 as usize,
-    _11 => unkK: u16 as usize
+    _f => unk_i: u16 as usize,
+    _10 => unk_j: u16 as usize,
+    _11 => unk_k: u16 as usize
 });
 
 packed_struct!(BITEHeader1 {
@@ -249,19 +249,19 @@ packed_struct!(BITEHeader1 {
     _6 => unk2: u32,
     _7 => unk3: u32,
     _8 => unk4: u32,
-    _9 => unkPad: u16,
-    _10 => unkA: u16,
-    _11 => unkB: u16,
-    _12 => unkC: u16,
+    _9 => unk_pad: u16,
+    _10 => unk_a: u16,
+    _11 => unk_b: u16,
+    _12 => unk_c: u16,
 
-    _13 => lastByte: u32,
+    _13 => last_byte: u32,
 
     _14 => width: u16 as usize,
     _15 => height: u16 as usize,
 
-    _16 => unkI: u16 as usize,
-    _17 => unkJ: u16 as usize,
-    _18 => unkK: u16 as usize
+    _16 => unk_i: u16 as usize,
+    _17 => unk_j: u16 as usize,
+    _18 => unk_k: u16 as usize
 });
 
 packed_struct!(BIT2Header {
@@ -476,9 +476,9 @@ impl Terrain {
 
         // For each block in the input.
         let mut samples = vec![Default::default(); num_pix];
-        let blk_size = header.unkI();
-        for blkx in 0..header.unkJ() {
-            for blky in 0..header.unkK() {
+        let blk_size = header.unk_i();
+        for blkx in 0..header.unk_j() {
+            for blky in 0..header.unk_k() {
                 // For each pixel in the block from top to bottom...
                 for i in 0..blk_size {
                     for j in 0..blk_size {
