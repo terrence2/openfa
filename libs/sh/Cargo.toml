@@ -12,6 +12,7 @@ failure = "0.1"
 lazy_static = "1.0"
 log = ">= 0.4"
 simplelog = "^0.5.0"
+ansi = { path = "../ansi" }
 i386 = { path = "../i386" }
 peff = { path = "../peff" }
 reverse = { path = "../reverse" }

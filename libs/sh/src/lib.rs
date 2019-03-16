@@ -14,12 +14,13 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+use ansi::{ansi, Color};
 use bitflags::bitflags;
 use failure::{bail, ensure, err_msg, Fail, Fallible};
 use i386::{ByteCode, Memonic, Operand};
 use lazy_static::lazy_static;
 use log::trace;
-use reverse::{bs2s, p2s, Color, Escape};
+use reverse::{bs2s, p2s};
 use std::{
     cmp,
     collections::{HashMap, HashSet},
@@ -123,11 +124,11 @@ impl TextureRef {
         format!(
             "@{:04X} {}TexRf{}: {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Yellow).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Yellow),
+            ansi().yellow().bold(),
+            ansi(),
+            ansi().yellow(),
             self.filename,
-            Escape::new(),
+            ansi(),
         )
     }
 }
@@ -232,11 +233,11 @@ impl SourceRef {
         format!(
             "@{:04X} {}SrcRf{}: {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Yellow).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Yellow),
+            ansi().yellow().bold(),
+            ansi(),
+            ansi().yellow(),
             self.source,
-            Escape::new(),
+            ansi(),
         )
     }
 }
@@ -294,17 +295,17 @@ impl VertexBuf {
         format!(
             "@{:04X} {}VxBuf: 82 00{}| {}{:04X} ({:b} | {}){} => {}verts -> {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Magenta).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Magenta),
+            ansi().magenta().bold(),
+            ansi(),
+            ansi().magenta(),
             self.unk0,
             self.unk0,
             self.unk0 as i16,
-            Escape::new(),
+            ansi(),
             self.verts.len(),
-            Escape::new().fg(Color::Magenta).dimmed(),
+            ansi().magenta().dimmed(),
             s,
-            Escape::new(),
+            ansi(),
         )
     }
 }
@@ -354,21 +355,21 @@ impl Unk06 {
         format!(
             "@{:04X} {}{}{}: {}{}{}| {}{}{}; {}cnt:{}{}; {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
             stringify!(Unk06),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, 14).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Cyan),
+            ansi(),
+            ansi().cyan(),
             self.count,
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 16, self.length),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -418,21 +419,21 @@ impl Unk0C {
         format!(
             "@{:04X} {}{}{}: {}{}{}| {}{}{}; {}cnt:{}{}; {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
             stringify!(Unk0C),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, 10).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Cyan),
+            ansi(),
+            ansi().cyan(),
             self.count,
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 12, self.length),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -482,21 +483,21 @@ impl Unk0E {
         format!(
             "@{:04X} {}{}{}: {}{}{}| {}{}{}; {}cnt:{}{}; {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
             stringify!(Unk0E),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, 10).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Cyan),
+            ansi(),
+            ansi().cyan(),
             self.count,
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 12, self.length),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -546,21 +547,21 @@ impl Unk10 {
         format!(
             "@{:04X} {}{}{}: {}{}{}| {}{}{}; {}cnt:{}{}; {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
             stringify!(Unk10),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, 10).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Cyan),
+            ansi(),
+            ansi().cyan(),
             self.count,
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 12, self.length),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -612,21 +613,21 @@ impl Unk6C {
         format!(
             "@{:04X} {}{}{}: {}{}{}| {}{}{}; {}flag:{:02X}{}; {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
             stringify!(Unk6C),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, 10).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Cyan),
+            ansi(),
+            ansi().cyan(),
             self.flag,
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 11, self.length),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -895,68 +896,68 @@ impl Facet {
         format!(
             "@{:04X} {}Facet: FC{}   | {}{}{}({}{}{}{}{}{}_{}{}{}{}{}{}{}_{}{}{}{}{}{}{}); {}{}{}; {}{}{}; {}{:02X}{}; {}{}{} ({}{}{}); {}{}{}[{}{}{}]",
             self.offset,
-            Escape::new().fg(Color::Cyan).bold(),
-            Escape::new(),
+            ansi().cyan().bold(),
+            ansi(),
 
             // Flags
-            Escape::new().fg(Color::Cyan),
+            ansi().cyan(),
             p2s(self.flags_pointer, 0, 2),
-            Escape::new().fg(Color::White), // (
+            ansi().white(), // (
 
-            Escape::new().fg(Color::Red),
+            ansi().red(),
             flags[0],
-            Escape::new().fg(Color::Cyan),
+            ansi().cyan(),
             flags[1],
             flags[2],
             flags[3],
 
-            Escape::new().fg(Color::Red),
+            ansi().red(),
             flags[4],
-            Escape::new().fg(Color::Cyan),
+            ansi().cyan(),
             flags[5],
-            Escape::new().fg(Color::Red),
+            ansi().red(),
             flags[6],
             flags[7],
 
             flags[8],
-            Escape::new().fg(Color::Cyan),
+            ansi().cyan(),
             flags[9],
             flags[10],
-            Escape::new().fg(Color::Magenta),
+            ansi().magenta(),
             flags[11],
-            Escape::new().fg(Color::White), // )
+            ansi().white(), // )
 
             // Color
-            Escape::new().fg(Color::Cyan),
+            ansi().cyan(),
             p2s(self.color_pointer, 0, 1).trim(),
-            Escape::new(),
+            ansi(),
 
             // Material
-            Escape::new().fg(Color::Red).dimmed(),
+            ansi().red().dimmed(),
             p2s(self.material_pointer, 0, self.material_size),
-            Escape::new(),
+            ansi(),
 
             // Index count
-            Escape::new().fg(Color::Cyan).bold(),
+            ansi().cyan().bold(),
             self.indices.len(),
-            Escape::new(),
+            ansi(),
 
             // Indices
-            Escape::new().fg(Color::Cyan).dimmed(),
+            ansi().cyan().dimmed(),
             p2s(self.indices_pointer, 0, self.indices_size).trim(),
-            Escape::new().fg(Color::White),
-            Escape::new().fg(Color::Cyan).bold(),
+            ansi().white(),
+            ansi().cyan().bold(),
             ind,
-            Escape::new(),
+            ansi(),
 
             // Texture Coordinates
-            Escape::new().fg(Color::Cyan).dimmed(),
+            ansi().cyan().dimmed(),
             p2s(self.tc_pointer, 0, self.tc_size),
-            Escape::new(),
+            ansi(),
 
-            Escape::new().fg(Color::Cyan).bold(),
+            ansi().cyan().bold(),
             tcs,
-            Escape::new(),
+            ansi(),
         )
     }
 }
@@ -1090,11 +1091,11 @@ impl X86Trampoline {
         format!(
             "@{:04X} {}Tramp{}: {}{}{} = {:04X}",
             self.offset,
-            Escape::new().fg(Color::Yellow).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Yellow),
+            ansi().yellow().bold(),
+            ansi(),
+            ansi().yellow(),
             self.name,
-            Escape::new(),
+            ansi(),
             self.target
         )
     }
@@ -1516,11 +1517,11 @@ impl UnkBC {
         format!(
             "@{:04X} {}UnkBC{}: {}{}{}| (hdr:{:02X})",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
+            ansi(),
             self.unk_header,
         )
     }
@@ -1588,14 +1589,14 @@ impl Unk40 {
         format!(
             "@{:04X} {}Unk40{}: {}{}{}| {}{}{} (cnt:{}, data:({}))",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).dimmed(),
+            ansi(),
+            ansi().red().dimmed(),
             p2s(self.data, 2, self.length),
-            Escape::new(),
+            ansi(),
             self.count,
             targets
         )
@@ -1637,14 +1638,14 @@ impl UnkF6 {
         format!(
             "@{:04X} {}UnkF6{}: {}{}{}   | {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 1).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 1, Self::SIZE),
-            Escape::new(),
+            ansi(),
         )
     }
 }
@@ -1693,14 +1694,14 @@ impl Unk38 {
         format!(
             "@{:04X} {}Unk38{}: {}{}{}   | {}{}{} (?unk0?:{:04X}, ?tgt?:{:04X})",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 1).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 1, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.unk0,
             self.offset + Self::SIZE + self.unk0
         )
@@ -1765,14 +1766,14 @@ impl PointerToObjectTrailer {
         format!(
             "@{:04X} {}2EndO{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
             self.offset,
-            Escape::new().fg(Color::BrightBlue).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue).bold(),
+            ansi().blue().bright().bold(),
+            ansi(),
+            ansi().blue().bright().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue),
+            ansi(),
+            ansi().blue().bright(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.delta_to_end,
             self.end_byte_offset()
         )
@@ -1825,14 +1826,14 @@ impl UnkAC_ToDamage {
         format!(
             "@{:04X} {}ToDam{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
             self.offset,
-            Escape::new().fg(Color::BrightBlue).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue).bold(),
+            ansi().blue().bright().bold(),
+            ansi(),
+            ansi().blue().bright().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue),
+            ansi(),
+            ansi().blue().bright(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.delta_to_damage,
             self.damage_byte_offset()
         )
@@ -1890,14 +1891,14 @@ impl UnkC8_ToLOD {
         format!(
             "@{:04X} {}ToLOD{}: {}{}{}| {}{}{} (unk0:{:04X}, unk1:{:04X} target:{:04X})",
             self.offset,
-            Escape::new().fg(Color::BrightBlue).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue).bold(),
+            ansi().blue().bright().bold(),
+            ansi(),
+            ansi().blue().bright().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue),
+            ansi(),
+            ansi().blue().bright(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.unk0,
             self.unk1,
             self.next_offset()
@@ -1957,14 +1958,14 @@ impl UnkA6_ToDetail {
         format!(
             "@{:04X} {}ToDtl{}: {}{}{}| {}{}{} (level:{:04X}, target:{:04X})",
             self.offset,
-            Escape::new().fg(Color::BrightBlue).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue).bold(),
+            ansi().blue().bright().bold(),
+            ansi(),
+            ansi().blue().bright().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::BrightBlue),
+            ansi(),
+            ansi().blue().bright(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.level,
             self.next_offset()
         )
@@ -2018,14 +2019,14 @@ impl Unk12 {
         format!(
             "@{:04X} {}Unk12{}: {}{}{}| {}{}{} (target:{:04X})",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.next_offset()
         )
     }
@@ -2097,23 +2098,23 @@ impl UnkC4 {
         format!(
             "@{:04X} {}UnkC4{}: {}{}{}| {}{}{} t:({}{},{},{}{}) a:({}{},{},{}{}) {}{}{} (target:{:04X})",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Blue),
+            ansi(),
+            ansi().blue(),
             p2s(self.data, 2, Self::SIZE).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Magenta),
+            ansi(),
+            ansi().magenta(),
             self.t0, self.t1, self.t2,
-            Escape::new(),
-            Escape::new().fg(Color::Magenta),
+            ansi(),
+            ansi().magenta(),
             self.a0, self.a1, self.a2,
-            Escape::new(),
-            Escape::new().fg(Color::Cyan),
+            ansi(),
+            ansi().cyan(),
             p2s(self.data, Self::SIZE - 2, Self::SIZE).trim(),
-            Escape::new(),
+            ansi(),
             self.next_offset()
         )
     }
@@ -2164,14 +2165,14 @@ impl Unk48 {
         format!(
             "@{:04X} {}Unk48{}: {}{}{}| {}{}{} (tgt:{:04X})",
             self.offset,
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Red),
+            ansi(),
+            ansi().red(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new(),
+            ansi(),
             self.target_offset()
         )
     }
@@ -2258,12 +2259,12 @@ impl TrailerUnknown {
     fn show(&self) -> String {
         format!(
             "{}Trailer{}: {:04} {}{}{}",
-            Escape::new().fg(Color::Red).bold(),
-            Escape::new(),
+            ansi().red().bold(),
+            ansi(),
             self.data.len(),
-            Escape::new().fg(Color::Red).bold(),
+            ansi().red().bold(),
             bs2s(&self.data),
-            Escape::new(),
+            ansi(),
         )
     }
 }
@@ -2299,14 +2300,14 @@ impl EndOfShape {
         format!(
             "@{:04X} {}EndSh{}: {}{}{}| {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Green).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Green).bold(),
+            ansi().green().bold(),
+            ansi(),
+            ansi().green().bold(),
             bs2s(&self.data[0..2]).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Green),
+            ansi(),
+            ansi().green(),
             bs2s(&self.data[2..]),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -2344,14 +2345,14 @@ impl EndOfObject {
         format!(
             "@{:04X} {}EdObj{}: {}{}{}| {}{}{}",
             self.offset,
-            Escape::new().fg(Color::Green).bold(),
-            Escape::new(),
-            Escape::new().fg(Color::Green).bold(),
+            ansi().green().bold(),
+            ansi(),
+            ansi().green().bold(),
             p2s(self.data, 0, 2).trim(),
-            Escape::new(),
-            Escape::new().fg(Color::Green),
+            ansi(),
+            ansi().green(),
             p2s(self.data, 2, Self::SIZE),
-            Escape::new()
+            ansi()
         )
     }
 }
@@ -2385,8 +2386,8 @@ impl UnknownData {
             return format!(
                 "@{:04X} {}Datas{}: {}",
                 self.offset,
-                Escape::new().fg(Color::Red),
-                Escape::new(),
+                ansi().red(),
+                ansi(),
                 bytes
             );
         }
@@ -2533,25 +2534,25 @@ impl Pad1E {
             format!(
                 "@{:04X} {}Pad1E: 1E{}   |",
                 self.offset,
-                Escape::new().dimmed(),
-                Escape::new()
+                ansi().dimmed(),
+                ansi()
             )
         } else if self.length == 2 {
             format!(
                 "@{:04X} {}Pad1E: 1E 1E{}|",
                 self.offset,
-                Escape::new().dimmed(),
-                Escape::new()
+                ansi().dimmed(),
+                ansi()
             )
         } else {
             format!(
                 "@{:04X} {}Pad1E: 1E 1E{}| {}{}{}",
                 self.offset,
-                Escape::new().dimmed(),
-                Escape::new(),
-                Escape::new().dimmed(),
+                ansi().dimmed(),
+                ansi(),
+                ansi().dimmed(),
                 p2s(self.data, 2, self.size()),
-                Escape::new()
+                ansi()
             )
         }
     }
@@ -2605,15 +2606,15 @@ macro_rules! opaque_instr {
                 format!(
                     "@{:04X} {}{}{}: {}{}{}| {}{}{}",
                     self.offset,
-                    Escape::new().fg(clr).bold(),
+                    ansi().fg(clr).bold(),
                     stringify!($name),
-                    Escape::new(),
-                    Escape::new().fg(clr).bold(),
+                    ansi(),
+                    ansi().fg(clr).bold(),
                     p2s(self.data, 0, 2).trim(),
-                    Escape::new(),
-                    Escape::new().fg(clr),
+                    ansi(),
+                    ansi().fg(clr),
                     p2s(self.data, 2, Self::SIZE),
-                    Escape::new()
+                    ansi()
                 )
             }
         }
@@ -2855,7 +2856,7 @@ pub struct CpuShape {
 
 impl CpuShape {
     pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
-        let mut pe = peff::PE::parse(data)?;
+        let mut pe = peff::PE::from_bytes(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
         // 0-based and tags all local pointers with an obvious flag.

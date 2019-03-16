@@ -42,7 +42,7 @@ impl SpecialInfo {
 
         while lines[*offset].trim() != "." {
             let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
-            match parts[0].trim_left() {
+            match parts[0].trim_start() {
                 "pos" => {
                     let ns = parts[1].split(' ').collect::<Vec<&str>>();
                     pos = Some(Point3::new(

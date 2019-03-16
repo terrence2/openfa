@@ -525,6 +525,10 @@ impl Library {
         Self::from_paths(&libdirs)
     }
 
+    pub fn num_libs(&self) -> usize {
+        self.libs.len()
+    }
+
     pub fn file_exists(&self, filename: &str) -> bool {
         self.index.get(filename).is_some()
     }
@@ -595,7 +599,7 @@ impl Library {
         };
         let pattern = Pattern::new(glob)?;
         for key in self.index.keys() {
-            if pattern.matches_with(key, &opts) {
+            if pattern.matches_with(key, opts) {
                 matching.push(key.to_owned());
             }
         }

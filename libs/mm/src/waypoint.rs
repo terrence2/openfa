@@ -62,7 +62,7 @@ impl Waypoint {
             if parts.is_empty() {
                 break;
             }
-            match parts[0].trim_left() {
+            match parts[0].trim_start() {
                 "w_index" => index = Some(parts[1].parse::<u8>()?),
                 "w_flags" => flags = Some(parts[1].parse::<u8>()?),
                 "w_goal" => goal = Some(parts[1] == "1"),

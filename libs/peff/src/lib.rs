@@ -81,7 +81,7 @@ impl SectionInfo {
 }
 
 impl PE {
-    pub fn parse(data: &[u8]) -> Fallible<PE> {
+    pub fn from_bytes(data: &[u8]) -> Fallible<PE> {
         assert_eq!(mem::size_of::<COFFHeader>(), 20);
         assert_eq!(mem::size_of::<OptionalHeader>(), 28);
         assert_eq!(mem::size_of::<WindowsHeader>(), 68);
@@ -744,7 +744,7 @@ mod tests {
             );
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let _pe = PE::parse(&data)?;
+            let _pe = PE::from_bytes(&data)?;
         }
 
         return Ok(());

@@ -6,6 +6,6 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = ">= 0.1"
-bitflags = ">= 1"
 clap = ">= 2.29"
+ansi = { path = "../ansi/" }
 peff = { path = "../peff/" }

@@ -1,0 +1,9 @@
+[package]
+name = "ansi"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bitflags = ">= 1"
+libc = "0.2"

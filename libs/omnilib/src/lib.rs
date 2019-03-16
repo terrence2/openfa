@@ -48,30 +48,28 @@ impl OmniLib {
         Ok(Self { libraries })
     }
 
-    // Library from_dir_search in every subdir in the given path.
-    // Note: we don't need this for testing and for non-testing we only care about the version
-    // that looks for lib files, so not much point. Keeping it here for now in case I'm wrong.
-    /*
-    pub fn from_subdirs(path: &Path) -> Fallible<Self> {
+    pub fn new_for_game_directory(path: &Path) -> Fallible<Self> {
+        let game = path
+            .file_name()
+            .ok_or_else(|| err_msg("omnilib: no file name"))?
+            .to_str()
+            .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
+            .to_uppercase()
+            .to_owned();
+
         let mut libraries = HashMap::new();
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            if !entry.path().is_dir() {
-                continue;
+        if let Ok(libs) = Library::from_dir_search(path) {
+            if libs.num_libs() > 0 {
+                trace!("loaded {} libdirs in game: {}", libs.num_libs(), game);
+                libraries.insert(game, Arc::new(Box::new(libs)));
+                return Ok(Self { libraries });
             }
-            let name = entry
-                .path()
-                .file_name()
-                .ok_or_else(|| err_msg("omnilib: no file name"))?
-                .to_str()
-                .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
-                .to_owned();
-            let libs = Library::from_dir_search(&entry.path())?;
-            libraries.insert(name, Arc::new(Box::new(libs)));
         }
-        Ok(Self { libraries })
+        let libs = Library::from_file_search(path)?;
+        trace!("loaded {} libfiles in game: {}", libs.num_libs(), game);
+        libraries.insert(game, Arc::new(Box::new(libs)));
+        return Ok(Self { libraries });
     }
-    */
 
     pub fn find_matching(&self, glob: &str) -> Fallible<Vec<(String, String)>> {
         let mut out = Vec::new();
@@ -108,12 +106,35 @@ impl OmniLib {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_omnilib_from_dir() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
         let palettes = omni.find_matching("PALETTE.PAL")?;
         assert!(!palettes.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_omnilib_from_game_libdirs() -> Fallible<()> {
+        let omni = OmniLib::new_for_game_directory(Path::new("../../test_data/unpacked/FA"))?;
+        let tests = omni.find_matching("PALETTE.PAL")?;
+        assert!(!tests.is_empty());
+        let (game, name) = tests.first().unwrap();
+        assert!(game == "FA");
+        assert!(name == "PALETTE.PAL");
+        Ok(())
+    }
+
+    #[test]
+    fn test_omnilib_from_game_libfiles() -> Fallible<()> {
+        let omni = OmniLib::new_for_game_directory(Path::new("../../test_data/packed/FA"))?;
+        let tests = omni.find_matching("PALETTE.PAL")?;
+        assert!(!tests.is_empty());
+        let (game, name) = tests.first().unwrap();
+        assert!(game == "FA");
+        assert!(name == "PALETTE.PAL");
         Ok(())
     }
 }

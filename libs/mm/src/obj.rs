@@ -141,7 +141,7 @@ impl ObjectInfo {
 
         while lines[*offset].trim() != "." {
             let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
-            match parts[0].trim_left() {
+            match parts[0].trim_start() {
                 "type" => {
                     type_name = Some(parts[1].trim().to_owned());
                 }

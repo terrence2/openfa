@@ -227,7 +227,7 @@ impl MissionMap {
                         (x, y),
                         TMap {
                             orientation: MapOrientation::from_byte(
-                                parts[4].trim_right().parse::<u8>()?,
+                                parts[4].trim_end().parse::<u8>()?,
                             )?,
                             loc: TLoc::Index(parts[3].parse::<usize>()?),
                         },

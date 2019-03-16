@@ -14,12 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-extern crate bitflags;
-extern crate failure;
-extern crate peff;
-
-use bitflags::bitflags;
-use std::{fmt, mem};
+use ansi::{ansi, Color};
+use std::mem;
 
 pub fn n2h(n: u8) -> char {
     match n {
@@ -79,215 +75,6 @@ pub fn p2s(bs: *const u8, start: usize, end: usize) -> String {
         v.push(' ');
     }
     v.iter().collect::<String>()
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Color {
-    Black = 30,
-    Red = 31,
-    Green = 32,
-    Yellow = 33,
-    Blue = 34,
-    Magenta = 35,
-    Cyan = 36,
-    White = 37,
-    BrightBlack = 90,
-    BrightRed = 91,
-    BrightGreen = 92,
-    BrightYellow = 93,
-    BrightBlue = 94,
-    BrightMagenta = 95,
-    BrightCyan = 96,
-    BrightWhite = 97,
-}
-
-impl Color {
-    pub fn put(self, v: &mut Vec<char>) {
-        for c in format!("{}", self as u8).chars() {
-            v.push(c);
-        }
-    }
-    pub fn put_bg(self, v: &mut Vec<char>) {
-        for c in format!("{}", (self as u8) + 10).chars() {
-            v.push(c);
-        }
-    }
-    pub fn fmt(self) -> String {
-        format!("{}", self as u8)
-    }
-    pub fn fmt_bg(self) -> String {
-        format!("{}", (self as u8) + 10)
-    }
-}
-
-bitflags! {
-    struct StyleFlags: u8 {
-        const BOLD          = 0b0000_0001;
-        const DIMMED        = 0b0000_0010;
-        const ITALIC        = 0b0000_0100;
-        const UNDERLINE     = 0b0000_1000;
-        const BLINK         = 0b0001_0000;
-        const REVERSE       = 0b0010_0000;
-        const HIDDEN        = 0b0100_0000;
-        const STRIKETHROUGH = 0b1000_0000;
-    }
-}
-
-impl StyleFlags {
-    fn put(self, v: &mut Vec<char>) -> bool {
-        let mut acc = Vec::new();
-        if self.contains(StyleFlags::BOLD) {
-            acc.push('1');
-        }
-        if self.contains(StyleFlags::DIMMED) {
-            acc.push('2');
-        }
-        if self.contains(StyleFlags::ITALIC) {
-            acc.push('3');
-        }
-        if self.contains(StyleFlags::UNDERLINE) {
-            acc.push('4');
-        }
-        if self.contains(StyleFlags::BLINK) {
-            acc.push('5');
-        }
-        if self.contains(StyleFlags::REVERSE) {
-            acc.push('7');
-        }
-        if self.contains(StyleFlags::HIDDEN) {
-            acc.push('8');
-        }
-        if self.contains(StyleFlags::STRIKETHROUGH) {
-            acc.push('9');
-        }
-        if !acc.is_empty() {
-            for (i, &c) in acc.iter().enumerate() {
-                v.push(c);
-                if i + 1 < acc.len() {
-                    v.push(';');
-                }
-            }
-        }
-        !acc.is_empty()
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Escape {
-    foreground: Option<Color>,
-    background: Option<Color>,
-    styles: StyleFlags,
-}
-
-impl Escape {
-    pub fn new() -> Self {
-        Escape {
-            foreground: None,
-            background: None,
-            styles: StyleFlags::empty(),
-        }
-    }
-
-    pub fn fg(mut self, clr: Color) -> Self {
-        self.foreground = Some(clr);
-        self
-    }
-
-    pub fn bg(mut self, clr: Color) -> Self {
-        self.background = Some(clr);
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn bold(mut self) -> Self {
-        self.styles |= StyleFlags::BOLD;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn dimmed(mut self) -> Self {
-        self.styles |= StyleFlags::DIMMED;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn italic(mut self) -> Self {
-        self.styles |= StyleFlags::ITALIC;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn underline(mut self) -> Self {
-        self.styles |= StyleFlags::UNDERLINE;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn blink(mut self) -> Self {
-        self.styles |= StyleFlags::BLINK;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn reverse(mut self) -> Self {
-        self.styles |= StyleFlags::REVERSE;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn hidden(mut self) -> Self {
-        self.styles |= StyleFlags::HIDDEN;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn strike_through(mut self) -> Self {
-        self.styles |= StyleFlags::STRIKETHROUGH;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn put_reset(v: &mut Vec<char>) {
-        for c in "\x1B[0m".chars() {
-            v.push(c);
-        }
-    }
-
-    pub fn put(&self, v: &mut Vec<char>) {
-        if self.foreground.is_none() && self.background.is_none() && self.styles.is_empty() {
-            return Self::put_reset(v);
-        }
-        v.push('\x1B');
-        v.push('[');
-        let have_chars = self.styles.put(v);
-        if let Some(c) = self.foreground {
-            if have_chars {
-                v.push(';');
-            }
-            c.put(v);
-        }
-        if let Some(c) = self.background {
-            if have_chars {
-                v.push(';');
-            }
-            c.put_bg(v);
-        }
-        v.push('m');
-    }
-}
-
-impl Default for Escape {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl fmt::Display for Escape {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut s = Vec::new();
-        self.put(&mut s);
-        write!(f, "{}", s.iter().collect::<String>())
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -523,44 +310,44 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &[Tag], v: &mut 
     let section_tags = find_tags_in_section(section, tags);
     if let Some(t) = section_tags.first() {
         if t.offset == section.offset {
-            Escape::new().underline().put(tgt(v, n));
+            ansi().underline().put(tgt(v, n));
         }
     }
 
     if section.length == 1 {
-        Escape::new().bg(section.color()).put(tgt(v, n));
+        ansi().bg(section.color()).put(tgt(v, n));
         b2h(code[section.offset], v);
-        Escape::new().put(tgt(v, n));
+        ansi().put(tgt(v, n));
         v.push(' ');
         return;
     }
 
-    Escape::new().bg(section.color()).put(tgt(v, n));
+    ansi().bg(section.color()).put(tgt(v, n));
     b2h(code[section.offset], v);
     v.push(' ');
     b2h(code[section.offset + 1], v);
     //    v.push('_');
     //    v.push('_');
-    Escape::new().put(tgt(v, n));
-    Escape::new().fg(section.color()).put(tgt(v, n));
+    ansi().put(tgt(v, n));
+    ansi().fg(section.color()).put(tgt(v, n));
     let mut off = section.offset + 2;
     for &b in &code[section.offset + 2..section.offset + section.length] {
         // Push any tag closers.
         for tag in section_tags.iter() {
             if tag.offset + tag.length == off {
                 if let TagKind::RelocatedCall(ref target) = &tag.kind {
-                    Escape::new().put(tgt(v, n));
+                    ansi().put(tgt(v, n));
                     v.push('(');
-                    Escape::new().fg(Color::Red).put(tgt(v, n));
+                    ansi().fg(Color::Red).put(tgt(v, n));
                     for c in target.chars() {
                         v.push(c)
                     }
-                    Escape::new().put(tgt(v, n));
+                    ansi().put(tgt(v, n));
                     v.push(')');
                     v.push(' ');
                 }
-                Escape::new().put(tgt(v, n));
-                Escape::new().fg(section.color()).put(tgt(v, n));
+                ansi().put(tgt(v, n));
+                ansi().fg(section.color()).put(tgt(v, n));
             }
         }
         v.push(' ');
@@ -568,11 +355,9 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &[Tag], v: &mut 
         for tag in section_tags.iter() {
             if tag.offset == off {
                 match &tag.kind {
-                    TagKind::RelocatedCall(_) => Escape::new().dimmed().put(tgt(v, n)),
-                    TagKind::RelocatedRef => {
-                        Escape::new().bg(Color::BrightRed).bold().put(tgt(v, n))
-                    }
-                    TagKind::RelocationTarget => Escape::new()
+                    TagKind::RelocatedCall(_) => ansi().dimmed().put(tgt(v, n)),
+                    TagKind::RelocatedRef => ansi().bg(Color::BrightRed).bold().put(tgt(v, n)),
+                    TagKind::RelocationTarget => ansi()
                         .fg(Color::BrightMagenta)
                         .strike_through()
                         .put(tgt(v, n)),
@@ -582,7 +367,7 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &[Tag], v: &mut 
         b2h(b, v);
         off += 1;
     }
-    Escape::new().put(tgt(v, n));
+    ansi().put(tgt(v, n));
     v.push(' ');
 }
 
@@ -603,11 +388,11 @@ fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>
     let mut nul = Vec::new();
     let n = &mut nul;
 
-    Escape::new().bg(section.color()).put(tgt(line, n));
+    ansi().bg(section.color()).put(tgt(line, n));
     b2h(code[section.offset], line);
-    Escape::new().put(tgt(line, n));
+    ansi().put(tgt(line, n));
 
-    Escape::new().fg(section.color()).put(tgt(line, n));
+    ansi().fg(section.color()).put(tgt(line, n));
     line.push(' ');
     b2b(code[section.offset + 1], line);
     line.push('_');
@@ -618,7 +403,7 @@ fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>
         b2h(b, line);
     }
 
-    Escape::new().put(tgt(line, n));
+    ansi().put(tgt(line, n));
     line.push(' ');
 }
 
@@ -684,21 +469,4 @@ pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
         }
     }
     tags
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use failure::Fallible;
-
-    #[test]
-    fn style_flags() -> Fallible<()> {
-        let mut style = StyleFlags::empty();
-        style |= StyleFlags::BOLD;
-        style |= StyleFlags::ITALIC;
-        let mut acc = Vec::new();
-        style.put(&mut acc);
-        assert_eq!(acc, vec!['1', ';', '3']);
-        Ok(())
-    }
 }

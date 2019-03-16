@@ -16,8 +16,8 @@ use failure::{ensure, Fallible};
 use lib::Library;
 use packed_struct::packed_struct;
 use pal::Palette;
+use peff::PE;
 use std::{fs, mem, str, sync::Arc};
-//use reverse::bs2s;
 
 packed_struct!(LayerHeader {
      _0 => unk_ptr_00x100: u32, // Ramp
@@ -89,7 +89,7 @@ impl Layer {
     }
 
     pub fn from_bytes(data: &[u8], lib: Arc<Box<Library>>) -> Fallible<Layer> {
-        let mut pe = peff::PE::parse(data)?;
+        let mut pe = PE::from_bytes(data)?;
         pe.relocate(0x0000_0000)?;
         Layer::from_pe("inval", &pe, lib)
     }
