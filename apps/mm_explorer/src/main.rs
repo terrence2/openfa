@@ -13,11 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetManager;
-use failure::Fallible;
+use failure::{bail, Fallible};
 use log::trace;
 use mm::MissionMap;
 use nalgebra::Isometry3;
-use omnilib::OmniLib;
+use omnilib::{make_opt_struct, OmniLib};
 use render::{ArcBallCamera, PalRenderer, T2Renderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant};
@@ -32,34 +32,29 @@ use winit::{
 };
 use xt::TypeManager;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "mm_explorer", about = "Show the contents of an mm file")]
-struct Opt {
-    #[structopt(
-        short = "g",
-        long = "game",
-        default_value = "FA",
-        help = "The game libraries to load."
-    )]
-    game: String,
-
-    #[structopt(help = "Will load it from game, or look at last component of path")]
-    input: String,
-}
+make_opt_struct!(#[structopt(
+    name = "mm_explorer",
+    about = "Show the contents of an MM file"
+)]
+Opt {});
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Trace, Config::default())?;
 
-    let omnilib = OmniLib::new_for_test()?;
-    let lib = omnilib.library(&opt.game);
+    let (omni, inputs) = opt.find_inputs()?;
+    if inputs.is_empty() {
+        bail!("no inputs");
+    }
+    let (game, name) = inputs.first().unwrap();
+    let lib = omni.library(&game);
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
     let types = TypeManager::new(lib.clone());
 
-    let contents = lib.load_text(&opt.input)?;
+    let contents = lib.load_text(&name)?;
     let mm = MissionMap::from_str(&contents, &types)?;
 
     ///////////////////////////////////////////////////////////

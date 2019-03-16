@@ -14,85 +14,10 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::{ansi, terminal_size};
 use failure::{ensure, Fallible};
-use omnilib::OmniLib;
+use omnilib::{make_opt_struct, OmniLib};
 use peff::PE;
 use std::{collections::HashSet, env, iter, path::PathBuf};
 use structopt::StructOpt;
-
-/// Create a StructOpt that contains the default path loader and whatever else is given.
-macro_rules! make_opt_struct {
-    (#[$opt_struct_options:meta]
-     $opt_struct_name:ident {
-        $(
-            #[$structopt_options:meta]
-            $opt_name:ident => $opt_type:ty
-        ),*
-    }) => {
-        #[derive(Debug, StructOpt)]
-        #[$opt_struct_options]
-        struct $opt_struct_name {
-            #[structopt(
-                short = "t",
-                long = "from-test",
-                help = "Treat the given path as a test reference."
-            )]
-            omni_from_test: bool,
-
-            #[structopt(
-                short = "g",
-                long = "game-dir",
-                help = "The location of the game directory if not pwd."
-            )]
-            omni_game_dir: Option<PathBuf>,
-
-            #[structopt(help = "The component to load either from the libs in the current directory.")]
-            omni_input: String,
-
-            $(
-                #[$structopt_options]
-                $opt_name: $opt_type
-            ),*
-        }
-
-        impl $opt_struct_name {
-            pub fn find_inputs(&self) -> Fallible<(OmniLib, Vec<(String, String)>)> {
-                // Load relevant libraries.
-                ensure!(
-                    !self.omni_from_test || self.omni_game_dir.is_none(),
-                    "only one of -t or -g is allowed"
-                );
-                let omni = if self.omni_from_test {
-                    OmniLib::new_for_test()
-                } else {
-                    if let Some(ref game_dir) = self.omni_game_dir {
-                        OmniLib::new_for_game_directory(&game_dir)
-                    } else {
-                        OmniLib::new_for_game_directory(&env::current_dir()?)
-                    }
-                }?;
-
-                // If the name is in a : form, it is a game:name pair.
-                let inputs = if self.omni_input.contains(':') {
-                    let parts = self.omni_input.splitn(2, ':').collect::<Vec<_>>();
-                    ensure!(
-                        parts.len() == 2,
-                        "expected two parts in file spec with a colon"
-                    );
-                    omni.library(&parts[0].to_uppercase())
-                        .find_matching(parts[1])?
-                        .drain(..)
-                        .map(|s| (parts[0].to_owned(), s))
-                        .collect::<Vec<_>>()
-                } else {
-                    omni.find_matching(&self.omni_input)?
-                };
-
-                Ok((omni, inputs))
-            }
-        }
-    }
-}
-
 
 make_opt_struct!(#[structopt(
     name = "pedump",

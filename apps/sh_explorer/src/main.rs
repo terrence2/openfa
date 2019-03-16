@@ -12,9 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Fallible;
+use failure::{bail, Fallible};
 use log::trace;
-use omnilib::OmniLib;
+use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use render::{ArcBallCamera, DrawMode, ShRenderer};
 use sh::CpuShape;
@@ -30,44 +30,39 @@ use winit::{
     WindowEvent::{CloseRequested, Destroyed, MouseInput, MouseWheel, Resized},
 };
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "mm_explorer", about = "Show the contents of an mm file")]
-struct Opt {
-    #[structopt(
-        short = "g",
-        long = "game",
-        default_value = "FA",
-        help = "The game libraries to load."
-    )]
-    game: String,
-
+make_opt_struct!(#[structopt(
+    name = "sh_explorer",
+    about = "Show the contents of a SH file"
+)]
+Opt {
     #[structopt(
         short = "s",
         long = "stop",
         help = "Stop at this instruction."
     )]
-    stop_at_offset: Option<usize>,
+    stop_at_offset => Option<usize>,
 
     #[structopt(short = "r", long = "range", help = "Show only this range.")]
-    ranged: Option<String>,
-
-    #[structopt(help = "Will load it from game, or look at last component of path")]
-    input: String,
-}
+    ranged => Option<String>
+});
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Trace, Config::default())?;
 
-    let omnilib = OmniLib::new_for_test()?;
-    let lib = omnilib.library(&opt.game);
+    let (omni, inputs) = opt.find_inputs()?;
+    if inputs.is_empty() {
+        bail!("no inputs");
+    }
+    let (game, name) = inputs.first().unwrap();
+    let lib = omni.library(&game);
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
     let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
-    let sh = CpuShape::from_bytes(&lib.load(&opt.input)?)?;
+    let sh = CpuShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or(sh.length());
     let mut draw_mode = DrawMode {
         range: opt.ranged.map(|s| {
