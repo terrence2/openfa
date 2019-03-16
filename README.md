@@ -82,3 +82,17 @@ from the LAY.
 * **VDO**: These files start with RATPAC, which is probably short for Rate-Packed. This is probably a standard
 format of some sort. Unfortunately, a basic google search for files with that header turned up absolutely
 nothing. We need a guru who knows about ancient video encoding standards.
+
+## Development Environment Setup
+
+1) `git clone https://github.com/terrence2/openfa.git`
+1) `cd openfa`
+1) `mkdir -p test_data/{un,}packed/{USNF,USMF,ATF,ATFNATO,ATFGOLD,USNF97,FA}/installdir`
+1) Copy *.LIB from the CD and Installation directory into `test_data/packed/<GAME>/`
+1) Copy any loose T2 files from the Installation directory (ATFNATO and earlier only) into `test_data/packed/<GAME>/installdir/`
+1) Install the Rust language via rustup.rs
+1) (Optional) cd into apps/unlib and run `cargo run -- -o ../../test_data/unpacked/<GAME>/<LIB> ../../test_data/packed/<GAME>/<LIB>` on
+    each of the libs that you would like to have available as raw files. This are generally faster and easier to work with when
+    developing than the raw LIB files
+1) Run sh_explorer by changing directory into `apps/sh_explorer/` and running `cargo run -- -t <GAME>:<FILE.SH>` (for example `cargo run -- -t FA:F18.SH`)
+1) Run mm_explorer by changing directory into `apps/mm_explorer/` and running `cargo run -- -t <GAME>:<FILE.MM>` (for example `cargo run -- -t FA:UKR.MM`)
