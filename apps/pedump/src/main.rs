@@ -56,7 +56,11 @@ macro_rules! make_opt_struct {
 
         impl $opt_struct_name {
             pub fn find_inputs(&self) -> Fallible<(OmniLib, Vec<(String, String)>)> {
-                ensure!(!self.omni_from_test || self.omni_game_dir.is_none(), "only one of -t or -g is allowed");
+                // Load relevant libraries.
+                ensure!(
+                    !self.omni_from_test || self.omni_game_dir.is_none(),
+                    "only one of -t or -g is allowed"
+                );
                 let omni = if self.omni_from_test {
                     OmniLib::new_for_test()
                 } else {
@@ -66,12 +70,29 @@ macro_rules! make_opt_struct {
                         OmniLib::new_for_game_directory(&env::current_dir()?)
                     }
                 }?;
-                let inputs = omni.find_matching(&self.omni_input)?;
+
+                // If the name is in a : form, it is a game:name pair.
+                let inputs = if self.omni_input.contains(':') {
+                    let parts = self.omni_input.splitn(2, ':').collect::<Vec<_>>();
+                    ensure!(
+                        parts.len() == 2,
+                        "expected two parts in file spec with a colon"
+                    );
+                    omni.library(&parts[0].to_uppercase())
+                        .find_matching(parts[1])?
+                        .drain(..)
+                        .map(|s| (parts[0].to_owned(), s))
+                        .collect::<Vec<_>>()
+                } else {
+                    omni.find_matching(&self.omni_input)?
+                };
+
                 Ok((omni, inputs))
             }
         }
     }
 }
+
 
 make_opt_struct!(#[structopt(
     name = "pedump",
@@ -87,6 +108,11 @@ fn main() -> Fallible<()> {
     let bytes_per_line = (width - 3) / 3;
 
     let (omni, inputs) = opt.find_inputs()?;
+    if inputs.is_empty() {
+        println!("No inputs found!");
+        return Ok(());
+    }
+
     for (game, name) in &inputs {
         let lib = omni.library(&game);
         let content = lib.load(&name)?;
