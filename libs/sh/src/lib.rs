@@ -3247,6 +3247,15 @@ impl CpuShape {
         bail!("no instruction at x86_offset: {:08X}", x86_offset)
     }
 
+    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Fallible<&X86Trampoline> {
+        for tramp in &self.trampolines {
+            if tramp.at_offset() == abs_offset as usize {
+                return Ok(tramp);
+            }
+        }
+        bail!("no trampoline at absolute offset: {:08X}", abs_offset);
+    }
+
     pub fn byte_length(&self) -> usize {
         self.pe.code.len()
     }

@@ -18,7 +18,7 @@ use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
-use nalgebra::{Matrix4, Vector4};
+use nalgebra::{Matrix4, Vector4, Point3};
 use pal::Palette;
 use pic::decode_pic;
 use sh::{CpuShape, FacetFlags, Instr};
@@ -330,6 +330,13 @@ impl ShRenderer {
                         0
                     }),
                 ),
+                "_nightHazing" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _nightHazing");
+                        1
+                    })
+                ),
                 "_PLafterBurner" => interp.add_read_port(
                     tramp.mem_location,
                     Box::new(move || {
@@ -471,6 +478,13 @@ impl ShRenderer {
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _PLswingWing");
+                        0
+                    }),
+                ),
+                "_PLvtAngle" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP: _PLvtAngle");
                         0
                     }),
                 ),
@@ -884,17 +898,17 @@ impl ShRenderer {
                             Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
                         let v1 = m * v0;
                         vert_pool.push(Vertex {
-                            //position: [f32::from(v[0]) + xform[0], f32::from(-v[2]) - xform[1], f32::from(v[1]) + xform[2]],
                             position: [v1[0], v1[1], v1[2]],
                             color: [0.75f32, 0.5f32, 0f32, 1f32],
                             tex_coord: [0f32, 0f32],
                             flags: 0,
                         });
                     }
-                    println!("CNT: {:04X}", vert_pool.len());
                 }
                 Instr::Facet(facet) => {
                     if !masking_faces {
+                        let is_coplanar = self.verify_coplanar_and_convex(&facet.indices, &vert_pool)?;
+
                         // Load all vertices in this facet into the vertex upload buffer, copying
                         // in the color and texture coords for each face. Note that the layout is
                         // for triangle fans.
@@ -921,7 +935,9 @@ impl ShRenderer {
 
                             for (index, tex_coord) in inds.iter().zip(&tcs) {
                                 if (*index as usize) >= vert_pool.len() {
-                                    break;
+                                    offset += 1;
+                                    byte_offset += instr.size();
+                                    continue;
                                 }
                                 ensure!(
                                     (*index as usize) < vert_pool.len(),
@@ -930,17 +946,22 @@ impl ShRenderer {
                                     vert_pool.len()
                                 );
                                 let mut v = vert_pool[*index as usize];
-                                v.color = self.system_palette.rgba_f32(facet.color as usize)?;
-                                if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
-                                    || facet.flags.contains(FacetFlags::UNK1)
-                                    || facet.flags.contains(FacetFlags::UNK5)
-                                {
+                                if !is_coplanar {
                                     v.flags = 1;
-                                }
-                                if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                                    assert!(active_frame.is_some());
-                                    let frame = active_frame.unwrap();
-                                    v.tex_coord = frame.tex_coord_at(*tex_coord);
+                                    v.color = [1f32, 0f32, 1f32, 1f32];
+                                } else {
+                                    v.color = self.system_palette.rgba_f32(facet.color as usize)?;
+                                    if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
+                                        || facet.flags.contains(FacetFlags::UNK1)
+                                        || facet.flags.contains(FacetFlags::UNK5)
+                                    {
+                                        v.flags = 1;
+                                    }
+                                    if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                                        assert!(active_frame.is_some());
+                                        let frame = active_frame.unwrap();
+                                        v.tex_coord = frame.tex_coord_at(*tex_coord);
+                                    }
                                 }
                                 verts.push(v);
                                 indices.push(v_base);
@@ -993,6 +1014,27 @@ impl ShRenderer {
         self.instance = Some(inst);
 
         Ok(())
+    }
+
+    fn verify_coplanar_and_convex(&self, inds: &[u16], vert_pool: &[Vertex]) -> Fallible<bool> {
+        let verts = inds.iter().map(|i: &u16| {
+            let p = vert_pool[*i as usize].position;
+            Point3::new(f32::from(p[0]), f32::from(p[1]), f32::from(p[2]))
+        }).collect::<Vec<_>>();
+        let v01 = verts[1] - verts[0];
+        let v02 = verts[2] - verts[0];
+        let n0 = v01.cross(&v02).normalize();
+        let mut i = 3;
+        while i < verts.len() {
+            let v0n = (verts[i] - verts[0]).normalize();
+            //let n1 = v01.cross(&v0n);
+            println!("ANG: {}", n0.dot(&v0n));
+            if n0.dot(&v0n).abs() >= 0.1f32 {
+                return Ok(false);
+            }
+            i += 1;
+        }
+        Ok(true)
     }
 
     pub fn render(
@@ -1068,7 +1110,7 @@ mod test {
             //"ATFNATO",
             //"ATFGOLD",
             "USNF97",
-            //"FA"
+            "FA"
         ])?;
         let skipped = vec![
             "CHAFF.SH", "CRATER.SH", "DEBRIS.SH", "EXP.SH", "FIRE.SH", "FLARE.SH", "MOTHB.SH", "SMOKE.SH", "WAVE1.SH", "WAVE2.SH"

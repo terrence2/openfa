@@ -55,6 +55,10 @@ struct Opt {
     #[structopt(short = "n", long = "no-name")]
     quiet: bool,
 
+    /// Account for i386 forms
+    #[structopt(short = "i", long = "i386")]
+    custom: bool,
+
     /// Custom code
     #[structopt(short = "c", long = "custom")]
     custom: bool,
@@ -141,39 +145,39 @@ fn main() -> Fallible<()> {
             for memref in memrefs.iter() {
                 println!("{} - {}", dedup[memref], memref);
             }
-        } else if opt.custom {
-            /*
-            for (offset, vinstr) in shape.instrs.iter().enumerate() {
-                if let sh::Instr::X86Code(x86) = vinstr {
-                    for instr in &x86.bytecode.instrs {
-                        for operand in &instr.operands {
-                            if let i386::Operand::Memory(memref) = operand {
-                                let d = memref.displacement as u32 as usize;
-                                if d > 0xAA000000 {
-                                    let d = d - 0xAA000000;
-                                    for tramp in &shape.trampolines {
-                                        if d == tramp.offset {
-                                            if let sh::Instr::Unk12(next) =
-                                                &shape.instrs[offset + 1]
-                                            {
-                                                let j = shape.map_absolute_offset_to_instr_offset(
-                                                    next.next_offset(),
-                                                )?;
-                                                if let sh::Instr::VertexBuf(vxbuf) =
-                                                    &shape.instrs[j]
-                                                {
-                                                    println!("{} : {} : {} : {}", shape.instrs.len(), name.as_os_str().to_str().unwrap(), tramp.name, vxbuf.unk0);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+        } else if opt.i386 {
+            fn is_start_interp(instr: &i386::Instr, sh: &CpuShape) -> bool {
+                if let i386::Operand::Imm32s(x) = instr.operands[0] {
+                    let abs_offset = x as u32 - sh::SHAPE_LOAD_BASE;
+                    if let Ok(tramp) = sh.lookup_trampoline_by_offset(abs_offset) {
+                        if tramp.name == "do_start_interp" {
+                            return true;
                         }
                     }
                 }
+                false
             }
-            */
+
+            fn is_memref_to_tramp(op: &i386::Operand, sh: &CpuShape, name: &str) -> bool {
+                if let i386::Operand::Memory(i386::MemRef {
+                    displacement,
+                    base: None,
+                    index: None,
+                    scale: 1,
+                    segment: None,
+                    ..
+                }) = op
+                {
+                    let abs_offset = *displacement as u32 - sh::SHAPE_LOAD_BASE;
+                    if let Ok(tramp) = sh.lookup_trampoline_by_offset(abs_offset) {
+                        if tramp.name == name {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+
             /*
                 1081: @4A0B X86Code: F0 00 66 83 3D 70 4D 00 AA 01 75 11 68 22 4A 00 AA 68 88 4D 00 AA C3
                 @00|4A0D: 66 83 3D 70 4D 00 AA 01  Compare([0xAA004D70], 0x1) [_PLgearDown]
@@ -187,16 +191,12 @@ fn main() -> Fallible<()> {
                 @05|4A2D: 68 88 4D 00 AA          Push(0xAA004D88)
                 @0A|4A32: C3                      Return() [do_start_interp]
             */
-
-            fn is_match(offset: usize, instrs: &[sh::Instr]) -> bool {
-                if offset > instrs.len() - 3 {
-                    return false;
-                }
+            fn match_show_part0(instr: &sh::Instr) -> bool {
                 if let sh::Instr::X86Code(sh::X86Code {
                     have_header: true,
                     bytecode: i386::ByteCode { instrs: bc, .. },
                     ..
-                }) = &instrs[offset]
+                }) = instr
                 {
                     if bc[0].memonic == i386::Memonic::Compare
                         && bc[2].memonic == i386::Memonic::Push
@@ -207,57 +207,279 @@ fn main() -> Fallible<()> {
                             return true;
                         }
                     }
-                    //   && let sh::Instr::Unk12(unk12) = shape.instrs[offset + 1]
-                    //   && let sh::Instr::X86Code(x86_2) = shape.instrs[offset + 2]
                 }
-
                 false
             }
 
-            let mut matching = 0;
+            fn match_show_part1(instr: &sh::Instr) -> bool {
+                if let sh::Instr::Unk12(_) = instr {
+                    return true;
+                }
+                false
+            }
+
+            fn match_return_to_interp(instr: &sh::Instr, sh: &CpuShape) -> bool {
+                if let sh::Instr::X86Code(sh::X86Code {
+                    have_header: true,
+                    bytecode: i386::ByteCode { instrs: bc, .. },
+                    ..
+                }) = instr
+                {
+                    if bc[0].memonic == i386::Memonic::Push
+                        && bc[1].memonic == i386::Memonic::Push
+                        && bc[2].memonic == i386::Memonic::Return
+                    {
+                        if is_start_interp(&bc[1], sh) {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+
+            fn match_show(offset: usize, sh: &CpuShape) -> bool {
+                if offset > sh.instrs.len() - 3 {
+                    return false;
+                }
+                if match_show_part0(&sh.instrs[offset])
+                    && match_show_part1(&sh.instrs[offset + 1])
+                    && match_return_to_interp(&sh.instrs[offset + 2], sh)
+                {
+                    //println!("SHOW: {}", sh.instrs[offset + 1].show());
+                    return true;
+                }
+                false
+            }
+
+            /*
+            @00|191F: 66 83 3D 70 4D 00 AA 01  Compare([0xAA004D70], 0x1) [_PLgearDown]
+            @08|1927: 75 36                   Jcc(Unary(Check(ZF, false)))(0x36 -> 0x195F)
+            @0A|1929: E8 00 00 00 00          Call(0x0 -> 0x192E)
+            @0F|192E: 5B                      Pop(EBX)
+            @10|192F: 81 C3 21 00 00 00       Add(EBX, 0x21)
+            @16|1935: 66 A1 76 4D 00 AA       Move(AX, [0xAA004D76]) [_PLgearPos]
+
+            @1C|193B: 66 D1 F8                Sar(AX, 0x1)
+
+            @1F|193E: 66 89 43 08             Move([EBX+0x8], AX)
+            @23|1942: 68 4D 19 00 AA          Push(0xAA00194D)
+            @28|1947: 68 88 4D 00 AA          Push(0xAA004D88)
+            @2D|194C: C3                      Return() [do_start_interp]
+            386: @194D UnkC4: C4 00| EA FF F8 FF FE FF 00 00 00 00 00 00 68 22 t:(-22,-8,-2) a:(0,0,0) 68 22 (target:3BC5)
+            387: @195D X86Code: F0 00 68 6A 19 00 AA 68 88 4D 00 AA C3 
+            @00|195F: 68 6A 19 00 AA          Push(0xAA00196A)
+            @05|1964: 68 88 4D 00 AA          Push(0xAA004D88)
+            @0A|1969: C3                      Return() [do_start_interp]
+            */
+            fn match_xform_part0(instr: &sh::Instr) -> bool {
+                if let sh::Instr::X86Code(sh::X86Code {
+                    have_header: true,
+                    bytecode: i386::ByteCode { instrs: bc, .. },
+                    ..
+                }) = instr
+                {
+                    if bc[0].memonic == i386::Memonic::Compare
+                        && bc[2].memonic == i386::Memonic::Call
+                        && bc[3].memonic == i386::Memonic::Pop
+                        && bc[4].memonic == i386::Memonic::Add
+                    {
+                        if let i386::Memonic::Jcc(_cond) = bc[1].memonic {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+
+            fn match_xform_part1(instr: &sh::Instr) -> bool {
+                if let sh::Instr::UnkC4(_) = instr {
+                    return true;
+                }
+                false
+            }
+
+            fn match_xform(offset: usize, sh: &CpuShape) -> bool {
+                if offset > sh.instrs.len() - 3 {
+                    return false;
+                }
+                if match_xform_part0(&sh.instrs[offset])
+                    && match_xform_part1(&sh.instrs[offset + 1])
+                    && match_return_to_interp(&sh.instrs[offset + 2], sh)
+                {
+                    //println!("XFORM: {}", sh.instrs[offset + 1].show());
+                    return true;
+                }
+                false
+            }
+
+            /*
+            @00|1A20: E8 00 00 00 00          Call(0x0 -> 0x1A25)
+            @05|1A25: 5B                      Pop(EBX)
+            @06|1A26: 81 C3 1E 00 00 00       Add(EBX, 0x1E)
+            @0C|1A2C: 66 A1 AC 55 00 AA       Move(AX, [0xAA0055AC]) [_PLcanardPos]
+            @12|1A32: 66 89 43 08             Move([EBX+0x8], AX)
+            @16|1A36: 68 41 1A 00 AA          Push(0xAA001A41)
+            @1B|1A3B: 68 D0 55 00 AA          Push(0xAA0055D0)
+            @20|1A40: C3                      Return() [do_start_interp]
+            393: @1A41 UnkC4: C4 00| 00 00 05 00 D8 FF 00 00 00 00 00 00 1E 1A t:(0,5,-40) a:(0,0,0) 1E 1A (target:346F)
+            394: @1A51 X86Code: F0 00 68 5E 1A 00 AA 68 D0 55 00 AA C3 
+            @00|1A53: 68 5E 1A 00 AA          Push(0xAA001A5E)
+            @05|1A58: 68 D0 55 00 AA          Push(0xAA0055D0)
+            @0A|1A5D: C3                      Return() [do_start_interp]
+            */
+            fn match_control_part0(instr: &sh::Instr) -> bool {
+                if let sh::Instr::X86Code(sh::X86Code {
+                    have_header: true,
+                    bytecode: i386::ByteCode { instrs: bc, .. },
+                    ..
+                }) = instr
+                {
+                    if bc[0].memonic == i386::Memonic::Call
+                        && bc[1].memonic == i386::Memonic::Pop
+                        && bc[2].memonic == i386::Memonic::Add
+                        && bc[3].memonic == i386::Memonic::Move
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
+
+            fn match_control_part1(instr: &sh::Instr) -> bool {
+                if let sh::Instr::UnkC4(_) = instr {
+                    return true;
+                }
+                false
+            }
+
+            fn match_control(offset: usize, sh: &CpuShape) -> bool {
+                if offset > sh.instrs.len() - 3 {
+                    return false;
+                }
+                if match_control_part0(&sh.instrs[offset])
+                    && match_control_part1(&sh.instrs[offset + 1])
+                    && match_return_to_interp(&sh.instrs[offset + 2], sh)
+                {
+                    //println!("CONTROL: {}", sh.instrs[offset + 1].show());
+                    return true;
+                }
+                false
+            }
+
+            /*  Effects Allowed
+            @00|0062: 53                      Push(EBX)
+            @01|0063: BB 9C 07 00 AA          Move(EBX, 0xAA00079C)
+            @06|0068: F7 83 8E 00 00 00 00 00 01 00  Test([EBX+0x8E], 0x10000)
+            @10|0072: 74 14                   Jcc(Unary(Check(ZF, true)))(0x14 -> 0x88)
+            @12|0074: 81 0D 96 07 00 AA 00 00 01 00  Or([0xAA000796], 0x10000) [_effectsAllowed]
+            @1C|007E: 81 0D 90 07 00 AA 00 00 01 00  Or([0xAA000790], 0x10000) [_effects]
+            @26|0088: 5B                      Pop(EBX)
+            @27|0089: 68 94 00 00 AA          Push(0xAA000094)
+            @2C|008E: 68 A2 07 00 AA          Push(0xAA0007A2)
+            @31|0093: C3                      Return() [do_start_interp]
+            */
+            fn match_effects(offset: usize, sh: &CpuShape) -> bool {
+                if let sh::Instr::X86Code(sh::X86Code {
+                    have_header: true,
+                    bytecode: i386::ByteCode { instrs: bc, .. },
+                    ..
+                }) = &sh.instrs[offset]
+                {
+                    if bc[0].memonic == i386::Memonic::Push
+                        && bc[1].memonic == i386::Memonic::Move
+                        && bc[2].memonic == i386::Memonic::Test
+                        && bc[4].memonic == i386::Memonic::Or
+                        && bc[5].memonic == i386::Memonic::Or
+                        && bc[6].memonic == i386::Memonic::Pop
+                        && bc[7].memonic == i386::Memonic::Push
+                        && bc[8].memonic == i386::Memonic::Push
+                        && bc[9].memonic == i386::Memonic::Return
+                    {
+                        if is_start_interp(&bc[8], sh)
+                            && is_memref_to_tramp(&bc[4].operands[0], sh, "_effectsAllowed")
+                            && is_memref_to_tramp(&bc[5].operands[0], sh, "_effects")
+                        {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+
+            /* Lightening
+            @00|005E: C6 05 F6 41 00 AA 00    Move([0xAA0041F6], 0x0) [lighteningAllowed]
+            @07|0065: 68 70 00 00 AA          Push(0xAA000070)
+            @0C|006A: 68 F0 41 00 AA          Push(0xAA0041F0)
+            @11|006F: C3                      Return() [do_start_interp]
+            */
+            fn match_lightening(offset: usize, sh: &CpuShape) -> bool {
+                if let sh::Instr::X86Code(sh::X86Code {
+                    have_header: true,
+                    bytecode: i386::ByteCode { instrs: bc, .. },
+                    ..
+                }) = &sh.instrs[offset]
+                {
+                    if bc[0].memonic == i386::Memonic::Move
+                        && bc[1].memonic == i386::Memonic::Push
+                        && bc[2].memonic == i386::Memonic::Push
+                        && bc[3].memonic == i386::Memonic::Return
+                    {
+                        if is_start_interp(&bc[2], sh)
+                            && is_memref_to_tramp(&bc[0].operands[0], sh, "lighteningAllowed")
+                        {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+
+            let mut matching_show = 0;
+            let mut matching_xform = 0;
+            let mut matching_control = 0;
+            let mut matching_effects = 0;
+            let mut matching_lightening = 0;
             let mut nonmatching = 0;
-            for (offset, vinstr) in shape.instrs.iter().enumerate() {
-                if let sh::Instr::X86Code(_) = vinstr {
-                    if is_match(offset, &shape.instrs) {
-                        matching += 1;
+            let mut offset = 0;
+            while offset < shape.instrs.len() {
+                let instr = &shape.instrs[offset];
+                if let sh::Instr::X86Code(_) = instr {
+                    if match_show(offset, &shape) {
+                        matching_show += 1;
+                        offset += 2;
+                    } else if match_xform(offset, &shape) {
+                        matching_xform += 1;
+                        offset += 2;
+                    } else if match_control(offset, &shape) {
+                        matching_control += 1;
+                        offset += 2;
+                    } else if match_effects(offset, &shape) {
+                        matching_effects += 1;
+                    } else if match_lightening(offset, &shape) {
+                        matching_lightening += 1;
                     } else {
                         nonmatching += 1;
                     }
                 }
+                offset += 1;
             }
-            println!("matching: {}, non: {}", matching, nonmatching);
+            if
+            matching_show + matching_xform + matching_control + matching_effects + matching_lightening +
+            nonmatching > 0 {
+                println!(
+                    "{} non, show: {}, xform: {}, control: {}, effects: {}, lightening: {}, name: {}",
+                    nonmatching,
+                    matching_show,
+                    matching_xform,
+                    matching_control,
+                    matching_effects,
+                    matching_lightening,
+                    name.as_os_str().to_str().unwrap()
+                );
+            }
+        } else if opt.custom {
+            //
         }
-
-        //        for (i, instr) in shape.instrs.iter().enumerate() {
-        //            if matches.is_present("all") {
-        //                println!("{}: {}", i, instr.show());
-        //                continue;
-        //            }
-        //            match instr {
-        ////                &Instr::X86Code(ref bc) => {
-        ////                    let filename = format!("/tmp/instr{}.bin", i);
-        ////                    let mut buffer = fs::File::create(filename).unwrap();
-        ////                    buffer.write(&bc.code).unwrap();
-        ////                }
-        ////                &Instr::UnkJumpIfLowDetail(ref x) => {
-        ////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
-        ////                    println!("{}, {}: {}", name, instr.show(),
-        ////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
-        ////                }
-        ////                &Instr::UnkJumpIfNotShown(ref x) => {
-        ////                    let next_instr = find_instr_at_offset(x.next_offset(), &shape.instrs);
-        ////                    println!("{}, {}: {}", name, instr.show(),
-        ////                             next_instr.map(|i| { i.show() }).unwrap_or("NONE".to_owned()));
-        ////                }
-        //                &Instr::TrailerUnknown(ref x) => {
-        //                    if x.data[0] == 0xEE {
-        //
-        //                        println!("{:25}: {}", name, instr.show());
-        //                    }
-        //                }
-        //                _ => {}
-        //            }
-        //        }
     }
 
     Ok(())

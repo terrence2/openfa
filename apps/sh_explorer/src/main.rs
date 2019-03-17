@@ -19,7 +19,7 @@ use pal::Palette;
 use render::{ArcBallCamera, DrawMode, ShRenderer};
 use sh::CpuShape;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant, num::ParseIntError};
 use structopt::StructOpt;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
@@ -30,6 +30,13 @@ use winit::{
     WindowEvent::{CloseRequested, Destroyed, MouseInput, MouseWheel, Resized},
 };
 
+fn from_number(src: &str) -> Result<usize, ParseIntError> {
+    if src.starts_with("0x") {
+        return usize::from_str_radix(&src[2..], 16);
+    }
+    usize::from_str_radix(src, 10)
+}
+
 make_opt_struct!(#[structopt(
     name = "sh_explorer",
     about = "Show the contents of a SH file"
@@ -38,7 +45,8 @@ Opt {
     #[structopt(
         short = "s",
         long = "stop",
-        help = "Stop at this instruction."
+        help = "Stop at this instruction.",
+        parse(try_from_str = "from_number")
     )]
     stop_at_offset => Option<usize>,
 

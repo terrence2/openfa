@@ -22,6 +22,6 @@ mod interpreter;
 mod lut;
 
 pub use crate::{
-    disassembler::{ByteCode, DisassemblyError, Instr, Memonic, Operand},
+    disassembler::{ByteCode, DisassemblyError, Instr, Memonic, MemRef, Operand},
     interpreter::{ExitInfo, Interpreter},
 };
