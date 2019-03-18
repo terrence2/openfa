@@ -131,8 +131,8 @@ impl PE {
             "expected entry to be at zero"
         );
         ensure!(
-            opt.base_of_code() == 4096,
-            "expected code to live at page 1"
+            opt.base_of_code() == 0 || opt.base_of_code() == 4096,
+            "expected code to live at page 0 or 1"
         );
         // opt.size_of_code
         // opt.size_of_initialize_data
@@ -285,7 +285,21 @@ impl PE {
         let mut thunks = Vec::new();
         if sections.contains_key(".idata") {
             let (idata_section, idata) = sections[".idata"];
-            thunks.append(&mut PE::_parse_idata(idata_section, idata)?);
+            thunks.append(&mut PE::parse_idata(idata_section, idata)?);
+        }
+
+        if !sections.contains_key("CODE") && !sections.contains_key(".text") {
+            let (_, reloc_data) = sections[".reloc"];
+            let relocs = PE::parse_relocs(reloc_data, None)?;
+            return Ok(PE {
+                thunks,
+                relocs,
+                code: Vec::new(),
+                section_info: Self::owned_section_info(&sections),
+                image_base: win.image_base(),
+                code_vaddr: 0,
+                code_addr: 0
+            });
         }
 
         let (code_section, code) = if sections.contains_key("CODE") {
@@ -294,27 +308,29 @@ impl PE {
             sections[".text"]
         };
         let (_, reloc_data) = sections[".reloc"];
-        let relocs = PE::_parse_relocs(reloc_data, code_section)?;
-
-        let section_info = sections
-            .iter()
-            .map(|(ref name, (ref header, _))| {
-                ((*name).to_owned(), SectionInfo::from_header(header))
-            })
-            .collect::<HashMap<String, SectionInfo>>();
+        let relocs = PE::parse_relocs(reloc_data, Some(code_section))?;
 
         Ok(PE {
             thunks,
             relocs,
             code: code.to_owned(),
-            section_info,
+            section_info: Self::owned_section_info(&sections),
             image_base: win.image_base(),
             code_vaddr: code_section.virtual_address(),
             code_addr: code_section.virtual_address(),
         })
     }
 
-    fn _parse_idata(section: &SectionHeader, idata: &[u8]) -> Fallible<Vec<Thunk>> {
+    fn owned_section_info(sections: &HashMap<String, (&SectionHeader, &[u8])>) -> HashMap<String, SectionInfo> {
+        sections
+            .iter()
+            .map(|(ref name, (ref header, _))| {
+                ((*name).to_owned(), SectionInfo::from_header(header))
+            })
+            .collect::<HashMap<String, SectionInfo>>()
+    }
+
+    fn parse_idata(section: &SectionHeader, idata: &[u8]) -> Fallible<Vec<Thunk>> {
         ensure!(
             idata.len() > mem::size_of::<ImportDirectoryEntry>() * 2,
             "section data too short for directory"
@@ -418,7 +434,7 @@ impl PE {
         Ok(str::from_utf8(&n[..end_offset])?.to_owned())
     }
 
-    fn _parse_relocs(relocs: &[u8], code_section: &SectionHeader) -> Fallible<Vec<u32>> {
+    fn parse_relocs(relocs: &[u8], code_section: Option<&SectionHeader>) -> Fallible<Vec<u32>> {
         let mut out = Vec::new();
         let mut offset = 0usize;
         trace!(
@@ -444,14 +460,14 @@ impl PE {
                     ensure!(flags == 3, "only 32bit relocations are supported");
                     let rva = base_reloc.page_rva() + u32::from(reloc_offset);
                     ensure!(
-                        rva >= code_section.virtual_address(),
+                        rva >= Self::maybe_code_vaddr(code_section),
                         "relocation before CODE"
                     );
                     ensure!(
-                        rva < code_section.virtual_address() + code_section.virtual_size(),
+                        rva < Self::maybe_code_vaddr(code_section) + Self::maybe_code_vsize(code_section),
                         "relocation after CODE"
                     );
-                    let code_offset = (base_reloc.page_rva() - code_section.virtual_address())
+                    let code_offset = (base_reloc.page_rva() - Self::maybe_code_vaddr(code_section))
                         + u32::from(reloc_offset);
                     trace!(
                         "reloc at offset {} is {:04X} + {:04X} => rva:{:04X}, phys:{:04X}",
@@ -470,6 +486,20 @@ impl PE {
             }
         }
         Ok(out)
+    }
+
+    fn maybe_code_vaddr(code_section: Option<&SectionHeader>) -> u32 {
+        if let Some(cs) = code_section {
+            return cs.virtual_address();
+        }
+        0
+    }
+
+    fn maybe_code_vsize(code_section: Option<&SectionHeader>) -> u32 {
+        if let Some(cs) = code_section {
+            return cs.virtual_size();
+        }
+        0
     }
 
     pub fn relocate(&mut self, target: u32) -> Fallible<()> {
@@ -733,8 +763,9 @@ mod tests {
 
         let sh = omni.find_matching("*.SH")?;
         let lay = omni.find_matching("*.LAY")?;
+        let dlg = omni.find_matching("*.DLG")?;
 
-        for (game, name) in sh.iter().chain(lay.iter()) {
+        for (game, name) in sh.iter().chain(lay.iter()).chain(dlg.iter()) {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
