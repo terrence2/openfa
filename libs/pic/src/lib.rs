@@ -12,11 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate failure;
-extern crate image;
-extern crate packed_struct;
-extern crate pal;
-
 use failure::{ensure, Fallible};
 use image::{DynamicImage, ImageRgba8};
 use packed_struct::packed_struct;
