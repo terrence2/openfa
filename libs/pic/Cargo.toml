@@ -10,3 +10,6 @@ failure = ">= 0.1"
 image = ">= 0.18"
 packed_struct = { path = "../packed_struct" }
 pal = { path = "../pal" }
+
+[dev-dependencies]
+omnilib = { path = "../omnilib" }

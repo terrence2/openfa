@@ -104,31 +104,25 @@ pub fn decode_pic(system_palette: &Palette, data: &[u8]) -> Fallible<DynamicImag
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::prelude::*;
+    use std::{fs, path::Path};
+    use omnilib::OmniLib;
 
     #[test]
-    fn show_all_type1() -> Fallible<()> {
-        let mut fp = fs::File::open("../pal/test_data/PALETTE.PAL")?;
-        let mut palette_data = Vec::new();
-        fp.read_to_end(&mut palette_data)?;
-        let palette = Palette::from_bytes(&palette_data)?;
+    fn it_can_decode_all_pics() -> Fallible<()> {
+        let omni = OmniLib::new_for_test()?;
+        for (game, name) in omni.find_matching("*.PIC")? {
+            println!("AT: {}:{}", game, name);
+            let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
+            let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
-        let paths = fs::read_dir("./test_data")?;
-        for i in paths {
-            let entry = i?;
-            let path = format!("{}", entry.path().display());
-            if !path.ends_with("PIC") {
-                continue;
+            if false {
+                let name = format!("dump/{}/{}.png", game, name.split(".").collect::<Vec<_>>().first().unwrap());
+                let path = Path::new(&name);
+                println!("Write: {}", path.display());
+                let _ = fs::create_dir("dump");
+                let _ = fs::create_dir(path.parent().unwrap());
+                img.save(path)?;
             }
-            println!("AT: {}", path);
-
-            let mut fp = fs::File::open(entry.path())?;
-            let mut data = Vec::new();
-            fp.read_to_end(&mut data)?;
-
-            let _img = decode_pic(&palette, &data)?;
-            // img.save(fs::File::create(path.to_owned() + ".png")?, image::PNG)?;
         }
 
         Ok(())
