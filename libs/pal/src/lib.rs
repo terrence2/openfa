@@ -12,11 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate failure;
-extern crate image;
-
 use failure::{ensure, Fallible};
 use image::{Pixel, Rgb, Rgba};
+use std::{borrow::Cow, fs::File, io::Write};
 
 #[derive(Clone)]
 pub struct Palette {
@@ -98,7 +96,9 @@ impl Palette {
         })
     }
 
-    pub fn dump_png(&self, name: &str) -> Fallible<()> {
+    /// Dump this pal to `path` in PNG format, in a 16x16 grid, expanding each
+    /// entry to an 80x80 pixel square in order to increase visbility.
+    pub fn dump_png(&self, path: &str) -> Fallible<()> {
         let size = 80;
         let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
         for i in 0..16 {
@@ -112,12 +112,23 @@ impl Palette {
             }
         }
         let img = image::ImageRgb8(buf);
-        img.save(name.to_owned() + ".png")?;
+        img.save(path.to_owned() + ".png")?;
         Ok(())
     }
 
-    /// Show the given data as if it were colors for a palette. Ignores short data, data that
-    /// ends with a truncated color, and data that is too long.
+    /// Save this pal to `path` in PAL format (e.g. raw VGA palette data).
+    pub fn dump_pal(&self, path: &str) -> Fallible<()> {
+        let mut fp = File::create(path)?;
+        for entry in &self.entries {
+            fp.write_all(&[entry[0] >> 2])?;
+            fp.write_all(&[entry[1] >> 2])?;
+            fp.write_all(&[entry[2] >> 2])?;
+        }
+        Ok(())
+    }
+
+    /// Show the given data as if it were colors for a palette. Ignores short
+    /// data, data that ends with a truncated color, and data that is too long.
     pub fn dump_partial(data: &[u8], scale: u8, name: &str) -> Fallible<()> {
         let size = 80;
         let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
@@ -163,6 +174,20 @@ impl Palette {
         let img = image::ImageRgb8(buf);
         img.save(name.to_owned() + ".png")?;
         Ok(())
+    }
+}
+
+impl<'a> From<&'a Palette> for Cow<'a, Palette> {
+    #[inline]
+    fn from(pal: &'a Palette) -> Cow<'a, Palette> {
+        Cow::Borrowed(pal)
+    }
+}
+
+impl<'a> From<Palette> for Cow<'a, Palette> {
+    #[inline]
+    fn from(pal: Palette) -> Cow<'a, Palette> {
+        Cow::Owned(pal)
     }
 }
 

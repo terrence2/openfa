@@ -20,7 +20,7 @@ use lib::Library;
 use log::trace;
 use nalgebra::{Matrix4, Vector4, Point3};
 use pal::Palette;
-use pic::decode_pic;
+use pic::Pic;
 use sh::{CpuShape, FacetFlags, Instr};
 use std::{
     collections::HashMap,
@@ -277,7 +277,7 @@ impl ShRenderer {
 
         let mut textures = Vec::new();
         for filename in sh.all_textures() {
-            let img = decode_pic(&self.system_palette, &lib.load(&filename.to_uppercase())?)?;
+            let img = Pic::decode(&self.system_palette, &lib.load(&filename.to_uppercase())?)?;
             textures.push((filename, img));
         }
         let atlas = TextureAtlas::new(textures)?;

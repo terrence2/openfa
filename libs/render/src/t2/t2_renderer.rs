@@ -22,7 +22,7 @@ use log::trace;
 use mm::{MissionMap, TLoc};
 use nalgebra::Matrix4;
 use pal::Palette;
-use pic::decode_pic;
+use pic::Pic;
 use std::{collections::HashMap, sync::Arc};
 use t2::Terrain;
 use vulkano::{
@@ -323,7 +323,7 @@ impl T2Renderer {
         // Load all images with our new palette.
         let mut pics = Vec::new();
         for (tloc, data) in &self.pic_data {
-            let pic = decode_pic(&palette, data)?;
+            let pic = Pic::decode(&palette, data)?;
             pics.push((tloc.clone(), pic));
         }
 

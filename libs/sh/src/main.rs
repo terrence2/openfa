@@ -57,7 +57,7 @@ struct Opt {
 
     /// Account for i386 forms
     #[structopt(short = "i", long = "i386")]
-    custom: bool,
+    i386: bool,
 
     /// Custom code
     #[structopt(short = "c", long = "custom")]
