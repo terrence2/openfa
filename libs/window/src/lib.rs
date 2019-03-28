@@ -173,6 +173,7 @@ impl SizeDependent {
         surface: &Arc<Surface<Window>>,
     ) -> Fallible<()> {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
+        trace!("resizing to dimensions: {}x{}", dimensions[0], dimensions[1]);
 
         let depth_buffer =
             AttachmentImage::transient(device.clone(), dimensions, GraphicsConfigBuilder::DEPTH_FORMAT)?;

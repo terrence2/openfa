@@ -13,32 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::ansi;
-use failure::{err_msg, Fallible};
+use failure::Fallible;
 use peff::PE;
 use reverse::bs2s;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, HashMap};
 use std::mem;
-use std::path::Path;
 
-pub struct Dialog {
-    pub base_name: String,
-}
+pub struct Menu {}
 
-impl Dialog {
+impl Menu {
     pub fn from_bytes(name: &str, bytes: &[u8]) -> Fallible<Self> {
-        let file_stem = Path::new(name)
-            .file_stem()
-            .ok_or_else(|| err_msg("no extension on dialog name"))?
-            .to_str()
-            .ok_or_else(|| err_msg("invalid name format on dialog"))?;
-
-        Ok(Self {
-            base_name: file_stem.to_owned()
-        })
-    }
-
-    /*
-    pub fn explore(name: &str, bytes: &[u8]) -> Fallible<Self> {
         let pe = PE::from_bytes(bytes)?;
 
         let vaddr = pe.section_info["CODE"].virtual_address as usize;
@@ -52,8 +36,7 @@ impl Dialog {
         let mut thunk_offset = pe.code.len() - 6;
         loop {
             if pe.code[thunk_offset] == 0xFF && pe.code[thunk_offset + 1] == 0x25 {
-                let dwords: *const u32 =
-                    unsafe { mem::transmute(pe.code[thunk_offset + 2..].as_ptr() as *const u8) };
+                let dwords: *const u32 = unsafe { mem::transmute(pe.code[thunk_offset + 2..].as_ptr() as *const u8) };
                 let tgt = unsafe { *dwords };
                 let mut found = false;
                 for thunk in &pe.thunks {
@@ -86,12 +69,7 @@ impl Dialog {
             //println!("a: {:02X} {:02X} {:02X} {:02X}", d, c, b, a);
             let vtgt = (d << 24) + (c << 16) + (b << 8) + a;
             let tgt = vtgt - vaddr;
-            println!(
-                "tgt:{:04X} => {:04X} <> {}",
-                tgt,
-                vtgt,
-                all_thunk_descrs.join(", ")
-            );
+            println!("tgt:{:04X} => {:04X} <> {}", tgt, vtgt, all_thunk_descrs.join(", "));
             for thunk in &pe.thunks {
                 if vtgt == thunk.vaddr as usize {
                     target_names.insert(r + 3, thunk.name.to_owned());
@@ -116,7 +94,11 @@ impl Dialog {
         let mut offset = 0;
         while offset < pe.code.len() {
             let b = bs2s(&pe.code[offset..offset + 1]);
-            if relocs.contains(&(offset, 0)) {
+            if relocs.contains(&(offset, 0)) && targets.contains(&offset) {
+                out += &format!("\n{:04X}: {}{}{}", offset, ansi().magenta(), &b, ansi());
+            } else if (relocs.contains(&(offset, 1)) || relocs.contains(&(offset, 2)) || relocs.contains(&(offset, 3))) && targets.contains(&offset) {
+                out += &format!("{}{}{}", ansi().magenta(), &b, ansi());
+            } else if relocs.contains(&(offset, 0)) {
                 out += &format!("\n{:04X}: {}{}{}", offset, ansi().green(), &b, ansi());
             } else if relocs.contains(&(offset, 1)) {
                 out += &format!("{}{}{}", ansi().green(), &b, ansi());
@@ -124,15 +106,9 @@ impl Dialog {
                 out += &format!("{}{}{}", ansi().green(), &b, ansi());
             } else if relocs.contains(&(offset, 3)) {
                 if target_names.contains_key(&offset) {
-                    out += &format!(
-                        "{}{}{}[{}] ",
-                        ansi().green(),
-                        &b,
-                        ansi(),
-                        target_names[&offset]
-                    );
+                    out += &format!("{}{}{}[{}] ", ansi().green(), &b, ansi(), target_names[&offset]);
                 } else {
-                    out += &format!("{}{}{} ", ansi().green(), &b, ansi());
+                    out += &format!("{}{}{}", ansi().green(), &b, ansi());
                 }
             } else if targets.contains(&offset) {
                 out += &format!("{}{}{}", ansi().red(), &b, ansi());
@@ -144,9 +120,8 @@ impl Dialog {
 
         println!("{} - {}", out, name);
 
-        Ok(Dialog {})
+        Ok(Menu {})
     }
-    */
 }
 
 #[cfg(test)]
@@ -155,15 +130,15 @@ mod tests {
     use omnilib::OmniLib;
 
     #[test]
-    fn it_can_load_all_dialogs() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&["ATF"])?;
-        for (game, name) in omni.find_matching("*.DLG")? {
+    fn it_can_load_all_menus() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
+        for (game, name) in omni.find_matching("*.MNU")? {
             //println!("AT: {}:{}", game, name);
 
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
-            let _dlg = Dialog::from_bytes(&name, &omni.library(&game).load(&name)?)?;
+            let _mnu = Menu::from_bytes(&format!("{}:{}", game, name), &omni.library(&game).load(&name)?)?;
         }
 
         Ok(())

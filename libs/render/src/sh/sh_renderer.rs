@@ -18,7 +18,7 @@ use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
-use nalgebra::{Matrix4, Vector4, Point3};
+use nalgebra::{Matrix4, Point3, Vector4};
 use pal::Palette;
 use pic::Pic;
 use sh::{CpuShape, FacetFlags, Instr};
@@ -292,7 +292,13 @@ impl ShRenderer {
         let rudder_position = draw_mode.rudder_position;
         let current_ticks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let call_names = vec!["do_start_interp", "_CATGUYDraw@4", "@HARDNumLoaded@8", "@HardpointAngle@4", "_InsectWingAngle@0"];
+        let call_names = vec![
+            "do_start_interp",
+            "_CATGUYDraw@4",
+            "@HARDNumLoaded@8",
+            "@HardpointAngle@4",
+            "_InsectWingAngle@0",
+        ];
         let mut interp = i386::Interpreter::new();
         let mut _v = [0u8; 0x100];
         _v[0x8E + 1] = 0x1;
@@ -335,7 +341,7 @@ impl ShRenderer {
                     Box::new(move || {
                         println!("LOOKUP _nightHazing");
                         1
-                    })
+                    }),
                 ),
                 "_PLafterBurner" => interp.add_read_port(
                     tramp.mem_location,
@@ -556,9 +562,7 @@ impl ShRenderer {
                 ),
 
                 "_v" => {
-                    interp
-                        .map_readonly(tramp.mem_location, &_v)
-                        .unwrap();
+                    interp.map_readonly(tramp.mem_location, &_v).unwrap();
                 }
 
                 _ => {}
@@ -907,7 +911,8 @@ impl ShRenderer {
                 }
                 Instr::Facet(facet) => {
                     if !masking_faces {
-                        let is_coplanar = self.verify_coplanar_and_convex(&facet.indices, &vert_pool)?;
+                        let is_coplanar =
+                            self.verify_coplanar_and_convex(&facet.indices, &vert_pool)?;
 
                         // Load all vertices in this facet into the vertex upload buffer, copying
                         // in the color and texture coords for each face. Note that the layout is
@@ -1017,10 +1022,13 @@ impl ShRenderer {
     }
 
     fn verify_coplanar_and_convex(&self, inds: &[u16], vert_pool: &[Vertex]) -> Fallible<bool> {
-        let verts = inds.iter().map(|i: &u16| {
-            let p = vert_pool[*i as usize].position;
-            Point3::new(f32::from(p[0]), f32::from(p[1]), f32::from(p[2]))
-        }).collect::<Vec<_>>();
+        let verts = inds
+            .iter()
+            .map(|i: &u16| {
+                let p = vert_pool[*i as usize].position;
+                Point3::new(f32::from(p[0]), f32::from(p[1]), f32::from(p[2]))
+            })
+            .collect::<Vec<_>>();
         let v01 = verts[1] - verts[0];
         let v02 = verts[2] - verts[0];
         let n0 = v01.cross(&v02).normalize();
@@ -1109,11 +1117,19 @@ mod test {
             //"ATF",
             //"ATFNATO",
             //"ATFGOLD",
-            "USNF97",
-            "FA"
+            "USNF97", "FA",
         ])?;
         let skipped = vec![
-            "CHAFF.SH", "CRATER.SH", "DEBRIS.SH", "EXP.SH", "FIRE.SH", "FLARE.SH", "MOTHB.SH", "SMOKE.SH", "WAVE1.SH", "WAVE2.SH"
+            "CHAFF.SH",
+            "CRATER.SH",
+            "DEBRIS.SH",
+            "EXP.SH",
+            "FIRE.SH",
+            "FLARE.SH",
+            "MOTHB.SH",
+            "SMOKE.SH",
+            "WAVE1.SH",
+            "WAVE2.SH",
         ];
         for (game, name) in omni.find_matching("*.SH")?.iter() {
             if skipped.contains(&name.as_ref()) {

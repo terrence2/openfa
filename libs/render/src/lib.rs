@@ -15,12 +15,14 @@
 
 /// Renders raw assets into GPU primitives.
 mod arc_ball_camera;
+mod dlg;
 mod sh;
 mod t2;
 mod utility;
 
 pub use crate::{
     arc_ball_camera::ArcBallCamera,
+    dlg::dlg_renderer::DialogRenderer,
     sh::sh_renderer::{DrawMode, ShRenderer},
     t2::t2_renderer::T2Renderer,
     utility::pal_renderer::PalRenderer,

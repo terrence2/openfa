@@ -66,7 +66,7 @@ pub struct Pic {
 
 impl Pic {
     /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
-    pub fn new(data: &[u8]) -> Fallible<Pic> {
+    pub fn from_bytes(data: &[u8]) -> Fallible<Pic> {
         let header = Header::overlay(data)?;
         let format = PicFormat::from_word(header.format())?;
         if format == PicFormat::JPEG {
