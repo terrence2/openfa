@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use failure::{bail, Fallible};
 use image::{DynamicImage, GenericImageView, ImageRgba8};
 use packed_struct::packed_struct;
 use pal::Palette;
@@ -150,7 +150,7 @@ impl Pic {
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
             let mut clr = palette.rgba(pix)?;
-            if pix == 0xFF {
+            if clr[0] == 0xFF && clr[1] == 0 && clr[2] == 0xFF {
                 clr.data[3] = 0x00;
             }
             *p = clr;

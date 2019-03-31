@@ -19,7 +19,7 @@ use std::{borrow::Cow, fs::File, io::Write};
 #[derive(Clone)]
 pub struct Palette {
     pub color_count: usize,
-    entries: Vec<Rgba<u8>>,
+    entries: Vec<Rgb<u8>>,
 }
 
 impl Palette {
@@ -37,13 +37,12 @@ impl Palette {
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgba {
+            entries.push(Rgb {
                 data: [
                     data[i * 3] * scale,
                     data[i * 3 + 1] * scale,
-                    data[i * 3 + 2] * scale,
-                    255,
-                ],
+                    data[i * 3 + 2] * scale
+                ]
             });
         }
         Ok(Palette {
@@ -52,31 +51,35 @@ impl Palette {
         })
     }
 
-    pub fn iter(&self) -> std::slice::Iter<Rgba<u8>> {
+    pub fn iter(&self) -> std::slice::Iter<Rgb<u8>> {
         self.entries.iter()
     }
 
     pub fn rgba(&self, index: usize) -> Fallible<Rgba<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
-        Ok(self.entries[index])
+        Ok(Rgba {
+            data: [
+                self.entries[index][0],
+                self.entries[index][1],
+                self.entries[index][2],
+                255
+            ]
+        })
     }
 
     pub fn rgba_f32(&self, index: usize) -> Fallible<[f32; 4]> {
-        let c = self.rgba(index)?;
+        let c = self.rgb(index)?;
         Ok([
             f32::from(c.data[0]) / 256f32,
             f32::from(c.data[1]) / 256f32,
             f32::from(c.data[2]) / 256f32,
-            f32::from(c.data[3]) / 256f32,
+            1f32,
         ])
     }
 
     pub fn rgb(&self, index: usize) -> Fallible<Rgb<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
-        // if index >= self.entries.len() {
-        //     return Ok(Rgb { data: [0, 0, 0] });
-        // }
-        Ok(self.entries[index].to_rgb())
+        Ok(self.entries[index])
     }
 
     pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Fallible<()> {
@@ -120,14 +123,21 @@ impl Palette {
         Ok(())
     }
 
+    /// Serialize to raw palette format.
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.entries.len() * 3);
+        for entry in &self.entries {
+            out.push(entry[0] >> 2);
+            out.push(entry[1] >> 2);
+            out.push(entry[2] >> 2);
+        }
+        out
+    }
+
     /// Save this pal to `path` in PAL format (e.g. raw VGA palette data).
     pub fn dump_pal(&self, path: &str) -> Fallible<()> {
         let mut fp = File::create(path)?;
-        for entry in &self.entries {
-            fp.write_all(&[entry[0] >> 2])?;
-            fp.write_all(&[entry[1] >> 2])?;
-            fp.write_all(&[entry[2] >> 2])?;
-        }
+        fp.write(&self.as_bytes())?;
         Ok(())
     }
 

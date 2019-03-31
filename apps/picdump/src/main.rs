@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use omnilib::{OmniLib, make_opt_struct};
+use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use pic::Pic;
 use std::{fs, iter};
@@ -46,11 +46,11 @@ Opt {
     use_palette => Option<String>,
 
     #[structopt(
-        short = "w",
-        long = "write",
+        short = "o",
+        long = "output",
         help = "Write the image to the given file"
     )]
-    write_image => Option<String>,
+    write_image => Option<String>
 });
 
 fn main() -> Fallible<()> {
