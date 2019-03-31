@@ -28,7 +28,7 @@ use structopt::StructOpt;
 ///
 /// Examples:
 ///   Encode file.png into FILE.PIC, using the default palette (PALETTE.PAL) from
-///   the game files in the current directory
+///   the game files in the current directory.
 ///
 ///   > picpack -o FILE.PIC file.png
 ///
@@ -52,7 +52,7 @@ use structopt::StructOpt;
 ///
 ///   Use a palette from a file in the file system with -f (--palette-file). You
 ///   can use `picdump` to extract palette data from existing PIC files and store
-///   them into new files.
+///   them into new palette files.
 ///
 ///   > picpack -f paldump.PAL -o FILE.PIC file.png
 ///
