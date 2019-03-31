@@ -36,7 +36,7 @@ macro_rules! packed_struct {
     }) => {
         #[repr(C)]
         #[repr(packed)]
-        struct $name {
+        pub struct $name {
             $(
                 $field: $field_ty
             ),+
@@ -47,12 +47,29 @@ macro_rules! packed_struct {
                 $crate::_make_packed_struct_accessor!($field, $field_name, $field_ty, $($field_name_ty),*);
             )+
 
-            #[allow(unused)]
-            fn overlay(buf: &[u8]) -> Result<&$name, $crate::Error> {
+            pub fn overlay(buf: &[u8]) -> Result<&$name, $crate::Error> {
                 $crate::ensure!(buf.len() >= std::mem::size_of::<$name>(), "buffer to short to overlay $name");
                 let ptr: *const $name = buf.as_ptr() as *const _;
                 let r: &$name = unsafe { &*ptr };
-                return Ok(r);
+                Ok(r)
+            }
+
+            pub fn as_bytes(&self) -> Result<&[u8], $crate::Error> {
+                let ptr: *const u8 = self as *const Self as *const u8;
+                let buf: &[u8] = unsafe { std::slice::from_raw_parts(ptr, std::mem::size_of::<Self>()) }; 
+                Ok(buf)
+            }
+
+            pub fn build(
+                $(
+                    $field_name: $field_ty
+                ),+
+            ) -> Result<$name, $crate::Error> {
+                Ok($name {
+                    $(
+                        $field: $field_name
+                    ),+
+                })
             }
         }
 

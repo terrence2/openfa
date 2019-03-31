@@ -17,16 +17,6 @@
 
 #![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
-extern crate codepage_437;
-extern crate failure;
-extern crate glob;
-extern crate lazy_static;
-extern crate lzss;
-extern crate memmap;
-extern crate packed_struct;
-extern crate pkware;
-extern crate regex;
-
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, err_msg, Fallible};
 use glob::{MatchOptions, Pattern};

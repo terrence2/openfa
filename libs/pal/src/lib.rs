@@ -52,6 +52,10 @@ impl Palette {
         })
     }
 
+    pub fn iter(&self) -> std::slice::Iter<Rgba<u8>> {
+        self.entries.iter()
+    }
+
     pub fn rgba(&self, index: usize) -> Fallible<Rgba<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
         Ok(self.entries[index])

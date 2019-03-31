@@ -50,7 +50,7 @@ Opt {
         long = "write",
         help = "Write the image to the given file"
     )]
-    write_image => Option<String>
+    write_image => Option<String>,
 });
 
 fn main() -> Fallible<()> {
@@ -65,7 +65,7 @@ fn main() -> Fallible<()> {
     for (game, name) in &inputs {
         let lib = omni.library(&game);
         let content = lib.load(&name)?;
-        let image = Pic::new(&content)?;
+        let image = Pic::from_bytes(&content)?;
 
         println!("{}:{}", game, name);
         println!(
