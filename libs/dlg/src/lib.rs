@@ -14,12 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::ansi;
 use failure::{bail, ensure, err_msg, Fallible};
+use packed_struct::packed_struct;
 use peff::PE;
 use reverse::bs2s;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::path::Path;
-use packed_struct::packed_struct;
 
 packed_struct!(PreloadHeader {
     _0 => function: u32,
@@ -60,7 +60,7 @@ impl PreloadKind {
             "_SndPrefPreload" => PreloadKind::SndPrefPreload,
             "_TestDiagPreload" => PreloadKind::TestDiagPreload,
             "_TopCenterDialog" => PreloadKind::TopCenterDialog,
-            _ => bail!("unknown preload kind: {}", name)
+            _ => bail!("unknown preload kind: {}", name),
         })
     }
 }
@@ -79,10 +79,18 @@ pub struct Preload {
 }
 
 impl Preload {
-    fn from_bytes(bytes: &[u8], offset: &mut usize, pe: &PE, trampolines: &HashMap<u32, String>) -> Fallible<Preload> {
+    fn from_bytes(
+        bytes: &[u8],
+        offset: &mut usize,
+        pe: &PE,
+        trampolines: &HashMap<u32, String>,
+    ) -> Fallible<Preload> {
         let header_ptr: *const PreloadHeader = bytes.as_ptr() as *const _;
         let header: &PreloadHeader = unsafe { &*header_ptr };
-        ensure!(header.unk4() == 0 || header.unk4() == 0x0100, "expected 0 or 100 word in header");
+        ensure!(
+            header.unk4() == 0 || header.unk4() == 0x0100,
+            "expected 0 or 100 word in header"
+        );
 
         let trampoline_target = header.function().saturating_sub(pe.code_vaddr);
         let kind = if trampolines.contains_key(&trampoline_target) {
@@ -125,12 +133,141 @@ impl Preload {
     }
 }
 
+packed_struct!(DrawActionHeader {
+    _0 => function: u32,
+    _1 => unk0: u16,
+    _2 => unk1: u16,
+    _4 => zeros0: [u8; 9],
+    _5 => flag0: u8,
+    _6 => unk2: u16,
+    _7 => ptr_to_label: u32,
+    _8 => zeros1: [u8; 8],
+    _9 => unk3: u16,
+    _10 => maybe_data: u32
+});
+
+#[derive(Debug)]
+pub struct DrawAction {
+    x: u16,
+    y: u16,
+    flag: u8,
+    unk2: u16,
+    label: String,
+    unk3: u16,
+}
+
+impl DrawAction {
+    fn from_bytes(
+        bytes: &[u8],
+        offset: &mut usize,
+        pe: &PE,
+        trampolines: &HashMap<u32, String>,
+    ) -> Fallible<Self> {
+        let header_ptr: *const DrawActionHeader = bytes.as_ptr() as *const _;
+        let header: &DrawActionHeader = unsafe { &*header_ptr };
+        ensure!(
+            header.zeros0() == [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "expected 9 zeros in draw action header"
+        );
+        ensure!(
+            header.zeros1() == [0, 0, 0, 0, 0, 0, 0, 0],
+            "expected 8 zeros in draw action header"
+        );
+
+        let label_ptr = header
+            .ptr_to_label()
+            .saturating_sub(pe.code_vaddr)
+            .saturating_sub(pe.image_base);
+        let label = if trampolines.contains_key(&label_ptr) {
+            trampolines[&label_ptr].clone()
+        } else {
+            let mut label = String::new();
+            let mut off = label_ptr as usize;
+            while pe.code[off] != 0 {
+                label.push(pe.code[off] as char);
+                off += 1;
+            }
+            label
+        };
+        *offset += mem::size_of::<DrawActionHeader>();
+
+        Ok(DrawAction {
+            x: header.unk0(),
+            y: header.unk1(),
+            flag: header.flag0(),
+            unk2: header.unk2(),
+            label,
+            unk3: header.unk3(),
+        })
+    }
+}
+
+// 2C 11 00 00 [_DrawRocker] 00 00 00 00 00 00 00 00 12 00 10 00 00 00 00 00 00 00 00 00 00 00 00 00
+// 5C 10 00 00  00 09 00 00 00 00 00
+packed_struct!(DrawRockerHeader {
+    _0 => function: u32,
+    _01 => unk0: u16,
+    _02 => unk1: u16,
+    _1 => zeros0: [u8; 4],
+    _2 => unk2: u16,
+    _3 => unk3: u16,
+    _4 => zeros1: [u8; 12],
+    _5 => ptr_to_label: u32,
+    _6 => unk4: u16,
+    _7 => zeros2: [u8; 5]
+});
+
+#[derive(Debug)]
+pub struct DrawRocker {
+    unk0: u16,
+    unk1: u16,
+    unk2: u16,
+    unk3: u16,
+    unk4: u16,
+    label: String,
+}
+
+impl DrawRocker {
+    fn from_bytes(
+        bytes: &[u8],
+        offset: &mut usize,
+        pe: &PE,
+        trampolines: &HashMap<u32, String>,
+    ) -> Fallible<Self> {
+        let header_ptr: *const DrawRockerHeader = bytes.as_ptr() as *const _;
+        let header: &DrawRockerHeader = unsafe { &*header_ptr };
+        ensure!(
+            header.zeros0() == [0, 0, 0, 0],
+            "expected 4 zeros in draw action header"
+        );
+        ensure!(
+            header.zeros1() == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "expected 12 zeros in draw action header"
+        );
+        ensure!(
+            header.zeros2() == [0, 0, 0, 0, 0],
+            "expected 5 zeros in draw action header"
+        );
+        *offset += mem::size_of::<DrawRockerHeader>();
+
+        Ok(DrawRocker {
+            unk0: header.unk0(),
+            unk1: header.unk1(),
+            unk2: header.unk2(),
+            unk3: header.unk3(),
+            unk4: header.unk4(),
+            label: String::new(),
+        })
+    }
+}
+
 pub enum Widget {
-
+    Preload(Preload),
+    Action(DrawAction),
+    Rocker(DrawRocker),
 }
 
-pub struct Dialog {
-}
+pub struct Dialog {}
 
 impl Dialog {
     pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
@@ -141,18 +278,49 @@ impl Dialog {
 
         let mut offset = 0;
         let trampolines = Self::find_trampolines(&pe)?;
-        let widget = Preload::from_bytes(&pe.code, &mut offset, &pe, &trampolines)?;
+        let targets = Self::find_targets(&pe, &trampolines)?;
+
+        let preload = Preload::from_bytes(&pe.code, &mut offset, &pe, &trampolines)?;
+        let mut widgets = Vec::new();
+        widgets.push(Widget::Preload(preload));
+
         loop {
             let code = &pe.code[offset..];
             let dwords: &[u32] = unsafe { mem::transmute(code) };
-            if dwords[0] == 0x02030201 {
+            if dwords[0] == 0 || dwords[0] == 0x02030201 {
                 break;
             }
-            let ptr = dwords[0].saturating_sub(pe.code_vaddr).saturating_sub(pe.image_base);
-            ensure!(trampolines.contains_key(&ptr), "expected a pointer in first dword");
-            println!("at: {}", trampolines[&ptr]);
+            let ptr = dwords[0]
+                .saturating_sub(pe.code_vaddr)
+                .saturating_sub(pe.image_base);
+            ensure!(
+                trampolines.contains_key(&ptr),
+                "expected a pointer in first dword"
+            );
+            // if !trampolines.contains_key(&ptr) {
+            //     break;
+            // }
 
-            break;
+            match trampolines[&ptr].as_ref() {
+                "_DrawAction" => {
+                    let action = DrawAction::from_bytes(code, &mut offset, &pe, &trampolines)?;
+                    widgets.push(Widget::Action(action));
+                }
+                "_DrawRocker" => {
+                    let rocker = DrawRocker::from_bytes(code, &mut offset, &pe, &trampolines)?;
+                    widgets.push(Widget::Rocker(rocker));
+                }
+                _ => {
+                    println!("skipping: {}", trampolines[&ptr]);
+                    break;
+                }
+            }
+
+            // If the last dword of the prior instruction is a target, then we reached the end sometimes.
+            if targets.contains(&(offset - 4)) {
+                println!("Stopping because targets contains our offset (less 4)");
+                break;
+            }
         }
         Ok(Self {})
     }
@@ -181,6 +349,22 @@ impl Dialog {
             }
         }
         return Ok(tramps);
+    }
+
+    fn find_targets(pe: &PE, trampolines: &HashMap<u32, String>) -> Fallible<HashSet<usize>> {
+        let mut targets = HashSet::new();
+        for reloc in &pe.relocs {
+            let r = *reloc as usize;
+            let dwords: &[u32] = unsafe { mem::transmute(&pe.code[r..]) };
+            let ptr = dwords[0]
+                .saturating_sub(pe.code_vaddr)
+                .saturating_sub(pe.image_base);
+            if trampolines.contains_key(&ptr) {
+                continue;
+            }
+            targets.insert(ptr as usize);
+        }
+        Ok(targets)
     }
 
     pub fn explore(name: &str, bytes: &[u8]) -> Fallible<()> {
@@ -306,8 +490,8 @@ mod tests {
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
+            Dialog::explore(&name, &omni.library(&game).load(&name)?)?;
             let _dlg = Dialog::from_bytes(&omni.library(&game).load(&name)?)?;
-            //Dialog::explore(&name, &omni.library(&game).load(&name)?)?;
         }
 
         Ok(())

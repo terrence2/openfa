@@ -137,12 +137,13 @@ pub struct DialogRenderer {
 impl DialogRenderer {
     pub fn new(
         dlg: Arc<Box<Dialog>>,
+        screen_picture: &str,
         lib: &Arc<Box<Library>>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
         trace!("DialogRenderer::new");
         let system_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-        let screen_data = lib.load(&(dlg.base_name.clone() + ".PIC"))?;
+        let screen_data = lib.load(screen_picture)?;
         let screen_meta = Pic::from_bytes(&screen_data)?;
         let screen_img = Pic::decode(&system_palette, &screen_data)?;
 
