@@ -176,6 +176,10 @@ impl DialogRenderer {
                 .build(window.device())?,
         );
 
+        for widget in &dlg.widgets {
+            println!("WOULD DRAW: {:?}", widget);
+        }
+
         // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
         let verts = vec![
             Vertex {
@@ -256,17 +260,19 @@ impl DialogRenderer {
 
     pub fn render(
         &self,
-        command_buffer: AutoCommandBufferBuilder,
+        cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
-        Ok(command_buffer.draw_indexed(
+        let cb = cb.draw_indexed(
             self.pipeline.clone(),
             dynamic_state,
             vec![self.vertex_buffer.clone()],
             self.index_buffer.clone(),
             self.pds.clone(),
             self.push_constants,
-        )?)
+        )?;
+
+        Ok(cb)
     }
 
     fn upload_texture_rgba(
@@ -296,8 +302,8 @@ impl DialogRenderer {
     fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
         let sampler = Sampler::new(
             device.clone(),
-            Filter::Nearest,
-            Filter::Nearest,
+            Filter::Linear,
+            Filter::Linear,
             MipmapMode::Nearest,
             SamplerAddressMode::ClampToEdge,
             SamplerAddressMode::ClampToEdge,

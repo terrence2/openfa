@@ -65,6 +65,7 @@ impl PreloadKind {
     }
 }
 
+#[derive(Debug)]
 pub struct Preload {
     kind: Option<PreloadKind>,
     unk_header_0: u16,
@@ -148,8 +149,8 @@ packed_struct!(DrawActionHeader {
 
 #[derive(Debug)]
 pub struct DrawAction {
-    x: u16,
-    y: u16,
+    unk0: u16,
+    unk1: u16,
     flag: u8,
     unk2: u16,
     label: String,
@@ -192,8 +193,8 @@ impl DrawAction {
         *offset += mem::size_of::<DrawActionHeader>();
 
         Ok(DrawAction {
-            x: header.unk0(),
-            y: header.unk1(),
+            unk0: header.unk0(),
+            unk1: header.unk1(),
             flag: header.flag0(),
             unk2: header.unk2(),
             label,
@@ -261,19 +262,22 @@ impl DrawRocker {
     }
 }
 
+#[derive(Debug)]
 pub enum Widget {
     Preload(Preload),
     Action(DrawAction),
     Rocker(DrawRocker),
 }
 
-pub struct Dialog {}
+pub struct Dialog {
+    pub widgets: Vec<Widget>
+}
 
 impl Dialog {
     pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
         let pe = PE::from_bytes(bytes)?;
         if pe.code.len() == 0 {
-            return Ok(Self {});
+            return Ok(Self { widgets: Vec::new() });
         }
 
         let mut offset = 0;
@@ -322,7 +326,9 @@ impl Dialog {
                 break;
             }
         }
-        Ok(Self {})
+        Ok(Self {
+            widgets,
+        })
     }
 
     fn find_trampolines(pe: &PE) -> Fallible<HashMap<u32, String>> {

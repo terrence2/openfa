@@ -33,7 +33,10 @@ make_opt_struct!(#[structopt(
     name = "dlg_explorer",
     about = "Show the contents of a DLG file"
 )]
-Opt {});
+Opt {
+    #[structopt(short = "b", long = "background", help = "The background for this dialog")]
+    background => Option<String>
+});
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
@@ -48,10 +51,15 @@ pub fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-    let dlg = Arc::new(Box::new(Dialog::from_bytes(&name, &lib.load(name)?)?));
+    let background = if let Some(s) = opt.background {
+        s
+    } else {
+        "CHOOSEAC.PIC".to_owned()
+    };
+    let dlg = Arc::new(Box::new(Dialog::from_bytes(&lib.load(name)?)?));
 
     ///////////////////////////////////////////////////////////
-    let mut dlg_renderer = DialogRenderer::new(dlg, &lib, &window)?;
+    let mut dlg_renderer = DialogRenderer::new(dlg, &background, &lib, &window)?;
     //dlg_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
     ///////////////////////////////////////////////////////////
 
