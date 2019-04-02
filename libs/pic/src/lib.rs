@@ -150,7 +150,7 @@ impl Pic {
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
             let mut clr = palette.rgba(pix)?;
-            if clr[0] == 0xFF && clr[1] == 0 && clr[2] == 0xFF {
+            if pix == 0xFF {
                 clr.data[3] = 0x00;
             }
             *p = clr;
@@ -199,11 +199,12 @@ mod tests {
         let omni = OmniLib::new_for_test()?;
         for (game, name) in omni.find_matching("*.PIC")? {
             println!("AT: {}:{}", game, name);
-            let _img = Pic::new(&omni.library(&game).load(&name)?)?;
+            let _img = Pic::from_bytes(&omni.library(&game).load(&name)?)?;
         }
 
         Ok(())
     }
+
     #[test]
     fn it_can_decode_all_pics() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
