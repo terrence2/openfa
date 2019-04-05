@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use dlg::Dialog;
+use dlg::{Widget, DrawAction, Dialog};
 use failure::{bail, Fallible};
 use image::{ImageBuffer, Rgba};
 use lib::Library;
@@ -124,14 +124,116 @@ impl vs::ty::PushConstantData {
     }
 }
 
-pub struct DialogRenderer {
-    dlg: Arc<Box<Dialog>>,
-    palette: Palette,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    push_constants: vs::ty::PushConstantData,
+pub struct QuadRenderer {
     pds: Arc<dyn DescriptorSet + Send + Sync>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+}
+
+impl QuadRenderer {
+    pub fn new(x0: f32, y0: f32, x1: f32, y1: f32, img: &image::DynamicImage, pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>, window: &GraphicsWindow) -> Fallible<QuadRenderer> {
+        // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
+        let verts = vec![
+            Vertex {
+                position: [x0, y0],
+                tex_coord: [0f32, 0f32],
+            },
+            Vertex {
+                position: [x0, y1],
+                tex_coord: [0f32, 1f32],
+            },
+            Vertex {
+                position: [x1, y0],
+                tex_coord: [1f32, 0f32],
+            },
+            Vertex {
+                position: [x1, y1],
+                tex_coord: [1f32, 1f32],
+            },
+        ];
+        let indices = vec![0u32, 1u32, 2u32, 3u32];
+
+        trace!(
+            "uploading vertex buffer with {} bytes",
+            std::mem::size_of::<Vertex>() * verts.len()
+        );
+        let vertex_buffer =
+            CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
+
+        trace!(
+            "uploading index buffer with {} bytes",
+            std::mem::size_of::<u32>() * indices.len()
+        );
+        let index_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            indices.into_iter(),
+        )?;
+
+        let (texture, tex_future) = Self::upload_texture_rgba(window, img.to_rgba())?;
+        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
+        let sampler = Self::make_sampler(window.device())?;
+
+        let pds = Arc::new(
+            PersistentDescriptorSet::start(pipeline.clone(), 0)
+                .add_sampled_image(texture.clone(), sampler.clone())?
+                .build()?,
+        );
+
+        Ok(QuadRenderer {
+            pds, vertex_buffer, index_buffer
+        })
+    }
+
+    fn upload_texture_rgba(
+        window: &GraphicsWindow,
+        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+        let image_dim = image_buf.dimensions();
+        let image_data = image_buf.into_raw().clone();
+
+        let dimensions = Dimensions::Dim2d {
+            width: image_dim.0,
+            height: image_dim.1,
+        };
+        let (texture, tex_future) = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            Format::R8G8B8A8Unorm,
+            window.queue(),
+        )?;
+        trace!(
+            "uploading texture with {} bytes",
+            image_dim.0 * image_dim.1 * 4
+        );
+        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
+    }
+
+    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
+        let sampler = Sampler::new(
+            device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )?;
+
+        Ok(sampler)
+    }
+}
+
+pub struct DialogRenderer {
+    dlg: Arc<Box<Dialog>>,
+    //palette: Palette,
+    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    push_constants: vs::ty::PushConstantData,
+    quads: Vec<QuadRenderer>,
 }
 
 impl DialogRenderer {
@@ -146,6 +248,8 @@ impl DialogRenderer {
         let screen_data = lib.load(screen_picture)?;
         let screen_meta = Pic::from_bytes(&screen_data)?;
         let screen_img = Pic::decode(&system_palette, &screen_data)?;
+
+        let btn_img = Pic::decode(&screen_meta.palette.unwrap(), &lib.load("ACTIOD0M.PIC")?)?;
 
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;
@@ -176,66 +280,46 @@ impl DialogRenderer {
                 .build(window.device())?,
         );
 
-        for widget in &dlg.widgets {
-            println!("WOULD DRAW: {:?}", widget);
+        let mut quads = Vec::new();
+        quads.push(QuadRenderer::new(-1f32, -1f32, 1f32, 1f32, &screen_img, pipeline.clone(), window)?);
+
+        fn rescale_pos(x: u16, y: u16) -> (f32, f32) {
+            (
+                2f32 * ((x as f32) / 250f32) - 1f32,
+                2f32 * ((y as f32) / 350f32) - 1f32
+            )
+        }
+        fn rescale_offset(w: u16, h: u16) -> (f32, f32) {
+            (
+                ((w as f32) / 256f32),
+                ((h as f32) / 350f32)
+            )
         }
 
-        // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
-        let verts = vec![
-            Vertex {
-                position: [-1f32, -1f32],
-                tex_coord: [0f32, 0f32],
-            },
-            Vertex {
-                position: [-1f32, 1f32],
-                tex_coord: [0f32, 1f32],
-            },
-            Vertex {
-                position: [1f32, -1f32],
-                tex_coord: [1f32, 0f32],
-            },
-            Vertex {
-                position: [1f32, 1f32],
-                tex_coord: [1f32, 1f32],
-            },
-        ];
-        let indices = vec![0u32, 1u32, 2u32, 3u32];
-
-        trace!(
-            "uploading vertex buffer with {} bytes",
-            std::mem::size_of::<Vertex>() * verts.len()
-        );
-        let vertex_buffer =
-            CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
-
-        trace!(
-            "uploading index buffer with {} bytes",
-            std::mem::size_of::<u32>() * indices.len()
-        );
-        let index_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            indices.into_iter(),
-        )?;
-
-        let (texture, tex_future) = Self::upload_texture_rgba(window, screen_img.to_rgba())?;
-        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
-        let sampler = Self::make_sampler(window.device())?;
-
-        let pds = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
-                .build()?,
-        );
+        for widget in &dlg.widgets {
+            println!("DRAWING: {:?}", widget);
+            match widget {
+                Widget::Action(DrawAction {
+                    unk0,
+                    unk1,
+                    unk2,
+                    unk3,
+                    ..
+                }) => {
+                    let (x, y) = rescale_pos(*unk0, *unk1);
+                    let (w, h) = rescale_offset(*unk2, 35);
+                    quads.push(QuadRenderer::new(x, y, x + w, y + h, &btn_img, pipeline.clone(), window)?);
+                }
+                _ => { println!("skipping: {:?}", widget) }
+            }
+        }
 
         Ok(Self {
             dlg,
-            palette: screen_meta.palette.unwrap(),
+            //palette: screen_meta.palette.unwrap(),
             pipeline,
             push_constants: vs::ty::PushConstantData::new(),
-            pds,
-            vertex_buffer,
-            index_buffer,
+            quads,
         })
     }
 
@@ -263,14 +347,17 @@ impl DialogRenderer {
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
-        let cb = cb.draw_indexed(
-            self.pipeline.clone(),
-            dynamic_state,
-            vec![self.vertex_buffer.clone()],
-            self.index_buffer.clone(),
-            self.pds.clone(),
-            self.push_constants,
-        )?;
+        let mut cb = cb;
+        for quad in &self.quads {
+            cb = cb.draw_indexed(
+                self.pipeline.clone(),
+                dynamic_state,
+                vec![quad.vertex_buffer.clone()],
+                quad.index_buffer.clone(),
+                quad.pds.clone(),
+                self.push_constants,
+            )?;
+        }
 
         Ok(cb)
     }

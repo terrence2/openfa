@@ -149,12 +149,12 @@ packed_struct!(DrawActionHeader {
 
 #[derive(Debug)]
 pub struct DrawAction {
-    unk0: u16,
-    unk1: u16,
-    flag: u8,
-    unk2: u16,
-    label: String,
-    unk3: u16,
+    pub unk0: u16,
+    pub unk1: u16,
+    pub flag: u8,
+    pub unk2: u16,
+    pub label: String,
+    pub unk3: u16,
 }
 
 impl DrawAction {
