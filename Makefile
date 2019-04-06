@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 libs = $(sort $(dir $(wildcard ./libs/*/*)))
 apps = $(sort $(dir $(wildcard ./apps/*/*)))
 
