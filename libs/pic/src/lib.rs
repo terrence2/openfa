@@ -215,7 +215,7 @@ mod tests {
 
             if false {
                 let name = format!(
-                    "dump/{}/{}.png",
+                    "../../dump/pic/{}/{}.png",
                     game,
                     name.split(".").collect::<Vec<_>>().first().unwrap()
                 );

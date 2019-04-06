@@ -67,20 +67,24 @@ mod tests {
 
     fn find_expect_data(path: &str) -> Fallible<Option<Vec<u8>>> {
         // strip ./test_data/inputs/ and .lzss.zip
-        let path_stem = &path.to_owned()[19..path.len() - 9];
-        let expect_path = format!("./test_data/expect/{}", path_stem);
+        let expect_path = Path::new("../../test_data/lzss/expect").join(
+            Path::new(Path::new(path).file_stem().unwrap())
+                .file_stem()
+                .unwrap(),
+        );
         if !Path::new(&expect_path).exists() {
             return Ok(None);
         }
         let mut fp = fs::File::open(&expect_path)?;
         let mut contents = Vec::new();
         fp.read_to_end(&mut contents)?;
+        println!("testing: {:?}", expect_path);
         return Ok(Some(contents));
     }
 
     #[test]
     fn it_doesnt_crash() -> Fallible<()> {
-        let paths = fs::read_dir("./test_data/inputs")?;
+        let paths = fs::read_dir("../../test_data/lzss/inputs")?;
         for i in paths {
             let entry = i?;
             let path = format!("{}", entry.path().display());
