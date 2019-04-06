@@ -106,8 +106,8 @@ impl Layer {
         let dump_stuff = false;
 
         if dump_stuff {
-            fs::create_dir("../../dump/lay").unwrap_or(());
-            fs::create_dir(format!("../../dump/lay/{}", prefix)).unwrap_or(());
+            fs::create_dir("dump").unwrap_or(());
+            fs::create_dir(format!("dump/{}", prefix)).unwrap_or(());
         }
 
         let data = &pe.code;
@@ -143,7 +143,7 @@ impl Layer {
         _fragments.push(first_pal);
         if dump_stuff {
             // Seems to be correct for CLOUD and FOG, but really dark for DAY.
-            let name = format!("../../dump/lay/{}/first_data", prefix);
+            let name = format!("dump/{}/first_data", prefix);
             println!("Dumping {}", name);
             Palette::dump_partial(first_pal_data, 4, &(name.clone() + "2"))?;
         }
@@ -200,7 +200,7 @@ impl Layer {
             _fragments.push(pal);
             if dump_stuff {
                 // Dump after the fixed header... we claim the palette only extends for 0xC1 bytes...
-                let name = format!("../../dump/lay/{}/first-{}", prefix, plane_offset);
+                let name = format!("dump/{}/first-{}", prefix, plane_offset);
                 println!("dumping pal+ {}", name);
                 // Palette::dump_partial(
                 //     &data[offset + hdr_size..offset + hdr_size + 0xC0],
@@ -260,7 +260,7 @@ impl Layer {
         offset = header.ptr_second() as usize;
         assert_eq!(palette_digest, md5::compute(&data[offset..offset + 0x300]));
         if dump_stuff {
-            let name = format!("../../dump/lay/{}/second-0", prefix);
+            let name = format!("dump/{}/second-0", prefix);
             println!("dumping {}", name);
             Palette::dump_partial(&data[offset..offset + 0x300], 4, &name)?;
         }
@@ -268,7 +268,7 @@ impl Layer {
         for i in 0..18 {
             //let pal_data = &data[offset..offset + 0x100];
             if dump_stuff {
-                let name = format!("../../dump/lay/{}/second-{}", prefix, i + 1);
+                let name = format!("dump/{}/second-{}", prefix, i + 1);
                 println!("dumping {}", name);
                 Palette::dump_partial(&data[offset..offset + 0x100], 1, &name)?;
             }

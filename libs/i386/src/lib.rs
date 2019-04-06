@@ -12,6 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+extern crate failure;
+extern crate lazy_static;
+extern crate log;
+extern crate reverse;
+
 mod disassembler;
 mod interpreter;
 mod lut;

@@ -1079,7 +1079,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let paths = fs::read_dir("../../test_data/i386/x86").unwrap();
+        let paths = fs::read_dir("./test_data/x86").unwrap();
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());

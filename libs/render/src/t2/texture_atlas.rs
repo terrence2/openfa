@@ -284,7 +284,7 @@ mod test {
             let _atlas = TextureAtlas::new(pics)?;
             // atlas
             //     .img
-            //     .save(&format!("../../dump/render/atlas-{}-{}.png", game, base_name))?;
+            //     .save(&format!("dump/atlas-{}-{}.png", game, base_name))?;
         }
 
         Ok(())
