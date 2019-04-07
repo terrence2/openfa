@@ -27,3 +27,12 @@ test:
 clean:
 	$(foreach libdir, $(libs), pushd $(libdir); cargo clean; popd;)
 	$(foreach appdir, $(apps), pushd $(appdir); cargo clean; popd;)
+
+.PHONY: ci
+ci:
+	$(foreach libdir, $(libs), pushd $(libdir); cargo fmt -- --check; popd;)
+	$(foreach appdir, $(apps), pushd $(appdir); cargo fmt -- --check; popd;)
+	$(foreach libdir, $(libs), pushd $(libdir); cargo clippy -- -Dwarnings; popd;)
+	$(foreach appdir, $(apps), pushd $(appdir); cargo clippy -- -Dwarnings; popd;)
+	$(foreach libdir, $(libs), pushd $(libdir); cargo test; popd;)
+	$(foreach appdir, $(apps), pushd $(appdir); cargo test; popd;)
