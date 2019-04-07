@@ -922,8 +922,6 @@ impl ShRenderer {
                 }
                 Instr::Facet(facet) => {
                     if !masking_faces {
-                        let is_coplanar = true;
-
                         // Load all vertices in this facet into the vertex upload buffer, copying
                         // in the color and texture coords for each face. Note that the layout is
                         // for triangle fans.
@@ -951,8 +949,6 @@ impl ShRenderer {
                             for (index, tex_coord) in inds.iter().zip(&tcs) {
                                 if (*index as usize) >= vert_pool.len() {
                                     println!("skipping face with index at {} of {}", *index, vert_pool.len());
-                                    offset += 1;
-                                    byte_offset += instr.size();
                                     continue;
                                 }
                                 ensure!(
