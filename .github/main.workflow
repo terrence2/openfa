@@ -1,8 +1,8 @@
 workflow "OnPush" {
   on = "push"
   resolves = [
-    "icepuma/rust-action@master",
     "Build Docker Build Env",
+    "fmt-clippy-test",
   ]
 }
 
@@ -11,7 +11,7 @@ action "Build Docker Build Env" {
   args = "build -t openfa:latest ."
 }
 
-action "icepuma/rust-action@master" {
+action "fmt-clippy-test" {
   uses = "icepuma/rust-action@master"
   args = "make ci"
 }
