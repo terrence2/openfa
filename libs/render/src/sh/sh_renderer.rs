@@ -195,10 +195,10 @@ pub struct DrawMode {
     pub detail: u16,
 
     pub gear_position: Option<u32>,
+    pub bay_position: Option<u32>,
     pub flaps_down: bool,
     pub airbrake_extended: bool,
     pub hook_extended: bool,
-    pub bay_open: bool,
     pub afterburner_enabled: bool,
     pub rudder_position: i32,
 }
@@ -285,9 +285,9 @@ impl ShRenderer {
 
         let flaps_down = draw_mode.flaps_down;
         let gear_position = draw_mode.gear_position;
+        let bay_position = draw_mode.bay_position;
         let airbrake_extended = draw_mode.airbrake_extended;
         let hook_extended = draw_mode.hook_extended;
-        let bay_open = draw_mode.bay_open;
         let afterburner_enabled = draw_mode.afterburner_enabled;
         let rudder_position = draw_mode.rudder_position;
         let current_ticks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
@@ -358,8 +358,19 @@ impl ShRenderer {
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _PLbayOpen");
-                        if bay_open {
+                        if bay_position.is_some() {
                             1
+                        } else {
+                            0
+                        }
+                    }),
+                ),
+                "_PLbayDoorPos" => interp.add_read_port(
+                    tramp.mem_location,
+                    Box::new(move || {
+                        println!("LOOKUP _PLbayDoorPosition");
+                        if let Some(p) = bay_position {
+                            p
                         } else {
                             0
                         }
@@ -394,7 +405,7 @@ impl ShRenderer {
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _PLgearDown");
-                        if let Some(_) = gear_position {
+                        if gear_position.is_some() {
                             1
                         } else {
                             0
@@ -911,8 +922,7 @@ impl ShRenderer {
                 }
                 Instr::Facet(facet) => {
                     if !masking_faces {
-                        let is_coplanar =
-                            self.verify_coplanar_and_convex(&facet.indices, &vert_pool)?;
+                        let is_coplanar = true;
 
                         // Load all vertices in this facet into the vertex upload buffer, copying
                         // in the color and texture coords for each face. Note that the layout is
@@ -940,6 +950,7 @@ impl ShRenderer {
 
                             for (index, tex_coord) in inds.iter().zip(&tcs) {
                                 if (*index as usize) >= vert_pool.len() {
+                                    println!("skipping face with index at {} of {}", *index, vert_pool.len());
                                     offset += 1;
                                     byte_offset += instr.size();
                                     continue;
@@ -951,28 +962,26 @@ impl ShRenderer {
                                     vert_pool.len()
                                 );
                                 let mut v = vert_pool[*index as usize];
-                                if !is_coplanar {
+                                v.color = self.system_palette.rgba_f32(facet.color as usize)?;
+                                if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
+                                    || facet.flags.contains(FacetFlags::UNK1)
+                                    || facet.flags.contains(FacetFlags::UNK5)
+                                {
                                     v.flags = 1;
-                                    v.color = [1f32, 0f32, 1f32, 1f32];
-                                } else {
-                                    v.color = self.system_palette.rgba_f32(facet.color as usize)?;
-                                    if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
-                                        || facet.flags.contains(FacetFlags::UNK1)
-                                        || facet.flags.contains(FacetFlags::UNK5)
-                                    {
-                                        v.flags = 1;
-                                    }
-                                    if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                                        assert!(active_frame.is_some());
-                                        let frame = active_frame.unwrap();
-                                        v.tex_coord = frame.tex_coord_at(*tex_coord);
-                                    }
                                 }
+                                if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
+                                    assert!(active_frame.is_some());
+                                    let frame = active_frame.unwrap();
+                                    v.tex_coord = frame.tex_coord_at(*tex_coord);
+                                }
+                                println!("v: {:?}", v.position);
                                 verts.push(v);
                                 indices.push(v_base);
                                 v_base += 1;
                             }
                         }
+                    } else {
+                        println!("masking faces");
                     }
                 }
                 _ => {}
@@ -1019,30 +1028,6 @@ impl ShRenderer {
         self.instance = Some(inst);
 
         Ok(())
-    }
-
-    fn verify_coplanar_and_convex(&self, inds: &[u16], vert_pool: &[Vertex]) -> Fallible<bool> {
-        let verts = inds
-            .iter()
-            .map(|i: &u16| {
-                let p = vert_pool[*i as usize].position;
-                Point3::new(f32::from(p[0]), f32::from(p[1]), f32::from(p[2]))
-            })
-            .collect::<Vec<_>>();
-        let v01 = verts[1] - verts[0];
-        let v02 = verts[2] - verts[0];
-        let n0 = v01.cross(&v02).normalize();
-        let mut i = 3;
-        while i < verts.len() {
-            let v0n = (verts[i] - verts[0]).normalize();
-            //let n1 = v01.cross(&v0n);
-            println!("ANG: {}", n0.dot(&v0n));
-            if n0.dot(&v0n).abs() >= 0.1f32 {
-                return Ok(false);
-            }
-            i += 1;
-        }
-        Ok(true)
     }
 
     pub fn render(
@@ -1157,10 +1142,10 @@ mod test {
                 frame_number: 0,
                 detail: 4,
                 gear_position: Some(18),
+                bay_position: Some(18),
                 flaps_down: false,
                 airbrake_extended: true,
                 hook_extended: true,
-                bay_open: false,
                 afterburner_enabled: true,
                 rudder_position: 0,
             };
