@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use reverse::b2h;
-use sh::{CpuShape, Instr};
+use sh::{Instr, RawShape};
 use simplelog::*;
 use std::io::prelude::*;
 use std::{collections::HashMap, fs, path::PathBuf};
@@ -68,6 +68,7 @@ struct Opt {
     files: Vec<PathBuf>,
 }
 
+#[allow(clippy::cyclomatic_complexity)] // Impossible to organize if you don't know what the goal is.
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     let level = if opt.verbose {
@@ -83,7 +84,7 @@ fn main() -> Fallible<()> {
         fp.read_to_end(&mut data).unwrap();
         //println!("At: {}", name);
 
-        let shape = CpuShape::from_bytes(&data).unwrap();
+        let shape = RawShape::from_bytes(&data).unwrap();
 
         if opt.show_all {
             for (i, instr) in shape.instrs.iter().enumerate() {
@@ -146,7 +147,7 @@ fn main() -> Fallible<()> {
                 println!("{} - {}", dedup[memref], memref);
             }
         } else if opt.i386 {
-            fn is_start_interp(instr: &i386::Instr, sh: &CpuShape) -> bool {
+            fn is_start_interp(instr: &i386::Instr, sh: &RawShape) -> bool {
                 if let i386::Operand::Imm32s(x) = instr.operands[0] {
                     let abs_offset = x as u32 - sh::SHAPE_LOAD_BASE;
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(abs_offset) {
@@ -158,7 +159,7 @@ fn main() -> Fallible<()> {
                 false
             }
 
-            fn is_memref_to_tramp(op: &i386::Operand, sh: &CpuShape, name: &str) -> bool {
+            fn is_memref_to_tramp(op: &i386::Operand, sh: &RawShape, name: &str) -> bool {
                 if let i386::Operand::Memory(i386::MemRef {
                     displacement,
                     base: None,
@@ -218,7 +219,7 @@ fn main() -> Fallible<()> {
                 false
             }
 
-            fn match_return_to_interp(instr: &sh::Instr, sh: &CpuShape) -> bool {
+            fn match_return_to_interp(instr: &sh::Instr, sh: &RawShape) -> bool {
                 if let sh::Instr::X86Code(sh::X86Code {
                     have_header: true,
                     bytecode: i386::ByteCode { instrs: bc, .. },
@@ -228,16 +229,15 @@ fn main() -> Fallible<()> {
                     if bc[0].memonic == i386::Memonic::Push
                         && bc[1].memonic == i386::Memonic::Push
                         && bc[2].memonic == i386::Memonic::Return
+                        && is_start_interp(&bc[1], sh)
                     {
-                        if is_start_interp(&bc[1], sh) {
-                            return true;
-                        }
+                        return true;
                     }
                 }
                 false
             }
 
-            fn match_show(offset: usize, sh: &CpuShape) -> bool {
+            fn match_show(offset: usize, sh: &RawShape) -> bool {
                 if offset > sh.instrs.len() - 3 {
                     return false;
                 }
@@ -266,7 +266,7 @@ fn main() -> Fallible<()> {
             @28|1947: 68 88 4D 00 AA          Push(0xAA004D88)
             @2D|194C: C3                      Return() [do_start_interp]
             386: @194D UnkC4: C4 00| EA FF F8 FF FE FF 00 00 00 00 00 00 68 22 t:(-22,-8,-2) a:(0,0,0) 68 22 (target:3BC5)
-            387: @195D X86Code: F0 00 68 6A 19 00 AA 68 88 4D 00 AA C3 
+            387: @195D X86Code: F0 00 68 6A 19 00 AA 68 88 4D 00 AA C3
             @00|195F: 68 6A 19 00 AA          Push(0xAA00196A)
             @05|1964: 68 88 4D 00 AA          Push(0xAA004D88)
             @0A|1969: C3                      Return() [do_start_interp]
@@ -298,7 +298,7 @@ fn main() -> Fallible<()> {
                 false
             }
 
-            fn match_xform(offset: usize, sh: &CpuShape) -> bool {
+            fn match_xform(offset: usize, sh: &RawShape) -> bool {
                 if offset > sh.instrs.len() - 3 {
                     return false;
                 }
@@ -322,7 +322,7 @@ fn main() -> Fallible<()> {
             @1B|1A3B: 68 D0 55 00 AA          Push(0xAA0055D0)
             @20|1A40: C3                      Return() [do_start_interp]
             393: @1A41 UnkC4: C4 00| 00 00 05 00 D8 FF 00 00 00 00 00 00 1E 1A t:(0,5,-40) a:(0,0,0) 1E 1A (target:346F)
-            394: @1A51 X86Code: F0 00 68 5E 1A 00 AA 68 D0 55 00 AA C3 
+            394: @1A51 X86Code: F0 00 68 5E 1A 00 AA 68 D0 55 00 AA C3
             @00|1A53: 68 5E 1A 00 AA          Push(0xAA001A5E)
             @05|1A58: 68 D0 55 00 AA          Push(0xAA0055D0)
             @0A|1A5D: C3                      Return() [do_start_interp]
@@ -352,7 +352,7 @@ fn main() -> Fallible<()> {
                 false
             }
 
-            fn match_control(offset: usize, sh: &CpuShape) -> bool {
+            fn match_control(offset: usize, sh: &RawShape) -> bool {
                 if offset > sh.instrs.len() - 3 {
                     return false;
                 }
@@ -378,7 +378,7 @@ fn main() -> Fallible<()> {
             @2C|008E: 68 A2 07 00 AA          Push(0xAA0007A2)
             @31|0093: C3                      Return() [do_start_interp]
             */
-            fn match_effects(offset: usize, sh: &CpuShape) -> bool {
+            fn match_effects(offset: usize, sh: &RawShape) -> bool {
                 if let sh::Instr::X86Code(sh::X86Code {
                     have_header: true,
                     bytecode: i386::ByteCode { instrs: bc, .. },
@@ -394,13 +394,11 @@ fn main() -> Fallible<()> {
                         && bc[7].memonic == i386::Memonic::Push
                         && bc[8].memonic == i386::Memonic::Push
                         && bc[9].memonic == i386::Memonic::Return
+                        && is_start_interp(&bc[8], sh)
+                        && is_memref_to_tramp(&bc[4].operands[0], sh, "_effectsAllowed")
+                        && is_memref_to_tramp(&bc[5].operands[0], sh, "_effects")
                     {
-                        if is_start_interp(&bc[8], sh)
-                            && is_memref_to_tramp(&bc[4].operands[0], sh, "_effectsAllowed")
-                            && is_memref_to_tramp(&bc[5].operands[0], sh, "_effects")
-                        {
-                            return true;
-                        }
+                        return true;
                     }
                 }
                 false
@@ -412,7 +410,7 @@ fn main() -> Fallible<()> {
             @0C|006A: 68 F0 41 00 AA          Push(0xAA0041F0)
             @11|006F: C3                      Return() [do_start_interp]
             */
-            fn match_lightening(offset: usize, sh: &CpuShape) -> bool {
+            fn match_lightening(offset: usize, sh: &RawShape) -> bool {
                 if let sh::Instr::X86Code(sh::X86Code {
                     have_header: true,
                     bytecode: i386::ByteCode { instrs: bc, .. },
@@ -423,12 +421,10 @@ fn main() -> Fallible<()> {
                         && bc[1].memonic == i386::Memonic::Push
                         && bc[2].memonic == i386::Memonic::Push
                         && bc[3].memonic == i386::Memonic::Return
+                        && is_start_interp(&bc[2], sh)
+                        && is_memref_to_tramp(&bc[0].operands[0], sh, "lighteningAllowed")
                     {
-                        if is_start_interp(&bc[2], sh)
-                            && is_memref_to_tramp(&bc[0].operands[0], sh, "lighteningAllowed")
-                        {
-                            return true;
-                        }
+                        return true;
                     }
                 }
                 false
@@ -463,9 +459,14 @@ fn main() -> Fallible<()> {
                 }
                 offset += 1;
             }
-            if
-            matching_show + matching_xform + matching_control + matching_effects + matching_lightening +
-            nonmatching > 0 {
+            if matching_show
+                + matching_xform
+                + matching_control
+                + matching_effects
+                + matching_lightening
+                + nonmatching
+                > 0
+            {
                 println!(
                     "{} non, show: {}, xform: {}, control: {}, effects: {}, lightening: {}, name: {}",
                     nonmatching,

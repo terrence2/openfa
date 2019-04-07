@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use dlg::{Widget, DrawAction, Dialog};
-use failure::{bail, Fallible};
+use dlg::{Dialog, DrawAction, Widget};
+use failure::Fallible;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
@@ -131,7 +131,15 @@ pub struct QuadRenderer {
 }
 
 impl QuadRenderer {
-    pub fn new(x0: f32, y0: f32, x1: f32, y1: f32, img: &image::DynamicImage, pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>, window: &GraphicsWindow) -> Fallible<QuadRenderer> {
+    pub fn new(
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        img: &image::DynamicImage,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        window: &GraphicsWindow,
+    ) -> Fallible<QuadRenderer> {
         // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
         let verts = vec![
             Vertex {
@@ -181,7 +189,9 @@ impl QuadRenderer {
         );
 
         Ok(QuadRenderer {
-            pds, vertex_buffer, index_buffer
+            pds,
+            vertex_buffer,
+            index_buffer,
         })
     }
 
@@ -281,19 +291,24 @@ impl DialogRenderer {
         );
 
         let mut quads = Vec::new();
-        quads.push(QuadRenderer::new(-1f32, -1f32, 1f32, 1f32, &screen_img, pipeline.clone(), window)?);
+        quads.push(QuadRenderer::new(
+            -1f32,
+            -1f32,
+            1f32,
+            1f32,
+            &screen_img,
+            pipeline.clone(),
+            window,
+        )?);
 
         fn rescale_pos(x: u16, y: u16) -> (f32, f32) {
             (
                 2f32 * ((x as f32) / 250f32) - 1f32,
-                2f32 * ((y as f32) / 350f32) - 1f32
+                2f32 * ((y as f32) / 350f32) - 1f32,
             )
         }
         fn rescale_offset(w: u16, h: u16) -> (f32, f32) {
-            (
-                ((w as f32) / 256f32),
-                ((h as f32) / 350f32)
-            )
+            (((w as f32) / 256f32), ((h as f32) / 350f32))
         }
 
         for widget in &dlg.widgets {
@@ -308,9 +323,17 @@ impl DialogRenderer {
                 }) => {
                     let (x, y) = rescale_pos(*unk0, *unk1);
                     let (w, h) = rescale_offset(*unk2, 35);
-                    quads.push(QuadRenderer::new(x, y, x + w, y + h, &btn_img, pipeline.clone(), window)?);
+                    quads.push(QuadRenderer::new(
+                        x,
+                        y,
+                        x + w,
+                        y + h,
+                        &btn_img,
+                        pipeline.clone(),
+                        window,
+                    )?);
                 }
-                _ => { println!("skipping: {:?}", widget) }
+                _ => println!("skipping: {:?}", widget),
             }
         }
 

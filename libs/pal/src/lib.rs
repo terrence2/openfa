@@ -137,7 +137,7 @@ impl Palette {
     /// Save this pal to `path` in PAL format (e.g. raw VGA palette data).
     pub fn dump_pal(&self, path: &str) -> Fallible<()> {
         let mut fp = File::create(path)?;
-        fp.write(&self.as_bytes())?;
+        fp.write_all(&self.as_bytes())?;
         Ok(())
     }
 

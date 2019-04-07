@@ -17,7 +17,7 @@ use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use render::{ArcBallCamera, DrawMode, ShRenderer};
-use sh::CpuShape;
+use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant, num::ParseIntError};
 use structopt::StructOpt;
@@ -70,7 +70,7 @@ fn main() -> Fallible<()> {
     let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
-    let sh = CpuShape::from_bytes(&lib.load(&name)?)?;
+    let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or(sh.length());
     let mut draw_mode = DrawMode {
         range: opt.ranged.map(|s| {

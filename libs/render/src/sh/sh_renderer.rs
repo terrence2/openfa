@@ -21,7 +21,7 @@ use log::trace;
 use nalgebra::{Matrix4, Point3, Vector4};
 use pal::Palette;
 use pic::Pic;
-use sh::{CpuShape, FacetFlags, Instr};
+use sh::{FacetFlags, Instr, RawShape};
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -267,7 +267,7 @@ impl ShRenderer {
     pub fn add_shape_to_render(
         &mut self,
         _name: &str,
-        sh: &CpuShape,
+        sh: &RawShape,
         stop_at_offset: usize,
         draw_mode: &DrawMode,
         lib: &Library,
@@ -1105,7 +1105,7 @@ mod test {
     use super::*;
     use failure::Error;
     use omnilib::OmniLib;
-    use sh::CpuShape;
+    use sh::RawShape;
     use window::GraphicsConfigBuilder;
 
     #[test]
@@ -1146,7 +1146,7 @@ mod test {
 
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let sh = CpuShape::from_bytes(&data)?;
+            let sh = RawShape::from_bytes(&data)?;
             let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
             let mut sh_renderer = ShRenderer::new(system_palette, &window)?;
 

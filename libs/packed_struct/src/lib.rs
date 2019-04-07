@@ -60,6 +60,7 @@ macro_rules! packed_struct {
                 Ok(buf)
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub fn build(
                 $(
                     $field_name: $field_ty

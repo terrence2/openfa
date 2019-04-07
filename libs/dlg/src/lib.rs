@@ -12,14 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+
+ #![allow(clippy::transmute_ptr_to_ptr)]
+
 use ansi::ansi;
-use failure::{bail, ensure, err_msg, Fallible};
+use failure::{bail, ensure, Fallible};
 use packed_struct::packed_struct;
 use peff::PE;
 use reverse::bs2s;
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use std::path::Path;
 
 packed_struct!(PreloadHeader {
     _0 => function: u32,
@@ -232,8 +234,8 @@ impl DrawRocker {
     fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-        pe: &PE,
-        trampolines: &HashMap<u32, String>,
+        _pe: &PE,
+        _trampolines: &HashMap<u32, String>,
     ) -> Fallible<Self> {
         let header_ptr: *const DrawRockerHeader = bytes.as_ptr() as *const _;
         let header: &DrawRockerHeader = unsafe { &*header_ptr };
@@ -276,7 +278,7 @@ pub struct Dialog {
 impl Dialog {
     pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
         let pe = PE::from_bytes(bytes)?;
-        if pe.code.len() == 0 {
+        if pe.code.is_empty() {
             return Ok(Self { widgets: Vec::new() });
         }
 
@@ -291,7 +293,7 @@ impl Dialog {
         loop {
             let code = &pe.code[offset..];
             let dwords: &[u32] = unsafe { mem::transmute(code) };
-            if dwords[0] == 0 || dwords[0] == 0x02030201 {
+            if dwords[0] == 0 || dwords[0] == 0x0203_0201 {
                 break;
             }
             let ptr = dwords[0]
@@ -354,7 +356,7 @@ impl Dialog {
                 break;
             }
         }
-        return Ok(tramps);
+        Ok(tramps)
     }
 
     fn find_targets(pe: &PE, trampolines: &HashMap<u32, String>) -> Fallible<HashSet<usize>> {
@@ -373,9 +375,11 @@ impl Dialog {
         Ok(targets)
     }
 
+    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::if_same_then_else)]
     pub fn explore(name: &str, bytes: &[u8]) -> Fallible<()> {
         let pe = PE::from_bytes(bytes)?;
-        if pe.code.len() == 0 {
+        if pe.code.is_empty() {
             return Ok(());
         }
 
@@ -399,10 +403,10 @@ impl Dialog {
             relocs.insert((r + 1, 1));
             relocs.insert((r + 2, 2));
             relocs.insert((r + 3, 3));
-            let a = pe.code[r] as u32;
-            let b = pe.code[r + 1] as u32;
-            let c = pe.code[r + 2] as u32;
-            let d = pe.code[r + 3] as u32;
+            let a = u32::from(pe.code[r]);
+            let b = u32::from(pe.code[r + 1]);
+            let c = u32::from(pe.code[r + 2]);
+            let d = u32::from(pe.code[r + 3]);
             //println!("a: {:02X} {:02X} {:02X} {:02X}", d, c, b, a);
             let vtgt = (d << 24) + (c << 16) + (b << 8) + a;
             let tgt = vtgt - vaddr;
@@ -432,22 +436,11 @@ impl Dialog {
             targets.insert(tgt + 3);
         }
 
-        let mut instr_offset = 0;
         let mut out = String::new();
         let mut offset = 0;
         while offset < pe.code.len() {
-            let b = bs2s(&pe.code[offset..offset + 1]);
+            let b = bs2s(&pe.code[offset..=offset]);
             if relocs.contains(&(offset, 0)) {
-                // println!("{:04} - {}", out.len(), out);
-                // return Ok(Dialog {});
-
-                // if instr_offset == 1 {
-                //     println!("{:04} - {}", out.len(), out);
-                //     return Ok(Dialog {});
-                // }
-
-                instr_offset += 1;
-                //out = String::new();
                 out += &format!("\n {}{}{}", ansi().green(), &b, ansi());
             } else if relocs.contains(&(offset, 1)) {
                 out += &format!("{}{}{}", ansi().green(), &b, ansi());

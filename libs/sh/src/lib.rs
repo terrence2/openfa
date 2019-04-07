@@ -1356,7 +1356,7 @@ impl X86Code {
             );
             let saved_offset = *offset;
             let mut have_vinstr = true;
-            let maybe = CpuShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
+            let maybe = RawShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
             if let Err(_e) = maybe {
                 have_vinstr = false;
             } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {
@@ -2847,14 +2847,14 @@ macro_rules! consume_instr_simple {
     }};
 }
 
-pub struct CpuShape {
+pub struct RawShape {
     pub instrs: Vec<Instr>,
     pub trampolines: Vec<X86Trampoline>,
     offset_map: HashMap<usize, usize>,
     pub pe: peff::PE,
 }
 
-impl CpuShape {
+impl RawShape {
     pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let mut pe = peff::PE::from_bytes(data)?;
 
@@ -2881,7 +2881,7 @@ impl CpuShape {
             offset_map.insert(instr.at_offset(), i);
         }
 
-        Ok(CpuShape {
+        Ok(RawShape {
             instrs,
             trampolines,
             offset_map,
@@ -3288,7 +3288,7 @@ mod tests {
     use std::io::prelude::*;
     use std::{collections::HashMap, fs};
 
-    fn offset_of_trailer(shape: &CpuShape) -> Option<usize> {
+    fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
         let mut offset = None;
         for (_i, instr) in shape.instrs.iter().enumerate() {
             if let Instr::TrailerUnknown(trailer) = instr {
@@ -3299,7 +3299,7 @@ mod tests {
         return offset;
     }
 
-    fn find_f2_target(shape: &CpuShape) -> Option<usize> {
+    fn find_f2_target(shape: &RawShape) -> Option<usize> {
         for instr in shape.instrs.iter().rev() {
             if let Instr::PointerToObjectTrailer(f2) = instr {
                 return Some(f2.end_byte_offset());
@@ -3309,7 +3309,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn compute_instr_freqs(shape: &CpuShape, freq: &mut HashMap<&'static str, usize>) {
+    fn compute_instr_freqs(shape: &RawShape, freq: &mut HashMap<&'static str, usize>) {
         for instr in &shape.instrs {
             let name = instr.magic();
             let cnt = if let Some(cnt) = freq.get(name) {
@@ -3356,7 +3356,7 @@ mod tests {
 
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let shape = CpuShape::from_bytes(&data)?;
+            let shape = RawShape::from_bytes(&data)?;
 
             //compute_instr_freqs(&shape, &mut freq);
 
@@ -3445,7 +3445,7 @@ mod tests {
         // };
         let exp_base = 0x77000000;
 
-        let shape = CpuShape::from_bytes(&data).unwrap();
+        let shape = RawShape::from_bytes(&data).unwrap();
         let mut interp = i386::Interpreter::new();
         for tramp in shape.trampolines.iter() {
             if !tramp.is_data {
