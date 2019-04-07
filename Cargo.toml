@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-#entity = { path = "libs/entity/" }
 i386 = { path = "libs/i386/" }
 jt = { path = "libs/jt/" }
 lay = { path = "libs/lay/" }
@@ -20,10 +19,9 @@ peff = { path = "libs/peff/" }
 pic = { path = "libs/pic/" }
 pkware = { path = "libs/pkware/" }
 pt = { path = "libs/pt/" }
-#resource = { path = "libs/resource/" }
+resource = { path = "libs/resource/" }
 reverse = { path = "libs/reverse/" }
 sh = { path = "libs/sh/" }
 t2 = { path = "libs/t2/" }
-texture = { path = "libs/texture/" }
-#window = { path = "libs/window/" }
-#xt = { path = "libs/xt/" }
+window = { path = "libs/window/" }
+xt = { path = "libs/xt/" }
