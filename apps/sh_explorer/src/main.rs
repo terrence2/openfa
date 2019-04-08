@@ -261,10 +261,10 @@ fn main() -> Fallible<()> {
                             need_reset = true;
                         }
                         VirtualKeyCode::G => {
-                            if draw_mode.gear_position.is_none() {
-                                draw_mode.gear_position = Some(0x10); // ?
-                            } else {
+                            if draw_mode.gear_position.is_some() {
                                 draw_mode.gear_position = None;
+                            } else {
+                                draw_mode.gear_position = Some(0x0);
                             }
                             need_reset = true;
                         }

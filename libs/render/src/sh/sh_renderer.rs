@@ -224,7 +224,7 @@ impl ShRenderer {
                 .vertex_shader(vs.main_entry_point(), ())
                 .triangle_list()
                 .cull_mode_back()
-                .front_face_counter_clockwise()
+                .front_face_clockwise()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
                 .depth_stencil(DepthStencil {
@@ -629,6 +629,52 @@ impl ShRenderer {
                         }),
                     );
                 }
+                Instr::UnkC6(ref c6) => {
+                    interp.add_write_port(
+                        0xAA000000 + c6.offset as u32 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C6.t0 <= {:08X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + c6.offset as u32 + 2 + 2,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C6.t1 <= {:08X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + c6.offset as u32 + 2 + 4,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C6.t2 <= {:08X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + c6.offset as u32 + 2 + 6,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C6.a0 <= {:08X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + c6.offset as u32 + 2 + 8,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C6.a1 <= {:08X}", value);
+                        }),
+                    );
+                    interp.add_write_port(
+                        0xAA000000 + c6.offset as u32 + 2 + 0xA,
+                        Box::new(move |value| {
+                            println!("WOULD UPDATE C6.a2 <= {:08X}", value);
+                            /*
+                            if !over.contains_key(&off) {
+                                over.insert(off, [0f32; 6]);
+                            }
+                            if let Some(vs) = c4_overlays.get_mut(&c4.offset) {
+                                vs[5] = (value as i32) as f32;
+                            }
+                            */
+                        }),
+                    );
+                }
                 Instr::UnkE4(ref e4) => {
                     let mut v = Vec::new();
                     for i in 0..sh::UnkE4::SIZE {
@@ -799,6 +845,9 @@ impl ShRenderer {
                 Instr::Unk12(unk) => {
                     unmasked_faces.insert(unk.next_offset(), [0f32; 6]);
                 }
+                Instr::Unk6E(unk) => {
+                    unmasked_faces.insert(unk.next_offset(), [0f32; 6]);
+                }
                 Instr::UnkC4(c4) => {
                     let xform = [
                         f32::from(c4.t0),
@@ -809,6 +858,17 @@ impl ShRenderer {
                         f32::from(c4.a2),
                     ];
                     unmasked_faces.insert(c4.next_offset(), xform);
+                }
+                Instr::UnkC6(c6) => {
+                    let xform = [
+                        f32::from(c6.t0),
+                        f32::from(c6.t1),
+                        f32::from(c6.t2),
+                        f32::from(c6.a0),
+                        f32::from(c6.a1),
+                        f32::from(c6.a2),
+                    ];
+                    unmasked_faces.insert(c6.next_offset(), xform);
                 }
                 Instr::Header(_hdr) => {
                     //_xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
@@ -908,12 +968,62 @@ impl ShRenderer {
                         0f32,
                         1f32,
                     );
+                    /*
+                    if byte_offset == 0x352E || byte_offset == 0x3433 {
+                        println!("PADDING: 11");
+                        for _ in 0..11 {
+                            vert_pool.push(Vertex {
+                                position: [0f32, 0f32, 0f32],
+                                color: [0.75f32, 0.5f32, 0f32, 1f32],
+                                tex_coord: [0f32, 0f32],
+                                flags: 0,
+                            });
+                        }
+                    }
+                    if byte_offset == 0x3631 {
+                        println!("PADDING: 22");
+                        for _ in 0..22 {
+                            vert_pool.push(Vertex {
+                                position: [0f32, 0f32, 0f32],
+                                color: [0.75f32, 0.5f32, 0f32, 1f32],
+                                tex_coord: [0f32, 0f32],
+                                flags: 0,
+                            });
+                        }
+                    }
+                    if byte_offset == 0x381D {
+                        println!("PADDING: 6");
+                        for _ in 0..6 {
+                            vert_pool.push(Vertex {
+                                position: [0f32, 0f32, 0f32],
+                                color: [0.75f32, 0.5f32, 0f32, 1f32],
+                                tex_coord: [0f32, 0f32],
+                                flags: 0,
+                            });
+                        }
+                    }
+                    */
+                    let would_start_at_offset = vert_pool.len() * 8;
+                    let expect_start_at_offset = buf.unk0;
+                    let pad_amount = (expect_start_at_offset as usize) - would_start_at_offset;
+                    ensure!(pad_amount % 8 == 0, "expected a multiple of 8 pad bytes");
+                    let pad_verts = pad_amount / 8; // span is 8 even though only 6 bytes are used?
+                    println!("PADDING: 6");
+                    for _ in 0..pad_verts {
+                        vert_pool.push(Vertex {
+                            position: [0f32, 0f32, 0f32],
+                            color: [0.75f32, 0.5f32, 0f32, 1f32],
+                            tex_coord: [0f32, 0f32],
+                            flags: 0,
+                        });
+                    }
+                    println!("                   pushing from {:04X} ({}) -> {:04X} ({})", vert_pool.len() * 8, vert_pool.len(), (vert_pool.len() + buf.verts.len()) * 8, vert_pool.len() + buf.verts.len());
                     for v in &buf.verts {
                         let v0 =
                             Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
                         let v1 = m * v0;
                         vert_pool.push(Vertex {
-                            position: [v1[0], v1[1], v1[2]],
+                            position: [v1[0], v1[1], -v1[2]],
                             color: [0.75f32, 0.5f32, 0f32, 1f32],
                             tex_coord: [0f32, 0f32],
                             flags: 0,
@@ -970,7 +1080,7 @@ impl ShRenderer {
                                     let frame = active_frame.unwrap();
                                     v.tex_coord = frame.tex_coord_at(*tex_coord);
                                 }
-                                println!("v: {:?}", v.position);
+                                //println!("v: {:?}", v.position);
                                 verts.push(v);
                                 indices.push(v_base);
                                 v_base += 1;
