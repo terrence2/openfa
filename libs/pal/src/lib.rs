@@ -41,8 +41,8 @@ impl Palette {
                 data: [
                     data[i * 3] * scale,
                     data[i * 3 + 1] * scale,
-                    data[i * 3 + 2] * scale
-                ]
+                    data[i * 3 + 2] * scale,
+                ],
             });
         }
         Ok(Palette {
@@ -62,8 +62,8 @@ impl Palette {
                 self.entries[index][0],
                 self.entries[index][1],
                 self.entries[index][2],
-                255
-            ]
+                255,
+            ],
         })
     }
 

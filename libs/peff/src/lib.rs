@@ -298,7 +298,7 @@ impl PE {
                 section_info: Self::owned_section_info(&sections),
                 image_base: win.image_base(),
                 code_vaddr: 0,
-                code_addr: 0
+                code_addr: 0,
             });
         }
 
@@ -321,7 +321,9 @@ impl PE {
         })
     }
 
-    fn owned_section_info(sections: &HashMap<String, (&SectionHeader, &[u8])>) -> HashMap<String, SectionInfo> {
+    fn owned_section_info(
+        sections: &HashMap<String, (&SectionHeader, &[u8])>,
+    ) -> HashMap<String, SectionInfo> {
         sections
             .iter()
             .map(|(ref name, (ref header, _))| {
@@ -464,10 +466,12 @@ impl PE {
                         "relocation before CODE"
                     );
                     ensure!(
-                        rva < Self::maybe_code_vaddr(code_section) + Self::maybe_code_vsize(code_section),
+                        rva < Self::maybe_code_vaddr(code_section)
+                            + Self::maybe_code_vsize(code_section),
                         "relocation after CODE"
                     );
-                    let code_offset = (base_reloc.page_rva() - Self::maybe_code_vaddr(code_section))
+                    let code_offset = (base_reloc.page_rva()
+                        - Self::maybe_code_vaddr(code_section))
                         + u32::from(reloc_offset);
                     trace!(
                         "reloc at offset {} is {:04X} + {:04X} => rva:{:04X}, phys:{:04X}",

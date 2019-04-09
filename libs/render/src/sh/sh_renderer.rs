@@ -1017,7 +1017,13 @@ impl ShRenderer {
                             flags: 0,
                         });
                     }
-                    println!("                   pushing from {:04X} ({}) -> {:04X} ({})", vert_pool.len() * 8, vert_pool.len(), (vert_pool.len() + buf.verts.len()) * 8, vert_pool.len() + buf.verts.len());
+                    println!(
+                        "                   pushing from {:04X} ({}) -> {:04X} ({})",
+                        vert_pool.len() * 8,
+                        vert_pool.len(),
+                        (vert_pool.len() + buf.verts.len()) * 8,
+                        vert_pool.len() + buf.verts.len()
+                    );
                     for v in &buf.verts {
                         let v0 =
                             Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
@@ -1058,7 +1064,11 @@ impl ShRenderer {
 
                             for (index, tex_coord) in inds.iter().zip(&tcs) {
                                 if (*index as usize) >= vert_pool.len() {
-                                    println!("skipping face with index at {} of {}", *index, vert_pool.len());
+                                    println!(
+                                        "skipping face with index at {} of {}",
+                                        *index,
+                                        vert_pool.len()
+                                    );
                                     continue;
                                 }
                                 ensure!(

@@ -56,7 +56,7 @@ macro_rules! packed_struct {
 
             pub fn as_bytes(&self) -> Result<&[u8], $crate::Error> {
                 let ptr: *const u8 = self as *const Self as *const u8;
-                let buf: &[u8] = unsafe { std::slice::from_raw_parts(ptr, std::mem::size_of::<Self>()) }; 
+                let buf: &[u8] = unsafe { std::slice::from_raw_parts(ptr, std::mem::size_of::<Self>()) };
                 Ok(buf)
             }
 

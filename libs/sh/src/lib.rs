@@ -2181,8 +2181,8 @@ impl UnkC4 {
 // Like UnkC4, but the offset is a 32bit number instead of 16bit.
 // In FA:F8.SH:
 //At: 1241 => Unknown @ 59E0:     18b =>
-//  @00|59E0: C6 00 00 00 FE FF 28 00 00 00 00 00 00 00 7D 0D 
-//  @10|59F0: 00 00 
+//  @00|59E0: C6 00 00 00 FE FF 28 00 00 00 00 00 00 00 7D 0D
+//  @10|59F0: 00 00
 #[derive(Debug)]
 pub struct UnkC6 {
     pub offset: usize,
@@ -3491,8 +3491,7 @@ mod tests {
         let _ = TermLogger::init(LevelFilter::Info, Config::default()).unwrap();
 
         let omni = OmniLib::new_for_test_in_games(&[
-            "FA",
-            "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
+            "FA", "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
         ])?;
 
         #[allow(unused_variables, unused_mut)]

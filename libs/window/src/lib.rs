@@ -103,8 +103,11 @@ impl SizeDependent {
 
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
 
-        let depth_buffer =
-            AttachmentImage::transient(device.clone(), dimensions, GraphicsConfigBuilder::DEPTH_FORMAT)?;
+        let depth_buffer = AttachmentImage::transient(
+            device.clone(),
+            dimensions,
+            GraphicsConfigBuilder::DEPTH_FORMAT,
+        )?;
 
         let (swapchain, images) = Swapchain::new(
             device.clone(),
@@ -173,10 +176,17 @@ impl SizeDependent {
         surface: &Arc<Surface<Window>>,
     ) -> Fallible<()> {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
-        trace!("resizing to dimensions: {}x{}", dimensions[0], dimensions[1]);
+        trace!(
+            "resizing to dimensions: {}x{}",
+            dimensions[0],
+            dimensions[1]
+        );
 
-        let depth_buffer =
-            AttachmentImage::transient(device.clone(), dimensions, GraphicsConfigBuilder::DEPTH_FORMAT)?;
+        let depth_buffer = AttachmentImage::transient(
+            device.clone(),
+            dimensions,
+            GraphicsConfigBuilder::DEPTH_FORMAT,
+        )?;
 
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
         self.swapchain = swapchain;

@@ -16,7 +16,7 @@ use ansi::ansi;
 use failure::Fallible;
 use peff::PE;
 use reverse::bs2s;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::mem;
 
 pub struct Menu {}
@@ -36,7 +36,8 @@ impl Menu {
         let mut thunk_offset = pe.code.len() - 6;
         loop {
             if pe.code[thunk_offset] == 0xFF && pe.code[thunk_offset + 1] == 0x25 {
-                let dwords: *const u32 = unsafe { mem::transmute(pe.code[thunk_offset + 2..].as_ptr() as *const u8) };
+                let dwords: *const u32 =
+                    unsafe { mem::transmute(pe.code[thunk_offset + 2..].as_ptr() as *const u8) };
                 let tgt = unsafe { *dwords };
                 let mut found = false;
                 for thunk in &pe.thunks {
@@ -69,7 +70,12 @@ impl Menu {
             //println!("a: {:02X} {:02X} {:02X} {:02X}", d, c, b, a);
             let vtgt = (d << 24) + (c << 16) + (b << 8) + a;
             let tgt = vtgt - vaddr;
-            println!("tgt:{:04X} => {:04X} <> {}", tgt, vtgt, all_thunk_descrs.join(", "));
+            println!(
+                "tgt:{:04X} => {:04X} <> {}",
+                tgt,
+                vtgt,
+                all_thunk_descrs.join(", ")
+            );
             for thunk in &pe.thunks {
                 if vtgt == thunk.vaddr as usize {
                     target_names.insert(r + 3, thunk.name.to_owned());
@@ -96,7 +102,11 @@ impl Menu {
             let b = bs2s(&pe.code[offset..offset + 1]);
             if relocs.contains(&(offset, 0)) && targets.contains(&offset) {
                 out += &format!("\n{:04X}: {}{}{}", offset, ansi().magenta(), &b, ansi());
-            } else if (relocs.contains(&(offset, 1)) || relocs.contains(&(offset, 2)) || relocs.contains(&(offset, 3))) && targets.contains(&offset) {
+            } else if (relocs.contains(&(offset, 1))
+                || relocs.contains(&(offset, 2))
+                || relocs.contains(&(offset, 3)))
+                && targets.contains(&offset)
+            {
                 out += &format!("{}{}{}", ansi().magenta(), &b, ansi());
             } else if relocs.contains(&(offset, 0)) {
                 out += &format!("\n{:04X}: {}{}{}", offset, ansi().green(), &b, ansi());
@@ -106,7 +116,13 @@ impl Menu {
                 out += &format!("{}{}{}", ansi().green(), &b, ansi());
             } else if relocs.contains(&(offset, 3)) {
                 if target_names.contains_key(&offset) {
-                    out += &format!("{}{}{}[{}] ", ansi().green(), &b, ansi(), target_names[&offset]);
+                    out += &format!(
+                        "{}{}{}[{}] ",
+                        ansi().green(),
+                        &b,
+                        ansi(),
+                        target_names[&offset]
+                    );
                 } else {
                     out += &format!("{}{}{}", ansi().green(), &b, ansi());
                 }
@@ -138,7 +154,10 @@ mod tests {
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
-            let _mnu = Menu::from_bytes(&format!("{}:{}", game, name), &omni.library(&game).load(&name)?)?;
+            let _mnu = Menu::from_bytes(
+                &format!("{}:{}", game, name),
+                &omni.library(&game).load(&name)?,
+            )?;
         }
 
         Ok(())

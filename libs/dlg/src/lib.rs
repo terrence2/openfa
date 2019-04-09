@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
- #![allow(clippy::transmute_ptr_to_ptr)]
+#![allow(clippy::transmute_ptr_to_ptr)]
 
 use ansi::ansi;
 use failure::{bail, ensure, Fallible};
@@ -272,14 +272,16 @@ pub enum Widget {
 }
 
 pub struct Dialog {
-    pub widgets: Vec<Widget>
+    pub widgets: Vec<Widget>,
 }
 
 impl Dialog {
     pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
         let pe = PE::from_bytes(bytes)?;
         if pe.code.is_empty() {
-            return Ok(Self { widgets: Vec::new() });
+            return Ok(Self {
+                widgets: Vec::new(),
+            });
         }
 
         let mut offset = 0;
@@ -328,9 +330,7 @@ impl Dialog {
                 break;
             }
         }
-        Ok(Self {
-            widgets,
-        })
+        Ok(Self { widgets })
     }
 
     fn find_trampolines(pe: &PE) -> Fallible<HashMap<u32, String>> {
