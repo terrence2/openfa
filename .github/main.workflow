@@ -1,11 +1,23 @@
 workflow "OnPush" {
   on = "push"
   resolves = [
-    "fmt-clippy-test",
+    "cargo fmt",
+    "cargo clippy",
+    "cargo test",
   ]
 }
 
-action "fmt-clippy-test" {
+action "cargo fmt" {
   uses = "icepuma/rust-action@master"
-  args = "cargo fmt --all -- --check && cargo clippy --all -- -Dwarnings && cargo test --all"
+  args = "cargo fmt --all -- --check"
+}
+
+action "cargo clippy" {
+  uses = "icepuma/rust-action@master"
+  args = "cargo clippy --all -- -Dwarnings"
+}
+
+action "cargo test" {
+  uses = "icepuma/rust-action@master"
+  args = "cargo test --all"
 }
