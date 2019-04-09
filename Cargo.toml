@@ -2,8 +2,12 @@
 name = "openfa"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
 
 [dependencies]
+clap = ">= 2.32"
+failure = ">= 0.1.2"
+humansize = ">= 1.0.1"
 i386 = { path = "libs/i386/" }
 jt = { path = "libs/jt/" }
 lay = { path = "libs/lay/" }
