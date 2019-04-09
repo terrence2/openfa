@@ -143,7 +143,7 @@ impl OmniLib {
         let libs = Library::from_file_search(path)?;
         trace!("loaded {} libfiles in game: {}", libs.num_libs(), game);
         libraries.insert(game, Arc::new(Box::new(libs)));
-        return Ok(Self { libraries });
+        Ok(Self { libraries })
     }
 
     pub fn find_matching(&self, glob: &str) -> Fallible<Vec<(String, String)>> {

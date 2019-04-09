@@ -15,7 +15,7 @@
 use failure::{ensure, err_msg, Fallible};
 use image;
 use lib::Library;
-use omnilib::{OmniLib};
+use omnilib::OmniLib;
 use pal::Palette;
 use pic::{Header, Pic};
 use rand::Rng;
@@ -126,13 +126,13 @@ fn load_palette(opt: &Opt) -> Fallible<Palette> {
     };
 
     // If the resource contains a ':', then assume test.
-    if resource_name.contains(":") {
+    if resource_name.contains(':') {
         ensure!(
             opt.game_path.is_none(),
             "game path must not be set if using a GAME:FILE.EXT resource"
         );
         let omni = OmniLib::new_for_test()?;
-        let parts = resource_name.split(":").collect::<Vec<_>>();
+        let parts = resource_name.split(':').collect::<Vec<_>>();
         return load_palette_from_resource(&omni.library(parts[0]), parts[1]);
     }
 
@@ -148,7 +148,10 @@ fn load_palette(opt: &Opt) -> Fallible<Palette> {
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {
     let sum = top.iter().fold(0, |acc, (x, _)| acc + x);
-    let inverted = top.iter().map(|(x, i)| (sum.checked_div(*x).unwrap_or(sum), i)).collect::<Vec<_>>();
+    let inverted = top
+        .iter()
+        .map(|(x, i)| (sum.checked_div(*x).unwrap_or(sum), i))
+        .collect::<Vec<_>>();
     let sum = inverted.iter().fold(0, |acc, (x, _)| acc + x);
     let f: usize = rand::thread_rng().gen_range(0, sum.max(1));
     let mut acc = 0;
@@ -161,18 +164,18 @@ fn find_closest_dithered(top: &[(usize, usize)]) -> usize {
     top[0].1
 }
 
-fn find_closest_in_palette(color: &image::Rgba<u8>, pal: &Palette, quality: u8) -> Fallible<u8> {
+fn find_closest_in_palette(color: image::Rgba<u8>, pal: &Palette, quality: u8) -> Fallible<u8> {
     let mut dists = pal
         .iter()
         .enumerate()
-        .map(|(i, pal_color)| (distance_squared(color, pal_color), i))
+        .map(|(i, pal_color)| (distance_squared(color, *pal_color), i))
         .collect::<Vec<(usize, usize)>>();
     dists.sort_by_key(|&(d, _)| d);
     let index = find_closest_dithered(&dists[0..quality as usize]);
     Ok(index as u8)
 }
 
-fn distance_squared(c: &image::Rgba<u8>, p: &image::Rgb<u8>) -> usize {
+fn distance_squared(c: image::Rgba<u8>, p: image::Rgb<u8>) -> usize {
     if c[3] < 255 {
         if p[0] == 0xFF && p[1] == 0 && p[2] == 0xFF {
             return 0;
@@ -189,7 +192,7 @@ fn compute_pixels(buffer: image::RgbaImage, pal: &Palette, quality: u8) -> Falli
     let dim = buffer.dimensions();
     let mut pix = Vec::with_capacity((dim.0 * dim.1) as usize);
     for c in buffer.pixels() {
-        let index = find_closest_in_palette(c, &pal, quality)?;
+        let index = find_closest_in_palette(*c, &pal, quality)?;
         pix.push(index);
     }
     Ok(pix)
@@ -197,7 +200,10 @@ fn compute_pixels(buffer: image::RgbaImage, pal: &Palette, quality: u8) -> Falli
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    ensure!(opt.dither_quality >= 1, "dither quality must be between 1 and 255");
+    ensure!(
+        opt.dither_quality >= 1,
+        "dither quality must be between 1 and 255"
+    );
 
     let dynamic_image = image::open(&opt.source_image)?;
     let buffer = dynamic_image.to_rgba();
@@ -215,12 +221,10 @@ fn main() -> Fallible<()> {
         } else {
             (pal_offset, 0)
         }
+    } else if opt.include_row_heads {
+        (0, pix_offset + pix_size)
     } else {
-        if opt.include_row_heads {
-            (0, pix_offset + pix_size)
-        } else {
-            (0, 0)
-        }
+        (0, 0)
     };
     let pal_size = if pal_offset != 0 {
         pal_bytes.len() as u32
