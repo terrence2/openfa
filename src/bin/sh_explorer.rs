@@ -19,7 +19,7 @@ use pal::Palette;
 use render::{ArcBallCamera, DrawMode, ShRenderer};
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{sync::Arc, time::Instant, num::ParseIntError};
+use std::{num::ParseIntError, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
