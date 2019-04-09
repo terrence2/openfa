@@ -1,0 +1,16 @@
+[package]
+name = "picpack"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "0.1.2"
+image = "0.21"
+num = "0.2"
+rand = "0.6"
+structopt = "0.2"
+omnilib = { path = "../../libs/omnilib" }
+lib = { path = "../../libs/lib" }
+pal = { path = "../../libs/pal" }
+pic = { path = "../../libs/pic" }

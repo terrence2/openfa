@@ -18,8 +18,8 @@ use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use render::DialogRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{sync::Arc, time::Instant};
 use structopt::StructOpt;
+use std::{sync::Arc, time::Instant};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, Key, MouseMotion, MouseWheel},
@@ -120,6 +120,7 @@ pub fn main() -> Fallible<()> {
                 ..
             } => camera.on_mousebutton_up(id),
             */
+
             // Keyboard Press
             DeviceEvent {
                 event:

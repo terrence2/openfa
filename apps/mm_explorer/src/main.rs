@@ -32,10 +32,11 @@ use winit::{
 };
 use xt::TypeManager;
 
-make_opt_struct!(
-    #[structopt(name = "mm_explorer", about = "Show the contents of an MM file")]
-    Opt {}
-);
+make_opt_struct!(#[structopt(
+    name = "mm_explorer",
+    about = "Show the contents of an MM file"
+)]
+Opt {});
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();

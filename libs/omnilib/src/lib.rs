@@ -112,10 +112,10 @@ impl OmniLib {
             trace!("adding libraries for {}", dir);
 
             let libs = if USE_LIB {
-                let path = Path::new("../../test_data/packed/").join(dir);
+                let path = Path::new("test_data/packed/").join(dir);
                 Library::from_file_search(&path)?
             } else {
-                let path = Path::new("../../test_data/unpacked/").join(dir);
+                let path = Path::new("test_data/unpacked/").join(dir);
                 Library::from_dir_search(&path)?
             };
             libraries.insert(dir.to_owned(), Arc::new(Box::new(libs)));

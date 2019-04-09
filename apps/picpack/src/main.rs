@@ -15,7 +15,7 @@
 use failure::{ensure, err_msg, Fallible};
 use image;
 use lib::Library;
-use omnilib::OmniLib;
+use omnilib::{OmniLib};
 use pal::Palette;
 use pic::{Header, Pic};
 use rand::Rng;
@@ -23,7 +23,7 @@ use std::{env, fs, fs::File, io::Write, mem, path::PathBuf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "picpack")]
+#[structopt(name = "picpack")] //, about = "")]
 /// A PIC authoring tool for Janes Fighters Anthology.
 ///
 /// Examples:
@@ -148,10 +148,7 @@ fn load_palette(opt: &Opt) -> Fallible<Palette> {
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {
     let sum = top.iter().fold(0, |acc, (x, _)| acc + x);
-    let inverted = top
-        .iter()
-        .map(|(x, i)| (sum.checked_div(*x).unwrap_or(sum), i))
-        .collect::<Vec<_>>();
+    let inverted = top.iter().map(|(x, i)| (sum.checked_div(*x).unwrap_or(sum), i)).collect::<Vec<_>>();
     let sum = inverted.iter().fold(0, |acc, (x, _)| acc + x);
     let f: usize = rand::thread_rng().gen_range(0, sum.max(1));
     let mut acc = 0;
@@ -200,10 +197,7 @@ fn compute_pixels(buffer: image::RgbaImage, pal: &Palette, quality: u8) -> Falli
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    ensure!(
-        opt.dither_quality >= 1,
-        "dither quality must be between 1 and 255"
-    );
+    ensure!(opt.dither_quality >= 1, "dither quality must be between 1 and 255");
 
     let dynamic_image = image::open(&opt.source_image)?;
     let buffer = dynamic_image.to_rgba();
