@@ -27,7 +27,7 @@ use lib::Library;
 //pub use bi::AI;
 //pub use hud::HUD;
 pub use lay::Layer;
-pub use sh::CpuShape;
+pub use sh::RawShape;
 //pub use pcm::Sound;
 pub use t2::Terrain;
 
@@ -64,7 +64,7 @@ pub struct ResourceManager<'a> {
     // cache_ai: RefCell<HashMap<String, Rc<Box<AI>>>>,
     // cache_hud: RefCell<HashMap<String, Rc<Box<HUD>>>>,
     // cache_layer: RefCell<HashMap<String, Rc<Box<Layer>>>>,
-    cache_sh: RefCell<HashMap<String, Rc<Box<CpuShape>>>>,
+    cache_sh: RefCell<HashMap<String, Rc<Box<RawShape>>>>,
     // cache_sound: RefCell<HashMap<String, Rc<Box<Sound>>>>,
     // cache_terrain: RefCell<HashMap<String, Rc<Box<Terrain>>>>,
 }
@@ -72,7 +72,7 @@ pub struct ResourceManager<'a> {
 impl<'a> ResourceManager<'a> {
     // Create without gfx state management -- generally for tests.
     pub fn new_headless(library: &'a Library) -> Fallible<Self> {
-        return Ok(ResourceManager {
+        Ok(ResourceManager {
             library,
             // cache_ai: RefCell::new(HashMap::new()),
             // cache_hud: RefCell::new(HashMap::new()),
@@ -80,13 +80,13 @@ impl<'a> ResourceManager<'a> {
             cache_sh: RefCell::new(HashMap::new()),
             // cache_sound: RefCell::new(HashMap::new()),
             // cache_terrain: RefCell::new(HashMap::new()),
-        });
+        })
     }
 
     // pub fn load<T>(&self, name: &str) -> Fallible<Rc<Box<T>>> {
     // }
 
-    pub fn load_sh(&self, name: &str) -> Fallible<Rc<Box<CpuShape>>> {
+    pub fn load_sh(&self, name: &str) -> Fallible<Rc<Box<RawShape>>> {
         assert!(name.ends_with(".SH"));
 
         // FIXME: I *think* that FA probably got random forests by manually
@@ -99,11 +99,11 @@ impl<'a> ResourceManager<'a> {
         };
 
         let content = self.library.load(name)?;
-        let sh = CpuShape::from_bytes(&content)?;
+        let sh = RawShape::from_bytes(&content)?;
         self.cache_sh
             .borrow_mut()
             .insert(name.to_owned(), Rc::new(Box::new(sh)));
-        return Ok(self.cache_sh.borrow().get(name).unwrap().clone());
+        Ok(self.cache_sh.borrow().get(name).unwrap().clone())
     }
 
     // pub fn load_sound(&self, name: &str) -> Fallible<Rc<Box<Sound>>> {
@@ -119,7 +119,7 @@ impl<'a> ResourceManager<'a> {
     // }
 
     pub fn library(&self) -> &Library {
-        return self.library;
+        self.library
     }
 }
 

@@ -260,7 +260,7 @@ impl VertexBuf {
         let words: &[i16] = unsafe { mem::transmute(&data[6..]) };
         let mut buf = VertexBuf {
             offset,
-            unk0: head[2] as i16,
+            unk0: head[1] as i16,
             verts: Vec::new(),
         };
         let nverts = head[0] as usize;
@@ -1356,7 +1356,7 @@ impl X86Code {
             );
             let saved_offset = *offset;
             let mut have_vinstr = true;
-            let maybe = CpuShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
+            let maybe = RawShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
             if let Err(_e) = maybe {
                 have_vinstr = false;
             } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {
@@ -1972,9 +1972,9 @@ impl UnkA6_ToDetail {
     }
 }
 
-// Always points to a valid instruction. Seems to take some part in
-// toggling on parts of the file that are used for showing e.g. gear
-// or afterburners in the low-poly versions.
+// When points to a VertexBuf, it "unmasks" the facets that occur after that vertex buffer up
+// to the next vertex buffer or Header. When it points elsewhere, :shrug:. It usually points
+// to something that jumps, I think to do manual backface culling, maybe? Doesn't seem important.
 #[derive(Debug)]
 pub struct Unk12 {
     pub offset: usize,
@@ -2032,9 +2032,67 @@ impl Unk12 {
     }
 }
 
-// Always points to a valid instruction. Seems to take some part in
-// toggling on parts of the file that are used for showing e.g. gear
-// or afterburners in the low-poly versions.
+// Seems identical to Unk12, but stores a 32bit offset instead of a 16bit offset.
+#[derive(Debug)]
+pub struct Unk6E {
+    pub offset: usize,
+    data: *const u8,
+    pub offset_to_next: usize,
+}
+
+impl Unk6E {
+    pub const MAGIC: u8 = 0x6E;
+    pub const SIZE: usize = 6;
+
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let dword_ref: &[u32] = unsafe { mem::transmute(&data[2..]) };
+        let offset_to_next = dword_ref[0] as usize;
+        Ok(Self {
+            offset,
+            data: data[0..Self::SIZE].as_ptr(),
+            offset_to_next,
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "6E"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        self.offset + Self::SIZE + self.offset_to_next
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}Unk6E{}: {}{}{}| {}{}{} (target:{:06X})",
+            self.offset,
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
+            p2s(self.data, 0, 2).trim(),
+            ansi(),
+            ansi().red(),
+            p2s(self.data, 2, Self::SIZE),
+            ansi(),
+            self.next_offset()
+        )
+    }
+}
+
+// Like Unk12, but also includes a transform to be applied to the
+// facets. Typically this instruction is the target of some x86 script
+// that mutates the embedded transform each frame to, e.g. animate the
+// landing gear lowering.
 #[derive(Debug)]
 pub struct UnkC4 {
     pub offset: usize,
@@ -2114,6 +2172,96 @@ impl UnkC4 {
             ansi(),
             ansi().cyan(),
             p2s(self.data, Self::SIZE - 2, Self::SIZE).trim(),
+            ansi(),
+            self.next_offset()
+        )
+    }
+}
+
+// Like UnkC4, but the offset is a 32bit number instead of 16bit.
+// In FA:F8.SH:
+//At: 1241 => Unknown @ 59E0:     18b =>
+//  @00|59E0: C6 00 00 00 FE FF 28 00 00 00 00 00 00 00 7D 0D 
+//  @10|59F0: 00 00 
+#[derive(Debug)]
+pub struct UnkC6 {
+    pub offset: usize,
+    data: *const u8,
+
+    pub t0: i16,
+    pub t1: i16,
+    pub t2: i16,
+    pub a0: i16,
+    pub a1: i16,
+    pub a2: i16,
+    pub offset_to_next: usize,
+}
+
+impl UnkC6 {
+    pub const MAGIC: u8 = 0xC6;
+    pub const SIZE: usize = 18;
+
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+        assert_eq!(data[0], Self::MAGIC);
+        assert_eq!(data[1], 0x00);
+        let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
+        let t0 = word_ref[0];
+        let t1 = word_ref[1];
+        let t2 = word_ref[2];
+        let a0 = word_ref[3];
+        let a1 = word_ref[4];
+        let a2 = word_ref[5];
+        let dword_ref: &[u32] = unsafe { mem::transmute(&data[14..]) };
+        let offset_to_next = dword_ref[0] as usize;
+        Ok(Self {
+            offset,
+            data: data[0..Self::SIZE].as_ptr(),
+            t0,
+            t1,
+            t2,
+            a0,
+            a1,
+            a2,
+            offset_to_next,
+        })
+    }
+
+    fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    fn magic(&self) -> &'static str {
+        "C4"
+    }
+
+    fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn next_offset(&self) -> usize {
+        self.offset + Self::SIZE + self.offset_to_next
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}UnkC6{}: {}{}{}| {}{}{} t:({}{},{},{}{}) a:({}{},{},{}{}) {}{}{} (target:{:04X})",
+            self.offset,
+            ansi().red().bold(),
+            ansi(),
+            ansi().red().bold(),
+            p2s(self.data, 0, 2).trim(),
+            ansi(),
+            ansi().blue(),
+            p2s(self.data, 2, Self::SIZE).trim(),
+            ansi(),
+            ansi().magenta(),
+            self.t0, self.t1, self.t2,
+            ansi(),
+            ansi().magenta(),
+            self.a0, self.a1, self.a2,
+            ansi(),
+            ansi().cyan(),
+            p2s(self.data, Self::SIZE - 4, Self::SIZE).trim(),
             ansi(),
             self.next_offset()
         )
@@ -2642,7 +2790,7 @@ opaque_instr!(Unk76, "76", 0x76, 10); // ATF:BULLET
 
 // 6E 00| A5 30 00 00
 // 6E 00| 06 00 00 00 50 00 73 00 00 00
-opaque_instr!(Unk6E, "6E", 0x6E, 6); // FA:F8.SH
+//opaque_instr!(Unk6E, "6E", 0x6E, 6); // FA:F8.SH
 opaque_instr!(Unk50, "50", 0x50, 6); // FA:F8.SH
 
 opaque_instr!(Header, "Header", 0xFF, 14);
@@ -2702,6 +2850,7 @@ pub enum Instr {
     UnkB2(UnkB2),
     UnkB8(UnkB8),
     UnkC4(UnkC4),
+    UnkC6(UnkC6),
     UnkC8_ToLOD(UnkC8_ToLOD),
     UnkCA(UnkCA),
     UnkCE(UnkCE),
@@ -2780,6 +2929,7 @@ macro_rules! impl_for_all_instr {
             Instr::UnkB2(ref i) => i.$f(),
             Instr::UnkB8(ref i) => i.$f(),
             Instr::UnkC4(ref i) => i.$f(),
+            Instr::UnkC6(ref i) => i.$f(),
             Instr::UnkC8_ToLOD(ref i) => i.$f(),
             Instr::UnkCA(ref i) => i.$f(),
             Instr::UnkCE(ref i) => i.$f(),
@@ -2847,14 +2997,14 @@ macro_rules! consume_instr_simple {
     }};
 }
 
-pub struct CpuShape {
+pub struct RawShape {
     pub instrs: Vec<Instr>,
     pub trampolines: Vec<X86Trampoline>,
     offset_map: HashMap<usize, usize>,
     pub pe: peff::PE,
 }
 
-impl CpuShape {
+impl RawShape {
     pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         let mut pe = peff::PE::from_bytes(data)?;
 
@@ -2881,7 +3031,7 @@ impl CpuShape {
             offset_map.insert(instr.at_offset(), i);
         }
 
-        Ok(CpuShape {
+        Ok(RawShape {
             instrs,
             trampolines,
             offset_map,
@@ -3074,6 +3224,9 @@ impl CpuShape {
             }
             UnkC4::MAGIC => {
                 consume_instr_simple!(UnkC4, offset, &pe.code[*offset..end_offset], instrs)
+            }
+            UnkC6::MAGIC => {
+                consume_instr_simple!(UnkC6, offset, &pe.code[*offset..end_offset], instrs)
             }
             UnkCA::MAGIC => {
                 consume_instr_simple!(UnkCA, offset, &pe.code[*offset..end_offset], instrs)
@@ -3288,7 +3441,7 @@ mod tests {
     use std::io::prelude::*;
     use std::{collections::HashMap, fs};
 
-    fn offset_of_trailer(shape: &CpuShape) -> Option<usize> {
+    fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
         let mut offset = None;
         for (_i, instr) in shape.instrs.iter().enumerate() {
             if let Instr::TrailerUnknown(trailer) = instr {
@@ -3299,7 +3452,7 @@ mod tests {
         return offset;
     }
 
-    fn find_f2_target(shape: &CpuShape) -> Option<usize> {
+    fn find_f2_target(shape: &RawShape) -> Option<usize> {
         for instr in shape.instrs.iter().rev() {
             if let Instr::PointerToObjectTrailer(f2) = instr {
                 return Some(f2.end_byte_offset());
@@ -3309,7 +3462,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn compute_instr_freqs(shape: &CpuShape, freq: &mut HashMap<&'static str, usize>) {
+    fn compute_instr_freqs(shape: &RawShape, freq: &mut HashMap<&'static str, usize>) {
         for instr in &shape.instrs {
             let name = instr.magic();
             let cnt = if let Some(cnt) = freq.get(name) {
@@ -3339,7 +3492,7 @@ mod tests {
 
         let omni = OmniLib::new_for_test_in_games(&[
             "FA",
-            //"ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
+            "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
         ])?;
 
         #[allow(unused_variables, unused_mut)]
@@ -3356,7 +3509,7 @@ mod tests {
 
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let shape = CpuShape::from_bytes(&data)?;
+            let shape = RawShape::from_bytes(&data)?;
 
             //compute_instr_freqs(&shape, &mut freq);
 
@@ -3445,7 +3598,7 @@ mod tests {
         // };
         let exp_base = 0x77000000;
 
-        let shape = CpuShape::from_bytes(&data).unwrap();
+        let shape = RawShape::from_bytes(&data).unwrap();
         let mut interp = i386::Interpreter::new();
         for tramp in shape.trampolines.iter() {
             if !tramp.is_data {

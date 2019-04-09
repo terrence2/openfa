@@ -17,7 +17,7 @@ use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use render::{ArcBallCamera, DrawMode, ShRenderer};
-use sh::CpuShape;
+use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{sync::Arc, time::Instant, num::ParseIntError};
 use structopt::StructOpt;
@@ -70,7 +70,7 @@ fn main() -> Fallible<()> {
     let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
-    let sh = CpuShape::from_bytes(&lib.load(&name)?)?;
+    let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or(sh.length());
     let mut draw_mode = DrawMode {
         range: opt.ranged.map(|s| {
@@ -88,7 +88,7 @@ fn main() -> Fallible<()> {
         flaps_down: false,
         airbrake_extended: true,
         hook_extended: true,
-        bay_open: false,
+        bay_position: Some(18),
         afterburner_enabled: true,
         rudder_position: 0,
     };
@@ -261,10 +261,10 @@ fn main() -> Fallible<()> {
                             need_reset = true;
                         }
                         VirtualKeyCode::G => {
-                            if draw_mode.gear_position.is_none() {
-                                draw_mode.gear_position = Some(0x10); // ?
-                            } else {
+                            if draw_mode.gear_position.is_some() {
                                 draw_mode.gear_position = None;
+                            } else {
+                                draw_mode.gear_position = Some(0x0);
                             }
                             need_reset = true;
                         }
@@ -281,7 +281,11 @@ fn main() -> Fallible<()> {
                             need_reset = true;
                         }
                         VirtualKeyCode::O => {
-                            draw_mode.bay_open = !draw_mode.bay_open;
+                            if draw_mode.bay_position.is_none() {
+                                draw_mode.bay_position = Some(0x10);
+                            } else {
+                                draw_mode.bay_position = None;
+                            }
                             need_reset = true;
                         }
                         VirtualKeyCode::A => {
@@ -334,7 +338,7 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{}, aft:{}, rudder:{}",
+            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
             stop_at_offset,
             draw_mode.damaged,
             draw_mode.closeness,
@@ -343,7 +347,7 @@ fn main() -> Fallible<()> {
             draw_mode.flaps_down,
             draw_mode.airbrake_extended,
             draw_mode.hook_extended,
-            draw_mode.bay_open,
+            draw_mode.bay_position,
             draw_mode.afterburner_enabled,
             draw_mode.rudder_position,
         );
