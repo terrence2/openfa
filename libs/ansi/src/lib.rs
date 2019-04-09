@@ -13,9 +13,15 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bitflags::bitflags;
-use libc;
-use std::{fmt, mem};
+use std::fmt;
 
+#[cfg(target_family = "unix")]
+use libc;
+
+#[cfg(target_family = "unix")]
+use std::mem;
+
+#[cfg(target_family = "unix")]
 pub fn terminal_size() -> (u16, u16) {
     unsafe {
         if libc::isatty(libc::STDOUT_FILENO) != 1 {
