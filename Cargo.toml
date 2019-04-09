@@ -8,6 +8,20 @@ edition = "2018"
 clap = ">= 2.32"
 failure = ">= 0.1.2"
 humansize = ">= 1.0.1"
+image = ">= 0.21"
+log = ">= 0.4"
+nalgebra = "^ 0.16"
+num = ">= 0.2"
+rand = ">= 0.6"
+simplelog = ">= 0.5"
+structopt = ">= 0.2"
+vulkano = "^ 0.11.1"
+vulkano-shaders = "^ 0.11.1"
+vulkano-win = "^ 0.11.1"
+winit = "^ 0.18"
+ansi = { path = "libs/ansi/" }
+asset = { path = "libs/asset/" }
+dlg = { path = "libs/dlg" }
 i386 = { path = "libs/i386/" }
 jt = { path = "libs/jt/" }
 lay = { path = "libs/lay/" }
@@ -23,6 +37,7 @@ peff = { path = "libs/peff/" }
 pic = { path = "libs/pic/" }
 pkware = { path = "libs/pkware/" }
 pt = { path = "libs/pt/" }
+render = { path = "libs/render/" }
 resource = { path = "libs/resource/" }
 reverse = { path = "libs/reverse/" }
 sh = { path = "libs/sh/" }

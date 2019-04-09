@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::{ansi, terminal_size};
-use failure::{ensure, Fallible};
+use failure::Fallible;
 use omnilib::{make_opt_struct, OmniLib};
 use peff::PE;
-use std::{collections::HashSet, env, iter, path::PathBuf};
+use std::{collections::HashSet, iter};
 use structopt::StructOpt;
 
 make_opt_struct!(#[structopt(
