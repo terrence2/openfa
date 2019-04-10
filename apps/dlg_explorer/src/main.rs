@@ -22,10 +22,10 @@ use std::{sync::Arc, time::Instant};
 use structopt::StructOpt;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
-    DeviceEvent::{Button, Key, MouseMotion, MouseWheel},
+    DeviceEvent::Key,
     ElementState,
     Event::{DeviceEvent, WindowEvent},
-    KeyboardInput, MouseScrollDelta, VirtualKeyCode,
+    KeyboardInput, VirtualKeyCode,
     WindowEvent::{CloseRequested, Destroyed, Resized},
 };
 

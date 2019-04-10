@@ -12,15 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate failure;
-//extern crate bi;
-//extern crate hud;
-extern crate lib;
-//extern crate pcm;
-extern crate lay;
-extern crate sh;
-extern crate t2;
-
 use failure::Fallible;
 use lib::Library;
 

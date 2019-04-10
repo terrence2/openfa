@@ -68,7 +68,7 @@ mod tests {
     fn find_expect_data(path: &str) -> Fallible<Option<Vec<u8>>> {
         // strip ./test_data/inputs/ and .lzss.zip
         let path_stem = &path.to_owned()[19..path.len() - 9];
-        let expect_path = format!("./test_data/expect/{}", path_stem);
+        let expect_path = format!("../../test_data/lzss/expect/{}", path_stem);
         if !Path::new(&expect_path).exists() {
             return Ok(None);
         }
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn it_doesnt_crash() -> Fallible<()> {
-        let paths = fs::read_dir("./test_data/inputs")?;
+        let paths = fs::read_dir("../../test_data/lzss/inputs")?;
         for i in paths {
             let entry = i?;
             let path = format!("{}", entry.path().display());

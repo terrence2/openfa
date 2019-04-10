@@ -12,10 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{err_msg, Fallible};
+use failure::{bail, err_msg, Fallible};
 use lib::Library;
 use log::trace;
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 /// Create a StructOpt that contains the default path loader and whatever else is given.
 #[macro_export]
@@ -107,20 +112,36 @@ impl OmniLib {
     }
 
     pub fn new_for_test_in_games(dirs: &[&str]) -> Fallible<Self> {
+        let test_data_dir = Self::find_test_data_dir()?;
         let mut libraries = HashMap::new();
         for &dir in dirs {
             trace!("adding libraries for {}", dir);
 
             let libs = if USE_LIB {
-                let path = Path::new("test_data/packed/").join(dir);
+                let path = test_data_dir.join("packed").join(dir);
                 Library::from_file_search(&path)?
             } else {
-                let path = Path::new("test_data/unpacked/").join(dir);
+                let path = test_data_dir.join("unpacked").join(dir);
                 Library::from_dir_search(&path)?
             };
             libraries.insert(dir.to_owned(), Arc::new(Box::new(libs)));
         }
         Ok(Self { libraries })
+    }
+
+    fn find_test_data_dir() -> Fallible<PathBuf> {
+        let mut cwd = env::current_dir()?;
+        loop {
+            if cwd.join("test_data").exists() {
+                return Ok(cwd.join("test_data"));
+            }
+            if let Some(next) = cwd.parent() {
+                cwd = next.to_owned();
+            } else {
+                break;
+            }
+        }
+        bail!("did not find test_data directory")
     }
 
     pub fn new_for_game_directory(path: &Path) -> Fallible<Self> {

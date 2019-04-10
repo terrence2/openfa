@@ -4,6 +4,7 @@ workflow "OnPush" {
     "cargo fmt",
     "cargo clippy",
     "cargo test",
+    "build tools",
   ]
 }
 
@@ -20,4 +21,9 @@ action "cargo clippy" {
 action "cargo test" {
   uses = "icepuma/rust-action@master"
   args = "cargo test --all"
+}
+
+action "build tools" {
+  uses = "actions/docker/cli@8cdf801b322af5f369e00d85e9cf3a7122f49108"
+  args = "build -t openfa:latest ."
 }

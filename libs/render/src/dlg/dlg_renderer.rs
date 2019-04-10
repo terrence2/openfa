@@ -20,7 +20,7 @@ use log::trace;
 use nalgebra::{Matrix4, Vector3};
 use pal::Palette;
 use pic::Pic;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -30,10 +30,7 @@ use vulkano::{
     framebuffer::Subpass,
     image::{Dimensions, ImmutableImage},
     impl_vertex,
-    pipeline::{
-        depth_stencil::{Compare, DepthBounds, DepthStencil},
-        GraphicsPipeline, GraphicsPipelineAbstract,
-    },
+    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
@@ -239,7 +236,7 @@ impl QuadRenderer {
 }
 
 pub struct DialogRenderer {
-    dlg: Arc<Box<Dialog>>,
+    _dlg: Arc<Box<Dialog>>,
     //palette: Palette,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     push_constants: vs::ty::PushConstantData,
@@ -315,11 +312,7 @@ impl DialogRenderer {
             println!("DRAWING: {:?}", widget);
             match widget {
                 Widget::Action(DrawAction {
-                    unk0,
-                    unk1,
-                    unk2,
-                    unk3,
-                    ..
+                    unk0, unk1, unk2, ..
                 }) => {
                     let (x, y) = rescale_pos(*unk0, *unk1);
                     let (w, h) = rescale_offset(*unk2, 35);
@@ -338,7 +331,7 @@ impl DialogRenderer {
         }
 
         Ok(Self {
-            dlg,
+            _dlg: dlg,
             //palette: screen_meta.palette.unwrap(),
             pipeline,
             push_constants: vs::ty::PushConstantData::new(),
@@ -383,47 +376,5 @@ impl DialogRenderer {
         }
 
         Ok(cb)
-    }
-
-    fn upload_texture_rgba(
-        window: &GraphicsWindow,
-        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
-        let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
-
-        let dimensions = Dimensions::Dim2d {
-            width: image_dim.0,
-            height: image_dim.1,
-        };
-        let (texture, tex_future) = ImmutableImage::from_iter(
-            image_data.iter().cloned(),
-            dimensions,
-            Format::R8G8B8A8Unorm,
-            window.queue(),
-        )?;
-        trace!(
-            "uploading texture with {} bytes",
-            image_dim.0 * image_dim.1 * 4
-        );
-        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
-    }
-
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Linear,
-            Filter::Linear,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
     }
 }

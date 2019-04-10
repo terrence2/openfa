@@ -215,7 +215,7 @@ mod test {
     use mm::MissionMap;
     use omnilib::OmniLib;
     use pal::Palette;
-    use pic::decode_pic;
+    use pic::Pic;
     use std::path::Path;
     use xt::TypeManager;
 
@@ -277,7 +277,7 @@ mod test {
             // Load all images with our new palette.
             let mut pics = Vec::new();
             for (tloc, data) in &pic_data {
-                let pic = decode_pic(&palette, data)?;
+                let pic = Pic::decode(&palette, data)?;
                 pics.push((tloc.clone(), pic));
             }
 

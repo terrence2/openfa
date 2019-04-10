@@ -612,6 +612,11 @@ impl Library {
     }
 
     fn find_all_lib_dirs_under(path: &Path) -> Fallible<Vec<PathBuf>> {
+        trace!(
+            "libstack: finding dirs under {:?} => {:?}",
+            path,
+            fs::read_dir(path)
+        );
         let mut out = Vec::new();
         for maybe_child in fs::read_dir(path)? {
             let child = maybe_child?;

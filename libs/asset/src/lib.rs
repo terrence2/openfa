@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(vec!["FA"])?;
+        let omni = OmniLib::new_for_test()?;
         for lib in omni.libraries() {
             let asset_loader = AssetManager::new(lib.clone())?;
             for filename in lib.find_matching("*.T2")? {

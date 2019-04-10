@@ -1,12 +1,10 @@
 FROM rust:1.33
 
-WORKDIR /build
 COPY . .
 
 RUN apt-get update && apt-get install -y cmake
-RUN rustup component add clippy
 RUN cargo install cross
 
-RUN make release-windows
+RUN cross build --release --target x86_64-pc-windows-gnu -p pedump -p picdump -p picpack -p unlib
 
-CMD ["make", "build"]
+CMD ["cargo", "help"]
