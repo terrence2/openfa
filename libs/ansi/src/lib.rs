@@ -42,6 +42,11 @@ pub fn terminal_size() -> (u16, u16) {
     }
 }
 
+#[cfg(target_family = "windows")]
+pub fn terminal_size() -> (u16, u16) {
+    (80, 24)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Color {
     Black = 30,
