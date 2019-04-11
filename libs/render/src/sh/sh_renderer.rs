@@ -1004,14 +1004,20 @@ impl ShRenderer {
                     }
                     */
 
-                    ensure!(buf.unk0 % 8 == 0, "expected the vert buffer target offset to be a multiple of 8");
+                    ensure!(
+                        buf.unk0 % 8 == 0,
+                        "expected the vert buffer target offset to be a multiple of 8"
+                    );
                     if (buf.unk0 as usize) < vert_pool.len() * 8 {
                         vert_pool.truncate(buf.unk0 as usize / 8);
                     }
 
                     let would_start_at_offset = vert_pool.len() * 8;
                     let expect_start_at_offset = buf.unk0;
-                    println!("would_start: {:04X} - {:04X}", expect_start_at_offset, would_start_at_offset);
+                    println!(
+                        "would_start: {:04X} - {:04X}",
+                        expect_start_at_offset, would_start_at_offset
+                    );
                     let pad_amount = (expect_start_at_offset as usize) - would_start_at_offset;
                     ensure!(pad_amount % 8 == 0, "expected a multiple of 8 pad bytes");
                     let pad_verts = pad_amount / 8; // span is 8 even though only 6 bytes are used?
