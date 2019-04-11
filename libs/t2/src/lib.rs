@@ -677,15 +677,13 @@ mod test {
 
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
-        ])?;
+        let omni = OmniLib::new_for_test()?;
         for (game, name) in omni.find_matching("*.T2")?.iter() {
             println!("AT: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let contents = lib.load(name)?;
             let terrain = Terrain::from_bytes(&contents)?;
-            terrain.make_debug_images(&format!("dump/{}_{}", game, name))?;
+            terrain.make_debug_images(&format!("../../dump/{}_{}", game, name))?;
         }
         Ok(())
     }
