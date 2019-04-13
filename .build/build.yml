@@ -1,0 +1,13 @@
+image: fedora/latest
+sources:
+  - https://git.sr.ht/~terrence/openfa
+tasks:
+  - setup: |
+      curl https://sh.rustup.rs -sSf | sh
+      cargo install clippy
+  - check-format: |
+      cd openfa
+      cargo fmt --all -- --check
+  - check-clippy: |
+      cd openfa
+      cargo clippy --all -- -Dwarnings
