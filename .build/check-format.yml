@@ -14,11 +14,3 @@ tasks:
       cd openfa
       source $HOME/.cargo/env
       cargo fmt --all -- --check
-  - check-clippy: |
-      cd openfa
-      source $HOME/.cargo/env
-      cargo clippy --all -- --deny warnings --allow clippy::ref_in_deref
-  - test: |
-      cd openfa
-      source $HOME/.cargo/env
-      cargo test --all
