@@ -1,4 +1,4 @@
-image: alpinelinux
+image: archlinux
 sources:
   - https://git.sr.ht/~terrence/openfa
 packages:
