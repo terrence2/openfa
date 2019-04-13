@@ -1,6 +1,8 @@
-image: fedora/latest
+image: alpinelinux
 sources:
   - https://git.sr.ht/~terrence/openfa
+packages:
+  - cmake
 tasks:
   - setup: |
       curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -14,4 +16,4 @@ tasks:
   - check-clippy: |
       cd openfa
       source $HOME/.cargo/env
-      cargo clippy --all -- -Dwarnings
+      cargo clippy --all -- --deny warnings --allow clippy::ref_in_deref

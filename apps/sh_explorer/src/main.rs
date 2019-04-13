@@ -71,10 +71,10 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let mut stop_at_offset = opt.stop_at_offset.unwrap_or(sh.length());
+    let mut stop_at_offset = opt.stop_at_offset.unwrap_or_else(|| sh.length());
     let mut draw_mode = DrawMode {
         range: opt.ranged.map(|s| {
-            let mut parts = s.split(",");
+            let mut parts = s.split(',');
             [
                 usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
                 usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),

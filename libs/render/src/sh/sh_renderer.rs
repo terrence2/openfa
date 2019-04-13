@@ -209,7 +209,7 @@ pub struct ShRenderer {
     instance: Option<ShInstance>,
 }
 
-const INST_BASE: u32 = 0x00004000;
+const INST_BASE: u32 = 0x0000_4000;
 
 impl ShRenderer {
     pub fn new(system_palette: Arc<Palette>, window: &GraphicsWindow) -> Fallible<Self> {
@@ -264,6 +264,7 @@ impl ShRenderer {
             .set_view(view);
     }
 
+    #[allow(clippy::cyclomatic_complexity)]
     pub fn add_shape_to_render(
         &mut self,
         _name: &str,
@@ -439,7 +440,7 @@ impl ShRenderer {
                     Box::new(move || {
                         println!("LOOKUP _PLrightFlap");
                         if flaps_down {
-                            0xFFFFFFFF
+                            0xFFFF_FFFF
                         } else {
                             0
                         }
@@ -450,7 +451,7 @@ impl ShRenderer {
                     Box::new(move || {
                         println!("LOOKUP _PLleftFlap");
                         if flaps_down {
-                            0xFFFFFFFF
+                            0xFFFF_FFFF
                         } else {
                             0
                         }
@@ -585,37 +586,37 @@ impl ShRenderer {
                 // The frame of animation to show, maybe?
                 Instr::UnkC4(ref c4) => {
                     interp.add_write_port(
-                        0xAA000000 + c4.offset as u32 + 2,
+                        0xAA00_0000 + c4.offset as u32 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.t0 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c4.offset as u32 + 2 + 2,
+                        0xAA00_0000 + c4.offset as u32 + 2 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.t1 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c4.offset as u32 + 2 + 4,
+                        0xAA00_0000 + c4.offset as u32 + 2 + 4,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.t2 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c4.offset as u32 + 2 + 6,
+                        0xAA00_0000 + c4.offset as u32 + 2 + 6,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.a0 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c4.offset as u32 + 2 + 8,
+                        0xAA00_0000 + c4.offset as u32 + 2 + 8,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.a1 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c4.offset as u32 + 2 + 0xA,
+                        0xAA00_0000 + c4.offset as u32 + 2 + 0xA,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C4.a2 <= {:08X}", value);
                             /*
@@ -631,37 +632,37 @@ impl ShRenderer {
                 }
                 Instr::UnkC6(ref c6) => {
                     interp.add_write_port(
-                        0xAA000000 + c6.offset as u32 + 2,
+                        0xAA00_0000 + c6.offset as u32 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C6.t0 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c6.offset as u32 + 2 + 2,
+                        0xAA00_0000 + c6.offset as u32 + 2 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C6.t1 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c6.offset as u32 + 2 + 4,
+                        0xAA00_0000 + c6.offset as u32 + 2 + 4,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C6.t2 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c6.offset as u32 + 2 + 6,
+                        0xAA00_0000 + c6.offset as u32 + 2 + 6,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C6.a0 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c6.offset as u32 + 2 + 8,
+                        0xAA00_0000 + c6.offset as u32 + 2 + 8,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C6.a1 <= {:08X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + c6.offset as u32 + 2 + 0xA,
+                        0xAA00_0000 + c6.offset as u32 + 2 + 0xA,
                         Box::new(move |value| {
                             println!("WOULD UPDATE C6.a2 <= {:08X}", value);
                             /*
@@ -681,60 +682,60 @@ impl ShRenderer {
                         v.push(unsafe { *e4.data.add(i) });
                     }
                     interp
-                        .map_writable((0xAA000000 + e4.offset) as u32, v)
+                        .map_writable((0xAA00_0000 + e4.offset) as u32, v)
                         .unwrap();
                     /*
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 2,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.2 <- {:04X}", value);
                         }),
                     );
                     interp.add_read_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 4,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 4,
                         Box::new(move || {
                             println!("LOOKUP E4.4");
                             0
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 4,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 4,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.4 <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 6,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 6,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.6 <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 8,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 8,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.8 <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 0xA,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 0xA,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.A <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 0xC,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 0xC,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.C <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 0xE,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 0xE,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.E <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + e4.offset as u32 + 2 + 0x10,
+                        0xAA00_0000 + e4.offset as u32 + 2 + 0x10,
                         Box::new(move |value| {
                             println!("WOULD UPDATE E4.E <- {:04X}", value);
                         }),
@@ -743,13 +744,13 @@ impl ShRenderer {
                 }
                 Instr::UnkEA(ref ea) => {
                     interp.add_write_port(
-                        0xAA000000 + ea.offset as u32 + 2,
+                        0xAA00_0000 + ea.offset as u32 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE EA.0 <- {:04X}", value);
                         }),
                     );
                     interp.add_write_port(
-                        0xAA000000 + ea.offset as u32 + 2 + 2,
+                        0xAA00_0000 + ea.offset as u32 + 2 + 2,
                         Box::new(move |value| {
                             println!("WOULD UPDATE EA.2 <- {:04X}", value);
                         }),
@@ -757,7 +758,7 @@ impl ShRenderer {
                 }
                 Instr::UnknownData(ref unk) => {
                     interp
-                        .map_writable((0xAA000000 + unk.offset) as u32, unk.data.clone())
+                        .map_writable((0xAA00_0000 + unk.offset) as u32, unk.data.clone())
                         .unwrap();
                 }
                 Instr::X86Code(ref code) => {
@@ -815,12 +816,10 @@ impl ShRenderer {
                 }
             }
             if let Some(damage_offset) = damage_target {
-                if damage_offset == byte_offset {
-                    if !draw_mode.damaged {
-                        trace!("reached damage section in non-damage draw mode; stopping");
-                        // FIXME: jump to end_offset
-                        break;
-                    }
+                if damage_offset == byte_offset && !draw_mode.damaged {
+                    trace!("reached damage section in non-damage draw mode; stopping");
+                    // FIXME: jump to end_offset
+                    break;
                 }
             }
 
@@ -828,14 +827,14 @@ impl ShRenderer {
             match instr {
                 Instr::X86Code(code) => {
                     let rv = interp
-                        .interpret(0xAA000000u32 + code.code_offset as u32)
+                        .interpret(0xAA00_0000u32 + code.code_offset as u32)
                         .unwrap();
                     match rv {
                         ExitInfo::OutOfInstructions => break,
                         ExitInfo::Trampoline(ref name, ref args) => {
                             println!("Got trampoline return to {} with args {:?}", name, args);
                             // FIXME: handle call and set up return if !do_start_interp
-                            byte_offset = (args[0] - 0xAA000000u32) as usize;
+                            byte_offset = (args[0] - 0xAA00_0000u32) as usize;
                             offset = sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
                             println!("Resuming at instruction {}", offset);
                             continue;

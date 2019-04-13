@@ -28,6 +28,7 @@ macro_rules! show_feature {
     };
 }
 
+#[allow(clippy::cyclomatic_complexity)]
 fn main() -> Fallible<()> {
     let instance = Instance::new(None, &InstanceExtensions::none(), None)?;
     for physical in PhysicalDevice::enumerate(&instance) {

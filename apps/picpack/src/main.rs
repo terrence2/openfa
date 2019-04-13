@@ -249,16 +249,16 @@ fn main() -> Fallible<()> {
     let pix = compute_pixels(buffer, &pal, opt.dither_quality)?;
 
     let mut fp = File::create(&opt.output)?;
-    fp.write(pic_header.as_bytes()?)?;
-    fp.write(&pix)?;
+    fp.write_all(pic_header.as_bytes()?)?;
+    fp.write_all(&pix)?;
     if opt.include_palette {
-        fp.write(&pal_bytes)?;
+        fp.write_all(&pal_bytes)?;
     }
     if opt.include_row_heads {
         let mut off: u32 = pix_offset;
         for _ in 0..dim.1 {
             let bytes: [u8; 4] = unsafe { mem::transmute(off.to_le()) };
-            fp.write(&bytes)?;
+            fp.write_all(&bytes)?;
             off += dim.1;
         }
     }
