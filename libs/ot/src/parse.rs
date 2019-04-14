@@ -267,7 +267,7 @@ pub fn find_pointers<'a>(lines: &[&'a str]) -> Fallible<HashMap<&'a str, Vec<&'a
             .skip_while(|&l| l != pointer_name)
             .skip(1)
             .take_while(|&l| !l.starts_with(':') && !l.ends_with("end"))
-            .map(|l| l.trim())
+            .map(str::trim)
             .filter(|l| !l.is_empty())
             .filter(|l| !l.starts_with(';'))
             .collect::<Vec<&str>>();
