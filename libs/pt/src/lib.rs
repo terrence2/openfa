@@ -57,7 +57,7 @@ impl FromRow for Envelopes {
         while off < lines.len() {
             let lns = lines[off..off + 44]
                 .iter()
-                .map(|v| v.as_ref())
+                .map(std::convert::AsRef::as_ref)
                 .collect::<Vec<_>>();
             let env = Envelope::from_lines((), &lns, pointers)?;
             envs.push(env);

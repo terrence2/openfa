@@ -55,7 +55,7 @@ impl FromRow for Hardpoints {
         while off < lines.len() {
             let lns = lines[off..off + 12]
                 .iter()
-                .map(|v| v.as_ref())
+                .map(std::convert::AsRef::as_ref)
                 .collect::<Vec<_>>();
             let ht = HardpointType::from_lines((), &lns, pointers)?;
             hards.push(ht);

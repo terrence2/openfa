@@ -410,7 +410,7 @@ fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>
 fn find_tags_in_section(section: &Section, tags: &[Tag]) -> Vec<Tag> {
     tags.iter()
         .filter(|t| t.offset >= section.offset && t.offset < section.offset + section.length)
-        .map(|t| t.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
         .collect::<Vec<Tag>>()
 }
 

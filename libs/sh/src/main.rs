@@ -112,7 +112,7 @@ fn main() -> Fallible<()> {
             let fmt = shape
                 .instrs
                 .last()
-                .map(|i| i.show())
+                .map(sh::Instr::show)
                 .ok_or("NO INSTRUCTIONS")
                 .unwrap();
             println!("{:20}: {}", name.as_os_str().to_str().unwrap(), fmt);
@@ -141,7 +141,10 @@ fn main() -> Fallible<()> {
                     }
                 }
             }
-            let mut memrefs = dedup.keys().map(|s| s.to_owned()).collect::<Vec<String>>();
+            let mut memrefs = dedup
+                .keys()
+                .map(std::borrow::ToOwned::to_owned)
+                .collect::<Vec<String>>();
             memrefs.sort();
             for memref in memrefs.iter() {
                 println!("{} - {}", dedup[memref], memref);

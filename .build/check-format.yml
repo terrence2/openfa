@@ -1,6 +1,9 @@
-image: fedora/latest
+image: archlinux
 sources:
   - https://git.sr.ht/~terrence/openfa
+packages:
+  - cmake
+  - python
 tasks:
   - setup: |
       curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -11,7 +14,3 @@ tasks:
       cd openfa
       source $HOME/.cargo/env
       cargo fmt --all -- --check
-  - check-clippy: |
-      cd openfa
-      source $HOME/.cargo/env
-      cargo clippy --all -- -Dwarnings

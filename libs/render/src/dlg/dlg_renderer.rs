@@ -300,12 +300,12 @@ impl DialogRenderer {
 
         fn rescale_pos(x: u16, y: u16) -> (f32, f32) {
             (
-                2f32 * ((x as f32) / 250f32) - 1f32,
-                2f32 * ((y as f32) / 350f32) - 1f32,
+                2f32 * (f32::from(x) / 250f32) - 1f32,
+                2f32 * (f32::from(y) / 350f32) - 1f32,
             )
         }
         fn rescale_offset(w: u16, h: u16) -> (f32, f32) {
-            (((w as f32) / 256f32), ((h as f32) / 350f32))
+            ((f32::from(w) / 256f32), (f32::from(h) / 350f32))
         }
 
         for widget in &dlg.widgets {
