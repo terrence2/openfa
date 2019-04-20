@@ -8,6 +8,7 @@ edition = "2018"
 members = [
         "apps/dlg_explorer",
         "apps/mm_explorer",
+        "apps/paldump",
         "apps/pedump",
         "apps/picdump",
         "apps/picpack",

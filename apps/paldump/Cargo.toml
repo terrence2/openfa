@@ -1,9 +1,11 @@
 [package]
-name = "pal"
+name = "paldump"
 version = "0.1.0"
-edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
 
 [dependencies]
+clap = ">= 2.32"
 failure = ">= 0.1"
 image = ">= 0.18"
+pal = { path = "../../libs/pal" }
