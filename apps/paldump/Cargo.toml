@@ -5,7 +5,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-clap = ">= 2.32"
 failure = ">= 0.1"
 image = ">= 0.18"
+structopt = ">= 0.2"
 pal = { path = "../../libs/pal" }
+omnilib = { path = "../../libs/omnilib" }
