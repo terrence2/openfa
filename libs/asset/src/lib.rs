@@ -106,8 +106,8 @@ mod tests {
             let asset_loader = AssetManager::new(lib.clone())?;
             for filename in lib.find_matching("*.T2")? {
                 println!("name: {:?}", filename);
-                let foo = asset_loader.load_t2(&filename)?;
-                println!("res: {:?}", foo.name);
+                let t2 = asset_loader.load_t2(&filename)?;
+                println!("res: {:?}", t2.name);
             }
         }
         Ok(())

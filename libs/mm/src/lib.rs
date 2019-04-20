@@ -467,11 +467,12 @@ mod tests {
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
         for (game, name) in omni.find_matching("*.MM")?.iter() {
-            if game == "ATFGOLD" {
-                if name.contains("UKR") || name == "KURILE.MM" || name == "VIET.MM" {
-                    continue;
-                }
+            if game == "ATFGOLD"
+                && (name.contains("UKR") || name == "KURILE.MM" || name == "VIET.MM")
+            {
+                continue;
             }
+
             if name == "$VARF.MM" {
                 // This looks a fragment of an MM used for... something?
                 continue;
@@ -481,7 +482,8 @@ mod tests {
                 "At: {}:{} @ {}",
                 game,
                 name,
-                omni.path(game, name).unwrap_or("<unknown>".to_owned())
+                omni.path(game, name)
+                    .unwrap_or_else(|_| "<unknown>".to_owned())
             );
             let lib = omni.library(game);
             let type_manager = TypeManager::new(lib.clone());

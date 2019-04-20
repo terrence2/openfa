@@ -243,7 +243,8 @@ mod test {
                 "At: {}:{} @ {}",
                 game,
                 name,
-                omni.path(game, name).unwrap_or("<unknown>".to_owned())
+                omni.path(game, name)
+                    .unwrap_or_else(|_| "<unknown>".to_owned())
             );
             let lib = omni.library(game);
             let assets = AssetManager::new(lib.clone())?;
@@ -255,7 +256,7 @@ mod test {
 
             let mut pic_data = HashMap::new();
             let base_name = mm.get_base_texture_name()?;
-            for (_pos, tmap) in &mm.tmaps {
+            for tmap in mm.tmaps.values() {
                 if !pic_data.contains_key(&tmap.loc) {
                     let name = tmap.loc.pic_file(&base_name);
                     pic_data.insert(tmap.loc.clone(), lib.load(&name)?.to_vec());
@@ -264,11 +265,7 @@ mod test {
             let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
             let palette = load_palette(&base_palette, &layer, mm.layer_index)?;
 
-            let all_texture_start_coords = mm
-                .tmaps
-                .keys()
-                .map(|&v| v.clone())
-                .collect::<Vec<(u32, u32)>>();
+            let all_texture_start_coords = mm.tmaps.keys().cloned().collect::<Vec<(u32, u32)>>();
             for &(x, y) in &all_texture_start_coords {
                 assert_eq!(x % 4, 0);
                 assert_eq!(y % 4, 0);

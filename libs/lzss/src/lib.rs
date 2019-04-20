@@ -12,8 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-extern crate failure;
-
 use failure::{ensure, Fallible};
 
 pub fn explode(input_data: &[u8], expect_output_size: Option<usize>) -> Fallible<Vec<u8>> {
@@ -75,7 +73,7 @@ mod tests {
         let mut fp = fs::File::open(&expect_path)?;
         let mut contents = Vec::new();
         fp.read_to_end(&mut contents)?;
-        return Ok(Some(contents));
+        Ok(Some(contents))
     }
 
     #[test]
@@ -104,6 +102,6 @@ mod tests {
             // let mut fp = File::create(&outname).unwrap();
             // fp.write(&out);
         }
-        return Ok(());
+        Ok(())
     }
 }

@@ -3449,7 +3449,7 @@ mod tests {
                 offset = Some(trailer.offset);
             }
         }
-        return offset;
+        offset
     }
 
     fn find_f2_target(shape: &RawShape) -> Option<usize> {
@@ -3488,7 +3488,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let _ = TermLogger::init(LevelFilter::Info, Config::default()).unwrap();
+        TermLogger::init(LevelFilter::Info, Config::default())?;
 
         let omni = OmniLib::new_for_test_in_games(&[
             "FA", "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
@@ -3503,7 +3503,7 @@ mod tests {
                 game,
                 name,
                 omni.path(game, name)
-                    .or::<Error>(Ok("<none>".to_string()))?
+                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
             );
 
             let lib = omni.library(game);
@@ -3577,8 +3577,8 @@ mod tests {
 
     #[test]
     #[ignore] // We don't actually know what the memory should look like past this.
-    fn virtual_interp() {
-        let _ = TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+    fn virtual_interp() -> Fallible<()> {
+        TermLogger::init(LevelFilter::Trace, Config::default())?;
 
         let path = "./test_data/EXP.SH";
         //let path = "./test_data/FLARE.SH";
@@ -3595,7 +3595,7 @@ mod tests {
         //     field48: 25,
         //     field49: 44,
         // };
-        let exp_base = 0x77000000;
+        let exp_base = 0x7700_0000;
 
         let shape = RawShape::from_bytes(&data).unwrap();
         let mut interp = i386::Interpreter::new();
@@ -3667,50 +3667,15 @@ mod tests {
         }
 
         // FLARE
-        interp.add_read_port(
-            exp_base + 0x22,
-            Box::new(|| {
-                return 0x10 as u32;
-            }),
-        );
+        interp.add_read_port(exp_base + 0x22, Box::new(|| 0x10 as u32));
 
         // EXP
-        interp.add_read_port(
-            exp_base,
-            Box::new(|| {
-                return 0x11 as u32;
-            }),
-        );
-        interp.add_read_port(
-            exp_base + 0x2,
-            Box::new(|| {
-                return 0x10 as u32;
-            }),
-        );
-        interp.add_read_port(
-            exp_base + 0x40,
-            Box::new(|| {
-                return 0 as u32;
-            }),
-        );
-        interp.add_read_port(
-            exp_base + 0x44,
-            Box::new(|| {
-                return 4 as u32;
-            }),
-        );
-        interp.add_read_port(
-            exp_base + 0x48,
-            Box::new(|| {
-                return 25 as u32;
-            }),
-        );
-        interp.add_read_port(
-            exp_base + 0x49,
-            Box::new(move || {
-                return 44 as u32;
-            }),
-        );
+        interp.add_read_port(exp_base, Box::new(|| 0x11 as u32));
+        interp.add_read_port(exp_base + 0x2, Box::new(|| 0x10 as u32));
+        interp.add_read_port(exp_base + 0x40, Box::new(|| 0 as u32));
+        interp.add_read_port(exp_base + 0x44, Box::new(|| 4 as u32));
+        interp.add_read_port(exp_base + 0x48, Box::new(|| 25 as u32));
+        interp.add_read_port(exp_base + 0x49, Box::new(move || 44 as u32));
 
         for instr in shape.instrs.iter() {
             match instr {
@@ -3754,5 +3719,6 @@ mod tests {
                 offset += 1;
             }
         }
+        Ok(())
     }
 }

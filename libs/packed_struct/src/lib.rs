@@ -90,24 +90,24 @@ mod tests {
     use failure::Fallible;
 
     packed_struct!(TestStruct {
-        _0 => foo: u8 as usize,
-        _1 => bar: u32,
-        _2 => baz: u16 as u8
+        _0 => a: u8 as usize,
+        _1 => b: u32,
+        _2 => c: u16 as u8
     });
 
     #[test]
     fn it_has_accessors() -> Fallible<()> {
-        let buf: &[u8] = &vec![42, 1, 0, 0, 0, 0, 1];
+        let buf: &[u8] = &[42, 1, 0, 0, 0, 0, 1];
         let ts = TestStruct::overlay(buf)?;
-        assert_eq!(ts.foo(), 42usize);
-        assert_eq!(ts.bar(), 1u32);
-        assert_eq!(ts.baz(), 0u8);
+        assert_eq!(ts.a(), 42usize);
+        assert_eq!(ts.b(), 1u32);
+        assert_eq!(ts.c(), 0u8);
         Ok(())
     }
 
     #[test]
     fn it_can_debug() -> Fallible<()> {
-        let buf: &[u8] = &vec![42, 1, 0, 0, 0, 0, 1];
+        let buf: &[u8] = &[42, 1, 0, 0, 0, 0, 1];
         let ts = TestStruct::overlay(buf)?;
         format!("{:?}", ts);
         Ok(())
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn it_can_roundtrip() -> Fallible<()> {
-        let buf: &[u8] = &vec![42, 1, 0, 0, 0, 0, 1];
+        let buf: &[u8] = &[42, 1, 0, 0, 0, 0, 1];
         let ts2 = TestStruct::build(42, 1, 0x100)?;
         assert_eq!(buf, ts2.as_bytes()?);
         Ok(())
