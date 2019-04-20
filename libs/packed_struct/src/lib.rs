@@ -87,6 +87,7 @@ macro_rules! packed_struct {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use failure::Fallible;
 
     packed_struct!(TestStruct {
         _0 => foo: u8 as usize,
@@ -95,18 +96,28 @@ mod tests {
     });
 
     #[test]
-    fn it_has_accessors() {
+    fn it_has_accessors() -> Fallible<()> {
         let buf: &[u8] = &vec![42, 1, 0, 0, 0, 0, 1];
-        let ts = TestStruct::overlay(buf).unwrap();
+        let ts = TestStruct::overlay(buf)?;
         assert_eq!(ts.foo(), 42usize);
         assert_eq!(ts.bar(), 1u32);
         assert_eq!(ts.baz(), 0u8);
+        Ok(())
     }
 
     #[test]
-    fn it_can_debug() {
+    fn it_can_debug() -> Fallible<()> {
         let buf: &[u8] = &vec![42, 1, 0, 0, 0, 0, 1];
-        let ts = TestStruct::overlay(buf).unwrap();
+        let ts = TestStruct::overlay(buf)?;
         format!("{:?}", ts);
+        Ok(())
+    }
+
+    #[test]
+    fn it_can_roundtrip() -> Fallible<()> {
+        let buf: &[u8] = &vec![42, 1, 0, 0, 0, 0, 1];
+        let ts2 = TestStruct::build(42, 1, 0x100)?;
+        assert_eq!(buf, ts2.as_bytes()?);
+        Ok(())
     }
 }

@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let _window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
         Ok(())
     }
