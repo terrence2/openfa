@@ -13,6 +13,7 @@ members = [
         "apps/picdump",
         "apps/picpack",
         "apps/sh_explorer",
+        "apps/shdump",
         "apps/unlib",
         "apps/vulkandump",
 

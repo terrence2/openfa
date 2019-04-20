@@ -648,7 +648,7 @@ mod tests {
             let data = libs.load(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
-        return Ok(());
+        Ok(())
     }
 
     #[test]
@@ -659,7 +659,7 @@ mod tests {
             let data = libs.load(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
-        return Ok(());
+        Ok(())
     }
 
     #[test]
@@ -672,6 +672,6 @@ mod tests {
             let txt = libs.load_masked_text("FILE.TXT", libpath)?;
             assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
         }
-        return Ok(());
+        Ok(())
     }
 }

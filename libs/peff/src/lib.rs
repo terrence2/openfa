@@ -775,13 +775,13 @@ mod tests {
                 game,
                 name,
                 omni.path(game, name)
-                    .or::<Error>(Ok("<none>".to_string()))?
+                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
             let data = lib.load(name)?;
             let _pe = PE::from_bytes(&data)?;
         }
 
-        return Ok(());
+        Ok(())
     }
 }

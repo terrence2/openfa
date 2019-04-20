@@ -299,6 +299,6 @@ mod tests {
             let _lay = Layer::from_bytes(&data, lib.clone())?;
         }
 
-        return Ok(());
+        Ok(())
     }
 }

@@ -125,6 +125,6 @@ mod tests {
         let rm = ResourceManager::new_headless(&lib)?;
         let _sh = rm.load_sh("F22.SH")?;
         //assert_eq!(ot.short_name, "Runway 2");
-        return Ok(());
+        Ok(())
     }
 }

@@ -217,7 +217,7 @@ mod tests {
                 let name = format!(
                     "dump/{}/{}.png",
                     game,
-                    name.split(".").collect::<Vec<_>>().first().unwrap()
+                    name.split('.').collect::<Vec<_>>().first().unwrap()
                 );
                 let path = Path::new(&name);
                 println!("Write: {}", path.display());

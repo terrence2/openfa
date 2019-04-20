@@ -194,7 +194,7 @@ mod tests {
                 game,
                 name,
                 omni.path(game, name)
-                    .or::<Error>(Ok("<none>".to_string()))?
+                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
             );
             let lib = omni.library(game);
             let contents = lib.load_text(name)?;

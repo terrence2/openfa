@@ -1,0 +1,13 @@
+[package]
+name = "shdump"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = ">= 0.1.2"
+structopt = ">= 0.2"
+simplelog = "^0.5.0"
+i386 = { path = "../../libs/i386" }
+sh = { path = "../../libs/sh" }
+reverse = { path = "../../libs/reverse" }
