@@ -43,4 +43,14 @@ members = [
         "libs/xt",
 ]
 
+# pkware is unusable at opt level 0.
+# [profile.dev.]
+# opt-level = 2
+
+# [profile.test]
+# opt-level = 2
+
+# [profile.test]
+# opt-level = 1
+
 [dependencies]

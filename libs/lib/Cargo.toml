@@ -7,13 +7,6 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [features]
 benchmark = []
 
-# pkware is unusable at opt level 0.
-[profile.dev]
-opt-level = 2
-
-[profile.test]
-opt-level = 2
-
 [dependencies]
 codepage-437 = ">= 0.1.0"
 failure = ">= 0.1.2"
