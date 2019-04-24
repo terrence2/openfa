@@ -826,9 +826,7 @@ impl ShRenderer {
             println!("At: {:3} => {}", offset, instr.show());
             match instr {
                 Instr::X86Code(code) => {
-                    let rv = interp
-                        .interpret(0xAA00_0000u32 + code.code_offset as u32)
-                        .unwrap();
+                    let rv = interp.interpret(code.code_offset(0xAA00_0000u32)).unwrap();
                     match rv {
                         ExitInfo::OutOfInstructions => break,
                         ExitInfo::Trampoline(ref name, ref args) => {

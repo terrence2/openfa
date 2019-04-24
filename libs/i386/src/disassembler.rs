@@ -15,6 +15,7 @@
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use crate::lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
+use ansi::ansi;
 use failure::{bail, ensure, Error, Fail, Fallible};
 use log::trace;
 use reverse::bs2s;
@@ -930,7 +931,13 @@ impl Instr {
             Memonic::Jcc(_) => true,
             _ => false,
         };
-        let mut s = format!("{:23} {:?}(", bs2s(&self.raw), self.memonic);
+        let mut s = format!(
+            "{}{:24}{} {:?}(",
+            ansi().green(),
+            bs2s(&self.raw),
+            ansi(),
+            self.memonic
+        );
         for (i, op) in self.operands.iter().enumerate() {
             if i != 0 {
                 s += ", ";
@@ -953,7 +960,7 @@ impl Instr {
 
 impl fmt::Display for Instr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:23} {:?}(", bs2s(&self.raw), self.memonic)?;
+        write!(f, "{:24} {:?}(", bs2s(&self.raw), self.memonic)?;
         for (i, op) in self.operands.iter().enumerate() {
             if i != 0 {
                 write!(f, ", ")?;
@@ -1049,7 +1056,7 @@ impl ByteCode {
         let mut s = String::new();
         for instr in self.instrs.iter() {
             s += &format!(
-                "  @{:02X}|{:04X}: {}\n",
+                "  @{:02X}|{:04X}               {}\n",
                 pos,
                 base + pos,
                 instr.show_relative(base + pos)
@@ -1075,27 +1082,27 @@ impl fmt::Display for ByteCode {
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::prelude::*;
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let paths = fs::read_dir("../../test_data/i386/x86").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            println!("AT: {}", path);
+        for game in &["ATF", "ATFGOLD", "ATFNATO", "FA", "MF", "USNF", "USNF97"] {
+            let dirname = format!("../../dump/i386/{}", game);
+            let paths = fs::read_dir(&dirname)?;
+            for i in paths {
+                let entry = i?;
+                let path = format!("{}", entry.path().display());
+                println!("AT: {}", path);
 
-            let mut fp = fs::File::open(entry.path()).unwrap();
-            let mut data = Vec::new();
-            fp.read_to_end(&mut data).unwrap();
+                let data = fs::read(entry.path())?;
 
-            let bc = ByteCode::disassemble(&data, true);
-            if let Err(ref e) = bc {
-                if !DisassemblyError::maybe_show(e, &data) {
-                    println!("Error: {}", e);
+                let bc = ByteCode::disassemble(&data, true);
+                if let Err(ref e) = bc {
+                    if !DisassemblyError::maybe_show(e, &data) {
+                        println!("Error: {}", e);
+                    }
                 }
+                let _ = bc?;
             }
-            bc.unwrap();
         }
 
         Ok(())

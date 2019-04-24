@@ -13,60 +13,51 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
+use omnilib::{make_opt_struct, OmniLib};
 use reverse::b2h;
 use sh::{Instr, RawShape};
 use simplelog::*;
-use std::io::prelude::*;
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, fs};
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "OpenFA shape slicing tool")]
-struct Opt {
-    /// Trace execution
-    #[structopt(short = "v", long = "verbose")]
-    verbose: bool,
+make_opt_struct!(#[structopt(
+    name = "shdump",
+    about = "OpenFA shape slicing and discovery tooling"
+)]
+Opt {
+    #[structopt(short = "v", long = "verbose", help = "Trace execution")]
+    verbose => bool,
 
-    /// Show all
-    #[structopt(short = "a", long = "all")]
-    show_all: bool,
+    #[structopt(short = "a", long = "all", help = "Show all")]
+    show_all => bool,
 
-    /// Show matching instructions
-    #[structopt(short = "m", long = "matching")]
-    show_matching: Option<String>,
+    #[structopt(short = "m", long = "matching", help = "Show matching instructions")]
+    show_matching => Option<String>,
 
-    /// Show count after matching
-    #[structopt(short = "p", long = "plus", default_value = "0")]
-    show_after_matching: usize,
+    #[structopt(short = "p", long = "plus", default_value = "0", help = "Show count after matching")]
+    show_after_matching => usize,
 
-    /// Show last instructions
-    #[structopt(short = "l", long = "last")]
-    show_last: bool,
+    #[structopt(short = "l", long = "last", help = "Show last instructions")]
+    show_last => bool,
 
-    /// Show unknown instructions
-    #[structopt(short = "u", long = "unknown")]
-    show_unknown: bool,
+    #[structopt(short = "u", long = "unknown", help = "Show unknown instructions")]
+    show_unknown => bool,
 
-    /// Show memory refs in x86
-    #[structopt(short = "x", long = "memory")]
-    show_memory: bool,
+    #[structopt(short = "x", long = "memory", help = "Show all i386 memory refs")]
+    show_memory => bool,
 
-    /// Elide the name in output
-    #[structopt(short = "n", long = "no-name")]
-    quiet: bool,
+    #[structopt(short = "n", long = "no-name", help = "Elide names in output")]
+    quiet => bool,
 
-    /// Account for i386 forms
-    #[structopt(short = "i", long = "i386")]
-    i386: bool,
+    #[structopt(short = "d", long = "dump-code", help = "Dump all i386 code fragments")]
+    dump_code => bool,
 
-    /// Custom code
-    #[structopt(short = "c", long = "custom")]
-    custom: bool,
+    #[structopt(short = "i", long = "i386", help = "Account for i386 forms")]
+    i386 => bool,
 
-    /// Files to process
-    #[structopt(name = "FILE", parse(from_os_str))]
-    files: Vec<PathBuf>,
-}
+    #[structopt(short = "c", long = "custom", help = "Custom")]
+    custom => bool
+});
 
 #[allow(clippy::cyclomatic_complexity)] // Impossible to organize if you don't know what the goal is.
 fn main() -> Fallible<()> {
@@ -78,13 +69,11 @@ fn main() -> Fallible<()> {
     };
     TermLogger::init(level, Config::default())?;
 
-    for name in &opt.files {
-        let mut fp = fs::File::open(name).unwrap();
-        let mut data = Vec::new();
-        fp.read_to_end(&mut data).unwrap();
-        //println!("At: {}", name);
-
-        let shape = RawShape::from_bytes(&data).unwrap();
+    let (omni, inputs) = opt.find_inputs()?;
+    for (game, name) in &inputs {
+        let lib = omni.library(&game);
+        let data = lib.load(name)?;
+        let shape = RawShape::from_bytes(&data)?;
 
         if opt.show_all {
             for (i, instr) in shape.instrs.iter().enumerate() {
@@ -104,7 +93,7 @@ fn main() -> Fallible<()> {
                     if opt.quiet {
                         println!("{}", out);
                     } else {
-                        println!("{:60}: {}", name.as_os_str().to_str().unwrap(), out);
+                        println!("{:60}: {}", name, out);
                     }
                 }
             }
@@ -115,16 +104,12 @@ fn main() -> Fallible<()> {
                 .map(sh::Instr::show)
                 .ok_or("NO INSTRUCTIONS")
                 .unwrap();
-            println!("{:20}: {}", name.as_os_str().to_str().unwrap(), fmt);
+            println!("{:20}: {}", name, fmt);
         } else if opt.show_unknown {
             for i in shape.instrs.iter() {
                 if let sh::Instr::UnknownUnknown(unk) = i {
                     //println!("{:20}: {}", name, i.show());
-                    println!(
-                        "{}, {:20}",
-                        format_unk(&unk.data),
-                        name.as_os_str().to_str().unwrap()
-                    );
+                    println!("{}, {:20}", format_unk(&unk.data), name);
                 }
             }
         } else if opt.show_memory {
@@ -148,6 +133,24 @@ fn main() -> Fallible<()> {
             memrefs.sort();
             for memref in memrefs.iter() {
                 println!("{} - {}", dedup[memref], memref);
+            }
+        } else if opt.dump_code {
+            fs::create_dir_all(&format!("dump/i386/{}", game))?;
+            for vinstr in shape.instrs {
+                if let sh::Instr::X86Code(ref x86) = vinstr {
+                    let filename = format!(
+                        "dump/i386/{}/{}-{:04X}.i386",
+                        game,
+                        name,
+                        vinstr.at_offset()
+                    );
+                    let mut v: Vec<u8> = Vec::new();
+                    let start = if x86.have_header { 2 } else { 0 };
+                    for i in start..x86.length {
+                        v.push(unsafe { *x86.data.add(i) });
+                    }
+                    fs::write(&filename, &v)?;
+                }
             }
         } else if opt.i386 {
             fn is_start_interp(instr: &i386::Instr, sh: &RawShape) -> bool {
@@ -478,11 +481,27 @@ fn main() -> Fallible<()> {
                     matching_control,
                     matching_effects,
                     matching_lightening,
-                    name.as_os_str().to_str().unwrap()
+                    name
                 );
             }
         } else if opt.custom {
-            //
+            let mut offset = 0;
+            while offset < shape.instrs.len() {
+                let instr = &shape.instrs[offset];
+                if let sh::Instr::X86Code(_) = instr {
+                    let suc = &shape.instrs[offset + 1];
+                    if let sh::Instr::Unk48(_) = suc {
+                        let suc2 = &shape.instrs[offset + 2];
+                        if let sh::Instr::X86Code(_) = suc2 {
+                            println!("{} - {:?}", suc.magic(), name);
+                            //println!("{}", suc.magic());
+                        }
+                        offset += 1;
+                    }
+                    offset += 1;
+                }
+                offset += 1;
+            }
         }
     }
 

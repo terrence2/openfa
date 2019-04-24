@@ -27,6 +27,21 @@ use std::{
     fmt, mem, str,
 };
 
+// Sandwiched instructions
+// Unmask
+//   12  -- 16 bit
+//   6E  -- 32 bit
+// Unmask and Xform
+//   C4  -- 16 bit
+//   C6  -- 32 bit
+// Jump
+//   48  --
+// Pile of code
+//   F0
+// Unknown
+//   E4  -- Only in wave1/2
+//   Data
+
 #[derive(Debug, Fail)]
 enum ShError {
     #[fail(display = "name ran off end of file")]
@@ -258,12 +273,12 @@ impl VertexBuf {
         assert_eq!(data[1], 0);
         let head: &[u16] = unsafe { mem::transmute(&data[2..6]) };
         let words: &[i16] = unsafe { mem::transmute(&data[6..]) };
+        let nverts = head[0] as usize;
         let mut buf = VertexBuf {
             offset,
             unk0: head[1] as i16,
-            verts: Vec::new(),
+            verts: Vec::with_capacity(nverts),
         };
-        let nverts = head[0] as usize;
         for i in 0..nverts {
             let x = words[i * 3];
             let y = words[i * 3 + 1];
@@ -791,24 +806,20 @@ impl Facet {
 
         // Indexes.
         let indices_offset = off;
-        let mut indices = Vec::new();
-        let index_u8 = &data[off..];
-        let index_u16: &[u16] = unsafe { mem::transmute(index_u8) };
-        for i in 0..index_count {
-            let index = if flags.contains(FacetFlags::USE_SHORT_INDICES) {
-                off += 2;
-                index_u16[i]
-            } else {
-                off += 1;
-                u16::from(index_u8[i])
-            };
-            indices.push(index);
-        }
+        let indices: Vec<u16> = if flags.contains(FacetFlags::USE_SHORT_INDICES) {
+            let index_u16: &[u16] = unsafe { mem::transmute(&data[off..]) };
+            off += index_count * 2;
+            index_u16[0..index_count].to_vec()
+        } else {
+            let index_u8 = &data[off..off + index_count];
+            off += index_count;
+            index_u8.iter().map(|&v| u16::from(v)).collect()
+        };
         let indices_size = off - indices_offset;
 
         // Tex Coords
         let tc_offset = off;
-        let mut tex_coords = Vec::new();
+        let mut tex_coords = Vec::with_capacity(index_count);
         if flags.contains(FacetFlags::HAVE_TEXCOORDS) {
             let tc_u8 = &data[off..];
             let tc_u16: &[u16] = unsafe { mem::transmute(tc_u8) };
@@ -1112,9 +1123,7 @@ enum ReturnKind {
 pub struct X86Code {
     pub offset: usize,
     pub length: usize,
-    pub code_offset: usize,
-    pub code: Vec<u8>,
-    pub formatted: String,
+    pub data: *const u8,
     pub bytecode: ByteCode,
     pub have_header: bool,
 }
@@ -1268,9 +1277,7 @@ impl X86Code {
         Instr::X86Code(X86Code {
             offset: section_offset,
             length: section_length,
-            code_offset: offset,
-            code: pe.code[offset..offset + bc_size].to_owned(),
-            formatted: Self::format_section(section_offset, section_length, &bc, pe),
+            data: pe.code[section_offset..].as_ptr(),
             bytecode: bc,
             have_header,
         })
@@ -1395,12 +1402,8 @@ impl X86Code {
         Ok(())
     }
 
-    fn format_section(offset: usize, length: usize, _bc: &i386::ByteCode, pe: &peff::PE) -> String {
-        let sec = reverse::Section::new(0xF0, offset, length);
-        let tags = reverse::get_all_tags(pe);
-        let mut v = Vec::new();
-        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
-        v.iter().collect::<String>()
+    pub fn code_offset(&self, base: u32) -> u32 {
+        base + (self.offset as u32) + if self.have_header { 2 } else { 0 }
     }
 
     fn size(&self) -> usize {
@@ -1421,10 +1424,15 @@ impl X86Code {
         } else {
             self.offset
         };
+        let hdr = if self.have_header { "F0 00" } else { "     " };
         format!(
-            "@{:04X} X86Code: {}\n  {}",
+            "@{:04X} {}X86Cd{}: {}{}{}|\n  {}",
             self.offset,
-            self.formatted,
+            ansi().green().bold(),
+            ansi(),
+            ansi().green().bold(),
+            hdr,
+            ansi(),
             self.bytecode.show_relative(show_offset).trim()
         )
     }
@@ -2231,7 +2239,7 @@ impl UnkC6 {
     }
 
     fn magic(&self) -> &'static str {
-        "C4"
+        "C6"
     }
 
     fn at_offset(&self) -> usize {
@@ -2790,7 +2798,6 @@ opaque_instr!(Unk76, "76", 0x76, 10); // ATF:BULLET
 
 // 6E 00| A5 30 00 00
 // 6E 00| 06 00 00 00 50 00 73 00 00 00
-//opaque_instr!(Unk6E, "6E", 0x6E, 6); // FA:F8.SH
 opaque_instr!(Unk50, "50", 0x50, 6); // FA:F8.SH
 
 opaque_instr!(Header, "Header", 0xFF, 14);
@@ -2804,7 +2811,6 @@ opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
 opaque_instr!(Unk96, "96", 0x96, 6);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
-//opaque_instr!(UnkC4, "C4", 0xC4, 16);
 opaque_instr!(UnkCA, "CA", 0xCA, 4);
 opaque_instr!(UnkD0, "D0", 0xD0, 4);
 opaque_instr!(UnkD2, "D2", 0xD2, 8);
@@ -3026,10 +3032,11 @@ impl RawShape {
         // to absolute byte offsets using the instruction offset and size
         // which we can look up in the following table to get the instr
         // index we need to jump to.
-        let mut offset_map = HashMap::new();
-        for (i, instr) in instrs.iter().enumerate() {
-            offset_map.insert(instr.at_offset(), i);
-        }
+        let offset_map: HashMap<usize, usize> = instrs
+            .iter()
+            .enumerate()
+            .map(|(i, instr)| (instr.at_offset(), i))
+            .collect();
 
         Ok(RawShape {
             instrs,
@@ -3435,11 +3442,8 @@ extern crate omnilib;
 mod tests {
     use super::*;
     use failure::Error;
-    use i386::ExitInfo;
     use omnilib::OmniLib;
     use simplelog::{Config, LevelFilter, TermLogger};
-    use std::io::prelude::*;
-    use std::{collections::HashMap, fs};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
         let mut offset = None;
@@ -3545,180 +3549,6 @@ mod tests {
 
         //show_instr_freqs(&freq);
 
-        Ok(())
-    }
-
-    // struct ObjectInfo {
-    //     field0: u8,
-    //     field2: u8,
-
-    // USED BY FLARE.ASM
-    //     // eax = -field22 >> 10
-    //     // if eax < 90 {
-    //     //     if eax < -90 {
-    //     //        eax = -90
-    //     //     }
-    //     // } else { eax = 90 }
-    //     field22: u32,
-
-    // USED BY EXP.ASM
-    //     // ax = (field49 - field48) & 0x00FF
-    //     // cx = _currentTicks - field40
-    //     // dx:ax = ax * cx
-    //     // cx = field44 - field40
-    //     // ax, dx = dx:ax / cx, dx:ax % cx
-    //     // ax += field48
-    //     // if ax > 0x316 { _ErrorExit("Bad value (around line 133) in exp.asm!") }
-    //     field40: u16,
-    //     field44: u16,
-    //     field48: u8,
-    //     field49: u8,
-    // }
-
-    #[test]
-    #[ignore] // We don't actually know what the memory should look like past this.
-    fn virtual_interp() -> Fallible<()> {
-        TermLogger::init(LevelFilter::Trace, Config::default())?;
-
-        let path = "./test_data/EXP.SH";
-        //let path = "./test_data/FLARE.SH";
-        //let path = "./test_data/WNDMLL.SH";
-        let mut fp = fs::File::open(path).unwrap();
-        let mut data = Vec::new();
-        fp.read_to_end(&mut data).unwrap();
-
-        // let obj = ExplosionInfo {
-        //     field0: 0x11,
-        //     field2: 0x10,
-        //     field40: 0,
-        //     field44: 4,
-        //     field48: 25,
-        //     field49: 44,
-        // };
-        let exp_base = 0x7700_0000;
-
-        let shape = RawShape::from_bytes(&data).unwrap();
-        let mut interp = i386::Interpreter::new();
-        for tramp in shape.trampolines.iter() {
-            if !tramp.is_data {
-                interp.add_trampoline(tramp.mem_location, &tramp.name, 1);
-                continue;
-            }
-            match tramp.name.as_ref() {
-                "brentObjId" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP brentObjectId");
-                        exp_base // Lowest valid (shown?) object id is 0x3E8, at least by the check EXP.sh does.
-                    }),
-                ),
-                "_currentTicks" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _currentTicks");
-                        0
-                    }),
-                ),
-                "viewer_x" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP viewer_x");
-                        0
-                    }),
-                ),
-                "viewer_z" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP viewer_z");
-                        0
-                    }),
-                ),
-                "xv32" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP xv32");
-                        0
-                    }),
-                ),
-                "zv32" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP zv32");
-                        0
-                    }),
-                ),
-                "_effectsAllowed" => {
-                    interp.add_read_port(
-                        tramp.mem_location,
-                        Box::new(move || {
-                            println!("LOOKUP _effectsAllowed");
-                            0
-                        }),
-                    );
-                    interp.add_write_port(
-                        tramp.mem_location,
-                        Box::new(move |value| {
-                            println!("SET _effectsAllowed to {}", value);
-                        }),
-                    );
-                }
-                _ => panic!("unknown data reference to {}", tramp.name),
-            }
-        }
-
-        // FLARE
-        interp.add_read_port(exp_base + 0x22, Box::new(|| 0x10 as u32));
-
-        // EXP
-        interp.add_read_port(exp_base, Box::new(|| 0x11 as u32));
-        interp.add_read_port(exp_base + 0x2, Box::new(|| 0x10 as u32));
-        interp.add_read_port(exp_base + 0x40, Box::new(|| 0 as u32));
-        interp.add_read_port(exp_base + 0x44, Box::new(|| 4 as u32));
-        interp.add_read_port(exp_base + 0x48, Box::new(|| 25 as u32));
-        interp.add_read_port(exp_base + 0x49, Box::new(move || 44 as u32));
-
-        for instr in shape.instrs.iter() {
-            match instr {
-                // Written into by windmill with (_currentTicks & 0xFF) << 2.
-                // The frame of animation to show, maybe?
-                Instr::UnkC4(ref c4) => interp.add_write_port(
-                    SHAPE_LOAD_BASE + c4.offset as u32 + 2 + 0xA,
-                    Box::new(move |value| {
-                        println!("WOULD UPDATE C4 Internals with {:02X}", value);
-                    }),
-                ),
-                Instr::UnknownUnknown(ref unk) => {
-                    interp
-                        .map_writable(SHAPE_LOAD_BASE + unk.offset as u32, unk.data.clone())
-                        .unwrap();
-                }
-                Instr::X86Code(ref code) => {
-                    interp.add_code(&code.bytecode);
-                }
-                _ => {}
-            }
-            println!("{}", instr.show());
-        }
-        let mut offset = 0;
-        while offset < shape.instrs.len() {
-            if let Instr::X86Code(ref code) = shape.instrs[offset] {
-                let rv = interp
-                    .interpret(SHAPE_LOAD_BASE + code.code_offset as u32)
-                    .unwrap();
-                match rv {
-                    ExitInfo::OutOfInstructions => break,
-                    ExitInfo::Trampoline(ref name, ref args) => {
-                        println!("Got trampoline return to {} with args {:?}", name, args);
-                        offset = shape
-                            .map_interpreter_offset_to_instr_offset(args[0])
-                            .unwrap();
-                        println!("Resuming at instruction {}", offset);
-                    }
-                }
-            } else {
-                offset += 1;
-            }
-        }
         Ok(())
     }
 }

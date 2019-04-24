@@ -36,13 +36,6 @@ macro_rules! make_opt_struct {
         #[$opt_struct_options]
         struct $opt_struct_name {
             #[structopt(
-                short = "t",
-                long = "from-test",
-                help = "Treat the given path as a test reference."
-            )]
-            omni_from_test: bool,
-
-            #[structopt(
                 short = "g",
                 long = "game-dir",
                 help = "The location of the game directory if not pwd."
@@ -59,13 +52,14 @@ macro_rules! make_opt_struct {
         }
 
         impl $opt_struct_name {
+            // Return true if the input is of the form {game}:{name}.
+            fn omni_from_test(&self) -> bool {
+                self.omni_input.contains(':')
+            }
+
             pub fn find_inputs(&self) -> Fallible<(OmniLib, Vec<(String, String)>)> {
                 // Load relevant libraries.
-                ::failure::ensure!(
-                    !self.omni_from_test || self.omni_game_dir.is_none(),
-                    "only one of -t or -g is allowed"
-                );
-                let omni = if self.omni_from_test {
+                let omni = if self.omni_from_test() {
                     OmniLib::new_for_test()
                 } else {
                     if let Some(ref game_dir) = self.omni_game_dir {
@@ -82,11 +76,15 @@ macro_rules! make_opt_struct {
                         parts.len() == 2,
                         "expected two parts in file spec with a colon"
                     );
-                    omni.library(&parts[0].to_uppercase())
-                        .find_matching(parts[1])?
-                        .drain(..)
-                        .map(|s| (parts[0].to_owned(), s))
-                        .collect::<Vec<_>>()
+                    if parts[0] == "*" {
+                        omni.find_matching(parts[1])?
+                    } else {
+                        omni.library(&parts[0].to_uppercase())
+                            .find_matching(parts[1])?
+                            .drain(..)
+                            .map(|s| (parts[0].to_owned(), s))
+                            .collect::<Vec<_>>()
+                    }
                 } else {
                     omni.find_matching(&self.omni_input)?
                 };
