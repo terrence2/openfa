@@ -1095,7 +1095,7 @@ mod tests {
 
                 let data = fs::read(entry.path())?;
 
-                let bc = ByteCode::disassemble(&data, true);
+                let bc = ByteCode::disassemble(&data, false);
                 if let Err(ref e) = bc {
                     if !DisassemblyError::maybe_show(e, &data) {
                         println!("Error: {}", e);
