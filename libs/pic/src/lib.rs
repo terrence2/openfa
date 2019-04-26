@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, Fallible};
-use image::{DynamicImage, GenericImageView, ImageRgba8};
+use failure::{bail, ensure, Fallible};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageRgba8};
 use packed_struct::packed_struct;
 use pal::Palette;
 use std::{borrow::Cow, mem};
@@ -62,6 +62,8 @@ pub struct Pic {
     pub width: u32,
     pub height: u32,
     pub palette: Option<Palette>,
+    pub pixels_offset: usize,
+    pub pixels_size: usize,
 }
 
 impl Pic {
@@ -76,6 +78,8 @@ impl Pic {
                 width: img.width(),
                 height: img.height(),
                 palette: None,
+                pixels_offset: 0,
+                pixels_size: 0,
             });
         }
 
@@ -92,6 +96,8 @@ impl Pic {
             width: header.width(),
             height: header.height(),
             palette,
+            pixels_offset: header.pixels_offset(),
+            pixels_size: header.pixels_size(),
         })
     }
 
@@ -121,6 +127,35 @@ impl Pic {
                 )?
             }
         })
+    }
+
+    pub fn decode_into(
+        system_palette: &Palette,
+        into_image: &mut DynamicImage,
+        offset_x: u32,
+        offset_y: u32,
+        pic: &Pic,
+        data: &[u8],
+    ) -> Fallible<()> {
+        match pic.format {
+            PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
+            PicFormat::Format0 => {
+                ensure!(
+                    pic.palette.is_none(),
+                    "format0 image loaded into texture atlas must not have a custom palette"
+                );
+                Self::decode_format0_into(
+                    into_image,
+                    offset_x,
+                    offset_y,
+                    pic.width,
+                    system_palette,
+                    &data[pic.pixels_offset..pic.pixels_offset + pic.pixels_size],
+                )?;
+            }
+            PicFormat::Format1 => bail!("cannot load format 1 pic into a texture atlas"),
+        }
+        Ok(())
     }
 
     fn make_palette<'a>(
@@ -156,6 +191,26 @@ impl Pic {
             *p = clr;
         }
         Ok(ImageRgba8(imgbuf))
+    }
+
+    fn decode_format0_into(
+        into_image: &mut DynamicImage,
+        offset_x: u32,
+        offset_y: u32,
+        width: u32,
+        palette: &Palette,
+        pixels: &[u8],
+    ) -> Fallible<()> {
+        for (index, p) in pixels.iter().enumerate() {
+            let i = index as u32;
+            let pix = *p as usize;
+            let mut clr = palette.rgba(pix)?;
+            if pix == 0xFF {
+                clr.data[3] = 0x00;
+            }
+            into_image.put_pixel(offset_x + i % width, offset_y + i / width, clr);
+        }
+        Ok(())
     }
 
     fn decode_format1(

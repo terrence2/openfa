@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::sh::texture_atlas::TextureAtlas;
+use bitflags::bitflags;
 use failure::{ensure, Fallible};
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
@@ -45,6 +46,23 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
+bitflags! {
+    struct VertexFlags: u32 {
+        // If set, manually blend the face color with the texture color.
+        const BLEND_TEXTURE    = 0b0000_0001;
+
+        // For each frame, the expected configuration of what we expect to be
+        // drawn is set to true is set in PushConstants. Each vertex is tagged
+        // with the part it is part of based on the reference in a controlling
+        // script, if present.
+        const STATIC           = 0b0000_1000;
+        const FLAPS_RIGHT_DOWN = 0b0001_0000;
+        const FLAPS_RIGHT_UP   = 0b0010_0000;
+        const FLAPS_LEFT_DOWN  = 0b0100_0000;
+        const FLAPS_LEFT_UP    = 0b1000_0000;
+    }
+}
+
 #[derive(Copy, Clone)]
 struct Vertex {
     position: [f32; 3],
@@ -70,17 +88,18 @@ mod vs {
             layout(push_constant) uniform PushConstantData {
               mat4 view;
               mat4 projection;
+              uint mask;
             } pc;
 
             layout(location = 0) smooth out vec4 v_color;
             layout(location = 1) smooth out vec2 v_tex_coord;
-            layout(location = 2) flat out uint v_flags;
+            layout(location = 2) flat out uint f_flags;
 
             void main() {
                 gl_Position = pc.projection * pc.view * vec4(position, 1.0);
                 v_color = color;
                 v_tex_coord = tex_coord;
-                v_flags = flags;
+                f_flags = flags & pc.mask;
             }"
     }
 }
@@ -95,7 +114,7 @@ mod fs {
 
             layout(location = 0) smooth in vec4 v_color;
             layout(location = 1) smooth in vec2 v_tex_coord;
-            layout(location = 2) flat in uint v_flags;
+            layout(location = 2) flat in uint f_flags;
 
             layout(location = 0) out vec4 f_color;
 
@@ -107,7 +126,7 @@ mod fs {
                 } else {
                     vec4 tex_color = texture(tex, v_tex_coord);
 
-                    if ((v_flags & 1) == 1) {
+                    if ((f_flags & 1) == 1) {
                         f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
                     } else {
                         if (tex_color.a < 0.5)
@@ -136,6 +155,7 @@ impl vs::ty::PushConstantData {
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
             ],
+            mask: 0xFFFF_FFFF,
         }
     }
 
@@ -203,8 +223,13 @@ pub struct DrawMode {
     pub rudder_position: i32,
 }
 
+impl DrawMode {
+    fn to_mask(&self) -> u32 {
+        0xFFFF_FFFF
+    }
+}
+
 pub struct ShRenderer {
-    system_palette: Arc<Palette>,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     instance: Option<ShInstance>,
 }
@@ -212,7 +237,7 @@ pub struct ShRenderer {
 const INST_BASE: u32 = 0x0000_4000;
 
 impl ShRenderer {
-    pub fn new(system_palette: Arc<Palette>, window: &GraphicsWindow) -> Fallible<Self> {
+    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
         trace!("ShRenderer::new");
 
         let vs = vs::Shader::load(window.device())?;
@@ -242,7 +267,6 @@ impl ShRenderer {
                 .build(window.device())?,
         );
         Ok(ShRenderer {
-            system_palette,
             pipeline,
             instance: None,
         })
@@ -264,24 +288,55 @@ impl ShRenderer {
             .set_view(view);
     }
 
-    #[allow(clippy::cyclomatic_complexity)]
+    pub fn set_plane_state(&mut self, mode: &DrawMode) {
+        self.instance.as_mut().unwrap().push_constants.mask = mode.to_mask()
+    }
+
     pub fn add_shape_to_render(
         &mut self,
-        _name: &str,
+        system_palette: Arc<Palette>,
+        sh: &RawShape,
+        lib: &Library,
+        _window: &GraphicsWindow,
+    ) -> Fallible<()> {
+        let texture_filenames = sh.all_textures();
+        let mut texture_headers = Vec::new();
+        for filename in texture_filenames {
+            let data = lib.load(&filename.to_uppercase())?;
+            texture_headers.push((filename.to_owned(), Pic::from_bytes(&data)?, data));
+        }
+        let _atlas = TextureAtlas::from_raw_data(&system_palette, texture_headers)?;
+
+        /*
+        // Trying to beat 4 seconds.
+        let mut textures = Vec::new();
+        for filename in sh.all_textures() {
+            let img = Pic::decode(&system_palette, &lib.load(&filename.to_uppercase())?)?;
+            textures.push((filename, img));
+        }
+        let atlas = TextureAtlas::new(textures)?;
+        */
+
+        Ok(())
+    }
+
+    #[allow(clippy::cyclomatic_complexity)]
+    pub fn legacy_add_shape_to_render(
+        &mut self,
+        system_palette: Arc<Palette>,
         sh: &RawShape,
         stop_at_offset: usize,
         draw_mode: &DrawMode,
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<()> {
-        let mut _xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
-
-        let mut textures = Vec::new();
-        for filename in sh.all_textures() {
-            let img = Pic::decode(&self.system_palette, &lib.load(&filename.to_uppercase())?)?;
-            textures.push((filename, img));
+        let texture_filenames = sh.all_textures();
+        let mut texture_headers = Vec::new();
+        for filename in texture_filenames {
+            let data = lib.load(&filename.to_uppercase())?;
+            texture_headers.push((filename.to_owned(), Pic::from_bytes(&data)?, data));
         }
-        let atlas = TextureAtlas::new(textures)?;
+        let atlas = TextureAtlas::from_raw_data(&system_palette, texture_headers)?;
         let mut active_frame = None;
 
         let flaps_down = draw_mode.flaps_down;
@@ -303,16 +358,6 @@ impl ShRenderer {
         let mut interp = i386::Interpreter::new();
         let mut _v = [0u8; 0x100];
         _v[0x8E + 1] = 0x1;
-        /*
-        let mut inst = Vec::new();
-        for i in 0..0x100 {
-            inst.push(0u8);
-        }
-        inst[0x40] = 0xFF;
-        interp
-            .map_writable(INST_BASE, inst)
-            .unwrap();
-        */
         for tramp in sh.trampolines.iter() {
             if call_names.contains(&tramp.name.as_ref()) {
                 interp.add_trampoline(tramp.mem_location, &tramp.name, 1);
@@ -684,63 +729,6 @@ impl ShRenderer {
                     interp
                         .map_writable((0xAA00_0000 + e4.offset) as u32, v)
                         .unwrap();
-                    /*
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 2,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.2 <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_read_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 4,
-                        Box::new(move || {
-                            println!("LOOKUP E4.4");
-                            0
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 4,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.4 <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 6,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.6 <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 8,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.8 <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 0xA,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.A <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 0xC,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.C <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 0xE,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.E <- {:04X}", value);
-                        }),
-                    );
-                    interp.add_write_port(
-                        0xAA00_0000 + e4.offset as u32 + 2 + 0x10,
-                        Box::new(move |value| {
-                            println!("WOULD UPDATE E4.E <- {:04X}", value);
-                        }),
-                    );
-                    */
                 }
                 Instr::UnkEA(ref ea) => {
                     interp.add_write_port(
@@ -866,9 +854,6 @@ impl ShRenderer {
                         f32::from(c6.a2),
                     ];
                     unmasked_faces.insert(c6.next_offset(), xform);
-                }
-                Instr::Header(_hdr) => {
-                    //_xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
                 }
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
@@ -1088,7 +1073,7 @@ impl ShRenderer {
                                     vert_pool.len()
                                 );
                                 let mut v = vert_pool[*index as usize];
-                                v.color = self.system_palette.rgba_f32(facet.color as usize)?;
+                                v.color = system_palette.rgba_f32(facet.color as usize)?;
                                 if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
                                     || facet.flags.contains(FacetFlags::UNK1)
                                     || facet.flags.contains(FacetFlags::UNK5)
@@ -1223,12 +1208,7 @@ mod test {
     fn it_can_render_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let omni = OmniLib::new_for_test_in_games(&[
-            //"USNF",
-            //"MF",
-            //"ATF",
-            //"ATFNATO",
-            //"ATFGOLD",
-            "USNF97", "FA",
+            "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
         ])?;
         let skipped = vec![
             "CHAFF.SH",
@@ -1242,6 +1222,7 @@ mod test {
             "WAVE1.SH",
             "WAVE2.SH",
         ];
+        let mut palettes = HashMap::new();
         for (game, name) in omni.find_matching("*.SH")?.iter() {
             if skipped.contains(&name.as_ref()) {
                 continue;
@@ -1256,10 +1237,14 @@ mod test {
             );
 
             let lib = omni.library(game);
-            let data = lib.load(name)?;
-            let sh = RawShape::from_bytes(&data)?;
-            let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
-            let mut sh_renderer = ShRenderer::new(system_palette, &window)?;
+            if !palettes.contains_key(game) {
+                let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
+                palettes.insert(game, system_palette);
+            }
+
+            let sh = RawShape::from_bytes(&lib.load(name)?)?;
+            let system_palette = palettes[game].clone();
+            let mut sh_renderer = ShRenderer::new(&window)?;
 
             let draw_mode = DrawMode {
                 range: None,
@@ -1275,14 +1260,17 @@ mod test {
                 afterburner_enabled: true,
                 rudder_position: 0,
             };
-            sh_renderer.add_shape_to_render(
-                &name,
+            sh_renderer.legacy_add_shape_to_render(
+                system_palette,
                 &sh,
                 usize::max_value(),
                 &draw_mode,
                 &lib,
                 &window,
             )?;
+
+            // let _handle = sh_renderer.add_shape_to_render(system_palette, &sh, &lib, &window)?;
+
             window.drive_frame(|command_buffer, dynamic_state| {
                 sh_renderer.render(command_buffer, dynamic_state)
             })?;

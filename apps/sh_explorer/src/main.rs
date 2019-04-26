@@ -68,7 +68,7 @@ fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
     let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
-    let mut sh_renderer = ShRenderer::new(system_palette.clone(), &window)?;
+    let mut sh_renderer = ShRenderer::new(&window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or_else(|| sh.length());
@@ -92,7 +92,14 @@ fn main() -> Fallible<()> {
         afterburner_enabled: true,
         rudder_position: 0,
     };
-    sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
+    sh_renderer.legacy_add_shape_to_render(
+        system_palette.clone(),
+        &sh,
+        stop_at_offset,
+        &draw_mode,
+        &lib,
+        &window,
+    )?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -106,8 +113,8 @@ fn main() -> Fallible<()> {
             need_reset = false;
             // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
-            sh_renderer.add_shape_to_render(
-                "foo",
+            sh_renderer.legacy_add_shape_to_render(
+                system_palette.clone(),
                 &sh,
                 stop_at_offset,
                 &draw_mode,
