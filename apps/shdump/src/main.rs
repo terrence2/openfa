@@ -219,7 +219,7 @@ fn main() -> Fallible<()> {
             }
 
             fn match_show_part1(instr: &sh::Instr) -> bool {
-                if let sh::Instr::Unk12(_) = instr {
+                if let sh::Instr::Unmask(_) = instr {
                     return true;
                 }
                 false
@@ -298,7 +298,7 @@ fn main() -> Fallible<()> {
             }
 
             fn match_xform_part1(instr: &sh::Instr) -> bool {
-                if let sh::Instr::UnkC4(_) = instr {
+                if let sh::Instr::XformUnmask(_) = instr {
                     return true;
                 }
                 false
@@ -352,7 +352,7 @@ fn main() -> Fallible<()> {
             }
 
             fn match_control_part1(instr: &sh::Instr) -> bool {
-                if let sh::Instr::UnkC4(_) = instr {
+                if let sh::Instr::XformUnmask(_) = instr {
                     return true;
                 }
                 false
@@ -490,7 +490,7 @@ fn main() -> Fallible<()> {
                 let instr = &shape.instrs[offset];
                 if let sh::Instr::X86Code(_) = instr {
                     let suc = &shape.instrs[offset + 1];
-                    if let sh::Instr::Unk48(_) = suc {
+                    if let sh::Instr::UnknownData(_) = suc {
                         let suc2 = &shape.instrs[offset + 2];
                         if let sh::Instr::X86Code(_) = suc2 {
                             println!("{} - {:?}", suc.magic(), name);

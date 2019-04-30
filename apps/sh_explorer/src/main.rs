@@ -92,14 +92,7 @@ fn main() -> Fallible<()> {
         afterburner_enabled: true,
         rudder_position: 0,
     };
-    sh_renderer.legacy_add_shape_to_render(
-        system_palette.clone(),
-        &sh,
-        stop_at_offset,
-        &draw_mode,
-        &lib,
-        &window,
-    )?;
+    sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -113,18 +106,12 @@ fn main() -> Fallible<()> {
             need_reset = false;
             // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
-            sh_renderer.legacy_add_shape_to_render(
-                system_palette.clone(),
-                &sh,
-                stop_at_offset,
-                &draw_mode,
-                &lib,
-                &window,
-            )?;
+            // sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
         }
 
         sh_renderer.set_view(camera.view_matrix());
         sh_renderer.set_projection(camera.projection_matrix());
+        sh_renderer.set_plane_state(&draw_mode);
 
         window.drive_frame(|command_buffer, dynamic_state| {
             let cb = command_buffer;
@@ -207,6 +194,7 @@ fn main() -> Fallible<()> {
                 if pressed == ElementState::Pressed {
                     match keycode {
                         VirtualKeyCode::Escape => done = true,
+                        /*
                         VirtualKeyCode::Right => {
                             stop_at_offset = stop_at_offset.saturating_add(1);
                             need_reset = true;
@@ -237,6 +225,18 @@ fn main() -> Fallible<()> {
                         }
                         VirtualKeyCode::Home => {
                             stop_at_offset = 0;
+                            need_reset = true;
+                        }
+                        */
+                        VirtualKeyCode::Left => {
+                            draw_mode.detail = draw_mode.detail.saturating_sub(1);
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Right => {
+                            draw_mode.detail = draw_mode.detail.saturating_add(1);
+                            if draw_mode.detail > 4 {
+                                draw_mode.detail = 4;
+                            }
                             need_reset = true;
                         }
                         VirtualKeyCode::Period => {
@@ -345,8 +345,8 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
-            stop_at_offset,
+            "detail:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
+            draw_mode.detail,
             draw_mode.damaged,
             draw_mode.closeness,
             draw_mode.frame_number,

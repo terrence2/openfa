@@ -983,28 +983,10 @@ pub struct ByteCode {
 }
 
 impl ByteCode {
-    pub fn disassemble(code: &[u8], verbose: bool) -> Fallible<Self> {
-        if verbose {
-            println!("Disassembling: {}", bs2s(code));
-        }
-        let mut instrs = Vec::new();
-        let mut ip = 0usize;
-        while ip < code.len() {
-            let instr = Instr::decode_one(code, &mut ip)?;
-            if verbose {
-                println!("  @{}: {}", ip, instr);
-            }
-            instrs.push(instr);
-        }
-
-        Ok(Self {
-            start_addr: 0,
-            size: Self::compute_size(&instrs) as u32,
-            instrs,
-        })
-    }
-
-    pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Fallible<Self> {
+    pub fn disassemble_until<F>(at_offset: usize, code: &[u8], f: F) -> Fallible<Self>
+    where
+        F: Fn(&[Instr]) -> bool,
+    {
         trace!(
             "Disassembling ->Ret @{:04X}: {}...",
             at_offset,
@@ -1015,9 +997,8 @@ impl ByteCode {
         while ip < code.len() {
             let instr = Instr::decode_one(code, &mut ip)?;
             trace!("  @{}: {}", ip, instr);
-            let is_ret = instr.memonic == Memonic::Return;
             instrs.push(instr);
-            if is_ret {
+            if f(&instrs) {
                 break;
             }
         }
@@ -1025,6 +1006,12 @@ impl ByteCode {
             start_addr: at_offset as u32,
             size: Self::compute_size(&instrs) as u32,
             instrs,
+        })
+    }
+
+    pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Fallible<Self> {
+        Self::disassemble_until(at_offset, code, |instrs| {
+            instrs[instrs.len() - 1].memonic == Memonic::Return
         })
     }
 
