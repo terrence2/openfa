@@ -639,7 +639,7 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        buffer_properties: &mut HashMap<usize, BufferProperties>,
+        props: &mut HashMap<usize, BufferProperties>,
     ) -> Fallible<usize> {
         let memrefs = Self::find_external_references(x86, sh);
         let next_instr = pc.relative_instr(1, sh);
@@ -648,7 +648,14 @@ impl ShRenderer {
                 memrefs.len() == 1,
                 "expected unmask with only one parameter"
             );
+            let (name, trampoline) = memrefs.iter().next().unwrap();
+            if TOGGLE_TABLE.contains_key(name) {
+                Self::update_buffer_properties_for_toggle(trampoline, pc, x86, sh, props)?;
+            } else {
+                bail!("unknown toggle: {}", name);
+            }
         }
+        /*
         if memrefs.len() == 1 {
             let (name, trampoline) = memrefs.iter().next().unwrap();
             if TOGGLE_TABLE.contains_key(name) {
@@ -676,6 +683,7 @@ impl ShRenderer {
         } else if memrefs.len() == 2 {
 
         }
+        */
 
         Ok(0)
     }
@@ -685,7 +693,7 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        buffer_properties: &mut HashMap<usize, BufferProperties>,
+        props: &mut HashMap<usize, BufferProperties>,
     ) -> Fallible<()> {
         let unmask = pc.relative_instr(1, sh);
         let trailer = pc.relative_instr(2, sh);
@@ -705,7 +713,7 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                buffer_properties.insert(
+                props.insert(
                     unmask.unwrap_unmask_target()?,
                     BufferProperties {
                         flags: flag,
