@@ -12,6 +12,7 @@ members = [
         "apps/pedump",
         "apps/picdump",
         "apps/picpack",
+        "apps/raw_sh_explorer",
         "apps/sh_explorer",
         "apps/shdump",
         "apps/unlib",

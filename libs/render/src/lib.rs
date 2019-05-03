@@ -23,7 +23,8 @@ mod utility;
 pub use crate::{
     arc_ball_camera::ArcBallCamera,
     dlg::dlg_renderer::DialogRenderer,
-    sh::sh_renderer::{DrawMode, ShRenderer},
+    sh::raw_sh_renderer::{DrawMode, RawShRenderer},
+    sh::sh_renderer::{DrawMode as DrawMode2, ShRenderer},
     t2::t2_renderer::T2Renderer,
     utility::pal_renderer::PalRenderer,
 };
