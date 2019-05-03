@@ -91,6 +91,7 @@ fn main() -> Fallible<()> {
         bay_position: Some(18),
         afterburner_enabled: true,
         rudder_position: 0,
+        sam_count: 3,
     };
     sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
 
@@ -277,6 +278,11 @@ fn main() -> Fallible<()> {
                         }
                         VirtualKeyCode::F => {
                             draw_mode.flaps_down = !draw_mode.flaps_down;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::S => {
+                            draw_mode.sam_count += 1;
+                            draw_mode.sam_count %= 4;
                             need_reset = true;
                         }
                         VirtualKeyCode::B => {

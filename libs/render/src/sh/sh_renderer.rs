@@ -48,45 +48,52 @@ use vulkano::{
 use window::GraphicsWindow;
 
 bitflags! {
-    struct VertexFlags: u32 {
+    struct VertexFlags: u64 {
+        const NONE                 = 0x0000_0000_0000_0000;
+
         // If set, manually blend the face color with the texture color.
-        const BLEND_TEXTURE    = 0b0000_0001;
+        const BLEND_TEXTURE        = 0x0000_0000_0000_0001;
 
         // For each frame, the expected configuration of what we expect to be
         // drawn is set to true is set in PushConstants. Each vertex is tagged
         // with the part it is part of based on the reference in a controlling
         // script, if present.
-        const STATIC               = 0x0000_0002;
-        const AFTERBURNER_ON       = 0x0000_0004;
-        const AFTERBURNER_OFF      = 0x0000_0008;
-        const RIGHT_FLAP_DOWN      = 0x0000_0010;
-        const RIGHT_FLAP_UP        = 0x0000_0020;
-        const LEFT_FLAP_DOWN       = 0x0000_0040;
-        const LEFT_FLAP_UP         = 0x0000_0080;
-        const HOOK_EXTENDED        = 0x0000_0100;
-        const HOOK_RETRACTED       = 0x0000_0200;
-        const GEAR_UP              = 0x0000_0400;
-        const GEAR_DOWN            = 0x0000_0800;
-        const BRAKE_EXTENDED       = 0x0000_1000;
-        const BRAKE_RETRACTED      = 0x0000_2000;
-        const BAY_DOOR_CLOSED      = 0x0000_4000;
-        const BAY_DOOR_OPEN        = 0x0000_8000;
-        const RUDDER_CENTER        = 0x0001_0000;
-        const RUDDER_LEFT          = 0x0002_0000;
-        const RUDDER_RIGHT         = 0x0004_0000;
-        const LEFT_AILERON_CENTER  = 0x0008_0000;
-        const LEFT_AILERON_UP      = 0x0010_0000;
-        const LEFT_AILERON_DOWN    = 0x0020_0000;
-        const RIGHT_AILERON_CENTER = 0x0040_0000;
-        const RIGHT_AILERON_UP     = 0x0080_0000;
-        const RIGHT_AILERON_DOWN   = 0x0100_0000;
+        const STATIC               = 0x0000_0000_0000_0002;
+        const AFTERBURNER_ON       = 0x0000_0000_0000_0004;
+        const AFTERBURNER_OFF      = 0x0000_0000_0000_0008;
+        const RIGHT_FLAP_DOWN      = 0x0000_0000_0000_0010;
+        const RIGHT_FLAP_UP        = 0x0000_0000_0000_0020;
+        const LEFT_FLAP_DOWN       = 0x0000_0000_0000_0040;
+        const LEFT_FLAP_UP         = 0x0000_0000_0000_0080;
+        const HOOK_EXTENDED        = 0x0000_0000_0000_0100;
+        const HOOK_RETRACTED       = 0x0000_0000_0000_0200;
+        const GEAR_UP              = 0x0000_0000_0000_0400;
+        const GEAR_DOWN            = 0x0000_0000_0000_0800;
+        const BRAKE_EXTENDED       = 0x0000_0000_0000_1000;
+        const BRAKE_RETRACTED      = 0x0000_0000_0000_2000;
+        const BAY_DOOR_CLOSED      = 0x0000_0000_0000_4000;
+        const BAY_DOOR_OPEN        = 0x0000_0000_0000_8000;
+        const RUDDER_CENTER        = 0x0000_0000_0001_0000;
+        const RUDDER_LEFT          = 0x0000_0000_0002_0000;
+        const RUDDER_RIGHT         = 0x0000_0000_0004_0000;
+        const LEFT_AILERON_CENTER  = 0x0000_0000_0008_0000;
+        const LEFT_AILERON_UP      = 0x0000_0000_0010_0000;
+        const LEFT_AILERON_DOWN    = 0x0000_0000_0020_0000;
+        const RIGHT_AILERON_CENTER = 0x0000_0000_0040_0000;
+        const RIGHT_AILERON_UP     = 0x0000_0000_0080_0000;
+        const RIGHT_AILERON_DOWN   = 0x0000_0000_0100_0000;
 
-        const ANIM_FRAME_0         = 0x0400_0000;
-        const ANIM_FRAME_1         = 0x0800_0000;
-        const ANIM_FRAME_2         = 0x1000_0000;
-        const ANIM_FRAME_3         = 0x2000_0000;
-        const ANIM_FRAME_4         = 0x4000_0000;
-        const ANIM_FRAME_5         = 0x8000_0000;
+        const ANIM_FRAME_0         = 0x0000_0001_0000_0000;
+        const ANIM_FRAME_1         = 0x0000_0002_0000_0000;
+        const ANIM_FRAME_2         = 0x0000_0004_0000_0000;
+        const ANIM_FRAME_3         = 0x0000_0008_0000_0000;
+        const ANIM_FRAME_4         = 0x0000_0010_0000_0000;
+        const ANIM_FRAME_5         = 0x0000_0020_0000_0000;
+
+        const SAM_COUNT_0          = 0x0000_0040_0000_0000;
+        const SAM_COUNT_1          = 0x0000_0080_0000_0000;
+        const SAM_COUNT_2          = 0x0000_0100_0000_0000;
+        const SAM_COUNT_3          = 0x0000_0200_0000_0000;
     }
 }
 
@@ -95,10 +102,11 @@ struct Vertex {
     position: [f32; 3],
     color: [f32; 4],
     tex_coord: [f32; 2],
-    flags: u32,
+    flags0: u32,
+    flags1: u32,
     xform_id: u32,
 }
-impl_vertex!(Vertex, position, color, tex_coord, flags, xform_id);
+impl_vertex!(Vertex, position, color, tex_coord, flags0, flags1, xform_id);
 
 impl Default for Vertex {
     fn default() -> Self {
@@ -106,7 +114,8 @@ impl Default for Vertex {
             position: [0f32, 0f32, 0f32],
             color: [0.75f32, 0.5f32, 0f32, 1f32],
             tex_coord: [0f32, 0f32],
-            flags: 0,
+            flags0: 0,
+            flags1: 0,
             xform_id: 0,
         }
     }
@@ -123,24 +132,28 @@ mod vs {
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec4 color;
             layout(location = 2) in vec2 tex_coord;
-            layout(location = 3) in uint flags;
-            layout(location = 4) in uint xform_id;
+            layout(location = 3) in uint flags0;
+            layout(location = 4) in uint flags1;
+            layout(location = 5) in uint xform_id;
 
             layout(push_constant) uniform PushConstantData {
               mat4 view;
               mat4 projection;
-              uint mask;
+              uint flag_mask0;
+              uint flag_mask1;
             } pc;
 
             layout(location = 0) smooth out vec4 v_color;
             layout(location = 1) smooth out vec2 v_tex_coord;
-            layout(location = 2) flat out uint f_flags;
+            layout(location = 2) flat out uint f_flags0;
+            layout(location = 3) flat out uint f_flags1;
 
             void main() {
                 gl_Position = pc.projection * pc.view * vec4(position, 1.0);
                 v_color = color;
                 v_tex_coord = tex_coord;
-                f_flags = flags & pc.mask;
+                f_flags0 = flags0 & pc.flag_mask0;
+                f_flags1 = flags1 & pc.flag_mask1;
             }"
     }
 }
@@ -155,21 +168,22 @@ mod fs {
 
             layout(location = 0) smooth in vec4 v_color;
             layout(location = 1) smooth in vec2 v_tex_coord;
-            layout(location = 2) flat in uint f_flags;
+            layout(location = 2) flat in uint f_flags0;
+            layout(location = 3) flat in uint f_flags1;
 
             layout(location = 0) out vec4 f_color;
 
             layout(set = 0, binding = 0) uniform sampler2D tex;
 
             void main() {
-                if ((f_flags & 0xFFFFFFFE) == 0) {
+                if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
                     discard;
                 } else if (v_tex_coord.x == 0.0) {
                     f_color = v_color;
                 } else {
                     vec4 tex_color = texture(tex, v_tex_coord);
 
-                    if ((f_flags & 1) == 1) {
+                    if ((f_flags0 & 1) == 1) {
                         f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
                     } else {
                         if (tex_color.a < 0.5)
@@ -198,7 +212,8 @@ impl vs::ty::PushConstantData {
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
             ],
-            mask: 0xFFFF_FFFF,
+            flag_mask0: 0xFFFF_FFFF,
+            flag_mask1: 0xFFFF_FFFF,
         }
     }
 
@@ -270,10 +285,11 @@ pub struct DrawMode {
     pub hook_extended: bool,
     pub afterburner_enabled: bool,
     pub rudder_position: i32,
+    pub sam_count: u32,
 }
 
 impl DrawMode {
-    fn to_mask(&self) -> u32 {
+    fn to_mask(&self) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         mask |= if self.flaps_down {
@@ -316,7 +332,20 @@ impl DrawMode {
             VertexFlags::GEAR_UP
         };
 
-        mask.bits()
+        mask |= match self.sam_count {
+            0 => VertexFlags::SAM_COUNT_0,
+            1 => VertexFlags::SAM_COUNT_0 | VertexFlags::SAM_COUNT_1,
+            2 => VertexFlags::SAM_COUNT_0 | VertexFlags::SAM_COUNT_1 | VertexFlags::SAM_COUNT_2,
+            3 => {
+                VertexFlags::SAM_COUNT_0
+                    | VertexFlags::SAM_COUNT_1
+                    | VertexFlags::SAM_COUNT_2
+                    | VertexFlags::SAM_COUNT_3
+            }
+            _ => bail!("expected sam count < 3"),
+        };
+
+        Ok(mask.bits())
     }
 }
 
@@ -327,14 +356,14 @@ lazy_static! {
             "_PLrightFlap",
             vec![
                 (0xFFFF_FFFF, VertexFlags::RIGHT_FLAP_DOWN),
-                (0, VertexFlags::RIGHT_FLAP_UP),
+                (0,           VertexFlags::RIGHT_FLAP_UP),
             ],
         );
         table.insert(
             "_PLleftFlap",
             vec![
                 (0xFFFF_FFFF, VertexFlags::LEFT_FLAP_DOWN),
-                (0, VertexFlags::LEFT_FLAP_UP),
+                (0,           VertexFlags::LEFT_FLAP_UP),
             ],
         );
         table.insert(
@@ -385,6 +414,15 @@ lazy_static! {
             vec![
                 (0, VertexFlags::AFTERBURNER_OFF),
                 (1, VertexFlags::AFTERBURNER_ON),
+            ],
+        );
+        table.insert(
+            "_SAMcount",
+            vec![
+                (0, VertexFlags::SAM_COUNT_0),
+                (1, VertexFlags::SAM_COUNT_1),
+                (2, VertexFlags::SAM_COUNT_2),
+                (3, VertexFlags::SAM_COUNT_3),
             ],
         );
         table
@@ -512,8 +550,12 @@ impl ShRenderer {
             .set_view(view);
     }
 
-    pub fn set_plane_state(&mut self, mode: &DrawMode) {
-        self.instance.as_mut().unwrap().push_constants.mask = mode.to_mask()
+    pub fn set_plane_state(&mut self, mode: &DrawMode) -> Fallible<()> {
+        let full_mask = mode.to_mask()?;
+        self.instance.as_mut().unwrap().push_constants.flag_mask0 =
+            (full_mask & 0xFFFF_FFFF) as u32;
+        self.instance.as_mut().unwrap().push_constants.flag_mask1 = (full_mask >> 32) as u32;
+        Ok(())
     }
 
     fn align_vertex_pool(vert_pool: &mut Vec<Vertex>, initial_elems: usize) {
@@ -552,7 +594,8 @@ impl ShRenderer {
                 // Base position, flags, and the xform are constant
                 // for this entire buffer, independent of the face.
                 position: [v0[0], v0[1], v0[2]],
-                flags: props.flags.bits(),
+                flags0: (props.flags.bits() & 0xFFFF_FFFF) as u32,
+                flags1: (props.flags.bits() >> 32) as u32,
                 xform_id: props.xform_id,
             });
         }
@@ -599,7 +642,7 @@ impl ShRenderer {
                     || facet.flags.contains(FacetFlags::UNK1)
                     || facet.flags.contains(FacetFlags::UNK5)
                 {
-                    v.flags |= VertexFlags::BLEND_TEXTURE.bits();
+                    v.flags0 |= (VertexFlags::BLEND_TEXTURE.bits() & 0xFFFF_FFFF) as u32;
                 }
                 if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
                     assert!(active_frame.is_some());
@@ -706,20 +749,20 @@ impl ShRenderer {
         interp.add_code(&trailer.unwrap_x86()?.bytecode);
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
-        for &(value, flag) in &TOGGLE_TABLE[trampoline.name.as_str()] {
+        for &(value, flags) in &TOGGLE_TABLE[trampoline.name.as_str()] {
             interp.add_read_port(trampoline.mem_location, Box::new(move || value));
             let exit_info = interp.interpret(x86.code_offset(0xAA00_0000u32)).unwrap();
             let (name, args) = exit_info.ok_trampoline()?;
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                props.insert(
-                    unmask.unwrap_unmask_target()?,
-                    BufferProperties {
-                        flags: flag,
-                        xform_id: 0,
-                    },
-                );
+                let tgt = unmask.unwrap_unmask_target()?;
+                if !props.contains_key(&tgt) {
+                    props.insert(tgt, BufferProperties { flags, xform_id: 0 });
+                } else {
+                    let p = props.get_mut(&tgt).unwrap();
+                    p.flags |= flags;
+                }
             }
             interp.remove_read_port(trampoline.mem_location);
         }
@@ -1524,7 +1567,8 @@ impl ShRenderer {
                             position: [v1[0], v1[1], -v1[2]],
                             color: [0.75f32, 0.5f32, 0f32, 1f32],
                             tex_coord: [0f32, 0f32],
-                            flags: 0,
+                            flags0: 0,
+                            flags1: 0,
                             xform_id: 0,
                         });
                     }
@@ -1565,7 +1609,7 @@ impl ShRenderer {
                                     || facet.flags.contains(FacetFlags::UNK1)
                                     || facet.flags.contains(FacetFlags::UNK5)
                                 {
-                                    v.flags = 1;
+                                    v.flags0 = 1;
                                 }
                                 if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
                                     assert!(active_frame.is_some());

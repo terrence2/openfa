@@ -380,7 +380,6 @@ impl X86Code {
                 }
             }
             if instr.memonic == Memonic::Return {
-                println!("PUSH OFFSET: {:08X}", push_value);
                 let trampoline = Self::find_trampoline_for_offset(push_value, trampolines);
                 instr.set_context(&trampoline.name);
             }

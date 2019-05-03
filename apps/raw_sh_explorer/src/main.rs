@@ -91,6 +91,7 @@ fn main() -> Fallible<()> {
         bay_position: Some(18),
         afterburner_enabled: true,
         rudder_position: 0,
+        sam_count: 0,
     };
     sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
@@ -260,6 +261,11 @@ fn main() -> Fallible<()> {
                             draw_mode.damaged = !draw_mode.damaged;
                             need_reset = true;
                         }
+                        VirtualKeyCode::S => {
+                            draw_mode.sam_count += 1;
+                            draw_mode.sam_count %= 4;
+                            need_reset = true;
+                        }
                         VirtualKeyCode::G => {
                             if draw_mode.gear_position.is_some() {
                                 draw_mode.gear_position = None;
@@ -338,9 +344,10 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "stop:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
+            "stop:{:04X}, dam:{}, sams:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
             stop_at_offset,
             draw_mode.damaged,
+            draw_mode.sam_count,
             draw_mode.closeness,
             draw_mode.frame_number,
             draw_mode.gear_position,

@@ -15,7 +15,7 @@
 use failure::Fallible;
 use omnilib::{make_opt_struct, OmniLib};
 use reverse::b2h;
-use sh::{Instr, RawShape};
+use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
 use simplelog::*;
 use std::{collections::HashMap, fs};
 use structopt::StructOpt;
@@ -33,6 +33,9 @@ Opt {
 
     #[structopt(short = "m", long = "matching", help = "Show matching instructions")]
     show_matching => Option<String>,
+
+    #[structopt(short = "r", long = "matching-memref", help = "Show matching memory loads")]
+    show_matching_memref => Option<String>,
 
     #[structopt(short = "p", long = "plus", default_value = "0", help = "Show count after matching")]
     show_after_matching => usize,
@@ -94,6 +97,30 @@ fn main() -> Fallible<()> {
                         println!("{}", out);
                     } else {
                         println!("{:60}: {}", name, out);
+                    }
+                }
+            }
+        } else if let Some(ref target) = opt.show_matching_memref {
+            for sh_instr in shape.instrs.iter() {
+                if let sh::Instr::X86Code(x86) = sh_instr {
+                    for instr in &x86.bytecode.instrs {
+                        for operand in &instr.operands {
+                            if let i386::Operand::Memory(memref) = operand {
+                                if let Ok(tramp) = shape.lookup_trampoline_by_offset(
+                                    memref.displacement.wrapping_sub(SHAPE_LOAD_BASE as i32) as u32,
+                                ) {
+                                    if &tramp.name == target {
+                                        println!(
+                                            "{} @ {} in {}:{}",
+                                            tramp.name,
+                                            sh_instr.at_offset(),
+                                            game,
+                                            name
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

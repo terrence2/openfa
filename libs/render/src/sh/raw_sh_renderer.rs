@@ -54,6 +54,17 @@ struct Vertex {
 }
 impl_vertex!(Vertex, position, color, tex_coord, flags);
 
+impl Default for Vertex {
+    fn default() -> Self {
+        Self {
+            position: [0f32, 0f32, 0f32],
+            color: [0.75f32, 0.5f32, 0f32, 1f32],
+            tex_coord: [0f32, 0f32],
+            flags: 0,
+        }
+    }
+}
+
 mod vs {
     use vulkano_shaders::shader;
 
@@ -201,6 +212,7 @@ pub struct DrawMode {
     pub hook_extended: bool,
     pub afterburner_enabled: bool,
     pub rudder_position: i32,
+    pub sam_count: u32,
 }
 
 pub struct RawShRenderer {
@@ -276,12 +288,13 @@ impl RawShRenderer {
     ) -> Fallible<()> {
         let mut _xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
 
-        let mut textures = Vec::new();
-        for filename in sh.all_textures() {
-            let img = Pic::decode(&self.system_palette, &lib.load(&filename.to_uppercase())?)?;
-            textures.push((filename, img));
+        let texture_filenames = sh.all_textures();
+        let mut texture_headers = Vec::new();
+        for filename in texture_filenames {
+            let data = lib.load(&filename.to_uppercase())?;
+            texture_headers.push((filename.to_owned(), Pic::from_bytes(&data)?, data));
         }
-        let atlas = TextureAtlas::new(textures)?;
+        let atlas = TextureAtlas::from_raw_data(&self.system_palette, texture_headers)?;
         let mut active_frame = None;
 
         let flaps_down = draw_mode.flaps_down;
@@ -292,6 +305,7 @@ impl RawShRenderer {
         let afterburner_enabled = draw_mode.afterburner_enabled;
         let rudder_position = draw_mode.rudder_position;
         let current_ticks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+        let sam_count = draw_mode.sam_count;
 
         let call_names = vec![
             "do_start_interp",
@@ -518,7 +532,7 @@ impl RawShRenderer {
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _SAMcount");
-                        4
+                        sam_count
                     }),
                 ),
 
@@ -584,7 +598,7 @@ impl RawShRenderer {
             match instr {
                 // Written into by windmill with (_currentTicks & 0xFF) << 2.
                 // The frame of animation to show, maybe?
-                Instr::UnkC4(ref c4) => {
+                Instr::XformUnmask(ref c4) => {
                     interp.add_write_port(
                         0xAA00_0000 + c4.offset as u32 + 2,
                         Box::new(move |value| {
@@ -630,7 +644,7 @@ impl RawShRenderer {
                         }),
                     );
                 }
-                Instr::UnkC6(ref c6) => {
+                Instr::XformUnmask4(ref c6) => {
                     interp.add_write_port(
                         0xAA00_0000 + c6.offset as u32 + 2,
                         Box::new(move |value| {
@@ -826,9 +840,7 @@ impl RawShRenderer {
             println!("At: {:3} => {}", offset, instr.show());
             match instr {
                 Instr::X86Code(code) => {
-                    let rv = interp
-                        .interpret(0xAA00_0000u32 + code.code_offset as u32)
-                        .unwrap();
+                    let rv = interp.interpret(code.code_offset(0xAA00_0000u32)).unwrap();
                     match rv {
                         ExitInfo::OutOfInstructions => break,
                         ExitInfo::Trampoline(ref name, ref args) => {
@@ -841,13 +853,13 @@ impl RawShRenderer {
                         }
                     }
                 }
-                Instr::Unk12(unk) => {
-                    unmasked_faces.insert(unk.next_offset(), [0f32; 6]);
+                Instr::Unmask(unk) => {
+                    unmasked_faces.insert(unk.target_byte_offset(), [0f32; 6]);
                 }
-                Instr::Unk6E(unk) => {
-                    unmasked_faces.insert(unk.next_offset(), [0f32; 6]);
+                Instr::Unmask4(unk) => {
+                    unmasked_faces.insert(unk.target_byte_offset(), [0f32; 6]);
                 }
-                Instr::UnkC4(c4) => {
+                Instr::XformUnmask(c4) => {
                     let xform = [
                         f32::from(c4.t0),
                         f32::from(c4.t1),
@@ -856,9 +868,9 @@ impl RawShRenderer {
                         f32::from(c4.a1),
                         f32::from(c4.a2),
                     ];
-                    unmasked_faces.insert(c4.next_offset(), xform);
+                    unmasked_faces.insert(c4.target_byte_offset(), xform);
                 }
-                Instr::UnkC6(c6) => {
+                Instr::XformUnmask4(c6) => {
                     let xform = [
                         f32::from(c6.t0),
                         f32::from(c6.t1),
@@ -867,7 +879,7 @@ impl RawShRenderer {
                         f32::from(c6.a1),
                         f32::from(c6.a2),
                     ];
-                    unmasked_faces.insert(c6.next_offset(), xform);
+                    unmasked_faces.insert(c6.target_byte_offset(), xform);
                 }
                 Instr::Header(_hdr) => {
                     //_xform = [0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
@@ -875,12 +887,12 @@ impl RawShRenderer {
                 Instr::TextureRef(texture) => {
                     active_frame = Some(&atlas.frames[&texture.filename]);
                 }
-                Instr::PointerToObjectTrailer(end) => {
+                Instr::PtrToObjEnd(end) => {
                     // We do not ever not draw from range; maybe there is some other use of
                     // this target offset that we just don't know yet?
                     _end_target = Some(end.end_byte_offset())
                 }
-                Instr::UnkAC_ToDamage(dam) => {
+                Instr::JumpToDamage(dam) => {
                     damage_target = Some(dam.damage_byte_offset());
                     if draw_mode.damaged {
                         trace!(
@@ -892,48 +904,51 @@ impl RawShRenderer {
                         continue;
                     }
                 }
-                Instr::UnkC8_ToLOD(lod) => {
+                Instr::JumpToLOD(lod) => {
                     if draw_mode.closeness > lod.unk1 as usize {
                         // For high detail, the bytes after the c8 up to the indicated end contain
                         // the high detail model.
-                        trace!("setting section close to {}", lod.next_offset());
-                        section_close = Some(lod.next_offset());
+                        trace!("setting section close to {}", lod.target_byte_offset());
+                        section_close = Some(lod.target_byte_offset());
                     } else {
                         // For low detail, the bytes after the c8 end marker contain the low detail
                         // model. We have no way to know how where the close is, so we have to
                         // monitor and abort to end if we hit the damage section?
-                        trace!("jumping to low detail model at {:04X}", lod.next_offset());
-                        byte_offset = lod.next_offset();
+                        trace!(
+                            "jumping to low detail model at {:04X}",
+                            lod.target_byte_offset()
+                        );
+                        byte_offset = lod.target_byte_offset();
                         offset = sh.bytes_to_index(byte_offset)?;
                         continue;
                     }
                 }
-                Instr::UnkA6_ToDetail(detail) => {
+                Instr::JumpToDetail(detail) => {
                     if draw_mode.detail == detail.level {
                         // If we are drawing in a low detail, jump to the relevant model.
                         trace!(
                             "jumping to low detail model at {:04X}",
-                            detail.next_offset()
+                            detail.target_byte_offset()
                         );
-                        byte_offset = detail.next_offset();
+                        byte_offset = detail.target_byte_offset();
                         offset = sh.bytes_to_index(byte_offset)?;
                         continue;
                     } else {
                         // If in higher detail we want to not draw this section.
-                        trace!("setting section close to {}", detail.next_offset());
-                        section_close = Some(detail.next_offset());
+                        trace!("setting section close to {}", detail.target_byte_offset());
+                        section_close = Some(detail.target_byte_offset());
                     }
                 }
                 Instr::EndOfObject(_end) => {
                     break;
                 }
-                Instr::Unk40(animation) => {
+                Instr::JumpToFrame(animation) => {
                     byte_offset = animation.target_for_frame(draw_mode.frame_number);
                     offset = sh.bytes_to_index(byte_offset)?;
                     continue;
                 }
-                Instr::Unk48(jump) => {
-                    byte_offset = jump.target_offset();
+                Instr::Jump(jump) => {
+                    byte_offset = jump.target_byte_offset();
                     offset = sh.bytes_to_index(byte_offset)?;
                     continue;
                 }
@@ -1003,39 +1018,14 @@ impl RawShRenderer {
                     }
                     */
 
-                    ensure!(
-                        buf.unk0 % 8 == 0,
-                        "expected the vert buffer target offset to be a multiple of 8"
-                    );
-                    if (buf.unk0 as usize) < vert_pool.len() * 8 {
-                        vert_pool.truncate(buf.unk0 as usize / 8);
+                    if buf.buffer_target_offset() < vert_pool.len() {
+                        vert_pool.truncate(buf.buffer_target_offset());
+                    } else {
+                        let pad_count = buf.buffer_target_offset() - vert_pool.len();
+                        for _ in 0..pad_count {
+                            vert_pool.push(Default::default());
+                        }
                     }
-
-                    let would_start_at_offset = vert_pool.len() * 8;
-                    let expect_start_at_offset = buf.unk0;
-                    println!(
-                        "would_start: {:04X} - {:04X}",
-                        expect_start_at_offset, would_start_at_offset
-                    );
-                    let pad_amount = (expect_start_at_offset as usize) - would_start_at_offset;
-                    ensure!(pad_amount % 8 == 0, "expected a multiple of 8 pad bytes");
-                    let pad_verts = pad_amount / 8; // span is 8 even though only 6 bytes are used?
-                    println!("PADDING: 6");
-                    for _ in 0..pad_verts {
-                        vert_pool.push(Vertex {
-                            position: [0f32, 0f32, 0f32],
-                            color: [0.75f32, 0.5f32, 0f32, 1f32],
-                            tex_coord: [0f32, 0f32],
-                            flags: 0,
-                        });
-                    }
-                    println!(
-                        "                   pushing from {:04X} ({}) -> {:04X} ({})",
-                        vert_pool.len() * 8,
-                        vert_pool.len(),
-                        (vert_pool.len() + buf.verts.len()) * 8,
-                        vert_pool.len() + buf.verts.len()
-                    );
                     for v in &buf.verts {
                         let v0 =
                             Vector4::new(f32::from(v[0]), f32::from(-v[2]), f32::from(v[1]), 1f32);
@@ -1276,6 +1266,7 @@ mod test {
                 hook_extended: true,
                 afterburner_enabled: true,
                 rudder_position: 0,
+                sam_count: 4,
             };
             sh_renderer.add_shape_to_render(
                 &name,
