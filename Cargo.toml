@@ -21,6 +21,7 @@ members = [
         "libs/ansi",
         "libs/asset",
         "libs/dlg",
+        "libs/fnt",
         "libs/i386",
         "libs/jt",
         "libs/lay",

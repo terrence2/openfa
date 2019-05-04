@@ -43,7 +43,8 @@ but most are extremely weird relics of a bygone computing age.
 | --------- |:--------------- | -------- |
 | BI        | AI Binary       |          |
 | CAM       | Campaign        |          |
-| DLG       |                 |          |
+| DLG       | Dialog Menus    |          |
+| FNT       | Font            |          |
 | HGR       |                 |          |
 | HUD       |                 |          |
 | LAY       | Terrain Palette | x        |
@@ -60,7 +61,6 @@ but most are extremely weird relics of a bygone computing age.
 | BIN       |                 |          |
 | CB8       |                 |          |
 | FBC       |                 |          |
-| FNT       | Font            |          |
 | PAL       | Palette         | x        |
 | PIC       | Picture         | x        |
 | T2        | Terrain         | x        |
