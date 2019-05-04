@@ -52,25 +52,6 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(&window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    /*
-    let mut instance = DrawMode2 {
-        damaged: false,
-        closeness: 0x200,
-        frame_number: 0,
-        detail: 4,
-        gear_position: Some(18),
-        flaps_down: false,
-        slats_down: false,
-        airbrake_extended: true,
-        hook_extended: true,
-        bay_position: Some(18),
-        afterburner_enabled: true,
-        rudder_position: 0,
-        left_aileron_position: 0,
-        right_aileron_position: 0,
-        sam_count: 3,
-    };
-    */
     let mut instance = sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
@@ -79,21 +60,6 @@ fn main() -> Fallible<()> {
 
     loop {
         let loop_start = Instant::now();
-
-        // sh_renderer.set_view(&camera.view_matrix());
-        // sh_renderer.set_projection(camera.projection_matrix());
-        // sh_renderer.set_plane_state(&instance)?;
-
-        window.drive_frame(|command_buffer, dynamic_state| {
-            let cb = command_buffer;
-            let cb = sh_renderer.render(
-                camera.projection_matrix(),
-                &camera.view_matrix(),
-                cb,
-                dynamic_state,
-            )?;
-            Ok(cb)
-        })?;
 
         let mut done = false;
         let mut resized = false;
@@ -260,11 +226,39 @@ fn main() -> Fallible<()> {
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
 
+        let evt_time = loop_start.elapsed();
+        let after_events = Instant::now();
+
+        window.drive_frame(|command_buffer, dynamic_state| {
+            let cb = command_buffer;
+            let cb = sh_renderer.render(
+                camera.projection_matrix(),
+                &camera.view_matrix(),
+                cb,
+                dynamic_state,
+            )?;
+            Ok(cb)
+        })?;
+
+        println!(
+            "TOOK: {:?}; idle: {:?}",
+            loop_start.elapsed(),
+            window.idle_time
+        );
+
+        let render_time = after_events.elapsed();
         let ft = loop_start.elapsed();
         let ts = format!(
-            "{}.{} ms",
+            "{}.{}ms + {}.{}ms => {}.{} ms / {} fps",
+            evt_time.as_secs() * 1000 + u64::from(evt_time.subsec_millis()),
+            evt_time.subsec_micros(),
+            render_time.as_secs() * 1000 + u64::from(render_time.subsec_millis()),
+            render_time.subsec_micros(),
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
-            ft.subsec_micros()
+            ft.subsec_micros(),
+            1000.
+                / ((ft.as_secs() as f64 * 1000. + f64::from(ft.subsec_millis()))
+                    + (f64::from(ft.subsec_micros()) / 1000.))
         );
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 

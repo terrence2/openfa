@@ -14,7 +14,11 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{bail, err_msg, Fallible};
 use log::trace;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     device::{Device, Queue, RawDeviceExtensions},
@@ -227,6 +231,7 @@ pub struct GraphicsWindow {
     dynamic_state: DynamicState,
     outstanding_frames: VecDeque<Box<GpuFuture>>,
     dirty_size: bool,
+    pub idle_time: Duration,
 }
 
 impl GraphicsWindow {
@@ -283,6 +288,7 @@ impl GraphicsWindow {
             },
             outstanding_frames: VecDeque::with_capacity(4),
             dirty_size: false,
+            idle_time: Default::default(),
         };
 
         // Push a fake first frame so that we have something wait on in our frame driver.
@@ -400,6 +406,7 @@ impl GraphicsWindow {
             false,
             vec![[0.0, 0.0, 1.0, 1.0].into(), 0f32.into()],
         )?;
+
         let command_buffer = draw(command_buffer, &self.dynamic_state)?
             .end_render_pass()?
             .draw_text(&mut self.recreatable.draw_text, image_num)
@@ -407,6 +414,7 @@ impl GraphicsWindow {
 
         // Wait for our oldest frame to finish, submit the new command buffer, then send
         // it down the next beam.
+        let idle_start = Instant::now();
         let next_frame_future = self
             .outstanding_frames
             .pop_front()
@@ -415,6 +423,7 @@ impl GraphicsWindow {
             .then_execute(self.queue(), command_buffer)?
             .then_swapchain_present(self.queue(), self.swapchain(), image_num)
             .then_signal_fence_and_flush();
+        self.idle_time = idle_start.elapsed();
 
         // But do not wait for this frame to finish; put it on the heap
         // for us to deal with later.

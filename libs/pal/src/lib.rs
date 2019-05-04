@@ -23,16 +23,26 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn from_bytes(data: &[u8]) -> Fallible<Palette> {
+    pub fn grayscale() -> Fallible<Self> {
+        let mut arr = [0u8; 256 * 3];
+        for i in 0..256 {
+            arr[i * 3] = i as u8;
+            arr[i * 3 + 1] = i as u8;
+            arr[i * 3 + 2] = i as u8;
+        }
+        Self::from_bytes_prescaled(&arr)
+    }
+
+    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
         // The VGA palette contains 6 bit colors, so we need to scale by 4.
         Self::from_bytes_with_scale(data, 4)
     }
 
-    pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Palette> {
+    pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Self> {
         Self::from_bytes_with_scale(data, 1)
     }
 
-    fn from_bytes_with_scale(data: &[u8], scale: u8) -> Fallible<Palette> {
+    fn from_bytes_with_scale(data: &[u8], scale: u8) -> Fallible<Self> {
         ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
@@ -45,7 +55,7 @@ impl Palette {
                 ],
             });
         }
-        Ok(Palette {
+        Ok(Self {
             color_count,
             entries,
         })
