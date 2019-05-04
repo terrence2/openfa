@@ -1220,7 +1220,7 @@ mod test {
     use window::GraphicsConfigBuilder;
 
     #[test]
-    fn it_can_render_shapes() -> Fallible<()> {
+    fn it_can_render_raw_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let omni = OmniLib::new_for_test_in_games(&[
             //"USNF",
@@ -1270,10 +1270,13 @@ mod test {
                 gear_position: Some(18),
                 bay_position: Some(18),
                 flaps_down: false,
+                slats_down: false,
                 airbrake_extended: true,
                 hook_extended: true,
                 afterburner_enabled: true,
                 rudder_position: 0,
+                left_aileron_position: 0,
+                right_aileron_position: 0,
                 sam_count: 4,
             };
             sh_renderer.add_shape_to_render(

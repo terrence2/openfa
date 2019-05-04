@@ -179,7 +179,7 @@ fn main() -> Fallible<()> {
                         }
                         */
                         VirtualKeyCode::D => {
-                            //instance.damaged = !instance.damaged;
+                            instance.toggle_damaged().unwrap();
                         }
                         VirtualKeyCode::G => {
                             instance.toggle_gear().unwrap();
@@ -195,10 +195,7 @@ fn main() -> Fallible<()> {
                             instance.move_stick_right().unwrap();
                         }
                         VirtualKeyCode::C => {
-                            /*
-                            instance.sam_count += 1;
-                            instance.sam_count %= 4;
-                            */
+                            instance.bump_sam_count().unwrap();
                         }
                         VirtualKeyCode::B => {
                             instance.toggle_airbrake().unwrap();
@@ -208,6 +205,12 @@ fn main() -> Fallible<()> {
                         }
                         VirtualKeyCode::O => {
                             instance.toggle_bay().unwrap();
+                        }
+                        VirtualKeyCode::K => {
+                            instance.toggle_player_dead().unwrap();
+                        }
+                        VirtualKeyCode::E => {
+                            instance.bump_eject_state().unwrap();
                         }
                         VirtualKeyCode::Key6 => {
                             instance.enable_afterburner().unwrap();

@@ -100,6 +100,10 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub fn set_register_value(&mut self, reg: Reg, value: u32) {
+        self.registers[reg.to_offset()] = value;
+    }
+
     pub fn add_trampoline(&mut self, addr: u32, name: &str, arg_count: usize) {
         self.trampolines.insert(addr, (name.to_owned(), arg_count));
     }
@@ -261,7 +265,7 @@ impl<'a> Interpreter<'a> {
         self.interpret(next_ip)
     }
 
-    fn eip(&self) -> u32 {
+    pub fn eip(&self) -> u32 {
         self.registers[Reg::EIP.to_offset()]
     }
 
@@ -429,13 +433,17 @@ impl<'a> Interpreter<'a> {
     fn do_and(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
-        self.put(op1, a & b)
+        let v = a & b;
+        self.zf = v == 0;
+        self.put(op1, v)
     }
 
     fn do_or(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
-        self.put(op1, a | b)
+        let v = a | b;
+        self.zf = v == 0;
+        self.put(op1, v)
     }
 
     fn do_xor(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {

@@ -87,6 +87,9 @@ bitflags! {
         const BAY_OPEN             = 0x0000_0000_0800_0000;
         const BAY_CLOSED           = 0x0000_0000_1000_0000;
 
+        const PLAYER_ALIVE         = 0x0000_0000_2000_0000;
+        const PLAYER_DEAD          = 0x0000_0000_4000_0000;
+
         const ANIM_FRAME_0         = 0x0000_0001_0000_0000;
         const ANIM_FRAME_1         = 0x0000_0002_0000_0000;
         const ANIM_FRAME_2         = 0x0000_0004_0000_0000;
@@ -98,6 +101,13 @@ bitflags! {
         const SAM_COUNT_1          = 0x0000_0080_0000_0000;
         const SAM_COUNT_2          = 0x0000_0100_0000_0000;
         const SAM_COUNT_3          = 0x0000_0200_0000_0000;
+
+        const EJECT_STATE_0        = 0x0000_0400_0000_0000;
+        const EJECT_STATE_1        = 0x0000_0800_0000_0000;
+        const EJECT_STATE_2        = 0x0000_1000_0000_0000;
+        const EJECT_STATE_3        = 0x0000_2000_0000_0000;
+        const EJECT_STATE_4        = 0x0000_4000_0000_0000;
+
 
         const AILERONS_DOWN        = Self::LEFT_AILERON_DOWN.bits | Self::RIGHT_AILERON_DOWN.bits;
         const AILERONS_UP          = Self::LEFT_AILERON_UP.bits | Self::RIGHT_AILERON_UP.bits;
@@ -285,17 +295,19 @@ impl ShapeErrata {
 }
 
 pub struct ShapeModel {
-    //push_constants: vs::ty::PushConstantData,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+
+    // What kind of model was draw into the above buffers.
+    selection: DrawSelection,
 
     // Draw properties based on what's in the shape file.
     errata: ShapeErrata,
 }
 
 struct DrawState {
-    //pub damaged: bool,
+    pub show_damaged: bool,
     //pub frame_number: usize,
     pub gear_position: Option<u32>,
     pub bay_position: Option<u32>,
@@ -308,12 +320,14 @@ struct DrawState {
     pub left_aileron_position: i32,
     pub right_aileron_position: i32,
     pub sam_count: u32,
+    pub eject_state: u32,
+    pub player_dead: bool,
 }
 
 impl Default for DrawState {
     fn default() -> Self {
         DrawState {
-            //damaged: false,
+            show_damaged: false,
             //frame_number: 0,
             gear_position: Some(18),
             flaps_down: false,
@@ -326,6 +340,8 @@ impl Default for DrawState {
             left_aileron_position: 0,
             right_aileron_position: 0,
             sam_count: 3,
+            eject_state: 0,
+            player_dead: false,
         }
     }
 }
@@ -390,8 +406,6 @@ impl DrawState {
             VertexFlags::RIGHT_AILERON_CENTER
         };
 
-        // FIXME: add aileron inputs
-
         mask |= if self.afterburner_enabled {
             VertexFlags::AFTERBURNER_ON
         } else {
@@ -423,13 +437,27 @@ impl DrawState {
             _ => bail!("expected sam count < 3"),
         };
 
+        mask |= match self.eject_state {
+            0 => VertexFlags::EJECT_STATE_0,
+            1 => VertexFlags::EJECT_STATE_1,
+            2 => VertexFlags::EJECT_STATE_2,
+            3 => VertexFlags::EJECT_STATE_3,
+            4 => VertexFlags::EJECT_STATE_4,
+            _ => bail!("expected eject state in 0..4"),
+        };
+
+        mask |= if self.player_dead {
+            VertexFlags::PLAYER_DEAD
+        } else {
+            VertexFlags::PLAYER_ALIVE
+        };
+
         Ok(mask.bits())
     }
 }
 
 pub struct ShapeInstance {
-    normal_model: Arc<ShapeModel>,
-    damage_models: Vec<Arc<ShapeModel>>,
+    models: Vec<Arc<ShapeModel>>,
     draw_state: DrawState,
 }
 
@@ -449,8 +477,8 @@ impl ShapeInstanceRef {
         self.value.try_borrow()?.draw_state.build_mask(errata)
     }
 
-    pub fn get_normal_model(&self) -> Arc<ShapeModel> {
-        self.value.as_ref().borrow().normal_model.clone()
+    pub fn get_models(&self) -> Vec<Arc<ShapeModel>> {
+        self.value.as_ref().borrow().models.clone()
     }
 
     pub fn toggle_flaps(&mut self) -> Fallible<()> {
@@ -589,6 +617,36 @@ impl ShapeInstanceRef {
     pub fn get_right_aileron_position(&self) -> Fallible<i32> {
         Ok(self.value.try_borrow()?.draw_state.right_aileron_position)
     }
+
+    pub fn show_damaged(&self) -> Fallible<bool> {
+        Ok(self.value.try_borrow()?.draw_state.show_damaged)
+    }
+
+    pub fn toggle_damaged(&self) -> Fallible<()> {
+        let ds = &mut self.value.try_borrow_mut()?.draw_state;
+        ds.show_damaged = !ds.show_damaged;
+        Ok(())
+    }
+
+    pub fn toggle_player_dead(&self) -> Fallible<()> {
+        let ds = &mut self.value.try_borrow_mut()?.draw_state;
+        ds.player_dead = !ds.player_dead;
+        Ok(())
+    }
+
+    pub fn bump_eject_state(&self) -> Fallible<()> {
+        let ds = &mut self.value.try_borrow_mut()?.draw_state;
+        ds.eject_state += 1;
+        ds.eject_state %= 5;
+        Ok(())
+    }
+
+    pub fn bump_sam_count(&self) -> Fallible<()> {
+        let ds = &mut self.value.try_borrow_mut()?.draw_state;
+        ds.sam_count += 1;
+        ds.sam_count %= 4;
+        Ok(())
+    }
 }
 
 lazy_static! {
@@ -678,6 +736,35 @@ lazy_static! {
                 (3, VertexFlags::SAM_COUNT_3),
             ],
         );
+        table.insert(
+            "_PLstate",
+            vec![
+                (0x11, VertexFlags::EJECT_STATE_0),
+                (0x12, VertexFlags::EJECT_STATE_1),
+                (0x13, VertexFlags::EJECT_STATE_2),
+                (0x14, VertexFlags::EJECT_STATE_3),
+                (0x15, VertexFlags::EJECT_STATE_4),
+
+                (0x1A, VertexFlags::EJECT_STATE_0),
+                (0x1B, VertexFlags::EJECT_STATE_1),
+                (0x1C, VertexFlags::EJECT_STATE_2),
+                (0x1D, VertexFlags::EJECT_STATE_3),
+                (0x1E, VertexFlags::EJECT_STATE_4),
+
+                (0x22, VertexFlags::EJECT_STATE_0),
+                (0x23, VertexFlags::EJECT_STATE_1),
+                (0x24, VertexFlags::EJECT_STATE_2),
+                (0x25, VertexFlags::EJECT_STATE_3),
+                (0x26, VertexFlags::EJECT_STATE_4),
+            ],
+        );
+        table.insert(
+            "_PLdead",
+            vec![
+                (0, VertexFlags::PLAYER_ALIVE),
+                (1, VertexFlags::PLAYER_DEAD),
+            ],
+        );
         table
     };
 
@@ -744,10 +831,32 @@ enum DrawSelection {
     NormalModel,
 }
 
+impl DrawSelection {
+    fn is_damage(&self) -> bool {
+        self == &DrawSelection::DamageModel
+    }
+}
+
 #[derive(Clone, Copy)]
 struct BufferProperties {
     flags: VertexFlags,
     xform_id: u32,
+}
+
+impl BufferProperties {
+    pub fn add(
+        tgt: usize,
+        flags: VertexFlags,
+        seen_flags: &mut VertexFlags,
+        props: &mut HashMap<usize, BufferProperties>,
+    ) {
+        let entry = props.entry(tgt).or_insert(BufferProperties {
+            flags: VertexFlags::NONE,
+            xform_id: 0,
+        });
+        entry.flags |= flags;
+        *seen_flags |= flags;
+    }
 }
 
 pub struct ShRenderer {
@@ -911,6 +1020,26 @@ impl ShRenderer {
         out
     }
 
+    fn find_external_calls<'a>(
+        x86: &X86Code,
+        sh: &'a RawShape,
+    ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
+        let mut out = HashMap::new();
+        let mut push_value = 0;
+        for instr in &x86.bytecode.instrs {
+            if instr.memonic == i386::Memonic::Push {
+                if let i386::Operand::Imm32s(v) = instr.operands[0] {
+                    push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
+                }
+            }
+            if instr.memonic == i386::Memonic::Return {
+                let tramp = sh.lookup_trampoline_by_offset(push_value)?;
+                out.insert(tramp.name.as_str(), tramp);
+            }
+        }
+        Ok(out)
+    }
+
     fn maybe_update_buffer_properties(
         pc: &ProgramCounter,
         x86: &X86Code,
@@ -925,13 +1054,27 @@ impl ShRenderer {
                 memrefs.len() == 1,
                 "expected unmask with only one parameter"
             );
-            let (name, trampoline) = memrefs.iter().next().unwrap();
+            let (&name, trampoline) = memrefs.iter().next().expect("checked next");
             if TOGGLE_TABLE.contains_key(name) {
                 Self::update_buffer_properties_for_toggle(
                     trampoline, pc, x86, sh, seen_flags, props,
                 )?;
+            } else if name == "brentObjId" {
+                let callrefs = Self::find_external_calls(x86, sh)?;
+                ensure!(callrefs.len() == 2, "expected one call");
+                ensure!(
+                    callrefs.contains_key("do_start_interp"),
+                    "expected call to do_start_interp"
+                );
+                ensure!(
+                    callrefs.contains_key("@HARDNumLoaded@8"),
+                    "expected call to @HARDNumLoaded@8"
+                );
+                Self::update_buffer_properties_for_num_loaded(
+                    trampoline, pc, x86, sh, seen_flags, props,
+                )?;
             } else {
-                bail!("unknown toggle: {}", name);
+                bail!("unknown memory read: {}", name)
             }
         }
         Ok(0)
@@ -951,29 +1094,68 @@ impl ShRenderer {
         ensure!(trailer.magic() == "F0", "expected code after unmask");
 
         let mut interp = i386::Interpreter::new();
-        let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_code(&x86.bytecode);
         interp.add_code(&trailer.unwrap_x86()?.bytecode);
+        let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
         for &(value, flags) in &TOGGLE_TABLE[trampoline.name.as_str()] {
             interp.add_read_port(trampoline.mem_location, Box::new(move || value));
-            let exit_info = interp.interpret(x86.code_offset(0xAA00_0000u32)).unwrap();
+            let exit_info = interp.interpret(x86.code_offset(0xAA00_0000u32))?;
             let (name, args) = exit_info.ok_trampoline()?;
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                let tgt = unmask.unwrap_unmask_target()?;
-                let entry = props.entry(tgt).or_insert(BufferProperties {
-                    flags: VertexFlags::NONE,
-                    xform_id: 0,
-                });
-                entry.flags |= flags;
-                *seen_flags |= flags;
+                BufferProperties::add(unmask.unwrap_unmask_target()?, flags, seen_flags, props);
             }
             interp.remove_read_port(trampoline.mem_location);
         }
 
+        Ok(())
+    }
+
+    fn update_buffer_properties_for_num_loaded(
+        brent_obj_id: &X86Trampoline,
+        pc: &ProgramCounter,
+        x86: &X86Code,
+        sh: &RawShape,
+        seen_flags: &mut VertexFlags,
+        props: &mut HashMap<usize, BufferProperties>,
+    ) -> Fallible<()> {
+        ensure!(
+            brent_obj_id.name == "brentObjId",
+            "expected trampoline to be brentObjId"
+        );
+
+        let unmask = pc.relative_instr(1, sh);
+        let trailer = pc.relative_instr(2, sh);
+        ensure!(unmask.magic() == "Unmask", "expected unmask after flag x86");
+        ensure!(trailer.magic() == "F0", "expected code after unmask");
+
+        let mut interp = i386::Interpreter::new();
+        interp.add_code(&x86.bytecode);
+        interp.add_code(&trailer.unwrap_x86()?.bytecode);
+        interp.add_read_port(brent_obj_id.mem_location, Box::new(move || 0x60000));
+        let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
+        interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
+        let num_loaded = sh.lookup_trampoline_by_name("@HARDNumLoaded@8")?;
+        interp.add_trampoline(num_loaded.mem_location, &num_loaded.name, 1);
+
+        for &(value, flags) in &TOGGLE_TABLE["_SAMcount"] {
+            let exit_info = interp.interpret(x86.code_offset(0xAA00_0000u32))?;
+            let (name, args) = exit_info.ok_trampoline()?;
+            ensure!(name == "@HARDNumLoaded@8", "unexpected num_loaded request");
+            ensure!(args.len() == 1, "unexpected arg count");
+            interp.set_register_value(i386::Reg::EAX, value);
+
+            let exit_info = interp.interpret(interp.eip())?;
+            let (name, args) = exit_info.ok_trampoline()?;
+            ensure!(name == "do_start_interp", "unexpected trampoline return");
+            ensure!(args.len() == 1, "unexpected arg count");
+            if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
+                BufferProperties::add(unmask.unwrap_unmask_target()?, flags, seen_flags, props);
+            }
+        }
         Ok(())
     }
 
@@ -1107,6 +1289,7 @@ impl ShRenderer {
             pds,
             vertex_buffer,
             index_buffer,
+            selection,
             errata: ShapeErrata::from_vertex_flags(seen_flags),
         })
     }
@@ -1131,20 +1314,23 @@ impl ShRenderer {
         }
         let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
 
-        let normal_model =
-            Arc::new(self.draw_model(sh, palette, &atlas, DrawSelection::NormalModel, window)?);
-        let damage_models =
-            match self.draw_model(sh, palette, &atlas, DrawSelection::DamageModel, window) {
-                Ok(model) => vec![Arc::new(model)],
-                Err(_) => {
-                    // FIXME: load all damage models _{A,B,C,D}
-                    vec![]
-                }
-            };
+        let mut models = vec![Arc::new(self.draw_model(
+            sh,
+            palette,
+            &atlas,
+            DrawSelection::NormalModel,
+            window,
+        )?)];
+        if let Ok(damage_model) =
+            self.draw_model(sh, palette, &atlas, DrawSelection::DamageModel, window)
+        {
+            models.push(Arc::new(damage_model));
+        } else {
+            // FIXME: load all damage models _{A,B,C,D}
+        }
 
         let instance = ShapeInstanceRef::new(ShapeInstance {
-            normal_model,
-            damage_models,
+            models,
             draw_state: Default::default(),
         });
 
@@ -1161,20 +1347,24 @@ impl ShRenderer {
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for inst in &self.instances {
-            let model = inst.get_normal_model();
-            let mut push_consts = vs::ty::PushConstantData::new();
-            push_consts.set_projection(projection);
-            push_consts.set_view(view);
-            push_consts.set_mask(inst.build_render_mask(&model.errata)?);
+            for model in inst.get_models() {
+                if inst.show_damaged()? != model.selection.is_damage() {
+                    continue;
+                }
+                let mut push_consts = vs::ty::PushConstantData::new();
+                push_consts.set_projection(projection);
+                push_consts.set_view(view);
+                push_consts.set_mask(inst.build_render_mask(&model.errata)?);
 
-            cb = cb.draw_indexed(
-                self.pipeline.clone(),
-                dynamic_state,
-                vec![model.vertex_buffer.clone()],
-                model.index_buffer.clone(),
-                model.pds.clone(),
-                push_consts//model.push_constants,
-            )?;
+                cb = cb.draw_indexed(
+                    self.pipeline.clone(),
+                    dynamic_state,
+                    vec![model.vertex_buffer.clone()],
+                    model.index_buffer.clone(),
+                    model.pds.clone(),
+                    push_consts,
+                )?;
+            }
         }
         Ok(cb)
     }
@@ -1221,14 +1411,20 @@ impl ShRenderer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ArcBallCamera;
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
+    use std::f32::consts::PI;
     use window::GraphicsConfigBuilder;
 
     #[test]
     fn it_can_render_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
+        camera.set_distance(100.);
+        camera.set_angle(115. * PI / 180., -135. * PI / 180.);
+
         let omni = OmniLib::new_for_test_in_games(&[
             "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
         ])?;
@@ -1269,9 +1465,15 @@ mod test {
             let mut sh_renderer = ShRenderer::new(&window)?;
             let mut sh_instance =
                 sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
+            sh_instance.toggle_flaps()?;
 
             window.drive_frame(|command_buffer, dynamic_state| {
-                sh_renderer.render(command_buffer, dynamic_state)
+                sh_renderer.render(
+                    camera.projection_matrix(),
+                    &camera.view_matrix(),
+                    command_buffer,
+                    dynamic_state,
+                )
             })?;
         }
         std::mem::drop(window);
