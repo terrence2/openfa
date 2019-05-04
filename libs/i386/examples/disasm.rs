@@ -23,7 +23,7 @@ fn main() -> Fallible<()> {
     let mut data = Vec::new();
     fp.read_to_end(&mut data)?;
 
-    let bc = ByteCode::disassemble(&data, true);
+    let bc = ByteCode::disassemble_until(0, &data, |_| false);
     if let Err(ref e) = bc {
         if !DisassemblyError::maybe_show(e, &data) {
             println!("ERROR: {}", e);

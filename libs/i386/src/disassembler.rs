@@ -1082,7 +1082,7 @@ mod tests {
 
                 let data = fs::read(entry.path())?;
 
-                let bc = ByteCode::disassemble(&data, false);
+                let bc = ByteCode::disassemble_until(0, &data, |_| false);
                 if let Err(ref e) = bc {
                     if !DisassemblyError::maybe_show(e, &data) {
                         println!("Error: {}", e);
