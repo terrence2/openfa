@@ -103,6 +103,7 @@ fn main() -> Fallible<()> {
         } else if let Some(ref target) = opt.show_matching_memref {
             for sh_instr in shape.instrs.iter() {
                 if let sh::Instr::X86Code(x86) = sh_instr {
+                    let mut pos = 0;
                     for instr in &x86.bytecode.instrs {
                         for operand in &instr.operands {
                             if let i386::Operand::Memory(memref) = operand {
@@ -111,16 +112,18 @@ fn main() -> Fallible<()> {
                                 ) {
                                     if &tramp.name == target {
                                         println!(
-                                            "{} @ {} in {}:{}",
+                                            "{} @ {} in {}:{} -> {}",
                                             tramp.name,
                                             sh_instr.at_offset(),
                                             game,
-                                            name
+                                            name,
+                                            instr.show_relative(sh_instr.at_offset() + pos)
                                         );
                                     }
                                 }
                             }
                         }
+                        pos += instr.size();
                     }
                 }
             }

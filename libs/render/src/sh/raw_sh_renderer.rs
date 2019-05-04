@@ -208,10 +208,13 @@ pub struct DrawMode {
     pub gear_position: Option<u32>,
     pub bay_position: Option<u32>,
     pub flaps_down: bool,
+    pub slats_down: bool,
     pub airbrake_extended: bool,
     pub hook_extended: bool,
     pub afterburner_enabled: bool,
     pub rudder_position: i32,
+    pub left_aileron_position: i32,
+    pub right_aileron_position: i32,
     pub sam_count: u32,
 }
 
@@ -298,12 +301,15 @@ impl RawShRenderer {
         let mut active_frame = None;
 
         let flaps_down = draw_mode.flaps_down;
+        let slats_down = draw_mode.slats_down;
         let gear_position = draw_mode.gear_position;
         let bay_position = draw_mode.bay_position;
         let airbrake_extended = draw_mode.airbrake_extended;
         let hook_extended = draw_mode.hook_extended;
         let afterburner_enabled = draw_mode.afterburner_enabled;
         let rudder_position = draw_mode.rudder_position;
+        let left_aileron_position = draw_mode.left_aileron_position;
+        let right_aileron_position = draw_mode.right_aileron_position;
         let current_ticks = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
         let sam_count = draw_mode.sam_count;
 
@@ -475,14 +481,14 @@ impl RawShRenderer {
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _PLrightAln");
-                        0
+                        right_aileron_position as u32
                     }),
                 ),
                 "_PLleftAln" => interp.add_read_port(
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _PLleftAln");
-                        0
+                        left_aileron_position as u32
                     }),
                 ),
                 "_PLrudder" => interp.add_read_port(
@@ -496,7 +502,11 @@ impl RawShRenderer {
                     tramp.mem_location,
                     Box::new(move || {
                         println!("LOOKUP _PLslats");
-                        0
+                        if slats_down {
+                            1
+                        } else {
+                            0
+                        }
                     }),
                 ),
                 "_PLstate" => interp.add_read_port(
@@ -1098,8 +1108,6 @@ impl RawShRenderer {
                                 v_base += 1;
                             }
                         }
-                    } else {
-                        println!("masking faces");
                     }
                 }
                 _ => {}

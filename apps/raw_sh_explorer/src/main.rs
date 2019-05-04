@@ -86,6 +86,9 @@ fn main() -> Fallible<()> {
         detail: 4,
         gear_position: Some(18),
         flaps_down: false,
+        left_aileron_position: 0,
+        right_aileron_position: 0,
+        slats_down: false,
         airbrake_extended: true,
         hook_extended: true,
         bay_position: Some(18),
@@ -261,7 +264,7 @@ fn main() -> Fallible<()> {
                             draw_mode.damaged = !draw_mode.damaged;
                             need_reset = true;
                         }
-                        VirtualKeyCode::S => {
+                        VirtualKeyCode::C => {
                             draw_mode.sam_count += 1;
                             draw_mode.sam_count %= 4;
                             need_reset = true;
@@ -276,6 +279,10 @@ fn main() -> Fallible<()> {
                         }
                         VirtualKeyCode::F => {
                             draw_mode.flaps_down = !draw_mode.flaps_down;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::L => {
+                            draw_mode.slats_down = !draw_mode.slats_down;
                             need_reset = true;
                         }
                         VirtualKeyCode::B => {
@@ -295,6 +302,16 @@ fn main() -> Fallible<()> {
                             need_reset = true;
                         }
                         VirtualKeyCode::A => {
+                            draw_mode.left_aileron_position = 1;
+                            draw_mode.right_aileron_position = -1;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::S => {
+                            draw_mode.left_aileron_position = -1;
+                            draw_mode.right_aileron_position = 1;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::Key6 => {
                             draw_mode.afterburner_enabled = !draw_mode.afterburner_enabled;
                             need_reset = true;
                         }
@@ -318,6 +335,16 @@ fn main() -> Fallible<()> {
                         }
                         VirtualKeyCode::X => {
                             draw_mode.rudder_position = 0;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::A => {
+                            draw_mode.left_aileron_position = 0;
+                            draw_mode.right_aileron_position = 0;
+                            need_reset = true;
+                        }
+                        VirtualKeyCode::S => {
+                            draw_mode.left_aileron_position = 0;
+                            draw_mode.right_aileron_position = 0;
                             need_reset = true;
                         }
                         _ => {}

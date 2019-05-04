@@ -16,10 +16,10 @@ use failure::{bail, Fallible};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::{ArcBallCamera, DrawMode2, ShRenderer};
+use render::{ArcBallCamera, ShRenderer};
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{num::ParseIntError, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 use structopt::StructOpt;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
@@ -30,29 +30,10 @@ use winit::{
     WindowEvent::{CloseRequested, Destroyed, MouseInput, MouseWheel, Resized},
 };
 
-fn from_number(src: &str) -> Result<usize, ParseIntError> {
-    if src.starts_with("0x") {
-        return usize::from_str_radix(&src[2..], 16);
-    }
-    usize::from_str_radix(src, 10)
-}
-
-make_opt_struct!(#[structopt(
-    name = "sh_explorer",
-    about = "Show the contents of a SH file"
-)]
-Opt {
-    #[structopt(
-        short = "s",
-        long = "stop",
-        help = "Stop at this instruction.",
-        parse(try_from_str = "from_number")
-    )]
-    stop_at_offset => Option<usize>,
-
-    #[structopt(short = "r", long = "range", help = "Show only this range.")]
-    ranged => Option<String>
-});
+make_opt_struct!(
+    #[structopt(name = "sh_explorer", about = "Show the contents of a SH file")]
+    Opt {}
+);
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
@@ -71,52 +52,46 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(&window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let mut stop_at_offset = opt.stop_at_offset.unwrap_or_else(|| sh.length());
-    let mut draw_mode = DrawMode2 {
-        range: opt.ranged.map(|s| {
-            let mut parts = s.split(',');
-            [
-                usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
-                usize::from_str_radix(parts.next().unwrap(), 16).unwrap(),
-            ]
-        }),
+    /*
+    let mut instance = DrawMode2 {
         damaged: false,
         closeness: 0x200,
         frame_number: 0,
         detail: 4,
         gear_position: Some(18),
         flaps_down: false,
+        slats_down: false,
         airbrake_extended: true,
         hook_extended: true,
         bay_position: Some(18),
         afterburner_enabled: true,
         rudder_position: 0,
+        left_aileron_position: 0,
+        right_aileron_position: 0,
         sam_count: 3,
     };
-    sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
+    */
+    let mut instance = sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
     camera.set_distance(40f32);
 
-    let mut need_reset = false;
     loop {
         let loop_start = Instant::now();
 
-        if need_reset {
-            need_reset = false;
-            // t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-            // pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
-            // sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
-        }
-
-        sh_renderer.set_view(camera.view_matrix());
-        sh_renderer.set_projection(camera.projection_matrix());
-        sh_renderer.set_plane_state(&draw_mode);
+        // sh_renderer.set_view(&camera.view_matrix());
+        // sh_renderer.set_projection(camera.projection_matrix());
+        // sh_renderer.set_plane_state(&instance)?;
 
         window.drive_frame(|command_buffer, dynamic_state| {
             let cb = command_buffer;
-            let cb = sh_renderer.render(cb, dynamic_state)?;
+            let cb = sh_renderer.render(
+                camera.projection_matrix(),
+                &camera.view_matrix(),
+                cb,
+                dynamic_state,
+            )?;
             Ok(cb)
         })?;
 
@@ -196,136 +171,76 @@ fn main() -> Fallible<()> {
                     match keycode {
                         VirtualKeyCode::Escape => done = true,
                         /*
-                        VirtualKeyCode::Right => {
-                            stop_at_offset = stop_at_offset.saturating_add(1);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Left => {
-                            stop_at_offset = stop_at_offset.saturating_sub(1);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Up => {
-                            stop_at_offset = stop_at_offset.saturating_add(0x10);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Down => {
-                            stop_at_offset = stop_at_offset.saturating_sub(0x10);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::PageUp => {
-                            stop_at_offset = stop_at_offset.saturating_add(0x100);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::PageDown => {
-                            stop_at_offset = stop_at_offset.saturating_sub(0x100);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::End => {
-                            stop_at_offset = 100_000;
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Home => {
-                            stop_at_offset = 0;
-                            need_reset = true;
-                        }
-                        */
-                        VirtualKeyCode::Left => {
-                            draw_mode.detail = draw_mode.detail.saturating_sub(1);
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Right => {
-                            draw_mode.detail = draw_mode.detail.saturating_add(1);
-                            if draw_mode.detail > 4 {
-                                draw_mode.detail = 4;
-                            }
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Period => {
-                            if mod_state.ctrl {
-                                draw_mode.closeness = draw_mode.closeness.saturating_add(0x10);
-                            } else {
-                                draw_mode.closeness = draw_mode.closeness.saturating_add(0x1);
-                            }
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::Comma => {
-                            if mod_state.ctrl {
-                                draw_mode.closeness = draw_mode.closeness.saturating_sub(0x10);
-                            } else {
-                                draw_mode.closeness = draw_mode.closeness.saturating_sub(0x1);
-                            }
-                            need_reset = true;
-                        }
                         VirtualKeyCode::LBracket => {
-                            draw_mode.frame_number = draw_mode.frame_number.saturating_sub(1);
-                            need_reset = true;
+                            instance.frame_number = instance.frame_number.saturating_sub(1);
                         }
                         VirtualKeyCode::RBracket => {
-                            draw_mode.frame_number = draw_mode.frame_number.saturating_add(1);
-                            need_reset = true;
+                            instance.frame_number = instance.frame_number.saturating_add(1);
                         }
+                        */
                         VirtualKeyCode::D => {
-                            draw_mode.damaged = !draw_mode.damaged;
-                            need_reset = true;
+                            //instance.damaged = !instance.damaged;
                         }
                         VirtualKeyCode::G => {
-                            if draw_mode.gear_position.is_some() {
-                                draw_mode.gear_position = None;
-                            } else {
-                                draw_mode.gear_position = Some(0x0);
-                            }
-                            need_reset = true;
+                            instance.toggle_gear().unwrap();
                         }
                         VirtualKeyCode::F => {
-                            draw_mode.flaps_down = !draw_mode.flaps_down;
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::S => {
-                            draw_mode.sam_count += 1;
-                            draw_mode.sam_count %= 4;
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::B => {
-                            draw_mode.airbrake_extended = !draw_mode.airbrake_extended;
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::H => {
-                            draw_mode.hook_extended = !draw_mode.hook_extended;
-                            need_reset = true;
-                        }
-                        VirtualKeyCode::O => {
-                            if draw_mode.bay_position.is_none() {
-                                draw_mode.bay_position = Some(0x10);
-                            } else {
-                                draw_mode.bay_position = None;
-                            }
-                            need_reset = true;
+                            instance.toggle_flaps().unwrap();
+                            instance.toggle_slats().unwrap();
                         }
                         VirtualKeyCode::A => {
-                            draw_mode.afterburner_enabled = !draw_mode.afterburner_enabled;
-                            need_reset = true;
+                            instance.move_stick_left().unwrap();
+                        }
+                        VirtualKeyCode::S => {
+                            instance.move_stick_right().unwrap();
+                        }
+                        VirtualKeyCode::C => {
+                            /*
+                            instance.sam_count += 1;
+                            instance.sam_count %= 4;
+                            */
+                        }
+                        VirtualKeyCode::B => {
+                            instance.toggle_airbrake().unwrap();
+                        }
+                        VirtualKeyCode::H => {
+                            instance.toggle_hook().unwrap();
+                        }
+                        VirtualKeyCode::O => {
+                            instance.toggle_bay().unwrap();
+                        }
+                        VirtualKeyCode::Key6 => {
+                            instance.enable_afterburner().unwrap();
+                        }
+                        VirtualKeyCode::Key1
+                        | VirtualKeyCode::Key2
+                        | VirtualKeyCode::Key3
+                        | VirtualKeyCode::Key4
+                        | VirtualKeyCode::Key5 => {
+                            instance.disable_afterburner().unwrap();
                         }
                         VirtualKeyCode::Z => {
-                            draw_mode.rudder_position = 1;
-                            need_reset = true;
+                            instance.move_rudder_left().unwrap();
                         }
                         VirtualKeyCode::X => {
-                            draw_mode.rudder_position = -1;
-                            need_reset = true;
+                            instance.move_rudder_right().unwrap();
                         }
                         VirtualKeyCode::Q => done = true,
-                        VirtualKeyCode::R => need_reset = true,
                         _ => trace!("unknown keycode: {:?}", keycode),
                     }
                 } else if pressed == ElementState::Released {
                     match keycode {
                         VirtualKeyCode::Z => {
-                            draw_mode.rudder_position = 0;
-                            need_reset = true;
+                            instance.move_rudder_center().unwrap();
                         }
                         VirtualKeyCode::X => {
-                            draw_mode.rudder_position = 0;
-                            need_reset = true;
+                            instance.move_rudder_center().unwrap();
+                        }
+                        VirtualKeyCode::A => {
+                            instance.move_stick_center().unwrap();
+                        }
+                        VirtualKeyCode::S => {
+                            instance.move_stick_center().unwrap();
                         }
                         _ => {}
                     }
@@ -351,18 +266,16 @@ fn main() -> Fallible<()> {
         window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
 
         let params = format!(
-            "detail:{:04X}, dam:{}, close:{:04X}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
-            draw_mode.detail,
-            draw_mode.damaged,
-            draw_mode.closeness,
-            draw_mode.frame_number,
-            draw_mode.gear_position,
-            draw_mode.flaps_down,
-            draw_mode.airbrake_extended,
-            draw_mode.hook_extended,
-            draw_mode.bay_position,
-            draw_mode.afterburner_enabled,
-            draw_mode.rudder_position,
+            "dam:{}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
+            false, // instance.damaged,
+            0,     // instance.frame_number,
+            instance.has_gear_down()?,
+            instance.has_flaps_down()?,
+            instance.has_airbrake_extended()?,
+            instance.has_hook_extended()?,
+            instance.has_bay_open()?,
+            instance.has_afterburner_enabled()?,
+            instance.get_rudder_position()?,
         );
         window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
     }
