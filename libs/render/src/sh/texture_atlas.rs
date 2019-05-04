@@ -13,9 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use image::{DynamicImage, GenericImage, GenericImageView};
+use image::DynamicImage;
 use log::trace;
-use std::collections::HashMap;
+use pal::Palette;
+use pic::Pic;
+use std::{borrow::Cow, collections::HashMap};
 
 pub struct TexCoord {
     pub s: f32,
@@ -51,7 +53,10 @@ pub struct TextureAtlas {
 }
 
 impl TextureAtlas {
-    pub fn new(mut sources: Vec<(String, DynamicImage)>) -> Fallible<Self> {
+    pub fn from_raw_data(
+        palette: &Palette,
+        mut sources: Vec<(String, Pic, Cow<'_, [u8]>)>,
+    ) -> Fallible<Self> {
         // Note that sources may be empty if the model is untextured.
         if sources.is_empty() {
             return Ok(Self {
@@ -60,30 +65,30 @@ impl TextureAtlas {
             });
         }
 
-        sources.sort_by_key(|(_, img)| img.height());
+        sources.sort_by_key(|(_, img, _)| img.height);
         sources.reverse();
 
         // Pre-pass to get a width and height.
         let mut atlas_width = 0;
         let mut atlas_height = 0;
-        for (_name, img) in &sources {
-            atlas_width += img.width() + 1;
-            atlas_height = atlas_height.max(img.height());
+        for (_name, pic, _data) in &sources {
+            atlas_width += pic.width + 1;
+            atlas_height = atlas_height.max(pic.height);
         }
         trace!("sh atlas size: {}x{}", atlas_width, atlas_height);
 
         // Copy images to destination.
         let mut img = DynamicImage::new_rgba8(atlas_width, atlas_height);
-        let mut frames = HashMap::new();
+        let mut frames = HashMap::with_capacity(sources.len());
         let mut offset = 0;
-        for (name, source) in sources.drain(..) {
+        for (name, pic, data) in sources.drain(..) {
             let coord0 = TexCoord {
                 s: offset as f32 / atlas_width as f32,
                 t: 0.0f32,
             };
             let coord1 = TexCoord {
-                s: (offset + source.width()) as f32 / atlas_width as f32,
-                t: source.height() as f32 / atlas_height as f32,
+                s: (offset + pic.width) as f32 / atlas_width as f32,
+                t: pic.height as f32 / atlas_height as f32,
             };
 
             frames.insert(
@@ -91,13 +96,14 @@ impl TextureAtlas {
                 Frame {
                     coord0,
                     coord1,
-                    width: source.width() as f32,
-                    height: source.height() as f32,
+                    width: pic.width as f32,
+                    height: pic.height as f32,
                 },
             );
 
-            img.copy_from(&source, offset, 0);
-            offset += source.width();
+            Pic::decode_into(palette, &mut img, offset, 0, &pic, &data)?;
+
+            offset += pic.width;
         }
 
         Ok(Self { img, frames })

@@ -39,6 +39,13 @@ Opt {
     dump_palette => Option<String>,
 
     #[structopt(
+        short = "b",
+        long = "gray-scale",
+        help = "Output as grayscale rather than palettized"
+    )]
+    grayscale => bool,
+
+    #[structopt(
         short = "u",
         long = "use-palette",
         help = "Use the given palette when decoding"
@@ -92,6 +99,8 @@ fn main() -> Fallible<()> {
         if let Some(target) = &opt.write_image {
             let palette = if let Some(path) = &opt.use_palette {
                 Palette::from_bytes(&fs::read(path)?)?
+            } else if opt.grayscale {
+                Palette::grayscale()?
             } else {
                 Palette::from_bytes(&lib.load("PALETTE.PAL")?)?
             };

@@ -24,7 +24,7 @@ pub use crate::{
     arc_ball_camera::ArcBallCamera,
     dlg::dlg_renderer::DialogRenderer,
     sh::raw_sh_renderer::{DrawMode, RawShRenderer},
-    sh::sh_renderer::{DrawMode as DrawMode2, ShRenderer},
+    sh::sh_renderer::ShRenderer,
     t2::t2_renderer::T2Renderer,
     utility::pal_renderer::PalRenderer,
 };

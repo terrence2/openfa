@@ -14,10 +14,15 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+mod instr;
+
+pub use crate::instr::{
+    read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
+    JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
+    Unmask4, VertexBuf, X86Code, X86Message, X86Trampoline, XformUnmask, XformUnmask4,
+};
 use ansi::{ansi, Color};
-use bitflags::bitflags;
-use failure::{bail, ensure, err_msg, Fail, Fallible};
-use i386::{ByteCode, Memonic, Operand};
+use failure::{bail, ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
 use log::trace;
 use reverse::{bs2s, p2s};
@@ -27,11 +32,21 @@ use std::{
     fmt, mem, str,
 };
 
-#[derive(Debug, Fail)]
-enum ShError {
-    #[fail(display = "name ran off end of file")]
-    NameUnending {},
-}
+// Sandwiched instructions
+// Unmask
+//   12  -- 16 bit
+//   6E  -- 32 bit
+// Unmask and Xform
+//   C4  -- 16 bit
+//   C6  -- 32 bit
+// Jump
+//   48  --
+// Pile of code
+//   F0
+//   X86Message
+// Unknown
+//   E4  -- Only in wave1/2
+//   Data
 
 pub const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
 
@@ -39,275 +54,6 @@ lazy_static! {
     // Virtual instructions that have a one-byte header instead of
     static ref ONE_BYTE_MAGIC: HashSet<u8> =
         { [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect() };
-
-    pub static ref DATA_RELOCATIONS: HashSet<String> = {
-        [
-            "_currentTicks",
-            "_effectsAllowed",
-            "brentObjId",
-            "viewer_x",
-            "viewer_z",
-            "xv32",
-            "zv32",
-        ].iter()
-            .map(|&n| n.to_owned())
-            .collect()
-    };
-}
-
-bitflags! {
-    pub struct FacetFlags : u16 {
-        const UNK0                 = 0b0000_1000_0000_0000;
-        const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
-        const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
-        const USE_BYTE_TEXCOORDS   = 0b0000_0001_0000_0000;
-        const UNK1                 = 0b0000_0000_1000_0000;
-        const HAVE_MATERIAL        = 0b0000_0000_0100_0000;
-        const UNK2                 = 0b0000_0000_0010_0000;
-        const UNK3                 = 0b0000_0000_0001_0000;
-        const UNK4                 = 0b0000_0000_0000_1000;
-        const HAVE_TEXCOORDS       = 0b0000_0000_0000_0100;
-        const FILL_BACKGROUND      = 0b0000_0000_0000_0010;
-        const UNK5                 = 0b0000_0000_0000_0001;
-    }
-}
-
-impl FacetFlags {
-    fn from_u16(flags: u16) -> FacetFlags {
-        unsafe { mem::transmute(flags) }
-    }
-
-    pub fn to_u16(self) -> u16 {
-        unsafe { mem::transmute(self) }
-    }
-}
-
-fn read_name(n: &[u8]) -> Fallible<String> {
-    let end_offset: usize = n
-        .iter()
-        .position(|&c| c == 0)
-        .ok_or::<ShError>(ShError::NameUnending {})?;
-    Ok(str::from_utf8(&n[..end_offset])?.to_owned())
-}
-
-#[derive(Debug)]
-pub struct TextureRef {
-    pub offset: usize,
-    pub filename: String,
-}
-
-impl TextureRef {
-    pub const MAGIC: u8 = 0xE2;
-    pub const SIZE: usize = 16;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0);
-        let filename = read_name(&data[2..Self::SIZE])?;
-        Ok(TextureRef { offset, filename })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "E2"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        format!(
-            "@{:04X} {}TexRf{}: {}{}{}",
-            self.offset,
-            ansi().yellow().bold(),
-            ansi(),
-            ansi().yellow(),
-            self.filename,
-            ansi(),
-        )
-    }
-}
-
-// These are for code E0. They are used for nose and tail art and for the country
-// insignia on wings. Our PICs appear to be NOSE__.PIC, ROUND__.PIC, RIGHT__.PIC,
-// and LEFT__.PIC.
-#[derive(Debug)]
-pub enum TextureIndexKind {
-    TailLeft,
-    TailRight,
-    Nose,
-    WingLeft,
-    WingRight,
-}
-
-impl TextureIndexKind {
-    fn from_u16(kind: u16) -> Fallible<Self> {
-        match kind {
-            0 => Ok(TextureIndexKind::TailLeft),
-            1 => Ok(TextureIndexKind::TailRight),
-            2 => Ok(TextureIndexKind::Nose),
-            3 => Ok(TextureIndexKind::WingLeft),
-            4 => Ok(TextureIndexKind::WingRight),
-            _ => bail!("unknown texture index"),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TextureIndex {
-    pub offset: usize,
-    pub unk0: u8,
-    pub kind: TextureIndexKind,
-}
-
-impl TextureIndex {
-    pub const MAGIC: u8 = 0xE0;
-    pub const SIZE: usize = 4;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        Ok(TextureIndex {
-            offset,
-            unk0: data[1],
-            kind: TextureIndexKind::from_u16(data2[0])?,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "E0"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        format!(
-            "TextureIndexKind @ {:04X}: {}, {:?}",
-            self.offset, self.unk0, self.kind
-        )
-    }
-}
-
-#[derive(Debug)]
-pub struct SourceRef {
-    pub offset: usize,
-    pub source: String,
-}
-
-impl SourceRef {
-    pub const MAGIC: u8 = 0x42;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        ensure!(data[1] == 0x00, "unexpected non-nil in hi");
-        let source = read_name(&data[2..])?;
-        Ok(SourceRef { offset, source })
-    }
-
-    fn size(&self) -> usize {
-        2 + self.source.len() + 1
-    }
-
-    fn magic(&self) -> &'static str {
-        "42"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        format!(
-            "@{:04X} {}SrcRf{}: {}{}{}",
-            self.offset,
-            ansi().yellow().bold(),
-            ansi(),
-            ansi().yellow(),
-            self.source,
-            ansi(),
-        )
-    }
-}
-
-#[derive(Debug)]
-pub struct VertexBuf {
-    pub offset: usize,
-    pub unk0: i16,
-    pub verts: Vec<[i16; 3]>,
-}
-
-impl VertexBuf {
-    pub const MAGIC: u8 = 0x82;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0);
-        let head: &[u16] = unsafe { mem::transmute(&data[2..6]) };
-        let words: &[i16] = unsafe { mem::transmute(&data[6..]) };
-        let mut buf = VertexBuf {
-            offset,
-            unk0: head[1] as i16,
-            verts: Vec::new(),
-        };
-        let nverts = head[0] as usize;
-        for i in 0..nverts {
-            let x = words[i * 3];
-            let y = words[i * 3 + 1];
-            let z = words[i * 3 + 2];
-            buf.verts.push([x, y, z]);
-        }
-        Ok(buf)
-    }
-
-    fn size(&self) -> usize {
-        6 + self.verts.len() * 6
-    }
-
-    fn magic(&self) -> &'static str {
-        "82"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        let s = self
-            .verts
-            .iter()
-            .map(|v| format!("({},{},{})", v[0], v[1], v[2]))
-            .collect::<Vec<String>>()
-            .join(", ");
-        format!(
-            "@{:04X} {}VxBuf: 82 00{}| {}{:04X} ({:b} | {}){} => {}verts -> {}{}{}",
-            self.offset,
-            ansi().magenta().bold(),
-            ansi(),
-            ansi().magenta(),
-            self.unk0,
-            self.unk0,
-            self.unk0 as i16,
-            ansi(),
-            self.verts.len(),
-            ansi().magenta().dimmed(),
-            s,
-            ansi(),
-        )
-    }
 }
 
 // No idea what this does, but there is a 16bit count in the middle with
@@ -632,804 +378,6 @@ impl Unk6C {
     }
 }
 
-#[derive(Debug)]
-pub struct Facet {
-    pub offset: usize,
-    pub data: *const u8,
-    pub length: usize,
-
-    flags_pointer: *const u8,
-    pub flags: FacetFlags,
-
-    color_pointer: *const u8,
-    pub color: u8,
-
-    material_pointer: *const u8,
-    material_size: usize,
-    pub raw_material: Vec<u8>,
-
-    indices_count_pointer: *const u8,
-    indices_pointer: *const u8,
-    indices_size: usize,
-    pub indices: Vec<u16>,
-
-    tc_pointer: *const u8,
-    tc_size: usize,
-    pub tex_coords: Vec<[u16; 2]>,
-}
-
-impl Facet {
-    pub const MAGIC: u8 = 0xFC;
-
-    /*
-    // FC 0b0000_0000_0010_0100  00 FC                                       00
-    // FC 0b0000_0001_0000_0000  9F 00                                       04   16 16 22 22
-    // FC 0b0000_0001_0000_0010  9F 00                                       04   19 19 2A 2A
-    // FC 0b0000_0100_0000_0011  00 00                                       03   26 29 26                B8   B4    C3   CA    B9   B3
-    // FC 0b0100_0001_0000_0000  6D 00 11 08 91 7F 93 06 1D 00 FB FF 30 01   03   02 01 0B
-    // FC 0b0100_0001_0000_0010  5B 00 00 00 00 00 FD 7F 02 FE F3            04   13 24 23 05
-    // FC 0b0100_0001_0000_0110  9F 00 00 00 BE 0E 23 7F 00 0A 1E            04   4D00 4000 0701 0801
-    // FC 0b0100_0001_0000_1010  A0 00 D1 7F A8 06 00 00 E3 FB 00            03   03 0A 09
-    // FC 0b0100_0100_0000_0000  00 00 9F B9 E7 6A 00 00 5E FF F4 FF C5 FF   04   0E 0B 0A 0F           0000 2101  0000 4A01  8E00 4A01  8E00 2101
-    // FC 0b0100_0100_0000_0000  00 00 B4 93 F1 C4 21 22 CB FF 16 00 E9 00   03   00 01 02              4C00 6C02  4C00 8202  0000 6C02
-    // FC 0b0100_0100_0000_0001  00 00 00 00 00 00 03 80 00 00 DA FF 66 FF   04   00 01 02 03             04   07    2E   2D    54   2D    7E   07
-    // FC 0b0100_0100_0000_0010  00 00 00 00 00 00 03 80 01 FA D9            04   06 07 08 09           0C00 E500  0C00 2A01  5B00 2A01  5A00 E500
-    // FC 0b0100_0100_0000_0011  00 00 00 00 00 00 03 80 00 02 FA            04   04 06 07 05             C0   39    F6   39    F6   22    C0   22
-    // FC 0b0100_0100_0000_0100  00 00 03 80 00 00 00 00 AF 00 C7 FF 2D 01   04   FE00 FF00 0001 0101   0400 2C01  4C00 2C01  4C00 BB00  0400 BB00
-    // FC 0b0100_0100_0000_0101  00 00 00 00 FD 7F 00 00 DB 00 DC FF 2D 01   04   0701 0601 0301 0201     61   80    61   38    04   38    04   80
-    // FC 0b0100_0100_0000_0111  00 00 00 00 3F 77 7E 2E FD 07 30            04   0101 0201 FA00 FF00    46 82 46 67 00 66 00 84
-    // FC 0b0100_0100_0000_1001  00 00 00 00 FD 7F 00 00 CB FE 00 00 6A 02   04   6E 20 6D 6F             00   D2    76   D2    76   5C    00   5C
-    // FC 0b0100_0100_0000_1011  00 00 00 00 62 73 9E C8 00 07 F7            04   03 06 07 00             35   1C    35   02    00   02    00   1C
-    // FC 0b0100_1001_0000_0000  5D 00 00 00 00 00 FD 7F 91 00 D4 FF A4 00   04   00 04 07 05
-    // FC 0b0100_1001_0000_0010  52 00 0A 60 F8 AF 70 1B 01 FF 1A            04   04 06 02 01
-    // FC 0b0100_1100_0000_0000  00 00 00 00 00 00 FD 7F D9 FE BF FF 67 00   04   1B 1A 19 1C           0000 0C04  8C00 0C04  8C00 9B03  0000 9B03
-    // FC 0b0100_1100_0000_0001  00 00 00 00 00 00 03 80 7F 00 7C FF 97 FF   04   7A 72 79 82             A6   7B    F0   7C    F0   BC    A6   BC
-    // FC 0b0100_1100_0000_0010  00 00 00 00 00 00 03 80 01 E2 AA            04   04 02 01 05           0400 A601  8000 A601  8000 4901  0400 4901
-    // FC 0b0100_1100_0000_0011  00 00 00 00 00 00 03 80 00 01 01            04   3B 3A 3D 3C             5B   05    34   05    34   23    5B   23
-    // FC 0b0100_1100_0000_0110  6B 00 3E 70 00 00 81 3D 09 F7 32            04   0301 EB00 EA00 0201   2900 7F01 2900 8801 2100 8801 2100 7F01
-    // FC 0b0100_1100_0000_0111  00 00 00 00 FD 7F 00 00 00 13 26            04   7200 0001 0101 7300   C2 E5 C2 FF FC FF FC E6
-    // FC 0b0100_1100_0000_1011  00 00 00 00 7A 72 3D 39 00 09 09            04   03 02 01 00           00 24 00 3C 35 3C 35 24
-    // FC 0b0101_0001_0000_0000  90 00 00 00 FD 7F 00 00 85 02 FF FF 7D FD   04   DF E0 E1 E2
-    // FC 0b0101_0001_0000_0010  90 00 00 00 FD 7F 00 00 77 00 6A            04   99 9A 9B 9C
-    // FC 0b0101_0001_0000_0100  AF 00 00 00 FD 7F 00 00 55 00 00 00 D7 01   04   FD00 FE00 FF00 0001
-    // FC 0b0101_0001_0000_1000  44 00 D0 9D B6 3B 5A 38 4D 00 1A 00 61 FF   04   03 05 06 00
-    // FC 0b0101_0001_0000_1010  91 00 22 E2 74 7C 00 00 FF 18 00            04   04 05 01 00
-    // FC 0b0101_0001_0000_1100  92 00 F9 7F 0D 02 00 00 CD FF 3E 00 71 FF   04   1601 1701 1801 1101
-    // FC 0b0101_0100_0000_0000  00 00 00 00 FD 7F 00 00 19 02 00 00 5C 00   04   43 47 48 44           9500 0202  9500 6F01  0300 7001  0300 0202
-    // FC 0b0101_0100_0000_0001  00 00 00 00 FD 7F 00 00 30 02 00 00 CD FE   04   6C 6D 6B 6A             FA   75    97   75    97   D6    FA   D7
-    // FC 0b0101_0100_0000_0010  00 00 00 00 FD 7F 00 00 C3 FF 09            04   0F 10 11 12           FC00 5A01 9900 5B01 9900 BC01 FC00 BC01
-    // FC 0b0101_0100_0000_0011  00 00 00 00 FD 7F 00 00 A1 00 4E            04   32 33 31 30           3A 30 00 32 00 AA 3A AA
-    // FC 0b0101_0100_0000_0111  00 00 FD 7F 00 00 00 00 30 67 DF            04   1D01 1E01 1F01 2001   2F 29 1D 2A 1D 1E 2F 1E
-    // FC 0b0101_0100_0000_1000  00 00 00 00 FD 7F 00 00 39 00 18 00 77 FF   05   0A 5C 59 68 3F        3E00 5B01  0C00 7601  0000 9701  0D00 9701  5E00 9701
-    // FC 0b0101_0100_0000_1001  00 00 00 00 00 00 FD 7F C9 FF B7 FF 4E 01   04   00 01 02 03             DE   03    DE   1B    F4   1B    F4   03
-    // FC 0b0101_0100_0000_1010  00 00 31 80 3D F9 00 00 B4 84 81            04   3D 3C 38 37           0000 5101  0000 8501  7800 8501  8A00 5101
-    // FC 0b0101_0100_0000_1011  00 00 00 00 FD 7F 00 00 00 EE 8F            04   0C 0D 02 01             CB   4F    99   50    99   97    CB   97
-    // FC 0b0101_0100_0000_1100  00 00 59 80 FF F6 37 02 B6 FF 84 FF 0C 01   04   3A00 2A01 2B01 3B00   7E00 1C01 0000 1C01 0000 5001 7E00 5001
-    // FC 0b0101_0100_0000_1101  00 00 1C EE 45 81 00 00 AB FF 38 00 71 FF   04   0301 0201 0401 0501   7D 78 88 78 88 54 7D 54
-    // FC 0b0101_1001_0000_0000  A0 00 00 00 66 82 9B 18 00 00 F0 FF 21 FF   04   05 09 0D 0E
-    // FC 0b0101_1001_0000_0010  A0 00 00 00 33 80 F2 06 00 F8 87            04   26 2D 38 33
-    // FC 0b0101_1001_0000_0100  90 00 00 00 FD 7F 00 00 21 FF FF FF 64 03   04   0501 0601 0701 0801
-    // FC 0b0101_1001_0000_0110  9E 00 00 00 03 80 00 00 1C 7F D6            04   0901 0A01 0B01 0C01
-    // FC 0b0101_1001_0000_1000  5D 00 00 00 00 00 FD 7F 00 00 E4 FF AC 00   04   03 06 09 04
-    // FC 0b0101_1001_0000_1010  59 00 69 02 F7 7F B7 00 21 E4 56            05   09 0A 0B 0C 0D        1E FC 59 0A 59 00 88 FD F7 7F
-    // FC 0b0101_1100_0000_0000  00 00 00 00 FD 7F 00 00 41 03 00 00 80 FD   04   5A 5B 57 56           6300 0A01  0000 0A01  0000 7701  6300 7701
-    // FC 0b0101_1100_0000_0001  00 00 00 00 9E 7D 7B E7 00 00 F5 FF 30 FF   04   00 01 02 03             01   17    2B   19    2B   02    01   03
-    // FC 0b0101_1100_0000_0010  00 00 00 00 50 6B C1 45 00 F4 EC            04   39 38 3B 3A           3D00 1101  0000 1101  0000 2C01  3D00 2C01
-    // FC 0b0101_1100_0000_0011  00 00 FD 7F 00 00 00 00 0B F7 CE            04   17 00 0D 1F             93   64    93   93    FB   93    FB   64
-    // FC 0b0101_1100_0000_0100  00 00 00 00 00 00 FD 7F 14 FD 07 00 91 03   04   0201 0301 0401 0501   FE00 EC00 EE00 EC00 EE00 0C01 FE00 0C01
-    // FC 0b0101_1100_0000_0101  00 00 00 00 00 00 FD 7F 72 FF 0B 00 1D 00   04   1601 1501 1801 1701   F0 12 E0 12 E0 32 F0 32
-    // FC 0b0101_1100_0000_0110  00 00 00 00 00 00 03 80 1F 78 DC            04   1601 1501 1401 1301   F600 2402 F600 6202 DB00 6202 DB00 2402
-    // FC 0b0101_1100_0000_0111  00 00 00 00 FD 7F 00 00 1F 6B CE            04   1901 1C01 1B01 1A01   01 2B 01 39 26 39 26 2B
-    // FC 0b0101_1100_0000_1000  00 00 00 00 00 00 FD 7F 00 00 B8 FF BD 00   04   00 01 02 03           9600 2A01 F500 2A01 F500 B000 9600 B000
-    // FC 0b0101_1100_0000_1001  00 00 00 00 00 00 03 80 00 00 B8 FF 46 FF   04   04 05 06 07             96   AF    F5   AF    F5   35    96   35
-    // FC 0b0101_1100_0000_1010  00 00 03 80 00 00 00 00 AB E4 AA            04   07 06 0A 0B           0000 FA02 8900 FA02 8900 8002 0000 8002
-    // FC 0b0101_1100_0000_1011  00 00 00 00 FD 7F 00 00 00 2E A6            04   0A 08 01 00           00 02 00 69 6E 69 6E 02
-    // FC 0b0101_1100_0000_1100  00 00 A5 55 00 00 1C 5F A0 FF 6F FF 6D 00   04   0201 0301 0401 0501   C100 6801 F600 A401 ED00 A801 BE00 7301
-    // FC 0b0101_1100_0000_1101  00 00 5B AA 00 00 1C 5F 60 00 6F FF 6D 00   04   FE00 FF00 0001 0101   AD 96 AA A1 D9 D6 E2 D2
-    // FC 0b0101_1100_0000_1111  00 00 00 00 00 00 03 80 02 F3 2D            04   0001 FF00 FE00 FD00   95 31 95 38 60 38 60 31
-    // FC 0b0110_0001_0000_0000  96 00 DC 01 DD FD F5 7F F8 FF 0E 00 77 FF   04   18 19 1A 1B
-    // FC 0b0110_0001_0000_0010  44 00 75 54 8A 5F 09 F5 06 FD F5            03   09 0A 08
-    // FC 0b0110_0001_0000_0110  6E 00 00 00 FD 7F 00 00 F7 FD 01            04   0501 0401 0301 0201
-    // FC 0b0110_0011_0000_0000  6D 00 00 00 0D 80 C9 FC 50 FF F0 FF 18 00   04   0A 09 06 07
-    // FC 0b0110_0011_0000_0010  78 00 00 00 2D 71 3C C4 FC 12 08            04   19 10 0F 14
-    // FC 0b0110_0011_0000_0110  96 00 FD 7F 00 00 00 00 00 FF FD            04   2601 0800 0700 0600
-    // FC 0b0110_0100_0000_0010  00 00 25 80 F0 04 D8 FC FE 01 E9            04   00 01 02 03           B100 0801 C100 1101 D500 0901 B700 F800
-    // FC 0b0110_0100_0000_0011  00 00 00 00 03 80 00 00 0D 0A D9            04   0B 29 28 27           CB 34 9A 33 97 25 C9 1C
-    // FC 0b0110_1100_0000_0001  00 00 00 00 00 00 FD 7F 02 00 04 00 5D FF   04   2D 2C 2B 2A           33 17 33 2C 00 2C 00 17
-    // FC 0b0110_1100_0000_0010  00 00 03 80 00 00 00 00 02 09 C7            04   1D 1C 20 1E           D500 FA00 D500 0A01 5600 0B01 5600 FA00    # 12 00 03 00 38 32 00
-    // FC 0b0110_1100_0000_0011  00 00 00 00 03 80 00 00 09 01 02            04   0b 0a 09 08           52 55 52 35 9a 36 9a 55
-    // FC 0b1100_1101_0000_0010  6B 00 FD 7F CD FF D9 FF 00 0A A5            04   A8 A9 8E AA           DC00 7101 C200 7601 9B00 3401 BB00 2801
-    // FC 0b1100_1101_0000_0011  6E 00 00 00 FD 7F 00 00 00 07 F8            04   00 01 02 03           EB A7 D9 A7 D9 E8 EB EA
-    // FC 0b1100_1101_0000_0111  6C 00 00 00 03 80 00 00 00 F5 32            04   0201 FC00 F900 0301   AF D8 AF 89 A9 7F A8 E4
-    // FC 0b1101_1101_0000_1000  9E 00 00 00 00 00 03 80 A1 00 5A FF 36 FF   04   12 13 14 15           0000 0101 3B00 0101 3B00 5C01 0000 5C01
-    // FC 0b1101_1101_0000_1001  98 00 D6 75 BC 0E BD 2F 0E 00 59 00 0A FF   04   A1 A0 A2 A3           10 4D 10 69 0C 69 08 4D
-    // FC 0b1101_1101_0000_1010  9B 00 03 80 00 00 00 00 F8 10 FB            05   29 1B 17 16 2A        8600 1501 8600 1E01 8600 2701 AA00 2701 AD00 1501
-    // FC 0b1101_1101_0000_1011  96 00 74 00 FD 7F FE FF 11 EE D1            05   0D 0E 0F 07 06        00 62  07 62  07 35  00 1C  00 49
-    // FC 0b1101_1101_0000_1100  9F 00 03 80 00 00 00 00 B9 FF 5A FF 56 00   04   F900 F800 0001 0101   E200 0C01 E200 6701 BE00 6701 BE00 0C01
-    // FC 0b1101_1101_0000_1101  9F 00 03 80 00 00 00 00 28 00 5A FF 56 00   04   FB00 FA00 0201 0301   24 4E 24 A9 00 A9 00 4E
-    // FC 0b1110_1101_0000_0010  5A 00 7F 00 F1 7F 93 FC 03 01 F8            04   03 04 05 00           EC00 DB00 DC00 D900 DC00 FD00 ED00 0001
-    // FC 0b1110_1101_0000_0011  44 00 00 00 0F 80 97 FC 10 FB 18            03   03 02 04              CB 08 CB 70 B9 08
-    // FC 0b1110_1110_0000_0010  94 00 32 A9 0A 5E A3 01 FB 06 F1            03   0B 69 68              4700 6D01 D700 7101 D700 6401
-    // FC 0b1110_1110_0000_0011  68 00 80 A5 80 A5 00 00 25 FF 01            04   7D 02 06 7E           5E 0A 61 0A 61 24 5E 24
-    // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
-    // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
-     */
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-
-        let mut off = 1;
-
-        let flags_offset = off;
-        let flags_arr: &[u16] = unsafe { mem::transmute(&data[flags_offset..]) };
-        assert_eq!(flags_arr[0] & 0xF000, 0u16);
-        let flags = FacetFlags::from_u16(flags_arr[0]);
-        off += 2;
-
-        let color_offset = off;
-        let color = data[off];
-        off += 1;
-
-        // Material
-        let material_offset = off;
-        let material_size = if flags.contains(FacetFlags::HAVE_MATERIAL) {
-            if flags.contains(FacetFlags::USE_SHORT_MATERIAL) {
-                10
-            } else {
-                13
-            }
-        } else {
-            1
-        };
-        let raw_material = data[off..off + material_size].to_vec();
-        off += material_size;
-
-        // Index count.
-        let index_count_offset = off;
-        let index_count = data[off] as usize;
-        off += 1;
-
-        // Indexes.
-        let indices_offset = off;
-        let mut indices = Vec::new();
-        let index_u8 = &data[off..];
-        let index_u16: &[u16] = unsafe { mem::transmute(index_u8) };
-        for i in 0..index_count {
-            let index = if flags.contains(FacetFlags::USE_SHORT_INDICES) {
-                off += 2;
-                index_u16[i]
-            } else {
-                off += 1;
-                u16::from(index_u8[i])
-            };
-            indices.push(index);
-        }
-        let indices_size = off - indices_offset;
-
-        // Tex Coords
-        let tc_offset = off;
-        let mut tex_coords = Vec::new();
-        if flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-            let tc_u8 = &data[off..];
-            let tc_u16: &[u16] = unsafe { mem::transmute(tc_u8) };
-            for i in 0..index_count {
-                let (u, v) = if flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) {
-                    off += 2;
-                    (u16::from(tc_u8[i * 2]), u16::from(tc_u8[i * 2 + 1]))
-                } else {
-                    off += 4;
-                    (tc_u16[i * 2], tc_u16[i * 2 + 1])
-                };
-                tex_coords.push([u, v]);
-            }
-
-            assert_eq!(tex_coords.len(), indices.len());
-        }
-        let tc_size = off - tc_offset;
-
-        Ok(Facet {
-            offset,
-            data: data.as_ptr(),
-            length: off,
-
-            flags_pointer: (&data[flags_offset..]).as_ptr(),
-            flags,
-
-            color_pointer: (&data[color_offset..]).as_ptr(),
-            color,
-
-            material_pointer: (&data[material_offset..]).as_ptr(),
-            material_size,
-            raw_material,
-
-            indices_count_pointer: (&data[index_count_offset..]).as_ptr(),
-            indices_pointer: (&data[indices_offset..]).as_ptr(),
-            indices_size,
-            indices,
-
-            tc_pointer: (&data[tc_offset..]).as_ptr(),
-            tc_size,
-            tex_coords,
-        })
-    }
-
-    fn size(&self) -> usize {
-        self.length
-    }
-
-    fn magic(&self) -> &'static str {
-        "Facet(FC)"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        let flags = format!("{:016b}", self.flags)
-            .chars()
-            .skip(4)
-            .collect::<Vec<char>>();
-
-        // const USE_SHORT_INDICES    = 0b0000_0100_0000_0000;
-        // const USE_SHORT_MATERIAL   = 0b0000_0010_0000_0000;
-        // const USE_BYTE_TEXCOORDS   = 0b0000_0001_0000_0000;
-        // const HAVE_MATERIAL        = 0b0000_0000_0100_0000;
-        // const HAVE_TEXCOORDS       = 0b0000_0000_0000_0100;
-        // const FILL_BACKGROUND      = 0b0000_0000_0000_0010;
-        // const UNK_MATERIAL_RELATED = 0b0000_0000_0000_0001;
-
-        let ind = self
-            .indices
-            .iter()
-            .map(|i| format!("{:X}", i))
-            .collect::<Vec<String>>()
-            .join(",");
-
-        let tcs = self
-            .tex_coords
-            .iter()
-            .map(|a| format!("({:X},{:X})", a[0], a[1]))
-            .collect::<Vec<String>>()
-            .join(",");
-
-        format!(
-            "@{:04X} {}Facet: FC{}   | {}{}{}({}{}{}{}{}{}_{}{}{}{}{}{}{}_{}{}{}{}{}{}{}); {}{}{}; {}{}{}; {}{:02X}{}; {}{}{} ({}{}{}); {}{}{}[{}{}{}]",
-            self.offset,
-            ansi().cyan().bold(),
-            ansi(),
-
-            // Flags
-            ansi().cyan(),
-            p2s(self.flags_pointer, 0, 2),
-            ansi().white(), // (
-
-            ansi().red(),
-            flags[0],
-            ansi().cyan(),
-            flags[1],
-            flags[2],
-            flags[3],
-
-            ansi().red(),
-            flags[4],
-            ansi().cyan(),
-            flags[5],
-            ansi().red(),
-            flags[6],
-            flags[7],
-
-            flags[8],
-            ansi().cyan(),
-            flags[9],
-            flags[10],
-            ansi().magenta(),
-            flags[11],
-            ansi().white(), // )
-
-            // Color
-            ansi().cyan(),
-            p2s(self.color_pointer, 0, 1).trim(),
-            ansi(),
-
-            // Material
-            ansi().red().dimmed(),
-            p2s(self.material_pointer, 0, self.material_size),
-            ansi(),
-
-            // Index count
-            ansi().cyan().bold(),
-            self.indices.len(),
-            ansi(),
-
-            // Indices
-            ansi().cyan().dimmed(),
-            p2s(self.indices_pointer, 0, self.indices_size).trim(),
-            ansi().white(),
-            ansi().cyan().bold(),
-            ind,
-            ansi(),
-
-            // Texture Coordinates
-            ansi().cyan().dimmed(),
-            p2s(self.tc_pointer, 0, self.tc_size),
-            ansi(),
-
-            ansi().cyan().bold(),
-            tcs,
-            ansi(),
-        )
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct X86Trampoline {
-    // Offset is from the start of the code section.
-    pub offset: usize,
-
-    // The name attached to the thunk that would populate this trampoline.
-    pub name: String,
-
-    // Where this trampoline would indirect to, if jumped to.
-    pub target: u32,
-
-    // Shape files call into engine functions by setting up a stack frame
-    // and then returning. The target of this is always one of these trampolines
-    // stored at the tail of the PE. Store the in-memory location of the
-    // thunk for fast comparison with relocated addresses.
-    pub mem_location: u32,
-
-    // Whatever tool was used to link .SH's bakes in a direct pointer to the GOT
-    // PLT base (e.g. target) as the data location. Presumably when doing
-    // runtime linking, it uses the IAT's name as a tag and rewrites the direct
-    // load to the real address of the symbol (and not a split read of the code
-    // and reloc in the GOT). These appear to be both global and per-object data
-    // depending on the data -- e.g. brentObjectId is probably per-object and
-    // _currentTicks is probably global?
-    //
-    // A concrete example; if the inline assembly does:
-    //    `mov %ebp, [<addr of GOT of data>]`
-    //
-    // The runtime would presumably use the relocation of the above addr as an
-    // opportunity to rewrite the load as a reference to the real memory. We
-    // need to take all of this into account when interpreting the referencing
-    // code.
-    pub is_data: bool,
-}
-
-impl X86Trampoline {
-    const SIZE: usize = 6;
-
-    fn has_trampoline(offset: usize, pe: &peff::PE) -> bool {
-        pe.section_info.contains_key(".idata")
-            && pe.code.len() >= offset + 6
-            && pe.code[offset] == 0xFF
-            && pe.code[offset + 1] == 0x25
-    }
-
-    fn from_pe(offset: usize, pe: &peff::PE) -> Fallible<Self> {
-        ensure!(Self::has_trampoline(offset, pe), "not a trampoline");
-        let target = {
-            let vp: &[u32] = unsafe { mem::transmute(&pe.code[offset + 2..offset + 6]) };
-            vp[0]
-        };
-
-        let thunk = Self::find_matching_thunk(target, pe)?;
-        let is_data = DATA_RELOCATIONS.contains(&thunk.name);
-        Ok(X86Trampoline {
-            offset,
-            name: thunk.name.clone(),
-            target,
-            mem_location: SHAPE_LOAD_BASE + offset as u32,
-            is_data,
-        })
-    }
-
-    fn find_matching_thunk<'a>(addr: u32, pe: &'a peff::PE) -> Fallible<&'a peff::Thunk> {
-        // The thunk table is code and therefore should have had a relocation entry
-        // to move those pointers when we called relocate on the PE.
-        trace!(
-            "looking for target 0x{:X} in {} thunks",
-            addr,
-            pe.thunks.len()
-        );
-        for thunk in pe.thunks.iter() {
-            if addr == thunk.vaddr {
-                return Ok(thunk);
-            }
-        }
-
-        // That said, not all SH files actually contain relocations for the thunk
-        // targets(!). This is yet more evidence that they're not actually using
-        // LoadLibrary to put shapes in memory. They're probably only using the
-        // relocation list to rewrite data access with the thunks as tags. We're
-        // using relocation, however, to help decode. So if the thunks are not
-        // relocated automatically we have to check the relocated value
-        // manually.
-        let thunk_target = pe.relocate_thunk_pointer(SHAPE_LOAD_BASE, addr);
-        trace!(
-            "looking for target 0x{:X} in {} thunks",
-            thunk_target,
-            pe.thunks.len()
-        );
-        for thunk in pe.thunks.iter() {
-            if thunk_target == thunk.vaddr {
-                return Ok(thunk);
-            }
-        }
-
-        // Also, in USNF, some of the thunks contain the base address already,
-        // so treat them like a normal code pointer.
-        let thunk_target = pe.relocate_pointer(SHAPE_LOAD_BASE, addr);
-        trace!(
-            "looking for target 0x{:X} in {} thunks",
-            thunk_target,
-            pe.thunks.len()
-        );
-        for thunk in pe.thunks.iter() {
-            if thunk_target == thunk.vaddr {
-                return Ok(thunk);
-            }
-        }
-
-        bail!("did not find thunk with a target of {:08X}", thunk_target)
-    }
-
-    fn size(&self) -> usize {
-        6
-    }
-
-    fn magic(&self) -> &'static str {
-        "Tramp"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        format!(
-            "@{:04X} {}Tramp{}: {}{}{} = {:04X}",
-            self.offset,
-            ansi().yellow().bold(),
-            ansi(),
-            ansi().yellow(),
-            self.name,
-            ansi(),
-            self.target
-        )
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum ReturnKind {
-    Interp,
-    Exec,
-    Error,
-}
-
-#[derive(Debug)]
-pub struct X86Code {
-    pub offset: usize,
-    pub length: usize,
-    pub code_offset: usize,
-    pub code: Vec<u8>,
-    pub formatted: String,
-    pub bytecode: ByteCode,
-    pub have_header: bool,
-}
-
-impl X86Code {
-    pub const MAGIC: u8 = 0xF0;
-
-    fn instr_is_relative_jump(instr: &i386::Instr) -> bool {
-        match instr.memonic {
-            Memonic::Call => true,
-            Memonic::Jump => true,
-            Memonic::Jcc(ref _cc) => true,
-            _ => false,
-        }
-    }
-
-    fn operand_to_offset(op: &Operand) -> usize {
-        // Note that we cannot rely on negative jumps being encoded with a signed instr.
-        let delta = match op {
-            Operand::Imm32s(delta) => *delta as isize,
-            Operand::Imm32(delta) => *delta as i32 as isize,
-            _ => {
-                trace!("Detected indirect jump target: {}", op);
-                0
-            }
-        };
-        if delta < 0 {
-            trace!("Skipping loop of {} bytes", delta);
-            return 0usize;
-        }
-        delta as usize
-    }
-
-    // Note: excluding return-to-trampoline and loops.
-    fn find_external_jumps(base: usize, bc: &ByteCode, external_jumps: &mut HashSet<usize>) {
-        let mut ip = 0;
-        let ip_end = bc.size as usize;
-        for instr in bc.instrs.iter() {
-            ip += instr.size();
-            if Self::instr_is_relative_jump(&instr) {
-                let delta = Self::operand_to_offset(&instr.operands[0]);
-                let ip_target = ip + delta;
-                if ip_target >= ip_end {
-                    external_jumps.insert(base + ip_target);
-                }
-            };
-        }
-    }
-
-    fn lowest_jump(jumps: &HashSet<usize>) -> usize {
-        let mut lowest = usize::max_value();
-        for &jump in jumps {
-            if jump < lowest {
-                lowest = jump;
-            }
-        }
-        lowest
-    }
-
-    fn find_pushed_address(target: &i386::Instr) -> Fallible<u32> {
-        ensure!(target.memonic == i386::Memonic::Push, "expected push");
-        ensure!(target.operands.len() == 1, "expected one operand");
-        if let Operand::Imm32s(addr) = target.operands[0] {
-            Ok(addr as u32)
-        } else {
-            bail!("expected imm32s operand")
-        }
-    }
-
-    fn find_trampoline_for_target(
-        target_addr: u32,
-        trampolines: &[X86Trampoline],
-    ) -> Fallible<&X86Trampoline> {
-        for tramp in trampolines {
-            trace!(
-                "checking {:08X} against {:20} @ loc:{:08X}",
-                target_addr,
-                tramp.name,
-                tramp.mem_location
-            );
-            if target_addr == tramp.mem_location {
-                return Ok(tramp);
-            }
-        }
-        bail!("no matching trampoline for exit")
-    }
-
-    fn disassemble_to_ret(
-        code: &[u8],
-        offset: usize,
-        trampolines: &[X86Trampoline],
-    ) -> Fallible<(ByteCode, ReturnKind)> {
-        let maybe_bc = i386::ByteCode::disassemble_to_ret(SHAPE_LOAD_BASE as usize + offset, code);
-        if let Err(e) = maybe_bc {
-            i386::DisassemblyError::maybe_show(&e, &code);
-            bail!("Don't know how to disassemble at {}: {:?}", offset, e);
-        }
-        let mut bc = maybe_bc?;
-        ensure!(bc.instrs.len() >= 3, "expected at least 3 instructions");
-
-        // Annotate any memory read in this block with the source.
-        for instr in bc.instrs.iter_mut() {
-            let mut context = None;
-            for op in &instr.operands {
-                if let Operand::Memory(ref mr) = op {
-                    let mt = Self::find_trampoline_for_target(mr.displacement as u32, trampolines);
-                    if let Ok(tramp) = mt {
-                        context = Some(tramp.name.to_owned());
-                    }
-                }
-            }
-            if let Some(s) = context {
-                instr.set_context(&s);
-            }
-        }
-
-        // Look for the jump target to figure out where we need to continue decoding.
-        let target = &bc.instrs[bc.instrs.len() - 2];
-        let target_addr = Self::find_pushed_address(target)?;
-        let tramp = Self::find_trampoline_for_target(target_addr, trampolines)?;
-
-        let ret_pos = bc.instrs.len() - 1;
-        let ret = &mut bc.instrs[ret_pos];
-        ensure!(ret.memonic == i386::Memonic::Return, "expected ret");
-        ret.set_context(&tramp.name);
-
-        // The argument pointer always points to just after the code segment.
-        let arg0 = &bc.instrs[bc.instrs.len() - 3];
-        let arg0_ptr = Self::find_pushed_address(arg0)? - SHAPE_LOAD_BASE;
-        ensure!(
-            arg0_ptr as usize == offset + bc.size as usize,
-            "expected second stack arg to point after code block"
-        );
-
-        let state = if tramp.name == "do_start_interp" {
-            ReturnKind::Interp
-        } else if tramp.name == "_ErrorExit" {
-            ReturnKind::Error
-        } else {
-            ReturnKind::Exec
-        };
-
-        Ok((bc, state))
-    }
-
-    fn make_code(bc: ByteCode, pe: &peff::PE, offset: usize) -> Instr {
-        let bc_size = bc.size as usize;
-        let have_header = pe.code[offset - 2] == 0xF0;
-        let section_offset = if have_header { offset - 2 } else { offset };
-        let section_length = bc_size + if have_header { 2 } else { 0 };
-        Instr::X86Code(X86Code {
-            offset: section_offset,
-            length: section_length,
-            code_offset: offset,
-            code: pe.code[offset..offset + bc_size].to_owned(),
-            formatted: Self::format_section(section_offset, section_length, &bc, pe),
-            bytecode: bc,
-            have_header,
-        })
-    }
-
-    fn from_bytes(
-        _name: &str,
-        offset: &mut usize,
-        pe: &peff::PE,
-        trampolines: &[X86Trampoline],
-        trailer: &[Instr],
-        vinstrs: &mut Vec<Instr>,
-    ) -> Fallible<()> {
-        let section = &pe.code[*offset..];
-        assert_eq!(section[0], Self::MAGIC);
-        assert_eq!(section[1], 0);
-        *offset += 2;
-
-        // Seed external jumps with our implicit F0 section jump.
-        let mut external_jumps = HashSet::new();
-        external_jumps.insert(*offset);
-
-        while !external_jumps.is_empty() {
-            trace!(
-                "top of loop at {:04X} with external jumps: {:?}",
-                *offset,
-                external_jumps
-                    .iter()
-                    .map(|n| format!("{:04X}", n))
-                    .collect::<Vec<_>>()
-            );
-
-            // If we've found an external jump, that's good evidence that this is x86 code, so just
-            // go ahead and decode that.
-            if external_jumps.contains(&offset) {
-                external_jumps.remove(&offset);
-                trace!("ip reached external jump");
-
-                let (bc, return_state) =
-                    Self::disassemble_to_ret(&pe.code[*offset..], *offset, trampolines)?;
-                trace!("decoded {} instructions", bc.instrs.len());
-
-                Self::find_external_jumps(*offset, &bc, &mut external_jumps);
-                trace!(
-                    "new external jumps: {:?}",
-                    external_jumps
-                        .iter()
-                        .map(|n| format!("{:04X}", n))
-                        .collect::<Vec<_>>(),
-                );
-
-                let bc_size = bc.size as usize;
-                vinstrs.push(Self::make_code(bc, pe, *offset));
-                *offset += bc_size;
-
-                // If we're jumping into normal x86 code we should expect to resume
-                // running more code right below the call.
-                if return_state == ReturnKind::Exec {
-                    external_jumps.insert(*offset);
-                }
-
-                // TODO: on Error's try to print the message.
-            }
-
-            // If we have no more jumps, continue looking for virtual instructions.
-            if external_jumps.is_empty()
-                || Self::lowest_jump(&external_jumps) < *offset
-                || *offset >= pe.code.len()
-            {
-                trace!("no more external jumps: breaking");
-                break;
-            }
-
-            // Otherwise, we are between code segments. There may be vinstrs
-            // here, or maybe more x86 instructions, or maybe some raw data.
-            // Look for a vinstr and it there is one, decode it. Otherwise
-            // treat it as raw data.
-
-            // Note: We do not expect another F0 while we have external jumps to find.
-            trace!(
-                "trying vinstr at: {}",
-                bs2s(&pe.code[*offset..(*offset + 10).min(pe.code.len())])
-            );
-            let saved_offset = *offset;
-            let mut have_vinstr = true;
-            let maybe = RawShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
-            if let Err(_e) = maybe {
-                have_vinstr = false;
-            } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {
-                vinstrs.pop();
-                *offset = saved_offset;
-                have_vinstr = false;
-            } else if let Some(&Instr::TrailerUnknown(_)) = vinstrs.last() {
-                // We still have external jumps to track down, so our data blob just
-                // happened to contain zeros. Keep going.
-                vinstrs.pop();
-                *offset = saved_offset;
-                have_vinstr = false;
-            }
-
-            if !have_vinstr && *offset < Self::lowest_jump(&external_jumps) {
-                // There is no instruction here, so assume data. Find the closest jump
-                // target remaining and fast-forward there.
-                trace!(
-                    "Adding data block @{:04X}: {}",
-                    *offset,
-                    bs2s(&pe.code[*offset..cmp::min(pe.code.len(), *offset + 80)])
-                );
-                let mut end = Self::lowest_jump(&external_jumps);
-                if pe.code[end - 2] == 0xF0 && pe.code[end - 1] == 0x00 {
-                    end -= 2;
-                }
-                vinstrs.push(Instr::UnknownData(UnknownData {
-                    offset: *offset,
-                    length: end - *offset,
-                    data: pe.code[*offset..end].to_vec(),
-                }));
-                *offset = end;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn format_section(offset: usize, length: usize, _bc: &i386::ByteCode, pe: &peff::PE) -> String {
-        let sec = reverse::Section::new(0xF0, offset, length);
-        let tags = reverse::get_all_tags(pe);
-        let mut v = Vec::new();
-        reverse::accumulate_section(&pe.code, &sec, &tags, &mut v);
-        v.iter().collect::<String>()
-    }
-
-    fn size(&self) -> usize {
-        self.length
-    }
-
-    fn magic(&self) -> &'static str {
-        "F0"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        let show_offset = if self.have_header {
-            self.offset + 2
-        } else {
-            self.offset
-        };
-        format!(
-            "@{:04X} X86Code: {}\n  {}",
-            self.offset,
-            self.formatted,
-            self.bytecode.show_relative(show_offset).trim()
-        )
-    }
-}
-
 pub struct UnkCE {
     pub offset: usize,
     pub data: [u8; 40 - 2],
@@ -1523,82 +471,6 @@ impl UnkBC {
             p2s(self.data, 0, 2).trim(),
             ansi(),
             self.unk_header,
-        )
-    }
-}
-
-// Something to do with animated textures, probably.
-#[derive(Debug)]
-pub struct Unk40 {
-    pub offset: usize,
-    length: usize,
-    data: *const u8,
-
-    count: usize,
-    frame_offsets: Vec<u16>,
-}
-
-impl Unk40 {
-    pub const MAGIC: u8 = 0x40;
-
-    // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let words: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let count = words[0] as usize;
-        let length = 4 + count * 2;
-        Ok(Unk40 {
-            offset,
-            length,
-            data: data.as_ptr(),
-
-            count,
-            frame_offsets: words[1..=count].to_owned(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        self.length
-    }
-
-    fn magic(&self) -> &'static str {
-        "40"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn num_frames(&self) -> usize {
-        self.count
-    }
-
-    pub fn target_for_frame(&self, n: usize) -> usize {
-        let n = n % self.count;
-        // Base of instr + magic and count + up to this frame + offset at this frame.
-        self.offset + 4 + (2 * n) + self.frame_offsets[n] as usize
-    }
-
-    fn show(&self) -> String {
-        let targets = (0..self.count)
-            .map(|i| format!("{:02X}", self.target_for_frame(i)))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(
-            "@{:04X} {}Unk40{}: {}{}{}| {}{}{} (cnt:{}, data:({}))",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().red().dimmed(),
-            p2s(self.data, 2, self.length),
-            ansi(),
-            self.count,
-            targets
         )
     }
 }
@@ -1708,626 +580,6 @@ impl Unk38 {
     }
 }
 
-// At: 6 => UnkC8 @ 0039: 62 01 19 00 D5 00
-// Offset + 0xD5 + sizeof(UnkC8) => start of next section.
-
-// At: 5 => UnkAC @ 0035: 74 01
-// Offset + 0x174 + sizeof(UnkAC) => points to after the normal version to the start of the destroyed version.
-
-// At: 1 => UnkF2 @ 000E: 7B 07
-// Seems to point to trailer: 0xe + 4 + 0x77B => 0x78D, which is the start of trailer.
-
-// In BUNKB
-// At: 7 => UnkA6 @ 0041: CF 00 01 00
-// 0x41 + 0xCF + 6 => 0x116 points past textured polys.
-
-#[derive(Debug)]
-pub struct PointerToObjectTrailer {
-    pub offset: usize,
-    data: *const u8,
-    pub delta_to_end: usize,
-}
-
-impl PointerToObjectTrailer {
-    pub const MAGIC: u8 = 0xF2;
-    pub const SIZE: usize = 4;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let delta_to_end = word_ref[0] as usize;
-        Ok(Self {
-            offset,
-            data: data.as_ptr(),
-            delta_to_end,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "F2"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn end_byte_offset(&self) -> usize {
-        // Our start offset + our size + offset_to_next.
-        self.offset + Self::SIZE + self.delta_to_end
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}2EndO{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
-            self.offset,
-            ansi().blue().bright().bold(),
-            ansi(),
-            ansi().blue().bright().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().blue().bright(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.delta_to_end,
-            self.end_byte_offset()
-        )
-    }
-}
-
-#[derive(Debug)]
-#[allow(non_camel_case_types)]
-pub struct UnkAC_ToDamage {
-    pub offset: usize,
-    data: *const u8,
-    pub delta_to_damage: usize,
-}
-
-impl UnkAC_ToDamage {
-    pub const MAGIC: u8 = 0xAC;
-    pub const SIZE: usize = 4;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let delta_to_damage = word_ref[0] as usize;
-        Ok(Self {
-            offset,
-            data: data.as_ptr(),
-            delta_to_damage,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "AC"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn damage_byte_offset(&self) -> usize {
-        // Our start offset + our size + offset_to_next.
-        self.offset + Self::SIZE + self.delta_to_damage
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}ToDam{}: {}{}{}| {}{}{} (delta:{:04X}, target:{:04X})",
-            self.offset,
-            ansi().blue().bright().bold(),
-            ansi(),
-            ansi().blue().bright().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().blue().bright(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.delta_to_damage,
-            self.damage_byte_offset()
-        )
-    }
-}
-
-#[derive(Debug)]
-#[allow(non_camel_case_types)]
-pub struct UnkC8_ToLOD {
-    pub offset: usize,
-    pub unk0: u16,
-    pub unk1: u16,
-    pub offset_to_next: usize,
-    data: *const u8,
-}
-
-impl UnkC8_ToLOD {
-    pub const MAGIC: u8 = 0xC8;
-    pub const SIZE: usize = 8;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let unk0 = word_ref[0];
-        let unk1 = word_ref[1];
-        let offset_to_next = word_ref[2] as usize;
-        Ok(Self {
-            offset,
-            unk0,
-            unk1,
-            offset_to_next,
-            data: data[0..Self::SIZE].as_ptr(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "C8"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn next_offset(&self) -> usize {
-        self.offset + Self::SIZE + self.offset_to_next
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}ToLOD{}: {}{}{}| {}{}{} (unk0:{:04X}, unk1:{:04X} target:{:04X})",
-            self.offset,
-            ansi().blue().bright().bold(),
-            ansi(),
-            ansi().blue().bright().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().blue().bright(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.unk0,
-            self.unk1,
-            self.next_offset()
-        )
-    }
-}
-
-#[derive(Debug)]
-#[allow(non_camel_case_types)]
-pub struct UnkA6_ToDetail {
-    pub offset: usize,
-    data: *const u8,
-
-    pub offset_to_next: usize,
-
-    // This is in the range 1-3, so is probably the game detail level control, rather
-    // than a Level-of-Detail control.
-    pub level: u16,
-}
-
-impl UnkA6_ToDetail {
-    pub const MAGIC: u8 = 0xA6;
-    pub const SIZE: usize = 6;
-
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let level = word_ref[1];
-        assert!(level >= 1 && level <= 3);
-        let offset_to_next = word_ref[0] as usize;
-        Ok(Self {
-            offset,
-            level,
-            offset_to_next,
-            data: data[0..Self::SIZE].as_ptr(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "A6"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn next_offset(&self) -> usize {
-        self.offset + Self::SIZE + self.offset_to_next
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}ToDtl{}: {}{}{}| {}{}{} (level:{:04X}, target:{:04X})",
-            self.offset,
-            ansi().blue().bright().bold(),
-            ansi(),
-            ansi().blue().bright().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().blue().bright(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.level,
-            self.next_offset()
-        )
-    }
-}
-
-// When points to a VertexBuf, it "unmasks" the facets that occur after that vertex buffer up
-// to the next vertex buffer or Header. When it points elsewhere, :shrug:. It usually points
-// to something that jumps, I think to do manual backface culling, maybe? Doesn't seem important.
-#[derive(Debug)]
-pub struct Unk12 {
-    pub offset: usize,
-    data: *const u8,
-    pub offset_to_next: usize,
-}
-
-impl Unk12 {
-    pub const MAGIC: u8 = 0x12;
-    pub const SIZE: usize = 4;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };
-        let offset_to_next = word_ref[0] as usize;
-        Ok(Self {
-            offset,
-            data: data[0..Self::SIZE].as_ptr(),
-            offset_to_next,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "12"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn next_offset(&self) -> usize {
-        self.offset + Self::SIZE + self.offset_to_next
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}Unk12{}: {}{}{}| {}{}{} (target:{:04X})",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().red(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.next_offset()
-        )
-    }
-}
-
-// Seems identical to Unk12, but stores a 32bit offset instead of a 16bit offset.
-#[derive(Debug)]
-pub struct Unk6E {
-    pub offset: usize,
-    data: *const u8,
-    pub offset_to_next: usize,
-}
-
-impl Unk6E {
-    pub const MAGIC: u8 = 0x6E;
-    pub const SIZE: usize = 6;
-
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let dword_ref: &[u32] = unsafe { mem::transmute(&data[2..]) };
-        let offset_to_next = dword_ref[0] as usize;
-        Ok(Self {
-            offset,
-            data: data[0..Self::SIZE].as_ptr(),
-            offset_to_next,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "6E"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn next_offset(&self) -> usize {
-        self.offset + Self::SIZE + self.offset_to_next
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}Unk6E{}: {}{}{}| {}{}{} (target:{:06X})",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().red(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.next_offset()
-        )
-    }
-}
-
-// Like Unk12, but also includes a transform to be applied to the
-// facets. Typically this instruction is the target of some x86 script
-// that mutates the embedded transform each frame to, e.g. animate the
-// landing gear lowering.
-#[derive(Debug)]
-pub struct UnkC4 {
-    pub offset: usize,
-    data: *const u8,
-
-    pub t0: i16,
-    pub t1: i16,
-    pub t2: i16,
-    pub a0: i16,
-    pub a1: i16,
-    pub a2: i16,
-    pub offset_to_next: usize,
-}
-
-impl UnkC4 {
-    pub const MAGIC: u8 = 0xC4;
-    pub const SIZE: usize = 16;
-
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
-        let t0 = word_ref[0];
-        let t1 = word_ref[1];
-        let t2 = word_ref[2];
-        let a0 = word_ref[3];
-        let a1 = word_ref[4];
-        let a2 = word_ref[5];
-        let uword_ref: &[u16] = unsafe { mem::transmute(&data[14..]) };
-        let offset_to_next = uword_ref[0] as usize;
-        Ok(Self {
-            offset,
-            data: data[0..Self::SIZE].as_ptr(),
-            t0,
-            t1,
-            t2,
-            a0,
-            a1,
-            a2,
-            offset_to_next,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "C4"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn next_offset(&self) -> usize {
-        self.offset + Self::SIZE + self.offset_to_next
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}UnkC4{}: {}{}{}| {}{}{} t:({}{},{},{}{}) a:({}{},{},{}{}) {}{}{} (target:{:04X})",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().blue(),
-            p2s(self.data, 2, Self::SIZE).trim(),
-            ansi(),
-            ansi().magenta(),
-            self.t0, self.t1, self.t2,
-            ansi(),
-            ansi().magenta(),
-            self.a0, self.a1, self.a2,
-            ansi(),
-            ansi().cyan(),
-            p2s(self.data, Self::SIZE - 2, Self::SIZE).trim(),
-            ansi(),
-            self.next_offset()
-        )
-    }
-}
-
-// Like UnkC4, but the offset is a 32bit number instead of 16bit.
-// In FA:F8.SH:
-//At: 1241 => Unknown @ 59E0:     18b =>
-//  @00|59E0: C6 00 00 00 FE FF 28 00 00 00 00 00 00 00 7D 0D
-//  @10|59F0: 00 00
-#[derive(Debug)]
-pub struct UnkC6 {
-    pub offset: usize,
-    data: *const u8,
-
-    pub t0: i16,
-    pub t1: i16,
-    pub t2: i16,
-    pub a0: i16,
-    pub a1: i16,
-    pub a2: i16,
-    pub offset_to_next: usize,
-}
-
-impl UnkC6 {
-    pub const MAGIC: u8 = 0xC6;
-    pub const SIZE: usize = 18;
-
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
-        let t0 = word_ref[0];
-        let t1 = word_ref[1];
-        let t2 = word_ref[2];
-        let a0 = word_ref[3];
-        let a1 = word_ref[4];
-        let a2 = word_ref[5];
-        let dword_ref: &[u32] = unsafe { mem::transmute(&data[14..]) };
-        let offset_to_next = dword_ref[0] as usize;
-        Ok(Self {
-            offset,
-            data: data[0..Self::SIZE].as_ptr(),
-            t0,
-            t1,
-            t2,
-            a0,
-            a1,
-            a2,
-            offset_to_next,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "C4"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn next_offset(&self) -> usize {
-        self.offset + Self::SIZE + self.offset_to_next
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}UnkC6{}: {}{}{}| {}{}{} t:({}{},{},{}{}) a:({}{},{},{}{}) {}{}{} (target:{:04X})",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().blue(),
-            p2s(self.data, 2, Self::SIZE).trim(),
-            ansi(),
-            ansi().magenta(),
-            self.t0, self.t1, self.t2,
-            ansi(),
-            ansi().magenta(),
-            self.a0, self.a1, self.a2,
-            ansi(),
-            ansi().cyan(),
-            p2s(self.data, Self::SIZE - 4, Self::SIZE).trim(),
-            ansi(),
-            self.next_offset()
-        )
-    }
-}
-
-// Possibly an unconditional jump?
-#[derive(Debug)]
-pub struct Unk48 {
-    pub offset: usize,
-    data: *const u8,
-    pub offset_to_target: isize,
-}
-
-impl Unk48 {
-    pub const MAGIC: u8 = 0x48;
-    pub const SIZE: usize = 4;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        assert_eq!(data[1], 0x00);
-        let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
-        let offset_to_target = word_ref[0] as isize;
-        Ok(Self {
-            offset,
-            data: data[0..Self::SIZE].as_ptr(),
-            offset_to_target,
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "48"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn target_offset(&self) -> usize {
-        ((self.offset + Self::SIZE) as isize + self.offset_to_target) as usize
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}Unk48{}: {}{}{}| {}{}{} (tgt:{:04X})",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().red(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi(),
-            self.target_offset()
-        )
-    }
-}
-
-// EE 00 E4 00 04 00 00 00 96 00 00 00 C7 00 1D 00 C7 00 1D 00 96 00 7A 00 00 00 00 00 06 00
-
 #[derive(Debug)]
 pub struct TrailerUnknown {
     pub offset: usize,
@@ -2413,94 +665,6 @@ impl TrailerUnknown {
             ansi().red().bold(),
             bs2s(&self.data),
             ansi(),
-        )
-    }
-}
-
-// Typically 00+ 01 02 03 02 01 00*, but not always
-#[derive(Debug)]
-pub struct EndOfShape {
-    pub offset: usize,
-    pub data: Vec<u8>,
-}
-
-impl EndOfShape {
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
-        Ok(Self {
-            offset,
-            data: data.to_owned(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        self.data.len()
-    }
-
-    fn magic(&self) -> &'static str {
-        "EndOfShape"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        format!(
-            "@{:04X} {}EndSh{}: {}{}{}| {}{}{}",
-            self.offset,
-            ansi().green().bold(),
-            ansi(),
-            ansi().green().bold(),
-            bs2s(&self.data[0..2]).trim(),
-            ansi(),
-            ansi().green(),
-            bs2s(&self.data[2..]),
-            ansi()
-        )
-    }
-}
-
-// Typically 00+ 01 02 03 02 01 00*, but not always
-#[derive(Debug)]
-pub struct EndOfObject {
-    pub offset: usize,
-    pub data: *const u8,
-}
-
-impl EndOfObject {
-    const SIZE: usize = 18;
-
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
-        Ok(Self {
-            offset,
-            data: data.as_ptr(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "EndOfObject"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        format!(
-            "@{:04X} {}EdObj{}: {}{}{}| {}{}{}",
-            self.offset,
-            ansi().green().bold(),
-            ansi(),
-            ansi().green().bold(),
-            p2s(self.data, 0, 2).trim(),
-            ansi(),
-            ansi().green(),
-            p2s(self.data, 2, Self::SIZE),
-            ansi()
         )
     }
 }
@@ -2642,70 +806,6 @@ impl UnknownUnknown {
         s
     }
 }
-
-#[derive(Debug)]
-pub struct Pad1E {
-    offset: usize,
-    length: usize,
-    data: *const u8,
-}
-impl Pad1E {
-    pub const MAGIC: u8 = 0x1E;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let mut cnt = 0;
-        while offset + cnt < code.len() && code[offset + cnt] == 0x1E {
-            cnt += 1;
-        }
-        assert!(cnt > 0);
-        Ok(Pad1E {
-            offset,
-            length: cnt,
-            data: (&code[offset..]).as_ptr(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        self.length
-    }
-
-    fn magic(&self) -> &'static str {
-        "1E"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    fn show(&self) -> String {
-        if self.length == 1 {
-            format!(
-                "@{:04X} {}Pad1E: 1E{}   |",
-                self.offset,
-                ansi().dimmed(),
-                ansi()
-            )
-        } else if self.length == 2 {
-            format!(
-                "@{:04X} {}Pad1E: 1E 1E{}|",
-                self.offset,
-                ansi().dimmed(),
-                ansi()
-            )
-        } else {
-            format!(
-                "@{:04X} {}Pad1E: 1E 1E{}| {}{}{}",
-                self.offset,
-                ansi().dimmed(),
-                ansi(),
-                ansi().dimmed(),
-                p2s(self.data, 2, self.size()),
-                ansi()
-            )
-        }
-    }
-}
-
 macro_rules! opaque_instr {
     ($name:ident, $magic_str: expr, $magic:expr, $size:expr) => {
         pub struct $name {
@@ -2790,7 +890,6 @@ opaque_instr!(Unk76, "76", 0x76, 10); // ATF:BULLET
 
 // 6E 00| A5 30 00 00
 // 6E 00| 06 00 00 00 50 00 73 00 00 00
-//opaque_instr!(Unk6E, "6E", 0x6E, 6); // FA:F8.SH
 opaque_instr!(Unk50, "50", 0x50, 6); // FA:F8.SH
 
 opaque_instr!(Header, "Header", 0xFF, 14);
@@ -2804,7 +903,6 @@ opaque_instr!(Unk78, "78", 0x78, 12);
 opaque_instr!(Unk7A, "7A", 0x7A, 10);
 opaque_instr!(Unk96, "96", 0x96, 6);
 opaque_instr!(UnkB8, "B8", 0xB8, 4);
-//opaque_instr!(UnkC4, "C4", 0xC4, 16);
 opaque_instr!(UnkCA, "CA", 0xCA, 4);
 opaque_instr!(UnkD0, "D0", 0xD0, 4);
 opaque_instr!(UnkD2, "D2", 0xD2, 8);
@@ -2820,6 +918,25 @@ opaque_instr!(UnkEE, "EE", 0xEE, 2);
 #[allow(non_camel_case_types)]
 pub enum Instr {
     Header(Header),
+    PtrToObjEnd(PtrToObjEnd),
+    SourceRef(SourceRef),
+
+    Jump(Jump),
+    JumpToDamage(JumpToDamage),
+    JumpToDetail(JumpToDetail),
+    JumpToFrame(JumpToFrame),
+    JumpToLOD(JumpToLOD),
+
+    // geometry
+    TextureRef(TextureRef),
+    TextureIndex(TextureIndex),
+    VertexBuf(VertexBuf),
+    Facet(Facet), // 0x__FC
+
+    Unmask(Unmask),
+    Unmask4(Unmask4),
+    XformUnmask(XformUnmask),
+    XformUnmask4(XformUnmask4),
 
     // Fixed size, with wasted 0 byte.
     Unk06(Unk06),
@@ -2827,17 +944,14 @@ pub enum Instr {
     Unk0C(Unk0C),
     Unk0E(Unk0E),
     Unk10(Unk10),
-    Unk12(Unk12),
     Unk2E(Unk2E),
     Unk3A(Unk3A),
     Unk44(Unk44),
     Unk46(Unk46),
-    Unk48(Unk48),
     Unk4E(Unk4E),
     Unk66(Unk66),
     Unk68(Unk68),
     Unk6C(Unk6C),
-    Unk6E(Unk6E),
     Unk50(Unk50),
     Unk72(Unk72),
     Unk74(Unk74),
@@ -2845,13 +959,8 @@ pub enum Instr {
     Unk78(Unk78),
     Unk7A(Unk7A),
     Unk96(Unk96),
-    UnkA6_ToDetail(UnkA6_ToDetail),
-    UnkAC_ToDamage(UnkAC_ToDamage),
     UnkB2(UnkB2),
     UnkB8(UnkB8),
-    UnkC4(UnkC4),
-    UnkC6(UnkC6),
-    UnkC8_ToLOD(UnkC8_ToLOD),
     UnkCA(UnkCA),
     UnkCE(UnkCE),
     UnkD0(UnkD0),
@@ -2863,7 +972,6 @@ pub enum Instr {
     UnkE8(UnkE8),
     UnkEA(UnkEA),
     UnkEE(UnkEE),
-    PointerToObjectTrailer(PointerToObjectTrailer),
 
     // Fixed size, without wasted 0 byte after header.
     Pad1E(Pad1E),
@@ -2872,23 +980,12 @@ pub enum Instr {
 
     // Variable size.
     UnkBC(UnkBC),
-    Unk40(Unk40),
     TrailerUnknown(TrailerUnknown),
-
-    // Known quantities.
-    TextureRef(TextureRef),
-    // 0x00E2
-    TextureIndex(TextureIndex),
-    // 0x00E0
-    SourceRef(SourceRef),
-    // 0x0042
-    VertexBuf(VertexBuf),
-    // 0x0082
-    Facet(Facet), // 0x__FC
 
     // Raw i386 bitcode used as a scripting language.
     X86Code(X86Code),
     X86Trampoline(X86Trampoline),
+    X86Message(X86Message),
     UnknownUnknown(UnknownUnknown),
     UnknownData(UnknownData),
 
@@ -2900,23 +997,40 @@ macro_rules! impl_for_all_instr {
     ($self:ident, $f:ident) => {
         match $self {
             Instr::Header(ref i) => i.$f(),
+            Instr::PtrToObjEnd(ref i) => i.$f(),
+            Instr::SourceRef(ref i) => i.$f(),
+            Instr::EndOfObject(ref i) => i.$f(),
+            Instr::EndOfShape(ref i) => i.$f(),
+            Instr::Jump(ref i) => i.$f(),
+            Instr::JumpToDamage(ref i) => i.$f(),
+            Instr::JumpToDetail(ref i) => i.$f(),
+            Instr::JumpToFrame(ref i) => i.$f(),
+            Instr::JumpToLOD(ref i) => i.$f(),
+            Instr::Unmask(ref i) => i.$f(),
+            Instr::Unmask4(ref i) => i.$f(),
+            Instr::XformUnmask(ref i) => i.$f(),
+            Instr::XformUnmask4(ref i) => i.$f(),
+            Instr::TextureIndex(ref i) => i.$f(),
+            Instr::TextureRef(ref i) => i.$f(),
+            Instr::VertexBuf(ref i) => i.$f(),
+            Instr::Facet(ref i) => i.$f(),
+            Instr::X86Code(ref i) => i.$f(),
+            Instr::X86Trampoline(ref i) => i.$f(),
+            Instr::X86Message(ref i) => i.$f(),
             Instr::Unk06(ref i) => i.$f(),
             Instr::Unk08(ref i) => i.$f(),
             Instr::Unk0C(ref i) => i.$f(),
             Instr::Unk0E(ref i) => i.$f(),
             Instr::Unk10(ref i) => i.$f(),
-            Instr::Unk12(ref i) => i.$f(),
             Instr::Pad1E(ref i) => i.$f(),
             Instr::Unk2E(ref i) => i.$f(),
             Instr::Unk3A(ref i) => i.$f(),
             Instr::Unk44(ref i) => i.$f(),
             Instr::Unk46(ref i) => i.$f(),
-            Instr::Unk48(ref i) => i.$f(),
             Instr::Unk4E(ref i) => i.$f(),
             Instr::Unk66(ref i) => i.$f(),
             Instr::Unk68(ref i) => i.$f(),
             Instr::Unk6C(ref i) => i.$f(),
-            Instr::Unk6E(ref i) => i.$f(),
             Instr::Unk50(ref i) => i.$f(),
             Instr::Unk72(ref i) => i.$f(),
             Instr::Unk74(ref i) => i.$f(),
@@ -2924,13 +1038,8 @@ macro_rules! impl_for_all_instr {
             Instr::Unk78(ref i) => i.$f(),
             Instr::Unk7A(ref i) => i.$f(),
             Instr::Unk96(ref i) => i.$f(),
-            Instr::UnkA6_ToDetail(ref i) => i.$f(),
-            Instr::UnkAC_ToDamage(ref i) => i.$f(),
             Instr::UnkB2(ref i) => i.$f(),
             Instr::UnkB8(ref i) => i.$f(),
-            Instr::UnkC4(ref i) => i.$f(),
-            Instr::UnkC6(ref i) => i.$f(),
-            Instr::UnkC8_ToLOD(ref i) => i.$f(),
             Instr::UnkCA(ref i) => i.$f(),
             Instr::UnkCE(ref i) => i.$f(),
             Instr::UnkD0(ref i) => i.$f(),
@@ -2942,23 +1051,12 @@ macro_rules! impl_for_all_instr {
             Instr::UnkE8(ref i) => i.$f(),
             Instr::UnkEA(ref i) => i.$f(),
             Instr::UnkEE(ref i) => i.$f(),
-            Instr::PointerToObjectTrailer(ref i) => i.$f(),
             Instr::UnkF6(ref i) => i.$f(),
             Instr::Unk38(ref i) => i.$f(),
             Instr::UnkBC(ref i) => i.$f(),
-            Instr::Unk40(ref i) => i.$f(),
-            Instr::TrailerUnknown(ref i) => i.$f(),
-            Instr::TextureIndex(ref i) => i.$f(),
-            Instr::TextureRef(ref i) => i.$f(),
-            Instr::SourceRef(ref i) => i.$f(),
-            Instr::VertexBuf(ref i) => i.$f(),
-            Instr::Facet(ref i) => i.$f(),
-            Instr::X86Code(ref i) => i.$f(),
-            Instr::X86Trampoline(ref i) => i.$f(),
             Instr::UnknownUnknown(ref i) => i.$f(),
             Instr::UnknownData(ref i) => i.$f(),
-            Instr::EndOfObject(ref i) => i.$f(),
-            Instr::EndOfShape(ref i) => i.$f(),
+            Instr::TrailerUnknown(ref i) => i.$f(),
         }
     };
 }
@@ -2979,6 +1077,23 @@ impl Instr {
     pub fn at_offset(&self) -> usize {
         impl_for_all_instr!(self, at_offset)
     }
+
+    pub fn unwrap_unmask_target(&self) -> Fallible<usize> {
+        Ok(match self {
+            Instr::Unmask(ref unmask) => unmask.target_byte_offset(),
+            Instr::Unmask4(ref unmask) => unmask.target_byte_offset(),
+            Instr::XformUnmask(ref unmask) => unmask.target_byte_offset(),
+            Instr::XformUnmask4(ref unmask) => unmask.target_byte_offset(),
+            _ => bail!("not an unwrap instructions"),
+        })
+    }
+
+    pub fn unwrap_x86(&self) -> Fallible<&X86Code> {
+        Ok(match self {
+            Instr::X86Code(ref x86) => x86,
+            _ => bail!("not an x86 code instructions"),
+        })
+    }
 }
 
 macro_rules! consume_instr {
@@ -2989,9 +1104,9 @@ macro_rules! consume_instr {
     }};
 }
 
-macro_rules! consume_instr_simple {
-    ($name:ident, $offset:ident, $data:expr, $instrs:ident) => {{
-        let instr = $name::from_bytes_after(*$offset, $data)?;
+macro_rules! consume_instr2 {
+    ($name:ident, $pe:ident, $offset:ident, $end_offset:ident, $instrs:ident) => {{
+        let instr = $name::from_bytes_after(*$offset, &$pe.code[*$offset..$end_offset])?;
         *$offset += instr.size();
         $instrs.push(Instr::$name(instr));
     }};
@@ -3026,10 +1141,11 @@ impl RawShape {
         // to absolute byte offsets using the instruction offset and size
         // which we can look up in the following table to get the instr
         // index we need to jump to.
-        let mut offset_map = HashMap::new();
-        for (i, instr) in instrs.iter().enumerate() {
-            offset_map.insert(instr.at_offset(), i);
-        }
+        let offset_map: HashMap<usize, usize> = instrs
+            .iter()
+            .enumerate()
+            .map(|(i, instr)| (instr.at_offset(), i))
+            .collect();
 
         Ok(RawShape {
             instrs,
@@ -3129,15 +1245,6 @@ impl RawShape {
             trace!("=>: {}", instrs.last().unwrap().show());
         }
 
-        // Assertions.
-        //        {
-        //            let instr = find_first_instr(0xF2, &instrs);
-        //            if let Some(&Instr::PointerToObjectTrailer(ref jmp)) = instr {
-        //                let tgt = _find_instr_at_offset(jmp.next_offset(), &instrs);
-        //                assert!(tgt.is_some());
-        //            }
-        //        }
-
         Ok(instrs)
     }
 
@@ -3150,135 +1257,66 @@ impl RawShape {
     ) -> Fallible<()> {
         let end_offset = pe.code.len() - Self::end_size(trailer);
         match pe.code[*offset] {
-            Header::MAGIC => {
-                consume_instr_simple!(Header, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk08::MAGIC => {
-                consume_instr_simple!(Unk08, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk0E::MAGIC => {
-                consume_instr_simple!(Unk0E, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk10::MAGIC => {
-                consume_instr_simple!(Unk10, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk2E::MAGIC => {
-                consume_instr_simple!(Unk2E, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk3A::MAGIC => {
-                consume_instr_simple!(Unk3A, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk44::MAGIC => {
-                consume_instr_simple!(Unk44, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk46::MAGIC => {
-                consume_instr_simple!(Unk46, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk4E::MAGIC => {
-                consume_instr_simple!(Unk4E, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk66::MAGIC => {
-                consume_instr_simple!(Unk66, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk68::MAGIC => {
-                consume_instr_simple!(Unk68, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk6C::MAGIC => {
-                consume_instr_simple!(Unk6C, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk6E::MAGIC => {
-                consume_instr_simple!(Unk6E, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk50::MAGIC => {
-                consume_instr_simple!(Unk50, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk72::MAGIC => {
-                consume_instr_simple!(Unk72, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk74::MAGIC => {
-                consume_instr_simple!(Unk74, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk76::MAGIC => {
-                consume_instr_simple!(Unk76, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk78::MAGIC => {
-                consume_instr_simple!(Unk78, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk7A::MAGIC => {
-                consume_instr_simple!(Unk7A, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            Unk96::MAGIC => {
-                consume_instr_simple!(Unk96, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkA6_ToDetail::MAGIC => consume_instr_simple!(
-                UnkA6_ToDetail,
-                offset,
-                &pe.code[*offset..end_offset],
-                instrs
-            ),
-            UnkB2::MAGIC => {
-                consume_instr_simple!(UnkB2, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkB8::MAGIC => {
-                consume_instr_simple!(UnkB8, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkC4::MAGIC => {
-                consume_instr_simple!(UnkC4, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkC6::MAGIC => {
-                consume_instr_simple!(UnkC6, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkCA::MAGIC => {
-                consume_instr_simple!(UnkCA, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkD0::MAGIC => {
-                consume_instr_simple!(UnkD0, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkD2::MAGIC => {
-                consume_instr_simple!(UnkD2, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkDA::MAGIC => {
-                consume_instr_simple!(UnkDA, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkDC::MAGIC => {
-                consume_instr_simple!(UnkDC, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkE4::MAGIC => {
-                consume_instr_simple!(UnkE4, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkE6::MAGIC => {
-                consume_instr_simple!(UnkE6, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkE8::MAGIC => {
-                consume_instr_simple!(UnkE8, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkEA::MAGIC => {
-                consume_instr_simple!(UnkEA, offset, &pe.code[*offset..end_offset], instrs)
-            }
-            UnkEE::MAGIC => {
-                consume_instr_simple!(UnkEE, offset, &pe.code[*offset..end_offset], instrs)
-            }
+            Header::MAGIC => consume_instr2!(Header, pe, offset, end_offset, instrs),
+            Pad1E::MAGIC => consume_instr2!(Pad1E, pe, offset, end_offset, instrs),
+            SourceRef::MAGIC => consume_instr2!(SourceRef, pe, offset, end_offset, instrs),
+            PtrToObjEnd::MAGIC => consume_instr2!(PtrToObjEnd, pe, offset, end_offset, instrs),
+
+            TextureRef::MAGIC => consume_instr2!(TextureRef, pe, offset, end_offset, instrs),
+            TextureIndex::MAGIC => consume_instr2!(TextureIndex, pe, offset, end_offset, instrs),
+            VertexBuf::MAGIC => consume_instr2!(VertexBuf, pe, offset, end_offset, instrs),
+            Facet::MAGIC => consume_instr2!(Facet, pe, offset, end_offset, instrs),
+
+            Jump::MAGIC => consume_instr2!(Jump, pe, offset, end_offset, instrs),
+            JumpToDamage::MAGIC => consume_instr2!(JumpToDamage, pe, offset, end_offset, instrs),
+            JumpToDetail::MAGIC => consume_instr2!(JumpToDetail, pe, offset, end_offset, instrs),
+            JumpToFrame::MAGIC => consume_instr2!(JumpToFrame, pe, offset, end_offset, instrs),
+            JumpToLOD::MAGIC => consume_instr2!(JumpToLOD, pe, offset, end_offset, instrs),
+
+            Unmask::MAGIC => consume_instr2!(Unmask, pe, offset, end_offset, instrs),
+            Unmask4::MAGIC => consume_instr2!(Unmask4, pe, offset, end_offset, instrs),
+            XformUnmask::MAGIC => consume_instr2!(XformUnmask, pe, offset, end_offset, instrs),
+            XformUnmask4::MAGIC => consume_instr2!(XformUnmask4, pe, offset, end_offset, instrs),
+
+            Unk08::MAGIC => consume_instr2!(Unk08, pe, offset, end_offset, instrs),
+            Unk0E::MAGIC => consume_instr2!(Unk0E, pe, offset, end_offset, instrs),
+            Unk10::MAGIC => consume_instr2!(Unk10, pe, offset, end_offset, instrs),
+            Unk2E::MAGIC => consume_instr2!(Unk2E, pe, offset, end_offset, instrs),
+            Unk3A::MAGIC => consume_instr2!(Unk3A, pe, offset, end_offset, instrs),
+            Unk44::MAGIC => consume_instr2!(Unk44, pe, offset, end_offset, instrs),
+            Unk46::MAGIC => consume_instr2!(Unk46, pe, offset, end_offset, instrs),
+            Unk4E::MAGIC => consume_instr2!(Unk4E, pe, offset, end_offset, instrs),
+            Unk66::MAGIC => consume_instr2!(Unk66, pe, offset, end_offset, instrs),
+            Unk68::MAGIC => consume_instr2!(Unk68, pe, offset, end_offset, instrs),
+            Unk6C::MAGIC => consume_instr2!(Unk6C, pe, offset, end_offset, instrs),
+            Unk50::MAGIC => consume_instr2!(Unk50, pe, offset, end_offset, instrs),
+            Unk72::MAGIC => consume_instr2!(Unk72, pe, offset, end_offset, instrs),
+            Unk74::MAGIC => consume_instr2!(Unk74, pe, offset, end_offset, instrs),
+            Unk76::MAGIC => consume_instr2!(Unk76, pe, offset, end_offset, instrs),
+            Unk78::MAGIC => consume_instr2!(Unk78, pe, offset, end_offset, instrs),
+            Unk7A::MAGIC => consume_instr2!(Unk7A, pe, offset, end_offset, instrs),
+            Unk96::MAGIC => consume_instr2!(Unk96, pe, offset, end_offset, instrs),
+            UnkB2::MAGIC => consume_instr2!(UnkB2, pe, offset, end_offset, instrs),
+            UnkB8::MAGIC => consume_instr2!(UnkB8, pe, offset, end_offset, instrs),
+            UnkCA::MAGIC => consume_instr2!(UnkCA, pe, offset, end_offset, instrs),
+            UnkD0::MAGIC => consume_instr2!(UnkD0, pe, offset, end_offset, instrs),
+            UnkD2::MAGIC => consume_instr2!(UnkD2, pe, offset, end_offset, instrs),
+            UnkDA::MAGIC => consume_instr2!(UnkDA, pe, offset, end_offset, instrs),
+            UnkDC::MAGIC => consume_instr2!(UnkDC, pe, offset, end_offset, instrs),
+            UnkE4::MAGIC => consume_instr2!(UnkE4, pe, offset, end_offset, instrs),
+            UnkE6::MAGIC => consume_instr2!(UnkE6, pe, offset, end_offset, instrs),
+            UnkE8::MAGIC => consume_instr2!(UnkE8, pe, offset, end_offset, instrs),
+            UnkEA::MAGIC => consume_instr2!(UnkEA, pe, offset, end_offset, instrs),
+            UnkEE::MAGIC => consume_instr2!(UnkEE, pe, offset, end_offset, instrs),
 
             Unk06::MAGIC => consume_instr!(Unk06, pe, offset, end_offset, instrs),
             Unk0C::MAGIC => consume_instr!(Unk0C, pe, offset, end_offset, instrs),
-            Unk12::MAGIC => consume_instr!(Unk12, pe, offset, end_offset, instrs),
-            Pad1E::MAGIC => consume_instr!(Pad1E, pe, offset, end_offset, instrs),
-            Unk40::MAGIC => consume_instr!(Unk40, pe, offset, end_offset, instrs),
-            Unk48::MAGIC => consume_instr!(Unk48, pe, offset, end_offset, instrs),
-            UnkAC_ToDamage::MAGIC => consume_instr!(UnkAC_ToDamage, pe, offset, end_offset, instrs),
             UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, end_offset, instrs),
-            UnkC8_ToLOD::MAGIC => consume_instr!(UnkC8_ToLOD, pe, offset, end_offset, instrs),
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, end_offset, instrs),
             UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, end_offset, instrs),
-            PointerToObjectTrailer::MAGIC => {
-                consume_instr!(PointerToObjectTrailer, pe, offset, end_offset, instrs)
-            }
+
             Unk38::MAGIC => consume_instr!(Unk38, pe, offset, end_offset, instrs),
-            TextureRef::MAGIC => consume_instr!(TextureRef, pe, offset, end_offset, instrs),
-            TextureIndex::MAGIC => consume_instr!(TextureIndex, pe, offset, end_offset, instrs),
-            SourceRef::MAGIC => consume_instr!(SourceRef, pe, offset, end_offset, instrs),
-            VertexBuf::MAGIC => consume_instr!(VertexBuf, pe, offset, end_offset, instrs),
-            Facet::MAGIC => consume_instr!(Facet, pe, offset, end_offset, instrs),
+
             X86Code::MAGIC => {
                 let name =
                     if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, &instrs) {
@@ -3295,7 +1333,7 @@ impl RawShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::PointerToObjectTrailer(ref end_ptr)) =
+                        if let Some(&Instr::PtrToObjEnd(ref end_ptr)) =
                             find_first_instr(0xF2, &instrs)
                         {
                             target = Some(end_ptr.end_byte_offset());
@@ -3319,7 +1357,7 @@ impl RawShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::PointerToObjectTrailer(ref end_ptr)) =
+                        if let Some(&Instr::PtrToObjEnd(ref end_ptr)) =
                             find_first_instr(0xF2, &instrs)
                         {
                             target = Some(end_ptr.end_byte_offset());
@@ -3409,6 +1447,15 @@ impl RawShape {
         bail!("no trampoline at absolute offset: {:08X}", abs_offset);
     }
 
+    pub fn lookup_trampoline_by_name(&self, name: &str) -> Fallible<&X86Trampoline> {
+        for tramp in &self.trampolines {
+            if tramp.name == name {
+                return Ok(tramp);
+            }
+        }
+        bail!("no trampoline with name: {}", name);
+    }
+
     pub fn byte_length(&self) -> usize {
         self.pe.code.len()
     }
@@ -3435,11 +1482,8 @@ extern crate omnilib;
 mod tests {
     use super::*;
     use failure::Error;
-    use i386::ExitInfo;
     use omnilib::OmniLib;
     use simplelog::{Config, LevelFilter, TermLogger};
-    use std::io::prelude::*;
-    use std::{collections::HashMap, fs};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
         let mut offset = None;
@@ -3454,7 +1498,7 @@ mod tests {
 
     fn find_f2_target(shape: &RawShape) -> Option<usize> {
         for instr in shape.instrs.iter().rev() {
-            if let Instr::PointerToObjectTrailer(f2) = instr {
+            if let Instr::PtrToObjEnd(f2) = instr {
                 return Some(f2.end_byte_offset());
             }
         }
@@ -3520,16 +1564,34 @@ mod tests {
                 }
             }
 
-            // Ensure that all Unk12 and Unk48 point to a valid instruction.
+            // Ensure that all Unmask(12) and Jump(48) point to a valid instruction.
             for instr in &shape.instrs {
                 match instr {
-                    Instr::Unk12(unk) => {
-                        let index = shape.bytes_to_index(unk.next_offset())?;
+                    Instr::Unmask(unk) => {
+                        let index = shape.bytes_to_index(unk.target_byte_offset())?;
                         let _target_instr = &shape.instrs[index];
                     }
-                    Instr::Unk48(unk) => {
-                        let index = shape.bytes_to_index(unk.target_offset())?;
+                    Instr::Jump(j) => {
+                        let index = shape.bytes_to_index(j.target_byte_offset())?;
                         let _target_instr = &shape.instrs[index];
+                    }
+                    Instr::JumpToFrame(jf) => {
+                        let mut all_final_targets = HashSet::new();
+                        for frame_num in 0..jf.num_frames() {
+                            // All frames must point to a single facet.
+                            let index = shape.bytes_to_index(jf.target_for_frame(frame_num))?;
+                            let target_instr = &shape.instrs[index];
+                            assert_eq!(target_instr.magic(), "Facet(FC)");
+                            // All frames must jump to the end or fall off the end.
+                            if let Instr::Jump(ref j) = &shape.instrs[index + 1] {
+                                all_final_targets.insert(j.target_byte_offset());
+                            } else {
+                                assert_eq!(frame_num, jf.num_frames() - 1);
+                                all_final_targets.insert(shape.instrs[index + 1].at_offset());
+                            }
+                            // All frames must end at the same instruction.
+                            assert_eq!(all_final_targets.len(), 1);
+                        }
                     }
                     _ => {}
                 }
@@ -3545,180 +1607,6 @@ mod tests {
 
         //show_instr_freqs(&freq);
 
-        Ok(())
-    }
-
-    // struct ObjectInfo {
-    //     field0: u8,
-    //     field2: u8,
-
-    // USED BY FLARE.ASM
-    //     // eax = -field22 >> 10
-    //     // if eax < 90 {
-    //     //     if eax < -90 {
-    //     //        eax = -90
-    //     //     }
-    //     // } else { eax = 90 }
-    //     field22: u32,
-
-    // USED BY EXP.ASM
-    //     // ax = (field49 - field48) & 0x00FF
-    //     // cx = _currentTicks - field40
-    //     // dx:ax = ax * cx
-    //     // cx = field44 - field40
-    //     // ax, dx = dx:ax / cx, dx:ax % cx
-    //     // ax += field48
-    //     // if ax > 0x316 { _ErrorExit("Bad value (around line 133) in exp.asm!") }
-    //     field40: u16,
-    //     field44: u16,
-    //     field48: u8,
-    //     field49: u8,
-    // }
-
-    #[test]
-    #[ignore] // We don't actually know what the memory should look like past this.
-    fn virtual_interp() -> Fallible<()> {
-        TermLogger::init(LevelFilter::Trace, Config::default())?;
-
-        let path = "./test_data/EXP.SH";
-        //let path = "./test_data/FLARE.SH";
-        //let path = "./test_data/WNDMLL.SH";
-        let mut fp = fs::File::open(path).unwrap();
-        let mut data = Vec::new();
-        fp.read_to_end(&mut data).unwrap();
-
-        // let obj = ExplosionInfo {
-        //     field0: 0x11,
-        //     field2: 0x10,
-        //     field40: 0,
-        //     field44: 4,
-        //     field48: 25,
-        //     field49: 44,
-        // };
-        let exp_base = 0x7700_0000;
-
-        let shape = RawShape::from_bytes(&data).unwrap();
-        let mut interp = i386::Interpreter::new();
-        for tramp in shape.trampolines.iter() {
-            if !tramp.is_data {
-                interp.add_trampoline(tramp.mem_location, &tramp.name, 1);
-                continue;
-            }
-            match tramp.name.as_ref() {
-                "brentObjId" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP brentObjectId");
-                        exp_base // Lowest valid (shown?) object id is 0x3E8, at least by the check EXP.sh does.
-                    }),
-                ),
-                "_currentTicks" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _currentTicks");
-                        0
-                    }),
-                ),
-                "viewer_x" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP viewer_x");
-                        0
-                    }),
-                ),
-                "viewer_z" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP viewer_z");
-                        0
-                    }),
-                ),
-                "xv32" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP xv32");
-                        0
-                    }),
-                ),
-                "zv32" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP zv32");
-                        0
-                    }),
-                ),
-                "_effectsAllowed" => {
-                    interp.add_read_port(
-                        tramp.mem_location,
-                        Box::new(move || {
-                            println!("LOOKUP _effectsAllowed");
-                            0
-                        }),
-                    );
-                    interp.add_write_port(
-                        tramp.mem_location,
-                        Box::new(move |value| {
-                            println!("SET _effectsAllowed to {}", value);
-                        }),
-                    );
-                }
-                _ => panic!("unknown data reference to {}", tramp.name),
-            }
-        }
-
-        // FLARE
-        interp.add_read_port(exp_base + 0x22, Box::new(|| 0x10 as u32));
-
-        // EXP
-        interp.add_read_port(exp_base, Box::new(|| 0x11 as u32));
-        interp.add_read_port(exp_base + 0x2, Box::new(|| 0x10 as u32));
-        interp.add_read_port(exp_base + 0x40, Box::new(|| 0 as u32));
-        interp.add_read_port(exp_base + 0x44, Box::new(|| 4 as u32));
-        interp.add_read_port(exp_base + 0x48, Box::new(|| 25 as u32));
-        interp.add_read_port(exp_base + 0x49, Box::new(move || 44 as u32));
-
-        for instr in shape.instrs.iter() {
-            match instr {
-                // Written into by windmill with (_currentTicks & 0xFF) << 2.
-                // The frame of animation to show, maybe?
-                Instr::UnkC4(ref c4) => interp.add_write_port(
-                    SHAPE_LOAD_BASE + c4.offset as u32 + 2 + 0xA,
-                    Box::new(move |value| {
-                        println!("WOULD UPDATE C4 Internals with {:02X}", value);
-                    }),
-                ),
-                Instr::UnknownUnknown(ref unk) => {
-                    interp
-                        .map_writable(SHAPE_LOAD_BASE + unk.offset as u32, unk.data.clone())
-                        .unwrap();
-                }
-                Instr::X86Code(ref code) => {
-                    interp.add_code(&code.bytecode);
-                }
-                _ => {}
-            }
-            println!("{}", instr.show());
-        }
-        let mut offset = 0;
-        while offset < shape.instrs.len() {
-            if let Instr::X86Code(ref code) = shape.instrs[offset] {
-                let rv = interp
-                    .interpret(SHAPE_LOAD_BASE + code.code_offset as u32)
-                    .unwrap();
-                match rv {
-                    ExitInfo::OutOfInstructions => break,
-                    ExitInfo::Trampoline(ref name, ref args) => {
-                        println!("Got trampoline return to {} with args {:?}", name, args);
-                        offset = shape
-                            .map_interpreter_offset_to_instr_offset(args[0])
-                            .unwrap();
-                        println!("Resuming at instruction {}", offset);
-                    }
-                }
-            } else {
-                offset += 1;
-            }
-        }
         Ok(())
     }
 }

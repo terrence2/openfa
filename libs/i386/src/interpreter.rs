@@ -27,6 +27,15 @@ pub enum ExitInfo {
     Trampoline(String, Vec<u32>),
 }
 
+impl ExitInfo {
+    pub fn ok_trampoline(self) -> Fallible<(String, Vec<u32>)> {
+        Ok(match self {
+            ExitInfo::Trampoline(name, args) => (name, args),
+            _ => bail!("exit info is not a trampoline"),
+        })
+    }
+}
+
 #[derive(Eq, Ord, PartialOrd, PartialEq)]
 struct MemMapR<'a> {
     start: u32,
@@ -91,12 +100,20 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub fn set_register_value(&mut self, reg: Reg, value: u32) {
+        self.registers[reg.to_offset()] = value;
+    }
+
     pub fn add_trampoline(&mut self, addr: u32, name: &str, arg_count: usize) {
         self.trampolines.insert(addr, (name.to_owned(), arg_count));
     }
 
     pub fn add_read_port(&mut self, addr: u32, func: Box<Fn() -> u32>) {
         self.ports_r.insert(addr, func);
+    }
+
+    pub fn remove_read_port(&mut self, addr: u32) {
+        self.ports_r.remove(&addr);
     }
 
     pub fn add_write_port(&mut self, addr: u32, func: Box<Fn(u32)>) {
@@ -248,7 +265,7 @@ impl<'a> Interpreter<'a> {
         self.interpret(next_ip)
     }
 
-    fn eip(&self) -> u32 {
+    pub fn eip(&self) -> u32 {
         self.registers[Reg::EIP.to_offset()]
     }
 
@@ -416,13 +433,17 @@ impl<'a> Interpreter<'a> {
     fn do_and(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
-        self.put(op1, a & b)
+        let v = a & b;
+        self.zf = v == 0;
+        self.put(op1, v)
     }
 
     fn do_or(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
-        self.put(op1, a | b)
+        let v = a | b;
+        self.zf = v == 0;
+        self.put(op1, v)
     }
 
     fn do_xor(&mut self, op1: &Operand, op2: &Operand) -> Fallible<()> {
