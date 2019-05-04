@@ -126,7 +126,7 @@ fn main() -> Fallible<()> {
                             KeyboardInput {
                                 virtual_keycode: Some(keycode),
                                 state: pressed,
-                                modifiers: mod_state,
+                                modifiers: _mod_state,
                                 ..
                             },
                         ..

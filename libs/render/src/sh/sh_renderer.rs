@@ -27,7 +27,6 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -945,9 +944,9 @@ impl ShRenderer {
 
     fn push_facet(
         facet: &Facet,
-        vert_pool: &Vec<Vertex>,
+        vert_pool: &[Vertex],
         palette: &Palette,
-        active_frame: &Option<&Frame>,
+        active_frame: Option<&Frame>,
         verts: &mut Vec<Vertex>,
         indices: &mut Vec<u32>,
     ) -> Fallible<()> {
@@ -1247,7 +1246,7 @@ impl ShRenderer {
                         facet,
                         &vert_pool,
                         palette,
-                        &active_frame,
+                        active_frame,
                         &mut verts,
                         &mut indices,
                     )?;
