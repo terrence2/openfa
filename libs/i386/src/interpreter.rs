@@ -22,6 +22,7 @@ use failure::{bail, ensure, Fallible};
 use log::trace;
 use std::{collections::HashMap, mem};
 
+#[derive(Debug)]
 pub enum ExitInfo {
     OutOfInstructions,
     Trampoline(String, Vec<u32>),
@@ -75,7 +76,7 @@ pub struct Interpreter<'a> {
     memmap_r: Vec<MemMapR<'a>>,
     bytecode: Vec<&'a ByteCode>,
     ports_r: HashMap<u32, Box<Fn() -> u32>>,
-    ports_w: HashMap<u32, Box<Fn(u32)>>,
+    ports_w: HashMap<u32, Box<FnMut(u32)>>,
     trampolines: HashMap<u32, (String, usize)>,
 }
 
@@ -100,6 +101,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub fn push_stack_value(&mut self, value: u32) {
+        self.registers[Reg::ESP.to_offset()] -= 4;
+        self.stack.push(value);
+    }
+
     pub fn set_register_value(&mut self, reg: Reg, value: u32) {
         self.registers[reg.to_offset()] = value;
     }
@@ -116,7 +122,7 @@ impl<'a> Interpreter<'a> {
         self.ports_r.remove(&addr);
     }
 
-    pub fn add_write_port(&mut self, addr: u32, func: Box<Fn(u32)>) {
+    pub fn add_write_port(&mut self, addr: u32, func: Box<FnMut(u32)>) {
         self.ports_w.insert(addr, func);
     }
 
@@ -748,7 +754,7 @@ impl<'a> Interpreter<'a> {
     fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Fallible<()> {
         if self.ports_w.contains_key(&addr) {
             println!("    write_port {:08X} <- {:08X}", addr, v);
-            self.ports_w[&addr](v);
+            self.ports_w.get_mut(&addr).unwrap()(v);
             return Ok(());
         }
         for map in self.memmap_w.iter_mut() {
