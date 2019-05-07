@@ -51,7 +51,7 @@ impl<'a> MemMapR<'a> {
     }
 }
 
-#[derive(Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Debug, Eq, Ord, PartialOrd, PartialEq)]
 struct MemMapW {
     start: u32,
     end: u32,
@@ -76,7 +76,7 @@ pub struct Interpreter<'a> {
     memmap_r: Vec<MemMapR<'a>>,
     bytecode: Vec<&'a ByteCode>,
     ports_r: HashMap<u32, Box<Fn() -> u32>>,
-    ports_w: HashMap<u32, Box<FnMut(u32)>>,
+    ports_w: HashMap<u32, Box<FnMut(u32) + 'a>>,
     trampolines: HashMap<u32, (String, usize)>,
 }
 
@@ -122,8 +122,8 @@ impl<'a> Interpreter<'a> {
         self.ports_r.remove(&addr);
     }
 
-    pub fn add_write_port(&mut self, addr: u32, func: Box<FnMut(u32)>) {
-        self.ports_w.insert(addr, func);
+    pub fn add_write_port<CB: 'a + FnMut(u32)>(&mut self, addr: u32, func: CB) {
+        self.ports_w.insert(addr, Box::new(func));
     }
 
     pub fn map_readonly(&mut self, start: u32, data: &'a [u8]) -> Fallible<()> {
@@ -158,6 +158,17 @@ impl<'a> Interpreter<'a> {
         self.memmap_w.push(map);
         self.memmap_w.sort();
         Ok(())
+    }
+
+    pub fn unmap_writable(&mut self, start: u32) -> Fallible<Vec<u8>> {
+        if let Ok(offset) = self.memmap_w.binary_search_by(|v| v.start.cmp(&start)) {
+            let map = self.memmap_w.remove(offset);
+            return Ok(map.mem);
+        }
+        bail!(
+            "the address {:08X} is not mapped to a writable block",
+            start
+        );
     }
 
     pub fn add_code(&mut self, bc: &'a ByteCode) {
