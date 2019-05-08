@@ -354,7 +354,10 @@ impl OperandDecodeState {
         let b = code[*ip];
         *ip += 1;
         let out = Operand::modrm(b);
-        //println!("modrm: {:2X} => mod: {}, reg: {}, rm: {}", b, out.0, out.1, out.2);
+        // println!(
+        //     "modrm: {:2X} => {:8b} => mod: {}, reg: {}, rm: {}",
+        //     b, b, out.0, out.1, out.2
+        // );
         self.modrm = Some(b);
 
         Ok(out)
@@ -460,7 +463,7 @@ impl Operand {
             0b00 => match rm {
                 0 | 1 | 2 | 3 | 6 | 7 => match desc.ty {
                     OperandType::b => {
-                        Operand::Memory(MemRef::base(Self::register_low(rm), 1, &state.prefix))
+                        Operand::Memory(MemRef::base(Self::register(rm), 1, &state.prefix))
                     }
                     OperandType::v => {
                         Operand::Memory(MemRef::base(Self::register(rm), 4, &state.prefix))

@@ -15,7 +15,7 @@
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, Fallible};
 use i386::{ByteCode, Interpreter, Reg};
-use image::LumaA;
+use image::{ImageBuffer, LumaA};
 use peff::PE;
 use std::{collections::HashMap, mem};
 
@@ -33,7 +33,7 @@ pub struct Fnt {
 const FNT_LOAD_BASE: u32 = 0x0000_0000;
 
 impl Fnt {
-    pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(game: &str, name: &str, bytes: &[u8]) -> Fallible<Self> {
         let mut pe = PE::from_bytes(bytes)?;
         pe.relocate(FNT_LOAD_BASE)?;
 
@@ -60,6 +60,18 @@ impl Fnt {
 
             let glyph_index = (i - 1) as u8;
             let glyph_char = String::from_cp437(vec![glyph_index], &CP437_CONTROL);
+
+            {
+                let mut ch = glyph_char.clone();
+                if ch == "/" {
+                    ch = format!("{}", glyph_index);
+                }
+                let filename = format!(
+                    "../../dump/fnt/{}/{}-char-{:02X}-{}.i386",
+                    game, name, glyph_index, ch
+                );
+                std::fs::write(filename, span)?;
+            }
 
             let maybe_bytecode = ByteCode::disassemble_until(0, span, |_| false);
             if let Err(e) = maybe_bytecode {
@@ -92,7 +104,6 @@ impl Fnt {
             println!("{:<2} - {:04X}:", glyph.glyph_char, glyph.glyph_index);
             println!("{}", glyph.bytecode.show_relative(0));
 
-            let mut buf = image::ImageBuffer::new(WIDTH as u32, self.height as u32);
             {
                 let mut interp = Interpreter::new();
                 interp.add_code(&glyph.bytecode);
@@ -100,11 +111,6 @@ impl Fnt {
                 interp.add_trampoline(0x60_0000, "finish", 0);
                 interp.set_register_value(Reg::EAX, 0xFFFF_FFFF);
                 interp.set_register_value(Reg::ECX, WIDTH as u32);
-
-                let mut bh_map = Vec::with_capacity(WIDTH * self.height);
-                bh_map.resize(WIDTH * self.height + 4, 0x00);
-                interp.set_register_value(Reg::BH, 0x40_0000);
-                interp.map_writable(0x40_0000, bh_map)?;
 
                 let mut edi_map = Vec::with_capacity(WIDTH * self.height);
                 edi_map.resize(WIDTH * self.height + 4, 0x00);
@@ -116,6 +122,7 @@ impl Fnt {
                 ensure!(trampoline_name == "finish", "expect return to finish");
                 ensure!(args.is_empty(), "expect no args out");
 
+                let mut buf = ImageBuffer::new(WIDTH as u32, self.height as u32);
                 let mut edi_map = interp.unmap_writable(0x30_0000)?;
                 edi_map.truncate(WIDTH * self.height);
                 for (i, v) in edi_map.iter().enumerate() {
@@ -126,19 +133,28 @@ impl Fnt {
                         LumaA { data: [*v, *v] },
                     );
                 }
+                Self::save_char(buf, game, name, glyph)?;
             }
-
-            let img = image::ImageLumaA8(buf);
-            let mut ch = glyph.glyph_char.clone();
-            if ch == "/" {
-                ch = format!("{}", glyph_index);
-            }
-            let filename = format!(
-                "../../dump/fnt/{}/{}-char-{:02X}-{}.png",
-                game, name, glyph_index, ch
-            );
-            img.save(filename)?;
         }
+        Ok(())
+    }
+
+    fn save_char(
+        buf: ImageBuffer<LumaA<u8>, Vec<u8>>,
+        game: &str,
+        name: &str,
+        glyph: &GlyphInfo,
+    ) -> Fallible<()> {
+        let img = image::ImageLumaA8(buf);
+        let mut ch = glyph.glyph_char.clone();
+        if ch == "/" {
+            ch = format!("{}", glyph.glyph_index);
+        }
+        let filename = format!(
+            "../../dump/fnt/{}/{}-char-{:02X}-{}.png",
+            game, name, glyph.glyph_index, ch
+        );
+        img.save(filename)?;
         Ok(())
     }
 }
@@ -169,7 +185,7 @@ mod tests {
             );
 
             let lib = omni.library(game);
-            let fnt = Fnt::from_bytes(&lib.load(name)?)?;
+            let fnt = Fnt::from_bytes(game, name, &lib.load(name)?)?;
             fnt.analyze(game, name)?;
         }
 

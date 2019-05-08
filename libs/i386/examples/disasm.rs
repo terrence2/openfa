@@ -14,11 +14,11 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use i386::{ByteCode, DisassemblyError};
-use std::fs;
-use std::io::prelude::*;
+use std::{env, fs, io::prelude::*};
 
 fn main() -> Fallible<()> {
-    let name = "test_data/i386/x86/ast.asm-2390.x86";
+    let args: Vec<String> = env::args().collect();
+    let name = &args[1];
     let mut fp = fs::File::open(name)?;
     let mut data = Vec::new();
     fp.read_to_end(&mut data)?;
