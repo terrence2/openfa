@@ -19,8 +19,9 @@ use pal::Palette;
 use render::{ArcBallCamera, ShRenderer};
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{sync::Arc, time::Instant};
+use std::{rc::Rc, time::Instant};
 use structopt::StructOpt;
+use text::{TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, MouseMotion},
@@ -48,8 +49,23 @@ fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-    let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
+    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let mut sh_renderer = ShRenderer::new(&window)?;
+    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let fps_handle = text_renderer
+        .add_screen_text("HUD", "", &window)?
+        .with_color(&[1f32, 0f32, 0f32, 1f32])
+        .with_horizontal_position(TextPositionH::Left)
+        .with_horizontal_anchor(TextAnchorH::Left)
+        .with_vertical_position(TextPositionV::Top)
+        .with_vertical_anchor(TextAnchorV::Top);
+    let state_handle = text_renderer
+        .add_screen_text("HUD", "", &window)?
+        .with_color(&[1f32, 0.5f32, 0f32, 1f32])
+        .with_horizontal_position(TextPositionH::Right)
+        .with_horizontal_anchor(TextAnchorH::Right)
+        .with_vertical_position(TextPositionV::Bottom)
+        .with_vertical_anchor(TextAnchorV::Bottom);
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut instance = sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
@@ -226,9 +242,6 @@ fn main() -> Fallible<()> {
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
 
-        let evt_time = loop_start.elapsed();
-        let after_events = Instant::now();
-
         window.drive_frame(|command_buffer, dynamic_state| {
             let cb = command_buffer;
             let cb = sh_renderer.render(
@@ -237,30 +250,20 @@ fn main() -> Fallible<()> {
                 cb,
                 dynamic_state,
             )?;
+            let cb = text_renderer.render(cb, dynamic_state)?;
             Ok(cb)
         })?;
 
-        println!(
-            "TOOK: {:?}; idle: {:?}",
-            loop_start.elapsed(),
-            window.idle_time
-        );
-
-        let render_time = after_events.elapsed();
-        let ft = loop_start.elapsed();
+        let frame_time = loop_start.elapsed();
+        let render_time = frame_time - window.idle_time;
         let ts = format!(
-            "{}.{}ms + {}.{}ms => {}.{} ms / {} fps",
-            evt_time.as_secs() * 1000 + u64::from(evt_time.subsec_millis()),
-            evt_time.subsec_micros(),
+            "frame: {}.{}ms / render: {}.{}ms",
+            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
+            frame_time.subsec_micros(),
             render_time.as_secs() * 1000 + u64::from(render_time.subsec_millis()),
             render_time.subsec_micros(),
-            ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
-            ft.subsec_micros(),
-            1000.
-                / ((ft.as_secs() as f64 * 1000. + f64::from(ft.subsec_millis()))
-                    + (f64::from(ft.subsec_micros()) / 1000.))
         );
-        window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
+        fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
             "dam:{}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
@@ -274,6 +277,6 @@ fn main() -> Fallible<()> {
             instance.has_afterburner_enabled()?,
             instance.get_rudder_position()?,
         );
-        window.debug_text(600f32, 30f32, 18f32, [1f32, 1f32, 1f32, 1f32], &params);
+        state_handle.set_span(&params, &window)?;
     }
 }

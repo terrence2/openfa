@@ -23,4 +23,5 @@ pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 render = { path = "../../libs/render" }
 sh = { path = "../../libs/sh" }
+text = { path = "../../libs/renderer/text" }
 window = { path = "../../libs/window" }

@@ -2,6 +2,10 @@
 
 An attempt at a black-box, open-source re-implementation of the Janes Fighters Anthology's engine.
 
+[![Build Status](https://badge.buildkite.com/5f5710df0c75ea999ada3ed52d0967537cdc7859253fcf89ab.svg)](https://buildkite.com/openfa/continuous-integration)
+[![Download](https://img.shields.io/static/v1.svg?label=download&message=latest&color=important)](https://github.com/terrence2/openfa/releases/latest)
+[![License](https://img.shields.io/static/v1.svg?label=license&message=GPLv3&color=informational)](https://github.com/terrence2/openfa/blob/master/LICENSE)
+
 ## Progress
 
 ![Shape Explorer Demo](assets/sh_explorer_demo-19-03-10.gif)
@@ -44,7 +48,7 @@ but most are extremely weird relics of a bygone computing age.
 | BI        | AI Binary       |          |
 | CAM       | Campaign        |          |
 | DLG       | Dialog Menus    |          |
-| FNT       | Font            |          |
+| FNT       | Font            | x        |
 | HGR       |                 |          |
 | HUD       |                 |          |
 | LAY       | Terrain Palette | x        |

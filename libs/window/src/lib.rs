@@ -34,7 +34,6 @@ use vulkano::{
     sync,
     sync::{FlushError, GpuFuture},
 };
-use vulkano_text::{DrawText, DrawTextTrait};
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
 
@@ -83,7 +82,6 @@ struct SizeDependent {
     swapchain: Arc<Swapchain<Window>>,
     framebuffers: Vec<Arc<FramebufferAbstract + Send + Sync>>,
     render_pass: Arc<RenderPassAbstract + Send + Sync>,
-    draw_text: DrawText,
 }
 
 impl SizeDependent {
@@ -129,8 +127,6 @@ impl SizeDependent {
             None,
         )?;
 
-        let draw_text = DrawText::new(device.clone(), queue.clone(), swapchain.clone(), &images);
-
         // FIXME: configure this with what's in GraphicsConfig.
         // Although the render pass is not sized, the format depends on whatever we receive
         // for a swapchain, so must be created after it.
@@ -169,14 +165,13 @@ impl SizeDependent {
             swapchain,
             framebuffers,
             render_pass,
-            draw_text,
         })
     }
 
     fn handle_resize(
         &mut self,
         device: &Arc<Device>,
-        queue: &Arc<Queue>,
+        _queue: &Arc<Queue>,
         surface: &Arc<Surface<Window>>,
     ) -> Fallible<()> {
         let dimensions = GraphicsWindow::surface_dimensions(surface)?;
@@ -194,13 +189,6 @@ impl SizeDependent {
 
         let (swapchain, images) = self.swapchain.recreate_with_dimension(dimensions)?;
         self.swapchain = swapchain;
-
-        self.draw_text = DrawText::new(
-            device.clone(),
-            queue.clone(),
-            self.swapchain.clone(),
-            &images,
-        );
 
         let mut framebuffers = Vec::new();
         for image in &images {
@@ -353,12 +341,6 @@ impl GraphicsWindow {
         self.recreatable.framebuffers[offset].clone()
     }
 
-    pub fn debug_text(&mut self, x: f32, y: f32, size: f32, color: [f32; 4], text: &str) {
-        self.recreatable
-            .draw_text
-            .queue_text(x, y, size, color, text)
-    }
-
     pub fn note_resize(&mut self) {
         self.dirty_size = true;
     }
@@ -415,7 +397,6 @@ impl GraphicsWindow {
 
         let command_buffer = draw(command_buffer, &self.dynamic_state)?
             .end_render_pass()?
-            .draw_text(&mut self.recreatable.draw_text, image_num)
             .build()?;
 
         // Wait for our oldest frame to finish, submit the new command buffer, then send
