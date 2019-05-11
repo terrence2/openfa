@@ -12,12 +12,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#![allow(clippy::transmute_ptr_to_ptr)]
+
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, Fallible};
 use i386::{ByteCode, Interpreter, Reg};
 use image::{ImageBuffer, LumaA};
 use peff::PE;
 use std::{collections::HashMap, mem};
+
+// Save chars to png when testing.
+const DUMP_CHARS: bool = false;
 
 pub struct GlyphInfo {
     pub glyph_index: u8,
@@ -74,7 +79,7 @@ impl Fnt {
             for instr in &bytecode.instrs {
                 for operand in &instr.operands {
                     if let i386::Operand::Memory(memref) = operand {
-                        let offset = memref.displacement + (memref.size as i32 - 1);
+                        let offset = memref.displacement + i32::from(memref.size) - 1;
                         width = width.max(offset);
                     }
                 }
@@ -148,15 +153,17 @@ impl Fnt {
         glyph: &GlyphInfo,
     ) -> Fallible<()> {
         let img = image::ImageLumaA8(buf);
-        let mut ch = glyph.glyph_char.clone();
-        if ch == "/" {
-            ch = format!("{}", glyph.glyph_index);
+        if DUMP_CHARS {
+            let mut ch = glyph.glyph_char.clone();
+            if ch == "/" {
+                ch = format!("{}", glyph.glyph_index);
+            }
+            let filename = format!(
+                "../../dump/fnt/{}/{}-char-{:02X}-{}.png",
+                game, name, glyph.glyph_index, ch
+            );
+            img.save(filename)?;
         }
-        let filename = format!(
-            "../../dump/fnt/{}/{}-char-{:02X}-{}.png",
-            game, name, glyph.glyph_index, ch
-        );
-        img.save(filename)?;
         Ok(())
     }
 }

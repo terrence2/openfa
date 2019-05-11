@@ -14,11 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-extern crate bitflags;
-extern crate failure;
-extern crate log;
-extern crate packed_struct;
-
 use bitflags::bitflags;
 use failure::{bail, ensure, Fail, Fallible};
 use log::trace;
