@@ -14,12 +14,33 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use i386::{ByteCode, DisassemblyError};
-use std::fs;
-use std::io::prelude::*;
+use simplelog::{Config, LevelFilter, TermLogger};
+use std::{fs, io::prelude::*, path::PathBuf};
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = "disasm", about = "Disassemble and show an assembly fragment.")]
+struct Opt {
+    /// Trace disassembly process
+    #[structopt(short = "v", long = "verbose")]
+    verbose: bool,
+
+    /// Input file
+    #[structopt(parse(from_os_str))]
+    input: PathBuf,
+}
 
 fn main() -> Fallible<()> {
-    let name = "test_data/i386/x86/ast.asm-2390.x86";
-    let mut fp = fs::File::open(name)?;
+    let opt = Opt::from_args();
+
+    let level = if opt.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Debug
+    };
+    TermLogger::init(level, Config::default())?;
+
+    let mut fp = fs::File::open(opt.input)?;
     let mut data = Vec::new();
     fp.read_to_end(&mut data)?;
 

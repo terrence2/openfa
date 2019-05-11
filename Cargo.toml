@@ -6,6 +6,7 @@ edition = "2018"
 
 [workspace]
 members = [
+        "apps/disasm",
         "apps/dlg_explorer",
         "apps/mm_explorer",
         "apps/paldump",
@@ -21,6 +22,7 @@ members = [
         "libs/ansi",
         "libs/asset",
         "libs/dlg",
+        "libs/fnt",
         "libs/i386",
         "libs/jt",
         "libs/lay",
@@ -37,6 +39,7 @@ members = [
         "libs/pkware",
         "libs/pt",
         "libs/render",
+        "libs/renderer/text",
         "libs/resource",
         "libs/reverse",
         "libs/sh",

@@ -232,6 +232,7 @@ pub struct GraphicsWindow {
     outstanding_frames: VecDeque<Box<GpuFuture>>,
     dirty_size: bool,
     pub idle_time: Duration,
+    clear_color: [f32; 4],
 }
 
 impl GraphicsWindow {
@@ -289,6 +290,7 @@ impl GraphicsWindow {
             outstanding_frames: VecDeque::with_capacity(4),
             dirty_size: false,
             idle_time: Default::default(),
+            clear_color: [0.0, 0.0, 1.0, 1.0],
         };
 
         // Push a fake first frame so that we have something wait on in our frame driver.
@@ -304,6 +306,10 @@ impl GraphicsWindow {
         }]);
 
         Ok(window)
+    }
+
+    pub fn set_clear_color(&mut self, clr: &[f32; 4]) {
+        self.clear_color = *clr;
     }
 
     pub fn dimensions(&self) -> Fallible<[f32; 2]> {
@@ -404,7 +410,7 @@ impl GraphicsWindow {
         .begin_render_pass(
             self.framebuffer(image_num),
             false,
-            vec![[0.0, 0.0, 1.0, 1.0].into(), 0f32.into()],
+            vec![self.clear_color.into(), 0f32.into()],
         )?;
 
         let command_buffer = draw(command_buffer, &self.dynamic_state)?

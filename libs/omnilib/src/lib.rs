@@ -177,8 +177,11 @@ impl OmniLib {
         Ok(out)
     }
 
-    pub fn libraries(&self) -> Vec<Arc<Box<Library>>> {
-        self.libraries.values().cloned().collect()
+    pub fn libraries(&self) -> Vec<(String, Arc<Box<Library>>)> {
+        self.libraries
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 
     pub fn library(&self, libname: &str) -> Arc<Box<Library>> {
