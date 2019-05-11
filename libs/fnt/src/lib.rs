@@ -22,6 +22,7 @@ use std::{collections::HashMap, mem};
 pub struct GlyphInfo {
     pub glyph_index: u8,
     pub glyph_char: String,
+    pub width: i32,
     pub bytecode: ByteCode,
 }
 
@@ -33,7 +34,7 @@ pub struct Fnt {
 const FNT_LOAD_BASE: u32 = 0x0000_0000;
 
 impl Fnt {
-    pub fn from_bytes(game: &str, name: &str, bytes: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(_game: &str, _name: &str, bytes: &[u8]) -> Fallible<Self> {
         let mut pe = PE::from_bytes(bytes)?;
         pe.relocate(FNT_LOAD_BASE)?;
 
@@ -61,18 +62,6 @@ impl Fnt {
             let glyph_index = (i - 1) as u8;
             let glyph_char = String::from_cp437(vec![glyph_index], &CP437_CONTROL);
 
-            {
-                let mut ch = glyph_char.clone();
-                if ch == "/" {
-                    ch = format!("{}", glyph_index);
-                }
-                let filename = format!(
-                    "../../dump/fnt/{}/{}-char-{:02X}-{}.i386",
-                    game, name, glyph_index, ch
-                );
-                std::fs::write(filename, span)?;
-            }
-
             let maybe_bytecode = ByteCode::disassemble_until(0, span, |_| false);
             if let Err(e) = maybe_bytecode {
                 i386::DisassemblyError::maybe_show(&e, &span);
@@ -80,11 +69,24 @@ impl Fnt {
             }
             let bytecode = maybe_bytecode?;
 
+            // Compute glyph width by observing the rightmost write
+            let mut width = 0;
+            for instr in &bytecode.instrs {
+                for operand in &instr.operands {
+                    if let i386::Operand::Memory(memref) = operand {
+                        let offset = memref.displacement + (memref.size as i32 - 1);
+                        width = width.max(offset);
+                    }
+                }
+            }
+            width += 2;
+
             glyphs.insert(
                 glyph_index,
                 GlyphInfo {
                     glyph_index,
                     glyph_char,
+                    width,
                     bytecode,
                 },
             );
@@ -173,9 +175,6 @@ mod tests {
             "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
         ])?;
         for (game, name) in omni.find_matching("*.FNT")?.iter() {
-            // if name != "MAPFONT.FNT" {
-            //     continue;
-            // }
             println!(
                 "At: {}:{:13} @ {}",
                 game,

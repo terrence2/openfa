@@ -175,6 +175,10 @@ impl<'a> Interpreter<'a> {
         self.bytecode.push(bc);
     }
 
+    pub fn clear_code(&mut self) {
+        self.bytecode.clear();
+    }
+
     fn find_instr(&self) -> Fallible<(&'a ByteCode, usize)> {
         trace!("searching for instr at ip: {:08X}", self.eip());
         for bc in self.bytecode.iter() {
@@ -206,7 +210,7 @@ impl<'a> Interpreter<'a> {
         let (bc, mut offset) = self.find_instr()?;
         while offset < bc.instrs.len() {
             let instr = &bc.instrs[offset];
-            println!("{:3}:{:04X}: {}", offset, self.eip(), instr);
+            trace!("{:3}:{:04X}: {}", offset, self.eip(), instr);
             offset += 1;
             *self.eip_mut() += instr.size() as u32;
             match instr.memonic {
@@ -258,7 +262,7 @@ impl<'a> Interpreter<'a> {
                     let absolute = self.do_return()?;
                     // If returning to a trampoline, do actual return with data
                     // about what we would be returning from.
-                    println!("checking {:08X} against {:?}", absolute, self.trampolines);
+                    trace!("checking {:08X} against {:?}", absolute, self.trampolines);
                     if self.trampolines.contains_key(&absolute) {
                         let (ref name, ref arg_count) = self.trampolines[&absolute];
                         let mut args = self.stack[self.stack.len() - *arg_count..].to_owned();
@@ -344,7 +348,7 @@ impl<'a> Interpreter<'a> {
         let v = self.get(op)?;
         self.stack.push(v);
         *self.esp_mut() -= 4;
-        println!("        push {:08X}: sp at {:08X}", v, self.esp());
+        trace!("        push {:08X}: sp at {:08X}", v, self.esp());
         Ok(())
     }
 
@@ -353,7 +357,7 @@ impl<'a> Interpreter<'a> {
         let v = self.stack.pop().unwrap();
         self.put(op, v)?;
         *self.esp_mut() += 4;
-        println!("        pop: sp at {:08X}", self.esp());
+        trace!("        pop: sp at {:08X}", self.esp());
         Ok(())
     }
 
@@ -546,9 +550,15 @@ impl<'a> Interpreter<'a> {
         };
         self.zf = v == 0;
         self.sf = (v as i32) < 0;
-        println!(
+        trace!(
             "    compare {:08X}, {:08X} -> {:04X} => cf:{}, of:{}, zf:{}, sf:{}",
-            a, b, v, self.cf, self.of, self.zf, self.sf
+            a,
+            b,
+            v,
+            self.cf,
+            self.of,
+            self.zf,
+            self.sf
         );
         Ok(())
     }
@@ -576,7 +586,7 @@ impl<'a> Interpreter<'a> {
             return Ok(0);
         }
         let offset = self.get(op)? as i32;
-        println!("    jcc -> {:04X}", offset);
+        trace!("    jcc -> {:04X}", offset);
         Ok(offset)
     }
 
@@ -600,7 +610,7 @@ impl<'a> Interpreter<'a> {
 
     fn do_jump(&self, op: &Operand) -> Fallible<i32> {
         let offset = self.get(op)? as i32;
-        println!("    jump -> {:04X}", offset);
+        trace!("    jump -> {:04X}", offset);
         Ok(offset)
     }
 
@@ -609,7 +619,7 @@ impl<'a> Interpreter<'a> {
         let ip = self.eip();
         self.stack.push(ip);
         *self.esp_mut() -= 4;
-        println!("    call -> {:04X}", offset);
+        trace!("    call -> {:04X}", offset);
         Ok(offset)
     }
 
@@ -617,7 +627,7 @@ impl<'a> Interpreter<'a> {
         ensure!(!self.stack.is_empty(), "return with empty stack");
         let absolute = self.stack.pop().unwrap();
         *self.esp_mut() += 4;
-        println!("    ret -> {:04X}", absolute);
+        trace!("    ret -> {:04X}", absolute);
         Ok(absolute)
     }
 
@@ -671,16 +681,16 @@ impl<'a> Interpreter<'a> {
             Operand::Register(r) => {
                 let base = self.registers[r.to_offset()];
                 if r.is_reg16() {
-                    println!("    read_reg {} -> {:04X}", r, base & 0xFFFF);
+                    trace!("    read_reg {} -> {:04X}", r, base & 0xFFFF);
                     base & 0xFFFF
                 } else if r.is_low8() {
-                    println!("    read_reg {} -> {:02X}", r, base & 0xFF);
+                    trace!("    read_reg {} -> {:02X}", r, base & 0xFF);
                     base & 0xFF
                 } else if r.is_high8() {
-                    println!("    read_reg {} -> {:02X}", r, (base >> 8) & 0xFF);
+                    trace!("    read_reg {} -> {:02X}", r, (base >> 8) & 0xFF);
                     (base >> 8) & 0xFF
                 } else {
-                    println!("    read_reg {} -> {:08X}", r, base);
+                    trace!("    read_reg {} -> {:08X}", r, base);
                     base
                 }
             }
@@ -694,20 +704,20 @@ impl<'a> Interpreter<'a> {
     fn mem_lookup(&self, addr: u32, size: u8) -> Fallible<u32> {
         if self.ports_r.contains_key(&addr) {
             let v = self.ports_r[&addr]();
-            println!("    read_port {:08X} -> {:08X}", addr, v);
+            trace!("    read_port {:08X} -> {:08X}", addr, v);
             return Ok(v);
         }
         for map in self.memmap_w.iter() {
             if addr >= map.start && addr < map.end {
                 let v = self.mem_peek((addr - map.start) as usize, &map.mem, size)?;
-                println!("    read_rw  {} @ {:08X} -> {:08X}", size, addr, v);
+                trace!("    read_rw  {} @ {:08X} -> {:08X}", size, addr, v);
                 return Ok(v);
             }
         }
         for map in self.memmap_r.iter() {
             if addr >= map.start && addr < map.end {
                 let v = self.mem_peek((addr - map.start) as usize, &map.mem, size)?;
-                println!("    read_ro  {} @ {:08X} -> {:08X}", size, addr, v);
+                trace!("    read_ro  {} @ {:08X} -> {:08X}", size, addr, v);
                 return Ok(v);
             }
         }
@@ -737,19 +747,19 @@ impl<'a> Interpreter<'a> {
         match op {
             Operand::Register(r) => {
                 if r.is_reg16() {
-                    println!("    write_reg {} <- {:04X}", r, v & 0xFFFF);
+                    trace!("    write_reg {} <- {:04X}", r, v & 0xFFFF);
                     self.registers[r.to_offset()] &= !0xFFFF;
                     self.registers[r.to_offset()] |= v & 0xFFFF;
                 } else if r.is_low8() {
-                    println!("    write_reg {} <- {:02X}", r, v & 0xFF);
+                    trace!("    write_reg {} <- {:02X}", r, v & 0xFF);
                     self.registers[r.to_offset()] &= !0xFF;
                     self.registers[r.to_offset()] |= v & 0xFF;
                 } else if r.is_high8() {
-                    println!("    write_reg {} <- {:04X}", r, (v & 0xFF) << 8);
+                    trace!("    write_reg {} <- {:04X}", r, (v & 0xFF) << 8);
                     self.registers[r.to_offset()] &= !0xFF00;
                     self.registers[r.to_offset()] |= (v & 0xFF) << 8;
                 } else {
-                    println!("    write_reg {} <- {:08X}", r, v);
+                    trace!("    write_reg {} <- {:08X}", r, v);
                     self.registers[r.to_offset()] = v;
                 }
             }
@@ -764,7 +774,7 @@ impl<'a> Interpreter<'a> {
 
     fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Fallible<()> {
         if self.ports_w.contains_key(&addr) {
-            println!("    write_port {:08X} <- {:08X}", addr, v);
+            trace!("    write_port {:08X} <- {:08X}", addr, v);
             self.ports_w.get_mut(&addr).unwrap()(v);
             return Ok(());
         }
@@ -783,7 +793,7 @@ impl<'a> Interpreter<'a> {
                     }
                     _ => bail!("don't know how to handle write size {}", size),
                 }
-                println!("    write_rw {}@ {:08X} <- {:08X}", size, addr, v);
+                trace!("    write_rw {}@ {:08X} <- {:08X}", size, addr, v);
                 return Ok(());
             }
         }

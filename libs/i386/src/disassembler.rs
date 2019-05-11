@@ -309,17 +309,24 @@ impl fmt::Display for MemRef {
         } else {
             "".to_owned()
         };
+        let size = match self.size {
+            1 => "BYTE PTR ",
+            2 => "WORD PTR ",
+            _ => "DWORD PTR ",
+        };
         match (&self.base, &self.index) {
             (&Some(ref base), &Some(ref index)) => write!(
                 f,
-                "{}[{:?}+{:?}*{}+0x{:X}]",
-                seg, base, index, self.scale, self.displacement
+                "{}{}[{:?}+{:?}*{}+0x{:X}]",
+                seg, size, base, index, self.scale, self.displacement
             ),
-            (&Some(ref base), &None) => write!(f, "{}[{:?}+0x{:X}]", seg, base, self.displacement),
+            (&Some(ref base), &None) => {
+                write!(f, "{}{}[{:?}+0x{:X}]", seg, size, base, self.displacement)
+            }
             (&None, &Some(ref index)) => write!(
                 f,
-                "{}[{:?}*{}+0x{:X}]",
-                seg, index, self.scale, self.displacement
+                "{}{}[{:?}*{}+0x{:X}]",
+                seg, size, index, self.scale, self.displacement
             ),
             (&None, &None) => write!(f, "{}[0x{:X}]", seg, self.displacement),
         }
@@ -462,12 +469,16 @@ impl Operand {
         Ok(match mod_ {
             0b00 => match rm {
                 0 | 1 | 2 | 3 | 6 | 7 => match desc.ty {
-                    OperandType::b => {
-                        Operand::Memory(MemRef::base(Self::register(rm), 1, &state.prefix))
-                    }
-                    OperandType::v => {
-                        Operand::Memory(MemRef::base(Self::register(rm), 4, &state.prefix))
-                    }
+                    OperandType::b => Operand::Memory(MemRef::base(
+                        Self::register(rm),
+                        MemRef::size_for_type(desc.ty, state)?,
+                        &state.prefix,
+                    )),
+                    OperandType::v => Operand::Memory(MemRef::base(
+                        Self::register(rm),
+                        MemRef::size_for_type(desc.ty, state)?,
+                        &state.prefix,
+                    )),
                     _ => unreachable!(),
                 },
                 4 => {

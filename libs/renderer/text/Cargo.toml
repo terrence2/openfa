@@ -1,0 +1,27 @@
+[package]
+name = "text"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+codepage-437 = ">= 0.1.0"
+failure = ">= 0.1.2"
+image = ">= 0.18"
+lazy_static = ">= 1"
+log = ">= 0.4"
+nalgebra = "^ 0.18"
+vulkano = "^ 0.11.1"
+vulkano-shaders = "^ 0.11.1"
+vulkano-win = "^ 0.11.1"
+#winit = "^ 0.18"
+fnt = { path = "../../../libs/fnt" }
+i386 = { path = "../../../libs/i386" }
+lib = { path = "../../../libs/lib" }
+pal = { path = "../../../libs/pal" }
+pic = { path = "../../../libs/pic" }
+window = { path = "../../../libs/window" }
+
+[dev-dependencies]
+simplelog = "^0.5.0"
+omnilib = { path = "../../../libs/omnilib" }
