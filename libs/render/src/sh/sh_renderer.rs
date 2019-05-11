@@ -1414,7 +1414,7 @@ mod test {
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
-    use std::{rc::Rc, f32::consts::PI};
+    use std::{f32::consts::PI, rc::Rc};
     use window::GraphicsConfigBuilder;
 
     #[test]
