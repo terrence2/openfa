@@ -18,10 +18,12 @@ use log::trace;
 use mm::MissionMap;
 use nalgebra::Isometry3;
 use omnilib::{make_opt_struct, OmniLib};
+use pal::Palette;
 use render::{ArcBallCamera, PalRenderer, T2Renderer};
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{sync::Arc, time::Instant};
+use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
+use text::{TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, Key, MouseMotion, MouseWheel},
@@ -48,6 +50,7 @@ pub fn main() -> Fallible<()> {
     let (game, name) = inputs.first().unwrap();
     let lib = omni.library(&game);
 
+    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
@@ -67,6 +70,22 @@ pub fn main() -> Fallible<()> {
     let mut pal_renderer = PalRenderer::new(&window)?;
     pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
     ///////////////////////////////////////////////////////////
+
+    let mut text_renderer = TextRenderer::new(system_palette, &lib, &window)?;
+    let fps_handle = text_renderer
+        .add_screen_text("HUD", "", &window)?
+        .with_color(&[1f32, 0f32, 0f32, 1f32])
+        .with_horizontal_position(TextPositionH::Left)
+        .with_horizontal_anchor(TextAnchorH::Left)
+        .with_vertical_position(TextPositionV::Bottom)
+        .with_vertical_anchor(TextAnchorV::Bottom);
+    let state_handle = text_renderer
+        .add_screen_text("HUD", "", &window)?
+        .with_color(&[1f32, 0.5f32, 0f32, 1f32])
+        .with_horizontal_position(TextPositionH::Right)
+        .with_horizontal_anchor(TextAnchorH::Right)
+        .with_vertical_position(TextPositionV::Bottom)
+        .with_vertical_anchor(TextAnchorV::Bottom);
 
     let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.001f32, 3.4e+38f32);
@@ -88,6 +107,7 @@ pub fn main() -> Fallible<()> {
             let cb = command_buffer;
             let cb = t2_renderer.render(cb, dynamic_state)?;
             let cb = pal_renderer.render(cb, dynamic_state)?;
+            let cb = text_renderer.render(cb, dynamic_state)?;
             Ok(cb)
         })?;
 
@@ -175,13 +195,7 @@ pub fn main() -> Fallible<()> {
             "base: lay:{} c2:{} d3:{} e0:{} f1:{}",
             lay_base, c2_off, d3_off, e0_off, f1_off
         );
-        window.debug_text(
-            1800f32,
-            25f32,
-            30f32,
-            [1f32, 0.5f32, 0.5f32, 1f32],
-            &offsets,
-        );
+        state_handle.set_span(&offsets, &window)?;
 
         let ft = loop_start.elapsed();
         let ts = format!(
@@ -189,6 +203,6 @@ pub fn main() -> Fallible<()> {
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );
-        window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
+        fps_handle.set_span(&ts, &window)?;
     }
 }

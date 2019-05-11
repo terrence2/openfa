@@ -1414,7 +1414,7 @@ mod test {
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
-    use std::f32::consts::PI;
+    use std::{f32::consts::PI, rc::Rc};
     use window::GraphicsConfigBuilder;
 
     #[test]
@@ -1455,7 +1455,8 @@ mod test {
 
             let lib = omni.library(game);
             if !palettes.contains_key(game) {
-                let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
+                let system_palette =
+                    Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
                 palettes.insert(game, system_palette);
             }
 

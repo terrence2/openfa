@@ -24,6 +24,7 @@ use pic::Pic;
 use sh::{FacetFlags, Instr, RawShape};
 use std::{
     collections::HashMap,
+    rc::Rc,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -219,7 +220,7 @@ pub struct DrawMode {
 }
 
 pub struct RawShRenderer {
-    system_palette: Arc<Palette>,
+    system_palette: Rc<Box<Palette>>,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     instance: Option<ShInstance>,
 }
@@ -227,7 +228,7 @@ pub struct RawShRenderer {
 const INST_BASE: u32 = 0x0000_4000;
 
 impl RawShRenderer {
-    pub fn new(system_palette: Arc<Palette>, window: &GraphicsWindow) -> Fallible<Self> {
+    pub fn new(system_palette: Rc<Box<Palette>>, window: &GraphicsWindow) -> Fallible<Self> {
         trace!("RawShRenderer::new");
 
         let vs = vs::Shader::load(window.device())?;
@@ -1203,7 +1204,7 @@ mod test {
             let lib = omni.library(game);
             let data = lib.load(name)?;
             let sh = RawShape::from_bytes(&data)?;
-            let system_palette = Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?);
+            let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
             let mut sh_renderer = RawShRenderer::new(system_palette, &window)?;
 
             let draw_mode = DrawMode {

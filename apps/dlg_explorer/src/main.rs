@@ -16,10 +16,12 @@ use dlg::Dialog;
 use failure::{bail, Fallible};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
+use pal::Palette;
 use render::DialogRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{sync::Arc, time::Instant};
+use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
+use text::{TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::Key,
@@ -51,6 +53,16 @@ pub fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
+    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
+    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let fps_handle = text_renderer
+        .add_screen_text("HUD", "", &window)?
+        .with_color(&[1f32, 0f32, 0f32, 1f32])
+        .with_horizontal_position(TextPositionH::Left)
+        .with_horizontal_anchor(TextAnchorH::Left)
+        .with_vertical_position(TextPositionV::Top)
+        .with_vertical_anchor(TextAnchorV::Top);
+
     let background = if let Some(s) = opt.background {
         s
     } else {
@@ -71,6 +83,7 @@ pub fn main() -> Fallible<()> {
         window.drive_frame(|command_buffer, dynamic_state| {
             let cb = command_buffer;
             let cb = dlg_renderer.render(cb, dynamic_state)?;
+            let cb = text_renderer.render(cb, dynamic_state)?;
             Ok(cb)
         })?;
 
@@ -150,6 +163,6 @@ pub fn main() -> Fallible<()> {
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );
-        window.debug_text(10f32, 30f32, 15f32, [1f32, 1f32, 1f32, 1f32], &ts);
+        fps_handle.set_span(&ts, &window)?;
     }
 }

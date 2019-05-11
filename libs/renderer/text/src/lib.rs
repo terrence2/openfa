@@ -98,10 +98,6 @@ impl vs::ty::PushConstantData {
     fn new(m: Matrix4<f32>, c: &[f32; 4]) -> Self {
         Self {
             projection: [
-                // [1.0f32, 0.0f32, 0.0f32, 0f32],
-                // [0.0f32, 1.0f32, 0.0f32, 0f32],
-                // [0.0f32, 0.0f32, 1.0f32, 0f32],
-                // [0.0f32, 0.0f32, 0.0f32, 1.0f32],
                 [m[0], m[1], m[1], m[3]],
                 [m[4], m[5], m[6], m[7]],
                 [m[8], m[9], m[7], m[11]],
@@ -129,7 +125,34 @@ pub enum TextAnchorV {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum TextPosition {
+pub enum TextPositionH {
+    // In vulkan screen space: -1.0 -> 1.0
+    Vulkan(f32),
+
+    // In FA screen space: 0 -> 640
+    FA(u32),
+
+    // Labeled positions
+    Center,
+    Left,
+    Right,
+}
+
+impl TextPositionH {
+    fn to_vulkan(self) -> f32 {
+        const SCALE: f32 = 640f32;
+        match self {
+            TextPositionH::Center => 0f32,
+            TextPositionH::Left => -1f32,
+            TextPositionH::Right => 1f32,
+            TextPositionH::Vulkan(v) => v,
+            TextPositionH::FA(i) => (i as f32) / SCALE * 2f32 - 1f32,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum TextPositionV {
     // In vulkan screen space: -1.0 -> 1.0
     Vulkan(f32),
 
@@ -138,22 +161,19 @@ pub enum TextPosition {
 
     // Labeled positions
     Center,
-    Left,
-    Right,
     Top,
     Bottom,
 }
 
-impl TextPosition {
-    fn to_vulkan(self, fa_scale: f32) -> f32 {
+impl TextPositionV {
+    fn to_vulkan(self) -> f32 {
+        const SCALE: f32 = 480f32;
         match self {
-            TextPosition::Center => 0f32,
-            TextPosition::Left => -1f32,
-            TextPosition::Top => -1f32,
-            TextPosition::Right => 1f32,
-            TextPosition::Bottom => 1f32,
-            TextPosition::Vulkan(v) => v,
-            TextPosition::FA(i) => (i as f32) / fa_scale * 2f32 - 1f32,
+            TextPositionV::Center => 0f32,
+            TextPositionV::Top => -1f32,
+            TextPositionV::Bottom => 1f32,
+            TextPositionV::Vulkan(v) => v,
+            TextPositionV::FA(i) => (i as f32) / SCALE * 2f32 - 1f32,
         }
     }
 }
@@ -180,12 +200,12 @@ impl LayoutHandle {
         self
     }
 
-    pub fn with_horizontal_position(self, pos: TextPosition) -> Self {
+    pub fn with_horizontal_position(self, pos: TextPositionH) -> Self {
         self.set_horizontal_position(pos);
         self
     }
 
-    pub fn with_vertical_position(self, pos: TextPosition) -> Self {
+    pub fn with_vertical_position(self, pos: TextPositionV) -> Self {
         self.set_vertical_position(pos);
         self
     }
@@ -200,11 +220,11 @@ impl LayoutHandle {
         self
     }
 
-    pub fn set_horizontal_position(&self, pos: TextPosition) {
+    pub fn set_horizontal_position(&self, pos: TextPositionH) {
         self.layout.borrow_mut().position_x = pos;
     }
 
-    pub fn set_vertical_position(&self, pos: TextPosition) {
+    pub fn set_vertical_position(&self, pos: TextPositionV) {
         self.layout.borrow_mut().position_y = pos;
     }
 
@@ -244,8 +264,8 @@ impl LayoutHandle {
     fn push_consts(&self) -> Fallible<vs::ty::PushConstantData> {
         let layout = self.layout.borrow();
 
-        let x = layout.position_x.to_vulkan(640f32);
-        let y = layout.position_y.to_vulkan(480f32);
+        let x = layout.position_x.to_vulkan();
+        let y = layout.position_y.to_vulkan();
 
         let dx = match layout.anchor_x {
             TextAnchorH::Left => 0f32,
@@ -279,8 +299,8 @@ pub struct Layout {
     // Cached per-frame render state.
     //push_consts: vs::ty::PushConstantData,
     render_width: f32,
-    position_x: TextPosition,
-    position_y: TextPosition,
+    position_x: TextPositionH,
+    position_y: TextPositionV,
     anchor_x: TextAnchorH,
     anchor_y: TextAnchorV,
     scale: [f32; 2],
@@ -300,8 +320,8 @@ impl Layout {
 
             //push_consts: vs::ty::PushConstantData::new(),
             render_width,
-            position_x: TextPosition::Center,
-            position_y: TextPosition::Center,
+            position_x: TextPositionH::Center,
+            position_y: TextPositionV::Center,
             anchor_x: TextAnchorH::Left,
             anchor_y: TextAnchorV::Top,
             scale: [1f32, 1f32],
@@ -732,50 +752,50 @@ mod test {
             renderer
                 .add_screen_text("HUD", "Top Left (r)", &window)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
-                .with_horizontal_position(TextPosition::Left)
+                .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
-                .with_vertical_position(TextPosition::Top)
+                .with_vertical_position(TextPositionV::Top)
                 .with_vertical_anchor(TextAnchorV::Top);
 
             renderer
                 .add_screen_text("HUD", "Top Right (b)", &window)?
                 .with_color(&[0f32, 0f32, 1f32, 1f32])
-                .with_horizontal_position(TextPosition::Right)
+                .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
-                .with_vertical_position(TextPosition::Top)
+                .with_vertical_position(TextPositionV::Top)
                 .with_vertical_anchor(TextAnchorV::Top);
 
             renderer
                 .add_screen_text("HUD", "Bottom Left (w)", &window)?
                 .with_color(&[1f32, 1f32, 1f32, 1f32])
-                .with_horizontal_position(TextPosition::Left)
+                .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
-                .with_vertical_position(TextPosition::Bottom)
+                .with_vertical_position(TextPositionV::Bottom)
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             renderer
                 .add_screen_text("HUD", "Bottom Right (m)", &window)?
                 .with_color(&[1f32, 0f32, 1f32, 1f32])
-                .with_horizontal_position(TextPosition::Right)
+                .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
-                .with_vertical_position(TextPosition::Bottom)
+                .with_vertical_position(TextPositionV::Bottom)
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             let handle_clr = renderer
                 .add_screen_text("HUD", "", &window)?
                 .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &window)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
-                .with_horizontal_position(TextPosition::Center)
+                .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
-                .with_vertical_position(TextPosition::Bottom)
+                .with_vertical_position(TextPositionV::Bottom)
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             let handle_fin = renderer
                 .add_screen_text("HUD", "DONE: 0%", &window)?
                 .with_color(&[0f32, 1f32, 0f32, 1f32])
-                .with_horizontal_position(TextPosition::Center)
+                .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
-                .with_vertical_position(TextPosition::Center)
+                .with_vertical_position(TextPositionV::Center)
                 .with_vertical_anchor(TextAnchorV::Center);
 
             for i in 0..32 {
