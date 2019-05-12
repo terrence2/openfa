@@ -27,6 +27,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Instant,
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -45,6 +46,8 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
+
+const ANIMATION_FRAME_TIME: usize = 166; // ms
 
 bitflags! {
     struct VertexFlags: u64 {
@@ -278,14 +281,17 @@ impl vs::ty::PushConstantData {
 }
 
 pub struct ShapeErrata {
+    frame_count: usize,
     no_upper_aileron: bool,
     // has_toggle_gear: bool,
     // has_toggle_bay: bool,
 }
 
 impl ShapeErrata {
-    fn from_vertex_flags(flags: VertexFlags) -> Self {
+    fn new(frame_count: usize, flags: VertexFlags) -> Self {
         Self {
+            frame_count,
+
             // ERRATA: ATFNATO:F22.SH is missing aileron up meshes.
             no_upper_aileron: !(flags & VertexFlags::AILERONS_DOWN).is_empty()
                 && (flags & VertexFlags::AILERONS_UP).is_empty(),
@@ -346,8 +352,14 @@ impl Default for DrawState {
 }
 
 impl DrawState {
-    fn build_mask(&self, errata: &ShapeErrata) -> Fallible<u64> {
+    fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
+
+        if errata.frame_count > 0 {
+            let offset = ((start.elapsed().as_millis() as usize) / ANIMATION_FRAME_TIME)
+                % errata.frame_count;
+            mask |= VertexFlags::from_bits(VertexFlags::ANIM_FRAME_0.bits() << offset).unwrap();
+        }
 
         mask |= if self.flaps_down {
             VertexFlags::LEFT_FLAP_DOWN | VertexFlags::RIGHT_FLAP_DOWN
@@ -472,8 +484,11 @@ impl ShapeInstanceRef {
         }
     }
 
-    pub fn build_render_mask(&self, errata: &ShapeErrata) -> Fallible<u64> {
-        self.value.try_borrow()?.draw_state.build_mask(errata)
+    pub fn build_render_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
+        self.value
+            .try_borrow()?
+            .draw_state
+            .build_mask(start, errata)
     }
 
     pub fn get_models(&self) -> Vec<Arc<ShapeModel>> {
@@ -859,6 +874,7 @@ impl BufferProperties {
 }
 
 pub struct ShRenderer {
+    start: Instant,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     instances: Vec<ShapeInstanceRef>,
 }
@@ -894,6 +910,7 @@ impl ShRenderer {
                 .build(window.device())?,
         );
         Ok(ShRenderer {
+            start: Instant::now(),
             pipeline,
             instances: Vec::new(),
         })
@@ -947,6 +964,7 @@ impl ShRenderer {
         vert_pool: &[Vertex],
         palette: &Palette,
         active_frame: Option<&Frame>,
+        override_flags: Option<VertexFlags>,
         verts: &mut Vec<Vertex>,
         indices: &mut Vec<u32>,
     ) -> Fallible<()> {
@@ -978,6 +996,10 @@ impl ShRenderer {
                     continue;
                 }
                 let mut v = vert_pool[index];
+                if let Some(flags) = override_flags {
+                    v.flags0 = (flags.bits() & 0xFFFF_FFFF) as u32;
+                    v.flags1 = (flags.bits() >> 32) as u32;
+                }
                 v.color = palette.rgba_f32(facet.color as usize)?;
                 if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
                     || facet.flags.contains(FacetFlags::UNK1)
@@ -1167,6 +1189,7 @@ impl ShRenderer {
         window: &GraphicsWindow,
     ) -> Fallible<ShapeModel> {
         // Outputs
+        let mut frame_count = 0;
         let mut verts = Vec::new();
         let mut indices = Vec::new();
         let mut xforms = Vec::new();
@@ -1219,6 +1242,33 @@ impl ShRenderer {
                 Instr::JumpToLOD(lod) => {
                     section_close_byte_offset = Some(lod.target_byte_offset());
                 }
+                Instr::JumpToFrame(frame) => {
+                    for i in 0..frame.num_frames() {
+                        // We have already asserted that all frames point to one
+                        // face and jump to the same target.
+                        let offset = frame.target_for_frame(i);
+                        let index = sh.bytes_to_index(offset)?;
+                        let target_instr = &sh.instrs[index];
+                        let facet = target_instr.unwrap_facet()?;
+                        Self::push_facet(
+                            facet,
+                            &vert_pool,
+                            palette,
+                            active_frame,
+                            VertexFlags::from_bits(VertexFlags::ANIM_FRAME_0.bits() << i),
+                            &mut verts,
+                            &mut indices,
+                        )?;
+                    }
+                    if frame_count != 0 {
+                        ensure!(
+                            frame_count == frame.num_frames(),
+                            "animations with different frame counts",
+                        );
+                    }
+                    frame_count = frame.num_frames();
+                    pc.set_byte_offset(frame.target_for_frame(0), sh)?;
+                }
 
                 Instr::X86Code(ref x86) => {
                     let advance_cnt = Self::maybe_update_buffer_properties(
@@ -1247,6 +1297,7 @@ impl ShRenderer {
                         &vert_pool,
                         palette,
                         active_frame,
+                        None,
                         &mut verts,
                         &mut indices,
                     )?;
@@ -1289,7 +1340,7 @@ impl ShRenderer {
             vertex_buffer,
             index_buffer,
             selection,
-            errata: ShapeErrata::from_vertex_flags(seen_flags),
+            errata: ShapeErrata::new(frame_count, seen_flags),
         })
     }
 
@@ -1353,7 +1404,7 @@ impl ShRenderer {
                 let mut push_consts = vs::ty::PushConstantData::new();
                 push_consts.set_projection(projection);
                 push_consts.set_view(view);
-                push_consts.set_mask(inst.build_render_mask(&model.errata)?);
+                push_consts.set_mask(inst.build_render_mask(&self.start, &model.errata)?);
 
                 cb = cb.draw_indexed(
                     self.pipeline.clone(),

@@ -1084,14 +1084,21 @@ impl Instr {
             Instr::Unmask4(ref unmask) => unmask.target_byte_offset(),
             Instr::XformUnmask(ref unmask) => unmask.target_byte_offset(),
             Instr::XformUnmask4(ref unmask) => unmask.target_byte_offset(),
-            _ => bail!("not an unwrap instructions"),
+            _ => bail!("not an unwrap instruction"),
         })
     }
 
     pub fn unwrap_x86(&self) -> Fallible<&X86Code> {
         Ok(match self {
             Instr::X86Code(ref x86) => x86,
-            _ => bail!("not an x86 code instructions"),
+            _ => bail!("not an x86 code instruction"),
+        })
+    }
+
+    pub fn unwrap_facet(&self) -> Fallible<&Facet> {
+        Ok(match self {
+            Instr::Facet(ref facet) => facet,
+            _ => bail!("not a facet instruction"),
         })
     }
 }
