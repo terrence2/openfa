@@ -12,9 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use camera::CameraAbstract;
 use failure::{bail, err_msg, Fallible};
 use log::trace;
 use std::{
+    cell::RefCell,
     collections::VecDeque,
     sync::Arc,
     time::{Duration, Instant},
@@ -36,6 +38,38 @@ use vulkano::{
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
+
+pub trait RenderSubsystem {
+    // Called at the top of the frame loop before we create the command buffer.
+    fn before_frame(&mut self, _camera: &CameraAbstract, _window: &GraphicsWindow) -> Fallible<()> {
+        Ok(())
+    }
+
+    // Called after creating the command buffer but before the render phase.
+    fn before_render(
+        &self,
+        command_buffer: AutoCommandBufferBuilder,
+        _dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        Ok(command_buffer)
+    }
+
+    // Called during the render phase.
+    fn render(
+        &self,
+        camera: &CameraAbstract,
+        command_buffer: AutoCommandBufferBuilder,
+        dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder>;
+
+    fn after_render(
+        &self,
+        command_buffer: AutoCommandBufferBuilder,
+        _dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        Ok(command_buffer)
+    }
+}
 
 #[derive(Debug)]
 pub struct GraphicsConfig {
@@ -221,6 +255,9 @@ pub struct GraphicsWindow {
     dirty_size: bool,
     pub idle_time: Duration,
     clear_color: [f32; 4],
+
+    // Subsystems
+    subsystems: Vec<Arc<RefCell<dyn RenderSubsystem>>>,
 }
 
 impl GraphicsWindow {
@@ -279,6 +316,7 @@ impl GraphicsWindow {
             dirty_size: false,
             idle_time: Default::default(),
             clear_color: [0.0, 0.0, 1.0, 1.0],
+            subsystems: Vec::new(),
         };
 
         // Push a fake first frame so that we have something wait on in our frame driver.
@@ -294,6 +332,14 @@ impl GraphicsWindow {
         }]);
 
         Ok(window)
+    }
+
+    pub fn add_render_subsystem(&mut self, subsystem: Arc<RefCell<dyn RenderSubsystem>>) {
+        self.subsystems.push(subsystem);
+    }
+
+    pub fn reset_render_subsystems(&mut self) {
+        self.subsystems.clear();
     }
 
     pub fn set_clear_color(&mut self, clr: &[f32; 4]) {
@@ -358,9 +404,10 @@ impl GraphicsWindow {
             .handle_resize(&self.device, &self.queues[0], &self.surface)
     }
 
-    pub fn drive_frame<F>(&mut self, draw: F) -> Fallible<()>
+    pub fn drive_frame<F, G>(&mut self, camera: &CameraAbstract, pre: F, render: G) -> Fallible<()>
     where
         F: Fn(AutoCommandBufferBuilder, &DynamicState) -> Fallible<AutoCommandBufferBuilder>,
+        G: Fn(AutoCommandBufferBuilder, &DynamicState) -> Fallible<AutoCommandBufferBuilder>,
     {
         // Cleanup finished
         for f in self.outstanding_frames.iter_mut() {
@@ -385,19 +432,36 @@ impl GraphicsWindow {
             Err(err) => bail!("{:?}", err),
         };
 
-        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
+        for ss in &self.subsystems {
+            ss.borrow_mut().before_frame(camera, &self)?;
+        }
+        let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
             self.device(),
             self.queue().family(),
-        )?
-        .begin_render_pass(
+        )?;
+
+        cbb = pre(cbb, &self.dynamic_state)?;
+        for ss in &self.subsystems {
+            cbb = ss.borrow().before_render(cbb, &self.dynamic_state)?;
+        }
+
+        cbb = cbb.begin_render_pass(
             self.framebuffer(image_num),
             false,
             vec![self.clear_color.into(), 0f32.into()],
         )?;
 
-        let command_buffer = draw(command_buffer, &self.dynamic_state)?
-            .end_render_pass()?
-            .build()?;
+        cbb = render(cbb, &self.dynamic_state)?;
+        for ss in &self.subsystems {
+            cbb = ss.borrow().render(camera, cbb, &self.dynamic_state)?;
+        }
+
+        cbb = cbb.end_render_pass()?;
+        for ss in &self.subsystems {
+            cbb = ss.borrow().after_render(cbb, &self.dynamic_state)?;
+        }
+
+        let cb = cbb.build()?;
 
         // Wait for our oldest frame to finish, submit the new command buffer, then send
         // it down the next beam.
@@ -407,7 +471,7 @@ impl GraphicsWindow {
             .pop_front()
             .expect("gfx: no prior frames")
             .join(acquire_future)
-            .then_execute(self.queue(), command_buffer)?
+            .then_execute(self.queue(), cb)?
             .then_swapchain_present(self.queue(), self.swapchain(), image_num)
             .then_signal_fence_and_flush();
         self.idle_time = idle_start.elapsed();

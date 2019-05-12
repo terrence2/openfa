@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::sh::texture_atlas::TextureAtlas;
+use camera::CameraAbstract;
 use failure::{ensure, Fallible};
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
@@ -44,7 +45,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
+use window::{GraphicsWindow, RenderSubsystem};
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -1102,22 +1103,6 @@ impl RawShRenderer {
         Ok(())
     }
 
-    pub fn render(
-        &self,
-        command_buffer: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let inst = self.instance.clone().unwrap();
-        Ok(command_buffer.draw_indexed(
-            self.pipeline.clone(),
-            dynamic_state,
-            vec![inst.vertex_buffer.clone()],
-            inst.index_buffer.clone(),
-            inst.pds.clone(),
-            inst.push_constants,
-        )?)
-    }
-
     fn upload_texture_rgba(
         window: &GraphicsWindow,
         image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -1157,17 +1142,48 @@ impl RawShRenderer {
     }
 }
 
+impl RenderSubsystem for RawShRenderer {
+    fn before_frame(&mut self, camera: &CameraAbstract, _window: &GraphicsWindow) -> Fallible<()> {
+        self.set_view(camera.view_matrix());
+        self.set_projection(&camera.projection_matrix());
+        Ok(())
+    }
+
+    fn render(
+        &self,
+        _camera: &CameraAbstract,
+        command_buffer: AutoCommandBufferBuilder,
+        dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        let inst = self.instance.clone().unwrap();
+        Ok(command_buffer.draw_indexed(
+            self.pipeline.clone(),
+            dynamic_state,
+            vec![inst.vertex_buffer.clone()],
+            inst.index_buffer.clone(),
+            inst.pds.clone(),
+            inst.push_constants,
+        )?)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+    use camera::ArcBallCamera;
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
+    use std::{cell::RefCell, f32::consts::PI};
     use window::GraphicsConfigBuilder;
 
     #[test]
     fn it_can_render_raw_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
+        camera.set_distance(100.);
+        camera.set_angle(115. * PI / 180., -135. * PI / 180.);
+
         let omni = OmniLib::new_for_test_in_games(&[
             //"USNF",
             //"MF",
@@ -1177,6 +1193,7 @@ mod test {
             "USNF97", "FA",
         ])?;
         let skipped = vec![
+            "CATGUY.SH",
             "CHAFF.SH",
             "CRATER.SH",
             "DEBRIS.SH",
@@ -1205,7 +1222,10 @@ mod test {
             let data = lib.load(name)?;
             let sh = RawShape::from_bytes(&data)?;
             let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-            let mut sh_renderer = RawShRenderer::new(system_palette, &window)?;
+            let sh_renderer = Arc::new(RefCell::new(RawShRenderer::new(system_palette, &window)?));
+
+            window.reset_render_subsystems();
+            window.add_render_subsystem(sh_renderer.clone());
 
             let draw_mode = DrawMode {
                 range: None,
@@ -1225,7 +1245,7 @@ mod test {
                 right_aileron_position: 0,
                 sam_count: 4,
             };
-            sh_renderer.add_shape_to_render(
+            sh_renderer.borrow_mut().add_shape_to_render(
                 &name,
                 &sh,
                 usize::max_value(),
@@ -1233,9 +1253,7 @@ mod test {
                 &lib,
                 &window,
             )?;
-            window.drive_frame(|command_buffer, dynamic_state| {
-                sh_renderer.render(command_buffer, dynamic_state)
-            })?;
+            window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
         }
         std::mem::drop(window);
         Ok(())

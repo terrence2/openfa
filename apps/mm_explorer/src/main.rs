@@ -13,15 +13,15 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetManager;
+use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use log::trace;
 use mm::MissionMap;
-use nalgebra::Isometry3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::{ArcBallCamera, PalRenderer, T2Renderer};
+use render::{PalRenderer, T2Renderer};
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
@@ -59,20 +59,13 @@ pub fn main() -> Fallible<()> {
     let contents = lib.load_text(&name)?;
     let mm = MissionMap::from_str(&contents, &types)?;
 
-    ///////////////////////////////////////////////////////////
-    let mut t2_renderer = T2Renderer::new(mm, &assets, &lib, &window)?;
-    let mut lay_base = -3;
-    let mut e0_off = -1;
-    let mut f1_off = -1;
-    let mut c2_off = 0;
-    let mut d3_off = 0;
-    t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-    let mut pal_renderer = PalRenderer::new(&window)?;
-    pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
-    ///////////////////////////////////////////////////////////
-
-    let mut text_renderer = TextRenderer::new(system_palette, &lib, &window)?;
+    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
+        system_palette,
+        &lib,
+        &window,
+    )?));
     let fps_handle = text_renderer
+        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -80,6 +73,7 @@ pub fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
     let state_handle = text_renderer
+        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
@@ -87,7 +81,26 @@ pub fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
+    ///////////////////////////////////////////////////////////
+    let t2_renderer = Arc::new(RefCell::new(T2Renderer::new(mm, &assets, &lib, &window)?));
+    let mut lay_base = -3;
+    let mut e0_off = -1;
+    let mut f1_off = -1;
+    let mut c2_off = 0;
+    let mut d3_off = 0;
+    t2_renderer
+        .borrow_mut()
+        .set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
+    let pal_renderer = Arc::new(RefCell::new(PalRenderer::new(&window)?));
+    pal_renderer
+        .borrow_mut()
+        .update_pal_data(&t2_renderer.borrow().used_palette, &window)?;
+    ///////////////////////////////////////////////////////////
+
+    window.add_render_subsystem(pal_renderer.clone());
+    window.add_render_subsystem(t2_renderer.clone());
+    window.add_render_subsystem(text_renderer.clone());
+
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.001f32, 3.4e+38f32);
 
     let mut need_reset = false;
@@ -97,19 +110,14 @@ pub fn main() -> Fallible<()> {
         if need_reset {
             need_reset = false;
             t2_renderer
+                .borrow_mut()
                 .set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-            pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
+            pal_renderer
+                .borrow_mut()
+                .update_pal_data(&t2_renderer.borrow().used_palette, &window)?;
         }
 
-        t2_renderer.set_projection(camera.projection_for(model));
-
-        window.drive_frame(|command_buffer, dynamic_state| {
-            let cb = command_buffer;
-            let cb = t2_renderer.render(cb, dynamic_state)?;
-            let cb = pal_renderer.render(cb, dynamic_state)?;
-            let cb = text_renderer.render(cb, dynamic_state)?;
-            Ok(cb)
-        })?;
+        window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
 
         let mut done = false;
         let mut resized = false;

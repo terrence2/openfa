@@ -39,6 +39,7 @@ members = [
         "libs/pkware",
         "libs/pt",
         "libs/render",
+        "libs/renderer/camera",
         "libs/renderer/text",
         "libs/resource",
         "libs/reverse",

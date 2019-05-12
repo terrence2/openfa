@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::sh::texture_atlas::{Frame, TextureAtlas};
 use bitflags::bitflags;
+use camera::CameraAbstract;
 use failure::{bail, ensure, err_msg, Fallible};
 use image::{ImageBuffer, Rgba};
 use lazy_static::lazy_static;
@@ -30,7 +31,7 @@ use std::{
     time::Instant,
 };
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
@@ -45,7 +46,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
+use window::{GraphicsWindow, RenderSubsystem};
 
 const ANIMATION_FRAME_TIME: usize = 166; // ms
 
@@ -177,6 +178,10 @@ mod vs {
             layout(location = 4) in uint flags1;
             layout(location = 5) in uint xform_id;
 
+            layout(binding = 1) uniform UniformMatrixArray {
+                mat4 xforms[10];
+            } uma;
+
             layout(push_constant) uniform PushConstantData {
               mat4 view;
               mat4 projection;
@@ -190,7 +195,7 @@ mod vs {
             layout(location = 3) flat out uint f_flags1;
 
             void main() {
-                gl_Position = pc.projection * pc.view * vec4(position, 1.0);
+                gl_Position = pc.projection * pc.view * uma.xforms[0] * vec4(position, 1.0);
                 v_color = color;
                 v_tex_coord = tex_coord;
                 f_flags0 = flags0 & pc.flag_mask0;
@@ -319,6 +324,8 @@ impl ShapeErrata {
 }
 
 pub struct ShapeModel {
+    uniform_upload_pool: Arc<CpuBufferPool<[f32; 160]>>,
+    device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>>,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
@@ -807,6 +814,12 @@ lazy_static! {
         table.insert("lighteningAllowed");
         table
     };
+
+    static ref XFORM_TABLE: HashMap<Vec<&'static str>, usize> = {
+        let mut table = HashMap::new();
+        table.insert(vec!["_PLgearDown", "_PLgearPos"], 0);
+        table
+    };
 }
 
 struct ProgramCounter {
@@ -1082,6 +1095,7 @@ impl ShRenderer {
     }
 
     fn maybe_update_buffer_properties(
+        name: &str,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
@@ -1117,6 +1131,21 @@ impl ShRenderer {
             } else {
                 bail!("unknown memory read: {}", name)
             }
+        } else if next_instr.magic() == "XformUnmask" {
+            let mut calls = Self::find_external_calls(x86, sh)?
+                .keys()
+                .cloned()
+                .collect::<Vec<&str>>();
+            calls.sort();
+            let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
+            inputs.sort();
+            println!(
+                "XFORM: {} => {:?} {:?} in {}",
+                XFORM_TABLE.contains_key(inputs.as_slice()),
+                inputs,
+                calls,
+                name
+            );
         }
         Ok(0)
     }
@@ -1202,6 +1231,7 @@ impl ShRenderer {
 
     fn draw_model(
         &self,
+        name: &str,
         sh: &RawShape,
         palette: &Palette,
         atlas: &TextureAtlas,
@@ -1292,6 +1322,7 @@ impl ShRenderer {
 
                 Instr::X86Code(ref x86) => {
                     let advance_cnt = Self::maybe_update_buffer_properties(
+                        name,
                         &pc,
                         x86,
                         sh,
@@ -1349,13 +1380,24 @@ impl ShRenderer {
         tex_future.then_signal_fence_and_flush()?.cleanup_finished();
         let sampler = Self::make_sampler(window.device())?;
 
+        let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>> = DeviceLocalBuffer::new(
+            window.device(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            window.device().active_queue_families(),
+        )?;
+
+        let uniform_upload_pool = Arc::new(CpuBufferPool::upload(window.device()));
+
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.pipeline.clone(), 0)
                 .add_sampled_image(texture.clone(), sampler.clone())?
+                .add_buffer(device_uniform_buffer.clone())?
                 .build()?,
         );
 
         Ok(ShapeModel {
+            uniform_upload_pool,
+            device_uniform_buffer,
             pds,
             vertex_buffer,
             index_buffer,
@@ -1367,7 +1409,7 @@ impl ShRenderer {
     pub fn add_shape_to_render(
         &mut self,
         palette: &Palette,
-        _name: &str,
+        name: &str,
         sh: &RawShape,
         lib: &Library,
         window: &GraphicsWindow,
@@ -1386,15 +1428,21 @@ impl ShRenderer {
         let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
 
         let mut models = vec![Arc::new(self.draw_model(
+            name,
             sh,
             palette,
             &atlas,
             DrawSelection::NormalModel,
             window,
         )?)];
-        if let Ok(damage_model) =
-            self.draw_model(sh, palette, &atlas, DrawSelection::DamageModel, window)
-        {
+        if let Ok(damage_model) = self.draw_model(
+            name,
+            sh,
+            palette,
+            &atlas,
+            DrawSelection::DamageModel,
+            window,
+        ) {
             models.push(Arc::new(damage_model));
         } else {
             // FIXME: load all damage models _{A,B,C,D}
@@ -1407,37 +1455,6 @@ impl ShRenderer {
 
         self.instances.push(instance.clone());
         Ok(instance)
-    }
-
-    pub fn render(
-        &self,
-        projection: &Matrix4<f32>,
-        view: &Matrix4<f32>,
-        command_buffer: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut cb = command_buffer;
-        for inst in &self.instances {
-            for model in inst.get_models() {
-                if inst.show_damaged()? != model.selection.is_damage() {
-                    continue;
-                }
-                let mut push_consts = vs::ty::PushConstantData::new();
-                push_consts.set_projection(projection);
-                push_consts.set_view(view);
-                push_consts.set_mask(inst.build_render_mask(&self.start, &model.errata)?);
-
-                cb = cb.draw_indexed(
-                    self.pipeline.clone(),
-                    dynamic_state,
-                    vec![model.vertex_buffer.clone()],
-                    model.index_buffer.clone(),
-                    model.pds.clone(),
-                    push_consts,
-                )?;
-            }
-        }
-        Ok(cb)
     }
 
     fn upload_texture_rgba(
@@ -1479,10 +1496,78 @@ impl ShRenderer {
     }
 }
 
+impl RenderSubsystem for ShRenderer {
+    fn before_render(
+        &self,
+        command_buffer: AutoCommandBufferBuilder,
+        _dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        let mut cb = command_buffer;
+        for inst in &self.instances {
+            for model in inst.get_models() {
+                if inst.show_damaged()? != model.selection.is_damage() {
+                    continue;
+                }
+                let uniforms = [
+                    1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32,
+                    0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32,
+                    1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
+                    0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32,
+                    0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32,
+                    0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32,
+                    0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32,
+                    0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32,
+                    0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32,
+                    1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32,
+                    0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32,
+                    1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
+                    0f32, 0f32, 0f32, 1f32,
+                ];
+                let new_uniforms_buffer = model.uniform_upload_pool.next(uniforms)?;
+
+                cb = cb.copy_buffer(new_uniforms_buffer, model.device_uniform_buffer.clone())?;
+            }
+        }
+        Ok(cb)
+    }
+
+    fn render(
+        &self,
+        // projection: &Matrix4<f32>,
+        // view: &Matrix4<f32>,
+        camera: &CameraAbstract,
+        command_buffer: AutoCommandBufferBuilder,
+        dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        let mut cb = command_buffer;
+        for inst in &self.instances {
+            for model in inst.get_models() {
+                if inst.show_damaged()? != model.selection.is_damage() {
+                    continue;
+                }
+                let mut push_consts = vs::ty::PushConstantData::new();
+                push_consts.set_projection(&camera.projection_matrix());
+                push_consts.set_view(&camera.view_matrix());
+                push_consts.set_mask(inst.build_render_mask(&self.start, &model.errata)?);
+
+                cb = cb.draw_indexed(
+                    self.pipeline.clone(),
+                    dynamic_state,
+                    vec![model.vertex_buffer.clone()],
+                    model.index_buffer.clone(),
+                    model.pds.clone(),
+                    push_consts,
+                )?;
+            }
+        }
+        Ok(cb)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ArcBallCamera;
+    use camera::ArcBallCamera;
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
@@ -1511,42 +1596,36 @@ mod test {
             "WAVE1.SH",
             "WAVE2.SH",
         ];
-        let mut palettes = HashMap::new();
-        for (game, name) in omni.find_matching("*.SH")?.iter() {
-            if skipped.contains(&name.as_ref()) {
-                continue;
+        for (game, lib) in omni.libraries() {
+            let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
+
+            for name in &lib.find_matching("*.SH")? {
+                if skipped.contains(&name.as_ref()) {
+                    continue;
+                }
+
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game,
+                    name,
+                    omni.path(&game, name)
+                        .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                );
+
+                let sh = RawShape::from_bytes(&lib.load(name)?)?;
+                let mut sh_renderer = ShRenderer::new(&window)?;
+                let mut sh_instance =
+                    sh_renderer.add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
+                sh_instance.toggle_flaps()?;
+
+                window.drive_frame(
+                    &camera,
+                    |cb, ds| sh_renderer.before_render(cb, ds),
+                    |command_buffer, dynamic_state| {
+                        sh_renderer.render(&camera, command_buffer, dynamic_state)
+                    },
+                )?;
             }
-
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
-            );
-
-            let lib = omni.library(game);
-            if !palettes.contains_key(game) {
-                let system_palette =
-                    Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-                palettes.insert(game, system_palette);
-            }
-
-            let sh = RawShape::from_bytes(&lib.load(name)?)?;
-            let system_palette = palettes[game].clone();
-            let mut sh_renderer = ShRenderer::new(&window)?;
-            let mut sh_instance =
-                sh_renderer.add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
-            sh_instance.toggle_flaps()?;
-
-            window.drive_frame(|command_buffer, dynamic_state| {
-                sh_renderer.render(
-                    camera.projection_matrix(),
-                    &camera.view_matrix(),
-                    command_buffer,
-                    dynamic_state,
-                )
-            })?;
         }
         std::mem::drop(window);
         Ok(())

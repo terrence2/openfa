@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use camera::IdentityCamera;
 use dlg::Dialog;
 use failure::{bail, Fallible};
 use log::trace;
@@ -19,7 +20,7 @@ use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use render::DialogRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
@@ -54,8 +55,13 @@ pub fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
+        system_palette.clone(),
+        &lib,
+        &window,
+    )?));
     let fps_handle = text_renderer
+        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -71,21 +77,22 @@ pub fn main() -> Fallible<()> {
     let dlg = Arc::new(Box::new(Dialog::from_bytes(&lib.load(name)?)?));
 
     ///////////////////////////////////////////////////////////
-    let mut dlg_renderer = DialogRenderer::new(dlg, &background, &lib, &window)?;
-    //dlg_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
+    let dlg_renderer = Arc::new(RefCell::new(DialogRenderer::new(
+        dlg,
+        &background,
+        &lib,
+        &window,
+    )?));
     ///////////////////////////////////////////////////////////
+
+    let camera = IdentityCamera;
+    window.add_render_subsystem(dlg_renderer.clone());
+    window.add_render_subsystem(text_renderer.clone());
 
     loop {
         let loop_start = Instant::now();
 
-        dlg_renderer.set_projection(&window)?;
-
-        window.drive_frame(|command_buffer, dynamic_state| {
-            let cb = command_buffer;
-            let cb = dlg_renderer.render(cb, dynamic_state)?;
-            let cb = text_renderer.render(cb, dynamic_state)?;
-            Ok(cb)
-        })?;
+        window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
 
         let mut done = false;
         let mut resized = false;

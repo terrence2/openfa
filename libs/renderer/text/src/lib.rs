@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use camera::CameraAbstract;
 use codepage_437::{ToCp437, CP437_CONTROL};
 use failure::{bail, ensure, Fallible};
 use fnt::Fnt;
@@ -35,7 +36,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
+use window::{GraphicsWindow, RenderSubsystem};
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -689,9 +690,16 @@ impl TextRenderer {
         }
         Ok(())
     }
+}
 
-    pub fn render(
+impl RenderSubsystem for TextRenderer {
+    fn before_frame(&mut self, _camera: &CameraAbstract, window: &GraphicsWindow) -> Fallible<()> {
+        self.set_projection(&window)
+    }
+
+    fn render(
         &self,
+        _camera: &CameraAbstract,
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
@@ -714,7 +722,7 @@ impl TextRenderer {
 #[cfg(test)]
 mod test {
     use super::*;
-    //use crate::ArcBallCamera;
+    use camera::IdentityCamera;
     use omnilib::OmniLib;
     use window::GraphicsConfigBuilder;
 
@@ -722,6 +730,7 @@ mod test {
     fn it_can_render_text() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         window.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
+        let camera = IdentityCamera;
 
         let omni = OmniLib::new_for_test_in_games(&[
             "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
@@ -730,9 +739,13 @@ mod test {
             println!("At: {}", game);
 
             let palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-            let mut renderer = TextRenderer::new(palette, &lib, &window)?;
+            let renderer = Arc::new(RefCell::new(TextRenderer::new(palette, &lib, &window)?));
+
+            window.reset_render_subsystems();
+            window.add_render_subsystem(renderer.clone());
 
             renderer
+                .borrow_mut()
                 .add_screen_text(Font::HUD11, "Top Left (r)", &window)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
@@ -741,6 +754,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Top);
 
             renderer
+                .borrow_mut()
                 .add_screen_text(Font::HUD11, "Top Right (b)", &window)?
                 .with_color(&[0f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
@@ -749,6 +763,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Top);
 
             renderer
+                .borrow_mut()
                 .add_screen_text(Font::HUD11, "Bottom Left (w)", &window)?
                 .with_color(&[1f32, 1f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
@@ -757,6 +772,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             renderer
+                .borrow_mut()
                 .add_screen_text(Font::HUD11, "Bottom Right (m)", &window)?
                 .with_color(&[1f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
@@ -765,6 +781,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             let handle_clr = renderer
+                .borrow_mut()
                 .add_screen_text(Font::HUD11, "", &window)?
                 .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &window)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
@@ -774,6 +791,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             let handle_fin = renderer
+                .borrow_mut()
                 .add_screen_text(Font::HUD11, "DONE: 0%", &window)?
                 .with_color(&[0f32, 1f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
@@ -782,7 +800,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Center);
 
             for i in 0..32 {
-                renderer.set_projection(&window)?;
+                //renderer.set_projection(&window)?;
                 if i < 16 {
                     handle_clr.set_color(&[0f32, i as f32 / 16f32, 0f32, 1f32])
                 } else {
@@ -796,9 +814,14 @@ mod test {
                 let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
                 handle_fin.set_span(&msg, &window)?;
 
-                window.drive_frame(|command_buffer, dynamic_state| {
-                    renderer.render(command_buffer, dynamic_state)
-                })?;
+                window.drive_frame(
+                    &camera,
+                    |cb, _| Ok(cb),
+                    |cb, _| {
+                        //renderer.render(command_buffer, dynamic_state)
+                        Ok(cb)
+                    },
+                )?;
             }
         }
         std::mem::drop(window);

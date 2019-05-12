@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use camera::CameraAbstract;
 use failure::Fallible;
 use image::{ImageBuffer, Rgba};
 use log::trace;
@@ -30,7 +31,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
+use window::{GraphicsWindow, RenderSubsystem};
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -179,21 +180,6 @@ impl PalRenderer {
         Ok(())
     }
 
-    pub fn render(
-        &self,
-        command_buffer: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        Ok(command_buffer.draw_indexed(
-            self.pipeline.clone(),
-            dynamic_state,
-            vec![self.vertex_buffer.clone()],
-            self.index_buffer.clone(),
-            self.pds.clone().unwrap(),
-            0,
-        )?)
-    }
-
     fn upload_texture_rgba(
         window: &GraphicsWindow,
         image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -233,24 +219,43 @@ impl PalRenderer {
     }
 }
 
+impl RenderSubsystem for PalRenderer {
+    fn render(
+        &self,
+        _camera: &CameraAbstract,
+        command_buffer: AutoCommandBufferBuilder,
+        dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        Ok(command_buffer.draw_indexed(
+            self.pipeline.clone(),
+            dynamic_state,
+            vec![self.vertex_buffer.clone()],
+            self.index_buffer.clone(),
+            self.pds.clone().unwrap(),
+            0,
+        )?)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+    use camera::IdentityCamera;
     use omnilib::OmniLib;
+    use std::cell::RefCell;
     use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn create_pal_renderer() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
         let lib = omni.library("FA");
-        let pal_data = lib.load("PALETTE.PAL")?;
-        let pal = Palette::from_bytes(&pal_data)?;
+        let pal = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let mut pal_renderer = PalRenderer::new(&window)?;
-        pal_renderer.update_pal_data(&pal, &window)?;
-        window.drive_frame(|command_buffer, dynamic_state| {
-            pal_renderer.render(command_buffer, dynamic_state)
-        })?;
+        let camera = IdentityCamera;
+        let pal_renderer = Arc::new(RefCell::new(PalRenderer::new(&window)?));
+        window.add_render_subsystem(pal_renderer.clone());
+        pal_renderer.borrow_mut().update_pal_data(&pal, &window)?;
+        window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
         std::mem::drop(window);
         Ok(())
     }
