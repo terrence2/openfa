@@ -605,10 +605,15 @@ const _FONT_BACKGROUNDS: [&str; 21] = [
     "WHEELFNT.PIC",
 ];
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Font {
+    HUD11,
+}
+
 pub struct TextRenderer {
     _palette: Rc<Box<Palette>>,
     screen_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    fonts: HashMap<String, Rc<Box<FontInfo>>>,
+    fonts: HashMap<Font, Rc<Box<FontInfo>>>,
     layouts: Vec<LayoutHandle>,
 }
 
@@ -642,7 +647,7 @@ impl TextRenderer {
 
         let mut fonts = HashMap::new();
         fonts.insert(
-            "HUD".to_string(),
+            Font::HUD11,
             Rc::new(Box::new(FontInfo::new_transparent(
                 &Fnt::from_bytes("", "", &lib.load("HUD11.FNT")?)?,
                 screen_pipeline.clone(),
@@ -660,12 +665,11 @@ impl TextRenderer {
 
     pub fn add_screen_text(
         &mut self,
-        font: &str,
+        font: Font,
         text: &str,
         window: &GraphicsWindow,
     ) -> Fallible<LayoutHandle> {
-        ensure!(self.fonts.contains_key(font), "unknown font: {}", font);
-        let info = self.fonts[font].clone();
+        let info = self.fonts[&font].clone();
         let layout = LayoutHandle::new(Layout::new(text, info, window)?);
         self.layouts.push(layout.clone());
         Ok(layout)
@@ -729,7 +733,7 @@ mod test {
             let mut renderer = TextRenderer::new(palette, &lib, &window)?;
 
             renderer
-                .add_screen_text("HUD", "Top Left (r)", &window)?
+                .add_screen_text(Font::HUD11, "Top Left (r)", &window)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
@@ -737,7 +741,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Top);
 
             renderer
-                .add_screen_text("HUD", "Top Right (b)", &window)?
+                .add_screen_text(Font::HUD11, "Top Right (b)", &window)?
                 .with_color(&[0f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
@@ -745,7 +749,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Top);
 
             renderer
-                .add_screen_text("HUD", "Bottom Left (w)", &window)?
+                .add_screen_text(Font::HUD11, "Bottom Left (w)", &window)?
                 .with_color(&[1f32, 1f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
@@ -753,7 +757,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             renderer
-                .add_screen_text("HUD", "Bottom Right (m)", &window)?
+                .add_screen_text(Font::HUD11, "Bottom Right (m)", &window)?
                 .with_color(&[1f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
@@ -761,7 +765,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             let handle_clr = renderer
-                .add_screen_text("HUD", "", &window)?
+                .add_screen_text(Font::HUD11, "", &window)?
                 .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &window)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
@@ -770,7 +774,7 @@ mod test {
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
             let handle_fin = renderer
-                .add_screen_text("HUD", "DONE: 0%", &window)?
+                .add_screen_text(Font::HUD11, "DONE: 0%", &window)?
                 .with_color(&[0f32, 1f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)

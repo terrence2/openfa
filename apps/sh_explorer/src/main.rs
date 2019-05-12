@@ -21,7 +21,7 @@ use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{rc::Rc, time::Instant};
 use structopt::StructOpt;
-use text::{TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, MouseMotion},
@@ -53,14 +53,14 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
     let fps_handle = text_renderer
-        .add_screen_text("HUD", "", &window)?
+        .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
     let state_handle = text_renderer
-        .add_screen_text("HUD", "", &window)?
+        .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
         .with_horizontal_anchor(TextAnchorH::Right)
