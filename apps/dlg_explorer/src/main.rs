@@ -21,7 +21,7 @@ use render::DialogRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use text::{TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::Key,
@@ -56,7 +56,7 @@ pub fn main() -> Fallible<()> {
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
     let fps_handle = text_renderer
-        .add_screen_text("HUD", "", &window)?
+        .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
