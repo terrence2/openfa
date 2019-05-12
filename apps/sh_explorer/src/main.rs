@@ -241,6 +241,7 @@ fn main() -> Fallible<()> {
             window.note_resize();
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
+        text_renderer.set_projection(&window)?;
 
         window.drive_frame(|command_buffer, dynamic_state| {
             let cb = command_buffer;

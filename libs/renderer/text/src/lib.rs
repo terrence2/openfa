@@ -408,17 +408,8 @@ impl Layout {
             offset += layout.render_width;
         }
 
-        trace!(
-            "uploading vertex buffer with {} bytes",
-            std::mem::size_of::<Vertex>() * verts.len()
-        );
         let vertex_buffer =
             CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
-
-        trace!(
-            "uploading index buffer with {} bytes",
-            std::mem::size_of::<u32>() * indices.len()
-        );
         let index_buffer = CpuAccessibleBuffer::from_iter(
             window.device(),
             BufferUsage::all(),
@@ -641,15 +632,6 @@ impl TextRenderer {
                 .front_face_counter_clockwise()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
-                /*
-                .depth_stencil(DepthStencil {
-                    depth_write: false,
-                    depth_compare: Compare::GreaterOrEqual,
-                    depth_bounds_test: DepthBounds::Disabled,
-                    stencil_front: Default::default(),
-                    stencil_back: Default::default(),
-                })
-                */
                 .blend_alpha_blending()
                 .render_pass(
                     Subpass::from(window.render_pass(), 0)
@@ -736,9 +718,6 @@ mod test {
     fn it_can_render_text() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         window.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
-        // let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
-        // camera.set_distance(100.);
-        // camera.set_angle(115. * PI / 180., -135. * PI / 180.);
 
         let omni = OmniLib::new_for_test_in_games(&[
             "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
@@ -816,8 +795,6 @@ mod test {
                 window.drive_frame(|command_buffer, dynamic_state| {
                     renderer.render(command_buffer, dynamic_state)
                 })?;
-
-                // std::thread::sleep(std::time::Duration::from_millis(16));
             }
         }
         std::mem::drop(window);
