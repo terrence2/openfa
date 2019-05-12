@@ -27,7 +27,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -352,12 +352,12 @@ impl Default for DrawState {
 }
 
 impl DrawState {
-    fn build_mask(&self, since_start: Duration, errata: &ShapeErrata) -> Fallible<u64> {
+    fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         if errata.frame_count > 0 {
-            let offset =
-                ((since_start.as_millis() as usize) / ANIMATION_FRAME_TIME) % errata.frame_count;
+            let offset = ((start.elapsed().as_millis() as usize) / ANIMATION_FRAME_TIME)
+                % errata.frame_count;
             mask |= VertexFlags::from_bits(VertexFlags::ANIM_FRAME_0.bits() << offset).unwrap();
         }
 
@@ -484,11 +484,11 @@ impl ShapeInstanceRef {
         }
     }
 
-    pub fn build_render_mask(&self, since_start: Duration, errata: &ShapeErrata) -> Fallible<u64> {
+    pub fn build_render_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
         self.value
             .try_borrow()?
             .draw_state
-            .build_mask(since_start, errata)
+            .build_mask(start, errata)
     }
 
     pub fn get_models(&self) -> Vec<Arc<ShapeModel>> {
@@ -1404,7 +1404,7 @@ impl ShRenderer {
                 let mut push_consts = vs::ty::PushConstantData::new();
                 push_consts.set_projection(projection);
                 push_consts.set_view(view);
-                push_consts.set_mask(inst.build_render_mask(self.start.elapsed(), &model.errata)?);
+                push_consts.set_mask(inst.build_render_mask(&self.start, &model.errata)?);
 
                 cb = cb.draw_indexed(
                     self.pipeline.clone(),
