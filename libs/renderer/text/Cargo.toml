@@ -15,6 +15,7 @@ vulkano = "^ 0.11.1"
 vulkano-shaders = "^ 0.11.1"
 vulkano-win = "^ 0.11.1"
 #winit = "^ 0.18"
+camera = { path = "../../../libs/renderer/camera" }
 fnt = { path = "../../../libs/fnt" }
 i386 = { path = "../../../libs/i386" }
 lib = { path = "../../../libs/lib" }

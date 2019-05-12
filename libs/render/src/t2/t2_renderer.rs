@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::t2::texture_atlas::TextureAtlas;
 use asset::AssetManager;
+use camera::CameraAbstract;
 use failure::Fallible;
 use image::{ImageBuffer, Rgba};
 use lay::Layer;
@@ -41,7 +42,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
+use window::{GraphicsWindow, RenderSubsystem};
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -232,25 +233,6 @@ impl T2Renderer {
         t2_renderer.used_palette = palette;
 
         Ok(t2_renderer)
-    }
-
-    pub fn set_projection(&mut self, projection: Matrix4<f32>) {
-        self.push_constants.set_projection(projection);
-    }
-
-    pub fn render(
-        &self,
-        command_buffer: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        Ok(command_buffer.draw_indexed(
-            self.pipeline.clone(),
-            dynamic_state,
-            vec![self.vertex_buffer.clone().unwrap()],
-            self.index_buffer.clone().unwrap(),
-            self.pds.clone().unwrap(),
-            self.push_constants,
-        )?)
     }
 
     pub fn set_palette_parameters(
@@ -507,5 +489,29 @@ impl T2Renderer {
         )?;
 
         Ok(sampler)
+    }
+}
+
+impl RenderSubsystem for T2Renderer {
+    fn before_frame(&mut self, camera: &CameraAbstract, _window: &GraphicsWindow) -> Fallible<()> {
+        self.push_constants
+            .set_projection(camera.projection_matrix() * camera.view_matrix());
+        Ok(())
+    }
+
+    fn render(
+        &self,
+        _camera: &CameraAbstract,
+        command_buffer: AutoCommandBufferBuilder,
+        dynamic_state: &DynamicState,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        Ok(command_buffer.draw_indexed(
+            self.pipeline.clone(),
+            dynamic_state,
+            vec![self.vertex_buffer.clone().unwrap()],
+            self.index_buffer.clone().unwrap(),
+            self.pds.clone().unwrap(),
+            self.push_constants,
+        )?)
     }
 }

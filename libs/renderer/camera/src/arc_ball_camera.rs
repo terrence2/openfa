@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::CameraAbstract;
 use log::trace;
 use nalgebra::{Isometry3, Matrix4, Perspective3, Point3, Vector3};
 use std::f32::consts::PI;
@@ -69,14 +70,6 @@ impl ArcBallCamera {
         Isometry3::look_at_rh(&self.eye(), &self.target, &Vector3::y())
     }
 
-    pub fn view_matrix(&self) -> Matrix4<f32> {
-        Matrix4::look_at_rh(&self.eye(), &self.target, &Vector3::y())
-    }
-
-    pub fn projection_matrix(&self) -> &Matrix4<f32> {
-        self.projection.as_matrix()
-    }
-
     pub fn projection_for(&self, model: Isometry3<f32>) -> Matrix4<f32> {
         self.projection_matrix() * (model * self.view()).to_homogeneous()
     }
@@ -122,5 +115,15 @@ impl ArcBallCamera {
             3 => self.in_move = false,
             _ => trace!("button up: {}", id),
         }
+    }
+}
+
+impl CameraAbstract for ArcBallCamera {
+    fn view_matrix(&self) -> Matrix4<f32> {
+        Matrix4::look_at_rh(&self.eye(), &self.target, &Vector3::y())
+    }
+
+    fn projection_matrix(&self) -> Matrix4<f32> {
+        *self.projection.as_matrix()
     }
 }

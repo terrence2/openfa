@@ -12,17 +12,24 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use nalgebra::Matrix4;
 
-/// Renders raw assets into GPU primitives.
-mod dlg;
-mod sh;
-mod t2;
-mod utility;
+mod arc_ball_camera;
+pub use arc_ball_camera::ArcBallCamera;
 
-pub use crate::{
-    dlg::dlg_renderer::DialogRenderer,
-    sh::raw_sh_renderer::{DrawMode, RawShRenderer},
-    sh::sh_renderer::ShRenderer,
-    t2::t2_renderer::T2Renderer,
-    utility::pal_renderer::PalRenderer,
-};
+pub trait CameraAbstract {
+    fn view_matrix(&self) -> Matrix4<f32>;
+    fn projection_matrix(&self) -> Matrix4<f32>;
+}
+
+pub struct IdentityCamera;
+
+impl CameraAbstract for IdentityCamera {
+    fn view_matrix(&self) -> Matrix4<f32> {
+        Matrix4::identity()
+    }
+
+    fn projection_matrix(&self) -> Matrix4<f32> {
+        Matrix4::identity()
+    }
+}

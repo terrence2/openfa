@@ -12,14 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::{ArcBallCamera, ShRenderer};
+use render::ShRenderer;
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{rc::Rc, time::Instant};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
@@ -46,13 +47,22 @@ fn main() -> Fallible<()> {
     }
     let (game, name) = inputs.first().unwrap();
     let lib = omni.library(&game);
+    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-    let mut sh_renderer = ShRenderer::new(&window)?;
-    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
+    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
+        system_palette.clone(),
+        &lib,
+        &window,
+    )?));
+
+    window.add_render_subsystem(sh_renderer.clone());
+    window.add_render_subsystem(text_renderer.clone());
+
     let fps_handle = text_renderer
+        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -60,6 +70,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
     let state_handle = text_renderer
+        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
@@ -69,7 +80,9 @@ fn main() -> Fallible<()> {
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut instance =
-        sh_renderer.add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
+        sh_renderer
+            .borrow_mut()
+            .add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -242,19 +255,8 @@ fn main() -> Fallible<()> {
             window.note_resize();
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
-        text_renderer.set_projection(&window)?;
 
-        window.drive_frame(|command_buffer, dynamic_state| {
-            let cb = command_buffer;
-            let cb = sh_renderer.render(
-                camera.projection_matrix(),
-                &camera.view_matrix(),
-                cb,
-                dynamic_state,
-            )?;
-            let cb = text_renderer.render(cb, dynamic_state)?;
-            Ok(cb)
-        })?;
+        window.drive_frame(&camera)?;
 
         let frame_time = loop_start.elapsed();
         let render_time = frame_time - window.idle_time;
