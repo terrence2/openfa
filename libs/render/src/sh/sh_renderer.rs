@@ -1613,18 +1613,20 @@ mod test {
                 );
 
                 let sh = RawShape::from_bytes(&lib.load(name)?)?;
-                let mut sh_renderer = ShRenderer::new(&window)?;
-                let mut sh_instance =
-                    sh_renderer.add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
+                let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
+                let mut sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
+                    &system_palette,
+                    name,
+                    &sh,
+                    &lib,
+                    &window,
+                )?;
                 sh_instance.toggle_flaps()?;
 
-                window.drive_frame(
-                    &camera,
-                    |cb, ds| sh_renderer.before_render(cb, ds),
-                    |command_buffer, dynamic_state| {
-                        sh_renderer.render(&camera, command_buffer, dynamic_state)
-                    },
-                )?;
+                window.reset_render_subsystems();
+                window.add_render_subsystem(sh_renderer.clone());
+
+                window.drive_frame(&camera)?;
             }
         }
         std::mem::drop(window);

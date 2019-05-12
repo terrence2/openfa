@@ -1253,7 +1253,7 @@ mod test {
                 &lib,
                 &window,
             )?;
-            window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
+            window.drive_frame(&camera)?;
         }
         std::mem::drop(window);
         Ok(())

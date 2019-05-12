@@ -404,10 +404,13 @@ impl GraphicsWindow {
             .handle_resize(&self.device, &self.queues[0], &self.surface)
     }
 
-    pub fn drive_frame<F, G>(&mut self, camera: &CameraAbstract, pre: F, render: G) -> Fallible<()>
+    pub fn drive_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
+        self.drive_frame_extended(camera, |cb, _| Ok(cb))
+    }
+
+    pub fn drive_frame_extended<F>(&mut self, camera: &CameraAbstract, render: F) -> Fallible<()>
     where
         F: Fn(AutoCommandBufferBuilder, &DynamicState) -> Fallible<AutoCommandBufferBuilder>,
-        G: Fn(AutoCommandBufferBuilder, &DynamicState) -> Fallible<AutoCommandBufferBuilder>,
     {
         // Cleanup finished
         for f in self.outstanding_frames.iter_mut() {
@@ -440,7 +443,6 @@ impl GraphicsWindow {
             self.queue().family(),
         )?;
 
-        cbb = pre(cbb, &self.dynamic_state)?;
         for ss in &self.subsystems {
             cbb = ss.borrow().before_render(cbb, &self.dynamic_state)?;
         }

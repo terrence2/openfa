@@ -814,14 +814,7 @@ mod test {
                 let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
                 handle_fin.set_span(&msg, &window)?;
 
-                window.drive_frame(
-                    &camera,
-                    |cb, _| Ok(cb),
-                    |cb, _| {
-                        //renderer.render(command_buffer, dynamic_state)
-                        Ok(cb)
-                    },
-                )?;
+                window.drive_frame(&camera)?;
             }
         }
         std::mem::drop(window);

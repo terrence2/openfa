@@ -154,7 +154,7 @@ fn main() -> Fallible<()> {
             )?;
         }
 
-        window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
+        window.drive_frame(&camera)?;
 
         let mut done = false;
         let mut resized = false;

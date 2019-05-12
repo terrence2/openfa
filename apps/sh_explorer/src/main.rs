@@ -256,7 +256,7 @@ fn main() -> Fallible<()> {
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
 
-        window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
+        window.drive_frame(&camera)?;
 
         let frame_time = loop_start.elapsed();
         let render_time = frame_time - window.idle_time;

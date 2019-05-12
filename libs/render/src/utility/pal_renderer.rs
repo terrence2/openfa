@@ -255,7 +255,7 @@ mod test {
         let pal_renderer = Arc::new(RefCell::new(PalRenderer::new(&window)?));
         window.add_render_subsystem(pal_renderer.clone());
         pal_renderer.borrow_mut().update_pal_data(&pal, &window)?;
-        window.drive_frame(&camera, |cb, _| Ok(cb), |cb, _| Ok(cb))?;
+        window.drive_frame(&camera)?;
         std::mem::drop(window);
         Ok(())
     }
