@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::sh::texture_atlas::{Frame, TextureAtlas};
 use bitflags::bitflags;
-use failure::{bail, ensure, Fallible};
+use failure::{bail, ensure, err_msg, Fallible};
 use image::{ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use lib::Library;
@@ -92,27 +92,49 @@ bitflags! {
         const PLAYER_ALIVE         = 0x0000_0000_2000_0000;
         const PLAYER_DEAD          = 0x0000_0000_4000_0000;
 
-        const ANIM_FRAME_0         = 0x0000_0001_0000_0000;
-        const ANIM_FRAME_1         = 0x0000_0002_0000_0000;
-        const ANIM_FRAME_2         = 0x0000_0004_0000_0000;
-        const ANIM_FRAME_3         = 0x0000_0008_0000_0000;
-        const ANIM_FRAME_4         = 0x0000_0010_0000_0000;
-        const ANIM_FRAME_5         = 0x0000_0020_0000_0000;
+        const ANIM_FRAME_0_2       = 0x0000_0001_0000_0000;
+        const ANIM_FRAME_1_2       = 0x0000_0002_0000_0000;
 
-        const SAM_COUNT_0          = 0x0000_0040_0000_0000;
-        const SAM_COUNT_1          = 0x0000_0080_0000_0000;
-        const SAM_COUNT_2          = 0x0000_0100_0000_0000;
-        const SAM_COUNT_3          = 0x0000_0200_0000_0000;
+        const ANIM_FRAME_0_3       = 0x0000_0004_0000_0000;
+        const ANIM_FRAME_1_3       = 0x0000_0008_0000_0000;
+        const ANIM_FRAME_2_3       = 0x0000_0010_0000_0000;
 
-        const EJECT_STATE_0        = 0x0000_0400_0000_0000;
-        const EJECT_STATE_1        = 0x0000_0800_0000_0000;
-        const EJECT_STATE_2        = 0x0000_1000_0000_0000;
-        const EJECT_STATE_3        = 0x0000_2000_0000_0000;
-        const EJECT_STATE_4        = 0x0000_4000_0000_0000;
+        const ANIM_FRAME_0_4       = 0x0000_0020_0000_0000;
+        const ANIM_FRAME_1_4       = 0x0000_0040_0000_0000;
+        const ANIM_FRAME_2_4       = 0x0000_0080_0000_0000;
+        const ANIM_FRAME_3_4       = 0x0000_0100_0000_0000;
 
+        const ANIM_FRAME_0_6       = 0x0000_0200_0000_0000;
+        const ANIM_FRAME_1_6       = 0x0000_0400_0000_0000;
+        const ANIM_FRAME_2_6       = 0x0000_0800_0000_0000;
+        const ANIM_FRAME_3_6       = 0x0000_1000_0000_0000;
+        const ANIM_FRAME_4_6       = 0x0000_2000_0000_0000;
+        const ANIM_FRAME_5_6       = 0x0000_4000_0000_0000;
+
+        const SAM_COUNT_0          = 0x0000_8000_0000_0000;
+        const SAM_COUNT_1          = 0x0001_0000_0000_0000;
+        const SAM_COUNT_2          = 0x0002_0000_0000_0000;
+        const SAM_COUNT_3          = 0x0004_0000_0000_0000;
+
+        const EJECT_STATE_0        = 0x0008_0000_0000_0000;
+        const EJECT_STATE_1        = 0x0010_0000_0000_0000;
+        const EJECT_STATE_2        = 0x0020_0000_0000_0000;
+        const EJECT_STATE_3        = 0x0040_0000_0000_0000;
+        const EJECT_STATE_4        = 0x0080_0000_0000_0000;
 
         const AILERONS_DOWN        = Self::LEFT_AILERON_DOWN.bits | Self::RIGHT_AILERON_DOWN.bits;
         const AILERONS_UP          = Self::LEFT_AILERON_UP.bits | Self::RIGHT_AILERON_UP.bits;
+    }
+}
+
+impl VertexFlags {
+    fn displacement(self, offset: usize) -> Fallible<Self> {
+        VertexFlags::from_bits(self.bits() << offset).ok_or_else(|| {
+            err_msg(format!(
+                "offset {} from {:?} did not yield a valid vertex flags",
+                offset, self
+            ))
+        })
     }
 }
 
@@ -281,17 +303,14 @@ impl vs::ty::PushConstantData {
 }
 
 pub struct ShapeErrata {
-    frame_count: usize,
     no_upper_aileron: bool,
     // has_toggle_gear: bool,
     // has_toggle_bay: bool,
 }
 
 impl ShapeErrata {
-    fn new(frame_count: usize, flags: VertexFlags) -> Self {
+    fn from_flags(flags: VertexFlags) -> Self {
         Self {
-            frame_count,
-
             // ERRATA: ATFNATO:F22.SH is missing aileron up meshes.
             no_upper_aileron: !(flags & VertexFlags::AILERONS_DOWN).is_empty()
                 && (flags & VertexFlags::AILERONS_UP).is_empty(),
@@ -355,11 +374,12 @@ impl DrawState {
     fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
-        if errata.frame_count > 0 {
-            let offset = ((start.elapsed().as_millis() as usize) / ANIMATION_FRAME_TIME)
-                % errata.frame_count;
-            mask |= VertexFlags::from_bits(VertexFlags::ANIM_FRAME_0.bits() << offset).unwrap();
-        }
+        let elapsed = start.elapsed().as_millis() as usize;
+        let frame_off = elapsed / ANIMATION_FRAME_TIME;
+        mask |= VertexFlags::ANIM_FRAME_0_2.displacement(frame_off % 2)?;
+        mask |= VertexFlags::ANIM_FRAME_0_3.displacement(frame_off % 3)?;
+        mask |= VertexFlags::ANIM_FRAME_0_4.displacement(frame_off % 4)?;
+        mask |= VertexFlags::ANIM_FRAME_0_6.displacement(frame_off % 6)?;
 
         mask |= if self.flaps_down {
             VertexFlags::LEFT_FLAP_DOWN | VertexFlags::RIGHT_FLAP_DOWN
@@ -1189,7 +1209,6 @@ impl ShRenderer {
         window: &GraphicsWindow,
     ) -> Fallible<ShapeModel> {
         // Outputs
-        let mut frame_count = 0;
         let mut verts = Vec::new();
         let mut indices = Vec::new();
         let mut xforms = Vec::new();
@@ -1243,6 +1262,14 @@ impl ShRenderer {
                     section_close_byte_offset = Some(lod.target_byte_offset());
                 }
                 Instr::JumpToFrame(frame) => {
+                    let mask_base = match frame.num_frames() {
+                        2 => VertexFlags::ANIM_FRAME_0_2,
+                        3 => VertexFlags::ANIM_FRAME_0_3,
+                        4 => VertexFlags::ANIM_FRAME_0_4,
+                        6 => VertexFlags::ANIM_FRAME_0_6,
+                        _ => bail!("only 2, 3, 4, or 6 frame counts supported"),
+                    }
+                    .bits();
                     for i in 0..frame.num_frames() {
                         // We have already asserted that all frames point to one
                         // face and jump to the same target.
@@ -1255,18 +1282,11 @@ impl ShRenderer {
                             &vert_pool,
                             palette,
                             active_frame,
-                            VertexFlags::from_bits(VertexFlags::ANIM_FRAME_0.bits() << i),
+                            VertexFlags::from_bits(mask_base << i),
                             &mut verts,
                             &mut indices,
                         )?;
                     }
-                    if frame_count != 0 {
-                        ensure!(
-                            frame_count == frame.num_frames(),
-                            "animations with different frame counts",
-                        );
-                    }
-                    frame_count = frame.num_frames();
                     pc.set_byte_offset(frame.target_for_frame(0), sh)?;
                 }
 
@@ -1340,13 +1360,14 @@ impl ShRenderer {
             vertex_buffer,
             index_buffer,
             selection,
-            errata: ShapeErrata::new(frame_count, seen_flags),
+            errata: ShapeErrata::from_flags(seen_flags),
         })
     }
 
     pub fn add_shape_to_render(
         &mut self,
         palette: &Palette,
+        _name: &str,
         sh: &RawShape,
         lib: &Library,
         window: &GraphicsWindow,
@@ -1515,7 +1536,7 @@ mod test {
             let system_palette = palettes[game].clone();
             let mut sh_renderer = ShRenderer::new(&window)?;
             let mut sh_instance =
-                sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
+                sh_renderer.add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
             sh_instance.toggle_flaps()?;
 
             window.drive_frame(|command_buffer, dynamic_state| {

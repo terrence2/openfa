@@ -68,7 +68,8 @@ fn main() -> Fallible<()> {
         .with_vertical_anchor(TextAnchorV::Bottom);
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let mut instance = sh_renderer.add_shape_to_render(&system_palette, &sh, &lib, &window)?;
+    let mut instance =
+        sh_renderer.add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);

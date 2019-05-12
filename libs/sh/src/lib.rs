@@ -1584,6 +1584,10 @@ mod tests {
                     }
                     Instr::JumpToFrame(jf) => {
                         let mut all_final_targets = HashSet::new();
+                        ensure!(
+                            [2, 3, 4, 6].contains(&jf.num_frames()),
+                            "only 2, 3, 4, & 6 frame count supported"
+                        );
                         for frame_num in 0..jf.num_frames() {
                             // All frames must point to a single facet.
                             let index = shape.bytes_to_index(jf.target_for_frame(frame_num))?;
