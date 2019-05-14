@@ -32,7 +32,7 @@ use std::{
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
+    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     format::Format,
@@ -327,8 +327,8 @@ pub struct ShapeModel {
     uniform_upload_pool: Arc<CpuBufferPool<[f32; 160]>>,
     device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>>,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+    vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
+    index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
 
     // What kind of model was draw into the above buffers.
     selection: DrawSelection,
@@ -1363,22 +1363,47 @@ impl ShRenderer {
             "uploading vertex buffer with {} bytes",
             std::mem::size_of::<Vertex>() * verts.len()
         );
-        let vertex_buffer =
+        let vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>> = DeviceLocalBuffer::array(
+            window.device(),
+            verts.len(),
+            BufferUsage::vertex_buffer_transfer_destination(),
+            window.device().active_queue_families(),
+        )?;
+        let vertex_upload_buffer =
             CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
 
         trace!(
             "uploading index buffer with {} bytes",
             std::mem::size_of::<u32>() * indices.len()
         );
-        let index_buffer = CpuAccessibleBuffer::from_iter(
+        let index_buffer: Arc<DeviceLocalBuffer<[u32]>> = DeviceLocalBuffer::array(
+            window.device(),
+            indices.len(),
+            BufferUsage::index_buffer_transfer_destination(),
+            window.device().active_queue_families(),
+        )?;
+        let index_upload_buffer = CpuAccessibleBuffer::from_iter(
             window.device(),
             BufferUsage::all(),
             indices.into_iter(),
         )?;
 
+        let cb = AutoCommandBufferBuilder::primary_one_time_submit(
+            window.device(),
+            window.queue().family(),
+        )?
+        .copy_buffer(vertex_upload_buffer.clone(), vertex_buffer.clone())?
+        .copy_buffer(index_upload_buffer.clone(), index_buffer.clone())?
+        .build()?;
+        let upload_future = cb.execute(window.queue())?;
+
         let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
-        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
         let sampler = Self::make_sampler(window.device())?;
+
+        upload_future
+            .join(tex_future)
+            .then_signal_fence_and_flush()?
+            .cleanup_finished();
 
         let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>> = DeviceLocalBuffer::new(
             window.device(),
@@ -1533,8 +1558,6 @@ impl RenderSubsystem for ShRenderer {
 
     fn render(
         &self,
-        // projection: &Matrix4<f32>,
-        // view: &Matrix4<f32>,
         camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
