@@ -891,7 +891,7 @@ struct BufferProperties {
 }
 
 impl BufferProperties {
-    pub fn add(
+    pub fn add_or_update_flags(
         tgt: usize,
         flags: VertexFlags,
         seen_flags: &mut VertexFlags,
@@ -1139,6 +1139,8 @@ impl ShRenderer {
             calls.sort();
             let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
             inputs.sort();
+
+            if inputs == ["_currentTicks"] && calls.is_empty() {}
             println!(
                 "XFORM: {} => {:?} {:?} in {}",
                 XFORM_TABLE.contains_key(inputs.as_slice()),
@@ -1176,7 +1178,12 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                BufferProperties::add(unmask.unwrap_unmask_target()?, flags, seen_flags, props);
+                BufferProperties::add_or_update_flags(
+                    unmask.unwrap_unmask_target()?,
+                    flags,
+                    seen_flags,
+                    props,
+                );
             }
             interp.remove_read_port(trampoline.mem_location);
         }
@@ -1223,7 +1230,12 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                BufferProperties::add(unmask.unwrap_unmask_target()?, flags, seen_flags, props);
+                BufferProperties::add_or_update_flags(
+                    unmask.unwrap_unmask_target()?,
+                    flags,
+                    seen_flags,
+                    props,
+                );
             }
         }
         Ok(())
