@@ -936,22 +936,17 @@ impl BufferPropsManager {
         self.seen_flags |= flags;
     }
 
-    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags) -> Fallible<()> {
+    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags) -> Fallible<u32> {
         ensure!(
             self.props.contains_key(&tgt),
             "have already transformed that buffer"
         );
 
-        self.props.insert(
-            tgt,
-            BufferProps {
-                flags,
-                xform_id: self.next_xform_id,
-            },
-        );
+        let xform_id = self.next_xform_id;
+        self.props.insert(tgt, BufferProps { flags, xform_id });
         self.next_xform_id += 1;
 
-        Ok(())
+        Ok(xform_id)
     }
 }
 
@@ -1185,7 +1180,7 @@ impl ShRenderer {
             inputs.sort();
 
             if inputs == ["_currentTicks"] && calls.is_empty() {
-                prop_man
+                let xform_id = prop_man
                     .add_xform_and_flags(next_instr.unwrap_unmask_target()?, VertexFlags::STATIC)?;
             }
             // println!(
