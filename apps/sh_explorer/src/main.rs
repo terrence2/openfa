@@ -39,7 +39,7 @@ make_opt_struct!(
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
+    TermLogger::init(LevelFilter::Debug, Config::default())?;
 
     let (omni, inputs) = opt.find_inputs()?;
     if inputs.is_empty() {

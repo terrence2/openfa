@@ -200,7 +200,7 @@ mod vs {
             layout(location = 3) flat out uint f_flags1;
 
             void main() {
-                gl_Position = pc.projection * pc.view * uma.xforms[0] * vec4(position, 1.0);
+                gl_Position = pc.projection * pc.view * uma.xforms[xform_id] * vec4(position, 1.0);
                 v_color = color;
                 v_tex_coord = tex_coord;
                 f_flags0 = flags0 & pc.flag_mask0;
@@ -328,9 +328,19 @@ impl ShapeErrata {
     }
 }
 
+pub enum TransformInput {
+    CurrentTicks(u32),
+}
+
 // More than meets the eye.
 pub struct Transformer {
+    xform_id: u32,
     vm: Interpreter,
+    code_offset: u32,
+    data_offset: u32,
+    xform_base: [u8; 12],
+    inputs: Vec<TransformInput>,
+    xform: Matrix4<f32>,
 }
 
 pub struct ShapeModel {
@@ -348,7 +358,50 @@ pub struct ShapeModel {
     errata: ShapeErrata,
 }
 
-impl ShapeModel {}
+fn fa2r(d: f32) -> f32 {
+    d * std::f32::consts::PI / 8192f32
+}
+
+impl ShapeModel {
+    fn animate(&mut self, start: Instant, now: Instant) -> Fallible<()> {
+        for transformer in &mut self.transformers {
+            let vm = &mut transformer.vm;
+            let t = (((now - start).as_millis() as u32) >> 4) & 0x0FFF;
+            for input in &transformer.inputs {
+                match input {
+                    TransformInput::CurrentTicks(mem_location) => {
+                        vm.add_read_port(*mem_location, Box::new(move || t));
+                    }
+                }
+            }
+            vm.map_writable(transformer.data_offset, transformer.xform_base.to_vec())?;
+            let result = vm.interpret(transformer.code_offset)?;
+            let (tramp, _) = result.ok_trampoline()?;
+            ensure!(tramp == "do_start_interp", "unexpected interp result");
+            let xformed = vm.unmap_writable(transformer.data_offset)?;
+            let words: &[i16] = unsafe { std::mem::transmute(xformed.as_slice()) };
+            let trans = Matrix4::new_translation(&Vector3::new(
+                f32::from(words[0]),
+                -f32::from(words[1]),
+                -f32::from(words[2]),
+            ));
+            let rots = Matrix4::from_euler_angles(
+                fa2r(f32::from(words[4])),
+                -fa2r(f32::from(words[3])),
+                fa2r(f32::from(words[5])),
+            );
+            transformer.xform = trans * rots;
+            for input in &transformer.inputs {
+                match input {
+                    TransformInput::CurrentTicks(mem_location) => {
+                        vm.remove_read_port(*mem_location);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 struct DrawState {
     pub show_damaged: bool,
@@ -506,7 +559,7 @@ impl DrawState {
 }
 
 pub struct ShapeInstance {
-    models: Vec<Arc<ShapeModel>>,
+    models: Vec<Arc<RefCell<ShapeModel>>>,
     draw_state: DrawState,
 }
 
@@ -529,7 +582,7 @@ impl ShapeInstanceRef {
             .build_mask(start, errata)
     }
 
-    pub fn get_models(&self) -> Vec<Arc<ShapeModel>> {
+    pub fn get_models(&self) -> Vec<Arc<RefCell<ShapeModel>>> {
         self.value.as_ref().borrow().models.clone()
     }
 
@@ -706,13 +759,16 @@ impl ShapeInstanceRef {
         Ok(())
     }
 
-    pub fn animate(&mut self, now: Instant) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.gear_position.animate(now);
+    pub fn animate(&mut self, start: Instant, now: Instant) -> Fallible<()> {
+        {
+            let ds = &mut self.value.borrow_mut().draw_state;
+            ds.gear_position.animate(now);
+        }
 
-        // for model in &inst.models {
-        //     model.animate(now);
-        // }
+        let models = &mut self.value.borrow_mut().models;
+        for model in models {
+            model.borrow_mut().animate(start, now)?;
+        }
 
         Ok(())
     }
@@ -842,12 +898,6 @@ lazy_static! {
         table.insert("lighteningAllowed");
         table
     };
-
-    static ref XFORM_TABLE: HashMap<Vec<&'static str>, usize> = {
-        let mut table = HashMap::new();
-        table.insert(vec!["_PLgearDown", "_PLgearPos"], 0);
-        table
-    };
 }
 
 struct ProgramCounter {
@@ -936,7 +986,7 @@ impl BufferPropsManager {
 
     pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags) -> Fallible<u32> {
         ensure!(
-            self.props.contains_key(&tgt),
+            !self.props.contains_key(&tgt),
             "have already transformed that buffer"
         );
 
@@ -1016,7 +1066,6 @@ impl ShRenderer {
                 flags: VertexFlags::STATIC,
                 xform_id: 0,
             });
-        println!("VERTEX FLAGS: {:?}", props.flags);
         for v in vert_buf.vertices() {
             let v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), -f32::from(v[1]));
             vert_pool.push(Vertex {
@@ -1137,59 +1186,116 @@ impl ShRenderer {
     }
 
     fn maybe_update_buffer_properties(
-        _name: &str,
+        name: &str,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
+        transformers: &mut Vec<Transformer>,
     ) -> Fallible<usize> {
-        let memrefs = Self::find_external_references(x86, sh);
         let next_instr = pc.relative_instr(1, sh);
-        if next_instr.magic() == "Unmask" {
-            ensure!(
-                memrefs.len() == 1,
-                "expected unmask with only one parameter"
-            );
-            let (&name, trampoline) = memrefs.iter().next().expect("checked next");
-            if TOGGLE_TABLE.contains_key(name) {
-                Self::update_buffer_properties_for_toggle(trampoline, pc, x86, sh, prop_man)?;
-            } else if name == "brentObjId" {
-                let callrefs = Self::find_external_calls(x86, sh)?;
-                ensure!(callrefs.len() == 2, "expected one call");
-                ensure!(
-                    callrefs.contains_key("do_start_interp"),
-                    "expected call to do_start_interp"
-                );
-                ensure!(
-                    callrefs.contains_key("@HARDNumLoaded@8"),
-                    "expected call to @HARDNumLoaded@8"
-                );
-                Self::update_buffer_properties_for_num_loaded(trampoline, pc, x86, sh, prop_man)?;
-            } else {
-                bail!("unknown memory read: {}", name)
-            }
-        } else if next_instr.magic() == "XformUnmask" {
-            let mut calls = Self::find_external_calls(x86, sh)?
-                .keys()
-                .cloned()
-                .collect::<Vec<&str>>();
-            calls.sort();
-            let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
-            inputs.sort();
 
-            if inputs == ["_currentTicks"] && calls.is_empty() {
-                let xform_id = prop_man
-                    .add_xform_and_flags(next_instr.unwrap_unmask_target()?, VertexFlags::STATIC)?;
-            }
-            // println!(
-            //     "XFORM: {} => {:?} {:?} in {}",
-            //     XFORM_TABLE.contains_key(inputs.as_slice()),
-            //     inputs,
-            //     calls,
-            //     name
-            // );
+        if next_instr.magic() == "Unmask" {
+            Self::handle_unmask_property(pc, x86, sh, prop_man)?;
+            return Ok(2);
         }
+
+        if next_instr.magic() == "XformUnmask" {
+            Self::handle_transformer_property(name, pc, x86, sh, prop_man, transformers)?;
+            return Ok(1);
+        }
+
+        // TODO: figure out what is landing here and see how important it is.
         Ok(0)
+    }
+
+    fn handle_unmask_property(
+        pc: &ProgramCounter,
+        x86: &X86Code,
+        sh: &RawShape,
+        prop_man: &mut BufferPropsManager,
+    ) -> Fallible<()> {
+        let memrefs = Self::find_external_references(x86, sh);
+        ensure!(
+            memrefs.len() == 1,
+            "expected unmask with only one parameter"
+        );
+        let (&name, trampoline) = memrefs.iter().next().expect("checked next");
+        if TOGGLE_TABLE.contains_key(name) {
+            Self::update_buffer_properties_for_toggle(trampoline, pc, x86, sh, prop_man)?;
+        } else if name == "brentObjId" {
+            let callrefs = Self::find_external_calls(x86, sh)?;
+            ensure!(callrefs.len() == 2, "expected one call");
+            ensure!(
+                callrefs.contains_key("do_start_interp"),
+                "expected call to do_start_interp"
+            );
+            ensure!(
+                callrefs.contains_key("@HARDNumLoaded@8"),
+                "expected call to @HARDNumLoaded@8"
+            );
+            Self::update_buffer_properties_for_num_loaded(trampoline, pc, x86, sh, prop_man)?;
+        } else {
+            bail!("unknown memory read: {}", name)
+        }
+        Ok(())
+    }
+
+    fn handle_transformer_property(
+        name: &str,
+        pc: &ProgramCounter,
+        x86: &X86Code,
+        sh: &RawShape,
+        prop_man: &mut BufferPropsManager,
+        transformers: &mut Vec<Transformer>,
+    ) -> Fallible<()> {
+        let xform = pc.relative_instr(1, sh);
+        let maybe_trailer = pc.relative_instr(2, sh);
+        ensure!(xform.magic() == "XformUnmask", "expected xform after x86");
+
+        let xform_base = match xform {
+            Instr::XformUnmask(ins) => ins.xform_base,
+            Instr::XformUnmask4(ins) => ins.xform_base,
+            _ => bail!("not an xform instruction"),
+        };
+
+        let mut interp = Interpreter::new();
+        interp.add_code(x86.bytecode.clone());
+        if let Instr::X86Code(trailer) = maybe_trailer {
+            interp.add_code(trailer.bytecode.clone());
+        }
+        let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
+        interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
+
+        let memrefs = Self::find_external_references(x86, sh);
+        let mut calls = Self::find_external_calls(x86, sh)?
+            .keys()
+            .cloned()
+            .collect::<Vec<&str>>();
+        calls.sort();
+        let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
+        inputs.sort();
+
+        //println!("MEMREFS: {:?}", memrefs);
+
+        if inputs == ["_currentTicks"] && calls == ["do_start_interp"] {
+            let xform_id =
+                prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, VertexFlags::STATIC)?;
+
+            transformers.push(Transformer {
+                xform_id,
+                vm: interp,
+                code_offset: x86.code_offset(SHAPE_LOAD_BASE),
+                data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
+                xform_base,
+                inputs: vec![TransformInput::CurrentTicks(
+                    memrefs["_currentTicks"].mem_location,
+                )],
+                xform: Matrix4::identity(),
+            });
+        }
+        println!("XFORM: {:?} + {:?} in {}", inputs, calls, name);
+        Ok(())
     }
 
     fn update_buffer_properties_for_toggle(
@@ -1212,7 +1318,7 @@ impl ShRenderer {
 
         for &(value, flags) in &TOGGLE_TABLE[trampoline.name.as_str()] {
             interp.add_read_port(trampoline.mem_location, Box::new(move || value));
-            let exit_info = interp.interpret(x86.code_offset(0xAA00_0000u32))?;
+            let exit_info = interp.interpret(x86.code_offset(SHAPE_LOAD_BASE))?;
             let (name, args) = exit_info.ok_trampoline()?;
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
@@ -1290,6 +1396,7 @@ impl ShRenderer {
             props: HashMap::new(),
             next_xform_id: 1,
         };
+        let mut transformers = Vec::new();
         let mut active_frame = None;
         let mut section_close_byte_offset = None;
         let mut damage_model_byte_offset = None;
@@ -1363,8 +1470,14 @@ impl ShRenderer {
                 }
 
                 Instr::X86Code(ref x86) => {
-                    let advance_cnt =
-                        Self::maybe_update_buffer_properties(name, &pc, x86, sh, &mut prop_man)?;
+                    let advance_cnt = Self::maybe_update_buffer_properties(
+                        name,
+                        &pc,
+                        x86,
+                        sh,
+                        &mut prop_man,
+                        &mut transformers,
+                    )?;
                     for _ in 0..advance_cnt {
                         pc.advance(sh);
                     }
@@ -1436,10 +1549,11 @@ impl ShRenderer {
         let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
         let sampler = Self::make_sampler(window.device())?;
 
-        upload_future
-            .join(tex_future)
-            .then_signal_fence_and_flush()?
-            .cleanup_finished();
+        // FIXME: lift this up to the top level
+        // upload_future
+        //     .join(tex_future)
+        //     .then_signal_fence_and_flush()?
+        //     .cleanup_finished();
 
         let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>> = DeviceLocalBuffer::new(
             window.device(),
@@ -1462,8 +1576,8 @@ impl ShRenderer {
             pds,
             vertex_buffer,
             index_buffer,
+            transformers,
             selection,
-            transformers: Vec::new(),
             errata: ShapeErrata::from_flags(prop_man.seen_flags),
         })
     }
@@ -1489,14 +1603,14 @@ impl ShRenderer {
         }
         let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
 
-        let mut models = vec![Arc::new(self.draw_model(
+        let mut models = vec![Arc::new(RefCell::new(self.draw_model(
             name,
             sh,
             palette,
             &atlas,
             DrawSelection::NormalModel,
             window,
-        )?)];
+        )?))];
         if let Ok(damage_model) = self.draw_model(
             name,
             sh,
@@ -1505,7 +1619,7 @@ impl ShRenderer {
             DrawSelection::DamageModel,
             window,
         ) {
-            models.push(Arc::new(damage_model));
+            models.push(Arc::new(RefCell::new(damage_model)));
         } else {
             // FIXME: load all damage models _{A,B,C,D}
         }
@@ -1521,7 +1635,7 @@ impl ShRenderer {
 
     pub fn animate(&mut self, now: Instant) -> Fallible<()> {
         for instance in &mut self.instances {
-            instance.animate(now)?;
+            instance.animate(self.start, now)?;
         }
         Ok(())
     }
@@ -1573,11 +1687,12 @@ impl RenderSubsystem for ShRenderer {
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for inst in &self.instances {
-            for model in inst.get_models() {
+            for model_ref in inst.get_models() {
+                let model = model_ref.borrow();
                 if inst.show_damaged()? != model.selection.is_damage() {
                     continue;
                 }
-                let uniforms = [
+                let mut uniforms = [
                     1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32,
                     0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32,
                     1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
@@ -1592,6 +1707,12 @@ impl RenderSubsystem for ShRenderer {
                     1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
                     0f32, 0f32, 0f32, 1f32,
                 ];
+                for transformer in &model.transformers {
+                    let base = transformer.xform_id as usize * 16;
+                    for i in 0..16 {
+                        uniforms[base + i] = transformer.xform[i];
+                    }
+                }
                 let new_uniforms_buffer = model.uniform_upload_pool.next(uniforms)?;
 
                 cb = cb.copy_buffer(new_uniforms_buffer, model.device_uniform_buffer.clone())?;
@@ -1608,7 +1729,8 @@ impl RenderSubsystem for ShRenderer {
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for inst in &self.instances {
-            for model in inst.get_models() {
+            for model_ref in inst.get_models() {
+                let model = model_ref.borrow();
                 if inst.show_damaged()? != model.selection.is_damage() {
                     continue;
                 }
@@ -1683,7 +1805,7 @@ mod test {
                 let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
                 let mut sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
                     &system_palette,
-                    name,
+                    &(game.to_owned() + ":" + name),
                     &sh,
                     &lib,
                     &window,

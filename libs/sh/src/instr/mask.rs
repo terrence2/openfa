@@ -148,6 +148,7 @@ pub struct XformUnmask {
     pub a0: i16,
     pub a1: i16,
     pub a2: i16,
+    pub xform_base: [u8; 12],
     pub offset_to_next: usize,
 }
 
@@ -165,6 +166,8 @@ impl XformUnmask {
         let a0 = word_ref[3];
         let a1 = word_ref[4];
         let a2 = word_ref[5];
+        let mut xform_base: [u8; 12] = Default::default();
+        xform_base.copy_from_slice(&data[2..14]);
         let uword_ref: &[u16] = unsafe { mem::transmute(&data[14..]) };
         let offset_to_next = uword_ref[0] as usize;
         Ok(Self {
@@ -176,6 +179,7 @@ impl XformUnmask {
             a0,
             a1,
             a2,
+            xform_base,
             offset_to_next,
         })
     }
@@ -238,6 +242,7 @@ pub struct XformUnmask4 {
     pub a0: i16,
     pub a1: i16,
     pub a2: i16,
+    pub xform_base: [u8; 12],
     pub offset_to_next: usize,
 }
 
@@ -255,6 +260,8 @@ impl XformUnmask4 {
         let a0 = word_ref[3];
         let a1 = word_ref[4];
         let a2 = word_ref[5];
+        let mut xform_base: [u8; 12] = Default::default();
+        xform_base.copy_from_slice(&data[2..14]);
         let dword_ref: &[u32] = unsafe { mem::transmute(&data[14..]) };
         let offset_to_next = dword_ref[0] as usize;
         Ok(Self {
@@ -266,6 +273,7 @@ impl XformUnmask4 {
             a0,
             a1,
             a2,
+            xform_base,
             offset_to_next,
         })
     }
