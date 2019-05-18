@@ -178,7 +178,7 @@ fn main() -> Fallible<()> {
                             instance.toggle_damaged().unwrap();
                         }
                         VirtualKeyCode::G => {
-                            instance.toggle_gear().unwrap();
+                            instance.toggle_gear(&loop_start).unwrap();
                         }
                         VirtualKeyCode::F => {
                             instance.toggle_flaps().unwrap();
@@ -256,6 +256,7 @@ fn main() -> Fallible<()> {
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
 
+        sh_renderer.borrow_mut().animate(loop_start)?;
         window.drive_frame(&camera)?;
 
         let frame_time = loop_start.elapsed();
@@ -270,10 +271,11 @@ fn main() -> Fallible<()> {
         fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
-            "dam:{}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
+            "dam:{}, frame:{}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
             false, // instance.damaged,
             0,     // instance.frame_number,
             instance.has_gear_down()?,
+            instance.get_gear_position()?,
             instance.has_flaps_down()?,
             instance.has_airbrake_extended()?,
             instance.has_hook_extended()?,

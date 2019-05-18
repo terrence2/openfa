@@ -12,10 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::sh::texture_atlas::{Frame, TextureAtlas};
+use crate::sh::{
+    animation::Animation,
+    texture_atlas::{Frame, TextureAtlas},
+};
+use approx::relative_eq;
 use bitflags::bitflags;
 use camera::CameraAbstract;
 use failure::{bail, ensure, err_msg, Fallible};
+use i386::Interpreter;
 use image::{ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use lib::Library;
@@ -28,7 +33,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
@@ -323,12 +328,18 @@ impl ShapeErrata {
     }
 }
 
+// More than meets the eye.
+pub struct Transformer {
+    vm: Interpreter,
+}
+
 pub struct ShapeModel {
     uniform_upload_pool: Arc<CpuBufferPool<[f32; 160]>>,
     device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>>,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
     vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
     index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
+    transformers: Vec<Transformer>,
 
     // What kind of model was draw into the above buffers.
     selection: DrawSelection,
@@ -337,10 +348,12 @@ pub struct ShapeModel {
     errata: ShapeErrata,
 }
 
+impl ShapeModel {}
+
 struct DrawState {
     pub show_damaged: bool,
     //pub frame_number: usize,
-    pub gear_position: Option<u32>,
+    pub gear_position: Animation,
     pub bay_position: Option<u32>,
     pub flaps_down: bool,
     pub slats_down: bool,
@@ -360,7 +373,7 @@ impl Default for DrawState {
         DrawState {
             show_damaged: false,
             //frame_number: 0,
-            gear_position: Some(18),
+            gear_position: Animation::empty(0f32),
             flaps_down: false,
             slats_down: false,
             airbrake_extended: true,
@@ -450,7 +463,7 @@ impl DrawState {
             VertexFlags::AFTERBURNER_OFF
         };
 
-        mask |= if self.gear_position.is_some() {
+        mask |= if !relative_eq!(self.gear_position.value(), 90f32) {
             VertexFlags::GEAR_DOWN
         } else {
             VertexFlags::GEAR_UP
@@ -593,19 +606,25 @@ impl ShapeInstanceRef {
         Ok(self.value.try_borrow()?.draw_state.bay_position.is_some())
     }
 
-    pub fn toggle_gear(&mut self) -> Fallible<()> {
+    pub fn toggle_gear(&mut self, start: &Instant) -> Fallible<()> {
         let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        // FIXME: implement non-toggle gear
-        ds.gear_position = if ds.gear_position.is_some() {
-            None
+        if ds.gear_position.is_active() {
+            return Ok(());
+        }
+        if ds.gear_position.value() == 0f32 {
+            ds.gear_position = Animation::start(*start, Duration::from_millis(5000), 0f32..90f32);
         } else {
-            Some(0)
-        };
+            ds.gear_position = Animation::start(*start, Duration::from_millis(5000), 90f32..0f32);
+        }
         Ok(())
     }
 
     pub fn has_gear_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.gear_position.is_some())
+        Ok(self.value.try_borrow()?.draw_state.gear_position.value() == 0f32)
+    }
+
+    pub fn get_gear_position(&self) -> Fallible<f32> {
+        Ok(self.value.try_borrow()?.draw_state.gear_position.value())
     }
 
     pub fn move_rudder_left(&mut self) -> Fallible<()> {
@@ -686,6 +705,17 @@ impl ShapeInstanceRef {
         let ds = &mut self.value.try_borrow_mut()?.draw_state;
         ds.sam_count += 1;
         ds.sam_count %= 4;
+        Ok(())
+    }
+
+    pub fn animate(&mut self, now: Instant) -> Fallible<()> {
+        let ds = &mut self.value.try_borrow_mut()?.draw_state;
+        ds.gear_position.animate(now);
+
+        // for model in &inst.models {
+        //     model.animate(now);
+        // }
+
         Ok(())
     }
 }
@@ -885,24 +915,43 @@ impl DrawSelection {
 }
 
 #[derive(Clone, Copy)]
-struct BufferProperties {
+struct BufferProps {
     flags: VertexFlags,
     xform_id: u32,
 }
 
-impl BufferProperties {
-    pub fn add_or_update_flags(
-        tgt: usize,
-        flags: VertexFlags,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
-    ) {
-        let entry = props.entry(tgt).or_insert(BufferProperties {
+struct BufferPropsManager {
+    props: HashMap<usize, BufferProps>,
+    seen_flags: VertexFlags,
+    next_xform_id: u32,
+}
+
+impl BufferPropsManager {
+    pub fn add_or_update_toggle_flags(&mut self, tgt: usize, flags: VertexFlags) {
+        let entry = self.props.entry(tgt).or_insert(BufferProps {
             flags: VertexFlags::NONE,
             xform_id: 0,
         });
         entry.flags |= flags;
-        *seen_flags |= flags;
+        self.seen_flags |= flags;
+    }
+
+    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags) -> Fallible<()> {
+        ensure!(
+            self.props.contains_key(&tgt),
+            "have already transformed that buffer"
+        );
+
+        self.props.insert(
+            tgt,
+            BufferProps {
+                flags,
+                xform_id: self.next_xform_id,
+            },
+        );
+        self.next_xform_id += 1;
+
+        Ok(())
     }
 }
 
@@ -962,7 +1011,7 @@ impl ShRenderer {
     }
 
     fn load_vertex_buffer(
-        buffer_properties: &HashMap<usize, BufferProperties>,
+        buffer_properties: &HashMap<usize, BufferProps>,
         vert_buf: &VertexBuf,
         vert_pool: &mut Vec<Vertex>,
     ) {
@@ -970,7 +1019,7 @@ impl ShRenderer {
         let props = buffer_properties
             .get(&vert_buf.at_offset())
             .cloned()
-            .unwrap_or_else(|| BufferProperties {
+            .unwrap_or_else(|| BufferProps {
                 flags: VertexFlags::STATIC,
                 xform_id: 0,
             });
@@ -1060,7 +1109,7 @@ impl ShRenderer {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -1080,7 +1129,7 @@ impl ShRenderer {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
@@ -1095,12 +1144,11 @@ impl ShRenderer {
     }
 
     fn maybe_update_buffer_properties(
-        name: &str,
+        _name: &str,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
+        prop_man: &mut BufferPropsManager,
     ) -> Fallible<usize> {
         let memrefs = Self::find_external_references(x86, sh);
         let next_instr = pc.relative_instr(1, sh);
@@ -1111,9 +1159,7 @@ impl ShRenderer {
             );
             let (&name, trampoline) = memrefs.iter().next().expect("checked next");
             if TOGGLE_TABLE.contains_key(name) {
-                Self::update_buffer_properties_for_toggle(
-                    trampoline, pc, x86, sh, seen_flags, props,
-                )?;
+                Self::update_buffer_properties_for_toggle(trampoline, pc, x86, sh, prop_man)?;
             } else if name == "brentObjId" {
                 let callrefs = Self::find_external_calls(x86, sh)?;
                 ensure!(callrefs.len() == 2, "expected one call");
@@ -1125,9 +1171,7 @@ impl ShRenderer {
                     callrefs.contains_key("@HARDNumLoaded@8"),
                     "expected call to @HARDNumLoaded@8"
                 );
-                Self::update_buffer_properties_for_num_loaded(
-                    trampoline, pc, x86, sh, seen_flags, props,
-                )?;
+                Self::update_buffer_properties_for_num_loaded(trampoline, pc, x86, sh, prop_man)?;
             } else {
                 bail!("unknown memory read: {}", name)
             }
@@ -1140,14 +1184,17 @@ impl ShRenderer {
             let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
             inputs.sort();
 
-            if inputs == ["_currentTicks"] && calls.is_empty() {}
-            println!(
-                "XFORM: {} => {:?} {:?} in {}",
-                XFORM_TABLE.contains_key(inputs.as_slice()),
-                inputs,
-                calls,
-                name
-            );
+            if inputs == ["_currentTicks"] && calls.is_empty() {
+                prop_man
+                    .add_xform_and_flags(next_instr.unwrap_unmask_target()?, VertexFlags::STATIC)?;
+            }
+            // println!(
+            //     "XFORM: {} => {:?} {:?} in {}",
+            //     XFORM_TABLE.contains_key(inputs.as_slice()),
+            //     inputs,
+            //     calls,
+            //     name
+            // );
         }
         Ok(0)
     }
@@ -1157,8 +1204,7 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
+        prop_man: &mut BufferPropsManager,
     ) -> Fallible<()> {
         let unmask = pc.relative_instr(1, sh);
         let trailer = pc.relative_instr(2, sh);
@@ -1166,8 +1212,8 @@ impl ShRenderer {
         ensure!(trailer.magic() == "F0", "expected code after unmask");
 
         let mut interp = i386::Interpreter::new();
-        interp.add_code(&x86.bytecode);
-        interp.add_code(&trailer.unwrap_x86()?.bytecode);
+        interp.add_code(x86.bytecode.clone());
+        interp.add_code(trailer.unwrap_x86()?.bytecode.clone());
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
@@ -1178,12 +1224,7 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                BufferProperties::add_or_update_flags(
-                    unmask.unwrap_unmask_target()?,
-                    flags,
-                    seen_flags,
-                    props,
-                );
+                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags);
             }
             interp.remove_read_port(trampoline.mem_location);
         }
@@ -1196,8 +1237,7 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
+        prop_man: &mut BufferPropsManager,
     ) -> Fallible<()> {
         ensure!(
             brent_obj_id.name == "brentObjId",
@@ -1210,8 +1250,8 @@ impl ShRenderer {
         ensure!(trailer.magic() == "F0", "expected code after unmask");
 
         let mut interp = i386::Interpreter::new();
-        interp.add_code(&x86.bytecode);
-        interp.add_code(&trailer.unwrap_x86()?.bytecode);
+        interp.add_code(x86.bytecode.clone());
+        interp.add_code(trailer.unwrap_x86()?.bytecode.clone());
         interp.add_read_port(brent_obj_id.mem_location, Box::new(move || 0x60000));
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
@@ -1230,12 +1270,7 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                BufferProperties::add_or_update_flags(
-                    unmask.unwrap_unmask_target()?,
-                    flags,
-                    seen_flags,
-                    props,
-                );
+                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags);
             }
         }
         Ok(())
@@ -1257,10 +1292,12 @@ impl ShRenderer {
         xforms.push(Matrix4::<f32>::identity());
 
         // State
+        let mut prop_man = BufferPropsManager {
+            seen_flags: VertexFlags::NONE,
+            props: HashMap::new(),
+            next_xform_id: 1,
+        };
         let mut active_frame = None;
-        let _active_xform_id = 0;
-        let mut seen_flags = VertexFlags::NONE;
-        let mut buffer_properties = HashMap::new();
         let mut section_close_byte_offset = None;
         let mut damage_model_byte_offset = None;
         let mut end_byte_offset = None;
@@ -1333,14 +1370,8 @@ impl ShRenderer {
                 }
 
                 Instr::X86Code(ref x86) => {
-                    let advance_cnt = Self::maybe_update_buffer_properties(
-                        name,
-                        &pc,
-                        x86,
-                        sh,
-                        &mut seen_flags,
-                        &mut buffer_properties,
-                    )?;
+                    let advance_cnt =
+                        Self::maybe_update_buffer_properties(name, &pc, x86, sh, &mut prop_man)?;
                     for _ in 0..advance_cnt {
                         pc.advance(sh);
                     }
@@ -1351,7 +1382,7 @@ impl ShRenderer {
                 }
 
                 Instr::VertexBuf(vert_buf) => {
-                    Self::load_vertex_buffer(&buffer_properties, vert_buf, &mut vert_pool);
+                    Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
                 }
 
                 Instr::Facet(facet) => {
@@ -1439,7 +1470,8 @@ impl ShRenderer {
             vertex_buffer,
             index_buffer,
             selection,
-            errata: ShapeErrata::from_flags(seen_flags),
+            transformers: Vec::new(),
+            errata: ShapeErrata::from_flags(prop_man.seen_flags),
         })
     }
 
@@ -1492,6 +1524,13 @@ impl ShRenderer {
 
         self.instances.push(instance.clone());
         Ok(instance)
+    }
+
+    pub fn animate(&mut self, now: Instant) -> Fallible<()> {
+        for instance in &mut self.instances {
+            instance.animate(now)?;
+        }
+        Ok(())
     }
 
     fn upload_texture_rgba(
@@ -1661,6 +1700,8 @@ mod test {
                 window.reset_render_subsystems();
                 window.add_render_subsystem(sh_renderer.clone());
 
+                window.drive_frame(&camera)?;
+                sh_renderer.borrow_mut().animate(Instant::now())?;
                 window.drive_frame(&camera)?;
             }
         }

@@ -478,7 +478,7 @@ impl FontInfo {
             let glyph = &fnt.glyphs[&glyph_index];
 
             interp.clear_code();
-            interp.add_code(&glyph.bytecode);
+            interp.add_code(glyph.bytecode.clone());
             interp.push_stack_value(0x60_0000);
 
             let rv = interp.interpret(0)?;
