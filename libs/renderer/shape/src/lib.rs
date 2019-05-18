@@ -12,10 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::sh::{
-    animation::Animation,
-    texture_atlas::{Frame, TextureAtlas},
-};
+mod texture_atlas;
+
+use crate::texture_atlas::{Frame, TextureAtlas};
+use animate::Animation;
 use approx::relative_eq;
 use bitflags::bitflags;
 use camera::CameraAbstract;
@@ -352,7 +352,6 @@ impl ShapeModel {}
 
 struct DrawState {
     pub show_damaged: bool,
-    //pub frame_number: usize,
     pub gear_position: Animation,
     pub bay_position: Option<u32>,
     pub flaps_down: bool,
@@ -372,7 +371,6 @@ impl Default for DrawState {
     fn default() -> Self {
         DrawState {
             show_damaged: false,
-            //frame_number: 0,
             gear_position: Animation::empty(0f32),
             flaps_down: false,
             slats_down: false,

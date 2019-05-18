@@ -19,6 +19,7 @@ members = [
         "apps/unlib",
         "apps/vulkandump",
 
+        "libs/animate",
         "libs/ansi",
         "libs/asset",
         "libs/dlg",
@@ -40,6 +41,7 @@ members = [
         "libs/pt",
         "libs/render",
         "libs/renderer/camera",
+        "libs/renderer/shape",
         "libs/renderer/text",
         "libs/resource",
         "libs/reverse",

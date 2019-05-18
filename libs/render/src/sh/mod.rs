@@ -13,7 +13,5 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-mod animation;
 pub mod raw_sh_renderer;
-pub mod sh_renderer;
 mod texture_atlas;

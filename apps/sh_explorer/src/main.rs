@@ -17,7 +17,7 @@ use failure::{bail, Fallible};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::ShRenderer;
+use shape::ShRenderer;
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};

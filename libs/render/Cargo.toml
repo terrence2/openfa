@@ -5,7 +5,6 @@ edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-approx = "^ 0.3"
 bitflags = ">= 1.0"
 failure = ">= 0.1.2"
 image = ">= 0.18"

@@ -22,7 +22,7 @@ mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-render = { path = "../../libs/render" }
+shape = { path = "../../libs/renderer/shape" }
 sh = { path = "../../libs/sh" }
 text = { path = "../../libs/renderer/text" }
 window = { path = "../../libs/window" }
