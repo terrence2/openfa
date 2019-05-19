@@ -20,7 +20,7 @@ use crate::{
 };
 use failure::{bail, ensure, Fallible};
 use log::trace;
-use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, mem, rc::Rc};
 
 #[derive(Debug)]
 pub enum ExitInfo {
@@ -45,13 +45,9 @@ struct MemMapR {
 }
 
 impl MemMapR {
-    fn new(start: u32, end: u32, mem: &[u8]) -> Self {
+    fn new(start: u32, end: u32, mem: Vec<u8>) -> Self {
         assert!(start < end);
-        Self {
-            start,
-            end,
-            mem: mem.to_owned(),
-        }
+        Self { start, end, mem }
     }
 }
 
@@ -78,7 +74,7 @@ pub struct Interpreter {
     stack: Vec<u32>,
     memmap_w: Vec<MemMapW>,
     memmap_r: Vec<MemMapR>,
-    bytecode: Vec<Arc<RefCell<ByteCode>>>,
+    bytecode: Vec<Rc<RefCell<ByteCode>>>,
     ports_r: HashMap<u32, Box<Fn() -> u32>>,
     trampolines: HashMap<u32, (String, usize)>,
 }
@@ -124,6 +120,23 @@ impl Interpreter {
         self.ports_r.remove(&addr);
     }
 
+    pub fn map_readable(&mut self, start: u32, data: Vec<u8>) -> Fallible<()> {
+        ensure!(
+            data.len() < u32::max_value() as usize,
+            "readonly data segment too large"
+        );
+        let end = start.checked_add(data.len() as u32);
+        ensure!(
+            end.is_some(),
+            "readonly data segment overflowed when mapped at {:08X}",
+            start
+        );
+        let map = MemMapR::new(start, end.unwrap(), data);
+        self.memmap_r.push(map);
+        self.memmap_r.sort();
+        Ok(())
+    }
+
     pub fn map_writable(&mut self, start: u32, data: Vec<u8>) -> Fallible<()> {
         ensure!(
             data.len() < u32::max_value() as usize,
@@ -152,7 +165,7 @@ impl Interpreter {
         );
     }
 
-    pub fn add_code(&mut self, bc: Arc<RefCell<ByteCode>>) {
+    pub fn add_code(&mut self, bc: Rc<RefCell<ByteCode>>) {
         self.bytecode.push(bc);
     }
 
@@ -160,7 +173,7 @@ impl Interpreter {
         self.bytecode.clear();
     }
 
-    fn find_instr(&self) -> Fallible<(Arc<RefCell<ByteCode>>, usize)> {
+    fn find_instr(&self) -> Fallible<(Rc<RefCell<ByteCode>>, usize)> {
         trace!("searching for instr at ip: {:08X}", self.eip());
         for bc_ref in self.bytecode.iter() {
             let bc = bc_ref.borrow();

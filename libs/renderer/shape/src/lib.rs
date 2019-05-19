@@ -12,11 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod draw_state;
 mod texture_atlas;
 
-use crate::texture_atlas::{Frame, TextureAtlas};
-use animate::Animation;
-use approx::relative_eq;
+use crate::{
+    draw_state::DrawState,
+    texture_atlas::{Frame, TextureAtlas},
+};
 use bitflags::bitflags;
 use camera::CameraAbstract;
 use failure::{bail, ensure, err_msg, Fallible};
@@ -32,8 +34,9 @@ use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, 
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
+    rc::Rc,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
@@ -52,8 +55,6 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::{GraphicsWindow, RenderSubsystem};
-
-const ANIMATION_FRAME_TIME: usize = 166; // ms
 
 bitflags! {
     struct VertexFlags: u64 {
@@ -330,6 +331,8 @@ impl ShapeErrata {
 
 pub enum TransformInput {
     CurrentTicks(u32),
+    GearPosition(u32),
+    GearDown(u32),
 }
 
 // More than meets the eye.
@@ -363,14 +366,21 @@ fn fa2r(d: f32) -> f32 {
 }
 
 impl ShapeModel {
-    fn animate(&mut self, start: Instant, now: Instant) -> Fallible<()> {
+    fn animate(&mut self, start: &Instant, now: &Instant, state: &DrawState) -> Fallible<()> {
         for transformer in &mut self.transformers {
+            let gear_position = state.gear_position() as u32;
             let vm = &mut transformer.vm;
-            let t = (((now - start).as_millis() as u32) >> 4) & 0x0FFF;
+            let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
             for input in &transformer.inputs {
                 match input {
-                    TransformInput::CurrentTicks(mem_location) => {
-                        vm.add_read_port(*mem_location, Box::new(move || t));
+                    TransformInput::CurrentTicks(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || t));
+                    }
+                    TransformInput::GearPosition(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || gear_position));
+                    }
+                    TransformInput::GearDown(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || 1));
                     }
                 }
             }
@@ -386,16 +396,16 @@ impl ShapeModel {
                 -f32::from(words[2]),
             ));
             let rots = Matrix4::from_euler_angles(
-                fa2r(f32::from(words[4])),
+                -fa2r(f32::from(words[4])),
                 -fa2r(f32::from(words[3])),
-                fa2r(f32::from(words[5])),
+                -fa2r(f32::from(words[5])),
             );
             transformer.xform = trans * rots;
             for input in &transformer.inputs {
                 match input {
-                    TransformInput::CurrentTicks(mem_location) => {
-                        vm.remove_read_port(*mem_location);
-                    }
+                    TransformInput::CurrentTicks(loc) => vm.remove_read_port(*loc),
+                    TransformInput::GearPosition(loc) => vm.remove_read_port(*loc),
+                    TransformInput::GearDown(loc) => vm.remove_read_port(*loc),
                 }
             }
         }
@@ -403,164 +413,9 @@ impl ShapeModel {
     }
 }
 
-struct DrawState {
-    pub show_damaged: bool,
-    pub gear_position: Animation,
-    pub bay_position: Option<u32>,
-    pub flaps_down: bool,
-    pub slats_down: bool,
-    pub airbrake_extended: bool,
-    pub hook_extended: bool,
-    pub afterburner_enabled: bool,
-    pub rudder_position: i32,
-    pub left_aileron_position: i32,
-    pub right_aileron_position: i32,
-    pub sam_count: u32,
-    pub eject_state: u32,
-    pub player_dead: bool,
-}
-
-impl Default for DrawState {
-    fn default() -> Self {
-        DrawState {
-            show_damaged: false,
-            gear_position: Animation::empty(0f32),
-            flaps_down: false,
-            slats_down: false,
-            airbrake_extended: true,
-            hook_extended: true,
-            bay_position: Some(18),
-            afterburner_enabled: true,
-            rudder_position: 0,
-            left_aileron_position: 0,
-            right_aileron_position: 0,
-            sam_count: 3,
-            eject_state: 0,
-            player_dead: false,
-        }
-    }
-}
-
-impl DrawState {
-    fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
-        let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
-
-        let elapsed = start.elapsed().as_millis() as usize;
-        let frame_off = elapsed / ANIMATION_FRAME_TIME;
-        mask |= VertexFlags::ANIM_FRAME_0_2.displacement(frame_off % 2)?;
-        mask |= VertexFlags::ANIM_FRAME_0_3.displacement(frame_off % 3)?;
-        mask |= VertexFlags::ANIM_FRAME_0_4.displacement(frame_off % 4)?;
-        mask |= VertexFlags::ANIM_FRAME_0_6.displacement(frame_off % 6)?;
-
-        mask |= if self.flaps_down {
-            VertexFlags::LEFT_FLAP_DOWN | VertexFlags::RIGHT_FLAP_DOWN
-        } else {
-            VertexFlags::LEFT_FLAP_UP | VertexFlags::RIGHT_FLAP_UP
-        };
-
-        mask |= if self.slats_down {
-            VertexFlags::SLATS_DOWN
-        } else {
-            VertexFlags::SLATS_UP
-        };
-
-        mask |= if self.airbrake_extended {
-            VertexFlags::BRAKE_EXTENDED
-        } else {
-            VertexFlags::BRAKE_RETRACTED
-        };
-
-        mask |= if self.hook_extended {
-            VertexFlags::HOOK_EXTENDED
-        } else {
-            VertexFlags::HOOK_RETRACTED
-        };
-
-        mask |= if self.rudder_position < 0 {
-            VertexFlags::RUDDER_RIGHT
-        } else if self.rudder_position > 0 {
-            VertexFlags::RUDDER_LEFT
-        } else {
-            VertexFlags::RUDDER_CENTER
-        };
-
-        mask |= if self.left_aileron_position < 0 {
-            VertexFlags::LEFT_AILERON_DOWN
-        } else if self.left_aileron_position > 0 {
-            if errata.no_upper_aileron {
-                VertexFlags::LEFT_AILERON_CENTER
-            } else {
-                VertexFlags::LEFT_AILERON_UP
-            }
-        } else {
-            VertexFlags::LEFT_AILERON_CENTER
-        };
-
-        mask |= if self.right_aileron_position < 0 {
-            VertexFlags::RIGHT_AILERON_DOWN
-        } else if self.right_aileron_position > 0 {
-            if errata.no_upper_aileron {
-                VertexFlags::RIGHT_AILERON_CENTER
-            } else {
-                VertexFlags::RIGHT_AILERON_UP
-            }
-        } else {
-            VertexFlags::RIGHT_AILERON_CENTER
-        };
-
-        mask |= if self.afterburner_enabled {
-            VertexFlags::AFTERBURNER_ON
-        } else {
-            VertexFlags::AFTERBURNER_OFF
-        };
-
-        mask |= if !relative_eq!(self.gear_position.value(), 90f32) {
-            VertexFlags::GEAR_DOWN
-        } else {
-            VertexFlags::GEAR_UP
-        };
-
-        mask |= if self.bay_position.is_some() {
-            VertexFlags::BAY_OPEN
-        } else {
-            VertexFlags::BAY_CLOSED
-        };
-
-        mask |= match self.sam_count {
-            0 => VertexFlags::SAM_COUNT_0,
-            1 => VertexFlags::SAM_COUNT_0 | VertexFlags::SAM_COUNT_1,
-            2 => VertexFlags::SAM_COUNT_0 | VertexFlags::SAM_COUNT_1 | VertexFlags::SAM_COUNT_2,
-            3 => {
-                VertexFlags::SAM_COUNT_0
-                    | VertexFlags::SAM_COUNT_1
-                    | VertexFlags::SAM_COUNT_2
-                    | VertexFlags::SAM_COUNT_3
-            }
-            _ => bail!("expected sam count < 3"),
-        };
-
-        mask |= match self.eject_state {
-            0 => VertexFlags::EJECT_STATE_0,
-            1 => VertexFlags::EJECT_STATE_1,
-            2 => VertexFlags::EJECT_STATE_2,
-            3 => VertexFlags::EJECT_STATE_3,
-            4 => VertexFlags::EJECT_STATE_4,
-            _ => bail!("expected eject state in 0..4"),
-        };
-
-        mask |= if self.player_dead {
-            VertexFlags::PLAYER_DEAD
-        } else {
-            VertexFlags::PLAYER_ALIVE
-        };
-
-        Ok(mask.bits())
-    }
-}
-
 pub struct ShapeInstance {
     models: Vec<Arc<RefCell<ShapeModel>>>,
-    draw_state: DrawState,
+    draw_state: Rc<RefCell<DrawState>>,
 }
 
 #[derive(Clone)]
@@ -579,6 +434,7 @@ impl ShapeInstanceRef {
         self.value
             .try_borrow()?
             .draw_state
+            .borrow()
             .build_mask(start, errata)
     }
 
@@ -586,188 +442,23 @@ impl ShapeInstanceRef {
         self.value.as_ref().borrow().models.clone()
     }
 
-    pub fn toggle_flaps(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.flaps_down = !ds.flaps_down;
-        Ok(())
+    pub fn draw_state(&self) -> Rc<RefCell<DrawState>> {
+        self.value.borrow().draw_state.clone()
     }
 
-    pub fn has_flaps_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.flaps_down)
-    }
-
-    pub fn toggle_slats(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.slats_down = !ds.slats_down;
-        Ok(())
-    }
-
-    pub fn has_slats_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.slats_down)
-    }
-
-    pub fn toggle_hook(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.hook_extended = !ds.hook_extended;
-        Ok(())
-    }
-
-    pub fn has_hook_extended(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.hook_extended)
-    }
-
-    pub fn toggle_airbrake(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.airbrake_extended = !ds.airbrake_extended;
-        Ok(())
-    }
-
-    pub fn has_airbrake_extended(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.airbrake_extended)
-    }
-
-    pub fn enable_afterburner(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.afterburner_enabled = true;
-        Ok(())
-    }
-
-    pub fn disable_afterburner(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.afterburner_enabled = false;
-        Ok(())
-    }
-
-    pub fn has_afterburner_enabled(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.afterburner_enabled)
-    }
-
-    pub fn toggle_bay(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        // FIXME: implement non-toggle bay doors
-        ds.bay_position = if ds.bay_position.is_some() {
-            None
-        } else {
-            Some(0)
-        };
-        Ok(())
-    }
-
-    pub fn has_bay_open(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.bay_position.is_some())
-    }
-
-    pub fn toggle_gear(&mut self, start: &Instant) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        if ds.gear_position.is_active() {
-            return Ok(());
-        }
-        if ds.gear_position.value() == 0f32 {
-            ds.gear_position = Animation::start(*start, Duration::from_millis(5000), 0f32..90f32);
-        } else {
-            ds.gear_position = Animation::start(*start, Duration::from_millis(5000), 90f32..0f32);
-        }
-        Ok(())
-    }
-
-    pub fn has_gear_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.gear_position.value() == 0f32)
-    }
-
-    pub fn get_gear_position(&self) -> Fallible<f32> {
-        Ok(self.value.try_borrow()?.draw_state.gear_position.value())
-    }
-
-    pub fn move_rudder_left(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.rudder_position = -1;
-        Ok(())
-    }
-
-    pub fn move_rudder_right(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.rudder_position = 1;
-        Ok(())
-    }
-
-    pub fn move_rudder_center(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.rudder_position = 0;
-        Ok(())
-    }
-
-    pub fn get_rudder_position(&self) -> Fallible<i32> {
-        Ok(self.value.try_borrow()?.draw_state.rudder_position)
-    }
-
-    pub fn move_stick_left(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.left_aileron_position = 1;
-        ds.right_aileron_position = -1;
-        Ok(())
-    }
-
-    pub fn move_stick_right(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.left_aileron_position = -1;
-        ds.right_aileron_position = 1;
-        Ok(())
-    }
-
-    pub fn move_stick_center(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.left_aileron_position = 0;
-        ds.right_aileron_position = 0;
-        Ok(())
-    }
-
-    pub fn get_left_aileron_position(&self) -> Fallible<i32> {
-        Ok(self.value.try_borrow()?.draw_state.left_aileron_position)
-    }
-
-    pub fn get_right_aileron_position(&self) -> Fallible<i32> {
-        Ok(self.value.try_borrow()?.draw_state.right_aileron_position)
-    }
-
-    pub fn show_damaged(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.show_damaged)
-    }
-
-    pub fn toggle_damaged(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.show_damaged = !ds.show_damaged;
-        Ok(())
-    }
-
-    pub fn toggle_player_dead(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.player_dead = !ds.player_dead;
-        Ok(())
-    }
-
-    pub fn bump_eject_state(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.eject_state += 1;
-        ds.eject_state %= 5;
-        Ok(())
-    }
-
-    pub fn bump_sam_count(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.sam_count += 1;
-        ds.sam_count %= 4;
-        Ok(())
-    }
-
-    pub fn animate(&mut self, start: Instant, now: Instant) -> Fallible<()> {
+    pub fn animate(&mut self, start: &Instant, now: &Instant) -> Fallible<()> {
         {
-            let ds = &mut self.value.borrow_mut().draw_state;
-            ds.gear_position.animate(now);
+            self.value
+                .borrow()
+                .draw_state
+                .borrow_mut()
+                .animate(start, now);
         }
 
-        let models = &mut self.value.borrow_mut().models;
+        let ds = &self.value.borrow().draw_state;
+        let models = &self.value.borrow().models;
         for model in models {
-            model.borrow_mut().animate(start, now)?;
+            model.borrow_mut().animate(start, now, &ds.borrow())?;
         }
 
         Ok(())
@@ -1293,8 +984,23 @@ impl ShRenderer {
                 )],
                 xform: Matrix4::identity(),
             });
+        } else if inputs == ["_PLgearDown", "_PLgearPos"] && calls == ["do_start_interp"] {
+            let xform_id = prop_man
+                .add_xform_and_flags(xform.unwrap_unmask_target()?, VertexFlags::GEAR_DOWN)?;
+
+            transformers.push(Transformer {
+                xform_id,
+                vm: interp,
+                code_offset: x86.code_offset(SHAPE_LOAD_BASE),
+                data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
+                xform_base,
+                inputs: vec![
+                    TransformInput::GearPosition(memrefs["_PLgearPos"].mem_location),
+                    TransformInput::GearDown(memrefs["_PLgearDown"].mem_location),
+                ],
+                xform: Matrix4::identity(),
+            });
         }
-        println!("XFORM: {:?} + {:?} in {}", inputs, calls, name);
         Ok(())
     }
 
@@ -1550,10 +1256,11 @@ impl ShRenderer {
         let sampler = Self::make_sampler(window.device())?;
 
         // FIXME: lift this up to the top level
-        // upload_future
-        //     .join(tex_future)
-        //     .then_signal_fence_and_flush()?
-        //     .cleanup_finished();
+        #[cfg(not(test))]
+        upload_future
+            .join(tex_future)
+            .then_signal_fence_and_flush()?
+            .cleanup_finished();
 
         let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>> = DeviceLocalBuffer::new(
             window.device(),
@@ -1611,17 +1318,15 @@ impl ShRenderer {
             DrawSelection::NormalModel,
             window,
         )?))];
-        if let Ok(damage_model) = self.draw_model(
-            name,
-            sh,
-            palette,
-            &atlas,
-            DrawSelection::DamageModel,
-            window,
-        ) {
-            models.push(Arc::new(RefCell::new(damage_model)));
-        } else {
-            // FIXME: load all damage models _{A,B,C,D}
+        if sh.has_damage_section() {
+            models.push(Arc::new(RefCell::new(self.draw_model(
+                name,
+                sh,
+                palette,
+                &atlas,
+                DrawSelection::DamageModel,
+                window,
+            )?)));
         }
 
         let instance = ShapeInstanceRef::new(ShapeInstance {
@@ -1633,9 +1338,9 @@ impl ShRenderer {
         Ok(instance)
     }
 
-    pub fn animate(&mut self, now: Instant) -> Fallible<()> {
+    pub fn animate(&mut self, now: &Instant) -> Fallible<()> {
         for instance in &mut self.instances {
-            instance.animate(self.start, now)?;
+            instance.animate(&self.start, now)?;
         }
         Ok(())
     }
@@ -1689,7 +1394,7 @@ impl RenderSubsystem for ShRenderer {
         for inst in &self.instances {
             for model_ref in inst.get_models() {
                 let model = model_ref.borrow();
-                if inst.show_damaged()? != model.selection.is_damage() {
+                if inst.draw_state().borrow().show_damaged() != model.selection.is_damage() {
                     continue;
                 }
                 let mut uniforms = [
@@ -1731,7 +1436,7 @@ impl RenderSubsystem for ShRenderer {
         for inst in &self.instances {
             for model_ref in inst.get_models() {
                 let model = model_ref.borrow();
-                if inst.show_damaged()? != model.selection.is_damage() {
+                if inst.draw_state().borrow().show_damaged() != model.selection.is_damage() {
                     continue;
                 }
                 let mut push_consts = vs::ty::PushConstantData::new();
@@ -1803,20 +1508,21 @@ mod test {
 
                 let sh = RawShape::from_bytes(&lib.load(name)?)?;
                 let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
-                let mut sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
+                window.reset_render_subsystems();
+                window.add_render_subsystem(sh_renderer.clone());
+
+                let sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
                     &system_palette,
                     &(game.to_owned() + ":" + name),
                     &sh,
                     &lib,
                     &window,
                 )?;
-                sh_instance.toggle_flaps()?;
-
-                window.reset_render_subsystems();
-                window.add_render_subsystem(sh_renderer.clone());
-
-                window.drive_frame(&camera)?;
-                sh_renderer.borrow_mut().animate(Instant::now())?;
+                sh_instance
+                    .draw_state()
+                    .borrow_mut()
+                    .toggle_gear(&Instant::now());
+                sh_renderer.borrow_mut().animate(&Instant::now())?;
                 window.drive_frame(&camera)?;
             }
         }

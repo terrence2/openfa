@@ -19,7 +19,7 @@ use failure::{bail, ensure, Fallible};
 use i386::{ByteCode, Interpreter, Reg};
 use image::{ImageBuffer, LumaA};
 use peff::PE;
-use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, mem, rc::Rc};
 
 // Save chars to png when testing.
 const DUMP_CHARS: bool = false;
@@ -28,7 +28,7 @@ pub struct GlyphInfo {
     pub glyph_index: u8,
     pub glyph_char: String,
     pub width: i32,
-    pub bytecode: Arc<RefCell<ByteCode>>,
+    pub bytecode: Rc<RefCell<ByteCode>>,
 }
 
 pub struct Fnt {
@@ -92,7 +92,7 @@ impl Fnt {
                     glyph_index,
                     glyph_char,
                     width,
-                    bytecode: bytecode.as_arc_ref(),
+                    bytecode: bytecode.into_rc(),
                 },
             );
         }
