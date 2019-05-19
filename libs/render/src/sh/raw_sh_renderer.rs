@@ -597,7 +597,7 @@ impl RawShRenderer {
             match instr {
                 // Written into by windmill with (_currentTicks & 0xFF) << 2.
                 // The frame of animation to show, maybe?
-                Instr::XformUnmask(ref c4) => {
+                Instr::XformUnmask(ref _c4) => {
                     // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2, move |value| {
                     //     println!("WOULD UPDATE C4.t0 <= {:08X}", value);
                     // });
@@ -617,7 +617,7 @@ impl RawShRenderer {
                     //     println!("WOULD UPDATE C4.a2 <= {:08X}", value);
                     // });
                 }
-                Instr::XformUnmask4(ref c6) => {
+                Instr::XformUnmask4(ref _c6) => {
                     // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2, move |value| {
                     //     println!("WOULD UPDATE C6.t0 <= {:08X}", value);
                     // });
@@ -646,7 +646,7 @@ impl RawShRenderer {
                         .map_writable((0xAA00_0000 + e4.offset) as u32, v)
                         .unwrap();
                 }
-                Instr::UnkEA(ref ea) => {
+                Instr::UnkEA(ref _ea) => {
                     // interp.add_write_port(0xAA00_0000 + ea.offset as u32 + 2, move |value| {
                     //     println!("WOULD UPDATE EA.0 <- {:04X}", value);
                     // });

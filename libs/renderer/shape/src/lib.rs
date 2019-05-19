@@ -389,6 +389,7 @@ impl ShapeModel {
             let (tramp, _) = result.ok_trampoline()?;
             ensure!(tramp == "do_start_interp", "unexpected interp result");
             let xformed = vm.unmap_writable(transformer.data_offset)?;
+            #[allow(clippy::transmute_ptr_to_ptr)]
             let words: &[i16] = unsafe { std::mem::transmute(xformed.as_slice()) };
             let trans = Matrix4::new_translation(&Vector3::new(
                 f32::from(words[0]),
@@ -933,7 +934,7 @@ impl ShRenderer {
     }
 
     fn handle_transformer_property(
-        name: &str,
+        _name: &str,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
@@ -1256,7 +1257,6 @@ impl ShRenderer {
         let sampler = Self::make_sampler(window.device())?;
 
         // FIXME: lift this up to the top level
-        #[cfg(not(test))]
         upload_future
             .join(tex_future)
             .then_signal_fence_and_flush()?
