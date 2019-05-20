@@ -380,7 +380,7 @@ impl ShapeModel {
             let gear_position = state.gear_position() as u32;
             let bay_position = state.bay_position() as u32;
             let thrust_vectoring = state.thrust_vector_position() as i32 as u32;
-            let wing_sweep = state.wing_sweep_angle() as i32 as u32;
+            let wing_sweep = i32::from(state.wing_sweep_angle()) as u32;
             let vm = &mut transformer.vm;
             let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
             for input in &transformer.inputs {
@@ -1273,7 +1273,7 @@ impl ShRenderer {
                 }
 
                 Instr::X86Code(ref x86) => {
-                    let advance_cnt = Self::maybe_update_buffer_properties(
+                    let _advance_cnt = Self::maybe_update_buffer_properties(
                         name,
                         &pc,
                         x86,
