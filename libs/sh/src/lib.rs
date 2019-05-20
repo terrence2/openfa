@@ -1463,6 +1463,15 @@ impl RawShape {
         bail!("no trampoline with name: {}", name);
     }
 
+    pub fn has_damage_section(&self) -> bool {
+        for instr in &self.instrs {
+            if let Instr::JumpToDamage(_) = instr {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn byte_length(&self) -> usize {
         self.pe.code.len()
     }

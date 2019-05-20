@@ -12,10 +12,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::sh::texture_atlas::{Frame, TextureAtlas};
+mod draw_state;
+mod texture_atlas;
+
+use crate::{
+    draw_state::DrawState,
+    texture_atlas::{Frame, TextureAtlas},
+};
 use bitflags::bitflags;
 use camera::CameraAbstract;
 use failure::{bail, ensure, err_msg, Fallible};
+use i386::Interpreter;
 use image::{ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use lib::Library;
@@ -27,12 +34,13 @@ use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, 
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
+    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     format::Format,
@@ -47,8 +55,6 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::{GraphicsWindow, RenderSubsystem};
-
-const ANIMATION_FRAME_TIME: usize = 166; // ms
 
 bitflags! {
     struct VertexFlags: u64 {
@@ -195,7 +201,7 @@ mod vs {
             layout(location = 3) flat out uint f_flags1;
 
             void main() {
-                gl_Position = pc.projection * pc.view * uma.xforms[0] * vec4(position, 1.0);
+                gl_Position = pc.projection * pc.view * uma.xforms[xform_id] * vec4(position, 1.0);
                 v_color = color;
                 v_tex_coord = tex_coord;
                 f_flags0 = flags0 & pc.flag_mask0;
@@ -323,12 +329,30 @@ impl ShapeErrata {
     }
 }
 
+pub enum TransformInput {
+    CurrentTicks(u32),
+    GearPosition(u32),
+    GearDown(u32),
+}
+
+// More than meets the eye.
+pub struct Transformer {
+    xform_id: u32,
+    vm: Interpreter,
+    code_offset: u32,
+    data_offset: u32,
+    xform_base: [u8; 12],
+    inputs: Vec<TransformInput>,
+    xform: Matrix4<f32>,
+}
+
 pub struct ShapeModel {
     uniform_upload_pool: Arc<CpuBufferPool<[f32; 160]>>,
     device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>>,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+    vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
+    index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
+    transformers: Vec<Transformer>,
 
     // What kind of model was draw into the above buffers.
     selection: DrawSelection,
@@ -337,166 +361,62 @@ pub struct ShapeModel {
     errata: ShapeErrata,
 }
 
-struct DrawState {
-    pub show_damaged: bool,
-    //pub frame_number: usize,
-    pub gear_position: Option<u32>,
-    pub bay_position: Option<u32>,
-    pub flaps_down: bool,
-    pub slats_down: bool,
-    pub airbrake_extended: bool,
-    pub hook_extended: bool,
-    pub afterburner_enabled: bool,
-    pub rudder_position: i32,
-    pub left_aileron_position: i32,
-    pub right_aileron_position: i32,
-    pub sam_count: u32,
-    pub eject_state: u32,
-    pub player_dead: bool,
+fn fa2r(d: f32) -> f32 {
+    d * std::f32::consts::PI / 8192f32
 }
 
-impl Default for DrawState {
-    fn default() -> Self {
-        DrawState {
-            show_damaged: false,
-            //frame_number: 0,
-            gear_position: Some(18),
-            flaps_down: false,
-            slats_down: false,
-            airbrake_extended: true,
-            hook_extended: true,
-            bay_position: Some(18),
-            afterburner_enabled: true,
-            rudder_position: 0,
-            left_aileron_position: 0,
-            right_aileron_position: 0,
-            sam_count: 3,
-            eject_state: 0,
-            player_dead: false,
+impl ShapeModel {
+    fn animate(&mut self, start: &Instant, now: &Instant, state: &DrawState) -> Fallible<()> {
+        for transformer in &mut self.transformers {
+            let gear_position = state.gear_position() as u32;
+            let vm = &mut transformer.vm;
+            let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
+            for input in &transformer.inputs {
+                match input {
+                    TransformInput::CurrentTicks(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || t));
+                    }
+                    TransformInput::GearPosition(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || gear_position));
+                    }
+                    TransformInput::GearDown(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || 1));
+                    }
+                }
+            }
+            vm.map_writable(transformer.data_offset, transformer.xform_base.to_vec())?;
+            let result = vm.interpret(transformer.code_offset)?;
+            let (tramp, _) = result.ok_trampoline()?;
+            ensure!(tramp == "do_start_interp", "unexpected interp result");
+            let xformed = vm.unmap_writable(transformer.data_offset)?;
+            #[allow(clippy::transmute_ptr_to_ptr)]
+            let words: &[i16] = unsafe { std::mem::transmute(xformed.as_slice()) };
+            let trans = Matrix4::new_translation(&Vector3::new(
+                f32::from(words[0]),
+                -f32::from(words[1]),
+                -f32::from(words[2]),
+            ));
+            let rots = Matrix4::from_euler_angles(
+                -fa2r(f32::from(words[4])),
+                -fa2r(f32::from(words[3])),
+                -fa2r(f32::from(words[5])),
+            );
+            transformer.xform = trans * rots;
+            for input in &transformer.inputs {
+                match input {
+                    TransformInput::CurrentTicks(loc) => vm.remove_read_port(*loc),
+                    TransformInput::GearPosition(loc) => vm.remove_read_port(*loc),
+                    TransformInput::GearDown(loc) => vm.remove_read_port(*loc),
+                }
+            }
         }
-    }
-}
-
-impl DrawState {
-    fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
-        let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
-
-        let elapsed = start.elapsed().as_millis() as usize;
-        let frame_off = elapsed / ANIMATION_FRAME_TIME;
-        mask |= VertexFlags::ANIM_FRAME_0_2.displacement(frame_off % 2)?;
-        mask |= VertexFlags::ANIM_FRAME_0_3.displacement(frame_off % 3)?;
-        mask |= VertexFlags::ANIM_FRAME_0_4.displacement(frame_off % 4)?;
-        mask |= VertexFlags::ANIM_FRAME_0_6.displacement(frame_off % 6)?;
-
-        mask |= if self.flaps_down {
-            VertexFlags::LEFT_FLAP_DOWN | VertexFlags::RIGHT_FLAP_DOWN
-        } else {
-            VertexFlags::LEFT_FLAP_UP | VertexFlags::RIGHT_FLAP_UP
-        };
-
-        mask |= if self.slats_down {
-            VertexFlags::SLATS_DOWN
-        } else {
-            VertexFlags::SLATS_UP
-        };
-
-        mask |= if self.airbrake_extended {
-            VertexFlags::BRAKE_EXTENDED
-        } else {
-            VertexFlags::BRAKE_RETRACTED
-        };
-
-        mask |= if self.hook_extended {
-            VertexFlags::HOOK_EXTENDED
-        } else {
-            VertexFlags::HOOK_RETRACTED
-        };
-
-        mask |= if self.rudder_position < 0 {
-            VertexFlags::RUDDER_RIGHT
-        } else if self.rudder_position > 0 {
-            VertexFlags::RUDDER_LEFT
-        } else {
-            VertexFlags::RUDDER_CENTER
-        };
-
-        mask |= if self.left_aileron_position < 0 {
-            VertexFlags::LEFT_AILERON_DOWN
-        } else if self.left_aileron_position > 0 {
-            if errata.no_upper_aileron {
-                VertexFlags::LEFT_AILERON_CENTER
-            } else {
-                VertexFlags::LEFT_AILERON_UP
-            }
-        } else {
-            VertexFlags::LEFT_AILERON_CENTER
-        };
-
-        mask |= if self.right_aileron_position < 0 {
-            VertexFlags::RIGHT_AILERON_DOWN
-        } else if self.right_aileron_position > 0 {
-            if errata.no_upper_aileron {
-                VertexFlags::RIGHT_AILERON_CENTER
-            } else {
-                VertexFlags::RIGHT_AILERON_UP
-            }
-        } else {
-            VertexFlags::RIGHT_AILERON_CENTER
-        };
-
-        mask |= if self.afterburner_enabled {
-            VertexFlags::AFTERBURNER_ON
-        } else {
-            VertexFlags::AFTERBURNER_OFF
-        };
-
-        mask |= if self.gear_position.is_some() {
-            VertexFlags::GEAR_DOWN
-        } else {
-            VertexFlags::GEAR_UP
-        };
-
-        mask |= if self.bay_position.is_some() {
-            VertexFlags::BAY_OPEN
-        } else {
-            VertexFlags::BAY_CLOSED
-        };
-
-        mask |= match self.sam_count {
-            0 => VertexFlags::SAM_COUNT_0,
-            1 => VertexFlags::SAM_COUNT_0 | VertexFlags::SAM_COUNT_1,
-            2 => VertexFlags::SAM_COUNT_0 | VertexFlags::SAM_COUNT_1 | VertexFlags::SAM_COUNT_2,
-            3 => {
-                VertexFlags::SAM_COUNT_0
-                    | VertexFlags::SAM_COUNT_1
-                    | VertexFlags::SAM_COUNT_2
-                    | VertexFlags::SAM_COUNT_3
-            }
-            _ => bail!("expected sam count < 3"),
-        };
-
-        mask |= match self.eject_state {
-            0 => VertexFlags::EJECT_STATE_0,
-            1 => VertexFlags::EJECT_STATE_1,
-            2 => VertexFlags::EJECT_STATE_2,
-            3 => VertexFlags::EJECT_STATE_3,
-            4 => VertexFlags::EJECT_STATE_4,
-            _ => bail!("expected eject state in 0..4"),
-        };
-
-        mask |= if self.player_dead {
-            VertexFlags::PLAYER_DEAD
-        } else {
-            VertexFlags::PLAYER_ALIVE
-        };
-
-        Ok(mask.bits())
+        Ok(())
     }
 }
 
 pub struct ShapeInstance {
-    models: Vec<Arc<ShapeModel>>,
-    draw_state: DrawState,
+    models: Vec<Arc<RefCell<ShapeModel>>>,
+    draw_state: Rc<RefCell<DrawState>>,
 }
 
 #[derive(Clone)]
@@ -515,177 +435,33 @@ impl ShapeInstanceRef {
         self.value
             .try_borrow()?
             .draw_state
+            .borrow()
             .build_mask(start, errata)
     }
 
-    pub fn get_models(&self) -> Vec<Arc<ShapeModel>> {
+    pub fn get_models(&self) -> Vec<Arc<RefCell<ShapeModel>>> {
         self.value.as_ref().borrow().models.clone()
     }
 
-    pub fn toggle_flaps(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.flaps_down = !ds.flaps_down;
-        Ok(())
+    pub fn draw_state(&self) -> Rc<RefCell<DrawState>> {
+        self.value.borrow().draw_state.clone()
     }
 
-    pub fn has_flaps_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.flaps_down)
-    }
+    pub fn animate(&mut self, start: &Instant, now: &Instant) -> Fallible<()> {
+        {
+            self.value
+                .borrow()
+                .draw_state
+                .borrow_mut()
+                .animate(start, now);
+        }
 
-    pub fn toggle_slats(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.slats_down = !ds.slats_down;
-        Ok(())
-    }
+        let ds = &self.value.borrow().draw_state;
+        let models = &self.value.borrow().models;
+        for model in models {
+            model.borrow_mut().animate(start, now, &ds.borrow())?;
+        }
 
-    pub fn has_slats_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.slats_down)
-    }
-
-    pub fn toggle_hook(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.hook_extended = !ds.hook_extended;
-        Ok(())
-    }
-
-    pub fn has_hook_extended(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.hook_extended)
-    }
-
-    pub fn toggle_airbrake(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.airbrake_extended = !ds.airbrake_extended;
-        Ok(())
-    }
-
-    pub fn has_airbrake_extended(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.airbrake_extended)
-    }
-
-    pub fn enable_afterburner(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.afterburner_enabled = true;
-        Ok(())
-    }
-
-    pub fn disable_afterburner(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.afterburner_enabled = false;
-        Ok(())
-    }
-
-    pub fn has_afterburner_enabled(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.afterburner_enabled)
-    }
-
-    pub fn toggle_bay(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        // FIXME: implement non-toggle bay doors
-        ds.bay_position = if ds.bay_position.is_some() {
-            None
-        } else {
-            Some(0)
-        };
-        Ok(())
-    }
-
-    pub fn has_bay_open(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.bay_position.is_some())
-    }
-
-    pub fn toggle_gear(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        // FIXME: implement non-toggle gear
-        ds.gear_position = if ds.gear_position.is_some() {
-            None
-        } else {
-            Some(0)
-        };
-        Ok(())
-    }
-
-    pub fn has_gear_down(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.gear_position.is_some())
-    }
-
-    pub fn move_rudder_left(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.rudder_position = -1;
-        Ok(())
-    }
-
-    pub fn move_rudder_right(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.rudder_position = 1;
-        Ok(())
-    }
-
-    pub fn move_rudder_center(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.rudder_position = 0;
-        Ok(())
-    }
-
-    pub fn get_rudder_position(&self) -> Fallible<i32> {
-        Ok(self.value.try_borrow()?.draw_state.rudder_position)
-    }
-
-    pub fn move_stick_left(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.left_aileron_position = 1;
-        ds.right_aileron_position = -1;
-        Ok(())
-    }
-
-    pub fn move_stick_right(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.left_aileron_position = -1;
-        ds.right_aileron_position = 1;
-        Ok(())
-    }
-
-    pub fn move_stick_center(&mut self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.left_aileron_position = 0;
-        ds.right_aileron_position = 0;
-        Ok(())
-    }
-
-    pub fn get_left_aileron_position(&self) -> Fallible<i32> {
-        Ok(self.value.try_borrow()?.draw_state.left_aileron_position)
-    }
-
-    pub fn get_right_aileron_position(&self) -> Fallible<i32> {
-        Ok(self.value.try_borrow()?.draw_state.right_aileron_position)
-    }
-
-    pub fn show_damaged(&self) -> Fallible<bool> {
-        Ok(self.value.try_borrow()?.draw_state.show_damaged)
-    }
-
-    pub fn toggle_damaged(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.show_damaged = !ds.show_damaged;
-        Ok(())
-    }
-
-    pub fn toggle_player_dead(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.player_dead = !ds.player_dead;
-        Ok(())
-    }
-
-    pub fn bump_eject_state(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.eject_state += 1;
-        ds.eject_state %= 5;
-        Ok(())
-    }
-
-    pub fn bump_sam_count(&self) -> Fallible<()> {
-        let ds = &mut self.value.try_borrow_mut()?.draw_state;
-        ds.sam_count += 1;
-        ds.sam_count %= 4;
         Ok(())
     }
 }
@@ -814,12 +590,6 @@ lazy_static! {
         table.insert("lighteningAllowed");
         table
     };
-
-    static ref XFORM_TABLE: HashMap<Vec<&'static str>, usize> = {
-        let mut table = HashMap::new();
-        table.insert(vec!["_PLgearDown", "_PLgearPos"], 0);
-        table
-    };
 }
 
 struct ProgramCounter {
@@ -885,24 +655,38 @@ impl DrawSelection {
 }
 
 #[derive(Clone, Copy)]
-struct BufferProperties {
+struct BufferProps {
     flags: VertexFlags,
     xform_id: u32,
 }
 
-impl BufferProperties {
-    pub fn add(
-        tgt: usize,
-        flags: VertexFlags,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
-    ) {
-        let entry = props.entry(tgt).or_insert(BufferProperties {
+struct BufferPropsManager {
+    props: HashMap<usize, BufferProps>,
+    seen_flags: VertexFlags,
+    next_xform_id: u32,
+}
+
+impl BufferPropsManager {
+    pub fn add_or_update_toggle_flags(&mut self, tgt: usize, flags: VertexFlags) {
+        let entry = self.props.entry(tgt).or_insert(BufferProps {
             flags: VertexFlags::NONE,
             xform_id: 0,
         });
         entry.flags |= flags;
-        *seen_flags |= flags;
+        self.seen_flags |= flags;
+    }
+
+    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags) -> Fallible<u32> {
+        ensure!(
+            !self.props.contains_key(&tgt),
+            "have already transformed that buffer"
+        );
+
+        let xform_id = self.next_xform_id;
+        self.props.insert(tgt, BufferProps { flags, xform_id });
+        self.next_xform_id += 1;
+
+        Ok(xform_id)
     }
 }
 
@@ -962,7 +746,7 @@ impl ShRenderer {
     }
 
     fn load_vertex_buffer(
-        buffer_properties: &HashMap<usize, BufferProperties>,
+        buffer_properties: &HashMap<usize, BufferProps>,
         vert_buf: &VertexBuf,
         vert_pool: &mut Vec<Vertex>,
     ) {
@@ -970,11 +754,10 @@ impl ShRenderer {
         let props = buffer_properties
             .get(&vert_buf.at_offset())
             .cloned()
-            .unwrap_or_else(|| BufferProperties {
+            .unwrap_or_else(|| BufferProps {
                 flags: VertexFlags::STATIC,
                 xform_id: 0,
             });
-        println!("VERTEX FLAGS: {:?}", props.flags);
         for v in vert_buf.vertices() {
             let v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), -f32::from(v[1]));
             vert_pool.push(Vertex {
@@ -1060,7 +843,7 @@ impl ShRenderer {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -1080,7 +863,7 @@ impl ShRenderer {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
@@ -1099,55 +882,127 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
+        prop_man: &mut BufferPropsManager,
+        transformers: &mut Vec<Transformer>,
     ) -> Fallible<usize> {
-        let memrefs = Self::find_external_references(x86, sh);
         let next_instr = pc.relative_instr(1, sh);
+
         if next_instr.magic() == "Unmask" {
-            ensure!(
-                memrefs.len() == 1,
-                "expected unmask with only one parameter"
-            );
-            let (&name, trampoline) = memrefs.iter().next().expect("checked next");
-            if TOGGLE_TABLE.contains_key(name) {
-                Self::update_buffer_properties_for_toggle(
-                    trampoline, pc, x86, sh, seen_flags, props,
-                )?;
-            } else if name == "brentObjId" {
-                let callrefs = Self::find_external_calls(x86, sh)?;
-                ensure!(callrefs.len() == 2, "expected one call");
-                ensure!(
-                    callrefs.contains_key("do_start_interp"),
-                    "expected call to do_start_interp"
-                );
-                ensure!(
-                    callrefs.contains_key("@HARDNumLoaded@8"),
-                    "expected call to @HARDNumLoaded@8"
-                );
-                Self::update_buffer_properties_for_num_loaded(
-                    trampoline, pc, x86, sh, seen_flags, props,
-                )?;
-            } else {
-                bail!("unknown memory read: {}", name)
-            }
-        } else if next_instr.magic() == "XformUnmask" {
-            let mut calls = Self::find_external_calls(x86, sh)?
-                .keys()
-                .cloned()
-                .collect::<Vec<&str>>();
-            calls.sort();
-            let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
-            inputs.sort();
-            println!(
-                "XFORM: {} => {:?} {:?} in {}",
-                XFORM_TABLE.contains_key(inputs.as_slice()),
-                inputs,
-                calls,
-                name
-            );
+            Self::handle_unmask_property(pc, x86, sh, prop_man)?;
+            return Ok(2);
         }
+
+        if next_instr.magic() == "XformUnmask" {
+            Self::handle_transformer_property(name, pc, x86, sh, prop_man, transformers)?;
+            return Ok(1);
+        }
+
+        // TODO: figure out what is landing here and see how important it is.
         Ok(0)
+    }
+
+    fn handle_unmask_property(
+        pc: &ProgramCounter,
+        x86: &X86Code,
+        sh: &RawShape,
+        prop_man: &mut BufferPropsManager,
+    ) -> Fallible<()> {
+        let memrefs = Self::find_external_references(x86, sh);
+        ensure!(
+            memrefs.len() == 1,
+            "expected unmask with only one parameter"
+        );
+        let (&name, trampoline) = memrefs.iter().next().expect("checked next");
+        if TOGGLE_TABLE.contains_key(name) {
+            Self::update_buffer_properties_for_toggle(trampoline, pc, x86, sh, prop_man)?;
+        } else if name == "brentObjId" {
+            let callrefs = Self::find_external_calls(x86, sh)?;
+            ensure!(callrefs.len() == 2, "expected one call");
+            ensure!(
+                callrefs.contains_key("do_start_interp"),
+                "expected call to do_start_interp"
+            );
+            ensure!(
+                callrefs.contains_key("@HARDNumLoaded@8"),
+                "expected call to @HARDNumLoaded@8"
+            );
+            Self::update_buffer_properties_for_num_loaded(trampoline, pc, x86, sh, prop_man)?;
+        } else {
+            bail!("unknown memory read: {}", name)
+        }
+        Ok(())
+    }
+
+    fn handle_transformer_property(
+        _name: &str,
+        pc: &ProgramCounter,
+        x86: &X86Code,
+        sh: &RawShape,
+        prop_man: &mut BufferPropsManager,
+        transformers: &mut Vec<Transformer>,
+    ) -> Fallible<()> {
+        let xform = pc.relative_instr(1, sh);
+        let maybe_trailer = pc.relative_instr(2, sh);
+        ensure!(xform.magic() == "XformUnmask", "expected xform after x86");
+
+        let xform_base = match xform {
+            Instr::XformUnmask(ins) => ins.xform_base,
+            Instr::XformUnmask4(ins) => ins.xform_base,
+            _ => bail!("not an xform instruction"),
+        };
+
+        let mut interp = Interpreter::new();
+        interp.add_code(x86.bytecode.clone());
+        if let Instr::X86Code(trailer) = maybe_trailer {
+            interp.add_code(trailer.bytecode.clone());
+        }
+        let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
+        interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
+
+        let memrefs = Self::find_external_references(x86, sh);
+        let mut calls = Self::find_external_calls(x86, sh)?
+            .keys()
+            .cloned()
+            .collect::<Vec<&str>>();
+        calls.sort();
+        let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
+        inputs.sort();
+
+        //println!("MEMREFS: {:?}", memrefs);
+
+        if inputs == ["_currentTicks"] && calls == ["do_start_interp"] {
+            let xform_id =
+                prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, VertexFlags::STATIC)?;
+
+            transformers.push(Transformer {
+                xform_id,
+                vm: interp,
+                code_offset: x86.code_offset(SHAPE_LOAD_BASE),
+                data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
+                xform_base,
+                inputs: vec![TransformInput::CurrentTicks(
+                    memrefs["_currentTicks"].mem_location,
+                )],
+                xform: Matrix4::identity(),
+            });
+        } else if inputs == ["_PLgearDown", "_PLgearPos"] && calls == ["do_start_interp"] {
+            let xform_id = prop_man
+                .add_xform_and_flags(xform.unwrap_unmask_target()?, VertexFlags::GEAR_DOWN)?;
+
+            transformers.push(Transformer {
+                xform_id,
+                vm: interp,
+                code_offset: x86.code_offset(SHAPE_LOAD_BASE),
+                data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
+                xform_base,
+                inputs: vec![
+                    TransformInput::GearPosition(memrefs["_PLgearPos"].mem_location),
+                    TransformInput::GearDown(memrefs["_PLgearDown"].mem_location),
+                ],
+                xform: Matrix4::identity(),
+            });
+        }
+        Ok(())
     }
 
     fn update_buffer_properties_for_toggle(
@@ -1155,8 +1010,7 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
+        prop_man: &mut BufferPropsManager,
     ) -> Fallible<()> {
         let unmask = pc.relative_instr(1, sh);
         let trailer = pc.relative_instr(2, sh);
@@ -1164,19 +1018,19 @@ impl ShRenderer {
         ensure!(trailer.magic() == "F0", "expected code after unmask");
 
         let mut interp = i386::Interpreter::new();
-        interp.add_code(&x86.bytecode);
-        interp.add_code(&trailer.unwrap_x86()?.bytecode);
+        interp.add_code(x86.bytecode.clone());
+        interp.add_code(trailer.unwrap_x86()?.bytecode.clone());
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
         for &(value, flags) in &TOGGLE_TABLE[trampoline.name.as_str()] {
             interp.add_read_port(trampoline.mem_location, Box::new(move || value));
-            let exit_info = interp.interpret(x86.code_offset(0xAA00_0000u32))?;
+            let exit_info = interp.interpret(x86.code_offset(SHAPE_LOAD_BASE))?;
             let (name, args) = exit_info.ok_trampoline()?;
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                BufferProperties::add(unmask.unwrap_unmask_target()?, flags, seen_flags, props);
+                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags);
             }
             interp.remove_read_port(trampoline.mem_location);
         }
@@ -1189,8 +1043,7 @@ impl ShRenderer {
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
-        seen_flags: &mut VertexFlags,
-        props: &mut HashMap<usize, BufferProperties>,
+        prop_man: &mut BufferPropsManager,
     ) -> Fallible<()> {
         ensure!(
             brent_obj_id.name == "brentObjId",
@@ -1203,8 +1056,8 @@ impl ShRenderer {
         ensure!(trailer.magic() == "F0", "expected code after unmask");
 
         let mut interp = i386::Interpreter::new();
-        interp.add_code(&x86.bytecode);
-        interp.add_code(&trailer.unwrap_x86()?.bytecode);
+        interp.add_code(x86.bytecode.clone());
+        interp.add_code(trailer.unwrap_x86()?.bytecode.clone());
         interp.add_read_port(brent_obj_id.mem_location, Box::new(move || 0x60000));
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
@@ -1223,7 +1076,7 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                BufferProperties::add(unmask.unwrap_unmask_target()?, flags, seen_flags, props);
+                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags);
             }
         }
         Ok(())
@@ -1245,10 +1098,13 @@ impl ShRenderer {
         xforms.push(Matrix4::<f32>::identity());
 
         // State
+        let mut prop_man = BufferPropsManager {
+            seen_flags: VertexFlags::NONE,
+            props: HashMap::new(),
+            next_xform_id: 1,
+        };
+        let mut transformers = Vec::new();
         let mut active_frame = None;
-        let _active_xform_id = 0;
-        let mut seen_flags = VertexFlags::NONE;
-        let mut buffer_properties = HashMap::new();
         let mut section_close_byte_offset = None;
         let mut damage_model_byte_offset = None;
         let mut end_byte_offset = None;
@@ -1326,8 +1182,8 @@ impl ShRenderer {
                         &pc,
                         x86,
                         sh,
-                        &mut seen_flags,
-                        &mut buffer_properties,
+                        &mut prop_man,
+                        &mut transformers,
                     )?;
                     for _ in 0..advance_cnt {
                         pc.advance(sh);
@@ -1339,7 +1195,7 @@ impl ShRenderer {
                 }
 
                 Instr::VertexBuf(vert_buf) => {
-                    Self::load_vertex_buffer(&buffer_properties, vert_buf, &mut vert_pool);
+                    Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
                 }
 
                 Instr::Facet(facet) => {
@@ -1363,22 +1219,48 @@ impl ShRenderer {
             "uploading vertex buffer with {} bytes",
             std::mem::size_of::<Vertex>() * verts.len()
         );
-        let vertex_buffer =
+        let vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>> = DeviceLocalBuffer::array(
+            window.device(),
+            verts.len(),
+            BufferUsage::vertex_buffer_transfer_destination(),
+            window.device().active_queue_families(),
+        )?;
+        let vertex_upload_buffer =
             CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
 
         trace!(
             "uploading index buffer with {} bytes",
             std::mem::size_of::<u32>() * indices.len()
         );
-        let index_buffer = CpuAccessibleBuffer::from_iter(
+        let index_buffer: Arc<DeviceLocalBuffer<[u32]>> = DeviceLocalBuffer::array(
+            window.device(),
+            indices.len(),
+            BufferUsage::index_buffer_transfer_destination(),
+            window.device().active_queue_families(),
+        )?;
+        let index_upload_buffer = CpuAccessibleBuffer::from_iter(
             window.device(),
             BufferUsage::all(),
             indices.into_iter(),
         )?;
 
+        let cb = AutoCommandBufferBuilder::primary_one_time_submit(
+            window.device(),
+            window.queue().family(),
+        )?
+        .copy_buffer(vertex_upload_buffer.clone(), vertex_buffer.clone())?
+        .copy_buffer(index_upload_buffer.clone(), index_buffer.clone())?
+        .build()?;
+        let upload_future = cb.execute(window.queue())?;
+
         let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
-        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
         let sampler = Self::make_sampler(window.device())?;
+
+        // FIXME: lift this up to the top level
+        upload_future
+            .join(tex_future)
+            .then_signal_fence_and_flush()?
+            .cleanup_finished();
 
         let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>> = DeviceLocalBuffer::new(
             window.device(),
@@ -1401,8 +1283,9 @@ impl ShRenderer {
             pds,
             vertex_buffer,
             index_buffer,
+            transformers,
             selection,
-            errata: ShapeErrata::from_flags(seen_flags),
+            errata: ShapeErrata::from_flags(prop_man.seen_flags),
         })
     }
 
@@ -1427,25 +1310,23 @@ impl ShRenderer {
         }
         let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
 
-        let mut models = vec![Arc::new(self.draw_model(
+        let mut models = vec![Arc::new(RefCell::new(self.draw_model(
             name,
             sh,
             palette,
             &atlas,
             DrawSelection::NormalModel,
             window,
-        )?)];
-        if let Ok(damage_model) = self.draw_model(
-            name,
-            sh,
-            palette,
-            &atlas,
-            DrawSelection::DamageModel,
-            window,
-        ) {
-            models.push(Arc::new(damage_model));
-        } else {
-            // FIXME: load all damage models _{A,B,C,D}
+        )?))];
+        if sh.has_damage_section() {
+            models.push(Arc::new(RefCell::new(self.draw_model(
+                name,
+                sh,
+                palette,
+                &atlas,
+                DrawSelection::DamageModel,
+                window,
+            )?)));
         }
 
         let instance = ShapeInstanceRef::new(ShapeInstance {
@@ -1455,6 +1336,13 @@ impl ShRenderer {
 
         self.instances.push(instance.clone());
         Ok(instance)
+    }
+
+    pub fn animate(&mut self, now: &Instant) -> Fallible<()> {
+        for instance in &mut self.instances {
+            instance.animate(&self.start, now)?;
+        }
+        Ok(())
     }
 
     fn upload_texture_rgba(
@@ -1504,11 +1392,12 @@ impl RenderSubsystem for ShRenderer {
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for inst in &self.instances {
-            for model in inst.get_models() {
-                if inst.show_damaged()? != model.selection.is_damage() {
+            for model_ref in inst.get_models() {
+                let model = model_ref.borrow();
+                if inst.draw_state().borrow().show_damaged() != model.selection.is_damage() {
                     continue;
                 }
-                let uniforms = [
+                let mut uniforms = [
                     1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32,
                     0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32,
                     1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
@@ -1523,6 +1412,12 @@ impl RenderSubsystem for ShRenderer {
                     1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
                     0f32, 0f32, 0f32, 1f32,
                 ];
+                for transformer in &model.transformers {
+                    let base = transformer.xform_id as usize * 16;
+                    for i in 0..16 {
+                        uniforms[base + i] = transformer.xform[i];
+                    }
+                }
                 let new_uniforms_buffer = model.uniform_upload_pool.next(uniforms)?;
 
                 cb = cb.copy_buffer(new_uniforms_buffer, model.device_uniform_buffer.clone())?;
@@ -1533,16 +1428,15 @@ impl RenderSubsystem for ShRenderer {
 
     fn render(
         &self,
-        // projection: &Matrix4<f32>,
-        // view: &Matrix4<f32>,
         camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for inst in &self.instances {
-            for model in inst.get_models() {
-                if inst.show_damaged()? != model.selection.is_damage() {
+            for model_ref in inst.get_models() {
+                let model = model_ref.borrow();
+                if inst.draw_state().borrow().show_damaged() != model.selection.is_damage() {
                     continue;
                 }
                 let mut push_consts = vs::ty::PushConstantData::new();
@@ -1614,18 +1508,21 @@ mod test {
 
                 let sh = RawShape::from_bytes(&lib.load(name)?)?;
                 let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
-                let mut sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
+                window.reset_render_subsystems();
+                window.add_render_subsystem(sh_renderer.clone());
+
+                let sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
                     &system_palette,
-                    name,
+                    &(game.to_owned() + ":" + name),
                     &sh,
                     &lib,
                     &window,
                 )?;
-                sh_instance.toggle_flaps()?;
-
-                window.reset_render_subsystems();
-                window.add_render_subsystem(sh_renderer.clone());
-
+                sh_instance
+                    .draw_state()
+                    .borrow_mut()
+                    .toggle_gear(&Instant::now());
+                sh_renderer.borrow_mut().animate(&Instant::now())?;
                 window.drive_frame(&camera)?;
             }
         }

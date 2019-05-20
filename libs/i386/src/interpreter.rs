@@ -20,7 +20,7 @@ use crate::{
 };
 use failure::{bail, ensure, Fallible};
 use log::trace;
-use std::{collections::HashMap, mem};
+use std::{cell::RefCell, collections::HashMap, mem, rc::Rc};
 
 #[derive(Debug)]
 pub enum ExitInfo {
@@ -38,14 +38,14 @@ impl ExitInfo {
 }
 
 #[derive(Eq, Ord, PartialOrd, PartialEq)]
-struct MemMapR<'a> {
+struct MemMapR {
     start: u32,
     end: u32,
-    mem: &'a [u8],
+    mem: Vec<u8>,
 }
 
-impl<'a> MemMapR<'a> {
-    fn new(start: u32, end: u32, mem: &'a [u8]) -> Self {
+impl MemMapR {
+    fn new(start: u32, end: u32, mem: Vec<u8>) -> Self {
         assert!(start < end);
         Self { start, end, mem }
     }
@@ -65,7 +65,7 @@ impl MemMapW {
     }
 }
 
-pub struct Interpreter<'a> {
+pub struct Interpreter {
     registers: Vec<u32>,
     cf: bool,
     of: bool,
@@ -73,14 +73,13 @@ pub struct Interpreter<'a> {
     sf: bool,
     stack: Vec<u32>,
     memmap_w: Vec<MemMapW>,
-    memmap_r: Vec<MemMapR<'a>>,
-    bytecode: Vec<&'a ByteCode>,
+    memmap_r: Vec<MemMapR>,
+    bytecode: Vec<Rc<RefCell<ByteCode>>>,
     ports_r: HashMap<u32, Box<Fn() -> u32>>,
-    ports_w: HashMap<u32, Box<FnMut(u32) + 'a>>,
     trampolines: HashMap<u32, (String, usize)>,
 }
 
-impl<'a> Interpreter<'a> {
+impl Interpreter {
     pub fn new() -> Self {
         let mut registers = Vec::new();
         registers.resize(Reg::num_registers(), 0);
@@ -96,7 +95,6 @@ impl<'a> Interpreter<'a> {
             memmap_w: Vec::new(),
             bytecode: Vec::new(),
             ports_r: HashMap::new(),
-            ports_w: HashMap::new(),
             trampolines: HashMap::new(),
         }
     }
@@ -122,11 +120,7 @@ impl<'a> Interpreter<'a> {
         self.ports_r.remove(&addr);
     }
 
-    pub fn add_write_port<CB: 'a + FnMut(u32)>(&mut self, addr: u32, func: CB) {
-        self.ports_w.insert(addr, Box::new(func));
-    }
-
-    pub fn map_readonly(&mut self, start: u32, data: &'a [u8]) -> Fallible<()> {
+    pub fn map_readable(&mut self, start: u32, data: Vec<u8>) -> Fallible<()> {
         ensure!(
             data.len() < u32::max_value() as usize,
             "readonly data segment too large"
@@ -171,7 +165,7 @@ impl<'a> Interpreter<'a> {
         );
     }
 
-    pub fn add_code(&mut self, bc: &'a ByteCode) {
+    pub fn add_code(&mut self, bc: Rc<RefCell<ByteCode>>) {
         self.bytecode.push(bc);
     }
 
@@ -179,16 +173,17 @@ impl<'a> Interpreter<'a> {
         self.bytecode.clear();
     }
 
-    fn find_instr(&self) -> Fallible<(&'a ByteCode, usize)> {
+    fn find_instr(&self) -> Fallible<(Rc<RefCell<ByteCode>>, usize)> {
         trace!("searching for instr at ip: {:08X}", self.eip());
-        for bc in self.bytecode.iter() {
+        for bc_ref in self.bytecode.iter() {
+            let bc = bc_ref.borrow();
             if self.eip() >= bc.start_addr && self.eip() < bc.start_addr + bc.size {
                 trace!("in bc at {:08X}", bc.start_addr);
                 let mut pos = bc.start_addr;
                 for (offset, instr) in bc.instrs.iter().enumerate() {
                     trace!("checking {}: {:08X} of {:08X}", offset, pos, self.eip());
                     if pos == self.eip() {
-                        return Ok((bc, offset));
+                        return Ok((bc_ref.clone(), offset));
                     }
                     pos += instr.size() as u32;
                 }
@@ -207,7 +202,8 @@ impl<'a> Interpreter<'a> {
 
     pub fn interpret(&mut self, at: u32) -> Fallible<ExitInfo> {
         *self.eip_mut() = at;
-        let (bc, mut offset) = self.find_instr()?;
+        let (bc_ref, mut offset) = self.find_instr()?;
+        let bc = bc_ref.borrow();
         while offset < bc.instrs.len() {
             let instr = &bc.instrs[offset];
             trace!("{:3}:{:04X}: {}", offset, self.eip(), instr);
@@ -728,7 +724,7 @@ impl<'a> Interpreter<'a> {
         );
     }
 
-    fn mem_peek(&self, rel: usize, v: &'a [u8], size: u8) -> Fallible<u32> {
+    fn mem_peek(&self, rel: usize, v: &[u8], size: u8) -> Fallible<u32> {
         Ok(match size {
             1 => u32::from(v[rel]),
             2 => {
@@ -773,11 +769,6 @@ impl<'a> Interpreter<'a> {
     }
 
     fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Fallible<()> {
-        if self.ports_w.contains_key(&addr) {
-            trace!("    write_port {:08X} <- {:08X}", addr, v);
-            self.ports_w.get_mut(&addr).unwrap()(v);
-            return Ok(());
-        }
         for map in self.memmap_w.iter_mut() {
             if addr >= map.start && addr < map.end {
                 let rel = (addr - map.start) as usize;

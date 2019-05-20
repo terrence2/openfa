@@ -22,7 +22,6 @@ mod utility;
 pub use crate::{
     dlg::dlg_renderer::DialogRenderer,
     sh::raw_sh_renderer::{DrawMode, RawShRenderer},
-    sh::sh_renderer::ShRenderer,
     t2::t2_renderer::T2Renderer,
     utility::pal_renderer::PalRenderer,
 };

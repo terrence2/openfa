@@ -14,5 +14,4 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 pub mod raw_sh_renderer;
-pub mod sh_renderer;
 mod texture_atlas;

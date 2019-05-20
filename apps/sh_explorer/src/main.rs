@@ -17,8 +17,8 @@ use failure::{bail, Fallible};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::ShRenderer;
 use sh::RawShape;
+use shape::ShRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -39,7 +39,7 @@ make_opt_struct!(
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
+    TermLogger::init(LevelFilter::Debug, Config::default())?;
 
     let (omni, inputs) = opt.find_inputs()?;
     if inputs.is_empty() {
@@ -79,7 +79,7 @@ fn main() -> Fallible<()> {
         .with_vertical_anchor(TextAnchorV::Bottom);
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let mut instance =
+    let instance =
         sh_renderer
             .borrow_mut()
             .add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
@@ -166,63 +166,55 @@ fn main() -> Fallible<()> {
                 if pressed == ElementState::Pressed {
                     match keycode {
                         VirtualKeyCode::Escape => done = true,
-                        /*
-                        VirtualKeyCode::LBracket => {
-                            instance.frame_number = instance.frame_number.saturating_sub(1);
-                        }
-                        VirtualKeyCode::RBracket => {
-                            instance.frame_number = instance.frame_number.saturating_add(1);
-                        }
-                        */
                         VirtualKeyCode::D => {
-                            instance.toggle_damaged().unwrap();
+                            instance.draw_state().borrow_mut().toggle_damaged();
                         }
                         VirtualKeyCode::G => {
-                            instance.toggle_gear().unwrap();
+                            instance.draw_state().borrow_mut().toggle_gear(&loop_start);
                         }
                         VirtualKeyCode::F => {
-                            instance.toggle_flaps().unwrap();
-                            instance.toggle_slats().unwrap();
+                            instance.draw_state().borrow_mut().toggle_flaps();
+                            instance.draw_state().borrow_mut().toggle_slats();
                         }
                         VirtualKeyCode::A => {
-                            instance.move_stick_left().unwrap();
+                            instance.draw_state().borrow_mut().move_stick_left();
                         }
                         VirtualKeyCode::S => {
-                            instance.move_stick_right().unwrap();
+                            instance.draw_state().borrow_mut().move_stick_right();
                         }
                         VirtualKeyCode::C => {
-                            instance.bump_sam_count().unwrap();
+                            instance.draw_state().borrow_mut().consume_sam();
                         }
                         VirtualKeyCode::B => {
-                            instance.toggle_airbrake().unwrap();
+                            instance.draw_state().borrow_mut().toggle_airbrake();
                         }
                         VirtualKeyCode::H => {
-                            instance.toggle_hook().unwrap();
+                            instance.draw_state().borrow_mut().toggle_hook();
                         }
-                        VirtualKeyCode::O => {
-                            instance.toggle_bay().unwrap();
-                        }
+                        // VirtualKeyCode::O => {
+                        //     instance.draw_state().borrow_mut().toggle_bay(&loop_start);
+                        // }
                         VirtualKeyCode::K => {
-                            instance.toggle_player_dead().unwrap();
+                            instance.draw_state().borrow_mut().toggle_player_dead();
                         }
                         VirtualKeyCode::E => {
-                            instance.bump_eject_state().unwrap();
+                            instance.draw_state().borrow_mut().bump_eject_state();
                         }
                         VirtualKeyCode::Key6 => {
-                            instance.enable_afterburner().unwrap();
+                            instance.draw_state().borrow_mut().enable_afterburner();
                         }
                         VirtualKeyCode::Key1
                         | VirtualKeyCode::Key2
                         | VirtualKeyCode::Key3
                         | VirtualKeyCode::Key4
                         | VirtualKeyCode::Key5 => {
-                            instance.disable_afterburner().unwrap();
+                            instance.draw_state().borrow_mut().disable_afterburner();
                         }
                         VirtualKeyCode::Z => {
-                            instance.move_rudder_left().unwrap();
+                            instance.draw_state().borrow_mut().move_rudder_left();
                         }
                         VirtualKeyCode::X => {
-                            instance.move_rudder_right().unwrap();
+                            instance.draw_state().borrow_mut().move_rudder_right();
                         }
                         VirtualKeyCode::Q => done = true,
                         _ => trace!("unknown keycode: {:?}", keycode),
@@ -230,16 +222,16 @@ fn main() -> Fallible<()> {
                 } else if pressed == ElementState::Released {
                     match keycode {
                         VirtualKeyCode::Z => {
-                            instance.move_rudder_center().unwrap();
+                            instance.draw_state().borrow_mut().move_rudder_center();
                         }
                         VirtualKeyCode::X => {
-                            instance.move_rudder_center().unwrap();
+                            instance.draw_state().borrow_mut().move_rudder_center();
                         }
                         VirtualKeyCode::A => {
-                            instance.move_stick_center().unwrap();
+                            instance.draw_state().borrow_mut().move_stick_center();
                         }
                         VirtualKeyCode::S => {
-                            instance.move_stick_center().unwrap();
+                            instance.draw_state().borrow_mut().move_stick_center();
                         }
                         _ => {}
                     }
@@ -256,6 +248,7 @@ fn main() -> Fallible<()> {
             camera.set_aspect_ratio(window.aspect_ratio()?);
         }
 
+        sh_renderer.borrow_mut().animate(&loop_start)?;
         window.drive_frame(&camera)?;
 
         let frame_time = loop_start.elapsed();
@@ -270,16 +263,15 @@ fn main() -> Fallible<()> {
         fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
-            "dam:{}, frame:{}, gear:{:?}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}, rudder:{}",
-            false, // instance.damaged,
-            0,     // instance.frame_number,
-            instance.has_gear_down()?,
-            instance.has_flaps_down()?,
-            instance.has_airbrake_extended()?,
-            instance.has_hook_extended()?,
-            instance.has_bay_open()?,
-            instance.has_afterburner_enabled()?,
-            instance.get_rudder_position()?,
+            "dam:{}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}",
+            !instance.draw_state().borrow().show_damaged(),
+            !instance.draw_state().borrow().gear_retracted(),
+            instance.draw_state().borrow().gear_position(),
+            instance.draw_state().borrow().flaps_down(),
+            instance.draw_state().borrow().airbrake_extended(),
+            instance.draw_state().borrow().hook_extended(),
+            !instance.draw_state().borrow().bay_closed(),
+            instance.draw_state().borrow().afterburner_enabled(),
         );
         state_handle.set_span(&params, &window)?;
     }

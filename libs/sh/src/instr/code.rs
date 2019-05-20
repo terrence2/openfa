@@ -20,7 +20,7 @@ use lazy_static::lazy_static;
 use log::trace;
 use peff::{Thunk, PE};
 use reverse::bs2s;
-use std::{cmp, collections::HashSet, mem};
+use std::{cell::RefCell, cmp, collections::HashSet, mem, rc::Rc};
 
 lazy_static! {
     pub static ref DATA_RELOCATIONS: HashSet<String> = {
@@ -231,7 +231,7 @@ pub struct X86Code {
     pub offset: usize,
     pub length: usize,
     pub data: *const u8,
-    pub bytecode: ByteCode,
+    pub bytecode: Rc<RefCell<ByteCode>>,
     pub have_header: bool,
 }
 
@@ -410,7 +410,7 @@ impl X86Code {
             offset: section_offset,
             length: section_length,
             data: pe.code[section_offset..].as_ptr(),
-            bytecode: bc,
+            bytecode: bc.into_rc(),
             have_header,
         })
     }
@@ -599,7 +599,7 @@ impl X86Code {
             ansi().green().bold(),
             hdr,
             ansi(),
-            self.bytecode.show_relative(show_offset).trim()
+            self.bytecode.borrow().show_relative(show_offset).trim()
         )
     }
 }
