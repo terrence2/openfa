@@ -24,7 +24,7 @@ const GEAR_ANIMATION_TEMPLATE: LinearAnimationTemplate =
     LinearAnimationTemplate::new(Duration::from_millis(5000), 8192f32..0f32);
 
 const BAY_ANIMATION_TEMPLATE: LinearAnimationTemplate =
-    LinearAnimationTemplate::new(Duration::from_millis(5000), -8192f32..8192f32);
+    LinearAnimationTemplate::new(Duration::from_millis(5000), 8192f32..0f32);
 
 bitflags! {
     pub struct DrawStateFlags: u16 {
@@ -47,6 +47,8 @@ bitflags! {
 pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,
+    thrust_vectoring: i16,
+    wing_sweep: i16,
     sam_count: i8,
     eject_state: u8,
     flags: DrawStateFlags,
@@ -57,6 +59,8 @@ impl Default for DrawState {
         DrawState {
             gear_animation: Animation::new(&GEAR_ANIMATION_TEMPLATE),
             bay_animation: Animation::new(&BAY_ANIMATION_TEMPLATE),
+            thrust_vectoring: 0,
+            wing_sweep: 0,
             sam_count: 3,
             eject_state: 0,
             flags: DrawStateFlags::AIRBRAKE_EXTENDED
@@ -67,10 +71,6 @@ impl Default for DrawState {
 }
 
 impl DrawState {
-    pub(crate) fn animate(&mut self, _start: &Instant, now: &Instant) {
-        self.gear_animation.animate(now);
-    }
-
     pub fn gear_retracted(&self) -> bool {
         self.gear_animation.completed_backward()
     }
@@ -85,6 +85,10 @@ impl DrawState {
 
     pub fn bay_position(&self) -> f32 {
         self.bay_animation.value()
+    }
+
+    pub fn thrust_vector_position(&self) -> f32 {
+        f32::from(self.thrust_vectoring)
     }
 
     pub fn show_damaged(&self) -> bool {
@@ -109,6 +113,10 @@ impl DrawState {
 
     pub fn afterburner_enabled(&self) -> bool {
         self.flags.contains(DrawStateFlags::AFTERBURNER_ENABLED)
+    }
+
+    pub fn wing_sweep_angle(&self) -> i16 {
+        self.wing_sweep
     }
 
     pub fn player_dead(&self) -> bool {
@@ -176,6 +184,14 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::AFTERBURNER_ENABLED);
     }
 
+    pub fn increase_wing_sweep(&mut self) {
+        self.wing_sweep += 50;
+    }
+
+    pub fn decrease_wing_sweep(&mut self) {
+        self.wing_sweep -= 50;
+    }
+
     pub fn move_rudder_center(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
@@ -196,6 +212,18 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
         self.flags.remove(DrawStateFlags::RIGHT_AILERON_DOWN);
         self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
+    }
+
+    pub fn move_stick_forward(&mut self) {}
+
+    pub fn move_stick_backward(&mut self) {}
+
+    pub fn vector_thrust_forward(&mut self) {
+        self.thrust_vectoring += 10;
+    }
+
+    pub fn vector_thrust_backward(&mut self) {
+        self.thrust_vectoring -= 10;
     }
 
     pub fn move_stick_left(&mut self) {
@@ -226,9 +254,12 @@ impl DrawState {
     pub fn toggle_bay(&mut self, start: &Instant) {
         self.bay_animation.start_or_reverse(start);
     }
-}
 
-impl DrawState {
+    pub(crate) fn animate(&mut self, _start: &Instant, now: &Instant) {
+        self.gear_animation.animate(now);
+        self.bay_animation.animate(now);
+    }
+
     pub(crate) fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 

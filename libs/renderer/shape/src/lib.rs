@@ -56,6 +56,10 @@ use vulkano::{
 };
 use window::{GraphicsWindow, RenderSubsystem};
 
+// NOTE: if updating MAX_UNIFORMS, the same constant must be fixed up in the vertex shader.
+const MAX_XFORMS: usize = 14;
+const UNIFORM_POOL_SIZE: usize = MAX_XFORMS * 16;
+
 bitflags! {
     struct VertexFlags: u64 {
         const NONE                 = 0x0000_0000_0000_0000;
@@ -80,8 +84,8 @@ bitflags! {
         const GEAR_DOWN            = 0x0000_0000_0000_0800;
         const BRAKE_EXTENDED       = 0x0000_0000_0000_1000;
         const BRAKE_RETRACTED      = 0x0000_0000_0000_2000;
-        const BAY_DOOR_CLOSED      = 0x0000_0000_0000_4000;
-        const BAY_DOOR_OPEN        = 0x0000_0000_0000_8000;
+        const BAY_CLOSED           = 0x0000_0000_0000_4000;
+        const BAY_OPEN             = 0x0000_0000_0000_8000;
         const RUDDER_CENTER        = 0x0000_0000_0001_0000;
         const RUDDER_LEFT          = 0x0000_0000_0002_0000;
         const RUDDER_RIGHT         = 0x0000_0000_0004_0000;
@@ -93,8 +97,6 @@ bitflags! {
         const RIGHT_AILERON_DOWN   = 0x0000_0000_0100_0000;
         const SLATS_DOWN           = 0x0000_0000_0200_0000;
         const SLATS_UP             = 0x0000_0000_0400_0000;
-        const BAY_OPEN             = 0x0000_0000_0800_0000;
-        const BAY_CLOSED           = 0x0000_0000_1000_0000;
 
         const PLAYER_ALIVE         = 0x0000_0000_2000_0000;
         const PLAYER_DEAD          = 0x0000_0000_4000_0000;
@@ -185,7 +187,7 @@ mod vs {
             layout(location = 5) in uint xform_id;
 
             layout(binding = 1) uniform UniformMatrixArray {
-                mat4 xforms[10];
+                mat4 xforms[14];
             } uma;
 
             layout(push_constant) uniform PushConstantData {
@@ -333,6 +335,13 @@ pub enum TransformInput {
     CurrentTicks(u32),
     GearPosition(u32),
     GearDown(u32),
+    BayPosition(u32),
+    BayOpen(u32),
+    CanardPosition(u32),
+    AfterBurner(u32),
+    VerticalOn(u32),
+    VerticalAngle(u32),
+    SwingWing(u32),
 }
 
 // More than meets the eye.
@@ -347,8 +356,8 @@ pub struct Transformer {
 }
 
 pub struct ShapeModel {
-    uniform_upload_pool: Arc<CpuBufferPool<[f32; 160]>>,
-    device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>>,
+    uniform_upload_pool: Arc<CpuBufferPool<[f32; UNIFORM_POOL_SIZE]>>,
+    device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
     vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
     index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
@@ -369,6 +378,9 @@ impl ShapeModel {
     fn animate(&mut self, start: &Instant, now: &Instant, state: &DrawState) -> Fallible<()> {
         for transformer in &mut self.transformers {
             let gear_position = state.gear_position() as u32;
+            let bay_position = state.bay_position() as u32;
+            let thrust_vectoring = state.thrust_vector_position() as i32 as u32;
+            let wing_sweep = state.wing_sweep_angle() as i32 as u32;
             let vm = &mut transformer.vm;
             let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
             for input in &transformer.inputs {
@@ -381,6 +393,27 @@ impl ShapeModel {
                     }
                     TransformInput::GearDown(loc) => {
                         vm.add_read_port(*loc, Box::new(move || 1));
+                    }
+                    TransformInput::BayPosition(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || bay_position));
+                    }
+                    TransformInput::BayOpen(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || 1));
+                    }
+                    TransformInput::CanardPosition(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || thrust_vectoring));
+                    }
+                    TransformInput::AfterBurner(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || 1));
+                    }
+                    TransformInput::VerticalOn(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || 0));
+                    }
+                    TransformInput::VerticalAngle(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || thrust_vectoring));
+                    }
+                    TransformInput::SwingWing(loc) => {
+                        vm.add_read_port(*loc, Box::new(move || wing_sweep));
                     }
                 }
             }
@@ -407,6 +440,13 @@ impl ShapeModel {
                     TransformInput::CurrentTicks(loc) => vm.remove_read_port(*loc),
                     TransformInput::GearPosition(loc) => vm.remove_read_port(*loc),
                     TransformInput::GearDown(loc) => vm.remove_read_port(*loc),
+                    TransformInput::BayPosition(loc) => vm.remove_read_port(*loc),
+                    TransformInput::BayOpen(loc) => vm.remove_read_port(*loc),
+                    TransformInput::CanardPosition(loc) => vm.remove_read_port(*loc),
+                    TransformInput::AfterBurner(loc) => vm.remove_read_port(*loc),
+                    TransformInput::VerticalOn(loc) => vm.remove_read_port(*loc),
+                    TransformInput::VerticalAngle(loc) => vm.remove_read_port(*loc),
+                    TransformInput::SwingWing(loc) => vm.remove_read_port(*loc),
                 }
             }
         }
@@ -934,7 +974,7 @@ impl ShRenderer {
     }
 
     fn handle_transformer_property(
-        _name: &str,
+        name: &str,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
@@ -959,49 +999,105 @@ impl ShRenderer {
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
-        let memrefs = Self::find_external_references(x86, sh);
-        let mut calls = Self::find_external_calls(x86, sh)?
-            .keys()
-            .cloned()
-            .collect::<Vec<&str>>();
+        let calls = Self::find_external_calls(x86, sh)?;
+        let mut calls = calls.keys().cloned().collect::<Vec<&str>>();
         calls.sort();
-        let mut inputs = memrefs.keys().cloned().collect::<Vec<&str>>();
-        inputs.sort();
+
+        let memrefs = Self::find_external_references(x86, sh);
+        let mut reads = memrefs.keys().cloned().collect::<Vec<&str>>();
+        reads.sort();
 
         //println!("MEMREFS: {:?}", memrefs);
 
-        if inputs == ["_currentTicks"] && calls == ["do_start_interp"] {
-            let xform_id =
-                prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, VertexFlags::STATIC)?;
-
-            transformers.push(Transformer {
-                xform_id,
-                vm: interp,
-                code_offset: x86.code_offset(SHAPE_LOAD_BASE),
-                data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
-                xform_base,
-                inputs: vec![TransformInput::CurrentTicks(
+        let (mask, inputs) = if reads == ["_currentTicks"] && calls == ["do_start_interp"] {
+            (
+                VertexFlags::STATIC,
+                vec![TransformInput::CurrentTicks(
                     memrefs["_currentTicks"].mem_location,
                 )],
-                xform: Matrix4::identity(),
-            });
-        } else if inputs == ["_PLgearDown", "_PLgearPos"] && calls == ["do_start_interp"] {
-            let xform_id = prop_man
-                .add_xform_and_flags(xform.unwrap_unmask_target()?, VertexFlags::GEAR_DOWN)?;
-
-            transformers.push(Transformer {
-                xform_id,
-                vm: interp,
-                code_offset: x86.code_offset(SHAPE_LOAD_BASE),
-                data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
-                xform_base,
-                inputs: vec![
+            )
+        } else if reads == ["_PLgearDown"] && calls == ["do_start_interp"] {
+            (
+                VertexFlags::GEAR_DOWN,
+                vec![TransformInput::GearDown(
+                    memrefs["_PLgearDown"].mem_location,
+                )],
+            )
+        } else if reads == ["_PLgearDown", "_PLgearPos"] && calls == ["do_start_interp"] {
+            (
+                VertexFlags::GEAR_DOWN,
+                vec![
                     TransformInput::GearPosition(memrefs["_PLgearPos"].mem_location),
                     TransformInput::GearDown(memrefs["_PLgearDown"].mem_location),
                 ],
-                xform: Matrix4::identity(),
-            });
-        }
+            )
+        } else if reads == ["_PLbayDoorPos", "_PLbayOpen"] && calls == ["do_start_interp"] {
+            (
+                VertexFlags::BAY_OPEN,
+                vec![
+                    TransformInput::BayPosition(memrefs["_PLbayDoorPos"].mem_location),
+                    TransformInput::BayOpen(memrefs["_PLbayOpen"].mem_location),
+                ],
+            )
+        } else if reads == ["_PLcanardPos"] && calls == ["do_start_interp"] {
+            // Actually thrust vector
+            (
+                VertexFlags::STATIC,
+                vec![TransformInput::CanardPosition(
+                    memrefs["_PLcanardPos"].mem_location,
+                )],
+            )
+        } else if reads == ["_PLafterBurner", "_PLcanardPos"] && calls == ["do_start_interp"] {
+            (
+                VertexFlags::AFTERBURNER_ON,
+                vec![
+                    TransformInput::CanardPosition(memrefs["_PLcanardPos"].mem_location),
+                    TransformInput::AfterBurner(memrefs["_PLafterBurner"].mem_location),
+                ],
+            )
+        } else if reads == ["_PLafterBurner", "_PLcanardPos", "_PLvtOn"]
+            && calls == ["do_start_interp"]
+        {
+            (
+                VertexFlags::AFTERBURNER_ON,
+                vec![
+                    TransformInput::CanardPosition(memrefs["_PLcanardPos"].mem_location),
+                    TransformInput::AfterBurner(memrefs["_PLafterBurner"].mem_location),
+                    TransformInput::VerticalOn(memrefs["_PLvtOn"].mem_location),
+                ],
+            )
+        } else if reads == ["_PLvtAngle"] && calls == ["do_start_interp"] {
+            // Only used in FA:V22.SH
+            (
+                VertexFlags::STATIC,
+                vec![TransformInput::VerticalAngle(
+                    memrefs["_PLvtAngle"].mem_location,
+                )],
+            )
+        } else if reads == ["_PLswingWing"] && calls == ["do_start_interp"] {
+            (
+                VertexFlags::STATIC,
+                vec![TransformInput::SwingWing(
+                    memrefs["_PLswingWing"].mem_location,
+                )],
+            )
+        } else {
+            println!("UNKNOWN XFORM: {:?} + {:?} in {}", reads, calls, name);
+            return Ok(());
+        };
+
+        let xform_id = prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, mask)?;
+
+        transformers.push(Transformer {
+            xform_id,
+            vm: interp,
+            code_offset: x86.code_offset(SHAPE_LOAD_BASE),
+            data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
+            xform_base,
+            inputs,
+            xform: Matrix4::identity(),
+        });
+
         Ok(())
     }
 
@@ -1185,9 +1281,9 @@ impl ShRenderer {
                         &mut prop_man,
                         &mut transformers,
                     )?;
-                    for _ in 0..advance_cnt {
-                        pc.advance(sh);
-                    }
+                    // for _ in 0..advance_cnt {
+                    //     pc.advance(sh);
+                    // }
                 }
 
                 Instr::TextureRef(texture) => {
@@ -1262,11 +1358,12 @@ impl ShRenderer {
             .then_signal_fence_and_flush()?
             .cleanup_finished();
 
-        let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; 160]>> = DeviceLocalBuffer::new(
-            window.device(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            window.device().active_queue_families(),
-        )?;
+        let device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>> =
+            DeviceLocalBuffer::new(
+                window.device(),
+                BufferUsage::uniform_buffer_transfer_destination(),
+                window.device().active_queue_families(),
+            )?;
 
         let uniform_upload_pool = Arc::new(CpuBufferPool::upload(window.device()));
 
@@ -1397,21 +1494,11 @@ impl RenderSubsystem for ShRenderer {
                 if inst.draw_state().borrow().show_damaged() != model.selection.is_damage() {
                     continue;
                 }
-                let mut uniforms = [
-                    1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32,
-                    0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32,
-                    1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
-                    0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32,
-                    0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32,
-                    0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32,
-                    0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32,
-                    0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32,
-                    0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 0f32, 0f32, 0f32,
-                    1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 1f32, 0f32,
-                    0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32,
-                    1f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32, 0f32, 0f32, 0f32, 1f32, 0f32,
-                    0f32, 0f32, 0f32, 1f32,
-                ];
+                let mut uniforms = [0f32; UNIFORM_POOL_SIZE];
+                uniforms[0] = 1f32;
+                uniforms[5] = 1f32;
+                uniforms[10] = 1f32;
+                uniforms[15] = 1f32;
                 for transformer in &model.transformers {
                     let base = transformer.xform_id as usize * 16;
                     for i in 0..16 {
