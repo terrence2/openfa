@@ -170,9 +170,6 @@ fn main() -> Fallible<()> {
                 if pressed == ElementState::Pressed {
                     match keycode {
                         VirtualKeyCode::Escape => done = true,
-                        VirtualKeyCode::Delete => {
-                            instance.draw_state().borrow_mut().toggle_damaged();
-                        }
                         VirtualKeyCode::PageUp => {
                             instance.draw_state().borrow_mut().consume_sam();
                         }
@@ -285,8 +282,7 @@ fn main() -> Fallible<()> {
         fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
-            "dam:{}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
-            !instance.draw_state().borrow().show_damaged(),
+            "gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
             !instance.draw_state().borrow().gear_retracted(),
             instance.draw_state().borrow().gear_position(),
             instance.draw_state().borrow().flaps_down(),

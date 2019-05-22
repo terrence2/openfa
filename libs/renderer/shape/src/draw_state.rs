@@ -28,7 +28,6 @@ const BAY_ANIMATION_TEMPLATE: LinearAnimationTemplate =
 
 bitflags! {
     pub struct DrawStateFlags: u16 {
-        const SHOW_DAMAGED        = 0x0001;
         const FLAPS_DOWN          = 0x0002;
         const SLATS_DOWN          = 0x0004;
         const AIRBRAKE_EXTENDED   = 0x0008;
@@ -97,10 +96,6 @@ impl DrawState {
         f32::from(self.thrust_vectoring)
     }
 
-    pub fn show_damaged(&self) -> bool {
-        self.flags.contains(DrawStateFlags::SHOW_DAMAGED)
-    }
-
     pub fn flaps_down(&self) -> bool {
         self.flags.contains(DrawStateFlags::FLAPS_DOWN)
     }
@@ -151,10 +146,6 @@ impl DrawState {
 
     pub fn right_aileron_up(&self) -> bool {
         self.flags.contains(DrawStateFlags::RIGHT_AILERON_UP)
-    }
-
-    pub fn toggle_damaged(&mut self) {
-        self.flags.toggle(DrawStateFlags::SHOW_DAMAGED);
     }
 
     pub fn toggle_flaps(&mut self) {
