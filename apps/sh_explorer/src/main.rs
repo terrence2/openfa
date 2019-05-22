@@ -18,7 +18,7 @@ use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
-use shape::ShRenderer;
+use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -79,10 +79,14 @@ fn main() -> Fallible<()> {
         .with_vertical_anchor(TextAnchorV::Bottom);
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let instance =
-        sh_renderer
-            .borrow_mut()
-            .add_shape_to_render(&system_palette, name, &sh, &lib, &window)?;
+    let instance = sh_renderer.borrow_mut().add_shape_to_render(
+        name,
+        &sh,
+        DrawSelection::NormalModel,
+        &system_palette,
+        &lib,
+        &window,
+    )?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);

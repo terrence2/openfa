@@ -47,6 +47,7 @@ bitflags! {
 pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,
+    base_time: Instant,
     thrust_vectoring: i16,
     wing_sweep: i16,
     sam_count: i8,
@@ -59,6 +60,7 @@ impl Default for DrawState {
         DrawState {
             gear_animation: Animation::new(&GEAR_ANIMATION_TEMPLATE),
             bay_animation: Animation::new(&BAY_ANIMATION_TEMPLATE),
+            base_time: Instant::now(),
             thrust_vectoring: 0,
             wing_sweep: 0,
             sam_count: 3,
@@ -85,6 +87,10 @@ impl DrawState {
 
     pub fn bay_position(&self) -> f32 {
         self.bay_animation.value()
+    }
+
+    pub fn time_origin(&self) -> &Instant {
+        &self.base_time
     }
 
     pub fn thrust_vector_position(&self) -> f32 {
