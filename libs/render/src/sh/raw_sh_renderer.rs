@@ -1190,7 +1190,6 @@ mod test {
                     &window,
                 )?;
                 window.drive_frame(&camera)?;
-
             }
         }
         std::mem::drop(window);
