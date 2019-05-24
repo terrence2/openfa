@@ -168,7 +168,7 @@ impl Section {
     // }
 }
 
-#[allow(clippy::cyclomatic_complexity)]
+#[allow(clippy::cognitive_complexity)]
 pub fn format_sections(
     code: &[u8],
     sections: &[Section],

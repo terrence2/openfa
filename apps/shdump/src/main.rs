@@ -59,7 +59,7 @@ Opt {
     custom => bool
 });
 
-#[allow(clippy::cyclomatic_complexity)] // Impossible to organize if you don't know what the goal is.
+#[allow(clippy::cognitive_complexity)] // Impossible to organize if you don't know what the goal is.
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     let level = if opt.verbose {

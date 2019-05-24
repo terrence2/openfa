@@ -28,7 +28,7 @@ macro_rules! show_feature {
     };
 }
 
-#[allow(clippy::cyclomatic_complexity)]
+#[allow(clippy::cognitive_complexity)] // This metric is just wrong in this case.
 fn main() -> Fallible<()> {
     let instance = Instance::new(None, &InstanceExtensions::none(), None)?;
     for physical in PhysicalDevice::enumerate(&instance) {

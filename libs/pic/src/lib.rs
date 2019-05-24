@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn it_can_new_all_pics() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
-        for (game, name) in omni.find_matching("*.PIC")? {
+        for (game, name) in omni.find_matching("*.PIC")?.iter() {
             println!("AT: {}:{}", game, name);
             let _img = Pic::from_bytes(&omni.library(&game).load(&name)?)?;
         }
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn it_can_decode_all_pics() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
-        for (game, name) in omni.find_matching("*.PIC")? {
+        for (game, name) in omni.find_matching("*.PIC")?.iter() {
             println!("AT: {}:{}", game, name);
             let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             let img = Pic::decode(&palette, &omni.library(&game).load(&name)?)?;

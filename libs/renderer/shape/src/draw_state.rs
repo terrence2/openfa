@@ -28,7 +28,6 @@ const BAY_ANIMATION_TEMPLATE: LinearAnimationTemplate =
 
 bitflags! {
     pub struct DrawStateFlags: u16 {
-        const SHOW_DAMAGED        = 0x0001;
         const FLAPS_DOWN          = 0x0002;
         const SLATS_DOWN          = 0x0004;
         const AIRBRAKE_EXTENDED   = 0x0008;
@@ -47,6 +46,7 @@ bitflags! {
 pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,
+    base_time: Instant,
     thrust_vectoring: i16,
     wing_sweep: i16,
     sam_count: i8,
@@ -59,6 +59,7 @@ impl Default for DrawState {
         DrawState {
             gear_animation: Animation::new(&GEAR_ANIMATION_TEMPLATE),
             bay_animation: Animation::new(&BAY_ANIMATION_TEMPLATE),
+            base_time: Instant::now(),
             thrust_vectoring: 0,
             wing_sweep: 0,
             sam_count: 3,
@@ -87,12 +88,12 @@ impl DrawState {
         self.bay_animation.value()
     }
 
-    pub fn thrust_vector_position(&self) -> f32 {
-        f32::from(self.thrust_vectoring)
+    pub fn time_origin(&self) -> &Instant {
+        &self.base_time
     }
 
-    pub fn show_damaged(&self) -> bool {
-        self.flags.contains(DrawStateFlags::SHOW_DAMAGED)
+    pub fn thrust_vector_position(&self) -> f32 {
+        f32::from(self.thrust_vectoring)
     }
 
     pub fn flaps_down(&self) -> bool {
@@ -145,10 +146,6 @@ impl DrawState {
 
     pub fn right_aileron_up(&self) -> bool {
         self.flags.contains(DrawStateFlags::RIGHT_AILERON_UP)
-    }
-
-    pub fn toggle_damaged(&mut self) {
-        self.flags.toggle(DrawStateFlags::SHOW_DAMAGED);
     }
 
     pub fn toggle_flaps(&mut self) {

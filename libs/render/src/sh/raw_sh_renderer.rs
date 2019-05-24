@@ -281,7 +281,7 @@ impl RawShRenderer {
             .set_view(view);
     }
 
-    #[allow(clippy::cyclomatic_complexity)]
+    #[allow(clippy::cognitive_complexity)] // Don't know where the end is, so can't organize better.
     pub fn add_shape_to_render(
         &mut self,
         _name: &str,

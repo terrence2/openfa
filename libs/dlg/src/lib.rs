@@ -483,7 +483,7 @@ mod tests {
     fn it_can_load_all_dialogs() -> Fallible<()> {
         //let omni = OmniLib::new_for_test_in_games(&["ATF"])?;
         let omni = OmniLib::new_for_test()?;
-        for (game, name) in omni.find_matching("*.DLG")? {
+        for (game, name) in omni.find_matching("*.DLG")?.iter() {
             println!("AT: {}:{}", game, name);
 
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;

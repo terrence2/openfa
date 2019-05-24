@@ -104,7 +104,7 @@ mod tests {
         let omni = OmniLib::new_for_test()?;
         for (_, lib) in omni.libraries() {
             let asset_loader = AssetManager::new(lib.clone())?;
-            for filename in lib.find_matching("*.T2")? {
+            for filename in lib.find_matching("*.T2")?.iter() {
                 println!("name: {:?}", filename);
                 let t2 = asset_loader.load_t2(&filename)?;
                 println!("res: {:?}", t2.name);
