@@ -13,4 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
+mod arrow;
+mod ico_sphere;
 pub mod pal_renderer;
+
+pub use arrow::Arrow;
+pub use ico_sphere::IcoSphere;

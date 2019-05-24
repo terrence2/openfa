@@ -557,3 +557,58 @@ impl Facet {
         )
     }
 }
+
+#[derive(Debug)]
+pub struct VertexNormal {
+    pub offset: usize,
+    pub data: *const u8,
+    pub index: usize,
+    pub color: u8,
+    pub norm: [i8; 3],
+}
+
+impl VertexNormal {
+    pub const MAGIC: u8 = 0xF6;
+    pub const SIZE: usize = 7;
+
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+        assert_eq!(data[0], Self::MAGIC);
+        let uword_ref: &[i16] = unsafe { mem::transmute(&data[1..]) };
+        let index = uword_ref[0] as usize;
+        let idata: &[i8] = unsafe { mem::transmute(&data[4..]) };
+        Ok(Self {
+            offset,
+            data: data.as_ptr(),
+            index,
+            color: data[3],
+            norm: [idata[0], idata[1], idata[2]],
+        })
+    }
+
+    pub fn size(&self) -> usize {
+        Self::SIZE
+    }
+
+    pub fn magic(&self) -> &'static str {
+        "F6"
+    }
+
+    pub fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}VxNrm{}: {}{}{}   | {}{}{}",
+            self.offset,
+            ansi().blue().bold(),
+            ansi(),
+            ansi().blue().bold(),
+            p2s(self.data, 0, 1).trim(),
+            ansi(),
+            ansi().blue(),
+            p2s(self.data, 1, Self::SIZE),
+            ansi(),
+        )
+    }
+}

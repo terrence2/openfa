@@ -19,7 +19,8 @@ mod instr;
 pub use crate::instr::{
     read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
     JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
-    Unmask4, VertexBuf, X86Code, X86Message, X86Trampoline, XformUnmask, XformUnmask4,
+    Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, X86Trampoline, XformUnmask,
+    XformUnmask4,
 };
 use ansi::{ansi, Color};
 use failure::{bail, ensure, err_msg, Fallible};
@@ -476,53 +477,6 @@ impl UnkBC {
 }
 
 #[derive(Debug)]
-pub struct UnkF6 {
-    pub offset: usize,
-    pub data: *const u8,
-}
-
-impl UnkF6 {
-    pub const MAGIC: u8 = 0xF6;
-    pub const SIZE: usize = 7;
-
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
-        let data = &code[offset..];
-        assert_eq!(data[0], Self::MAGIC);
-        Ok(Self {
-            offset,
-            data: data.as_ptr(),
-        })
-    }
-
-    fn size(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn magic(&self) -> &'static str {
-        "F6"
-    }
-
-    fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}UnkF6{}: {}{}{}   | {}{}{}",
-            self.offset,
-            ansi().red().bold(),
-            ansi(),
-            ansi().red().bold(),
-            p2s(self.data, 0, 1).trim(),
-            ansi(),
-            ansi().red(),
-            p2s(self.data, 1, Self::SIZE),
-            ansi(),
-        )
-    }
-}
-
-#[derive(Debug)]
 pub struct Unk38 {
     pub offset: usize,
     pub unk0: usize,
@@ -932,6 +886,7 @@ pub enum Instr {
     TextureIndex(TextureIndex),
     VertexBuf(VertexBuf),
     Facet(Facet), // 0x__FC
+    VertexNormal(VertexNormal),
 
     Unmask(Unmask),
     Unmask4(Unmask4),
@@ -975,7 +930,6 @@ pub enum Instr {
 
     // Fixed size, without wasted 0 byte after header.
     Pad1E(Pad1E),
-    UnkF6(UnkF6),
     Unk38(Unk38),
 
     // Variable size.
@@ -1013,6 +967,7 @@ macro_rules! impl_for_all_instr {
             Instr::TextureIndex(ref i) => i.$f(),
             Instr::TextureRef(ref i) => i.$f(),
             Instr::VertexBuf(ref i) => i.$f(),
+            Instr::VertexNormal(ref i) => i.$f(),
             Instr::Facet(ref i) => i.$f(),
             Instr::X86Code(ref i) => i.$f(),
             Instr::X86Trampoline(ref i) => i.$f(),
@@ -1051,7 +1006,6 @@ macro_rules! impl_for_all_instr {
             Instr::UnkE8(ref i) => i.$f(),
             Instr::UnkEA(ref i) => i.$f(),
             Instr::UnkEE(ref i) => i.$f(),
-            Instr::UnkF6(ref i) => i.$f(),
             Instr::Unk38(ref i) => i.$f(),
             Instr::UnkBC(ref i) => i.$f(),
             Instr::UnknownUnknown(ref i) => i.$f(),
@@ -1273,6 +1227,7 @@ impl RawShape {
             TextureIndex::MAGIC => consume_instr2!(TextureIndex, pe, offset, end_offset, instrs),
             VertexBuf::MAGIC => consume_instr2!(VertexBuf, pe, offset, end_offset, instrs),
             Facet::MAGIC => consume_instr2!(Facet, pe, offset, end_offset, instrs),
+            VertexNormal::MAGIC => consume_instr2!(VertexNormal, pe, offset, end_offset, instrs),
 
             Jump::MAGIC => consume_instr2!(Jump, pe, offset, end_offset, instrs),
             JumpToDamage::MAGIC => consume_instr2!(JumpToDamage, pe, offset, end_offset, instrs),
@@ -1320,7 +1275,6 @@ impl RawShape {
             Unk0C::MAGIC => consume_instr!(Unk0C, pe, offset, end_offset, instrs),
             UnkBC::MAGIC => consume_instr!(UnkBC, pe, offset, end_offset, instrs),
             UnkCE::MAGIC => consume_instr!(UnkCE, pe, offset, end_offset, instrs),
-            UnkF6::MAGIC => consume_instr!(UnkF6, pe, offset, end_offset, instrs),
 
             Unk38::MAGIC => consume_instr!(Unk38, pe, offset, end_offset, instrs),
 

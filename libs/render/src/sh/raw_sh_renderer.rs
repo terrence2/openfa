@@ -12,14 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::sh::texture_atlas::TextureAtlas;
+use crate::{sh::texture_atlas::TextureAtlas, utility::Arrow};
 use camera::CameraAbstract;
-use failure::{ensure, Fallible};
+use failure::{bail, ensure, Fallible};
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
-use nalgebra::{Matrix4, Vector4};
+use nalgebra::{Matrix4, Point3, Vector3, Vector4};
 use pal::Palette;
 use pic::Pic;
 use sh::{FacetFlags, Instr, RawShape};
@@ -564,9 +564,7 @@ impl RawShRenderer {
                             2
                         }),
                     );
-                    // interp.add_write_port(tramp.mem_location, move |value| {
-                    //     println!("WOULD UPDATE _effectsAllowed: {}", value);
-                    // });
+                    interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;
                 }
                 "_effects" => {
                     interp.add_read_port(
@@ -576,20 +574,20 @@ impl RawShRenderer {
                             2
                         }),
                     );
-                    // interp.add_write_port(tramp.mem_location, move |value| {
-                    //     println!("WOULD UPDATE _effects: {}", value);
-                    // });
+                    interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;
                 }
-                // "lighteningAllowed" => interp.add_write_port(tramp.mem_location, move |value| {
-                //     println!("WOULD UPDATE lighteningAllowed: {}", value);
-                // }),
-                // "mapAdj" => interp.add_write_port(tramp.mem_location, move |value| {
-                //     println!("WOULD UPDATE mapAdj: {}", value);
-                // }),
+                "lighteningAllowed" => {
+                    interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;
+                }
+                "mapAdj" => {
+                    interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;
+                }
 
-                // "_v" => {
-                //     interp.map_readonly(tramp.mem_location, &_v).unwrap();
-                // }
+                "_v" => {
+                    interp
+                        .map_writable(tramp.mem_location, _v.to_vec())
+                        .unwrap();
+                }
                 _ => {}
             }
         }
@@ -597,45 +595,13 @@ impl RawShRenderer {
             match instr {
                 // Written into by windmill with (_currentTicks & 0xFF) << 2.
                 // The frame of animation to show, maybe?
-                Instr::XformUnmask(ref _c4) => {
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2, move |value| {
-                    //     println!("WOULD UPDATE C4.t0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 2, move |value| {
-                    //     println!("WOULD UPDATE C4.t1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 4, move |value| {
-                    //     println!("WOULD UPDATE C4.t2 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 6, move |value| {
-                    //     println!("WOULD UPDATE C4.a0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 8, move |value| {
-                    //     println!("WOULD UPDATE C4.a1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 0xA, move |value| {
-                    //     println!("WOULD UPDATE C4.a2 <= {:08X}", value);
-                    // });
+                Instr::XformUnmask(ref c4) => {
+                    interp
+                        .map_writable(0xAA00_0000 + c4.offset as u32 + 2, c4.xform_base.to_vec())?;
                 }
-                Instr::XformUnmask4(ref _c6) => {
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2, move |value| {
-                    //     println!("WOULD UPDATE C6.t0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 2, move |value| {
-                    //     println!("WOULD UPDATE C6.t1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 4, move |value| {
-                    //     println!("WOULD UPDATE C6.t2 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 6, move |value| {
-                    //     println!("WOULD UPDATE C6.a0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 8, move |value| {
-                    //     println!("WOULD UPDATE C6.a1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 0xA, move |value| {
-                    //     println!("WOULD UPDATE C6.a2 <= {:08X}", value);
-                    // });
+                Instr::XformUnmask4(ref c6) => {
+                    interp
+                        .map_writable(0xAA00_0000 + c6.offset as u32 + 2, c6.xform_base.to_vec())?;
                 }
                 Instr::UnkE4(ref e4) => {
                     let mut v = Vec::new();
@@ -730,10 +696,61 @@ impl RawShRenderer {
                         ExitInfo::Trampoline(ref name, ref args) => {
                             println!("Got trampoline return to {} with args {:?}", name, args);
                             // FIXME: handle call and set up return if !do_start_interp
-                            byte_offset = (args[0] - 0xAA00_0000u32) as usize;
-                            offset = sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
-                            println!("Resuming at instruction {}", offset);
-                            continue;
+                            match name.as_str() {
+                                "do_start_interp" => {
+                                    byte_offset = (args[0] - 0xAA00_0000u32) as usize;
+                                    offset =
+                                        sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
+                                    println!("Resuming at instruction {}", offset);
+                                    continue;
+                                }
+                                "@HARDNumLoaded@8" => {
+                                    interp.set_register_value(i386::Reg::EAX, 1);
+                                    let exit_info = interp.interpret(interp.eip())?;
+                                    let (name, args) = exit_info.ok_trampoline()?;
+                                    ensure!(
+                                        name == "do_start_interp",
+                                        "unexpected trampoline return"
+                                    );
+                                    ensure!(args.len() == 1, "unexpected arg count");
+                                    byte_offset = (args[0] - 0xAA00_0000u32) as usize;
+                                    offset =
+                                        sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
+                                    println!("Resuming at instruction {}", offset);
+                                    continue;
+                                }
+                                "@HardpointAngle@4" => {
+                                    interp.set_register_value(i386::Reg::EAX, 256);
+                                    let exit_info = interp.interpret(interp.eip())?;
+                                    let (name, args) = exit_info.ok_trampoline()?;
+                                    ensure!(
+                                        name == "do_start_interp",
+                                        "unexpected trampoline return"
+                                    );
+                                    ensure!(args.len() == 1, "unexpected arg count");
+                                    byte_offset = (args[0] - 0xAA00_0000u32) as usize;
+                                    offset =
+                                        sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
+                                    println!("Resuming at instruction {}", offset);
+                                    continue;
+                                }
+                                "_InsectWingAngle@0" => {
+                                    interp.set_register_value(i386::Reg::EAX, 256);
+                                    let exit_info = interp.interpret(interp.eip())?;
+                                    let (name, args) = exit_info.ok_trampoline()?;
+                                    ensure!(
+                                        name == "do_start_interp",
+                                        "unexpected trampoline return"
+                                    );
+                                    ensure!(args.len() == 1, "unexpected arg count");
+                                    byte_offset = (args[0] - 0xAA00_0000u32) as usize;
+                                    offset =
+                                        sh.map_interpreter_offset_to_instr_offset(args[0]).unwrap();
+                                    println!("Resuming at instruction {}", offset);
+                                    continue;
+                                }
+                                _ => bail!("don't know how to handle {}", name),
+                            }
                         }
                     }
                 }
@@ -866,42 +883,6 @@ impl RawShRenderer {
                         0f32,
                         1f32,
                     );
-                    /*
-                    if byte_offset == 0x352E || byte_offset == 0x3433 {
-                        println!("PADDING: 11");
-                        for _ in 0..11 {
-                            vert_pool.push(Vertex {
-                                position: [0f32, 0f32, 0f32],
-                                color: [0.75f32, 0.5f32, 0f32, 1f32],
-                                tex_coord: [0f32, 0f32],
-                                flags: 0,
-                            });
-                        }
-                    }
-                    if byte_offset == 0x3631 {
-                        println!("PADDING: 22");
-                        for _ in 0..22 {
-                            vert_pool.push(Vertex {
-                                position: [0f32, 0f32, 0f32],
-                                color: [0.75f32, 0.5f32, 0f32, 1f32],
-                                tex_coord: [0f32, 0f32],
-                                flags: 0,
-                            });
-                        }
-                    }
-                    if byte_offset == 0x381D {
-                        println!("PADDING: 6");
-                        for _ in 0..6 {
-                            vert_pool.push(Vertex {
-                                position: [0f32, 0f32, 0f32],
-                                color: [0.75f32, 0.5f32, 0f32, 1f32],
-                                tex_coord: [0f32, 0f32],
-                                flags: 0,
-                            });
-                        }
-                    }
-                    */
-
                     if buf.buffer_target_offset() < vert_pool.len() {
                         vert_pool.truncate(buf.buffer_target_offset());
                     } else {
@@ -982,6 +963,35 @@ impl RawShRenderer {
                                 v_base += 1;
                             }
                         }
+                    }
+                }
+                Instr::VertexNormal(dot) => {
+                    let pt = vert_pool[dot.index];
+                    let v0 = Point3::new(pt.position[0], pt.position[1], pt.position[2]);
+                    // right: 100f32, 0f32, 0f32
+                    // down:  0f32, 100f32, 0f32
+                    // back:  0f32, 0f32, 100f32
+                    let n = Vector3::new(
+                        f32::from(dot.norm[0]),
+                        f32::from(-dot.norm[1]),
+                        f32::from(dot.norm[2]),
+                    );
+                    let base = verts.len() as u32;
+                    let arrow = Arrow::new(v0, n / 12f32);
+                    for pos in &arrow.verts {
+                        let v = Vertex {
+                            flags: 0,
+                            position: [pos.x, pos.y, pos.z],
+                            tex_coord: [0f32, 0f32],
+                            color: [1f32, 1f32, 1f32, 1f32],
+                            // color: self.system_palette.rgba_f32(dot.color as usize)?,
+                        };
+                        verts.push(v);
+                    }
+                    for face in &arrow.faces {
+                        indices.push(base + face.index0);
+                        indices.push(base + face.index1);
+                        indices.push(base + face.index2);
                     }
                 }
                 _ => {}
@@ -1112,12 +1122,7 @@ mod test {
         camera.set_angle(115. * PI / 180., -135. * PI / 180.);
 
         let omni = OmniLib::new_for_test_in_games(&[
-            //"USNF",
-            //"MF",
-            //"ATF",
-            //"ATFNATO",
-            //"ATFGOLD",
-            "USNF97", "FA",
+            "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
         ])?;
         let skipped = vec![
             "CATGUY.SH",
@@ -1132,55 +1137,60 @@ mod test {
             "WAVE1.SH",
             "WAVE2.SH",
         ];
-        for (game, name) in omni.find_matching("*.SH")?.iter() {
-            if skipped.contains(&name.as_ref()) {
-                continue;
-            }
-
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
-            );
-
-            let lib = omni.library(game);
-            let data = lib.load(name)?;
-            let sh = RawShape::from_bytes(&data)?;
+        for (game, lib) in omni.libraries() {
             let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-            let sh_renderer = Arc::new(RefCell::new(RawShRenderer::new(system_palette, &window)?));
 
-            window.reset_render_subsystems();
-            window.add_render_subsystem(sh_renderer.clone());
+            for name in lib.find_matching("*.SH")?.iter() {
+                if skipped.contains(&name.as_ref()) {
+                    continue;
+                }
 
-            let draw_mode = DrawMode {
-                range: None,
-                damaged: false,
-                closeness: 0x200,
-                frame_number: 0,
-                detail: 4,
-                gear_position: Some(18),
-                bay_position: Some(18),
-                flaps_down: false,
-                slats_down: false,
-                airbrake_extended: true,
-                hook_extended: true,
-                afterburner_enabled: true,
-                rudder_position: 0,
-                left_aileron_position: 0,
-                right_aileron_position: 0,
-                sam_count: 4,
-            };
-            sh_renderer.borrow_mut().add_shape_to_render(
-                &name,
-                &sh,
-                usize::max_value(),
-                &draw_mode,
-                &lib,
-                &window,
-            )?;
-            window.drive_frame(&camera)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game,
+                    name,
+                    omni.path(&game, name)
+                        .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                );
+
+                let data = lib.load(name)?;
+                let sh = RawShape::from_bytes(&data)?;
+                let sh_renderer = Arc::new(RefCell::new(RawShRenderer::new(
+                    system_palette.clone(),
+                    &window,
+                )?));
+
+                window.reset_render_subsystems();
+                window.add_render_subsystem(sh_renderer.clone());
+
+                let draw_mode = DrawMode {
+                    range: None,
+                    damaged: false,
+                    closeness: 0x200,
+                    frame_number: 0,
+                    detail: 4,
+                    gear_position: Some(18),
+                    bay_position: Some(18),
+                    flaps_down: false,
+                    slats_down: false,
+                    airbrake_extended: true,
+                    hook_extended: true,
+                    afterburner_enabled: true,
+                    rudder_position: 0,
+                    left_aileron_position: 0,
+                    right_aileron_position: 0,
+                    sam_count: 4,
+                };
+                sh_renderer.borrow_mut().add_shape_to_render(
+                    &name,
+                    &sh,
+                    usize::max_value(),
+                    &draw_mode,
+                    &lib,
+                    &window,
+                )?;
+                window.drive_frame(&camera)?;
+            }
         }
         std::mem::drop(window);
         Ok(())

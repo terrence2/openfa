@@ -24,7 +24,7 @@ use std::str;
 
 pub use crate::instr::{
     code::{X86Code, X86Message, X86Trampoline},
-    geometry::{Facet, FacetFlags, TextureIndex, TextureRef, VertexBuf},
+    geometry::{Facet, FacetFlags, TextureIndex, TextureRef, VertexBuf, VertexNormal},
     jump::{Jump, JumpToDamage, JumpToDetail, JumpToFrame, JumpToLOD},
     marker::PtrToObjEnd,
     mask::{Unmask, Unmask4, XformUnmask, XformUnmask4},
