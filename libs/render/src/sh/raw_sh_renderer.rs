@@ -12,14 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::sh::texture_atlas::TextureAtlas;
+use crate::{sh::texture_atlas::TextureAtlas, utility::Arrow};
 use camera::CameraAbstract;
 use failure::{ensure, Fallible};
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
 use log::trace;
-use nalgebra::{Matrix4, Vector4};
+use nalgebra::{Matrix4, Point3, Vector3, Vector4};
 use pal::Palette;
 use pic::Pic;
 use sh::{FacetFlags, Instr, RawShape};
@@ -597,45 +597,13 @@ impl RawShRenderer {
             match instr {
                 // Written into by windmill with (_currentTicks & 0xFF) << 2.
                 // The frame of animation to show, maybe?
-                Instr::XformUnmask(ref _c4) => {
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2, move |value| {
-                    //     println!("WOULD UPDATE C4.t0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 2, move |value| {
-                    //     println!("WOULD UPDATE C4.t1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 4, move |value| {
-                    //     println!("WOULD UPDATE C4.t2 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 6, move |value| {
-                    //     println!("WOULD UPDATE C4.a0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 8, move |value| {
-                    //     println!("WOULD UPDATE C4.a1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c4.offset as u32 + 2 + 0xA, move |value| {
-                    //     println!("WOULD UPDATE C4.a2 <= {:08X}", value);
-                    // });
+                Instr::XformUnmask(ref c4) => {
+                    interp
+                        .map_writable(0xAA00_0000 + c4.offset as u32 + 2, c4.xform_base.to_vec())?;
                 }
-                Instr::XformUnmask4(ref _c6) => {
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2, move |value| {
-                    //     println!("WOULD UPDATE C6.t0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 2, move |value| {
-                    //     println!("WOULD UPDATE C6.t1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 4, move |value| {
-                    //     println!("WOULD UPDATE C6.t2 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 6, move |value| {
-                    //     println!("WOULD UPDATE C6.a0 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 8, move |value| {
-                    //     println!("WOULD UPDATE C6.a1 <= {:08X}", value);
-                    // });
-                    // interp.add_write_port(0xAA00_0000 + c6.offset as u32 + 2 + 0xA, move |value| {
-                    //     println!("WOULD UPDATE C6.a2 <= {:08X}", value);
-                    // });
+                Instr::XformUnmask4(ref c6) => {
+                    interp
+                        .map_writable(0xAA00_0000 + c6.offset as u32 + 2, c6.xform_base.to_vec())?;
                 }
                 Instr::UnkE4(ref e4) => {
                     let mut v = Vec::new();
@@ -866,42 +834,6 @@ impl RawShRenderer {
                         0f32,
                         1f32,
                     );
-                    /*
-                    if byte_offset == 0x352E || byte_offset == 0x3433 {
-                        println!("PADDING: 11");
-                        for _ in 0..11 {
-                            vert_pool.push(Vertex {
-                                position: [0f32, 0f32, 0f32],
-                                color: [0.75f32, 0.5f32, 0f32, 1f32],
-                                tex_coord: [0f32, 0f32],
-                                flags: 0,
-                            });
-                        }
-                    }
-                    if byte_offset == 0x3631 {
-                        println!("PADDING: 22");
-                        for _ in 0..22 {
-                            vert_pool.push(Vertex {
-                                position: [0f32, 0f32, 0f32],
-                                color: [0.75f32, 0.5f32, 0f32, 1f32],
-                                tex_coord: [0f32, 0f32],
-                                flags: 0,
-                            });
-                        }
-                    }
-                    if byte_offset == 0x381D {
-                        println!("PADDING: 6");
-                        for _ in 0..6 {
-                            vert_pool.push(Vertex {
-                                position: [0f32, 0f32, 0f32],
-                                color: [0.75f32, 0.5f32, 0f32, 1f32],
-                                tex_coord: [0f32, 0f32],
-                                flags: 0,
-                            });
-                        }
-                    }
-                    */
-
                     if buf.buffer_target_offset() < vert_pool.len() {
                         vert_pool.truncate(buf.buffer_target_offset());
                     } else {
@@ -982,6 +914,35 @@ impl RawShRenderer {
                                 v_base += 1;
                             }
                         }
+                    }
+                }
+                Instr::UnkF6(dot) => {
+                    let pt = vert_pool[dot.index];
+                    let v0 = Point3::new(pt.position[0], pt.position[1], pt.position[2]);
+                    // right: 100f32, 0f32, 0f32
+                    // down:  0f32, 100f32, 0f32
+                    // back:  0f32, 0f32, 100f32
+                    let n = Vector3::new(
+                        f32::from(dot.norm[0]),
+                        f32::from(-dot.norm[1]),
+                        f32::from(dot.norm[2]),
+                    );
+                    let base = verts.len() as u32;
+                    let arrow = Arrow::new(v0, n / 12f32);
+                    for pos in &arrow.verts {
+                        let v = Vertex {
+                            flags: 0,
+                            position: [pos.x, pos.y, pos.z],
+                            tex_coord: [0f32, 0f32],
+                            color: [1f32, 1f32, 1f32, 1f32],
+                            // color: self.system_palette.rgba_f32(dot.color as usize)?,
+                        };
+                        verts.push(v);
+                    }
+                    for face in &arrow.faces {
+                        indices.push(base + face.index0);
+                        indices.push(base + face.index1);
+                        indices.push(base + face.index2);
                     }
                 }
                 _ => {}

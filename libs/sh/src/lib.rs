@@ -479,6 +479,9 @@ impl UnkBC {
 pub struct UnkF6 {
     pub offset: usize,
     pub data: *const u8,
+    pub index: usize,
+    pub color: u8,
+    pub norm: [i8; 3],
 }
 
 impl UnkF6 {
@@ -488,9 +491,15 @@ impl UnkF6 {
     fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
+        let uword_ref: &[i16] = unsafe { mem::transmute(&data[1..]) };
+        let index = uword_ref[0] as usize;
+        let idata: &[i8] = unsafe { mem::transmute(&data[4..]) };
         Ok(Self {
             offset,
             data: data.as_ptr(),
+            index,
+            color: data[3],
+            norm: [idata[0], idata[1], idata[2]],
         })
     }
 
