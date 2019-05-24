@@ -916,7 +916,7 @@ impl RawShRenderer {
                         }
                     }
                 }
-                Instr::UnkF6(dot) => {
+                Instr::VertexNormal(dot) => {
                     let pt = vert_pool[dot.index];
                     let v0 = Point3::new(pt.position[0], pt.position[1], pt.position[2]);
                     // right: 100f32, 0f32, 0f32
