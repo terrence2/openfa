@@ -156,7 +156,7 @@ fn main() -> Fallible<()> {
                             KeyboardInput {
                                 virtual_keycode: Some(keycode),
                                 state: pressed,
-                                modifiers: _mod_state,
+                                modifiers: mod_state,
                                 ..
                             },
                         ..
@@ -166,8 +166,11 @@ fn main() -> Fallible<()> {
                 if pressed == ElementState::Pressed {
                     match keycode {
                         VirtualKeyCode::Escape => done = true,
-                        VirtualKeyCode::D => {
+                        VirtualKeyCode::Delete => {
                             instance.draw_state().borrow_mut().toggle_damaged();
+                        }
+                        VirtualKeyCode::PageUp => {
+                            instance.draw_state().borrow_mut().consume_sam();
                         }
                         VirtualKeyCode::G => {
                             instance.draw_state().borrow_mut().toggle_gear(&loop_start);
@@ -179,11 +182,22 @@ fn main() -> Fallible<()> {
                         VirtualKeyCode::A => {
                             instance.draw_state().borrow_mut().move_stick_left();
                         }
-                        VirtualKeyCode::S => {
+                        VirtualKeyCode::D => {
                             instance.draw_state().borrow_mut().move_stick_right();
                         }
-                        VirtualKeyCode::C => {
-                            instance.draw_state().borrow_mut().consume_sam();
+                        VirtualKeyCode::W => {
+                            if mod_state.shift {
+                                instance.draw_state().borrow_mut().vector_thrust_forward();
+                            } else {
+                                instance.draw_state().borrow_mut().move_stick_forward();
+                            }
+                        }
+                        VirtualKeyCode::S => {
+                            if mod_state.shift {
+                                instance.draw_state().borrow_mut().vector_thrust_backward();
+                            } else {
+                                instance.draw_state().borrow_mut().move_stick_backward();
+                            }
                         }
                         VirtualKeyCode::B => {
                             instance.draw_state().borrow_mut().toggle_airbrake();
@@ -191,9 +205,9 @@ fn main() -> Fallible<()> {
                         VirtualKeyCode::H => {
                             instance.draw_state().borrow_mut().toggle_hook();
                         }
-                        // VirtualKeyCode::O => {
-                        //     instance.draw_state().borrow_mut().toggle_bay(&loop_start);
-                        // }
+                        VirtualKeyCode::O => {
+                            instance.draw_state().borrow_mut().toggle_bay(&loop_start);
+                        }
                         VirtualKeyCode::K => {
                             instance.draw_state().borrow_mut().toggle_player_dead();
                         }
@@ -202,9 +216,13 @@ fn main() -> Fallible<()> {
                         }
                         VirtualKeyCode::Key6 => {
                             instance.draw_state().borrow_mut().enable_afterburner();
+                            instance.draw_state().borrow_mut().increase_wing_sweep();
                         }
-                        VirtualKeyCode::Key1
-                        | VirtualKeyCode::Key2
+                        VirtualKeyCode::Key1 => {
+                            instance.draw_state().borrow_mut().disable_afterburner();
+                            instance.draw_state().borrow_mut().decrease_wing_sweep();
+                        }
+                        VirtualKeyCode::Key2
                         | VirtualKeyCode::Key3
                         | VirtualKeyCode::Key4
                         | VirtualKeyCode::Key5 => {
@@ -213,7 +231,7 @@ fn main() -> Fallible<()> {
                         VirtualKeyCode::Z => {
                             instance.draw_state().borrow_mut().move_rudder_left();
                         }
-                        VirtualKeyCode::X => {
+                        VirtualKeyCode::C => {
                             instance.draw_state().borrow_mut().move_rudder_right();
                         }
                         VirtualKeyCode::Q => done = true,
@@ -263,7 +281,7 @@ fn main() -> Fallible<()> {
         fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
-            "dam:{}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{:?}, aft:{}",
+            "dam:{}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
             !instance.draw_state().borrow().show_damaged(),
             !instance.draw_state().borrow().gear_retracted(),
             instance.draw_state().borrow().gear_position(),
@@ -271,7 +289,9 @@ fn main() -> Fallible<()> {
             instance.draw_state().borrow().airbrake_extended(),
             instance.draw_state().borrow().hook_extended(),
             !instance.draw_state().borrow().bay_closed(),
+            instance.draw_state().borrow().bay_position(),
             instance.draw_state().borrow().afterburner_enabled(),
+            instance.draw_state().borrow().wing_sweep_angle(),
         );
         state_handle.set_span(&params, &window)?;
     }
