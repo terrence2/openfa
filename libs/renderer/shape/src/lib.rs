@@ -1425,7 +1425,7 @@ impl ShRenderer {
         })
     }
 
-    pub fn add_shape_to_render(
+    pub fn render_shape(
         &mut self,
         name: &str,
         sh: &RawShape,

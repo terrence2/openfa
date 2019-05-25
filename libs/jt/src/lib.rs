@@ -21,7 +21,7 @@ use ot::{
 use std::collections::HashMap;
 
 #[allow(dead_code)]
-struct ProjectileNames {
+pub struct ProjectileNames {
     short_name: String,
     long_name: String,
     file_name: Option<String>,

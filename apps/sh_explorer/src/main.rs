@@ -15,10 +15,12 @@
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use log::trace;
+use nalgebra::Isometry3;
+use object::ObjectRef;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
-use shape::{DrawSelection, ShRenderer};
+use shape::{DrawSelection, ShRenderer, ShapeInstanceRef};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -31,6 +33,11 @@ use winit::{
     KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
     WindowEvent::{CloseRequested, Destroyed, MouseInput, MouseWheel, Resized},
 };
+
+struct Scene {
+    objects: Vec<ObjectRef>,
+    screen_text: Vec<()>,
+}
 
 make_opt_struct!(
     #[structopt(name = "sh_explorer", about = "Show the contents of a SH file")]
@@ -45,22 +52,40 @@ fn main() -> Fallible<()> {
     if inputs.is_empty() {
         bail!("no inputs");
     }
-    let (game, name) = inputs.first().unwrap();
-    let lib = omni.library(&game);
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 
-    let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-
-    let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
-    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
-        system_palette.clone(),
-        &lib,
-        &window,
+    let (latest_game, latest_lib) = omni.latest_library();
+    let latest_palette = Rc::new(Box::new(Palette::from_bytes(
+        &latest_lib.load("PALETTE.PAL")?,
     )?));
 
-    window.add_render_subsystem(sh_renderer.clone());
+    let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+    let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
+    trace!("using fonts from {}", latest_game);
+    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
+        latest_palette.clone(),
+        &latest_lib,
+        &window,
+    )?));
+    //window.add_render_subsystem(sh_renderer.clone());
     window.add_render_subsystem(text_renderer.clone());
 
+    let mut instances = Vec::new();
+    for (game, name) in &inputs {
+        let lib = omni.library(&game);
+        let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
+        let sh = RawShape::from_bytes(&lib.load(&name)?)?;
+        let instance = sh_renderer.borrow_mut().add_shape_to_render(
+            name,
+            &sh,
+            DrawSelection::NormalModel,
+            &system_palette,
+            &lib,
+            &window,
+        )?;
+        instances.push(instance);
+    }
+
+    let instance = &instances[0];
     let fps_handle = text_renderer
         .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
@@ -77,16 +102,6 @@ fn main() -> Fallible<()> {
         .with_horizontal_anchor(TextAnchorH::Right)
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
-
-    let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let instance = sh_renderer.borrow_mut().add_shape_to_render(
-        name,
-        &sh,
-        DrawSelection::NormalModel,
-        &system_palette,
-        &lib,
-        &window,
-    )?;
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);

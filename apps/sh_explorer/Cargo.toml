@@ -19,6 +19,7 @@ asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/renderer/camera" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
+object = { path = "../../libs/object" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }

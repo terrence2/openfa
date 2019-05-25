@@ -49,7 +49,7 @@ impl FromRow for TypeTag {
 }
 
 #[derive(Debug)]
-enum ObjectKind {
+pub enum ObjectKind {
     Fighter = 0b1000_0000_0000_0000,
     Bomber = 0b0100_0000_0000_0000,
     Ship = 0b0010_0000_0000_0000,

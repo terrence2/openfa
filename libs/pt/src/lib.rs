@@ -68,7 +68,7 @@ impl FromRow for Envelopes {
 }
 
 #[allow(dead_code)]
-struct SystemDamage {
+pub struct SystemDamage {
     damage_limit: [u8; 45],
 }
 
@@ -88,7 +88,7 @@ impl FromRows for SystemDamage {
 }
 
 #[allow(dead_code)]
-struct PhysBounds {
+pub struct PhysBounds {
     min: f32,
     max: f32,
     acc: f32,

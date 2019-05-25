@@ -435,7 +435,7 @@ macro_rules! make_type_struct {
             pub $parent: $parent_ty,
 
             $(
-                $field_name: $crate::make_storage_type!($parse_type, $field_type)
+                pub $field_name: $crate::make_storage_type!($parse_type, $field_type)
             ),*
         }
 

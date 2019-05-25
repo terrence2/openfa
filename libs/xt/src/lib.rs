@@ -17,7 +17,6 @@ use jt::ProjectileType;
 use lib::Library;
 use log::trace;
 use nt::NpcType;
-pub use ot::parse;
 use ot::ObjectType;
 use pt::PlaneType;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
@@ -61,33 +60,81 @@ impl Type {
             _ => bail!("Type: not a plane"),
         })
     }
+
+    pub fn is_ot(&self) -> bool {
+        if let Type::OT(_) = self {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_jt(&self) -> bool {
+        if let Type::JT(_) = self {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_nt(&self) -> bool {
+        if let Type::NT(_) = self {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_pt(&self) -> bool {
+        if let Type::PT(_) = self {
+            return true;
+        }
+        false
+    }
 }
 
 // Any single type is likely used by multiple game objects at once so we cache
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
 #[derive(Clone)]
-pub struct TypeRef(Rc<Type>);
+pub struct TypeRef {
+    value: Rc<Type>,
+}
 
 impl TypeRef {
     fn new(item: Type) -> Self {
-        TypeRef(Rc::new(item))
+        TypeRef {
+            value: Rc::new(item),
+        }
     }
 
     pub fn ot(&self) -> &ObjectType {
-        self.0.ot()
+        self.value.ot()
     }
 
     pub fn jt(&self) -> Fallible<&ProjectileType> {
-        self.0.jt()
+        self.value.jt()
     }
 
     pub fn nt(&self) -> Fallible<&NpcType> {
-        self.0.nt()
+        self.value.nt()
     }
 
     pub fn pt(&self) -> Fallible<&PlaneType> {
-        self.0.pt()
+        self.value.pt()
+    }
+
+    pub fn is_ot(&self) -> bool {
+        self.value.is_ot()
+    }
+
+    pub fn is_jt(&self) -> bool {
+        self.value.is_jt()
+    }
+
+    pub fn is_nt(&self) -> bool {
+        self.value.is_nt()
+    }
+
+    pub fn is_pt(&self) -> bool {
+        self.value.is_pt()
     }
 }
 

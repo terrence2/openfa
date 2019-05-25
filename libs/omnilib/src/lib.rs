@@ -43,7 +43,7 @@ macro_rules! make_opt_struct {
             omni_game_dir: Option<::std::path::PathBuf>,
 
             #[structopt(help = "The component to load either from the libs in the current directory.")]
-            omni_input: String,
+            omni_inputs: Vec<String>,
 
             $(
                 #[$structopt_options]
@@ -53,13 +53,18 @@ macro_rules! make_opt_struct {
 
         impl $opt_struct_name {
             // Return true if the input is of the form {game}:{name}.
-            fn omni_from_test(&self) -> bool {
-                self.omni_input.contains(':')
+            fn omni_from_test(&self) -> ::failure::Fallible<bool> {
+                let any = self.omni_inputs.iter().any(|inp| inp.contains(':'));
+                ::failure::ensure!(
+                    any == self.omni_inputs.iter().all(|inp| inp.contains(':')),
+                    "if any inputs are for test, all must be for test"
+                );
+                Ok(any)
             }
 
-            pub fn find_inputs(&self) -> Fallible<(OmniLib, Vec<(String, String)>)> {
+            pub fn find_inputs(&self) -> ::failure::Fallible<(OmniLib, Vec<(String, String)>)> {
                 // Load relevant libraries.
-                let omni = if self.omni_from_test() {
+                let omni = if self.omni_from_test()? {
                     OmniLib::new_for_test()
                 } else {
                     if let Some(ref game_dir) = self.omni_game_dir {
@@ -70,24 +75,28 @@ macro_rules! make_opt_struct {
                 }?;
 
                 // If the name is in a : form, it is a game:name pair.
-                let inputs = if self.omni_input.contains(':') {
-                    let parts = self.omni_input.splitn(2, ':').collect::<Vec<_>>();
-                    ::failure::ensure!(
-                        parts.len() == 2,
-                        "expected two parts in file spec with a colon"
-                    );
-                    if parts[0] == "*" {
-                        omni.find_matching(parts[1])?
+                let mut inputs = Vec::new();
+                for inp in &self.omni_inputs {
+                    let mut some_inputs = if inp.contains(':') {
+                        let parts = inp.splitn(2, ':').collect::<Vec<_>>();
+                        ::failure::ensure!(
+                            parts.len() == 2,
+                            "expected two parts in file spec with a colon"
+                        );
+                        if parts[0] == "*" {
+                            omni.find_matching(parts[1])?
+                        } else {
+                            omni.library(&parts[0].to_uppercase())
+                                .find_matching(parts[1])?
+                                .drain(..)
+                                .map(|s| (parts[0].to_owned(), s))
+                                .collect::<Vec<_>>()
+                        }
                     } else {
-                        omni.library(&parts[0].to_uppercase())
-                            .find_matching(parts[1])?
-                            .drain(..)
-                            .map(|s| (parts[0].to_owned(), s))
-                            .collect::<Vec<_>>()
-                    }
-                } else {
-                    omni.find_matching(&self.omni_input)?
-                };
+                        omni.find_matching(inp)?
+                    };
+                    inputs.append(&mut some_inputs);
+                }
 
                 Ok((omni, inputs))
             }
@@ -105,26 +114,53 @@ pub struct OmniLib {
 const USE_LIB: bool = false;
 
 impl OmniLib {
+    pub fn game_sort_key(game: &str) -> usize {
+        match game {
+            "FA" => 100,
+            "USNF97" | "97" => 200,
+            "ATFGOLD" | "GOLD" | "AG" => 300,
+            "ATFNATO" | "NATO" | "AN" => 400,
+            "ATF" => 500,
+            "USNF" | "NF" => 600,
+            "USMF" | "MF" => 700,
+            _ => panic!("unknown game short name"),
+        }
+    }
+
     pub fn new_for_test() -> Fallible<Self> {
-        Self::new_for_test_in_games(&["FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF"])
+        //Self::new_for_test_in_games(&["FA", "97", "GOLD", "NATO", "ATF", "MF", "NF"])
+        Self::new_for_test_in_games(&[
+            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF", "97", "GOLD", "NATO", "NF",
+        ])
     }
 
     pub fn new_for_test_in_games(dirs: &[&str]) -> Fallible<Self> {
         let test_data_dir = Self::find_test_data_dir()?;
         let mut libraries = HashMap::new();
         for &dir in dirs {
+            let maybe_libs = Self::load_file_or_dir_for_test(&test_data_dir, dir);
+            if maybe_libs.is_err() {
+                continue;
+            }
             trace!("adding libraries for {}", dir);
-
-            let libs = if USE_LIB {
-                let path = test_data_dir.join("packed").join(dir);
-                Library::from_file_search(&path)?
-            } else {
-                let path = test_data_dir.join("unpacked").join(dir);
-                Library::from_dir_search(&path)?
-            };
-            libraries.insert(dir.to_owned(), Arc::new(Box::new(libs)));
+            libraries.insert(dir.to_owned(), Arc::new(Box::new(maybe_libs?)));
         }
+        libraries
+            .keys()
+            .map(|v| v.as_str())
+            .collect::<Vec<&str>>()
+            .sort_by_key(|&v| Self::game_sort_key(v));
         Ok(Self { libraries })
+    }
+
+    fn load_file_or_dir_for_test(test_data_dir: &PathBuf, try_dir: &str) -> Fallible<Library> {
+        if USE_LIB {
+            let path = test_data_dir.join("packed").join(try_dir);
+            Library::from_file_search(&path)
+        } else {
+            let path = test_data_dir.join("unpacked").join(try_dir);
+            Library::from_dir_search(&path)
+        }
     }
 
     fn find_test_data_dir() -> Fallible<PathBuf> {
@@ -162,6 +198,11 @@ impl OmniLib {
         let libs = Library::from_file_search(path)?;
         trace!("loaded {} libfiles in game: {}", libs.num_libs(), game);
         libraries.insert(game, Arc::new(Box::new(libs)));
+        libraries
+            .keys()
+            .map(|v| v.as_str())
+            .collect::<Vec<&str>>()
+            .sort_by_key(|&v| Self::game_sort_key(v));
         Ok(Self { libraries })
     }
 
@@ -175,6 +216,11 @@ impl OmniLib {
         }
         out.sort();
         Ok(out)
+    }
+
+    pub fn latest_library(&self) -> (&str, Arc<Box<Library>>) {
+        let (game, lib) = self.libraries.iter().next().unwrap();
+        (game, lib.clone())
     }
 
     pub fn libraries(&self) -> Vec<(String, Arc<Box<Library>>)> {

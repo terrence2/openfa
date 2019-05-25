@@ -1,0 +1,18 @@
+[package]
+name = "object"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+lib = { path = "../lib" }
+pal = { path = "../pal" }
+sh = { path = "../sh" }
+shape = { path = "../renderer/shape" }
+xt = { path = "../xt" }
+window = { path = "../window" }
+
+[dev-dependencies]
+camera = { path = "../renderer/camera" }
+omnilib = { path = "../omnilib" }
