@@ -25,6 +25,7 @@ members = [
         "libs/dlg",
         "libs/fnt",
         "libs/i386",
+        "libs/input",
         "libs/jt",
         "libs/lay",
         "libs/lib",
