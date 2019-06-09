@@ -90,21 +90,6 @@ impl InputBindings {
     }
 }
 
-/*
-impl From<LogicalSize> for Args {
-    fn from(v: LogicalSize) -> Self {
-        Args::two(v.width.into(), v.height.into())
-    }
-}
-
-impl From<LogicalPosition> for Args {
-    fn from(v: LogicalPosition) -> Self {
-        Args::two(v.x.into(), v.y.into())
-    }
-}
-*/
-
-
 #[derive(Clone, Debug)]
 pub enum CommandArg {
     None,
@@ -129,7 +114,7 @@ impl From<(f64, f64)> for CommandArg {
 
 impl From<(f32, f32)> for CommandArg {
     fn from(v: (f32, f32)) -> Self {
-        CommandArg::Displacement((v.0 as f64, v.1 as f64))
+        CommandArg::Displacement((f64::from(v.0), f64::from(v.1)))
     }
 }
 
