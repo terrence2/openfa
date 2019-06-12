@@ -118,10 +118,12 @@ fn main() -> Fallible<()> {
     loop {
         let loop_start = Instant::now();
 
-        let mut resized = false;
         for command in input.poll(&mut window.events_loop) {
             match command.name.as_str() {
-                "window-resize" => resized = true,
+                "window-resize" => {
+                    window.note_resize();
+                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "mouse-move" => camera.on_mousemove(
                     command.displacement()?.0 as f32,
@@ -178,12 +180,9 @@ fn main() -> Fallible<()> {
                 _ => println!("unhandled command: {}", command.name),
             }
         }
-        if resized {
-            window.note_resize();
-            camera.set_aspect_ratio(window.aspect_ratio()?);
-        }
 
         sh_renderer.borrow_mut().animate(&loop_start)?;
+
         window.drive_frame(&camera)?;
 
         let frame_time = loop_start.elapsed();

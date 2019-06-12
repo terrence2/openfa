@@ -17,7 +17,6 @@ use failure::{bail, err_msg, Fallible};
 use log::trace;
 use std::{
     cell::RefCell,
-    collections::VecDeque,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -251,7 +250,7 @@ pub struct GraphicsWindow {
 
     // Per-frame resources
     dynamic_state: DynamicState,
-    outstanding_frames: VecDeque<Box<GpuFuture>>,
+    outstanding_frame: Option<Box<GpuFuture>>,
     dirty_size: bool,
     pub idle_time: Duration,
     clear_color: [f32; 4],
@@ -312,16 +311,12 @@ impl GraphicsWindow {
             dynamic_state: DynamicState {
                 ..DynamicState::none()
             },
-            outstanding_frames: VecDeque::with_capacity(4),
+            outstanding_frame: None,
             dirty_size: false,
             idle_time: Default::default(),
             clear_color: [0.0, 0.0, 1.0, 1.0],
             subsystems: Vec::new(),
         };
-
-        // Push a fake first frame so that we have something wait on in our frame driver.
-        let fake_frame = Box::new(sync::now(window.device())) as Box<GpuFuture>;
-        window.outstanding_frames.push_back(fake_frame);
 
         // Set initial size.
         let dim = window.dimensions()?;
@@ -412,11 +407,6 @@ impl GraphicsWindow {
     where
         F: Fn(AutoCommandBufferBuilder, &DynamicState) -> Fallible<AutoCommandBufferBuilder>,
     {
-        // Cleanup finished
-        for f in self.outstanding_frames.iter_mut() {
-            f.cleanup_finished();
-        }
-
         // Maybe resize
         if self.dirty_size {
             self.dirty_size = false;
@@ -465,13 +455,19 @@ impl GraphicsWindow {
 
         let cb = cbb.build()?;
 
+        let mut maybe_outstanding_frame = None;
+        std::mem::swap(&mut self.outstanding_frame, &mut maybe_outstanding_frame);
+        let mut outstanding_frame = if let Some(fut) = maybe_outstanding_frame {
+            fut
+        } else {
+            Box::new(sync::now(self.device())) as Box<GpuFuture>
+        };
+        outstanding_frame.cleanup_finished();
+
         // Wait for our oldest frame to finish, submit the new command buffer, then send
         // it down the next beam.
         let idle_start = Instant::now();
-        let next_frame_future = self
-            .outstanding_frames
-            .pop_front()
-            .expect("gfx: no prior frames")
+        let next_frame_future = outstanding_frame
             .join(acquire_future)
             .then_execute(self.queue(), cb)?
             .then_swapchain_present(self.queue(), self.swapchain(), image_num)
@@ -493,7 +489,7 @@ impl GraphicsWindow {
                 Box::new(sync::now(self.device())) as Box<_>
             }
         };
-        self.outstanding_frames.push_back(next_frame_future);
+        self.outstanding_frame = Some(next_frame_future);
 
         Ok(())
     }
