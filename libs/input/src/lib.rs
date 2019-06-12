@@ -17,8 +17,11 @@ mod keyset;
 pub use crate::keyset::{Key, KeySet};
 use failure::{bail, Fallible};
 use log::warn;
-use smallvec::SmallVec;
-use std::{collections::HashMap, path::PathBuf};
+use smallvec::{smallvec, SmallVec};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
     DeviceEvent, DeviceId, ElementState, Event, EventsLoop, KeyboardInput, MouseScrollDelta,
@@ -28,14 +31,16 @@ use winit::{
 // Map from key, buttons, and axes to commands.
 pub struct InputBindings {
     pub name: String,
-    chords: HashMap<Key, Vec<(KeySet, String, Option<String>)>>,
+    press_chords: HashMap<Key, Vec<(KeySet, String)>>,
+    release_keys: HashMap<Key, HashSet<String>>,
 }
 
 impl InputBindings {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_owned(),
-            chords: HashMap::new(),
+            press_chords: HashMap::new(),
+            release_keys: HashMap::new(),
         }
     }
 
@@ -46,10 +51,20 @@ impl InputBindings {
             (command, None)
         };
         for ks in KeySet::from_virtual(keyset)?.drain(..) {
-            self.chords
+            let sets = self
+                .press_chords
                 .entry(ks.activating())
-                .or_insert_with(Vec::new)
-                .push((ks, activate.to_owned(), deactivate.clone()));
+                .or_insert_with(Vec::new);
+
+            if let Some(ref d) = deactivate {
+                for key in &ks.keys {
+                    let keys = self.release_keys.entry(*key).or_insert_with(HashSet::new);
+                    keys.insert(d.to_owned());
+                }
+            }
+
+            sets.push((ks, activate.to_owned()));
+            sets.sort_by_key(|(set, _)| usize::max_value() - set.keys.len());
         }
         Ok(self)
     }
@@ -59,23 +74,24 @@ impl InputBindings {
         key: Key,
         state: ElementState,
         key_states: &HashMap<Key, ElementState>,
-    ) -> Option<Command> {
-        if let Some(chords) = self.chords.get(&key) {
-            for (chord, activate, deactivate) in chords {
-                if state == ElementState::Pressed && Self::chord_is_pressed(&chord.keys, key_states)
-                {
-                    return Some(Command::from_string(activate.to_owned()));
-                }
-
-                if deactivate.is_some()
-                    && state == ElementState::Released
-                    && Self::chord_is_pressed(&chord.keys[..chord.keys.len() - 1], key_states)
-                {
-                    return Some(Command::from_string(deactivate.to_owned().unwrap()));
+    ) -> SmallVec<[Command; 4]> {
+        if state == ElementState::Pressed {
+            if let Some(chords) = self.press_chords.get(&key) {
+                for (chord, activate) in chords {
+                    if Self::chord_is_pressed(&chord.keys, key_states) {
+                        return smallvec![Command::from_string(activate.to_owned())];
+                    }
                 }
             }
+        } else {
+            if let Some(commands) = self.release_keys.get(&key) {
+                return commands
+                    .iter()
+                    .map(|v| Command::from_string(v.to_owned()))
+                    .collect::<SmallVec<_>>();
+            }
         }
-        None
+        smallvec![]
     }
 
     fn chord_is_pressed(binding_keys: &[Key], key_states: &HashMap<Key, ElementState>) -> bool {
@@ -84,6 +100,8 @@ impl InputBindings {
                 if *current_state == ElementState::Released {
                     return false;
                 }
+            } else {
+                return false;
             }
         }
         true
@@ -246,88 +264,102 @@ impl<'a> InputSystem<'a> {
     }
 
     pub fn poll(&mut self, events: &mut EventsLoop) -> SmallVec<[Command; 8]> {
-        let mut output = SmallVec::new();
+        let mut out = SmallVec::new();
         events.poll_events(|e| {
-            if let Some(c) = self.handle_event(e) {
-                output.push(c);
-            }
+            out.extend(self.handle_event(e));
         });
-        output
+        out
     }
 
-    pub fn handle_event(&mut self, e: Event) -> Option<Command> {
+    pub fn handle_event(&mut self, e: Event) -> SmallVec<[Command; 8]> {
         match e {
             Event::WindowEvent { window_id, event } => self.handle_window_event(window_id, event),
             Event::DeviceEvent { device_id, event } => self.handle_device_event(device_id, event),
             unhandled => {
                 warn!("don't know how to handle: {:?}", unhandled);
-                None
+                smallvec![]
             }
         }
     }
 
-    fn handle_window_event(&self, _window_id: WindowId, event: WindowEvent) -> Option<Command> {
+    fn handle_window_event(
+        &self,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) -> SmallVec<[Command; 8]> {
         match event {
             // System Stuff
-            WindowEvent::Resized(s) => Some(Command::with_arg("window-resize", s.into())),
-            WindowEvent::Moved(p) => Some(Command::with_arg("window-move", p.into())),
-            WindowEvent::Destroyed => Some(Command::new("window-destroy")),
-            WindowEvent::CloseRequested => Some(Command::new("window-close")),
-            WindowEvent::Focused(b) => Some(Command::with_arg("window-focus", b.into())),
-            WindowEvent::DroppedFile(p) => Some(Command::with_arg("window-file-drop", p.into())),
-            WindowEvent::HoveredFile(p) => Some(Command::with_arg("window-file-hover", p.into())),
-            WindowEvent::HoveredFileCancelled => Some(Command::new("window-file-hover-cancel")),
+            WindowEvent::Resized(s) => smallvec![Command::with_arg("window-resize", s.into())],
+            WindowEvent::Moved(p) => smallvec![Command::with_arg("window-move", p.into())],
+            WindowEvent::Destroyed => smallvec![Command::new("window-destroy")],
+            WindowEvent::CloseRequested => smallvec![Command::new("window-close")],
+            WindowEvent::Focused(b) => smallvec![Command::with_arg("window-focus", b.into())],
+            WindowEvent::DroppedFile(p) => {
+                smallvec![Command::with_arg("window-file-drop", p.into())]
+            }
+            WindowEvent::HoveredFile(p) => {
+                smallvec![Command::with_arg("window-file-hover", p.into())]
+            }
+            WindowEvent::HoveredFileCancelled => {
+                smallvec![Command::new("window-file-hover-cancel")]
+            }
             WindowEvent::HiDpiFactorChanged(f) => {
-                Some(Command::with_arg("window-dpi-change", f.into()))
+                smallvec![Command::with_arg("window-dpi-change", f.into())]
             }
             WindowEvent::CursorEntered { device_id } => {
-                Some(Command::with_arg("window-cursor-entered", device_id.into()))
+                smallvec![Command::with_arg("window-cursor-entered", device_id.into())]
             }
             WindowEvent::CursorLeft { device_id } => {
-                Some(Command::with_arg("window-cursor-left", device_id.into()))
+                smallvec![Command::with_arg("window-cursor-left", device_id.into())]
             }
 
             // Track real cursor position in the window including window system accel
             // warping, and other such; mostly useful for software mice, but also for
             // picking with a hardware mouse.
             WindowEvent::CursorMoved { position, .. } => {
-                Some(Command::with_arg("window-cursor-move", position.into()))
+                smallvec![Command::with_arg("window-cursor-move", position.into())]
             }
 
             // Ignore events duplicated by device capture.
-            WindowEvent::ReceivedCharacter { .. } => None,
-            WindowEvent::KeyboardInput { .. } => None,
-            WindowEvent::MouseInput { .. } => None,
-            WindowEvent::MouseWheel { .. } => None,
+            WindowEvent::ReceivedCharacter { .. } => smallvec![],
+            WindowEvent::KeyboardInput { .. } => smallvec![],
+            WindowEvent::MouseInput { .. } => smallvec![],
+            WindowEvent::MouseWheel { .. } => smallvec![],
 
             // Ignore events we don't get on the device.
-            WindowEvent::Touch(_) => None,
-            WindowEvent::TouchpadPressure { .. } => None,
-            WindowEvent::AxisMotion { .. } => None,
+            WindowEvent::Touch(_) => smallvec![],
+            WindowEvent::TouchpadPressure { .. } => smallvec![],
+            WindowEvent::AxisMotion { .. } => smallvec![],
 
             // We should not need invalidation given our game loop.
-            WindowEvent::Refresh => None,
+            WindowEvent::Refresh => smallvec![],
         }
     }
 
-    fn handle_device_event(&mut self, device_id: DeviceId, event: DeviceEvent) -> Option<Command> {
+    fn handle_device_event(
+        &mut self,
+        device_id: DeviceId,
+        event: DeviceEvent,
+    ) -> SmallVec<[Command; 8]> {
         match event {
             // Device change events
-            DeviceEvent::Added => Some(Command::with_arg("device-added", device_id.into())),
-            DeviceEvent::Removed => Some(Command::with_arg("device-removed", device_id.into())),
+            DeviceEvent::Added => smallvec![Command::with_arg("device-added", device_id.into())],
+            DeviceEvent::Removed => {
+                smallvec![Command::with_arg("device-removed", device_id.into())]
+            }
 
             // Mouse Motion
             DeviceEvent::MouseMotion { delta } => {
-                Some(Command::with_arg("mouse-move", delta.into()))
+                smallvec![Command::with_arg("mouse-move", delta.into())]
             }
 
             // Mouse Wheel
             DeviceEvent::MouseWheel {
                 delta: MouseScrollDelta::LineDelta(x, y),
-            } => Some(Command::with_arg("mouse-wheel", (x, y).into())),
+            } => smallvec![Command::with_arg("mouse-wheel", (x, y).into())],
             DeviceEvent::MouseWheel {
                 delta: MouseScrollDelta::PixelDelta(s),
-            } => Some(Command::with_arg("mouse-wheel", s.into())),
+            } => smallvec![Command::with_arg("mouse-wheel", s.into())],
 
             // Mouse Button
             DeviceEvent::Button { button, state } => {
@@ -355,24 +387,23 @@ impl<'a> InputSystem<'a> {
                 ..
             }) => {
                 self.button_state.insert(Key::Physical(scancode), state);
-                None
+                smallvec![]
             }
 
             // Duplicate from MouseMotion for some reason?
-            DeviceEvent::Motion { .. } => None,
+            DeviceEvent::Motion { .. } => smallvec![],
 
             // I'm not sure what this does?
-            DeviceEvent::Text { .. } => None,
+            DeviceEvent::Text { .. } => smallvec![],
         }
     }
 
-    fn match_key(&self, key: Key, state: ElementState) -> Option<Command> {
+    fn match_key(&self, key: Key, state: ElementState) -> SmallVec<[Command; 8]> {
+        let mut out = SmallVec::new();
         for bindings in self.bindings.iter().rev() {
-            if let Some(c) = bindings.match_key(key, state, &self.button_state) {
-                return Some(c);
-            }
+            out.extend(bindings.match_key(key, state, &self.button_state));
         }
-        None
+        out
     }
 }
 
@@ -435,45 +466,69 @@ mod test {
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::Resized(logical_size())))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "window-resize");
         assert_relative_eq!(cmd.displacement()?.0, 8f64);
         assert_relative_eq!(cmd.displacement()?.1, 9f64);
 
-        let cmd = input.handle_event(win_evt(WindowEvent::Destroyed)).unwrap();
+        let cmd = input
+            .handle_event(win_evt(WindowEvent::Destroyed))
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "window-destroy");
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::CloseRequested))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "window-close");
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::DroppedFile(path())))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "window-file-drop");
         assert_eq!(cmd.path()?, path());
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::Focused(true)))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "window-focus");
         assert!(cmd.boolean()?);
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::HiDpiFactorChanged(42.)))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "window-dpi-change");
         assert_relative_eq!(cmd.float()?, 42.);
 
-        let cmd = input.handle_event(dev_evt(DeviceEvent::Added)).unwrap();
+        let cmd = input
+            .handle_event(dev_evt(DeviceEvent::Added))
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "device-added");
-        let cmd = input.handle_event(dev_evt(DeviceEvent::Removed)).unwrap();
+        let cmd = input
+            .handle_event(dev_evt(DeviceEvent::Removed))
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "device-removed");
 
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::MouseMotion { delta: (8., 9.) }))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "mouse-move");
         assert_relative_eq!(cmd.displacement()?.0, 8f64);
         assert_relative_eq!(cmd.displacement()?.1, 9f64);
@@ -482,7 +537,9 @@ mod test {
             .handle_event(dev_evt(DeviceEvent::MouseWheel {
                 delta: MouseScrollDelta::LineDelta(8., 9.),
             }))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "mouse-wheel");
         assert_relative_eq!(cmd.displacement()?.0, 8f64);
         assert_relative_eq!(cmd.displacement()?.1, 9f64);
@@ -505,11 +562,15 @@ mod test {
         // FPS forward.
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::Key(vkey(VirtualKeyCode::W, true))))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "+move-forward");
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::Key(vkey(VirtualKeyCode::W, false))))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "-move-forward");
 
         // Mouse Button + find fire before click.
@@ -518,38 +579,44 @@ mod test {
                 button: 0,
                 state: ElementState::Pressed,
             }))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "fire");
         let cmd = input.handle_event(dev_evt(DeviceEvent::Button {
             button: 0,
             state: ElementState::Released,
         }));
-        assert!(cmd.is_none());
+        assert!(cmd.is_empty());
 
         // Multiple buttons + found shift from LShfit + find eject instead of exit
         let cmd = input.handle_event(dev_evt(DeviceEvent::Key(vkey(
             VirtualKeyCode::LShift,
             true,
         ))));
-        assert!(cmd.is_none());
+        assert!(cmd.is_empty());
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::Key(vkey(VirtualKeyCode::E, true))))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "eject");
 
         // Let off e, drop fps, then hit again and get the other command
         let cmd = input.handle_event(dev_evt(DeviceEvent::Key(vkey(VirtualKeyCode::E, false))));
-        assert!(cmd.is_none());
+        assert!(cmd.is_empty());
         input.pop_bindings();
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::Key(vkey(VirtualKeyCode::E, true))))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "exit");
         let cmd = input.handle_event(dev_evt(DeviceEvent::Key(vkey(
             VirtualKeyCode::LShift,
             false,
         ))));
-        assert!(cmd.is_none());
+        assert!(cmd.is_empty());
 
         // Push on a new command set and ensure that it masks.
         let flight = InputBindings::new("flight").bind("mouse0", "+pickle")?;
@@ -560,14 +627,18 @@ mod test {
                 button: 0,
                 state: ElementState::Pressed,
             }))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "+pickle");
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::Button {
                 button: 0,
                 state: ElementState::Released,
             }))
-            .unwrap();
+            .first()
+            .unwrap()
+            .to_owned();
         assert_eq!(cmd.name, "-pickle");
 
         Ok(())
