@@ -47,8 +47,10 @@ pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,
     base_time: Instant,
-    thrust_vectoring: i16,
-    wing_sweep: i16,
+    thrust_vector_pos: i16,
+    thrust_vector_delta: i16,
+    wing_sweep_pos: i16,
+    wing_sweep_delta: i16,
     sam_count: i8,
     eject_state: u8,
     flags: DrawStateFlags,
@@ -60,8 +62,10 @@ impl Default for DrawState {
             gear_animation: Animation::new(&GEAR_ANIMATION_TEMPLATE),
             bay_animation: Animation::new(&BAY_ANIMATION_TEMPLATE),
             base_time: Instant::now(),
-            thrust_vectoring: 0,
-            wing_sweep: 0,
+            thrust_vector_pos: 0,
+            thrust_vector_delta: 0,
+            wing_sweep_pos: 0,
+            wing_sweep_delta: 0,
             sam_count: 3,
             eject_state: 0,
             flags: DrawStateFlags::AIRBRAKE_EXTENDED
@@ -93,7 +97,7 @@ impl DrawState {
     }
 
     pub fn thrust_vector_position(&self) -> f32 {
-        f32::from(self.thrust_vectoring)
+        f32::from(self.thrust_vector_pos)
     }
 
     pub fn flaps_down(&self) -> bool {
@@ -117,7 +121,7 @@ impl DrawState {
     }
 
     pub fn wing_sweep_angle(&self) -> i16 {
-        self.wing_sweep
+        self.wing_sweep_pos
     }
 
     pub fn player_dead(&self) -> bool {
@@ -181,14 +185,6 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::AFTERBURNER_ENABLED);
     }
 
-    pub fn increase_wing_sweep(&mut self) {
-        self.wing_sweep += 50;
-    }
-
-    pub fn decrease_wing_sweep(&mut self) {
-        self.wing_sweep -= 50;
-    }
-
     pub fn move_rudder_center(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
@@ -216,11 +212,31 @@ impl DrawState {
     pub fn move_stick_backward(&mut self) {}
 
     pub fn vector_thrust_forward(&mut self) {
-        self.thrust_vectoring += 10;
+        self.thrust_vector_delta = 10;
     }
 
     pub fn vector_thrust_backward(&mut self) {
-        self.thrust_vectoring -= 10;
+        self.thrust_vector_delta = -10;
+    }
+
+    pub fn vector_thrust_stop(&mut self) {
+        self.thrust_vector_delta = 0;
+    }
+
+    pub fn vector_thrust_recenter(&mut self) {
+        self.thrust_vector_pos = 0;
+    }
+
+    pub fn increase_wing_sweep(&mut self) {
+        self.wing_sweep_delta = 50;
+    }
+
+    pub fn decrease_wing_sweep(&mut self) {
+        self.wing_sweep_delta = -50;
+    }
+
+    pub fn stop_wing_sweep(&mut self) {
+        self.wing_sweep_delta = 0;
     }
 
     pub fn move_stick_left(&mut self) {
@@ -255,6 +271,8 @@ impl DrawState {
     pub(crate) fn animate(&mut self, _start: &Instant, now: &Instant) {
         self.gear_animation.animate(now);
         self.bay_animation.animate(now);
+        self.thrust_vector_pos += self.thrust_vector_delta;
+        self.wing_sweep_pos += self.wing_sweep_delta;
     }
 
     pub(crate) fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
-use log::trace;
+use input::{InputBindings, InputSystem};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
@@ -24,13 +24,6 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
-use winit::{
-    DeviceEvent::{Button, MouseMotion},
-    ElementState,
-    Event::{DeviceEvent, WindowEvent},
-    KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
-    WindowEvent::{CloseRequested, Destroyed, MouseInput, MouseWheel, Resized},
-};
 
 make_opt_struct!(
     #[structopt(name = "sh_explorer", about = "Show the contents of a SH file")]
@@ -50,6 +43,36 @@ fn main() -> Fallible<()> {
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+    let shape_bindings = InputBindings::new("shape")
+        .bind("+pan-view", "mouse1")?
+        .bind("+move-view", "mouse3")?
+        .bind("exit", "Escape")?
+        .bind("exit", "q")?
+        .bind("consume-sam", "PageUp")?
+        .bind("toggle-gear", "g")?
+        .bind("toggle-flaps", "f")?
+        .bind("toggle-airbrake", "b")?
+        .bind("toggle-hook", "h")?
+        .bind("toggle-bay", "o")?
+        .bind("toggle-player-dead", "k")?
+        .bind("bump-eject-state", "e")?
+        .bind("+stick-left", "a")?
+        .bind("+stick-right", "d")?
+        .bind("+rudder-left", "z")?
+        .bind("+rudder-right", "c")?
+        .bind("+stick-forward", "w")?
+        .bind("+stick-backward", "s")?
+        .bind("+vector-thrust-forward", "shift+w")?
+        .bind("+vector-thrust-backward", "shift+s")?
+        .bind("+increase-wing-sweep", "Period")?
+        .bind("+decrease-wing-sweep", "Comma")?
+        .bind("enable-afterburner", "key6")?
+        .bind("disable-afterburner", "key5")?
+        .bind("disable-afterburner", "key4")?
+        .bind("disable-afterburner", "key3")?
+        .bind("disable-afterburner", "key2")?
+        .bind("disable-afterburner", "key1")?;
+    let mut input = InputSystem::new(&[&shape_bindings]);
 
     let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
     let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
@@ -95,172 +118,65 @@ fn main() -> Fallible<()> {
     loop {
         let loop_start = Instant::now();
 
-        let mut done = false;
         let mut resized = false;
-        window.events_loop.poll_events(|ev| match ev {
-            WindowEvent {
-                event: CloseRequested,
-                ..
-            } => done = true,
-            WindowEvent {
-                event: Destroyed, ..
-            } => done = true,
-            WindowEvent {
-                event: Resized(_), ..
-            } => resized = true,
-
-            // Mouse motion
-            //    Use device events instead of window events for motion, so that we can move the
-            //    mouse without worrying about leaving the window. Also for mouse-up, so
-            //    interaction ends even if we moved off window.
-            DeviceEvent {
-                event: MouseMotion { delta: (x, y) },
-                ..
-            } => {
-                camera.on_mousemove(x as f32, y as f32);
-            }
-            WindowEvent {
-                event:
-                    MouseInput {
-                        button: id,
-                        state: ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                let id = match id {
-                    MouseButton::Left => 1,
-                    MouseButton::Right => 3,
-                    _ => 0,
-                };
-                camera.on_mousebutton_down(id)
-            }
-            DeviceEvent {
-                event:
-                    Button {
-                        button: id,
-                        state: ElementState::Released,
-                    },
-                ..
-            } => camera.on_mousebutton_up(id),
-            WindowEvent {
-                event:
-                    MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(x, y),
-                        ..
-                    },
-                ..
-            } => camera.on_mousescroll(-x, -y),
-
-            // Keyboard Press
-            WindowEvent {
-                event:
-                    winit::WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                virtual_keycode: Some(keycode),
-                                state: pressed,
-                                modifiers: mod_state,
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => {
-                if pressed == ElementState::Pressed {
-                    match keycode {
-                        VirtualKeyCode::Escape => done = true,
-                        VirtualKeyCode::PageUp => {
-                            instance.draw_state().borrow_mut().consume_sam();
-                        }
-                        VirtualKeyCode::G => {
-                            instance.draw_state().borrow_mut().toggle_gear(&loop_start);
-                        }
-                        VirtualKeyCode::F => {
-                            instance.draw_state().borrow_mut().toggle_flaps();
-                            instance.draw_state().borrow_mut().toggle_slats();
-                        }
-                        VirtualKeyCode::A => {
-                            instance.draw_state().borrow_mut().move_stick_left();
-                        }
-                        VirtualKeyCode::D => {
-                            instance.draw_state().borrow_mut().move_stick_right();
-                        }
-                        VirtualKeyCode::W => {
-                            if mod_state.shift {
-                                instance.draw_state().borrow_mut().vector_thrust_forward();
-                            } else {
-                                instance.draw_state().borrow_mut().move_stick_forward();
-                            }
-                        }
-                        VirtualKeyCode::S => {
-                            if mod_state.shift {
-                                instance.draw_state().borrow_mut().vector_thrust_backward();
-                            } else {
-                                instance.draw_state().borrow_mut().move_stick_backward();
-                            }
-                        }
-                        VirtualKeyCode::B => {
-                            instance.draw_state().borrow_mut().toggle_airbrake();
-                        }
-                        VirtualKeyCode::H => {
-                            instance.draw_state().borrow_mut().toggle_hook();
-                        }
-                        VirtualKeyCode::O => {
-                            instance.draw_state().borrow_mut().toggle_bay(&loop_start);
-                        }
-                        VirtualKeyCode::K => {
-                            instance.draw_state().borrow_mut().toggle_player_dead();
-                        }
-                        VirtualKeyCode::E => {
-                            instance.draw_state().borrow_mut().bump_eject_state();
-                        }
-                        VirtualKeyCode::Key6 => {
-                            instance.draw_state().borrow_mut().enable_afterburner();
-                            instance.draw_state().borrow_mut().increase_wing_sweep();
-                        }
-                        VirtualKeyCode::Key1 => {
-                            instance.draw_state().borrow_mut().disable_afterburner();
-                            instance.draw_state().borrow_mut().decrease_wing_sweep();
-                        }
-                        VirtualKeyCode::Key2
-                        | VirtualKeyCode::Key3
-                        | VirtualKeyCode::Key4
-                        | VirtualKeyCode::Key5 => {
-                            instance.draw_state().borrow_mut().disable_afterburner();
-                        }
-                        VirtualKeyCode::Z => {
-                            instance.draw_state().borrow_mut().move_rudder_left();
-                        }
-                        VirtualKeyCode::C => {
-                            instance.draw_state().borrow_mut().move_rudder_right();
-                        }
-                        VirtualKeyCode::Q => done = true,
-                        _ => trace!("unknown keycode: {:?}", keycode),
-                    }
-                } else if pressed == ElementState::Released {
-                    match keycode {
-                        VirtualKeyCode::Z => {
-                            instance.draw_state().borrow_mut().move_rudder_center();
-                        }
-                        VirtualKeyCode::X => {
-                            instance.draw_state().borrow_mut().move_rudder_center();
-                        }
-                        VirtualKeyCode::A => {
-                            instance.draw_state().borrow_mut().move_stick_center();
-                        }
-                        VirtualKeyCode::S => {
-                            instance.draw_state().borrow_mut().move_stick_center();
-                        }
-                        _ => {}
-                    }
+        for command in input.poll(&mut window.events_loop) {
+            match command.name.as_str() {
+                "window-resize" => resized = true,
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
+                "mouse-move" => camera.on_mousemove(
+                    command.displacement()?.0 as f32,
+                    command.displacement()?.1 as f32,
+                ),
+                "mouse-wheel" => camera.on_mousescroll(
+                    command.displacement()?.0 as f32,
+                    command.displacement()?.1 as f32,
+                ),
+                "+pan-view" => camera.on_mousebutton_down(1),
+                "-pan-view" => camera.on_mousebutton_up(1),
+                "+move-view" => camera.on_mousebutton_down(3),
+                "-move-view" => camera.on_mousebutton_up(3),
+                "+rudder-left" => instance.draw_state().borrow_mut().move_rudder_left(),
+                "-rudder-left" => instance.draw_state().borrow_mut().move_rudder_center(),
+                "+rudder-right" => instance.draw_state().borrow_mut().move_rudder_right(),
+                "-rudder-right" => instance.draw_state().borrow_mut().move_rudder_center(),
+                "+stick-backward" => instance.draw_state().borrow_mut().move_stick_backward(),
+                "-stick-backward" => instance.draw_state().borrow_mut().move_stick_center(),
+                "+stick-forward" => instance.draw_state().borrow_mut().move_stick_forward(),
+                "-stick-forward" => instance.draw_state().borrow_mut().move_stick_center(),
+                "+stick-left" => instance.draw_state().borrow_mut().move_stick_left(),
+                "-stick-left" => instance.draw_state().borrow_mut().move_stick_center(),
+                "+stick-right" => instance.draw_state().borrow_mut().move_stick_right(),
+                "-stick-right" => instance.draw_state().borrow_mut().move_stick_center(),
+                "+vector-thrust-backward" => {
+                    instance.draw_state().borrow_mut().vector_thrust_backward()
                 }
+                "+vector-thrust-forward" => {
+                    instance.draw_state().borrow_mut().vector_thrust_forward()
+                }
+                "-vector-thrust-forward" => instance.draw_state().borrow_mut().vector_thrust_stop(),
+                "-vector-thrust-backward" => {
+                    instance.draw_state().borrow_mut().vector_thrust_stop()
+                }
+                "bump-eject-state" => instance.draw_state().borrow_mut().bump_eject_state(),
+                "consume-sam" => instance.draw_state().borrow_mut().consume_sam(),
+                "+decrease-wing-sweep" => instance.draw_state().borrow_mut().decrease_wing_sweep(),
+                "+increase-wing-sweep" => instance.draw_state().borrow_mut().increase_wing_sweep(),
+                "-decrease-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
+                "-increase-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
+                "disable-afterburner" => instance.draw_state().borrow_mut().disable_afterburner(),
+                "enable-afterburner" => instance.draw_state().borrow_mut().enable_afterburner(),
+                "toggle-airbrake" => instance.draw_state().borrow_mut().toggle_airbrake(),
+                "toggle-bay" => instance.draw_state().borrow_mut().toggle_bay(&loop_start),
+                "toggle-flaps" => {
+                    instance.draw_state().borrow_mut().toggle_flaps();
+                    instance.draw_state().borrow_mut().toggle_slats();
+                }
+                "toggle-gear" => instance.draw_state().borrow_mut().toggle_gear(&loop_start),
+                "toggle-hook" => instance.draw_state().borrow_mut().toggle_hook(),
+                "toggle-player-dead" => instance.draw_state().borrow_mut().toggle_player_dead(),
+                "window-cursor-move" => {}
+                _ => println!("unhandled command: {}", command.name),
             }
-
-            _ => (),
-        });
-        if done {
-            return Ok(());
         }
         if resized {
             window.note_resize();
