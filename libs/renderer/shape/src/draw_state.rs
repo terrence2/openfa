@@ -49,7 +49,8 @@ pub struct DrawState {
     base_time: Instant,
     thrust_vector_pos: i16,
     thrust_vector_delta: i16,
-    wing_sweep: i16,
+    wing_sweep_pos: i16,
+    wing_sweep_delta: i16,
     sam_count: i8,
     eject_state: u8,
     flags: DrawStateFlags,
@@ -63,7 +64,8 @@ impl Default for DrawState {
             base_time: Instant::now(),
             thrust_vector_pos: 0,
             thrust_vector_delta: 0,
-            wing_sweep: 0,
+            wing_sweep_pos: 0,
+            wing_sweep_delta: 0,
             sam_count: 3,
             eject_state: 0,
             flags: DrawStateFlags::AIRBRAKE_EXTENDED
@@ -119,7 +121,7 @@ impl DrawState {
     }
 
     pub fn wing_sweep_angle(&self) -> i16 {
-        self.wing_sweep
+        self.wing_sweep_pos
     }
 
     pub fn player_dead(&self) -> bool {
@@ -183,14 +185,6 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::AFTERBURNER_ENABLED);
     }
 
-    pub fn increase_wing_sweep(&mut self) {
-        self.wing_sweep += 50;
-    }
-
-    pub fn decrease_wing_sweep(&mut self) {
-        self.wing_sweep -= 50;
-    }
-
     pub fn move_rudder_center(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
@@ -233,6 +227,18 @@ impl DrawState {
         self.thrust_vector_pos = 0;
     }
 
+    pub fn increase_wing_sweep(&mut self) {
+        self.wing_sweep_delta = 50;
+    }
+
+    pub fn decrease_wing_sweep(&mut self) {
+        self.wing_sweep_delta = -50;
+    }
+
+    pub fn stop_wing_sweep(&mut self) {
+        self.wing_sweep_delta = 0;
+    }
+
     pub fn move_stick_left(&mut self) {
         self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
         self.flags.insert(DrawStateFlags::LEFT_AILERON_UP);
@@ -266,6 +272,7 @@ impl DrawState {
         self.gear_animation.animate(now);
         self.bay_animation.animate(now);
         self.thrust_vector_pos += self.thrust_vector_delta;
+        self.wing_sweep_pos += self.wing_sweep_delta;
     }
 
     pub(crate) fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {

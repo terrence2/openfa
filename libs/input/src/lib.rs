@@ -44,7 +44,7 @@ impl InputBindings {
         }
     }
 
-    pub fn bind(mut self, keyset: &str, command: &str) -> Fallible<Self> {
+    pub fn bind(mut self, command: &str, keyset: &str) -> Fallible<Self> {
         let (activate, deactivate) = if command.starts_with('+') {
             (command, Some(format!("-{}", &command[1..])))
         } else {
@@ -83,13 +83,11 @@ impl InputBindings {
                     }
                 }
             }
-        } else {
-            if let Some(commands) = self.release_keys.get(&key) {
-                return commands
-                    .iter()
-                    .map(|v| Command::from_string(v.to_owned()))
-                    .collect::<SmallVec<_>>();
-            }
+        } else if let Some(commands) = self.release_keys.get(&key) {
+            return commands
+                .iter()
+                .map(|v| Command::from_string(v.to_owned()))
+                .collect::<SmallVec<_>>();
         }
         smallvec![]
     }
@@ -550,13 +548,13 @@ mod test {
     #[test]
     fn test_can_handle_nested_events() -> Fallible<()> {
         let menu = InputBindings::new("fps")
-            .bind("alt", "+enter-menu")?
-            .bind("shift+e", "exit")?
-            .bind("mouse0", "click")?;
+            .bind("+enter-menu", "alt")?
+            .bind("exit", "shift+e")?
+            .bind("click", "mouse0")?;
         let fps = InputBindings::new("fps")
-            .bind("w", "+move-forward")?
-            .bind("shift+e", "eject")?
-            .bind("mouse0", "fire")?;
+            .bind("+move-forward", "w")?
+            .bind("eject", "shift+e")?
+            .bind("fire", "mouse0")?;
         let mut input = InputSystem::new(&[&menu, &fps]);
 
         // FPS forward.
@@ -619,7 +617,7 @@ mod test {
         assert!(cmd.is_empty());
 
         // Push on a new command set and ensure that it masks.
-        let flight = InputBindings::new("flight").bind("mouse0", "+pickle")?;
+        let flight = InputBindings::new("flight").bind("+pickle", "mouse0")?;
         input.push_bindings(&flight);
 
         let cmd = input
@@ -648,8 +646,8 @@ mod test {
     fn test_poll_events() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let fps = InputBindings::new("fps")
-            .bind("w", "+moveforward")?
-            .bind("shift+e", "eject")?;
+            .bind("+moveforward", "w")?
+            .bind("eject", "shift+e")?;
         let mut input = InputSystem::new(&[&fps]);
         input.poll(&mut window.events_loop);
         Ok(())
@@ -662,8 +660,8 @@ mod test {
         TermLogger::init(LevelFilter::Trace, Config::default())?;
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let fps = InputBindings::new("fps")
-            .bind("w", "+moveforward")?
-            .bind("shift+e", "eject")?;
+            .bind("+moveforward", "w")?
+            .bind("eject", "shift+e")?;
         let mut input = InputSystem::new(&[&fps]);
         loop {
             let _evt = input.poll(&mut window.events_loop);

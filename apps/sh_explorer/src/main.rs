@@ -44,38 +44,34 @@ fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
-        .bind("mouse1", "+pan-view")?
-        .bind("mouse3", "+move-view")?
-        .bind("Escape", "exit")?
-        .bind("q", "exit")?
-        .bind("PageUp", "consume-sam")?
-        .bind("g", "toggle-gear")?
-        .bind("f", "toggle-flaps")?
-        .bind("b", "toggle-airbrake")?
-        .bind("h", "toggle-hook")?
-        .bind("o", "toggle-bay")?
-        .bind("k", "toggle-player-dead")?
-        .bind("e", "bump-eject-state")?
-        .bind("a", "+stick-left")?
-        .bind("d", "+stick-right")?
-        .bind("z", "+rudder-left")?
-        .bind("c", "+rudder-right")?
-        .bind("w", "+stick-forward")?
-        .bind("s", "+stick-backward")?
-        .bind("shift+w", "+vector-thrust-forward")?
-        .bind("shift+s", "+vector-thrust-backward")?
-        .bind("key6", "enable-afterburner")?
-        .bind("key6", "increase-wing-sweep")?
-        .bind("key5", "disable-afterburner")?
-        .bind("key5", "decrease-wing-sweep")?
-        .bind("key4", "disable-afterburner")?
-        .bind("key4", "decrease-wing-sweep")?
-        .bind("key3", "disable-afterburner")?
-        .bind("key3", "decrease-wing-sweep")?
-        .bind("key2", "disable-afterburner")?
-        .bind("key2", "decrease-wing-sweep")?
-        .bind("key1", "disable-afterburner")?
-        .bind("key1", "decrease-wing-sweep")?;
+        .bind("+pan-view", "mouse1")?
+        .bind("+move-view", "mouse3")?
+        .bind("exit", "Escape")?
+        .bind("exit", "q")?
+        .bind("consume-sam", "PageUp")?
+        .bind("toggle-gear", "g")?
+        .bind("toggle-flaps", "f")?
+        .bind("toggle-airbrake", "b")?
+        .bind("toggle-hook", "h")?
+        .bind("toggle-bay", "o")?
+        .bind("toggle-player-dead", "k")?
+        .bind("bump-eject-state", "e")?
+        .bind("+stick-left", "a")?
+        .bind("+stick-right", "d")?
+        .bind("+rudder-left", "z")?
+        .bind("+rudder-right", "c")?
+        .bind("+stick-forward", "w")?
+        .bind("+stick-backward", "s")?
+        .bind("+vector-thrust-forward", "shift+w")?
+        .bind("+vector-thrust-backward", "shift+s")?
+        .bind("+increase-wing-sweep", "Period")?
+        .bind("+decrease-wing-sweep", "Comma")?
+        .bind("enable-afterburner", "key6")?
+        .bind("disable-afterburner", "key5")?
+        .bind("disable-afterburner", "key4")?
+        .bind("disable-afterburner", "key3")?
+        .bind("disable-afterburner", "key2")?
+        .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(&[&shape_bindings]);
 
     let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
@@ -163,8 +159,10 @@ fn main() -> Fallible<()> {
                 }
                 "bump-eject-state" => instance.draw_state().borrow_mut().bump_eject_state(),
                 "consume-sam" => instance.draw_state().borrow_mut().consume_sam(),
-                "decrease-wing-sweep" => instance.draw_state().borrow_mut().decrease_wing_sweep(),
-                "increase-wing-sweep" => instance.draw_state().borrow_mut().increase_wing_sweep(),
+                "+decrease-wing-sweep" => instance.draw_state().borrow_mut().decrease_wing_sweep(),
+                "+increase-wing-sweep" => instance.draw_state().borrow_mut().increase_wing_sweep(),
+                "-decrease-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
+                "-increase-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
                 "disable-afterburner" => instance.draw_state().borrow_mut().disable_afterburner(),
                 "enable-afterburner" => instance.draw_state().borrow_mut().enable_afterburner(),
                 "toggle-airbrake" => instance.draw_state().borrow_mut().toggle_airbrake(),
