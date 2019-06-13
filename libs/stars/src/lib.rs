@@ -87,7 +87,7 @@ impl SAOEntry {
 }
 
 //const BSC_DATA: &'static [u8] = include_bytes!("../assets/BSC5.stars");
-const SAO_DATA: &'static [u8] = include_bytes!("../assets/SAO.pc");
+const SAO_DATA: &[u8] = include_bytes!("../assets/SAO.pc");
 
 pub struct Stars {
     n_stars: usize,
@@ -98,6 +98,7 @@ impl Stars {
     pub fn new() -> Fallible<Self> {
         const HDR_SIZE: usize = mem::size_of::<Header>();
 
+        #[allow(clippy::transmute_ptr_to_ptr)]
         let header_a: &[Header] = unsafe { mem::transmute(&SAO_DATA[0..HDR_SIZE]) };
         let header = &header_a[0];
         assert_eq!(header.star0(), 0);
@@ -108,6 +109,7 @@ impl Stars {
         assert_eq!(header.n_mag(), 1);
         assert_eq!(header.nb_ent(), 28);
 
+        #[allow(clippy::transmute_ptr_to_ptr)]
         let entries: &[SAOEntry] = unsafe { mem::transmute(&SAO_DATA[HDR_SIZE..]) };
         Ok(Self {
             n_stars: header.star_n() as usize,
