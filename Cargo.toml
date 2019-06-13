@@ -47,6 +47,7 @@ members = [
         "libs/resource",
         "libs/reverse",
         "libs/sh",
+        "libs/stars",
         "libs/t2",
         "libs/window",
         "libs/xt",
