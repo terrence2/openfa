@@ -42,7 +42,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::{GraphicsWindow, RenderSubsystem};
+use window::GraphicsWindow;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -490,18 +490,15 @@ impl T2Renderer {
 
         Ok(sampler)
     }
-}
 
-impl RenderSubsystem for T2Renderer {
-    fn before_frame(&mut self, camera: &CameraAbstract, _window: &GraphicsWindow) -> Fallible<()> {
+    pub fn before_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
         self.push_constants
             .set_projection(camera.projection_matrix() * camera.view_matrix());
         Ok(())
     }
 
-    fn render(
+    pub fn render(
         &self,
-        _camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {

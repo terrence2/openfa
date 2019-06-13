@@ -12,17 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::CameraAbstract;
 use failure::{bail, err_msg, Fallible};
-use log::trace;
+use log::{error, trace};
 use std::{
-    cell::RefCell,
-    collections::VecDeque,
     sync::Arc,
     time::{Duration, Instant},
 };
 use vulkano::{
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
+    command_buffer::{AutoCommandBuffer, DynamicState},
     device::{Device, Queue, RawDeviceExtensions},
     format::Format,
     framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract},
@@ -38,38 +35,6 @@ use vulkano::{
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
-
-pub trait RenderSubsystem {
-    // Called at the top of the frame loop before we create the command buffer.
-    fn before_frame(&mut self, _camera: &CameraAbstract, _window: &GraphicsWindow) -> Fallible<()> {
-        Ok(())
-    }
-
-    // Called after creating the command buffer but before the render phase.
-    fn before_render(
-        &self,
-        command_buffer: AutoCommandBufferBuilder,
-        _dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        Ok(command_buffer)
-    }
-
-    // Called during the render phase.
-    fn render(
-        &self,
-        camera: &CameraAbstract,
-        command_buffer: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder>;
-
-    fn after_render(
-        &self,
-        command_buffer: AutoCommandBufferBuilder,
-        _dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        Ok(command_buffer)
-    }
-}
 
 #[derive(Debug)]
 pub struct GraphicsConfig {
@@ -250,14 +215,11 @@ pub struct GraphicsWindow {
     recreatable: SizeDependent,
 
     // Per-frame resources
-    dynamic_state: DynamicState,
-    outstanding_frames: VecDeque<Box<GpuFuture>>,
+    pub dynamic_state: DynamicState,
+    outstanding_frame: Option<Box<GpuFuture>>,
     dirty_size: bool,
     pub idle_time: Duration,
     clear_color: [f32; 4],
-
-    // Subsystems
-    subsystems: Vec<Arc<RefCell<dyn RenderSubsystem>>>,
 }
 
 impl GraphicsWindow {
@@ -301,6 +263,8 @@ impl GraphicsWindow {
             config,
         )?;
 
+        let outstanding_frame = Some(Box::new(sync::now(device.clone())) as Box<_>);
+
         let mut window = GraphicsWindow {
             _instance: instance.clone(),
             device,
@@ -312,16 +276,11 @@ impl GraphicsWindow {
             dynamic_state: DynamicState {
                 ..DynamicState::none()
             },
-            outstanding_frames: VecDeque::with_capacity(4),
+            outstanding_frame,
             dirty_size: false,
             idle_time: Default::default(),
             clear_color: [0.0, 0.0, 1.0, 1.0],
-            subsystems: Vec::new(),
         };
-
-        // Push a fake first frame so that we have something wait on in our frame driver.
-        let fake_frame = Box::new(sync::now(window.device())) as Box<GpuFuture>;
-        window.outstanding_frames.push_back(fake_frame);
 
         // Set initial size.
         let dim = window.dimensions()?;
@@ -332,14 +291,6 @@ impl GraphicsWindow {
         }]);
 
         Ok(window)
-    }
-
-    pub fn add_render_subsystem(&mut self, subsystem: Arc<RefCell<dyn RenderSubsystem>>) {
-        self.subsystems.push(subsystem);
-    }
-
-    pub fn reset_render_subsystems(&mut self) {
-        self.subsystems.clear();
     }
 
     pub fn set_clear_color(&mut self, clr: &[f32; 4]) {
@@ -404,96 +355,98 @@ impl GraphicsWindow {
             .handle_resize(&self.device, &self.queues[0], &self.surface)
     }
 
-    pub fn drive_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
-        self.drive_frame_extended(camera, |cb, _| Ok(cb))
-    }
-
-    pub fn drive_frame_extended<F>(&mut self, camera: &CameraAbstract, render: F) -> Fallible<()>
-    where
-        F: Fn(AutoCommandBufferBuilder, &DynamicState) -> Fallible<AutoCommandBufferBuilder>,
-    {
-        // Cleanup finished
-        for f in self.outstanding_frames.iter_mut() {
-            f.cleanup_finished();
-        }
-
+    pub fn begin_frame(&mut self) -> Fallible<FrameState> {
         // Maybe resize
         if self.dirty_size {
             self.dirty_size = false;
             self.handle_resize()?;
         }
 
-        // Grab the next image in the swapchain.
-        // Note: blocks until a frame is available.
+        // Grab the next image in the swapchain when available.
         let (image_num, acquire_future) = match acquire_next_image(self.swapchain(), None) {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 // Nothing we can do this frame; try again next round.
                 self.dirty_size = true;
-                return Ok(());
+                return Ok(FrameState::invalid());
             }
             Err(err) => bail!("{:?}", err),
         };
 
-        for ss in &self.subsystems {
-            ss.borrow_mut().before_frame(camera, &self)?;
+        // Copy our prior frame's future to the frame state.
+        // TODO: We will need to copy this back somehow.
+        let mut prior_frame_future = None;
+        std::mem::swap(&mut self.outstanding_frame, &mut prior_frame_future);
+        assert!(prior_frame_future.is_some());
+
+        Ok(FrameState {
+            valid: true,
+            swapchain_offset: image_num,
+            acquire_future: Some(Box::new(acquire_future) as Box<GpuFuture>),
+            prior_frame_future: Some(prior_frame_future.unwrap()),
+        })
+    }
+}
+
+pub struct FrameState {
+    valid: bool,
+    swapchain_offset: usize,
+    acquire_future: Option<Box<GpuFuture>>,
+    prior_frame_future: Option<Box<GpuFuture>>,
+}
+
+impl FrameState {
+    pub fn invalid() -> Self {
+        FrameState {
+            valid: false,
+            swapchain_offset: 0,
+            acquire_future: None,
+            prior_frame_future: None,
         }
-        let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-            self.device(),
-            self.queue().family(),
-        )?;
+    }
 
-        for ss in &self.subsystems {
-            cbb = ss.borrow().before_render(cbb, &self.dynamic_state)?;
-        }
+    pub fn is_valid(&self) -> bool {
+        self.valid
+    }
 
-        cbb = cbb.begin_render_pass(
-            self.framebuffer(image_num),
-            false,
-            vec![self.clear_color.into(), 0f32.into()],
-        )?;
+    pub fn framebuffer(&self, window: &GraphicsWindow) -> Arc<FramebufferAbstract + Send + Sync> {
+        window.framebuffer(self.swapchain_offset)
+    }
 
-        cbb = render(cbb, &self.dynamic_state)?;
-        for ss in &self.subsystems {
-            cbb = ss.borrow().render(camera, cbb, &self.dynamic_state)?;
-        }
+    pub fn submit(self, cb: AutoCommandBuffer, window: &mut GraphicsWindow) -> Fallible<()> {
+        assert!(self.acquire_future.is_some());
+        assert!(self.prior_frame_future.is_some());
 
-        cbb = cbb.end_render_pass()?;
-        for ss in &self.subsystems {
-            cbb = ss.borrow().after_render(cbb, &self.dynamic_state)?;
-        }
+        let mut prior_frame_future = self.prior_frame_future.unwrap();
+        prior_frame_future.cleanup_finished();
 
-        let cb = cbb.build()?;
-
-        // Wait for our oldest frame to finish, submit the new command buffer, then send
-        // it down the next beam.
+        // Wait for the prior frame to finish and for a new backbuffer to become available.
+        // Then put our command buffer into the queue.
+        // Then flip, signal, fence, and flush.
         let idle_start = Instant::now();
-        let next_frame_future = self
-            .outstanding_frames
-            .pop_front()
-            .expect("gfx: no prior frames")
-            .join(acquire_future)
-            .then_execute(self.queue(), cb)?
-            .then_swapchain_present(self.queue(), self.swapchain(), image_num)
+        let next_frame_future = prior_frame_future
+            .join(self.acquire_future.unwrap())
+            .then_execute(window.queue(), cb)?
+            .then_swapchain_present(window.queue(), window.swapchain(), self.swapchain_offset)
             .then_signal_fence_and_flush();
-        self.idle_time = idle_start.elapsed();
+        window.idle_time = idle_start.elapsed();
 
         // But do not wait for this frame to finish; put it on the heap
         // for us to deal with later.
         let next_frame_future = match next_frame_future {
             Ok(future) => Box::new(future) as Box<_>,
             Err(FlushError::OutOfDate) => {
-                self.dirty_size = true;
-                Box::new(sync::now(self.device())) as Box<_>
+                window.dirty_size = true;
+                Box::new(sync::now(window.device())) as Box<_>
             }
             Err(e) => {
                 // FIXME: find a way to report this sanely. We do not want to bail here
                 // FIXME: as then our outstanding_frames would get out of sync.
-                println!("{:?}", e);
-                Box::new(sync::now(self.device())) as Box<_>
+                error!("{:?}", e);
+                Box::new(sync::now(window.device())) as Box<_>
             }
         };
-        self.outstanding_frames.push_back(next_frame_future);
+        window.outstanding_frame = Some(next_frame_future);
 
         Ok(())
     }
@@ -502,10 +455,39 @@ impl GraphicsWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vulkano::command_buffer::AutoCommandBufferBuilder;
 
     #[test]
     fn it_works() -> Fallible<()> {
         let _window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_frame_state() -> Fallible<()> {
+        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+
+        for _ in 0..20 {
+            let frame = window.begin_frame()?;
+            if !frame.is_valid() {
+                continue;
+            }
+
+            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                window.device(),
+                window.queue().family(),
+            )?;
+            cbb = cbb.begin_render_pass(
+                frame.framebuffer(&window),
+                false,
+                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+            )?;
+            cbb = cbb.end_render_pass()?;
+            let cb = cbb.build()?;
+
+            frame.submit(cb, &mut window)?;
+        }
 
         Ok(())
     }

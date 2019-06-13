@@ -20,9 +20,10 @@ use pal::Palette;
 use render::{DrawMode, RawShRenderer};
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{cell::RefCell, num::ParseIntError, rc::Rc, sync::Arc, time::Instant};
+use std::{num::ParseIntError, rc::Rc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, MouseMotion},
@@ -70,13 +71,8 @@ fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
-        system_palette.clone(),
-        &lib,
-        &window,
-    )?));
+    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
     let fps_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -84,7 +80,6 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
     let state_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
@@ -92,13 +87,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let sh_renderer = Arc::new(RefCell::new(RawShRenderer::new(
-        system_palette.clone(),
-        &window,
-    )?));
-
-    window.add_render_subsystem(sh_renderer.clone());
-    window.add_render_subsystem(text_renderer.clone());
+    let mut sh_renderer = RawShRenderer::new(system_palette.clone(), &window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or_else(|| sh.length());
@@ -126,14 +115,7 @@ fn main() -> Fallible<()> {
         rudder_position: 0,
         sam_count: 0,
     };
-    sh_renderer.borrow_mut().add_shape_to_render(
-        "foo",
-        &sh,
-        stop_at_offset,
-        &draw_mode,
-        &lib,
-        &window,
-    )?;
+    sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
     camera.set_distance(40f32);
@@ -144,7 +126,7 @@ fn main() -> Fallible<()> {
 
         if need_reset {
             need_reset = false;
-            sh_renderer.borrow_mut().add_shape_to_render(
+            sh_renderer.add_shape_to_render(
                 "foo",
                 &sh,
                 stop_at_offset,
@@ -153,8 +135,6 @@ fn main() -> Fallible<()> {
                 &window,
             )?;
         }
-
-        window.drive_frame(&camera)?;
 
         let mut done = false;
         let mut resized = false;
@@ -387,6 +367,36 @@ fn main() -> Fallible<()> {
         if resized {
             window.note_resize();
             camera.set_aspect_ratio(window.aspect_ratio()?);
+        }
+
+        {
+            let frame = window.begin_frame()?;
+            if !frame.is_valid() {
+                continue;
+            }
+
+            text_renderer.before_frame(&window)?;
+            sh_renderer.before_frame(&camera)?;
+
+            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                window.device(),
+                window.queue().family(),
+            )?;
+
+            cbb = cbb.begin_render_pass(
+                frame.framebuffer(&window),
+                false,
+                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+            )?;
+
+            cbb = sh_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = text_renderer.render(cbb, &window.dynamic_state)?;
+
+            cbb = cbb.end_render_pass()?;
+
+            let cb = cbb.build()?;
+
+            frame.submit(cb, &mut window)?;
         }
 
         let ft = loop_start.elapsed();

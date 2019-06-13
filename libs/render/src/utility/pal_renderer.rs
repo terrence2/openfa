@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::CameraAbstract;
 use failure::Fallible;
 use image::{ImageBuffer, Rgba};
 use log::trace;
@@ -31,7 +30,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::{GraphicsWindow, RenderSubsystem};
+use window::GraphicsWindow;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -217,12 +216,9 @@ impl PalRenderer {
 
         Ok(sampler)
     }
-}
 
-impl RenderSubsystem for PalRenderer {
-    fn render(
+    pub fn render(
         &self,
-        _camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
@@ -240,9 +236,7 @@ impl RenderSubsystem for PalRenderer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use camera::IdentityCamera;
     use omnilib::OmniLib;
-    use std::cell::RefCell;
     use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
@@ -251,11 +245,33 @@ mod test {
         let lib = omni.library("FA");
         let pal = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let camera = IdentityCamera;
-        let pal_renderer = Arc::new(RefCell::new(PalRenderer::new(&window)?));
-        window.add_render_subsystem(pal_renderer.clone());
-        pal_renderer.borrow_mut().update_pal_data(&pal, &window)?;
-        window.drive_frame(&camera)?;
+        let mut pal_renderer = PalRenderer::new(&window)?;
+        pal_renderer.update_pal_data(&pal, &window)?;
+
+        {
+            let frame = window.begin_frame()?;
+            assert!(frame.is_valid());
+
+            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                window.device(),
+                window.queue().family(),
+            )?;
+
+            cbb = cbb.begin_render_pass(
+                frame.framebuffer(&window),
+                false,
+                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+            )?;
+
+            cbb = pal_renderer.render(cbb, &window.dynamic_state)?;
+
+            cbb = cbb.end_render_pass()?;
+
+            let cb = cbb.build()?;
+
+            frame.submit(cb, &mut window)?;
+        }
+
         std::mem::drop(window);
         Ok(())
     }

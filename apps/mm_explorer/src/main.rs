@@ -15,23 +15,18 @@
 use asset::AssetManager;
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
+use input::{InputBindings, InputSystem};
 use log::trace;
 use mm::MissionMap;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use render::{PalRenderer, T2Renderer};
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
+use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
-use winit::{
-    DeviceEvent::{Button, Key, MouseMotion, MouseWheel},
-    ElementState,
-    Event::{DeviceEvent, WindowEvent},
-    KeyboardInput, MouseScrollDelta, VirtualKeyCode,
-    WindowEvent::{CloseRequested, Destroyed, Resized},
-};
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -52,6 +47,23 @@ pub fn main() -> Fallible<()> {
 
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+    let shape_bindings = InputBindings::new("map")
+        .bind("+pan-view", "mouse1")?
+        .bind("+move-view", "mouse3")?
+        .bind("exit", "Escape")?
+        .bind("exit", "q")?
+        .bind("reset", "r")?
+        .bind("layer-base-up", "t")?
+        .bind("layer-base-down", "g")?
+        .bind("c2-up", "y")?
+        .bind("c2-down", "h")?
+        .bind("d3-up", "u")?
+        .bind("d3-down", "j")?
+        .bind("e0-up", "i")?
+        .bind("e0-down", "k")?
+        .bind("f1-up", "o")?
+        .bind("f1-down", "l")?;
+    let mut input = InputSystem::new(&[&shape_bindings]);
 
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
     let types = TypeManager::new(lib.clone());
@@ -59,13 +71,8 @@ pub fn main() -> Fallible<()> {
     let contents = lib.load_text(&name)?;
     let mm = MissionMap::from_str(&contents, &types)?;
 
-    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
-        system_palette,
-        &lib,
-        &window,
-    )?));
+    let mut text_renderer = TextRenderer::new(system_palette, &lib, &window)?;
     let fps_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -73,7 +80,6 @@ pub fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
     let state_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
@@ -82,24 +88,16 @@ pub fn main() -> Fallible<()> {
         .with_vertical_anchor(TextAnchorV::Bottom);
 
     ///////////////////////////////////////////////////////////
-    let t2_renderer = Arc::new(RefCell::new(T2Renderer::new(mm, &assets, &lib, &window)?));
+    let mut t2_renderer = T2Renderer::new(mm, &assets, &lib, &window)?;
     let mut lay_base = -3;
     let mut e0_off = -1;
     let mut f1_off = -1;
     let mut c2_off = 0;
     let mut d3_off = 0;
-    t2_renderer
-        .borrow_mut()
-        .set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-    let pal_renderer = Arc::new(RefCell::new(PalRenderer::new(&window)?));
-    pal_renderer
-        .borrow_mut()
-        .update_pal_data(&t2_renderer.borrow().used_palette, &window)?;
+    t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
+    let mut pal_renderer = PalRenderer::new(&window)?;
+    pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
     ///////////////////////////////////////////////////////////
-
-    window.add_render_subsystem(pal_renderer.clone());
-    window.add_render_subsystem(t2_renderer.clone());
-    window.add_render_subsystem(text_renderer.clone());
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.001f32, 3.4e+38f32);
 
@@ -110,93 +108,73 @@ pub fn main() -> Fallible<()> {
         if need_reset {
             need_reset = false;
             t2_renderer
-                .borrow_mut()
                 .set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-            pal_renderer
-                .borrow_mut()
-                .update_pal_data(&t2_renderer.borrow().used_palette, &window)?;
+            pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
         }
 
-        window.drive_frame(&camera)?;
-
-        let mut done = false;
-        let mut resized = false;
-        window.events_loop.poll_events(|ev| match ev {
-            WindowEvent {
-                event: CloseRequested,
-                ..
-            } => done = true,
-            WindowEvent {
-                event: Destroyed, ..
-            } => done = true,
-            WindowEvent {
-                event: Resized(_), ..
-            } => resized = true,
-
-            // Mouse motion
-            DeviceEvent {
-                event: MouseMotion { delta: (x, y) },
-                ..
-            } => {
-                camera.on_mousemove(x as f32, y as f32);
+        for command in input.poll(&mut window.events_loop) {
+            match command.name.as_str() {
+                "window-resize" => {
+                    window.note_resize();
+                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                }
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
+                "mouse-move" => camera.on_mousemove(
+                    command.displacement()?.0 as f32,
+                    command.displacement()?.1 as f32,
+                ),
+                "mouse-wheel" => camera.on_mousescroll(
+                    command.displacement()?.0 as f32,
+                    command.displacement()?.1 as f32,
+                ),
+                "+pan-view" => camera.on_mousebutton_down(1),
+                "-pan-view" => camera.on_mousebutton_up(1),
+                "+move-view" => camera.on_mousebutton_down(3),
+                "-move-view" => camera.on_mousebutton_up(3),
+                "reset" => need_reset = true,
+                "layer-base-up" => lay_base += 1,
+                "layer-base-down" => lay_base -= 1,
+                "c2-up" => c2_off += 1,
+                "c2-down" => c2_off -= 1,
+                "d3-up" => d3_off += 1,
+                "d3-down" => d3_off -= 1,
+                "e0-up" => e0_off += 1,
+                "e0-down" => e0_off -= 1,
+                "f1-up" => f1_off += 1,
+                "f1-down" => f1_off -= 1,
+                _ => trace!("unhandled command: {}", command.name),
             }
-            DeviceEvent {
-                event:
-                    MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(x, y),
-                    },
-                ..
-            } => camera.on_mousescroll(x, y),
-            DeviceEvent {
-                event:
-                    Button {
-                        button: id,
-                        state: ElementState::Pressed,
-                    },
-                ..
-            } => camera.on_mousebutton_down(id),
-            DeviceEvent {
-                event:
-                    Button {
-                        button: id,
-                        state: ElementState::Released,
-                    },
-                ..
-            } => camera.on_mousebutton_up(id),
-
-            // Keyboard Press
-            DeviceEvent {
-                event:
-                    Key(KeyboardInput {
-                        virtual_keycode: Some(keycode),
-                        state: ElementState::Pressed,
-                        ..
-                    }),
-                ..
-            } => match keycode {
-                VirtualKeyCode::Escape => done = true,
-                VirtualKeyCode::Q => done = true,
-                VirtualKeyCode::R => need_reset = true,
-                VirtualKeyCode::T => lay_base += 1,
-                VirtualKeyCode::G => lay_base -= 1,
-                VirtualKeyCode::Y => c2_off += 1,
-                VirtualKeyCode::H => c2_off -= 1,
-                VirtualKeyCode::U => d3_off += 1,
-                VirtualKeyCode::J => d3_off -= 1,
-                VirtualKeyCode::I => e0_off += 1,
-                VirtualKeyCode::K => e0_off -= 1,
-                VirtualKeyCode::O => f1_off += 1,
-                VirtualKeyCode::L => f1_off -= 1,
-                _ => trace!("unknown keycode: {:?}", keycode),
-            },
-
-            _ => (),
-        });
-        if done {
-            return Ok(());
         }
-        if resized {
-            window.note_resize()
+
+        {
+            let frame = window.begin_frame()?;
+            if !frame.is_valid() {
+                continue;
+            }
+
+            text_renderer.before_frame(&window)?;
+            t2_renderer.before_frame(&camera)?;
+
+            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                window.device(),
+                window.queue().family(),
+            )?;
+
+            cbb = cbb.begin_render_pass(
+                frame.framebuffer(&window),
+                false,
+                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+            )?;
+
+            cbb = t2_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = text_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = pal_renderer.render(cbb, &window.dynamic_state)?;
+
+            cbb = cbb.end_render_pass()?;
+
+            let cb = cbb.build()?;
+
+            frame.submit(cb, &mut window)?;
         }
 
         let offsets = format!(
