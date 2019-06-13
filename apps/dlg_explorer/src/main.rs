@@ -12,25 +12,19 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::IdentityCamera;
 use dlg::Dialog;
-use failure::{bail, Fallible};
 use log::trace;
+use failure::{bail, Fallible};
+use input::{InputBindings, InputSystem};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use render::DialogRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
+use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
-use winit::{
-    DeviceEvent::Key,
-    ElementState,
-    Event::{DeviceEvent, WindowEvent},
-    KeyboardInput, VirtualKeyCode,
-    WindowEvent::{CloseRequested, Destroyed, Resized},
-};
 
 make_opt_struct!(#[structopt(
     name = "dlg_explorer",
@@ -53,15 +47,14 @@ pub fn main() -> Fallible<()> {
     let lib = omni.library(&game);
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+    let bindings = InputBindings::new("menu")
+        .bind("exit", "Escape")?
+        .bind("exit", "q")?;
+    let mut input = InputSystem::new(&[&bindings]);
 
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
-        system_palette.clone(),
-        &lib,
-        &window,
-    )?));
+    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
     let fps_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -77,91 +70,48 @@ pub fn main() -> Fallible<()> {
     let dlg = Arc::new(Box::new(Dialog::from_bytes(&lib.load(name)?)?));
 
     ///////////////////////////////////////////////////////////
-    let dlg_renderer = Arc::new(RefCell::new(DialogRenderer::new(
-        dlg,
-        &background,
-        &lib,
-        &window,
-    )?));
+    let mut dlg_renderer = DialogRenderer::new(dlg, &background, &lib, &window)?;
     ///////////////////////////////////////////////////////////
-
-    let camera = IdentityCamera;
-    window.add_render_subsystem(dlg_renderer.clone());
-    window.add_render_subsystem(text_renderer.clone());
 
     loop {
         let loop_start = Instant::now();
 
-        window.drive_frame(&camera)?;
-
-        let mut done = false;
-        let mut resized = false;
-        window.events_loop.poll_events(|ev| match ev {
-            WindowEvent {
-                event: CloseRequested,
-                ..
-            } => done = true,
-            WindowEvent {
-                event: Destroyed, ..
-            } => done = true,
-            WindowEvent {
-                event: Resized(_), ..
-            } => resized = true,
-
-            // Mouse motion
-            /*
-            DeviceEvent {
-                event: MouseMotion { delta: (x, y) },
-                ..
-            } => {
-                camera.on_mousemove(x as f32, y as f32);
+        for command in input.poll(&mut window.events_loop) {
+            match command.name.as_str() {
+                "window-resize" => window.note_resize(),
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
+                _ => trace!("unhandled command: {}", command.name),
             }
-            DeviceEvent {
-                event:
-                    MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(x, y),
-                    },
-                ..
-            } => camera.on_mousescroll(x, y),
-            DeviceEvent {
-                event:
-                    Button {
-                        button: id,
-                        state: ElementState::Pressed,
-                    },
-                ..
-            } => camera.on_mousebutton_down(id),
-            DeviceEvent {
-                event:
-                    Button {
-                        button: id,
-                        state: ElementState::Released,
-                    },
-                ..
-            } => camera.on_mousebutton_up(id),
-            */
-            // Keyboard Press
-            DeviceEvent {
-                event:
-                    Key(KeyboardInput {
-                        virtual_keycode: Some(keycode),
-                        state: ElementState::Pressed,
-                        ..
-                    }),
-                ..
-            } => match keycode {
-                VirtualKeyCode::Escape => done = true,
-                VirtualKeyCode::Q => done = true,
-                _ => trace!("unknown keycode: {:?}", keycode),
-            },
-
-            _ => (),
-        });
-        if done {
-            return Ok(());
         }
-        if resized {
-            window.note_resize()
+
+        {
+            let frame = window.begin_frame()?;
+            if !frame.is_valid() {
+                continue;
+            }
+
+            dlg_renderer.before_frame(&window)?;
+            text_renderer.before_frame(&window)?;
+
+            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                window.device(),
+                window.queue().family(),
+            )?;
+
+            cbb = cbb.begin_render_pass(
+                frame.framebuffer(&window),
+                false,
+                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+            )?;
+
+            cbb = dlg_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = text_renderer.render(cbb, &window.dynamic_state)?;
+
+            cbb = cbb.end_render_pass()?;
+
+            let cb = cbb.build()?;
+
+            frame.submit(cb, &mut window)?;
         }
 
         let ft = loop_start.elapsed();

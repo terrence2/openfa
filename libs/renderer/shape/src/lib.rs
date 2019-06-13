@@ -54,7 +54,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::{GraphicsWindow, RenderSubsystem};
+use window::GraphicsWindow;
 
 // NOTE: if updating MAX_UNIFORMS, the same constant must be fixed up in the vertex shader.
 const MAX_XFORMS: usize = 14;
@@ -733,8 +733,9 @@ impl DrawSelection {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct BufferProps {
+    context: String,
     flags: VertexFlags,
     xform_id: u32,
 }
@@ -743,26 +744,28 @@ struct BufferPropsManager {
     props: HashMap<usize, BufferProps>,
     seen_flags: VertexFlags,
     next_xform_id: u32,
+    active_xform_id: u32,
 }
 
 impl BufferPropsManager {
-    pub fn add_or_update_toggle_flags(&mut self, tgt: usize, flags: VertexFlags) {
+    pub fn add_or_update_toggle_flags(&mut self, tgt: usize, flags: VertexFlags, context: &str) {
         let entry = self.props.entry(tgt).or_insert(BufferProps {
+            context: context.to_owned(),
             flags: VertexFlags::NONE,
-            xform_id: 0,
+            xform_id: self.active_xform_id,
         });
         entry.flags |= flags;
         self.seen_flags |= flags;
     }
 
-    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags) -> Fallible<u32> {
+    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags, context: &str) -> Fallible<u32> {
         ensure!(
             !self.props.contains_key(&tgt),
             "have already transformed that buffer"
         );
 
         let xform_id = self.next_xform_id;
-        self.props.insert(tgt, BufferProps { flags, xform_id });
+        self.props.insert(tgt, BufferProps { context: context.to_owned(), flags, xform_id });
         self.next_xform_id += 1;
 
         Ok(xform_id)
@@ -828,12 +831,13 @@ impl ShRenderer {
         buffer_properties: &HashMap<usize, BufferProps>,
         vert_buf: &VertexBuf,
         vert_pool: &mut Vec<Vertex>,
-    ) {
+    ) -> u32 {
         Self::align_vertex_pool(vert_pool, vert_buf.buffer_target_offset());
         let props = buffer_properties
             .get(&vert_buf.at_offset())
             .cloned()
             .unwrap_or_else(|| BufferProps {
+                context: "Static".to_owned(),
                 flags: VertexFlags::STATIC,
                 xform_id: 0,
             });
@@ -852,6 +856,8 @@ impl ShRenderer {
                 xform_id: props.xform_id,
             });
         }
+        trace!("Loaded VxBuf {} with xform_id: {}", props.context, props.xform_id);
+        props.xform_id
     }
 
     fn push_facet(
@@ -963,21 +969,20 @@ impl ShRenderer {
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
         transformers: &mut Vec<Transformer>,
-    ) -> Fallible<usize> {
+    ) -> Fallible<()> {
         let next_instr = pc.relative_instr(1, sh);
 
         if next_instr.magic() == "Unmask" {
-            Self::handle_unmask_property(pc, x86, sh, prop_man)?;
-            return Ok(2);
+            return Self::handle_unmask_property(pc, x86, sh, prop_man);
         }
 
         if next_instr.magic() == "XformUnmask" {
-            Self::handle_transformer_property(name, pc, x86, sh, prop_man, transformers)?;
-            return Ok(1);
+            return Self::handle_transformer_property(name, pc, x86, sh, prop_man, transformers);
         }
 
         // TODO: figure out what is landing here and see how important it is.
-        Ok(0)
+
+        Ok(())
     }
 
     fn handle_unmask_property(
@@ -1037,7 +1042,7 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags);
+                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags, &trampoline.name);
             }
             interp.remove_read_port(trampoline.mem_location);
         }
@@ -1083,7 +1088,7 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags);
+                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags, "@HARDNumLoaded@8");
             }
         }
         Ok(())
@@ -1202,7 +1207,7 @@ impl ShRenderer {
             return Ok(());
         };
 
-        let xform_id = prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, mask)?;
+        let xform_id = prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, mask, reads[0])?;
 
         transformers.push(Transformer {
             xform_id,
@@ -1237,6 +1242,7 @@ impl ShRenderer {
             seen_flags: VertexFlags::NONE,
             props: HashMap::new(),
             next_xform_id: 1,
+            active_xform_id: 0,
         };
         let mut transformers = Vec::new();
         let mut active_frame = None;
@@ -1312,7 +1318,7 @@ impl ShRenderer {
                 }
 
                 Instr::X86Code(ref x86) => {
-                    let _advance_cnt = Self::maybe_update_buffer_properties(
+                    Self::maybe_update_buffer_properties(
                         name,
                         &pc,
                         x86,
@@ -1320,9 +1326,6 @@ impl ShRenderer {
                         &mut prop_man,
                         &mut transformers,
                     )?;
-                    // for _ in 0..advance_cnt {
-                    //     pc.advance(sh);
-                    // }
                 }
 
                 Instr::TextureRef(texture) => {
@@ -1330,7 +1333,7 @@ impl ShRenderer {
                 }
 
                 Instr::VertexBuf(vert_buf) => {
-                    Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
+                    prop_man.active_xform_id = Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
                 }
 
                 Instr::Facet(facet) => {
@@ -1502,13 +1505,10 @@ impl ShRenderer {
 
         Ok(sampler)
     }
-}
 
-impl RenderSubsystem for ShRenderer {
-    fn before_render(
+    pub fn before_render(
         &self,
         command_buffer: AutoCommandBufferBuilder,
-        _dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for instance in self.instances.values() {
@@ -1517,7 +1517,7 @@ impl RenderSubsystem for ShRenderer {
         Ok(cb)
     }
 
-    fn render(
+    pub fn render(
         &self,
         camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
@@ -1580,11 +1580,9 @@ mod test {
                 );
 
                 let sh = RawShape::from_bytes(&lib.load(name)?)?;
-                let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
-                window.reset_render_subsystems();
-                window.add_render_subsystem(sh_renderer.clone());
+                let mut sh_renderer = ShRenderer::new(&window)?;
 
-                let sh_instance = sh_renderer.borrow_mut().add_shape_to_render(
+                let sh_instance = sh_renderer.add_shape_to_render(
                     &(game.to_owned() + ":" + name),
                     &sh,
                     DrawSelection::NormalModel,
@@ -1596,8 +1594,36 @@ mod test {
                     .draw_state()
                     .borrow_mut()
                     .toggle_gear(&Instant::now());
-                sh_renderer.borrow_mut().animate(&Instant::now())?;
-                window.drive_frame(&camera)?;
+                sh_renderer.animate(&Instant::now())?;
+
+                //window.drive_frame(&camera)?;
+                {
+                    let frame = window.begin_frame()?;
+                    if !frame.is_valid() {
+                        continue;
+                    }
+
+                    let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                        window.device(),
+                        window.queue().family(),
+                    )?;
+
+                    cbb = sh_renderer.before_render(cbb)?;
+
+                    cbb = cbb.begin_render_pass(
+                        frame.framebuffer(&window),
+                        false,
+                        vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+                    )?;
+
+                    cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
+
+                    cbb = cbb.end_render_pass()?;
+
+                    let cb = cbb.build()?;
+
+                    frame.submit(cb, &mut window)?;
+                }
             }
         }
         std::mem::drop(window);

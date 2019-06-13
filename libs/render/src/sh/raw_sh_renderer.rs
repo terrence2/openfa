@@ -45,7 +45,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::{GraphicsWindow, RenderSubsystem};
+use window::GraphicsWindow;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -1077,18 +1077,15 @@ impl RawShRenderer {
 
         Ok(sampler)
     }
-}
 
-impl RenderSubsystem for RawShRenderer {
-    fn before_frame(&mut self, camera: &CameraAbstract, _window: &GraphicsWindow) -> Fallible<()> {
+    pub fn before_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
         self.set_view(camera.view_matrix());
         self.set_projection(&camera.projection_matrix());
         Ok(())
     }
 
-    fn render(
+    pub fn render(
         &self,
-        _camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {

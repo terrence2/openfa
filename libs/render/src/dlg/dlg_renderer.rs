@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::CameraAbstract;
 use dlg::{Dialog, DrawAction, Widget};
 use failure::Fallible;
 use image::{ImageBuffer, Rgba};
@@ -35,7 +34,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::{GraphicsWindow, RenderSubsystem};
+use window::GraphicsWindow;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -358,17 +357,14 @@ impl DialogRenderer {
         }
         Ok(())
     }
-}
 
-impl RenderSubsystem for DialogRenderer {
-    fn before_frame(&mut self, _camera: &CameraAbstract, window: &GraphicsWindow) -> Fallible<()> {
+    pub fn before_frame(&mut self, window: &GraphicsWindow) -> Fallible<()> {
         self.set_projection(&window)?;
         Ok(())
     }
 
-    fn render(
+    pub fn render(
         &self,
-        _camera: &CameraAbstract,
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {

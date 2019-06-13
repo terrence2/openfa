@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::CameraAbstract;
 use failure::Fallible;
 use image::{ImageBuffer, Rgba};
 use log::trace;
@@ -31,7 +30,7 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::{GraphicsWindow, RenderSubsystem};
+use window::GraphicsWindow;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -217,12 +216,9 @@ impl PalRenderer {
 
         Ok(sampler)
     }
-}
 
-impl RenderSubsystem for PalRenderer {
-    fn render(
+    pub fn render(
         &self,
-        _camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {

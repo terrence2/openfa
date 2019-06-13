@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
+use log::trace;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
 use omnilib::{make_opt_struct, OmniLib};
@@ -20,9 +21,10 @@ use pal::Palette;
 use sh::RawShape;
 use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
+use std::{rc::Rc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 
 make_opt_struct!(
@@ -74,18 +76,10 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(&[&shape_bindings]);
 
-    let sh_renderer = Arc::new(RefCell::new(ShRenderer::new(&window)?));
-    let text_renderer = Arc::new(RefCell::new(TextRenderer::new(
-        system_palette.clone(),
-        &lib,
-        &window,
-    )?));
-
-    window.add_render_subsystem(sh_renderer.clone());
-    window.add_render_subsystem(text_renderer.clone());
+    let mut sh_renderer = ShRenderer::new(&window)?;
+    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
 
     let fps_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -93,7 +87,6 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
     let state_handle = text_renderer
-        .borrow_mut()
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
@@ -102,7 +95,7 @@ fn main() -> Fallible<()> {
         .with_vertical_anchor(TextAnchorV::Bottom);
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let instance = sh_renderer.borrow_mut().add_shape_to_render(
+    let instance = sh_renderer.add_shape_to_render(
         name,
         &sh,
         DrawSelection::NormalModel,
@@ -177,13 +170,42 @@ fn main() -> Fallible<()> {
                 "toggle-hook" => instance.draw_state().borrow_mut().toggle_hook(),
                 "toggle-player-dead" => instance.draw_state().borrow_mut().toggle_player_dead(),
                 "window-cursor-move" => {}
-                _ => println!("unhandled command: {}", command.name),
+                _ => trace!("unhandled command: {}", command.name),
             }
         }
 
-        sh_renderer.borrow_mut().animate(&loop_start)?;
+        sh_renderer.animate(&loop_start)?;
 
-        window.drive_frame(&camera)?;
+        {
+            let frame = window.begin_frame()?;
+            if !frame.is_valid() {
+                continue;
+            }
+
+            text_renderer.before_frame(&window)?;
+
+            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                window.device(),
+                window.queue().family(),
+            )?;
+
+            cbb = sh_renderer.before_render(cbb)?;
+
+            cbb = cbb.begin_render_pass(
+                frame.framebuffer(&window),
+                false,
+                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+            )?;
+
+            cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
+            cbb = text_renderer.render(cbb, &window.dynamic_state)?;
+
+            cbb = cbb.end_render_pass()?;
+
+            let cb = cbb.build()?;
+
+            frame.submit(cb, &mut window)?;
+        }
 
         let frame_time = loop_start.elapsed();
         let render_time = frame_time - window.idle_time;
