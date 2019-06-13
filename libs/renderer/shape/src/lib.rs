@@ -758,14 +758,26 @@ impl BufferPropsManager {
         self.seen_flags |= flags;
     }
 
-    pub fn add_xform_and_flags(&mut self, tgt: usize, flags: VertexFlags, context: &str) -> Fallible<u32> {
+    pub fn add_xform_and_flags(
+        &mut self,
+        tgt: usize,
+        flags: VertexFlags,
+        context: &str,
+    ) -> Fallible<u32> {
         ensure!(
             !self.props.contains_key(&tgt),
             "have already transformed that buffer"
         );
 
         let xform_id = self.next_xform_id;
-        self.props.insert(tgt, BufferProps { context: context.to_owned(), flags, xform_id });
+        self.props.insert(
+            tgt,
+            BufferProps {
+                context: context.to_owned(),
+                flags,
+                xform_id,
+            },
+        );
         self.next_xform_id += 1;
 
         Ok(xform_id)
@@ -856,7 +868,11 @@ impl ShRenderer {
                 xform_id: props.xform_id,
             });
         }
-        trace!("Loaded VxBuf {} with xform_id: {}", props.context, props.xform_id);
+        trace!(
+            "Loaded VxBuf {} with xform_id: {}",
+            props.context,
+            props.xform_id
+        );
         props.xform_id
     }
 
@@ -1042,7 +1058,11 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags, &trampoline.name);
+                prop_man.add_or_update_toggle_flags(
+                    unmask.unwrap_unmask_target()?,
+                    flags,
+                    &trampoline.name,
+                );
             }
             interp.remove_read_port(trampoline.mem_location);
         }
@@ -1088,7 +1108,11 @@ impl ShRenderer {
             ensure!(name == "do_start_interp", "unexpected trampoline return");
             ensure!(args.len() == 1, "unexpected arg count");
             if unmask.at_offset() == args[0].wrapping_sub(SHAPE_LOAD_BASE) as usize {
-                prop_man.add_or_update_toggle_flags(unmask.unwrap_unmask_target()?, flags, "@HARDNumLoaded@8");
+                prop_man.add_or_update_toggle_flags(
+                    unmask.unwrap_unmask_target()?,
+                    flags,
+                    "@HARDNumLoaded@8",
+                );
             }
         }
         Ok(())
@@ -1207,7 +1231,8 @@ impl ShRenderer {
             return Ok(());
         };
 
-        let xform_id = prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, mask, reads[0])?;
+        let xform_id =
+            prop_man.add_xform_and_flags(xform.unwrap_unmask_target()?, mask, reads[0])?;
 
         transformers.push(Transformer {
             xform_id,
@@ -1333,7 +1358,8 @@ impl ShRenderer {
                 }
 
                 Instr::VertexBuf(vert_buf) => {
-                    prop_man.active_xform_id = Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
+                    prop_man.active_xform_id =
+                        Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
                 }
 
                 Instr::Facet(facet) => {

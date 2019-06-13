@@ -13,9 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
-use log::trace;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
+use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
