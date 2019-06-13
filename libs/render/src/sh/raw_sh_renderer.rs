@@ -1108,7 +1108,7 @@ mod test {
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
-    use std::{cell::RefCell, f32::consts::PI};
+    use std::f32::consts::PI;
     use window::GraphicsConfigBuilder;
 
     #[test]
@@ -1152,13 +1152,7 @@ mod test {
 
                 let data = lib.load(name)?;
                 let sh = RawShape::from_bytes(&data)?;
-                let sh_renderer = Arc::new(RefCell::new(RawShRenderer::new(
-                    system_palette.clone(),
-                    &window,
-                )?));
-
-                window.reset_render_subsystems();
-                window.add_render_subsystem(sh_renderer.clone());
+                let mut sh_renderer = RawShRenderer::new(system_palette.clone(), &window)?;
 
                 let draw_mode = DrawMode {
                     range: None,
@@ -1178,7 +1172,7 @@ mod test {
                     right_aileron_position: 0,
                     sam_count: 4,
                 };
-                sh_renderer.borrow_mut().add_shape_to_render(
+                sh_renderer.add_shape_to_render(
                     &name,
                     &sh,
                     usize::max_value(),
@@ -1186,7 +1180,34 @@ mod test {
                     &lib,
                     &window,
                 )?;
-                window.drive_frame(&camera)?;
+
+                {
+                    let frame = window.begin_frame()?;
+                    if !frame.is_valid() {
+                        continue;
+                    }
+
+                    sh_renderer.before_frame(&camera)?;
+
+                    let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                        window.device(),
+                        window.queue().family(),
+                    )?;
+
+                    cbb = cbb.begin_render_pass(
+                        frame.framebuffer(&window),
+                        false,
+                        vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+                    )?;
+
+                    cbb = sh_renderer.render(cbb, &window.dynamic_state)?;
+
+                    cbb = cbb.end_render_pass()?;
+
+                    let cb = cbb.build()?;
+
+                    frame.submit(cb, &mut window)?;
+                }
             }
         }
         std::mem::drop(window);
