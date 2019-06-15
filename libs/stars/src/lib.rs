@@ -84,6 +84,34 @@ impl SAOEntry {
     pub fn magnitude(&self) -> f32 {
         f32::from(self.mag()) / 100f32
     }
+
+    pub fn right_ascension(&self) -> f32 {
+        self.sra0() as f32
+    }
+
+    pub fn declination(&self) -> f32 {
+        self.sdec0() as f32
+    }
+
+    pub fn color(&self) -> u32 {
+        match self.isp()[0] as char {
+            'A' => {}
+            'B' => {}
+            'F' => {}
+            'G' => {}
+            'K' => {}
+            'M' => {}
+            'N' => {}
+            'O' => {}
+            'P' => {}
+            'R' => {}
+            'S' => {}
+            ' ' => {}
+            '+' => {}
+            _ => {}
+        }
+        0xFF_FF_FF_FF
+    }
 }
 
 //const BSC_DATA: &'static [u8] = include_bytes!("../assets/BSC5.stars");
@@ -130,6 +158,7 @@ impl Stars {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
 
     #[test]
     fn it_can_parse_stars() -> Fallible<()> {
@@ -142,9 +171,9 @@ mod tests {
                 visible += 1;
             }
             assert!(entry.sra0() >= 0f64);
-            assert!(entry.sra0() <= 2f64 * std::f64::consts::PI);
-            assert!(entry.sdec0() >= -std::f64::consts::PI / 2f64);
-            assert!(entry.sdec0() <= std::f64::consts::PI / 2f64);
+            assert!(entry.sra0() <= 2f64 * PI);
+            assert!(entry.sdec0() >= -PI / 2f64);
+            assert!(entry.sdec0() <= PI / 2f64);
         }
         assert!(visible > 10_000);
         assert!(visible < 20_000);
@@ -156,35 +185,58 @@ mod tests {
     fn band_by_ascension() -> Fallible<()> {
         let stars = Stars::new()?;
 
-        let mut bands: Vec<Vec<&'static SAOEntry>> = Vec::new();
-        const MAG: f32 = 11f32;
-        const BINS: usize = 1024 * 64;
-        bands.resize_with(BINS, Vec::new);
+        const MAG: f32 = 6.5f32;
+        const RA_BINS: usize = 512;
+        const DEC_BINS: usize = 256;
+        let mut bins: Vec<Vec<Vec<u32>>> = Vec::with_capacity(RA_BINS);
+        bins.resize_with(RA_BINS, || Vec::with_capacity(DEC_BINS));
+        for bin in bins.iter_mut() {
+            bin.resize_with(DEC_BINS, Vec::new);
+        }
+
+        use std::collections::HashSet;
+        let mut isps = HashSet::new();
         for i in 0..stars.catalog_size() {
             let entry = stars.entry(i)?;
             if entry.magnitude() <= MAG {
+                let s = format!("{}{}", entry.isp()[0] as char, entry.isp()[1] as char);
+                isps.insert(s);
+                // println!("spec: {}{}", entry.isp()[0] as char, entry.isp()[1] as char);
+
                 let ra = entry.sra0();
-                let bin = (ra * BINS as f64 / (std::f64::consts::PI * 2f64)) as usize;
-                bands[bin].push(entry);
+                let dec = entry.sdec0();
+                let ra_bin = (ra * RA_BINS as f64 / (PI * 2f64)) as usize;
+                let dec_bin = (((dec + PI) * DEC_BINS as f64) / (PI * 2f64)) as usize;
+                bins[ra_bin][dec_bin].push(i as u32);
+
+                // FIXME: actually push into every bin in a range of 0.001
             }
+        }
+
+        let mut foo = isps.iter().cloned().collect::<Vec<_>>();
+        foo.sort();
+        for isp in &foo {
+            println!("ISP: {}", isp);
         }
 
         let mut max_bin = 0;
         let mut total = 0;
-        for band in &bands {
-            if band.len() > max_bin {
-                max_bin = band.len();
+        for ra_bins in &bins {
+            for dec_bin in ra_bins {
+                if dec_bin.len() > max_bin {
+                    max_bin = dec_bin.len();
+                }
+                total += dec_bin.len();
             }
-            total += band.len();
         }
 
         println!(
             "max in bin: {} of {} bins with {} stars below {} => {} bytes unpacked",
             max_bin,
-            bands.len(),
+            RA_BINS * DEC_BINS,
             total,
             MAG,
-            max_bin * bands.len() * 4,
+            max_bin * RA_BINS * DEC_BINS * 4,
         );
 
         Ok(())

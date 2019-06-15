@@ -21,6 +21,7 @@ use pal::Palette;
 use sh::RawShape;
 use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
+use starbox::StarboxRenderer;
 use std::{rc::Rc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
@@ -78,6 +79,7 @@ fn main() -> Fallible<()> {
 
     let mut sh_renderer = ShRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let mut starbox_renderer = StarboxRenderer::new(&window)?;
 
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
@@ -182,6 +184,7 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
+            starbox_renderer.before_frame(&camera, &window)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -197,6 +200,7 @@ fn main() -> Fallible<()> {
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
+            cbb = starbox_renderer.render(cbb, &window.dynamic_state)?;
             cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 

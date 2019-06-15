@@ -43,6 +43,7 @@ members = [
         "libs/render",
         "libs/renderer/camera",
         "libs/renderer/shape",
+        "libs/renderer/starbox",
         "libs/renderer/text",
         "libs/resource",
         "libs/reverse",
