@@ -93,24 +93,50 @@ impl SAOEntry {
         self.sdec0() as f32
     }
 
-    pub fn color(&self) -> u32 {
-        match self.isp()[0] as char {
-            'A' => {}
-            'B' => {}
-            'F' => {}
-            'G' => {}
-            'K' => {}
-            'M' => {}
-            'N' => {}
-            'O' => {}
-            'P' => {}
-            'R' => {}
-            'S' => {}
-            ' ' => {}
-            '+' => {}
-            _ => {}
+    pub fn color(&self) -> [f32; 3] {
+        // Taken with gratitude from:
+        //    http://www.vendian.org/mncharity/dir3/starcolor/
+        // O     155 176 255  #9bb0ff
+        // B     170 191 255  #aabfff
+        // A     202 215 255  #cad7ff
+        // F     248 247 255  #f8f7ff
+        // G     255 244 234  #fff4ea
+        // K     255 210 161  #ffd2a1
+        // M     255 204 111  #ffcc6f
+        fn clr(r: u8, g: u8, b: u8) -> [f32; 3] {
+            [
+                f32::from(r) / 255f32,
+                f32::from(g) / 255f32,
+                f32::from(b) / 255f32,
+            ]
         }
-        0xFF_FF_FF_FF
+        let color = match self.isp()[0] as char {
+            'O' => clr(155, 176, 255),
+            'B' => clr(170, 191, 255),
+            'A' => clr(202, 215, 255),
+            'F' => clr(248, 247, 255),
+            'G' => clr(255, 244, 234),
+            'K' => clr(255, 210, 161),
+            'M' => clr(255, 204, 111),
+            // Carbon C-
+            'R' => clr(155, 176, 255), // 51-28k
+            'N' => clr(255, 244, 234), // 31-26k
+            'S' => clr(255, 255, 255), // intermediate between carbon and normal
+            // Special
+            'P' => clr(255, 150, 130), // stars within planetary nebula
+            ' ' => clr(100, 100, 100), // ???
+            '+' => clr(255, 255, 255), // ???
+            _ => clr(255, 255, 255),
+        };
+
+        let mag = 1f32 - self.magnitude() / 6.7f32;
+        [color[0] * mag, color[1] * mag, color[2] * mag]
+    }
+
+    // Fine tune the radius based on the magnitude to give a tiny bump to our
+    // brightest stars.
+    pub fn radius_scale(&self) -> f32 {
+        (1f32 - self.magnitude() / 28f32)
     }
 }
 

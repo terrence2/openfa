@@ -18,7 +18,7 @@ use image::{ImageBuffer, Rgba};
 use log::trace;
 use nalgebra::{Matrix4, Vector3};
 use stars::Stars;
-use std::sync::Arc;
+use std::{collections::HashSet, f32::consts::PI, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -33,6 +33,9 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
+
+const TAU: f32 = PI * 2f32;
+const PI_2: f32 = PI / 2f32;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -77,6 +80,8 @@ mod vs {
     }
 }
 
+const RADIUS: f32 = 0.0015f32;
+
 mod fs {
     use vulkano_shaders::shader;
 
@@ -84,94 +89,130 @@ mod fs {
     ty: "fragment",
         src: "
             #version 450
+
+            // Constants
             #define PI 3.1415926538
+            #define PI_2 (PI / 2.0)
+            #define TAU (PI * 2.0)
+            #define RADIUS (0.001 * 5.0)
+
+            // Utility
+            void v_to_ra_d(vec3 v, out float ra, out float dec) {
+                ra = atan(v.x, v.z) + PI;
+                dec = atan(v.y, sqrt(v.x * v.x + v.z * v.z));
+            }
+
+            vec3 ra_d_to_v(float ra, float dec) {
+                return vec3(
+                    -cos(dec) * sin(ra),
+                    sin(dec),
+                    -cos(dec) * cos(ra)
+                );
+            }
+
+            // Bin arrangement
+            #define DEC_BINS 64
+            struct BandMetadata {
+                uint index;
+                uint bins_per_row;
+                uint base_index;
+            };
+            #define SHOW_BINS 1
+            void show_bins();
+
+            // Bin Info
+            struct BinPosition {
+                // Base offset into the star index buffer.
+                uint index_base;
+
+                // Number of stars in this bin.
+                uint num_indexes;
+            };
+
+            struct StarInst {
+                float ra;
+                float dec;
+                float color[3];
+                float radius;
+            };
 
             layout(location = 0) in vec3 v_ray;
 
             layout(location = 0) out vec4 f_color;
 
-            // layout(binding = 1) buffer UniformMatrixArray {
-            //     mat4 xforms[14];
-            // } ua;
+            layout(binding = 0) buffer DeclinationBands {
+                BandMetadata arr[33];
+            } bands;
 
-            struct StarInst {
-                float ra;
-                float dec;
-                uint color;
-                uint pad;
-            };
+            layout(binding = 1) buffer BinPositions {
+                BinPosition arr[5434];
+            } bins;
 
-            layout(binding = 0) buffer StarBlock {
+            layout(binding = 2) buffer Indexes {
+                uint arr[];
+            } indexes;
+
+            layout(binding = 3) buffer StarBlock {
                 StarInst arr[];
             } stars;
 
-            layout(binding = 1) buffer StarBins {
-                int ndarr[512][256][10];
-                //int arr[];
-            } bins;
-
             //layout(set = 0, binding = 0) uniform sampler2D tex;
 
+            BandMetadata band_for_dec(float dec) {
+                // Project dec into 0..1
+                float decz = ((dec + PI_2) * 2.0) / TAU;
+
+                // Quantize dec into bands.
+                uint deci = uint(decz * DEC_BINS);
+                return bands.arr[deci];
+            }
+
+            uint bin_for_ra_d(float ra, float dec) {
+                BandMetadata band = band_for_dec(dec);
+                float raz = ra / TAU;
+                uint rai = uint(float(band.bins_per_row) * raz);
+                return band.base_index + rai;
+            }
+
             void main() {
-                float ra = atan(v_ray.x, v_ray.z) + PI;
-                float w = sqrt(v_ray.x * v_ray.x + v_ray.z * v_ray.z);
-                float dec = atan(v_ray.y, w);
+                #if SHOW_BINS
+                    show_bins();
+                    return;
+                #endif
 
-                float raz = ra / (2.0 * PI);
-                float decz = (dec + PI) / (2.0 * PI);
+                float ra, dec;
+                v_to_ra_d(v_ray, ra, dec);
 
-                int rai = int(raz * 512.0);
-                int deci = int(decz * 256.0);
+                uint bin = bin_for_ra_d(ra, dec);
+                BinPosition pos = bins.arr[bin];
 
                 vec3 clr = vec3(0.0, 0.0, 0.0);
-
-                /*
-                int cnt = 0;
-                int base_idx = rai * 256 * 10 + deci * 10;
-                for (int i = 0; i < 10; ++i) {
-                    if (bins.arr[base_idx + i] != 0xFFFFFFFF) {
-                        StarInst star = stars.arr[base_idx + i];
-                        float dd = dec - star.dec;
-                        float dr = ra - star.ra;
-                        float dist = sqrt(dd * dd + dr * dr);
-                        // if (dist < 0.6) {
-                        //     clr = vec3(1.0, 1.0, 1.0);
-                        // }
-                        clr = vec3(dist, dist, dist);
-                        cnt += 1;
-                    }
-                }
-                */
-                for (int i = 0; i < 10; ++i) {
-                    int idx = bins.ndarr[rai][deci][i];
-                    if (idx != 0xFFFFFFFF) {
-                        StarInst star = stars.arr[idx];
-                        float dd = dec - star.dec;
-                        float dr = ra - star.ra;
-                        float dist = sqrt(dd * dd + dr * dr);
-                        if (dist < 0.001) {
-                            clr += vec3(
-                                1.0 - dist * 1000.0,
-                                1.0 - dist * 1000.0,
-                                1.0 - dist * 1000.0
-                            );
-                        }
-                        // if (dist < 0.001) {
-                        //     clr = vec3(1.0, 1.0, 1.0);
-                        // }
-                        //clr = vec3(dist, dist, dist);
+                for (uint i = pos.index_base; i < pos.index_base + pos.num_indexes; ++i) {
+                    uint star_index = indexes.arr[i];
+                    StarInst star = stars.arr[star_index];
+                    vec3 star_ray = ra_d_to_v(star.ra, star.dec);
+                    float dist = acos(dot(star_ray, normalize(v_ray)));
+                    if (dist < star.radius) {
+                        clr = vec3(
+                            star.color[0], star.color[1], star.color[2]
+                        );
                     }
                 }
 
-                // f_color = vec4(
-                //     float(cnt) / 10.0,
-                //     float(cnt) / 10.0,
-                //     float(cnt) / 10.0,
-                //     1.0
-                // );
                 f_color = vec4(clr, 1.0);
+            }
 
-                /*
+            void show_bins() {
+                float ra, dec;
+                v_to_ra_d(v_ray, ra, dec);
+
+                float raz = ra / TAU;
+                float decz = ((dec + PI_2) * 2.0) / TAU;
+
+                BandMetadata meta = band_for_dec(dec);
+                uint rai = uint(raz * meta.bins_per_row);
+                int deci = int(decz * DEC_BINS);
+
                 if ((rai & 1) != 0) {
                     if ((deci & 1) != 0) {
                         f_color = vec4(0.0, 1.0, 1.0, 1.0);
@@ -185,7 +226,6 @@ mod fs {
                         f_color = vec4(0.0, 1.0, 1.0, 1.0);
                     }
                 }
-                */
             }
             "
     }
@@ -253,9 +293,86 @@ pub struct StarboxRenderer {
     push_constants: vs::ty::PushConstantData,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
-    star_buffer: Arc<CpuAccessibleBuffer<[fs::ty::StarInst]>>,
     pds: Arc<dyn DescriptorSet + Send + Sync>,
 }
+
+macro_rules! mkband {
+    ($index:expr, $bins_per_row:expr, $base_index:expr) => {
+        fs::ty::BandMetadata {
+            index: $index,
+            bins_per_row: $bins_per_row,
+            base_index: $base_index,
+        }
+    };
+}
+
+const DEC_BINS: usize = 64;
+const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
+    mkband!(0, 1, 0),
+    mkband!(1, 8, 1),
+    mkband!(2, 12, 9),
+    mkband!(3, 16, 21),
+    mkband!(4, 32, 37),
+    mkband!(5, 32, 69),
+    mkband!(6, 32, 101),
+    mkband!(7, 32, 133),
+    mkband!(8, 64, 165),
+    mkband!(9, 64, 229),
+    mkband!(10, 64, 293),
+    mkband!(11, 64, 357),
+    mkband!(12, 84, 421),
+    mkband!(13, 84, 505),
+    mkband!(14, 84, 589),
+    mkband!(15, 84, 673),
+    mkband!(16, 84, 757),
+    mkband!(17, 84, 841),
+    mkband!(18, 128, 925),
+    mkband!(19, 128, 1053),
+    mkband!(20, 128, 1181),
+    mkband!(21, 128, 1309),
+    mkband!(22, 128, 1437),
+    mkband!(23, 128, 1565),
+    mkband!(24, 128, 1693),
+    mkband!(25, 128, 1821),
+    mkband!(26, 128, 1949),
+    mkband!(27, 128, 2077),
+    mkband!(28, 128, 2205),
+    mkband!(29, 128, 2333),
+    mkband!(30, 128, 2461),
+    mkband!(31, 128, 2589),
+    mkband!(32, 128, 2717),
+    mkband!(33, 128, 2845),
+    mkband!(34, 128, 2973),
+    mkband!(35, 128, 3101),
+    mkband!(36, 128, 3229),
+    mkband!(37, 128, 3357),
+    mkband!(38, 128, 3485),
+    mkband!(39, 128, 3613),
+    mkband!(40, 128, 3741),
+    mkband!(41, 128, 3869),
+    mkband!(42, 128, 3997),
+    mkband!(43, 128, 4125),
+    mkband!(44, 128, 4253),
+    mkband!(45, 128, 4381),
+    mkband!(46, 84, 4509),
+    mkband!(47, 84, 4593),
+    mkband!(48, 84, 4677),
+    mkband!(49, 84, 4761),
+    mkband!(50, 84, 4845),
+    mkband!(51, 84, 4929),
+    mkband!(52, 64, 5013),
+    mkband!(53, 64, 5077),
+    mkband!(54, 64, 5141),
+    mkband!(55, 64, 5205),
+    mkband!(56, 32, 5269),
+    mkband!(57, 32, 5301),
+    mkband!(58, 32, 5333),
+    mkband!(59, 32, 5365),
+    mkband!(60, 16, 5397),
+    mkband!(61, 12, 5413),
+    mkband!(62, 8, 5425),
+    mkband!(63, 1, 5433),
+];
 
 impl StarboxRenderer {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
@@ -292,25 +409,69 @@ impl StarboxRenderer {
 
         let (vertex_buffer, index_buffer) = Self::build_buffers(pipeline.clone(), window)?;
 
-        let (star_buffer, pds) = Self::upload_stars(pipeline.clone(), window)?;
+        let pds = Self::upload_stars(pipeline.clone(), window)?;
 
         Ok(Self {
             pipeline,
             push_constants: vs::ty::PushConstantData::new(),
             vertex_buffer,
             index_buffer,
-            star_buffer,
             pds,
         })
+    }
+
+    fn get_perpendicular(v: &Vector3<f32>) -> Vector3<f32> {
+        let not_v = if v[2] > v[1] {
+            Vector3::new(0f32, 1f32, 0f32)
+        } else {
+            Vector3::new(0f32, 0f32, 1f32)
+        };
+        v.cross(&not_v)
+    }
+
+    fn ra_d_to_vec(ra: f32, dec: f32) -> Vector3<f32> {
+        Vector3::new(-dec.cos() * ra.sin(), dec.sin(), -dec.cos() * ra.cos())
+    }
+
+    fn vec_to_ra_d(v: &Vector3<f32>) -> (f32, f32) {
+        let ra = v.x.atan2(v.z) + PI;
+        let w = (v.x * v.x + v.z * v.z).sqrt();
+        let dec = v.y.atan2(w);
+        (ra, dec)
+    }
+
+    fn num_bins() -> usize {
+        let last_band = &DEC_BANDS[DEC_BANDS.len() - 1];
+        (last_band.base_index + last_band.bins_per_row) as usize
+    }
+
+    fn band_for_dec(dec: f32) -> &'static fs::ty::BandMetadata {
+        assert!(dec < PI_2);
+        assert!(dec >= -PI_2);
+        // See implementation in shader for comments.
+        let decz = ((dec + PI_2) * 2f32) / TAU;
+        let deci = (decz * DEC_BINS as f32) as usize;
+        &DEC_BANDS[deci]
+    }
+
+    fn bin_for_ra_d(ra: f32, dec: f32) -> usize {
+        let band = Self::band_for_dec(dec);
+        let raz = ra / TAU;
+        let rai = (band.bins_per_row as f32 * raz) as usize;
+        band.base_index as usize + rai
     }
 
     pub fn upload_stars(
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
-    ) -> Fallible<(
-        Arc<CpuAccessibleBuffer<[fs::ty::StarInst]>>,
-        Arc<dyn DescriptorSet + Send + Sync>,
-    )> {
+    ) -> Fallible<Arc<dyn DescriptorSet + Send + Sync>> {
+        let mut offset = 0;
+        for (i, band) in DEC_BANDS.iter().enumerate() {
+            assert_eq!(band.index as usize, i);
+            assert_eq!(band.base_index, offset);
+            offset += band.bins_per_row;
+        }
+
         const MAG: f32 = 6.5;
 
         let mut star_buf = Vec::new();
@@ -321,39 +482,85 @@ impl StarboxRenderer {
                 let ra = entry.right_ascension() as f32;
                 let dec = entry.declination() as f32;
                 let color = entry.color();
+                let radius = RADIUS * entry.radius_scale();
                 let star = fs::ty::StarInst {
                     ra,
                     dec,
                     color,
-                    pad: 0,
+                    radius,
                 };
                 star_buf.push(star);
             }
         }
 
-        // Flat array of 512 x 256 x 10
-        use std::f32::consts::PI;
-        const RA_BINS: usize = 512;
-        const DEC_BINS: usize = 256;
-        const IDX_BINS: usize = 10;
-        const CAPACITY: usize = RA_BINS * DEC_BINS * IDX_BINS;
-        let mut bins = Vec::with_capacity(CAPACITY);
-        const TOMBSTONE: u32 = 0xFFFF_FFFF;
-        bins.resize(CAPACITY, TOMBSTONE);
+        // Bin all stars.
+        let mut bins = Vec::with_capacity(Self::num_bins());
+        bins.resize_with(Self::num_bins(), HashSet::new);
         for (star_off, star) in star_buf.iter().enumerate() {
-            let ra = star.ra;
-            let dec = star.dec;
-            let ra_bin = (ra * RA_BINS as f32 / (PI * 2f32)) as usize;
-            let dec_bin = (((dec + PI) * DEC_BINS as f32) / (PI * 2f32)) as usize;
-            let base_idx = ra_bin * DEC_BINS * IDX_BINS + dec_bin * IDX_BINS;
-            for bin in bins[base_idx..base_idx + IDX_BINS].iter_mut() {
-                if *bin == TOMBSTONE {
-                    *bin = star_off as u32;
-                }
+            // Sample bins in a circle at the star's approximate radius.
+            let star_ray = Self::ra_d_to_vec(star.ra, star.dec);
+            let perp = Self::get_perpendicular(&star_ray) * RADIUS * 2f32;
+            let norm_star_ray = nalgebra::Unit::new_normalize(star_ray);
+            const N_TAPS: usize = 4;
+            for i in 0..N_TAPS {
+                let ang = i as f32 * TAU / N_TAPS as f32;
+                let rot = nalgebra::UnitQuaternion::from_axis_angle(&norm_star_ray, ang);
+                let sample = (star_ray + (rot * perp)).normalize();
+                let (sample_ra, sample_dec) = Self::vec_to_ra_d(&sample);
+                bins[Self::bin_for_ra_d(sample_ra, sample_dec)].insert(star_off as u32);
+            }
+            bins[Self::bin_for_ra_d(star.ra, star.dec)].insert(star_off as u32);
+        }
+
+        // Now that we have sorted all stars into all bins they might affect,
+        // build the index and bin position buffers.
+        let mut bin_positions = Vec::new();
+        let mut indices = Vec::new();
+        for bin_indices in &bins {
+            let bin_base = indices.len();
+            let bin_len = bin_indices.len();
+
+            let pos = fs::ty::BinPosition {
+                index_base: bin_base as u32,
+                num_indexes: bin_len as u32,
+            };
+            bin_positions.push(pos);
+            for index in bin_indices {
+                indices.push(*index as u32);
             }
         }
 
-        trace!(
+        println!(
+            "uploading declination bands buffer with {} bytes",
+            std::mem::size_of::<fs::ty::BandMetadata>() * DEC_BANDS.len()
+        );
+        let band_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            DEC_BANDS.iter().cloned(),
+        )?;
+
+        println!(
+            "uploading bin position buffer with {} bytes",
+            std::mem::size_of::<fs::ty::BinPosition>() * bin_positions.len()
+        );
+        let bin_pos_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            bin_positions.into_iter(),
+        )?;
+
+        println!(
+            "uploading star index buffer with {} bytes",
+            std::mem::size_of::<u32>() * indices.len()
+        );
+        let star_index_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            indices.into_iter(),
+        )?;
+
+        println!(
             "uploading star buffer with {} bytes",
             std::mem::size_of::<fs::ty::StarInst>() * star_buf.len()
         );
@@ -363,22 +570,16 @@ impl StarboxRenderer {
             star_buf.into_iter(),
         )?;
 
-        trace!(
-            "uploading star index buffer with {} bytes",
-            std::mem::size_of::<u32>() * bins.len()
-        );
-        let bin_buffer =
-            CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), bins.into_iter())?;
-
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
             PersistentDescriptorSet::start(pipeline.clone(), 0)
+                .add_buffer(band_buffer.clone())?
+                .add_buffer(bin_pos_buffer.clone())?
+                .add_buffer(star_index_buffer.clone())?
                 .add_buffer(star_buffer.clone())?
-                .add_buffer(bin_buffer.clone())?
-                //.add_sampled_image(texture.clone(), sampler.clone())?
                 .build()?,
         );
 
-        Ok((star_buffer, pds))
+        Ok(pds)
     }
 
     pub fn build_buffers(
@@ -526,8 +727,79 @@ impl StarboxRenderer {
 
 #[cfg(test)]
 mod tests {
+    use super::StarboxRenderer as SB;
+    use super::*;
+    use approx::assert_relative_eq;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn ra_d_to_bin_transform() -> Fallible<()> {
+        // let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        // let renderer = StarboxRenderer::new(&window)?;
+        for i in 0..32 {
+            assert_eq!(SB::bin_for_ra_d(i as f32 / 32f32, -PI_2), 0);
+            assert_eq!(SB::bin_for_ra_d(i as f32 / 32f32, PI_2 - 0.0001), 5433);
+        }
+        for i in 0..DEC_BINS {
+            let f = i as f32 / DEC_BINS as f32;
+            let dec = -PI_2 + f * PI + 0.001;
+            let band = SB::band_for_dec(dec);
+            assert_eq!(band.index, i as u32);
+
+            for j in 0..band.bins_per_row {
+                let g = j as f32 / band.bins_per_row as f32;
+                let ra = g * TAU + 0.001;
+                let bin_idx = SB::bin_for_ra_d(ra, dec);
+                assert_eq!(bin_idx as u32, band.base_index + j);
+
+                // Look up the star
+
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn vec_to_rad_to_vec() -> Fallible<()> {
+        let stars = Stars::new()?;
+        for i in 0..stars.catalog_size() {
+            let entry = stars.entry(i)?;
+            let band = SB::band_for_dec(entry.declination());
+            if entry.declination() < 0f32 {
+                assert!(band.index < 32);
+            } else {
+                assert!(band.index >= 32);
+            }
+            let v = SB::ra_d_to_vec(entry.right_ascension(), entry.declination());
+            let (ra, dec) = SB::vec_to_ra_d(&v);
+            assert_relative_eq!(ra, entry.right_ascension(), epsilon = 0.00001);
+            assert_relative_eq!(dec, entry.declination(), epsilon = 0.00001);
+        }
+
+        Ok(())
+    }
+
+    fn get_perpendicular(v: &Vector3<f32>) -> Vector3<f32> {
+        let not_v = if v[2] > v[1] {
+            Vector3::new(0f32, 1f32, 0f32)
+        } else {
+            Vector3::new(0f32, 0f32, 1f32)
+        };
+        v.cross(&not_v)
+    }
+
+    #[test]
+    fn fast_taps() -> Fallible<()> {
+        let v = Vector3::new(0f32, 0f32, 1f32);
+        let perp = get_perpendicular(&v) * 0.001;
+        let vn = nalgebra::Unit::new_normalize(v);
+
+        for i in 0..8 {
+            let ang = i as f32 * TAU / 8f32;
+            let rot = nalgebra::UnitQuaternion::from_axis_angle(&vn, ang);
+            let sample = v + rot * perp;
+            println!("PERP: {}", sample);
+        }
+
+        Ok(())
     }
 }
