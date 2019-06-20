@@ -46,6 +46,10 @@ impl ArcBallCamera {
         }
     }
 
+    pub fn get_distance(&mut self) -> f32 {
+        self.distance
+    }
+
     pub fn set_distance(&mut self, distance: f32) {
         self.distance = distance;
     }
@@ -132,6 +136,8 @@ impl CameraAbstract for ArcBallCamera {
     }
 
     fn inverted_view_matrix(&self) -> Matrix4<f32> {
-        Isometry3::look_at_rh(&self.eye(), &self.target, &Vector3::y()).inverse().to_homogeneous()
+        Isometry3::look_at_rh(&self.eye(), &self.target, &Vector3::y())
+            .inverse()
+            .to_homogeneous()
     }
 }

@@ -220,29 +220,15 @@ mod tests {
             bin.resize_with(DEC_BINS, Vec::new);
         }
 
-        use std::collections::HashSet;
-        let mut isps = HashSet::new();
         for i in 0..stars.catalog_size() {
             let entry = stars.entry(i)?;
             if entry.magnitude() <= MAG {
-                let s = format!("{}{}", entry.isp()[0] as char, entry.isp()[1] as char);
-                isps.insert(s);
-                // println!("spec: {}{}", entry.isp()[0] as char, entry.isp()[1] as char);
-
                 let ra = entry.sra0();
                 let dec = entry.sdec0();
                 let ra_bin = (ra * RA_BINS as f64 / (PI * 2f64)) as usize;
                 let dec_bin = (((dec + PI) * DEC_BINS as f64) / (PI * 2f64)) as usize;
                 bins[ra_bin][dec_bin].push(i as u32);
-
-                // FIXME: actually push into every bin in a range of 0.001
             }
-        }
-
-        let mut foo = isps.iter().cloned().collect::<Vec<_>>();
-        foo.sort();
-        for isp in &foo {
-            println!("ISP: {}", isp);
         }
 
         let mut max_bin = 0;

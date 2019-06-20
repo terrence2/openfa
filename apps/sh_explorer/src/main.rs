@@ -184,7 +184,7 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
-            starbox_renderer.before_frame(&camera, &window)?;
+            starbox_renderer.before_frame(&camera)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -223,7 +223,8 @@ fn main() -> Fallible<()> {
         fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
-            "gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
+            "dist: {}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
+            camera.get_distance(),
             !instance.draw_state().borrow().gear_retracted(),
             instance.draw_state().borrow().gear_position(),
             instance.draw_state().borrow().flaps_down(),

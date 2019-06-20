@@ -14,7 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::CameraAbstract;
 use failure::Fallible;
-use image::{ImageBuffer, Rgba};
 use log::trace;
 use nalgebra::{Matrix4, Vector3};
 use stars::Stars;
@@ -23,14 +22,9 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
-    device::Device,
-    format::Format,
     framebuffer::Subpass,
-    image::{Dimensions, ImmutableImage},
     impl_vertex,
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
-    sync::GpuFuture,
 };
 use window::GraphicsWindow;
 
@@ -74,8 +68,6 @@ mod vs {
 
                 v_ray = vec3(reverse_vec);
                 gl_Position = vec4(position.xy, 0.0, 1.0);
-
-                // gl_Position = pc.inverse_projection * vec4(position, 0.0, 1.0);
             }"
     }
 }
@@ -117,7 +109,7 @@ mod fs {
                 uint bins_per_row;
                 uint base_index;
             };
-            #define SHOW_BINS 1
+            #define SHOW_BINS 0
             void show_bins();
 
             // Bin Info
@@ -155,8 +147,6 @@ mod fs {
             layout(binding = 3) buffer StarBlock {
                 StarInst arr[];
             } stars;
-
-            //layout(set = 0, binding = 0) uniform sampler2D tex;
 
             BandMetadata band_for_dec(float dec) {
                 // Project dec into 0..1
@@ -407,7 +397,7 @@ impl StarboxRenderer {
                 .build(window.device())?,
         );
 
-        let (vertex_buffer, index_buffer) = Self::build_buffers(pipeline.clone(), window)?;
+        let (vertex_buffer, index_buffer) = Self::build_buffers(window)?;
 
         let pds = Self::upload_stars(pipeline.clone(), window)?;
 
@@ -583,7 +573,6 @@ impl StarboxRenderer {
     }
 
     pub fn build_buffers(
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<(
         Arc<CpuAccessibleBuffer<[Vertex]>>,
@@ -619,86 +608,10 @@ impl StarboxRenderer {
             indices.into_iter(),
         )?;
 
-        /*
-        let (texture, tex_future) = Self::upload_texture_rgba(window, img.to_rgba())?;
-        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
-        let sampler = Self::make_sampler(window.device())?;
-        */
-
         Ok((vertex_buffer, index_buffer))
     }
 
-    /*
-    fn upload_texture_rgba(
-        window: &GraphicsWindow,
-        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
-        let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
-
-        let dimensions = Dimensions::Dim2d {
-            width: image_dim.0,
-            height: image_dim.1,
-        };
-        let (texture, tex_future) = ImmutableImage::from_iter(
-            image_data.iter().cloned(),
-            dimensions,
-            Format::R8G8B8A8Unorm,
-            window.queue(),
-        )?;
-        trace!(
-            "uploading texture with {} bytes",
-            image_dim.0 * image_dim.1 * 4
-        );
-        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
-    }
-
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Linear,
-            Filter::Linear,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
-    }
-    */
-
-    /*
-    pub fn set_projection(&mut self, window: &GraphicsWindow) -> Fallible<()> {
-        let dim = window.dimensions()?;
-        let aspect = window.aspect_ratio()? * 4f32 / 3f32;
-        if dim[0] > dim[1] {
-            self.push_constants
-                .set_projection(Matrix4::new_nonuniform_scaling(&Vector3::new(
-                    aspect, 1f32, 1f32,
-                )));
-        } else {
-            self.push_constants
-                .set_projection(Matrix4::new_nonuniform_scaling(&Vector3::new(
-                    1f32,
-                    1f32 / aspect,
-                    1f32,
-                )));
-        }
-        Ok(())
-    }
-    */
-
-    pub fn before_frame(
-        &mut self,
-        camera: &CameraAbstract,
-        window: &GraphicsWindow,
-    ) -> Fallible<()> {
-        //self.set_projection(&window)?;
+    pub fn before_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
         self.push_constants
             .set_inverse_projection(camera.inverted_projection_matrix());
         self.push_constants
@@ -733,8 +646,6 @@ mod tests {
 
     #[test]
     fn ra_d_to_bin_transform() -> Fallible<()> {
-        // let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        // let renderer = StarboxRenderer::new(&window)?;
         for i in 0..32 {
             assert_eq!(SB::bin_for_ra_d(i as f32 / 32f32, -PI_2), 0);
             assert_eq!(SB::bin_for_ra_d(i as f32 / 32f32, PI_2 - 0.0001), 5433);
@@ -750,9 +661,6 @@ mod tests {
                 let ra = g * TAU + 0.001;
                 let bin_idx = SB::bin_for_ra_d(ra, dec);
                 assert_eq!(bin_idx as u32, band.base_index + j);
-
-                // Look up the star
-
             }
         }
         Ok(())
