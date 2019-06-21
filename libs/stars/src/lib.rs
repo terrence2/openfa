@@ -69,7 +69,7 @@ packed_struct!(Header {
     There may be up to 10 magnitudes.
 */
 packed_struct!(SAOEntry {
-    //_0 => xno: f32, <- st_num == 0
+    _0 => xno: f32,
     _1 => sra0: f64,
     _2 => sdec0: f64,
     _3 => isp: [u8; 2],
@@ -140,8 +140,8 @@ impl SAOEntry {
     }
 }
 
-//const BSC_DATA: &'static [u8] = include_bytes!("../assets/BSC5.stars");
-const SAO_DATA: &[u8] = include_bytes!("../assets/SAO.pc");
+const BSC_DATA: &'static [u8] = include_bytes!("../assets/BSC5.stars");
+//const SAO_DATA: &[u8] = include_bytes!("../assets/SAO.pc");
 
 pub struct Stars {
     n_stars: usize,
@@ -153,20 +153,20 @@ impl Stars {
         const HDR_SIZE: usize = mem::size_of::<Header>();
 
         #[allow(clippy::transmute_ptr_to_ptr)]
-        let header_a: &[Header] = unsafe { mem::transmute(&SAO_DATA[0..HDR_SIZE]) };
+        let header_a: &[Header] = unsafe { mem::transmute(&BSC_DATA[0..HDR_SIZE]) };
         let header = &header_a[0];
         assert_eq!(header.star0(), 0);
         assert_eq!(header.star1(), 1);
-        assert!(header.star_n() > 0);
-        assert_eq!(header.st_num(), 0);
+        assert!(header.star_n() < 0);
+        assert_eq!(header.st_num(), 1);
         assert_eq!(header.m_prop(), 1);
         assert_eq!(header.n_mag(), 1);
-        assert_eq!(header.nb_ent(), 28);
+        assert_eq!(header.nb_ent(), 32);
 
         #[allow(clippy::transmute_ptr_to_ptr)]
-        let entries: &[SAOEntry] = unsafe { mem::transmute(&SAO_DATA[HDR_SIZE..]) };
+        let entries: &[SAOEntry] = unsafe { mem::transmute(&BSC_DATA[HDR_SIZE..]) };
         Ok(Self {
-            n_stars: header.star_n() as usize,
+            n_stars: -header.star_n() as usize,
             entries,
         })
     }
