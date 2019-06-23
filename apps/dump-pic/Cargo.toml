@@ -1,5 +1,5 @@
 [package]
-name = "pedump"
+name = "dump-pic"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -9,4 +9,5 @@ failure = ">= 0.1.2"
 structopt = ">= 0.2"
 ansi = { path = "../../libs/ansi" }
 omnilib = { path = "../../libs/omnilib" }
-peff = { path = "../../libs/peff" }
+pal = { path = "../../libs/pal" }
+pic = { path = "../../libs/pic" }

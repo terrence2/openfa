@@ -1,5 +1,5 @@
 [package]
-name = "mm_explorer"
+name = "show-sh"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -18,14 +18,13 @@ winit = "^ 0.18"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/renderer/camera" }
 input = { path = "../../libs/input" }
-lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-render = { path = "../../libs/render" }
-t2 = { path = "../../libs/t2" }
+shape = { path = "../../libs/renderer/shape" }
+sh = { path = "../../libs/sh" }
+starbox = { path = "../../libs/renderer/starbox" }
 text = { path = "../../libs/renderer/text" }
-xt = { path = "../../libs/xt" }
 window = { path = "../../libs/window" }
