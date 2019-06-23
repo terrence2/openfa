@@ -1,5 +1,5 @@
 [package]
-name = "picdump"
+name = "dump-sh"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -7,7 +7,8 @@ edition = "2018"
 [dependencies]
 failure = ">= 0.1.2"
 structopt = ">= 0.2"
-ansi = { path = "../../libs/ansi" }
+simplelog = "^0.5.0"
+i386 = { path = "../../libs/i386" }
+sh = { path = "../../libs/sh" }
 omnilib = { path = "../../libs/omnilib" }
-pal = { path = "../../libs/pal" }
-pic = { path = "../../libs/pic" }
+reverse = { path = "../../libs/reverse" }

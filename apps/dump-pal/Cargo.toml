@@ -1,14 +1,12 @@
 [package]
-name = "shdump"
+name = "dump-pal"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = ">= 0.1.2"
+failure = ">= 0.1"
+image = ">= 0.18"
 structopt = ">= 0.2"
-simplelog = "^0.5.0"
-i386 = { path = "../../libs/i386" }
-sh = { path = "../../libs/sh" }
+pal = { path = "../../libs/pal" }
 omnilib = { path = "../../libs/omnilib" }
-reverse = { path = "../../libs/reverse" }

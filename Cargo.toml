@@ -6,18 +6,18 @@ edition = "2018"
 
 [workspace]
 members = [
+        "apps/dump-pal",
+        "apps/dump-pe",
+        "apps/dump-pic",
+        "apps/dump-sh",
         "apps/disasm",
-        "apps/dlg_explorer",
-        "apps/mm_explorer",
-        "apps/paldump",
-        "apps/pedump",
-        "apps/picdump",
-        "apps/picpack",
-        "apps/raw_sh_explorer",
-        "apps/sh_explorer",
-        "apps/shdump",
         "apps/unlib",
         "apps/vulkandump",
+        "apps/dlg_explorer",
+        "apps/mm_explorer",
+        "apps/raw_sh_explorer",
+        "apps/sh_explorer",
+        "apps/picpack",
 
         "libs/animate",
         "libs/ansi",
