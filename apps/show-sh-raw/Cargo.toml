@@ -1,30 +1,28 @@
 [package]
-name = "sh_explorer"
+name = "show-sh-raw"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "^ 0.1.2"
+failure = ">= 0.1.2"
 image = "^ 0.21"
-log = "^ 0.4"
+log = ">= 0.4"
 nalgebra = "^ 0.18"
-simplelog = "^ 0.5"
-structopt = "^ 0.2"
+simplelog = "^0.5.0"
+structopt = ">= 0.2"
 vulkano = "^ 0.11.1"
 vulkano-shaders = "^ 0.11.1"
 vulkano-win = "^ 0.11.1"
 winit = "^ 0.18"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/renderer/camera" }
-input = { path = "../../libs/input" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-shape = { path = "../../libs/renderer/shape" }
+render = { path = "../../libs/render" }
 sh = { path = "../../libs/sh" }
-starbox = { path = "../../libs/renderer/starbox" }
 text = { path = "../../libs/renderer/text" }
 window = { path = "../../libs/window" }
