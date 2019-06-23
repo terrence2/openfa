@@ -140,7 +140,7 @@ impl SAOEntry {
     }
 }
 
-const BSC_DATA: &'static [u8] = include_bytes!("../assets/BSC5.stars");
+const BSC_DATA: &[u8] = include_bytes!("../assets/BSC5.stars");
 //const SAO_DATA: &[u8] = include_bytes!("../assets/SAO.pc");
 
 pub struct Stars {
