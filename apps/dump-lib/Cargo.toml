@@ -1,12 +1,11 @@
 [package]
-name = "vulkandump"
+name = "dump-lib"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 failure = ">= 0.1.2"
-vulkano = "^ 0.11"
-vulkano-win = "^ 0.11"
-vulkano_text = "^ 0.9"
-winit = "^ 0.18"
+humansize = ">= 1.0.1"
+structopt = ">= 0.2"
+lib = { path = "../../libs/lib" }

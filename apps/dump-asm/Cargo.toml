@@ -1,11 +1,11 @@
 [package]
-name = "unlib"
+name = "dump-asm"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 failure = ">= 0.1.2"
-humansize = ">= 1.0.1"
+simplelog = ">= 0.5.0"
 structopt = ">= 0.2"
-lib = { path = "../../libs/lib" }
+i386 = { path = "../../libs/i386" }
