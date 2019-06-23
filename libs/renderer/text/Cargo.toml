@@ -23,5 +23,5 @@ pic = { path = "../../../libs/pic" }
 window = { path = "../../../libs/window" }
 
 [dev-dependencies]
-simplelog = "^0.5.0"
+simplelog = "^ 0.5"
 omnilib = { path = "../../../libs/omnilib" }
