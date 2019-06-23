@@ -6,8 +6,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 bitflags = ">= 1.0"
-failure = ">= 0.1.2"
-image = ">= 0.18"
+failure = "^ 0.1.2"
+image = "^ 0.21"
 lazy_static = ">= 1"
 log = ">= 0.4"
 nalgebra = "^ 0.18"
@@ -29,6 +29,6 @@ t2 = { path = "../../libs/t2" }
 window = { path = "../window" }
 
 [dev-dependencies]
-simplelog = "^0.5.0"
+simplelog = "^ 0.5"
 omnilib = { path = "../../libs/omnilib" }
 xt = { path = "../../libs/xt" }

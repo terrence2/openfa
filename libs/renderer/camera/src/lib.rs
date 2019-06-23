@@ -20,6 +20,8 @@ pub use arc_ball_camera::ArcBallCamera;
 pub trait CameraAbstract {
     fn view_matrix(&self) -> Matrix4<f32>;
     fn projection_matrix(&self) -> Matrix4<f32>;
+    fn inverted_projection_matrix(&self) -> Matrix4<f32>;
+    fn inverted_view_matrix(&self) -> Matrix4<f32>;
 }
 
 pub struct IdentityCamera;
@@ -30,6 +32,14 @@ impl CameraAbstract for IdentityCamera {
     }
 
     fn projection_matrix(&self) -> Matrix4<f32> {
+        Matrix4::identity()
+    }
+
+    fn inverted_projection_matrix(&self) -> Matrix4<f32> {
+        Matrix4::identity()
+    }
+
+    fn inverted_view_matrix(&self) -> Matrix4<f32> {
         Matrix4::identity()
     }
 }

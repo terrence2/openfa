@@ -1,13 +1,13 @@
 [package]
-name = "shape"
+name = "starbox"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+approx = "^ 0.3"
 bitflags = ">= 1.0"
 failure = "^ 0.1.2"
-image = "^ 0.21"
 lazy_static = ">= 1"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
@@ -15,15 +15,6 @@ vulkano = "^ 0.11.1"
 vulkano-shaders = "^ 0.11.1"
 vulkano-win = "^ 0.11.1"
 winit = "^ 0.18"
-animate = { path = "../../animate" }
 camera = { path = "../camera" }
-i386 = { path = "../../i386" }
-lib = { path = "../../lib" }
-pal = { path = "../../pal" }
-pic = { path = "../../pic" }
-sh = { path = "../../sh" }
+stars = { path = "../../stars" }
 window = { path = "../../window" }
-
-[dev-dependencies]
-simplelog = "^ 0.5"
-omnilib = { path = "../../omnilib" }

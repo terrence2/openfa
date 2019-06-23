@@ -6,8 +6,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 clap = ">= 2.29"
-failure = ">= 0.1"
-image = ">= 0.18"
+failure = "^ 0.1.2"
+image = "^ 0.21"
 packed_struct = { path = "../packed_struct" }
 pal = { path = "../pal" }
 

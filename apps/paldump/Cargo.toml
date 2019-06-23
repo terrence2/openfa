@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 failure = ">= 0.1"
-image = ">= 0.18"
+image = "^ 0.21"
 structopt = ">= 0.2"
 pal = { path = "../../libs/pal" }
 omnilib = { path = "../../libs/omnilib" }

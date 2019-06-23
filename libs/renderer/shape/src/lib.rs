@@ -1622,7 +1622,6 @@ mod test {
                     .toggle_gear(&Instant::now());
                 sh_renderer.animate(&Instant::now())?;
 
-                //window.drive_frame(&camera)?;
                 {
                     let frame = window.begin_frame()?;
                     if !frame.is_valid() {
