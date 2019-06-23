@@ -96,9 +96,9 @@ mod fs {
 
             vec3 ra_d_to_v(float ra, float dec) {
                 return vec3(
-                    -cos(dec) * sin(ra),
-                    sin(dec),
-                    -cos(dec) * cos(ra)
+                    cos(dec) * sin(ra),
+                    -sin(dec),
+                    cos(dec) * cos(ra)
                 );
             }
 
@@ -420,7 +420,7 @@ impl StarboxRenderer {
     }
 
     fn ra_d_to_vec(ra: f32, dec: f32) -> Vector3<f32> {
-        Vector3::new(-dec.cos() * ra.sin(), dec.sin(), -dec.cos() * ra.cos())
+        Vector3::new(dec.cos() * ra.sin(), -dec.sin(), dec.cos() * ra.cos())
     }
 
     fn vec_to_ra_d(v: &Vector3<f32>) -> (f32, f32) {
@@ -462,25 +462,21 @@ impl StarboxRenderer {
             offset += band.bins_per_row;
         }
 
-        const MAG: f32 = 6.5;
-
         let mut star_buf = Vec::new();
         let stars = Stars::new()?;
         for i in 0..stars.catalog_size() {
             let entry = stars.entry(i)?;
-            if entry.magnitude() <= MAG {
-                let ra = entry.right_ascension() as f32;
-                let dec = entry.declination() as f32;
-                let color = entry.color();
-                let radius = RADIUS * entry.radius_scale();
-                let star = fs::ty::StarInst {
-                    ra,
-                    dec,
-                    color,
-                    radius,
-                };
-                star_buf.push(star);
-            }
+            let ra = entry.right_ascension() as f32;
+            let dec = entry.declination() as f32;
+            let color = entry.color();
+            let radius = RADIUS * entry.radius_scale();
+            let star = fs::ty::StarInst {
+                ra,
+                dec,
+                color,
+                radius,
+            };
+            star_buf.push(star);
         }
 
         // Bin all stars.
