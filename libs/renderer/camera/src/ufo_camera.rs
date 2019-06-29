@@ -15,7 +15,8 @@
 use crate::CameraAbstract;
 use log::trace;
 use nalgebra::{
-    Isometry3, Matrix4, Perspective3, Point3, Translation3, Unit, UnitQuaternion, Vector3,
+    Isometry3, Matrix4, Perspective3, Point3, Similarity3, Translation, Translation3, Unit,
+    UnitQuaternion, Vector2, Vector3,
 };
 use std::f64::consts::PI;
 
@@ -27,7 +28,10 @@ pub struct UfoCamera {
     znear: f64,
     zfar: f64,
 
+    pub speed: f64,
+    pub sensitivity: f64,
     move_vector: Vector3<f64>,
+    rot_vector: Vector3<f64>,
 }
 
 impl UfoCamera {
@@ -47,12 +51,72 @@ impl UfoCamera {
             zfar,
             //            in_rotate: false,
             //            in_move: false,
-            move_vector: Vector3::new(0f64, 0f64, 0f64),
+            speed: 1.0,
+            sensitivity: 0.2,
+            move_vector: nalgebra::zero(),
+            rot_vector: nalgebra::zero(),
         }
+    }
+
+    pub fn set_position(&mut self, x: f64, y: f64, z: f64) {
+        self.position = Translation3::new(x, y, z);
     }
 
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f64) {
         self.projection = Perspective3::new(1f64 / aspect_ratio, self.fovy, self.znear, self.zfar)
+    }
+
+    pub fn think(&mut self) {
+        let forward = self.rotation * Vector3::new(0.0, 0.0, 1.0);
+        let right = self.rotation * Vector3::new(1.0, 0.0, 0.0);
+        let up = self.rotation * Vector3::new(0.0, -1.0, 0.0);
+
+        let pitch_rot = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(right),
+            self.rot_vector.y * self.sensitivity * PI / 180.0,
+        );
+        let yaw_rot = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(up),
+            self.rot_vector.x * self.sensitivity * PI / 180.0,
+        );
+        let roll_rot = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(forward),
+            self.rot_vector.z / 50.0,
+        );
+        self.rot_vector.x = 0.0;
+        self.rot_vector.y = 0.0;
+
+        self.rotation = yaw_rot * self.rotation;
+        self.rotation = pitch_rot * self.rotation;
+        self.rotation = roll_rot * self.rotation;
+
+        if self.move_vector.norm_squared() > 0.0 {
+            let mv = (self.rotation * self.move_vector.normalize()) * self.speed;
+            self.position.x += mv.x;
+            self.position.y += mv.y;
+            self.position.z += mv.z;
+        }
+    }
+
+    pub fn on_mousemove(&mut self, x: f64, y: f64) {
+        self.rot_vector.x = x;
+        self.rot_vector.y = y;
+    }
+
+    pub fn plus_rotate_right(&mut self) {
+        self.rot_vector.z = 1.0;
+    }
+
+    pub fn minus_rotate_right(&mut self) {
+        self.rot_vector.z = 0.0;
+    }
+
+    pub fn plus_rotate_left(&mut self) {
+        self.rot_vector.z = -1.0;
+    }
+
+    pub fn minus_rotate_left(&mut self) {
+        self.rot_vector.z = 0.0;
     }
 
     pub fn plus_move_up(&mut self) {
@@ -88,6 +152,7 @@ impl UfoCamera {
     }
 
     pub fn plus_move_forward(&mut self) {
+        // n.b. flipped depth
         self.move_vector.z = -1f64;
     }
 
@@ -106,8 +171,8 @@ impl UfoCamera {
 
 impl CameraAbstract for UfoCamera {
     fn view_matrix(&self) -> Matrix4<f32> {
-        let iso = Isometry3::from_parts(self.position.clone(), self.rotation.clone());
-        nalgebra::convert(iso.to_homogeneous())
+        let simi = Similarity3::from_parts(self.position.clone(), self.rotation.clone(), 1.0);
+        nalgebra::convert(simi.inverse().to_homogeneous())
     }
 
     fn projection_matrix(&self) -> Matrix4<f32> {
@@ -119,7 +184,72 @@ impl CameraAbstract for UfoCamera {
     }
 
     fn inverted_view_matrix(&self) -> Matrix4<f32> {
-        let iso = Isometry3::from_parts(self.position.clone(), self.rotation.clone());
-        nalgebra::convert(iso.inverse().to_homogeneous())
+        let simi = Similarity3::from_parts(self.position.clone(), self.rotation.clone(), 1.0);
+        nalgebra::convert(simi.to_homogeneous())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn test_move() {
+        let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
+        camera.plus_move_right();
+        camera.think();
+        assert_relative_eq!(camera.position.x, camera.speed);
+        camera.minus_move_right();
+        camera.plus_move_left();
+        camera.think();
+        camera.think();
+        assert_relative_eq!(camera.position.x, -camera.speed);
+        assert_relative_eq!(camera.position.y, 0.0);
+        assert_relative_eq!(camera.position.z, 0.0);
+    }
+
+    #[test]
+    fn test_rotate() {
+        let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
+        camera.sensitivity = 1.0;
+        camera.rot_vector.x = 90.0;
+        camera.think();
+        camera.plus_move_right();
+        camera.think();
+        assert_relative_eq!(camera.position.z, -1.0);
+
+        let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
+        camera.sensitivity = 1.0;
+        camera.rot_vector.x = -45.0;
+        camera.think();
+        camera.plus_move_right();
+        camera.think();
+        assert_relative_eq!(camera.position.x, 2f64.sqrt() / 2.0);
+        assert_relative_eq!(camera.position.z, 2f64.sqrt() / 2.0);
+        camera.minus_move_right();
+        camera.plus_move_up();
+        camera.think();
+        assert_relative_eq!(camera.position.x, 2f64.sqrt() / 2.0);
+        assert_relative_eq!(camera.position.y, -1.0);
+        assert_relative_eq!(camera.position.z, 2f64.sqrt() / 2.0);
+
+        let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
+        camera.sensitivity = 1.0;
+        camera.rot_vector.y = 45.0;
+        camera.think();
+        camera.plus_move_up();
+        camera.think();
+        assert_relative_eq!(camera.position.y, -2f64.sqrt() / 2.0);
+        assert_relative_eq!(camera.position.z, 2f64.sqrt() / 2.0);
+
+        let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
+        camera.sensitivity = 1.0;
+        camera.rot_vector.x = 45.0;
+        camera.think();
+        camera.plus_move_right();
+        camera.think();
+        assert_relative_eq!(camera.position.x, 2f64.sqrt() / 2.0);
+        assert_relative_eq!(camera.position.z, -2f64.sqrt() / 2.0);
     }
 }

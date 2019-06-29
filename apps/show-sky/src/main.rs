@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::ArcBallCamera;
+use camera::UfoCamera;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
 use log::trace;
@@ -21,9 +21,11 @@ use pal::Palette;
 use sh::RawShape;
 use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
+use sky::SkyRenderer;
 use starbox::StarboxRenderer;
 use std::{rc::Rc, time::Instant};
 use structopt::StructOpt;
+use subocean::SubOceanRenderer;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
@@ -47,8 +49,14 @@ fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
-        .bind("+pan-view", "mouse1")?
-        .bind("+move-view", "mouse3")?
+        .bind("+rotate-right", "c")?
+        .bind("+rotate-left", "z")?
+        .bind("+move-left", "a")?
+        .bind("+move-right", "d")?
+        .bind("+move-forward", "w")?
+        .bind("+move-backward", "s")?
+        .bind("+move-up", "space")?
+        .bind("+move-down", "Control")?
         .bind("exit", "Escape")?
         .bind("exit", "q")?
         .bind("consume-sam", "PageUp")?
@@ -59,12 +67,6 @@ fn main() -> Fallible<()> {
         .bind("toggle-bay", "o")?
         .bind("toggle-player-dead", "k")?
         .bind("bump-eject-state", "e")?
-        .bind("+stick-left", "a")?
-        .bind("+stick-right", "d")?
-        .bind("+rudder-left", "z")?
-        .bind("+rudder-right", "c")?
-        .bind("+stick-forward", "w")?
-        .bind("+stick-backward", "s")?
         .bind("+vector-thrust-forward", "shift+w")?
         .bind("+vector-thrust-backward", "shift+s")?
         .bind("+increase-wing-sweep", "Period")?
@@ -80,6 +82,8 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
     let mut starbox_renderer = StarboxRenderer::new(&window)?;
+    let mut sky_renderer = SkyRenderer::new(&window)?;
+    let mut subocean_renderer = SubOceanRenderer::new(&window)?;
 
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
@@ -106,8 +110,8 @@ fn main() -> Fallible<()> {
         &window,
     )?;
 
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
-    camera.set_distance(40f32);
+    let mut camera = UfoCamera::new(window.aspect_ratio()? as f64, 0.1f64, 3.4e+38f64);
+    //camera.set_position(6_378.0001, 0.0, 0.0);
 
     loop {
         let loop_start = Instant::now();
@@ -116,21 +120,35 @@ fn main() -> Fallible<()> {
             match command.name.as_str() {
                 "window-resize" => {
                     window.note_resize();
-                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                    camera.set_aspect_ratio(window.aspect_ratio()? as f64);
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "mouse-move" => camera.on_mousemove(
-                    command.displacement()?.0 as f32,
-                    command.displacement()?.1 as f32,
-                ),
-                "mouse-wheel" => camera.on_mousescroll(
-                    command.displacement()?.0 as f32,
-                    command.displacement()?.1 as f32,
-                ),
-                "+pan-view" => camera.on_mousebutton_down(1),
-                "-pan-view" => camera.on_mousebutton_up(1),
-                "+move-view" => camera.on_mousebutton_down(3),
-                "-move-view" => camera.on_mousebutton_up(3),
+                "mouse-move" => {
+                    camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                }
+                "mouse-wheel" => {
+                    if command.displacement()?.1 > 0.0 {
+                        camera.speed *= 0.8;
+                    } else {
+                        camera.speed *= 1.2;
+                    }
+                }
+                "+rotate-right" => camera.plus_rotate_right(),
+                "-rotate-right" => camera.minus_rotate_right(),
+                "+rotate-left" => camera.plus_rotate_left(),
+                "-rotate-left" => camera.minus_rotate_left(),
+                "+move-up" => camera.plus_move_up(),
+                "-move-up" => camera.minus_move_up(),
+                "+move-down" => camera.plus_move_down(),
+                "-move-down" => camera.minus_move_down(),
+                "+move-left" => camera.plus_move_left(),
+                "-move-left" => camera.minus_move_left(),
+                "+move-right" => camera.plus_move_right(),
+                "-move-right" => camera.minus_move_right(),
+                "+move-backward" => camera.plus_move_backward(),
+                "-move-backward" => camera.minus_move_backward(),
+                "+move-forward" => camera.plus_move_forward(),
+                "-move-forward" => camera.minus_move_forward(),
                 "+rudder-left" => instance.draw_state().borrow_mut().move_rudder_left(),
                 "-rudder-left" => instance.draw_state().borrow_mut().move_rudder_center(),
                 "+rudder-right" => instance.draw_state().borrow_mut().move_rudder_right(),
@@ -176,6 +194,7 @@ fn main() -> Fallible<()> {
         }
 
         sh_renderer.animate(&loop_start)?;
+        camera.think();
 
         {
             let frame = window.begin_frame()?;
@@ -183,7 +202,9 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
+            subocean_renderer.before_frame(&camera)?;
             starbox_renderer.before_frame(&camera)?;
+            sky_renderer.before_frame(&camera)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -200,7 +221,9 @@ fn main() -> Fallible<()> {
             )?;
 
             cbb = starbox_renderer.render(cbb, &window.dynamic_state)?;
+            //cbb = sky_renderer.render(cbb, &window.dynamic_state)?;
             cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
+            cbb = subocean_renderer.render(cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;
@@ -222,8 +245,8 @@ fn main() -> Fallible<()> {
         fps_handle.set_span(&ts, &window)?;
 
         let params = format!(
-            "dist: {}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
-            camera.get_distance(),
+            "speed: {:.3}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
+            camera.speed,
             !instance.draw_state().borrow().gear_retracted(),
             instance.draw_state().borrow().gear_position(),
             instance.draw_state().borrow().flaps_down(),

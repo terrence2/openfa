@@ -18,6 +18,7 @@ members = [
         "apps/show-dlg",
         "apps/show-sh",
         "apps/show-sh-raw",
+        "apps/show-sky",
 
         "libs/animate",
         "libs/ansi",

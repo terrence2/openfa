@@ -54,6 +54,10 @@ impl ArcBallCamera {
         self.distance = distance;
     }
 
+    pub fn set_target(&mut self, x: f32, y: f32, z: f32) {
+        self.target = Point3::new(x, y, z);
+    }
+
     pub fn set_angle(&mut self, pitch: f32, yaw: f32) {
         self.pitch = pitch;
         self.yaw = yaw;
