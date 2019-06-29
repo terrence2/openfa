@@ -15,7 +15,10 @@
 use nalgebra::Matrix4;
 
 mod arc_ball_camera;
+mod ufo_camera;
+
 pub use arc_ball_camera::ArcBallCamera;
+pub use ufo_camera::UfoCamera;
 
 pub trait CameraAbstract {
     fn view_matrix(&self) -> Matrix4<f32>;

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::ArcBallCamera;
+use camera::{ArcBallCamera, UfoCamera};
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
 use log::trace;
@@ -21,9 +21,11 @@ use pal::Palette;
 use sh::RawShape;
 use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
+use sky::SkyRenderer;
 use starbox::StarboxRenderer;
 use std::{rc::Rc, time::Instant};
 use structopt::StructOpt;
+use subocean::SubOceanRenderer;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
@@ -80,6 +82,8 @@ fn main() -> Fallible<()> {
     let mut sh_renderer = ShRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
     let mut starbox_renderer = StarboxRenderer::new(&window)?;
+    let mut sky_renderer = SkyRenderer::new(&window)?;
+    let mut subocean_renderer = SubOceanRenderer::new(&window)?;
 
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
@@ -108,6 +112,7 @@ fn main() -> Fallible<()> {
 
     //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
+    // let mut camera = UfoCamera::new(window.aspect_ratio()? as f64, 0.1f64, 3.4e+38f64);
     camera.set_distance(40f32);
 
     loop {
@@ -184,7 +189,9 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
+            subocean_renderer.before_frame(&camera)?;
             starbox_renderer.before_frame(&camera)?;
+            sky_renderer.before_frame(&camera)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -201,7 +208,9 @@ fn main() -> Fallible<()> {
             )?;
 
             cbb = starbox_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = sky_renderer.render(cbb, &window.dynamic_state)?;
             cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
+            cbb = subocean_renderer.render(cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;
