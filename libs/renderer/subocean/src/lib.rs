@@ -56,7 +56,7 @@ mod vs {
     }
 }
 
-const RADIUS: f32 = 6_378f32; // km
+const RADIUS: f32 = 6_378_000f32; // km
 
 mod fs {
     use vulkano_shaders::shader;
@@ -69,7 +69,7 @@ mod fs {
             layout(location = 0) out vec4 f_color;
 
             void main() {
-                f_color = vec4(1.0, 1.0, 1.0, 1.0);
+                f_color = vec4(0.0, 0.0, 0.05, 1.0);
             }
             "
     }

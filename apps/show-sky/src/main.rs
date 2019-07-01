@@ -16,6 +16,7 @@ use camera::UfoCamera;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
 use log::trace;
+use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
@@ -23,7 +24,7 @@ use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use sky::SkyRenderer;
 use starbox::StarboxRenderer;
-use std::{rc::Rc, time::Instant};
+use std::{f64::consts::PI, rc::Rc, time::Instant};
 use structopt::StructOpt;
 use subocean::SubOceanRenderer;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
@@ -111,7 +112,8 @@ fn main() -> Fallible<()> {
     )?;
 
     let mut camera = UfoCamera::new(window.aspect_ratio()? as f64, 0.1f64, 3.4e+38f64);
-    //camera.set_position(6_378.0001, 0.0, 0.0);
+    camera.set_position(6_378_001.0, 0.0, 0.0);
+    camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
 
     loop {
         let loop_start = Instant::now();
@@ -221,9 +223,9 @@ fn main() -> Fallible<()> {
             )?;
 
             cbb = starbox_renderer.render(cbb, &window.dynamic_state)?;
-            //cbb = sky_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = sky_renderer.render(cbb, &window.dynamic_state)?;
             cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
-            cbb = subocean_renderer.render(cbb, &window.dynamic_state)?;
+            //cbb = subocean_renderer.render(cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;

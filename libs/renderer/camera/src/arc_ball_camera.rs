@@ -144,4 +144,8 @@ impl CameraAbstract for ArcBallCamera {
             .inverse()
             .to_homogeneous()
     }
+
+    fn position(&self) -> Vector3<f32> {
+        self.eye().coords
+    }
 }

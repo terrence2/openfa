@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
+use image::GenericImageView;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use pic::Pic;
@@ -37,6 +38,13 @@ Opt {
         help = "Dump the palette here as a PAL"
     )]
     dump_palette => Option<String>,
+
+    #[structopt(
+        short = "a",
+        long = "ascii",
+        help = "Print the image as ascii"
+    )]
+    show_ascii => bool,
 
     #[structopt(
         short = "b",
@@ -106,6 +114,18 @@ fn main() -> Fallible<()> {
             };
             let image = Pic::decode(&palette, &content)?;
             image.save(target)?;
+        }
+
+        if opt.show_ascii {
+            let palette = Palette::grayscale()?;
+            let image = Pic::decode(&palette, &content)?;
+            let (width, height) = image.dimensions();
+            for h in 0..height {
+                for w in 0..width {
+                    print!("{:02X} ", image.get_pixel(w, h).data[0]);
+                }
+                println!("");
+            }
         }
     }
 

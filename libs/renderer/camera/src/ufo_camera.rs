@@ -13,20 +13,16 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::CameraAbstract;
-use log::trace;
-use nalgebra::{
-    Isometry3, Matrix4, Perspective3, Point3, Similarity3, Translation, Translation3, Unit,
-    UnitQuaternion, Vector2, Vector3,
-};
+use nalgebra::{Matrix4, Perspective3, Similarity3, Translation3, Unit, UnitQuaternion, Vector3};
 use std::f64::consts::PI;
 
 pub struct UfoCamera {
     position: Translation3<f64>,
     rotation: UnitQuaternion<f64>,
-    fovy: f64,
+    fov_y: f64,
     projection: Perspective3<f64>,
-    znear: f64,
-    zfar: f64,
+    z_near: f64,
+    z_far: f64,
 
     pub speed: f64,
     pub sensitivity: f64,
@@ -35,22 +31,17 @@ pub struct UfoCamera {
 }
 
 impl UfoCamera {
-    pub fn new(aspect_ratio: f64, znear: f64, zfar: f64) -> Self {
+    pub fn new(aspect_ratio: f64, z_near: f64, z_far: f64) -> Self {
         Self {
-            //            distance: 1f32,
-            //            yaw: PI / 2f32,
-            //            pitch: 3f32 * PI / 4f32,
             position: Translation3::new(0f64, 0f64, 0f64),
             rotation: UnitQuaternion::from_axis_angle(
                 &Unit::new_normalize(Vector3::new(0f64, -1f64, 0f64)),
                 0f64,
             ),
-            fovy: PI / 2f64,
-            projection: Perspective3::new(1f64 / aspect_ratio, PI / 2f64, znear, zfar),
-            znear,
-            zfar,
-            //            in_rotate: false,
-            //            in_move: false,
+            fov_y: PI / 2f64,
+            projection: Perspective3::new(1f64 / aspect_ratio, PI / 2f64, z_near, z_far),
+            z_near,
+            z_far,
             speed: 1.0,
             sensitivity: 0.2,
             move_vector: nalgebra::zero(),
@@ -62,8 +53,13 @@ impl UfoCamera {
         self.position = Translation3::new(x, y, z);
     }
 
+    pub fn set_rotation(&mut self, v: &Vector3<f64>, ang: f64) {
+        self.rotation = UnitQuaternion::from_axis_angle(&Unit::new_normalize(*v), ang);
+    }
+
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f64) {
-        self.projection = Perspective3::new(1f64 / aspect_ratio, self.fovy, self.znear, self.zfar)
+        self.projection =
+            Perspective3::new(1f64 / aspect_ratio, self.fov_y, self.z_near, self.z_far)
     }
 
     pub fn think(&mut self) {
@@ -186,6 +182,10 @@ impl CameraAbstract for UfoCamera {
     fn inverted_view_matrix(&self) -> Matrix4<f32> {
         let simi = Similarity3::from_parts(self.position.clone(), self.rotation.clone(), 1.0);
         nalgebra::convert(simi.to_homogeneous())
+    }
+
+    fn position(&self) -> Vector3<f32> {
+        nalgebra::convert(self.position.vector)
     }
 }
 

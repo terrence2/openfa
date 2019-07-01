@@ -50,9 +50,11 @@ mod vs {
             layout(push_constant) uniform PushConstantData {
               mat4 inverse_projection;
               mat4 inverse_view;
+              vec4 eye_position;
             } pc;
 
             layout(location = 0) out vec3 v_ray;
+            layout(location = 1) out flat vec3 fl_eye;
 
             void main() {
                 vec4 reverse_vec;
@@ -66,10 +68,13 @@ mod vs {
                 reverse_vec = pc.inverse_view * reverse_vec;
 
                 v_ray = vec3(reverse_vec);
+                fl_eye = pc.eye_position.xyz;
                 gl_Position = vec4(position.xy, 0.0, 1.0);
             }"
     }
 }
+
+const RADIUS: f32 = 6_378f32; // km
 
 mod fs {
     use vulkano_shaders::shader;
@@ -83,14 +88,82 @@ mod fs {
             #define PI 3.1415926538
             #define PI_2 (PI / 2.0)
             #define TAU (PI * 2.0)
-            #define RADIUS (0.001 * 5.0)
+            #define RADIUS 6378.0
 
             layout(location = 0) in vec3 v_ray;
+            layout(location = 1) in vec3 fl_eye;
 
             layout(location = 0) out vec4 f_color;
 
+            float density(float h) {
+                float a0 =  7.001985e-2;
+                float a1 = -4.336216e-3;
+                float a2 = -5.009831e-3;
+                float a3 =  1.621827e-4;
+                float a4 = -2.471283e-6;
+                float a5 =  1.904383e-8;
+                float a6 = -7.189421e-11;
+                float a7 =  1.060067e-13;
+                float exponent = ((((((a7*h + a6)*h + a5)*h + a4)*h + a3)*h + a2)*h + a1)*h + a0;
+                return pow(10, exponent);
+            }
+
+            // Assumption: sphere is centered
+            bool ray_sphere_intersect(
+                vec3 ray_origin,
+                vec3 ray_direction,
+                float sphere_radius,
+                out vec3 intersect,
+                out bool inside
+            )
+            {
+                vec3 sphere_to_ray = ray_origin;
+                float a = dot(ray_direction, ray_direction);
+                float b = 2.0 * dot(sphere_to_ray, ray_direction);
+                float r2 = sphere_radius * sphere_radius;
+                float c = dot(sphere_to_ray, sphere_to_ray) - r2;
+                float discriminant = b * b - 4 * a * c;
+                if (discriminant < 0) {
+                    return false;
+                }
+                float t0 = (-b - sqrt(discriminant)) / (2.0 * a);
+                float t1 = (-b + sqrt(discriminant)) / (2.0 * a);
+                if (t0 < 0 && t1 < 0) {
+                    return false;
+                }
+                if (t0 < 0 && t1 > 0) {
+                    inside = true;
+                    intersect = ray_origin + t1 * ray_direction;
+                } else {
+                    inside = false;
+                    intersect = ray_origin + t0 * ray_direction;
+                }
+                return true;
+            }
+
             void main() {
-                f_color = vec4(v_ray, 1.0);
+                vec3 ray = normalize(v_ray);
+                vec3 intersect;
+                bool under_water;
+                bool collide = ray_sphere_intersect(
+                    fl_eye,
+                    ray,
+                    RADIUS,
+                    intersect,
+                    under_water
+                );
+                if (collide) {
+                    vec3 water = normalize(intersect);
+                    if (under_water) {
+                        float dist = length(intersect - fl_eye);
+                        f_color = vec4(water / (dist * 10), 1.0);
+                    } else {
+                        f_color = vec4(water, 1.0);
+                    }
+                } else {
+                    // Spaaaaace!
+                    f_color = vec4(0.0, 0.0, 0.0, 1.0);
+                }
             }
             "
     }
@@ -111,6 +184,7 @@ impl vs::ty::PushConstantData {
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
             ],
+            eye_position: [0f32, 0f32, 0f32, 0f32],
         }
     }
 
@@ -150,6 +224,13 @@ impl vs::ty::PushConstantData {
         self.inverse_view[3][1] = mat[13];
         self.inverse_view[3][2] = mat[14];
         self.inverse_view[3][3] = mat[15];
+    }
+
+    fn set_eye_position(&mut self, v: Vector3<f32>) {
+        self.eye_position[0] = v[0];
+        self.eye_position[1] = v[1];
+        self.eye_position[2] = v[2];
+        self.eye_position[3] = 1f32;
     }
 }
 
@@ -251,6 +332,8 @@ impl SkyRenderer {
             .set_inverse_projection(camera.inverted_projection_matrix());
         self.push_constants
             .set_inverse_view(camera.inverted_view_matrix());
+        self.push_constants
+            .set_eye_position(camera.position() / 1000f32);
         Ok(())
     }
 
