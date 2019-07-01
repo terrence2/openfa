@@ -56,7 +56,7 @@ fn main() -> Fallible<()> {
             if family.supports_compute() {
                 features.push("compute");
             }
-            if family.supports_transfers() {
+            if family.explicitly_supports_transfers() {
                 features.push("transfers");
             }
             if family.supports_sparse_binding() {

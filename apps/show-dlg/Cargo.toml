@@ -9,10 +9,10 @@ failure = "^ 0.1.2"
 log = "^ 0.4"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-vulkano = "^ 0.11.1"
-vulkano-shaders = "^ 0.11.1"
-vulkano-win = "^ 0.11.1"
-winit = "^ 0.18"
+vulkano = "^ 0.12"
+vulkano-shaders = "^ 0.12"
+vulkano-win = "^ 0.12"
+winit = "^ 0.19"
 camera = { path = "../../libs/renderer/camera" }
 dlg = { path = "../../libs/dlg" }
 input = { path = "../../libs/input" }
