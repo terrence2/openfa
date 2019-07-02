@@ -50,6 +50,7 @@ fn main() -> Fallible<()> {
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
+        .bind("+enter-move-sun", "mouse1")?
         .bind("+rotate-right", "c")?
         .bind("+rotate-left", "z")?
         .bind("+move-left", "a")?
@@ -115,6 +116,9 @@ fn main() -> Fallible<()> {
     camera.set_position(6_378_001.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
 
+    let mut in_sun_move = false;
+    let mut sun_angle = 0.0;
+
     loop {
         let loop_start = Instant::now();
 
@@ -125,8 +129,14 @@ fn main() -> Fallible<()> {
                     camera.set_aspect_ratio(window.aspect_ratio()? as f64);
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
+                "+enter-move-sun" => in_sun_move = true,
+                "-enter-move-sun" => in_sun_move = false,
                 "mouse-move" => {
-                    camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                    if in_sun_move {
+                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
+                    } else {
+                        camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                    }
                 }
                 "mouse-wheel" => {
                     if command.displacement()?.1 > 0.0 {
@@ -206,7 +216,8 @@ fn main() -> Fallible<()> {
 
             subocean_renderer.before_frame(&camera)?;
             starbox_renderer.before_frame(&camera)?;
-            sky_renderer.before_frame(&camera)?;
+            let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+            sky_renderer.before_frame(&camera, &sun_direction)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(

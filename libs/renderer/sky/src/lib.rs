@@ -12,11 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+
+mod earth_consts;
+
 use camera::CameraAbstract;
 use failure::Fallible;
 use log::trace;
 use nalgebra::{Matrix4, Vector3};
-use std::{collections::HashSet, f32::consts::PI, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
@@ -26,9 +29,6 @@ use vulkano::{
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
 };
 use window::GraphicsWindow;
-
-const TAU: f32 = PI * 2f32;
-const PI_2: f32 = PI / 2f32;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -51,10 +51,12 @@ mod vs {
               mat4 inverse_projection;
               mat4 inverse_view;
               vec4 eye_position;
+              vec4 sun_direction;
             } pc;
 
             layout(location = 0) out vec3 v_ray;
-            layout(location = 1) out flat vec3 fl_eye;
+            layout(location = 1) out flat vec3 camera;
+            layout(location = 2) out flat vec3 sun_direction;
 
             void main() {
                 vec4 reverse_vec;
@@ -68,32 +70,39 @@ mod vs {
                 reverse_vec = pc.inverse_view * reverse_vec;
 
                 v_ray = vec3(reverse_vec);
-                fl_eye = pc.eye_position.xyz;
+                camera = pc.eye_position.xyz;
+                sun_direction = pc.sun_direction.xyz;
                 gl_Position = vec4(position.xy, 0.0, 1.0);
             }"
     }
 }
-
-const RADIUS: f32 = 6_378f32; // km
 
 mod fs {
     use vulkano_shaders::shader;
 
     shader! {
     ty: "fragment",
+    include: ["./libs/renderer/sky/src"],
         src: "
             #version 450
+
+            #include \"sky_lib.glsl\"
+
+            layout(location = 0) in vec3 v_ray;
+            layout(location = 1) in vec3 camera;
+            layout(location = 2) in vec3 sun_direction;
+
+            layout(location = 0) out vec4 f_color;
+
+            layout (binding = 0) uniform ConstantData {
+                AtmosphereParameters atmosphere;
+            } cd;
 
             // Constants
             #define PI 3.1415926538
             #define PI_2 (PI / 2.0)
             #define TAU (PI * 2.0)
             #define RADIUS 6378.0
-
-            layout(location = 0) in vec3 v_ray;
-            layout(location = 1) in vec3 fl_eye;
-
-            layout(location = 0) out vec4 f_color;
 
             float density(float h) {
                 float a0 =  7.001985e-2;
@@ -108,62 +117,25 @@ mod fs {
                 return pow(10, exponent);
             }
 
-            // Assumption: sphere is centered
-            bool ray_sphere_intersect(
-                vec3 ray_origin,
-                vec3 ray_direction,
-                float sphere_radius,
-                out vec3 intersect,
-                out bool inside
-            )
-            {
-                vec3 sphere_to_ray = ray_origin;
-                float a = dot(ray_direction, ray_direction);
-                float b = 2.0 * dot(sphere_to_ray, ray_direction);
-                float r2 = sphere_radius * sphere_radius;
-                float c = dot(sphere_to_ray, sphere_to_ray) - r2;
-                float discriminant = b * b - 4 * a * c;
-                if (discriminant < 0) {
-                    return false;
-                }
-                float t0 = (-b - sqrt(discriminant)) / (2.0 * a);
-                float t1 = (-b + sqrt(discriminant)) / (2.0 * a);
-                if (t0 < 0 && t1 < 0) {
-                    return false;
-                }
-                if (t0 < 0 && t1 > 0) {
-                    inside = true;
-                    intersect = ray_origin + t1 * ray_direction;
-                } else {
-                    inside = false;
-                    intersect = ray_origin + t0 * ray_direction;
-                }
-                return true;
-            }
-
             void main() {
-                vec3 ray = normalize(v_ray);
-                vec3 intersect;
-                bool under_water;
-                bool collide = ray_sphere_intersect(
-                    fl_eye,
-                    ray,
-                    RADIUS,
-                    intersect,
-                    under_water
-                );
-                if (collide) {
-                    vec3 water = normalize(intersect);
-                    if (under_water) {
-                        float dist = length(intersect - fl_eye);
-                        f_color = vec4(water / (dist * 10), 1.0);
-                    } else {
-                        f_color = vec4(water, 1.0);
-                    }
-                } else {
-                    // Spaaaaace!
-                    f_color = vec4(0.0, 0.0, 0.0, 1.0);
-                }
+                vec3 view = normalize(v_ray);
+
+                vec3 ground_radiance;
+                float ground_alpha;
+                compute_ground_radiance(camera, view, cd.atmosphere.bottom_radius, ground_radiance, ground_alpha);
+
+                vec3 sky_radiance;
+                compute_sky_radiance(
+                    camera,
+                    view,
+                    sun_direction,
+                    cd.atmosphere.sun_irradiance,
+                    cd.atmosphere.sun_angular_radius,
+                    sky_radiance);
+
+                vec3 radiance = sky_radiance;
+                radiance = mix(radiance, ground_radiance, ground_alpha);
+                f_color = vec4(radiance, 1);
             }
             "
     }
@@ -185,6 +157,7 @@ impl vs::ty::PushConstantData {
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
             ],
             eye_position: [0f32, 0f32, 0f32, 0f32],
+            sun_direction: [1f32, 0f32, 0f32, 0f32],
         }
     }
 
@@ -232,6 +205,13 @@ impl vs::ty::PushConstantData {
         self.eye_position[2] = v[2];
         self.eye_position[3] = 1f32;
     }
+
+    fn set_sun_direction(&mut self, v: &Vector3<f32>) {
+        self.sun_direction[0] = v[0];
+        self.sun_direction[1] = v[1];
+        self.sun_direction[2] = v[2];
+        self.sun_direction[3] = 0f32;
+    }
 }
 
 pub struct SkyRenderer {
@@ -239,7 +219,7 @@ pub struct SkyRenderer {
     push_constants: vs::ty::PushConstantData,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
-    //pds: Arc<dyn DescriptorSet + Send + Sync>,
+    pds: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
 impl SkyRenderer {
@@ -275,7 +255,13 @@ impl SkyRenderer {
                 .build(window.device())?,
         );
 
-        let (vertex_buffer, index_buffer) = Self::build_buffers(window)?;
+        let (vertex_buffer, index_buffer, atmosphere_params_buffer) = Self::build_buffers(window)?;
+
+        let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
+            PersistentDescriptorSet::start(pipeline.clone(), 0)
+                .add_buffer(atmosphere_params_buffer.clone())?
+                .build()?,
+        );
 
         //let pds = Self::upload_stars(pipeline.clone(), window)?;
 
@@ -284,7 +270,7 @@ impl SkyRenderer {
             push_constants: vs::ty::PushConstantData::new(),
             vertex_buffer,
             index_buffer,
-            //pds,
+            pds,
         })
     }
 
@@ -293,6 +279,7 @@ impl SkyRenderer {
     ) -> Fallible<(
         Arc<CpuAccessibleBuffer<[Vertex]>>,
         Arc<CpuAccessibleBuffer<[u32]>>,
+        Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
     )> {
         // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
         let x0 = -1f32;
@@ -324,16 +311,28 @@ impl SkyRenderer {
             indices.into_iter(),
         )?;
 
-        Ok((vertex_buffer, index_buffer))
+        // Planet properties.
+        let atmosphere_params_buffer = CpuAccessibleBuffer::from_data(
+            window.device(),
+            BufferUsage::all(),
+            fs::ty::AtmosphereParameters::earth(),
+        )?;
+
+        Ok((vertex_buffer, index_buffer, atmosphere_params_buffer))
     }
 
-    pub fn before_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
+    pub fn before_frame(
+        &mut self,
+        camera: &CameraAbstract,
+        sun_direction: &Vector3<f32>,
+    ) -> Fallible<()> {
         self.push_constants
             .set_inverse_projection(camera.inverted_projection_matrix());
         self.push_constants
             .set_inverse_view(camera.inverted_view_matrix());
         self.push_constants
             .set_eye_position(camera.position() / 1000f32);
+        self.push_constants.set_sun_direction(sun_direction);
         Ok(())
     }
 
@@ -348,7 +347,7 @@ impl SkyRenderer {
             dynamic_state,
             vec![self.vertex_buffer.clone()],
             self.index_buffer.clone(),
-            (), //self.pds.clone(),
+            self.pds.clone(),
             self.push_constants,
         )?;
 
@@ -358,7 +357,8 @@ impl SkyRenderer {
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_relative_eq;
+
     use super::SkyRenderer as SR;
     use super::*;
-    use approx::assert_relative_eq;
 }
