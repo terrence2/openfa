@@ -10,3 +10,4 @@ apps/**/test_data/
 **/*.rs.bk
 dump/
 test_data/
+research/
