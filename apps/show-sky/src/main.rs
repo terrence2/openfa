@@ -51,6 +51,8 @@ fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
         .bind("+enter-move-sun", "mouse1")?
+        .bind("zoom-in", "Equals")?
+        .bind("zoom-out", "Subtract")?
         .bind("+rotate-right", "c")?
         .bind("+rotate-left", "z")?
         .bind("+move-left", "a")?
@@ -115,6 +117,7 @@ fn main() -> Fallible<()> {
     let mut camera = UfoCamera::new(window.aspect_ratio()? as f64, 0.1f64, 3.4e+38f64);
     camera.set_position(6_378_001.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
+    camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
 
     let mut in_sun_move = false;
     let mut sun_angle = 0.0;
@@ -145,6 +148,8 @@ fn main() -> Fallible<()> {
                         camera.speed *= 1.2;
                     }
                 }
+                "zoom-in" => camera.zoom_in(),
+                "zoom-out" => camera.zoom_out(),
                 "+rotate-right" => camera.plus_rotate_right(),
                 "-rotate-right" => camera.minus_rotate_right(),
                 "+rotate-left" => camera.plus_rotate_left(),
@@ -271,5 +276,7 @@ fn main() -> Fallible<()> {
             instance.draw_state().borrow().wing_sweep_angle(),
         );
         state_handle.set_span(&params, &window)?;
+
+        break Ok(());
     }
 }

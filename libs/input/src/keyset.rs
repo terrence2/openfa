@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, Fallible};
+use failure::{bail, ensure, Fallible};
 use lazy_static::lazy_static;
 use log::warn;
 use smallvec::SmallVec;
@@ -255,6 +255,7 @@ impl KeySet {
                 warn!("unknown key name: {}", keyname);
             }
         }
+        ensure!(!out.is_empty(), "no key matching {}", keyset);
         Ok(out.drain(..).map(|v| Self { keys: v }).collect::<Vec<_>>())
     }
 

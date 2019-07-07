@@ -20,6 +20,7 @@ pub struct UfoCamera {
     position: Translation3<f64>,
     rotation: UnitQuaternion<f64>,
     fov_y: f64,
+    aspect_ratio: f64,
     projection: Perspective3<f64>,
     z_near: f64,
     z_far: f64,
@@ -39,6 +40,7 @@ impl UfoCamera {
                 0f64,
             ),
             fov_y: PI / 2f64,
+            aspect_ratio,
             projection: Perspective3::new(1f64 / aspect_ratio, PI / 2f64, z_near, z_far),
             z_near,
             z_far,
@@ -57,9 +59,37 @@ impl UfoCamera {
         self.rotation = UnitQuaternion::from_axis_angle(&Unit::new_normalize(*v), ang);
     }
 
+    pub fn apply_rotation(&mut self, v: &Vector3<f64>, ang: f64) {
+        let quat = UnitQuaternion::from_axis_angle(&Unit::new_normalize(*v), ang);
+        self.rotation *= quat;
+    }
+
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f64) {
+        self.aspect_ratio = aspect_ratio;
         self.projection =
             Perspective3::new(1f64 / aspect_ratio, self.fov_y, self.z_near, self.z_far)
+    }
+
+    pub fn zoom_in(&mut self) {
+        self.fov_y -= 5.0 * PI / 180.0;
+        self.fov_y = self.fov_y.min(10.0 * PI / 180.0);
+        self.projection = Perspective3::new(
+            1f64 / self.aspect_ratio,
+            self.fov_y,
+            self.z_near,
+            self.z_far,
+        )
+    }
+
+    pub fn zoom_out(&mut self) {
+        self.fov_y += 5.0 * PI / 180.0;
+        self.fov_y = self.fov_y.max(90.0 * PI / 180.0);
+        self.projection = Perspective3::new(
+            1f64 / self.aspect_ratio,
+            self.fov_y,
+            self.z_near,
+            self.z_far,
+        )
     }
 
     pub fn think(&mut self) {

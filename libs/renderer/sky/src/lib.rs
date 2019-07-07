@@ -13,22 +13,41 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
+mod colorspace;
 mod earth_consts;
+mod precompute;
 
+use crate::{
+    colorspace::{
+        cie_color_coefficient_at_wavelength, convert_xyz_to_srgb, wavelength_to_srgb, MAX_LAMBDA,
+        MIN_LAMBDA,
+    },
+    earth_consts::{EarthParameters, RGB_LAMBDAS},
+    precompute::Precompute,
+};
 use camera::CameraAbstract;
 use failure::Fallible;
+use image::{ImageBuffer, Rgba};
 use log::trace;
-use nalgebra::{Matrix4, Vector3};
+use nalgebra::{Matrix3, Matrix4, Vector3};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
+    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
+    device::Device,
+    format::Format,
     framebuffer::Subpass,
+    image::{Dimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount, StorageImage},
     impl_vertex,
-    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
+    pipeline::{ComputePipeline, GraphicsPipeline, GraphicsPipelineAbstract},
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
+    sync::GpuFuture,
 };
 use window::GraphicsWindow;
+
+const NUM_PRECOMPUTED_WAVELENGTHS: usize = 15;
+const NUM_SCATTERING_ORDER: usize = 4;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -38,106 +57,110 @@ pub struct Vertex {
 impl_vertex!(Vertex, position);
 
 mod vs {
-    use vulkano_shaders::shader;
-
-    shader! {
+    vulkano_shaders::shader! {
     ty: "vertex",
-        src: "
-            #version 450
+    src: "
+        #version 450
 
-            layout(location = 0) in vec2 position;
+        layout(location = 0) in vec2 position;
 
-            layout(push_constant) uniform PushConstantData {
-              mat4 inverse_projection;
-              mat4 inverse_view;
-              vec4 eye_position;
-              vec4 sun_direction;
-            } pc;
+        layout(push_constant) uniform PushConstantData {
+          mat4 inverse_projection;
+          mat4 inverse_view;
+          vec4 eye_position;
+          vec4 sun_direction;
+        } pc;
 
-            layout(location = 0) out vec3 v_ray;
-            layout(location = 1) out flat vec3 camera;
-            layout(location = 2) out flat vec3 sun_direction;
+        layout(location = 0) out vec3 v_ray;
+        layout(location = 1) out flat vec3 camera;
+        layout(location = 2) out flat vec3 sun_direction;
 
-            void main() {
-                vec4 reverse_vec;
+        void main() {
+            vec4 reverse_vec;
 
-                // inverse perspective projection
-                reverse_vec = vec4(position, 0.0, 1.0);
-                reverse_vec = pc.inverse_projection * reverse_vec;
+            // inverse perspective projection
+            reverse_vec = vec4(position, 0.0, 1.0);
+            reverse_vec = pc.inverse_projection * reverse_vec;
 
-                // inverse modelview, without translation
-                reverse_vec.w = 0.0;
-                reverse_vec = pc.inverse_view * reverse_vec;
+            // inverse modelview, without translation
+            reverse_vec.w = 0.0;
+            reverse_vec = pc.inverse_view * reverse_vec;
 
-                v_ray = vec3(reverse_vec);
-                camera = pc.eye_position.xyz;
-                sun_direction = pc.sun_direction.xyz;
-                gl_Position = vec4(position.xy, 0.0, 1.0);
-            }"
+            v_ray = vec3(reverse_vec);
+            camera = pc.eye_position.xyz;
+            sun_direction = pc.sun_direction.xyz;
+            gl_Position = vec4(position.xy, 0.0, 1.0);
+        }"
     }
 }
 
 mod fs {
-    use vulkano_shaders::shader;
-
-    shader! {
+    vulkano_shaders::shader! {
     ty: "fragment",
     include: ["./libs/renderer/sky/src"],
-        src: "
-            #version 450
+    src: "
+        #version 450
 
-            #include \"sky_lib.glsl\"
+        #include \"sky_lib.glsl\"
 
-            layout(location = 0) in vec3 v_ray;
-            layout(location = 1) in vec3 camera;
-            layout(location = 2) in vec3 sun_direction;
+        layout(location = 0) in vec3 v_ray;
+        layout(location = 1) in vec3 camera;
+        layout(location = 2) in vec3 sun_direction;
 
-            layout(location = 0) out vec4 f_color;
+        layout(location = 0) out vec4 f_color;
 
-            layout (binding = 0) uniform ConstantData {
-                AtmosphereParameters atmosphere;
-            } cd;
+        layout (binding = 0) uniform ConstantData {
+            AtmosphereParameters atmosphere;
+        } cd;
+//        layout(set = 0, binding = 1) uniform sampler2D transmittance_texture;
+//        layout(set = 0, binding = 2) uniform sampler3D scattering_texture;
+//        layout(set = 0, binding = 3) uniform sampler3D single_mie_scattering_texture;
+//        layout(set = 0, binding = 4) uniform sampler2D irradiance_texture;
 
-            // Constants
-            #define PI 3.1415926538
-            #define PI_2 (PI / 2.0)
-            #define TAU (PI * 2.0)
-            #define RADIUS 6378.0
+        // Constants
+        #define PI 3.1415926538
+        #define PI_2 (PI / 2.0)
+        #define TAU (PI * 2.0)
+        #define RADIUS 6378.0
 
-            float density(float h) {
-                float a0 =  7.001985e-2;
-                float a1 = -4.336216e-3;
-                float a2 = -5.009831e-3;
-                float a3 =  1.621827e-4;
-                float a4 = -2.471283e-6;
-                float a5 =  1.904383e-8;
-                float a6 = -7.189421e-11;
-                float a7 =  1.060067e-13;
-                float exponent = ((((((a7*h + a6)*h + a5)*h + a4)*h + a3)*h + a2)*h + a1)*h + a0;
-                return pow(10, exponent);
-            }
+        float density(float h) {
+            float a0 =  7.001985e-2;
+            float a1 = -4.336216e-3;
+            float a2 = -5.009831e-3;
+            float a3 =  1.621827e-4;
+            float a4 = -2.471283e-6;
+            float a5 =  1.904383e-8;
+            float a6 = -7.189421e-11;
+            float a7 =  1.060067e-13;
+            float exponent = ((((((a7*h + a6)*h + a5)*h + a4)*h + a3)*h + a2)*h + a1)*h + a0;
+            return pow(10, exponent);
+        }
 
-            void main() {
-                vec3 view = normalize(v_ray);
+        void main() {
+            vec3 view = normalize(v_ray);
 
-                vec3 ground_radiance;
-                float ground_alpha;
-                compute_ground_radiance(camera, view, cd.atmosphere.bottom_radius, ground_radiance, ground_alpha);
+            vec3 ground_radiance;
+            float ground_alpha;
+            compute_ground_radiance(camera, view, cd.atmosphere.bottom_radius, ground_radiance, ground_alpha);
 
-                vec3 sky_radiance;
-                compute_sky_radiance(
-                    camera,
-                    view,
-                    sun_direction,
-                    cd.atmosphere.sun_irradiance,
-                    cd.atmosphere.sun_angular_radius,
-                    sky_radiance);
+            vec3 sky_radiance = vec3(0);
+//            compute_sky_radiance(
+//                camera,
+//                view,
+//                sun_direction,
+//                cd.atmosphere.sun_irradiance,
+//                cd.atmosphere.sun_angular_radius,
+//                cd.atmosphere.bottom_radius,
+//                cd.atmosphere.top_radius,
+//                transmittance_texture,
+//                sky_radiance
+//            );
 
-                vec3 radiance = sky_radiance;
-                radiance = mix(radiance, ground_radiance, ground_alpha);
-                f_color = vec4(radiance, 1);
-            }
-            "
+            vec3 radiance = sky_radiance;
+            radiance = mix(radiance, ground_radiance, ground_alpha);
+            f_color = vec4(radiance, 1);
+        }
+        "
     }
 }
 
@@ -226,6 +249,33 @@ impl SkyRenderer {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
         trace!("SkyRenderer::new");
 
+        let precompute = Precompute::new(window)?;
+        precompute.build_textures(NUM_PRECOMPUTED_WAVELENGTHS, NUM_SCATTERING_ORDER, window)?;
+
+        /*
+        let (
+            transmittance_texture,
+            scattering_texture,
+            single_mie_scattering_texture,
+            irradiance_texture,
+        ) = Self::precompute(&earth, window)?;
+
+        let atmosphere_params_buffer = CpuAccessibleBuffer::from_data(
+            window.device(),
+            BufferUsage::all(),
+            earth.sample(RGB_LAMBDAS),
+        )?;
+
+        let transmittance_texture =
+            Self::precompute_transmittance_texture(window, atmosphere_params_buffer.clone())?;
+        let (single_rayleigh_scattering_texture, single_mie_scattering_texture) =
+            Self::precompute_single_scattering_textures(
+                window,
+                atmosphere_params_buffer.clone(),
+                transmittance_texture.clone(),
+            )?;
+        */
+
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;
 
@@ -257,13 +307,16 @@ impl SkyRenderer {
 
         let (vertex_buffer, index_buffer, atmosphere_params_buffer) = Self::build_buffers(window)?;
 
+        let sampler = Self::make_sampler(window.device())?;
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
             PersistentDescriptorSet::start(pipeline.clone(), 0)
                 .add_buffer(atmosphere_params_buffer.clone())?
+                //                .add_sampled_image(transmittance_texture.clone(), sampler.clone())?
+                //                .add_sampled_image(scattering_texture.clone(), sampler.clone())?
+                //                .add_sampled_image(single_mie_scattering_texture.clone(), sampler.clone())?
+                //                .add_sampled_image(irradiance_texture.clone(), sampler.clone())?
                 .build()?,
         );
-
-        //let pds = Self::upload_stars(pipeline.clone(), window)?;
 
         Ok(Self {
             pipeline,
@@ -272,6 +325,24 @@ impl SkyRenderer {
             index_buffer,
             pds,
         })
+    }
+
+    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
+        let sampler = Sampler::new(
+            device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )?;
+
+        Ok(sampler)
     }
 
     pub fn build_buffers(
@@ -312,10 +383,11 @@ impl SkyRenderer {
         )?;
 
         // Planet properties.
+        let earth = EarthParameters::new();
         let atmosphere_params_buffer = CpuAccessibleBuffer::from_data(
             window.device(),
             BufferUsage::all(),
-            fs::ty::AtmosphereParameters::earth(),
+            earth.sample(RGB_LAMBDAS),
         )?;
 
         Ok((vertex_buffer, index_buffer, atmosphere_params_buffer))
