@@ -98,6 +98,27 @@ vec3 compute_transmittance_to_top_atmosphere_boundary(
     return exp(-(rayleigh_depth + mie_depth + ozone_depth));
 }
 
+void compute_transmittance_program(
+    vec2 coord,
+    AtmosphereParameters atmosphere,
+    writeonly image2D transmittance_lambda
+) {
+    const vec2 TEXTURE_SIZE = vec2(TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
+    vec2 uv = coord / TEXTURE_SIZE;
+    vec2 rmu = transmittance_uv_to_rmu(
+        uv,
+        atmosphere.bottom_radius,
+        atmosphere.top_radius
+    );
+    vec3 transmittance = compute_transmittance_to_top_atmosphere_boundary(rmu, atmosphere);
+    imageStore(
+        transmittance_lambda,
+        ivec2(coord),
+        vec4(transmittance, 1.0)
+    );
+}
+
+
 vec3 compute_direct_irradiance(
     AtmosphereParameters atmosphere,
     sampler2D transmittance_texture,
@@ -127,6 +148,32 @@ vec3 compute_direct_irradiance(
     );
     return atmosphere.sun_irradiance * transmittance * average_cosine_factor;
 }
+
+void compute_direct_irradiance_program(
+    vec2 coord,
+    AtmosphereParameters atmosphere,
+    sampler2D transmittance_lambda,
+    writeonly image2D irradiance_lambda
+) {
+    const vec2 TEXTURE_SIZE = vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
+    vec2 uv = coord / TEXTURE_SIZE;
+    vec2 rmus = irradiance_uv_to_rmus(
+        uv,
+        atmosphere.bottom_radius,
+        atmosphere.top_radius
+    );
+    vec3 direct_irradiance = compute_direct_irradiance(
+        atmosphere,
+        transmittance_lambda,
+        rmus
+    );
+    imageStore(
+        irradiance_lambda,
+        ivec2(coord),
+        vec4(direct_irradiance, 1.0)
+    );
+}
+
 
 //vec4 GetScatteringTextureUvwzFromRMuMuSNu(IN(AtmosphereParameters) atmosphere,
 //Length r, Number mu, Number mu_s, Number nu,
@@ -411,4 +458,52 @@ void compute_single_scattering(
     rayleigh = rayleigh_sum * dx * atmosphere.sun_irradiance * atmosphere.rayleigh_scattering_coefficient;
     //rayleigh = rayleigh_sum * path_length / float(SAMPLE_COUNT) * atmosphere.rayleigh_scattering_coefficient;
     mie = mie_sum * dx * atmosphere.sun_irradiance * atmosphere.mie_scattering_coefficient;
+}
+
+void compute_single_scattering_program(
+    vec3 sample_coord,
+    mat3 rad_to_lum,
+    AtmosphereParameters atmosphere,
+    sampler2D transmittance_lambda,
+    restrict writeonly image3D rayleigh_lambda,
+    restrict writeonly image3D mie_lambda,
+    out ivec3 frag_coord,
+    out vec4 scattering,
+    out vec4 single_mie_scattering
+) {
+    bool ray_r_mu_intersects_ground;
+    ScatterCoord coord = scattering_frag_coord_to_rmumusnu(
+        sample_coord,
+        atmosphere,
+        ray_r_mu_intersects_ground
+    );
+
+    vec3 rayleigh;
+    vec3 mie;
+    compute_single_scattering(
+        atmosphere,
+        transmittance_lambda,
+        coord,
+        ray_r_mu_intersects_ground,
+        rayleigh,
+        mie
+    );
+
+    frag_coord = ivec3(sample_coord);
+    imageStore(
+        rayleigh_lambda,
+        frag_coord,
+        vec4(rayleigh, 1.0)
+    );
+    imageStore(
+        mie_lambda,
+        frag_coord,
+        vec4(mie, 1.0)
+    );
+
+    scattering = vec4(rad_to_lum * rayleigh, rad_to_lum * mie.r);
+    single_mie_scattering = vec4(rad_to_lum * mie, 1);
+
+    /*
+    */
 }

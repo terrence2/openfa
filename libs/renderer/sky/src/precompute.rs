@@ -64,28 +64,19 @@ mod compute_transmittance_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-
         #include \"lut_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-        layout (binding = 0) uniform ConstantData {
+        layout (binding = 0) uniform Data {
             AtmosphereParameters atmosphere;
-        } cd;
-        layout(set = 0, binding = 1, rgba8) uniform writeonly image2D transmittance_texture;
+        } data;
+        layout(set = 0, binding = 1, rgba8) uniform writeonly image2D transmittance_lambda;
 
         void main() {
-            const vec2 TEXTURE_SIZE = vec2(TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
-            vec2 uv = gl_GlobalInvocationID.xy / TEXTURE_SIZE;
-            vec2 rmu = transmittance_uv_to_rmu(
-                uv,
-                cd.atmosphere.bottom_radius,
-                cd.atmosphere.top_radius
-            );
-            vec3 transmittance = compute_transmittance_to_top_atmosphere_boundary(rmu, cd.atmosphere);
-            imageStore(
-                transmittance_texture,
-                ivec2(gl_GlobalInvocationID.xy),
-                vec4(transmittance, 1.0)
+            compute_transmittance_program(
+                gl_GlobalInvocationID.xy,
+                data.atmosphere,
+                transmittance_lambda
             );
         }"
     }
@@ -97,38 +88,79 @@ mod compute_direct_irradiance_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-
         #include \"lut_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
-        layout (binding = 0) uniform ConstantData {
+        layout (binding = 0) uniform Data {
             AtmosphereParameters atmosphere;
-        } cd;
-        layout(set = 0, binding = 1) uniform sampler2D transmittance_texture;
-        layout(set = 0, binding = 2, rgba8) uniform writeonly image2D direct_irradiance_texture;
+        } data;
+        layout(set = 0, binding = 1) uniform sampler2D transmittance_lambda;
+        layout(set = 0, binding = 2, rgba8) uniform writeonly image2D irradiance_lambda;
 
         void main() {
-            const vec2 TEXTURE_SIZE = vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
-            vec2 uv = gl_GlobalInvocationID.xy / TEXTURE_SIZE;
-            vec2 rmus = irradiance_uv_to_rmus(
-                uv,
-                cd.atmosphere.bottom_radius,
-                cd.atmosphere.top_radius
-            );
-            vec3 direct_irradiance = compute_direct_irradiance(
-                cd.atmosphere,
-                transmittance_texture,
-                rmus);
-            imageStore(
-                direct_irradiance_texture,
-                ivec2(gl_GlobalInvocationID.xy),
-                vec4(direct_irradiance, 1.0)
+            compute_direct_irradiance_program(
+                gl_GlobalInvocationID.xy,
+                data.atmosphere,
+                transmittance_lambda,
+                irradiance_lambda
             );
         }"
     }
 }
 
 mod compute_single_scattering_shader {
+    vulkano_shaders::shader! {
+    ty: "compute",
+    include: ["./libs/renderer/sky/src"],
+    src: "
+        #version 450
+        #include \"lut_builder.glsl\"
+
+        layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+        layout(set = 0, binding = 0) uniform Data1 {
+            AtmosphereParameters atmosphere;
+        } data1;
+        layout(set = 0, binding = 1) uniform Data2 {
+            mat3 rad_to_lum;
+        } data2;
+        layout(set = 0, binding = 2) uniform sampler2D transmittance_lambda;
+        layout(set = 0, binding = 3, rgba8) uniform restrict writeonly image3D rayleigh_lambda;
+        layout(set = 0, binding = 4, rgba8) uniform restrict writeonly image3D mie_lambda;
+        layout(set = 0, binding = 5, rgba8) uniform image3D scattering_acc;
+        layout(set = 0, binding = 6, rgba8) uniform image3D single_mie_scattering_acc;
+
+        void main() {
+            ivec3 frag_coord;
+            vec4 scattering, single_mie_scattering;
+            compute_single_scattering_program(
+                gl_GlobalInvocationID.xyz,
+                data2.rad_to_lum,
+                data1.atmosphere,
+                transmittance_lambda,
+                rayleigh_lambda,
+                mie_lambda,
+                frag_coord,
+                scattering,
+                single_mie_scattering
+            );
+            vec4 prior_scattering = imageLoad(scattering_acc, frag_coord);
+            imageStore(
+                scattering_acc,
+                frag_coord,
+                prior_scattering + scattering
+            );
+            vec4 prior_single_mie_scattering = imageLoad(single_mie_scattering_acc, frag_coord);
+            imageStore(
+                single_mie_scattering_acc,
+                frag_coord,
+                prior_single_mie_scattering + single_mie_scattering
+            );
+        }
+        "
+    }
+}
+
+mod compute_scattering_density_shader {
     vulkano_shaders::shader! {
     ty: "compute",
     include: ["./libs/renderer/sky/src"],
@@ -144,57 +176,78 @@ mod compute_single_scattering_shader {
         layout(set = 0, binding = 1) uniform ConstantData2 {
             mat3 rad_to_lum;
         } b;
-        layout(set = 0, binding = 2) uniform sampler2D transmittance_texture;
-        layout(set = 0, binding = 3, rgba8) uniform writeonly image3D rayleigh_lambda;
-        layout(set = 0, binding = 4, rgba8) uniform writeonly image3D mie_lambda;
-        layout(set = 0, binding = 5, rgba8) uniform image3D scattering_acc;
-        layout(set = 0, binding = 6, rgba8) uniform image3D single_mie_scattering_acc;
+        layout(set = 0, binding = 2) uniform ConstantData3 {
+            uint scattering_order;
+        } c;
+        layout(set = 0, binding = 3) uniform sampler2D transmittance_texture;
+        layout(set = 0, binding = 4) uniform sampler3D single_rayleigh_scattering_texture;
+        layout(set = 0, binding = 5) uniform sampler3D single_mie_scattering_texture;
+        layout(set = 0, binding = 6) uniform sampler3D multiple_scattering_texture;
+        layout(set = 0, binding = 7) uniform sampler2D irradiance_texture;
+        layout(set = 0, binding = 8, rgba8) uniform writeonly image3D density_lambda;
 
         void main() {
-            bool ray_r_mu_intersects_ground;
-            ScatterCoord coord = scattering_frag_coord_to_rmumusnu(
-                gl_GlobalInvocationID.xyz,
-                cd.atmosphere,
-                ray_r_mu_intersects_ground);
+        }
+        "
+    }
+}
 
-            vec3 rayleigh;
-            vec3 mie;
-            compute_single_scattering(
-                cd.atmosphere,
-                transmittance_texture,
-                coord,
-                ray_r_mu_intersects_ground,
-                rayleigh,
-                mie);
+mod compute_indirect_irradiance_shader {
+    vulkano_shaders::shader! {
+    ty: "compute",
+    include: ["./libs/renderer/sky/src"],
+    src: "
+        #version 450
 
-            ivec3 frag_coord = ivec3(gl_GlobalInvocationID.xyz);
-            imageStore(
-                rayleigh_lambda,
-                frag_coord,
-                vec4(rayleigh, 1.0)
-            );
-            imageStore(
-                mie_lambda,
-                frag_coord,
-                vec4(mie, 1.0)
-            );
+        #include \"lut_builder.glsl\"
 
-            vec4 scattering = vec4(b.rad_to_lum * rayleigh, b.rad_to_lum * mie.r);
-            vec4 single_mie_scattering = vec4(b.rad_to_lum * mie, 1);
+        layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+        layout(set = 0, binding = 0) uniform ConstantData1 {
+            AtmosphereParameters atmosphere;
+        } cd;
+        layout(set = 0, binding = 1) uniform ConstantData2 {
+            mat3 rad_to_lum;
+        } b;
+        layout(set = 0, binding = 2) uniform ConstantData3 {
+            uint scattering_order;
+        } c;
+        layout(set = 0, binding = 3) uniform sampler3D single_rayleigh_scattering_texture;
+        layout(set = 0, binding = 4) uniform sampler3D single_mie_scattering_texture;
+        layout(set = 0, binding = 5) uniform sampler3D multiple_scattering_texture;
+        layout(set = 0, binding = 6, rgba8) uniform writeonly image3D irradiance_lambda;
+        layout(set = 0, binding = 7, rgba8) uniform writeonly image3D irradiance_acc;
 
-            vec4 prior_scattering = imageLoad(scattering_acc, frag_coord);
-            vec4 prior_single_mie_scattering = imageLoad(scattering_acc, frag_coord);
+        void main() {
+        }
+        "
+    }
+}
 
-            imageStore(
-                scattering_acc,
-                frag_coord,
-                prior_scattering + scattering
-            );
-            imageStore(
-                single_mie_scattering_acc,
-                frag_coord,
-                prior_single_mie_scattering + single_mie_scattering
-            );
+mod compute_multiple_scattering_shader {
+    vulkano_shaders::shader! {
+    ty: "compute",
+    include: ["./libs/renderer/sky/src"],
+    src: "
+        #version 450
+
+        #include \"lut_builder.glsl\"
+
+        layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+        layout(set = 0, binding = 0) uniform ConstantData1 {
+            AtmosphereParameters atmosphere;
+        } cd;
+        layout(set = 0, binding = 1) uniform ConstantData2 {
+            mat3 rad_to_lum;
+        } b;
+        layout(set = 0, binding = 2) uniform ConstantData3 {
+            uint scattering_order;
+        } c;
+        layout(set = 0, binding = 3) uniform sampler2D transmittance_texture;
+        layout(set = 0, binding = 6) uniform sampler3D density_lambda;
+        layout(set = 0, binding = 6, rgba8) uniform writeonly image3D scattering_lambda;
+        layout(set = 0, binding = 7, rgba8) uniform writeonly image3D scattering_acc;
+
+        void main() {
         }
         "
     }
@@ -212,6 +265,7 @@ pub struct Precompute {
     irradiance_lambda: Arc<StorageImage<Format>>,
     rayleigh_lambda: Arc<StorageImage<Format>>,
     mie_lambda: Arc<StorageImage<Format>>,
+    scattering_density_lambda: Arc<StorageImage<Format>>,
     scattering_acc: Arc<StorageImage<Format>>,
     single_mie_scattering_acc: Arc<StorageImage<Format>>,
     params: EarthParameters,
@@ -242,6 +296,10 @@ impl Precompute {
             compute_direct_irradiance_shader::Shader::load(window.device())?;
         let compute_single_scattering_shader =
             compute_single_scattering_shader::Shader::load(window.device())?;
+        let compute_scattering_density_shader =
+            compute_scattering_density_shader::Shader::load(window.device())?;
+        let compute_indirect_irradiance_shader =
+            compute_indirect_irradiance_shader::Shader::load(window.device())?;
 
         // Build compute pipelines for all of our shaders.
         let compute_transmittance = Arc::new(ComputePipeline::new(
@@ -257,6 +315,16 @@ impl Precompute {
         let compute_single_scattering = Arc::new(ComputePipeline::new(
             window.device(),
             &compute_single_scattering_shader.main_entry_point(),
+            &(),
+        )?);
+        let compute_scattering_density = Arc::new(ComputePipeline::new(
+            window.device(),
+            &compute_scattering_density_shader.main_entry_point(),
+            &(),
+        )?);
+        let compute_indirect_irradiance = Arc::new(ComputePipeline::new(
+            window.device(),
+            &compute_indirect_irradiance_shader.main_entry_point(),
             &(),
         )?);
 
@@ -285,6 +353,12 @@ impl Precompute {
             Format::R8G8B8A8Unorm,
             Some(window.queue().family()),
         )?;
+        let scattering_density_lambda = StorageImage::new(
+            window.device(),
+            scattering_dimensions,
+            Format::R8G8B8A8Unorm,
+            Some(window.queue().family()),
+        )?;
         let scattering_acc = StorageImage::new(
             window.device(),
             scattering_dimensions,
@@ -297,6 +371,12 @@ impl Precompute {
             Format::R8G8B8A8Unorm,
             Some(window.queue().family()),
         )?;
+        let irradiance_acc = StorageImage::new(
+            window.device(),
+            irradiance_dimensions,
+            Format::R8G8B8A8Unorm,
+            Some(window.queue().family()),
+        )?;
 
         // Initialize all accumulator textures.
         Self::clear_image(scattering_acc.clone(), window)?
@@ -305,7 +385,7 @@ impl Precompute {
                 window,
             )?)
             .then_signal_fence_and_flush()?
-            .wait(None);
+            .wait(None)?;
 
         Ok(Self {
             transmittance_dimensions,
@@ -318,6 +398,7 @@ impl Precompute {
             irradiance_lambda,
             rayleigh_lambda,
             mie_lambda,
+            scattering_density_lambda,
             scattering_acc,
             single_mie_scattering_acc,
             params,
@@ -462,6 +543,8 @@ impl Precompute {
             atmosphere_params_buffer.clone(),
             rad_to_lum_buffer.clone(),
         )?;
+
+        //self.compute_scattering_density_at()
 
         Ok(())
     }

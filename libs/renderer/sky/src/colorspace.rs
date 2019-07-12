@@ -125,7 +125,7 @@ pub fn cie_color_coefficient_at_wavelength(wavelength: f64) -> [f64; 3] {
     }
     let u = (wavelength - MIN_LAMBDA) / 5.0;
     let row = u.floor() as usize;
-    assert!(row >= 0 && row + 1 < 95);
+    assert!(row + 1 < 95);
     assert!(
         CIE_2_DEG_COLOR_MATCHING_FUNCTIONS[4 * row] <= wavelength
             && CIE_2_DEG_COLOR_MATCHING_FUNCTIONS[4 * (row + 1)] >= wavelength
