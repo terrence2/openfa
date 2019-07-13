@@ -58,6 +58,14 @@ members = [
         "libs/xt",
 ]
 
+# Emit debugging symbols for tracing
+[profile.release]
+debug = true
+
+# Need profile-overrides from nightly
+#[profile.dev.overrides.image]
+#opt-level = 3
+
 # pkware is unusable at opt level 0.
 # [profile.dev.]
 # opt-level = 2

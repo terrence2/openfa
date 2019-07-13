@@ -223,6 +223,25 @@ vec2 transmittance_uv_to_rmu(
     return vec2(r, mu);
 }
 
+// In order to precompute the ground irradiance in a texture we need a mapping
+// from the ground irradiance parameters to texture coordinates. Since we
+// precompute the ground irradiance only for horizontal surfaces, this irradiance
+// depends only on $r$ and $\mu_s$, so we need a mapping from $(r,\mu_s)$ to
+// $(u,v)$ texture coordinates. The simplest, affine mapping is sufficient here,
+// because the ground irradiance function is very smooth:
+vec2 irradiance_rmus_to_uv(
+    vec2 rmus,
+    float bottom_radius,
+    float top_radius
+) {
+    float x_r = (rmus.x - bottom_radius) / (top_radius - bottom_radius);
+    float x_mu_s = rmus.y * 0.5 + 0.5;
+    return vec2(
+        get_texture_coord_from_unit_range(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
+        get_texture_coord_from_unit_range(x_r, IRRADIANCE_TEXTURE_HEIGHT)
+    );
+}
+
 vec2 irradiance_uv_to_rmus(
     vec2 uv,
     float bottom_radius,
