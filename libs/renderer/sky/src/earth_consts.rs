@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::colorspace::{cie_color_coefficient_at_wavelength, convert_xyz_to_srgb};
 use crate::fs;
 use num_traits::pow::Pow;
 use std::{f64::consts::PI as PI64, ops::Range};
@@ -85,7 +86,7 @@ const DOBSON_UNIT: f64 = 2.687e20;
 // Maximum number density of ozone molecules, in m^-3 (computed so at to get
 // 300 Dobson units of ozone - for this we divide 300 DU by the integral of
 // the ozone density profile defined below, which is equal to 15km).
-const MAX_OZONE_NUMBER_DENSITY: f64 = 300.0 * DOBSON_UNIT / 15000.0;
+const MAX_OZONE_NUMBER_DENSITY: f64 = 300.0 * DOBSON_UNIT / 15_000.0;
 const RAYLEIGH_SCATTER_COEFFICIENT: f64 = 1.24062e-6;
 const RAYLEIGH_SCALE_HEIGHT: f64 = 8000.0;
 const MIE_SCALE_HEIGHT: f64 = 1200.0;
@@ -95,6 +96,7 @@ const MIE_SINGLE_SCATTERING_ALBEDO: f64 = 0.9;
 const MIE_PHASE_FUNCTION_G: f64 = 0.8;
 const GROUND_ALBEDO: f64 = 0.1;
 const MAX_SUN_ZENITH_ANGLE: f64 = 120.0 / 180.0 * PI64;
+const MAX_LUMINOUS_EFFICACY: f64 = 683.0;
 
 pub struct EarthParameters {
     wavelengths: Vec<f64>,
@@ -104,6 +106,7 @@ pub struct EarthParameters {
     mie_extinction: Vec<f64>,
     absorption_extinction: Vec<f64>,
     ground_albedo: Vec<f64>,
+    sun_spectral_radiance_to_luminance: [f32; 3],
 }
 
 impl EarthParameters {
@@ -132,6 +135,12 @@ impl EarthParameters {
             absorption_extinction.push(MAX_OZONE_NUMBER_DENSITY * ozone_cross_sec);
             ground_albedo.push(GROUND_ALBEDO);
         }
+        let sun_spectral_radiance_to_luminance =
+            Self::compute_spectral_radiance_to_luminance_factors(
+                &wavelengths,
+                &sun_irradiance,
+                0.0,
+            );
 
         Self {
             wavelengths,
@@ -141,15 +150,51 @@ impl EarthParameters {
             mie_extinction,
             absorption_extinction,
             ground_albedo,
+            sun_spectral_radiance_to_luminance,
         }
+    }
+
+    // The returned constants are in lumen.nm / watt.
+    fn compute_spectral_radiance_to_luminance_factors(
+        wavelengths: &[f64],
+        sun_irradiance: &[f64],
+        lambda_power: f64,
+    ) -> [f32; 3] {
+        let mut out = [0f32; 3];
+        let solar = interpolate(&wavelengths, &sun_irradiance, RGB_LAMBDAS, 1.0);
+        //for &lambda in &self.wavelengths {
+        let lambda_step = 1;
+        for lambda in LAMBDA_RANGE {
+            let xyz_bar = cie_color_coefficient_at_wavelength(lambda as f64);
+            let rgb_bar = convert_xyz_to_srgb(xyz_bar, 1.0);
+            let irradiance = interpolate_at_lambda(&wavelengths, &sun_irradiance, lambda as f64);
+            for i in 0..3 {
+                out[i] += (rgb_bar[i] * irradiance / (solar[i] as f64)
+                    * (lambda as f64 / RGB_LAMBDAS[i]).pow(lambda_power))
+                    as f32;
+            }
+        }
+        for i in 0..3 {
+            out[i] *= (MAX_LUMINOUS_EFFICACY * lambda_step as f64) as f32;
+        }
+        out
     }
 
     pub fn sample(&self, lambdas: [f64; 3]) -> fs::ty::AtmosphereParameters {
         // Evaluate our physical model for use in a shader.
         const LENGTH_SCALE: f64 = 1000.0;
-        fs::ty::AtmosphereParameters {
+        let atmosphere = fs::ty::AtmosphereParameters {
             sun_irradiance: interpolate(&self.wavelengths, &self.sun_irradiance, lambdas, 1.0),
             sun_angular_radius: 0.00935 / 2.0,
+            //  double sun_k_r, sun_k_g, sun_k_b;
+            // ComputeSpectralRadianceToLuminanceFactors(wavelengths, solar_irradiance,
+            //     0 /* lambda_power */, &sun_k_r, &sun_k_g, &sun_k_b);
+            sun_spectral_radiance_to_luminance: self.sun_spectral_radiance_to_luminance,
+            sky_spectral_radiance_to_luminance: [
+                MAX_LUMINOUS_EFFICACY as f32,
+                MAX_LUMINOUS_EFFICACY as f32,
+                MAX_LUMINOUS_EFFICACY as f32,
+            ],
             bottom_radius: (6_360_000.0 / LENGTH_SCALE) as f32,
             top_radius: (6_420_000.0 / LENGTH_SCALE) as f32,
             rayleigh_density: fs::ty::DensityProfile {
@@ -218,6 +263,7 @@ impl EarthParameters {
             ),
             ground_albedo: interpolate(&self.wavelengths, &self.ground_albedo, lambdas, 1.0),
             mu_s_min: MAX_SUN_ZENITH_ANGLE.cos() as f32,
+            //mu_s_min: -0.207912,
             _dummy0: Default::default(),
             _dummy1: Default::default(),
             _dummy2: Default::default(),
@@ -225,6 +271,50 @@ impl EarthParameters {
             _dummy4: Default::default(),
             _dummy5: Default::default(),
             _dummy6: Default::default(),
-        }
+            _dummy7: Default::default(),
+        };
+
+        /*
+        println!("sun_irradiance: {:?}", atmosphere.sun_irradiance);
+        println!("sun_angular_radius: {:?}", atmosphere.sun_angular_radius);
+        println!("bottom_radius: {:?}", atmosphere.bottom_radius);
+        println!("top_radius: {:?}", atmosphere.top_radius);
+        //DensityProfile rayleigh_density
+        println!(
+            "rayleigh_scattering_coefficient: {:?}",
+            atmosphere.rayleigh_scattering_coefficient
+        );
+        //DensityProfile mie_density
+        println!(
+            "mie_scattering_coefficient: {:?}",
+            atmosphere.mie_scattering_coefficient
+        );
+        println!(
+            "mie_extinction_coefficient: {:?}",
+            atmosphere.mie_extinction_coefficient
+        );
+        println!(
+            "mie_phase_function_g: {:?}",
+            atmosphere.mie_phase_function_g
+        );
+        //DensityProfile absorption_density;
+        println!(
+            "absorption_extinction_coefficient: {:?}",
+            atmosphere.absorption_extinction_coefficient
+        );
+        println!("ground_albedo: {:?}", atmosphere.ground_albedo);
+        // WRONG! where does mu_s_min come from?
+        println!("mu_s_min: {:?}", atmosphere.mu_s_min);
+        println!(
+            "sky_spectral_radiance_to_luminance: {:?}",
+            atmosphere.sky_spectral_radiance_to_luminance
+        );
+        println!(
+            "sun_spectral_radiance_to_luminance: {:?}",
+            atmosphere.sun_spectral_radiance_to_luminance
+        );
+        */
+
+        atmosphere
     }
 }

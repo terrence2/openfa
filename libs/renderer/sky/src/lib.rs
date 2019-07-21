@@ -27,13 +27,13 @@ use crate::{
 };
 use camera::CameraAbstract;
 use failure::Fallible;
-use image::{ImageBuffer, Rgba};
+use image::Rgba;
 use log::trace;
-use nalgebra::{Matrix3, Matrix4, Vector3};
+use nalgebra::{Matrix4, Vector3};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
+    command_buffer::{AutoCommandBufferBuilder, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     format::Format,
@@ -112,16 +112,10 @@ mod fs {
         layout (binding = 0) uniform ConstantData {
             AtmosphereParameters atmosphere;
         } cd;
-//        layout(set = 0, binding = 1) uniform sampler2D transmittance_texture;
-//        layout(set = 0, binding = 2) uniform sampler3D scattering_texture;
-//        layout(set = 0, binding = 3) uniform sampler3D single_mie_scattering_texture;
-//        layout(set = 0, binding = 4) uniform sampler2D irradiance_texture;
-
-        // Constants
-        #define PI 3.1415926538
-        #define PI_2 (PI / 2.0)
-        #define TAU (PI * 2.0)
-        #define RADIUS 6378.0
+        layout(set = 0, binding = 1) uniform sampler2D transmittance_texture;
+        layout(set = 0, binding = 2) uniform sampler3D scattering_texture;
+        layout(set = 0, binding = 3) uniform sampler3D single_mie_scattering_texture;
+        layout(set = 0, binding = 4) uniform sampler2D irradiance_texture;
 
         float density(float h) {
             float a0 =  7.001985e-2;
@@ -141,24 +135,41 @@ mod fs {
 
             vec3 ground_radiance;
             float ground_alpha;
-            compute_ground_radiance(camera, view, cd.atmosphere.bottom_radius, ground_radiance, ground_alpha);
+            compute_ground_radiance(
+                cd.atmosphere,
+                transmittance_texture,
+                scattering_texture,
+                single_mie_scattering_texture,
+                irradiance_texture,
+                camera,
+                view,
+                sun_direction,
+                ground_radiance,
+                ground_alpha);
 
             vec3 sky_radiance = vec3(0);
-//            compute_sky_radiance(
-//                camera,
-//                view,
-//                sun_direction,
-//                cd.atmosphere.sun_irradiance,
-//                cd.atmosphere.sun_angular_radius,
-//                cd.atmosphere.bottom_radius,
-//                cd.atmosphere.top_radius,
-//                transmittance_texture,
-//                sky_radiance
-//            );
+            compute_sky_radiance(
+                cd.atmosphere,
+                transmittance_texture,
+                scattering_texture,
+                single_mie_scattering_texture,
+                irradiance_texture,
+                camera,
+                view,
+                sun_direction,
+                sky_radiance
+            );
 
             vec3 radiance = sky_radiance;
             radiance = mix(radiance, ground_radiance, ground_alpha);
-            f_color = vec4(radiance, 1);
+            vec3 white_point = vec3(1.082414, 0.967556, 0.950030);
+            float exposure = 681 * 0.0001;
+
+            vec3 color = pow(
+                    vec3(1.0) - exp(-radiance / white_point * exposure),
+                    vec3(1.0 / 2.2)
+                );
+            f_color = vec4(color, 1.0);
         }
         "
     }
@@ -251,30 +262,12 @@ impl SkyRenderer {
 
         let precompute = Precompute::new(window)?;
         precompute.build_textures(NUM_PRECOMPUTED_WAVELENGTHS, NUM_SCATTERING_ORDER, window)?;
-
-        /*
         let (
             transmittance_texture,
             scattering_texture,
             single_mie_scattering_texture,
             irradiance_texture,
-        ) = Self::precompute(&earth, window)?;
-
-        let atmosphere_params_buffer = CpuAccessibleBuffer::from_data(
-            window.device(),
-            BufferUsage::all(),
-            earth.sample(RGB_LAMBDAS),
-        )?;
-
-        let transmittance_texture =
-            Self::precompute_transmittance_texture(window, atmosphere_params_buffer.clone())?;
-        let (single_rayleigh_scattering_texture, single_mie_scattering_texture) =
-            Self::precompute_single_scattering_textures(
-                window,
-                atmosphere_params_buffer.clone(),
-                transmittance_texture.clone(),
-            )?;
-        */
+        ) = precompute.make_immutable(window)?;
 
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;
@@ -311,10 +304,10 @@ impl SkyRenderer {
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
             PersistentDescriptorSet::start(pipeline.clone(), 0)
                 .add_buffer(atmosphere_params_buffer.clone())?
-                //                .add_sampled_image(transmittance_texture.clone(), sampler.clone())?
-                //                .add_sampled_image(scattering_texture.clone(), sampler.clone())?
-                //                .add_sampled_image(single_mie_scattering_texture.clone(), sampler.clone())?
-                //                .add_sampled_image(irradiance_texture.clone(), sampler.clone())?
+                .add_sampled_image(transmittance_texture.clone(), sampler.clone())?
+                .add_sampled_image(scattering_texture.clone(), sampler.clone())?
+                .add_sampled_image(single_mie_scattering_texture.clone(), sampler.clone())?
+                .add_sampled_image(irradiance_texture.clone(), sampler.clone())?
                 .build()?,
         );
 
@@ -384,11 +377,10 @@ impl SkyRenderer {
 
         // Planet properties.
         let earth = EarthParameters::new();
-        let atmosphere_params_buffer = CpuAccessibleBuffer::from_data(
-            window.device(),
-            BufferUsage::all(),
-            earth.sample(RGB_LAMBDAS),
-        )?;
+        let mut params = earth.sample(RGB_LAMBDAS);
+        params.ground_albedo = [0f32, 0f32, 0.04f32];
+        let atmosphere_params_buffer =
+            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), params)?;
 
         Ok((vertex_buffer, index_buffer, atmosphere_params_buffer))
     }
