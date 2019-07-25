@@ -19,14 +19,10 @@ use log::trace;
 use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use sh::RawShape;
-use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use sky::SkyRenderer;
-use starbox::StarboxRenderer;
 use std::{f64::consts::PI, rc::Rc, time::Instant};
 use structopt::StructOpt;
-use subocean::SubOceanRenderer;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
@@ -44,7 +40,7 @@ fn main() -> Fallible<()> {
     if inputs.is_empty() {
         bail!("no inputs");
     }
-    let (game, name) = inputs.first().unwrap();
+    let (game, _name) = inputs.first().unwrap();
     let lib = omni.library(&game);
     let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 

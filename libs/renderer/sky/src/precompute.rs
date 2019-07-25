@@ -25,14 +25,11 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
-    descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
+    descriptor::descriptor_set::PersistentDescriptorSet,
     device::Device,
     format::Format,
     image::{Dimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount, StorageImage},
-    impl_vertex,
-    pipeline::{
-        ComputePipeline, ComputePipelineAbstract, GraphicsPipeline, GraphicsPipelineAbstract,
-    },
+    pipeline::{ComputePipeline, ComputePipelineAbstract},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
@@ -54,7 +51,7 @@ use window::GraphicsWindow;
 // Multi Round
 //     density
 //     delta irradiance:
-//     irradiance acc:        wrong
+//     irradiance acc:        wrong - a little too bright
 
 const DUMP_TRANSMITTANCE: bool = false;
 const DUMP_DIRECT_IRRADIANCE: bool = false;
@@ -63,9 +60,10 @@ const DUMP_SINGLE_MIE: bool = false;
 const DUMP_SINGLE_ACC: bool = false;
 const DUMP_SINGLE_MIE_ACC: bool = false;
 const DUMP_SCATTERING_DENSITY: bool = false;
-const DUMP_INDIRECT_IRRADIANCE_DELTA: bool = true;
-const DUMP_INDIRECT_IRRADIANCE_ACC: bool = true;
+const DUMP_INDIRECT_IRRADIANCE_DELTA: bool = false;
+const DUMP_INDIRECT_IRRADIANCE_ACC: bool = false;
 const DUMP_MULTIPLE_SCATTERING: bool = false;
+const DUMP_FINAL: bool = false;
 
 const TRANSMITTANCE_TEXTURE_WIDTH: u32 = 256;
 const TRANSMITTANCE_TEXTURE_HEIGHT: u32 = 64;
@@ -490,20 +488,22 @@ mod compute_indirect_irradiance_shader {
         #include \"lut_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+        layout(push_constant) uniform PushConstantData {
+            uint scattering_order;
+        } pc;
         layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; } data1;
         layout(binding = 1) uniform Data2 { mat4 rad_to_lum; } data2;
-        layout(binding = 2) uniform Data3 { uint scattering_order; } data3;
-        layout(binding = 3) uniform sampler3D delta_rayleigh_scattering_texture;
-        layout(binding = 4) uniform sampler3D delta_mie_scattering_texture;
-        layout(binding = 5) uniform sampler3D delta_multiple_scattering_texture;
-        layout(binding = 6, rgba32f) uniform writeonly image2D delta_irradiance_texture;
-        layout(binding = 7, rgba32f) uniform image2D irradiance_texture;
+        layout(binding = 2) uniform sampler3D delta_rayleigh_scattering_texture;
+        layout(binding = 3) uniform sampler3D delta_mie_scattering_texture;
+        layout(binding = 4) uniform sampler3D delta_multiple_scattering_texture;
+        layout(binding = 5, rgba32f) uniform writeonly image2D delta_irradiance_texture;
+        layout(binding = 6, rgba32f) uniform image2D irradiance_texture;
 
         void main() {
             vec3 indirect_irradiance;
             compute_indirect_irradiance_program(
                 gl_GlobalInvocationID.xy + vec2(0.5, 0.5),
-                data3.scattering_order,
+                pc.scattering_order,
                 data1.atmosphere,
                 delta_rayleigh_scattering_texture,
                 delta_mie_scattering_texture,
@@ -535,18 +535,10 @@ impl Precompute {
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
         rad_to_lum_buffer: Arc<CpuAccessibleBuffer<[f32; 16]>>,
     ) -> Fallible<()> {
-        // This actually needs to be one lower in get_best_scattering so that
-        // it will not use the pre-computed on the first pass.
-        let scattering_order_less_one_buffer = CpuAccessibleBuffer::from_data(
-            window.device(),
-            BufferUsage::all(),
-            (scattering_order - 1) as u32,
-        )?;
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_indirect_irradiance.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
                 .add_buffer(rad_to_lum_buffer)?
-                .add_buffer(scattering_order_less_one_buffer)?
                 .add_sampled_image(
                     self.delta_rayleigh_scattering_texture.clone(),
                     Self::make_sampler(window.device())?,
@@ -574,7 +566,9 @@ impl Precompute {
                     ],
                     self.compute_indirect_irradiance.clone(),
                     pds,
-                    (),
+                    compute_indirect_irradiance_shader::ty::PushConstantData {
+                        scattering_order: (scattering_order - 1) as u32,
+                    },
                 )?
                 .build()?;
 
@@ -929,7 +923,7 @@ impl Precompute {
         )?;
         self.compute_transmittance_at(RGB_LAMBDAS, window, atmosphere_params_buffer.clone())?;
 
-        if true {
+        if DUMP_FINAL {
             Self::dump_2d(
                 "dump/sky/final-transmittance-texture.png",
                 self.transmittance_texture.clone(),

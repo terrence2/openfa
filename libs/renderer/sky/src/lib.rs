@@ -18,31 +18,23 @@ mod earth_consts;
 mod precompute;
 
 use crate::{
-    colorspace::{
-        cie_color_coefficient_at_wavelength, convert_xyz_to_srgb, wavelength_to_srgb, MAX_LAMBDA,
-        MIN_LAMBDA,
-    },
     earth_consts::{EarthParameters, RGB_LAMBDAS},
     precompute::Precompute,
 };
 use camera::CameraAbstract;
 use failure::Fallible;
-use image::Rgba;
 use log::trace;
 use nalgebra::{Matrix4, Vector3};
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
-    format::Format,
     framebuffer::Subpass,
-    image::{Dimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount, StorageImage},
     impl_vertex,
-    pipeline::{ComputePipeline, GraphicsPipeline, GraphicsPipelineAbstract},
+    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
-    sync::GpuFuture,
 };
 use window::GraphicsWindow;
 
@@ -260,6 +252,7 @@ impl SkyRenderer {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
         trace!("SkyRenderer::new");
 
+        let precompute_start = Instant::now();
         let precompute = Precompute::new(window)?;
         precompute.build_textures(NUM_PRECOMPUTED_WAVELENGTHS, NUM_SCATTERING_ORDER, window)?;
         let (
@@ -268,6 +261,12 @@ impl SkyRenderer {
             single_mie_scattering_texture,
             irradiance_texture,
         ) = precompute.make_immutable(window)?;
+        let precompute_time = precompute_start.elapsed();
+        println!(
+            "precompute: {}.{}ms",
+            precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
+            precompute_time.subsec_micros()
+        );
 
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;
