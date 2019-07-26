@@ -13,154 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #include "header.glsl"
-
-float get_layer_density(
-    DensityProfileLayer layer,
-    float altitude
-) {
-    float density = layer.exp_term * exp(layer.exp_scale * altitude) +
-        layer.linear_term * altitude + layer.constant_term;
-    return clamp(density, 0.0, 1.0);
-}
-
-float get_profile_density(DensityProfile profile, float altitude) {
-    return altitude < profile.layer0.width ?
-        get_layer_density(profile.layer0, altitude) :
-        get_layer_density(profile.layer1, altitude);
-}
-
-float compute_optical_length_to_top_atmosphere_boundary(
-    vec2 rmu,
-    DensityProfile profile,
-    float bottom_radius,
-    float top_radius
-) {
-    float r = rmu.x;
-    float mu = rmu.y;
-
-    // assert(r >= bottom_radius && r <= top_radius);
-    // assert(mu >= -1.0 && mu <= 1.0);
-    // Number of intervals for the numerical integration.
-    const int SAMPLE_COUNT = 500;
-    // The integration step, i.e. the length of each integration interval.
-    float dx = distance_to_top_atmosphere_boundary(rmu, top_radius) / float(SAMPLE_COUNT);
-    // Integration loop.
-    float result = 0.0;
-    for (int i = 0; i <= SAMPLE_COUNT; ++i) {
-        float d_i = float(i) * dx;
-        // Distance between the current sample point and the planet center.
-        float r_i = sqrt(d_i * d_i + 2.0 * r * mu * d_i + r * r);
-        // Number density at the current sample point (divided by the number density
-        // at the bottom of the atmosphere, yielding a dimensionless number).
-        float y_i = get_profile_density(profile, r_i - bottom_radius);
-        // Sample weight (from the trapezoidal rule).
-        float weight_i = i == 0 || i == SAMPLE_COUNT ? 0.5 : 1.0;
-        result += y_i * weight_i * dx;
-    }
-    return result;
-}
-
-vec3 compute_transmittance_to_top_atmosphere_boundary(
-    vec2 rmu,
-    AtmosphereParameters atmosphere
-) {
-    // assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    // assert(mu >= -1.0 && mu <= 1.0);
-    vec3 rayleigh_depth = atmosphere.rayleigh_scattering_coefficient *
-        compute_optical_length_to_top_atmosphere_boundary(
-            rmu,
-            atmosphere.rayleigh_density,
-            atmosphere.bottom_radius,
-            atmosphere.top_radius);
-
-    vec3 mie_depth = atmosphere.mie_extinction_coefficient *
-        compute_optical_length_to_top_atmosphere_boundary(
-            rmu,
-            atmosphere.mie_density,
-            atmosphere.bottom_radius,
-            atmosphere.top_radius);
-
-    vec3 ozone_depth = atmosphere.absorption_extinction_coefficient *
-        compute_optical_length_to_top_atmosphere_boundary(
-            rmu,
-            atmosphere.absorption_density,
-            atmosphere.bottom_radius,
-            atmosphere.top_radius);
-
-    return exp(-(rayleigh_depth + mie_depth + ozone_depth));
-}
-
-void compute_transmittance_program(
-    vec2 coord,
-    AtmosphereParameters atmosphere,
-    writeonly image2D transmittance_lambda
-) {
-    const vec2 TEXTURE_SIZE = vec2(TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
-    vec2 uv = coord / TEXTURE_SIZE;
-    vec2 rmu = transmittance_uv_to_rmu(
-        uv,
-        atmosphere.bottom_radius,
-        atmosphere.top_radius
-    );
-    vec3 transmittance = compute_transmittance_to_top_atmosphere_boundary(rmu, atmosphere);
-    imageStore(
-        transmittance_lambda,
-        ivec2(coord),
-        vec4(transmittance, 1.0)
-    );
-}
-
-vec3 compute_direct_irradiance(
-    AtmosphereParameters atmosphere,
-    sampler2D transmittance_texture,
-    vec2 rmus
-) {
-    float r = rmus.x;
-    float mu_s = rmus.y;
-
-    float alpha_s = atmosphere.sun_angular_radius;
-    // Approximate average of the cosine factor mu_s over the visible fraction of
-    // the Sun disc.
-    float average_cosine_factor =
-        mu_s < -alpha_s
-        ? 0.0
-        : (mu_s > alpha_s
-          ? mu_s
-          : (mu_s + alpha_s) * (mu_s + alpha_s) / (4.0 * alpha_s));
-
-    vec3 transmittance = get_transmittance_to_top_atmosphere_boundary(
-        rmus,
-        transmittance_texture,
-        atmosphere.bottom_radius,
-        atmosphere.top_radius
-    );
-    return atmosphere.sun_irradiance * transmittance * average_cosine_factor;
-}
-
-void compute_direct_irradiance_program(
-    vec2 frag_coord,
-    AtmosphereParameters atmosphere,
-    sampler2D transmittance_lambda,
-    writeonly image2D irradiance_lambda
-) {
-    const vec2 TEXTURE_SIZE = vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
-    vec2 uv = frag_coord / TEXTURE_SIZE;
-    vec2 rmus = irradiance_uv_to_rmus(
-        uv,
-        atmosphere.bottom_radius,
-        atmosphere.top_radius
-    );
-    vec3 direct_irradiance = compute_direct_irradiance(
-        atmosphere,
-        transmittance_lambda,
-        rmus
-    );
-    imageStore(
-        irradiance_lambda,
-        ivec2(frag_coord),
-        vec4(direct_irradiance, 1.0)
-    );
-}
+#include "lut_shared_builder.glsl"
 
 ScatterCoord scattering_uvwz_to_rmumusnu(
     vec4 uvwz,
@@ -253,7 +106,7 @@ ScatterCoord scattering_frag_coord_to_rmumusnu(
     return coord;
 }
 
-vec3 get_scattering(
+vec4 get_scattering(
     sampler3D scattering_texture,
     ScatterCoord sc,
     float atmosphere_bottom_radius,
@@ -272,11 +125,11 @@ vec3 get_scattering(
     float lerp = tex_coord_x - tex_x;
     vec3 uvw0 = vec3((tex_x + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE), uvwz.z, uvwz.w);
     vec3 uvw1 = vec3((tex_x + 1.0 + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE), uvwz.z, uvwz.w);
-    return vec3(texture(scattering_texture, uvw0) * (1.0 - lerp) +
-        texture(scattering_texture, uvw1) * lerp);
+    return texture(scattering_texture, uvw0) * (1.0 - lerp) +
+        texture(scattering_texture, uvw1) * lerp;
 }
 
-vec3 get_best_scattering(
+vec4 get_best_scattering(
     sampler3D delta_rayleigh_scattering_texture,
     sampler3D delta_mie_scattering_texture,
     sampler3D delta_multiple_scattering_texture,
@@ -289,7 +142,7 @@ vec3 get_best_scattering(
     uint scattering_order
 ) {
     if (scattering_order == 1) {
-        vec3 rayleigh = get_scattering(
+        vec4 rayleigh = get_scattering(
             delta_rayleigh_scattering_texture,
             sc,
             atmosphere_bottom_radius,
@@ -297,7 +150,7 @@ vec3 get_best_scattering(
             atmosphere_mu_s_min,
             ray_r_mu_intersects_ground
         );
-        vec3 mie = get_scattering(
+        vec4 mie = get_scattering(
             delta_mie_scattering_texture,
             sc,
             atmosphere_bottom_radius,
@@ -325,22 +178,22 @@ void compute_single_scattering_integrand(
     ScatterCoord coord,
     float d,
     bool ray_r_mu_intersects_ground,
-    out vec3 rayleigh,
-    out vec3 mie
+    out vec4 rayleigh,
+    out vec4 mie
 ) {
     float altitude = sqrt(d * d + 2.0 * coord.r * coord.mu * d + coord.r * coord.r);
     float r_d = clamp_radius(altitude, atmosphere.bottom_radius, atmosphere.top_radius);
     float mu_s_d = clamp_cosine((coord.r * coord.mu_s + d * coord.nu) / r_d);
-    vec3 base_transmittance = get_transmittance(transmittance_texture, coord.r, coord.mu, d,
+    vec4 base_transmittance = get_transmittance(transmittance_texture, coord.r, coord.mu, d,
         ray_r_mu_intersects_ground, atmosphere.bottom_radius, atmosphere.top_radius);
-    vec3 transmittance_to_sun = get_transmittance_to_sun(
+    vec4 transmittance_to_sun = get_transmittance_to_sun(
         transmittance_texture,
         r_d,
         mu_s_d,
         atmosphere.bottom_radius,
         atmosphere.top_radius,
         atmosphere.sun_angular_radius);
-    vec3 transmittance = base_transmittance * transmittance_to_sun;
+    vec4 transmittance = base_transmittance * transmittance_to_sun;
     rayleigh = transmittance * get_profile_density(
         atmosphere.rayleigh_density, r_d - atmosphere.bottom_radius);
     mie = transmittance * get_profile_density(
@@ -352,8 +205,8 @@ void compute_single_scattering(
     sampler2D transmittance_texture,
     ScatterCoord coord,
     bool ray_r_mu_intersects_ground,
-    out vec3 rayleigh,
-    out vec3 mie
+    out vec4 rayleigh,
+    out vec4 mie
 ) {
     // assert(coord.r >= atmosphere.bottom_radius && coord.r <= atmosphere.top_radius);
     // assert(coord.mu >= -1.0 && coord.mu <= 1.0);
@@ -371,13 +224,13 @@ void compute_single_scattering(
     );
     float dx =  path_length / float(SAMPLE_COUNT);
     // Integration loop.
-    vec3 rayleigh_sum = vec3(0.0);
-    vec3 mie_sum = vec3(0.0);
+    vec4 rayleigh_sum = vec4(0.0);
+    vec4 mie_sum = vec4(0.0);
     for (int i = 0; i <= SAMPLE_COUNT; ++i) {
         float d_i = float(i) * dx;
         // The Rayleigh and Mie single scattering at the current sample point.
-        vec3 rayleigh_i;
-        vec3 mie_i;
+        vec4 rayleigh_i;
+        vec4 mie_i;
         compute_single_scattering_integrand(
             atmosphere,
             transmittance_texture,
@@ -398,7 +251,7 @@ void compute_single_scattering(
 
 void compute_single_scattering_program(
     vec3 sample_coord,
-    mat3 rad_to_lum,
+    mat4 rad_to_lum,
     AtmosphereParameters atmosphere,
     sampler2D transmittance_texture,
     restrict writeonly image3D delta_rayleigh_scattering_texture,
@@ -413,8 +266,8 @@ void compute_single_scattering_program(
         ray_r_mu_intersects_ground
     );
 
-    vec3 delta_rayleigh;
-    vec3 delta_mie;
+    vec4 delta_rayleigh;
+    vec4 delta_mie;
     compute_single_scattering(
         atmosphere,
         transmittance_texture,
@@ -428,19 +281,19 @@ void compute_single_scattering_program(
     imageStore(
         delta_rayleigh_scattering_texture,
         frag_coord,
-        vec4(delta_rayleigh, 1.0)
+        delta_rayleigh
     );
     imageStore(
         delta_mie_scattering_texture,
         frag_coord,
-        vec4(delta_mie, 1.0)
+        delta_mie
     );
 
     scattering = vec3(rad_to_lum * delta_rayleigh);
     single_mie_scattering = vec3(rad_to_lum * delta_mie);
 }
 
-vec3 compute_scattering_density(
+vec4 compute_scattering_density(
     ScatterCoord sc,
     AtmosphereParameters atmosphere,
     mat3 rad_to_lum,
@@ -464,8 +317,7 @@ vec3 compute_scattering_density(
     const int SAMPLE_COUNT = 16;
     const float dphi = PI / float(SAMPLE_COUNT);
     const float dtheta = PI / float(SAMPLE_COUNT);
-    vec3 rayleigh_mie = vec3(0.0);
-    vec3 tmp = vec3(0.0);
+    vec4 rayleigh_mie = vec4(0.0);
 
     // Nested loops for the integral over all the incident directions omega_i.
     for (int l = 0; l < SAMPLE_COUNT; ++l) {
@@ -477,8 +329,8 @@ vec3 compute_scattering_density(
         // The distance and transmittance to the ground only depend on theta, so we
         // can compute them in the outer loop for efficiency.
         float distance_to_ground = 0.0;
-        vec3 transmittance_to_ground = vec3(0.0);
-        vec3 ground_albedo = vec3(0.0);
+        vec4 transmittance_to_ground = vec4(0.0);
+        vec4 ground_albedo = vec4(0.0);
         if (ray_r_theta_intersects_ground) {
             distance_to_ground = distance_to_bottom_atmosphere_boundary(vec2(sc.r, cos_theta), atmosphere.bottom_radius);
             transmittance_to_ground = get_transmittance(
@@ -502,7 +354,7 @@ vec3 compute_scattering_density(
             // the sum of a term given by the precomputed scattering texture for the
             // (n-1)-th order:
             float nu1 = dot(omega_s, omega_i);
-            vec3 incident_radiance = get_best_scattering(
+            vec4 incident_radiance = get_best_scattering(
                 delta_rayleigh_scattering_texture,
                 delta_mie_scattering_texture,
                 delta_multiple_scattering_texture,
@@ -520,7 +372,7 @@ vec3 compute_scattering_density(
             // transmittance to the ground, the ground albedo, the ground BRDF, and
             // the irradiance received on the ground after n-2 bounces.
             vec3 ground_normal = normalize(zenith_direction * sc.r + omega_i * distance_to_ground);
-            vec3 ground_irradiance = get_irradiance(
+            vec4 ground_irradiance = get_irradiance(
                 delta_irradiance_texture,
                 vec2(
                     atmosphere.bottom_radius,
@@ -549,7 +401,6 @@ vec3 compute_scattering_density(
                 atmosphere.rayleigh_scattering_coefficient * rayleigh_density * rayleigh_phase_function(nu2) +
                 atmosphere.mie_scattering_coefficient * mie_density * mie_phase_function(atmosphere.mie_phase_function_g, nu2)
             ) * domega_i;
-            tmp = vec3(rayleigh_density);
         }
     }
 
@@ -571,7 +422,7 @@ void compute_scattering_density_program(
     bool ray_r_mu_intersects_ground;
     ScatterCoord sc = scattering_frag_coord_to_rmumusnu(frag_coord, atmosphere, ray_r_mu_intersects_ground);
 
-    vec3 rayleigh_mie = compute_scattering_density(
+    vec4 rayleigh_mie = compute_scattering_density(
         sc, atmosphere, rad_to_lum, scattering_order, transmittance_texture,
         delta_rayleigh_scattering_texture, delta_mie_scattering_texture,
         delta_multiple_scattering_texture, delta_irradiance_texture
@@ -580,11 +431,11 @@ void compute_scattering_density_program(
     imageStore(
         delta_scattering_density_texture,
         ivec3(frag_coord),
-        vec4(rayleigh_mie, 1.0)
+        rayleigh_mie
     );
 }
 
-vec3 compute_multiple_scattering(
+vec4 compute_multiple_scattering(
     ScatterCoord sc,
     AtmosphereParameters atmosphere,
     mat3 rad_to_lum,
@@ -602,7 +453,7 @@ vec3 compute_multiple_scattering(
         atmosphere.top_radius,
         ray_r_mu_intersects_ground) / float(SAMPLE_COUNT);
     // Integration loop.
-    vec3 rayleigh_mie_sum = vec3(0.0);
+    vec4 rayleigh_mie_sum = vec4(0.0);
     for (int i = 0; i <= SAMPLE_COUNT; ++i) {
         float d_i = float(i) * dx;
 
@@ -616,7 +467,7 @@ vec3 compute_multiple_scattering(
         float mu_s_i = clamp_cosine((sc.r * sc.mu_s + d_i * sc.nu) / r_i);
 
         // The Rayleigh and Mie multiple scattering at the current sample point.
-        vec3 rayleigh_mie_i = get_scattering(
+        vec4 rayleigh_mie_i = get_scattering(
                 delta_scattering_density_texture,
                 ScatterCoord(r_i, mu_i, mu_s_i, sc.nu),
                 atmosphere.bottom_radius,
@@ -637,7 +488,7 @@ vec3 compute_multiple_scattering(
         float weight_i = (i == 0 || i == SAMPLE_COUNT) ? 0.5 : 1.0;
         rayleigh_mie_sum += rayleigh_mie_i * weight_i;
     }
-    return rayleigh_mie_sum ;
+    return rayleigh_mie_sum;
 }
 
 void compute_multiple_scattering_program(
@@ -649,7 +500,7 @@ void compute_multiple_scattering_program(
     sampler3D delta_scattering_density_texture,
     writeonly image3D delta_multiple_scattering_texture,
     out ScatterCoord sc,
-    out vec3 delta_multiple_scattering
+    out vec4 delta_multiple_scattering
 ) {
     bool ray_r_mu_intersects_ground;
     sc = scattering_frag_coord_to_rmumusnu(frag_coord, atmosphere, ray_r_mu_intersects_ground);
@@ -666,7 +517,7 @@ void compute_multiple_scattering_program(
     imageStore(
         delta_multiple_scattering_texture,
         ivec3(frag_coord),
-        vec4(delta_multiple_scattering, 1.0)
+        delta_multiple_scattering
     );
 }
 
@@ -679,7 +530,7 @@ void compute_multiple_scattering_program(
 //     `multiple_scattering_texture` is supposed to contain the $n$-th
 //     order of scattering, if $n>1$, and `scattering_order` is equal to
 //     $n$):
-vec3 compute_indirect_irradiance(
+vec4 compute_indirect_irradiance(
     vec2 rmus,
     uint scattering_order,
     AtmosphereParameters atmosphere,
@@ -691,7 +542,7 @@ vec3 compute_indirect_irradiance(
     const float dphi = PI / float(SAMPLE_COUNT);
     const float dtheta = PI / float(SAMPLE_COUNT);
 
-    vec3 result = vec3(0.0);
+    vec4 result = vec4(0.0);
     vec3 omega_s = vec3(sqrt(1.0 - rmus.y * rmus.y), 0.0, rmus.y);
 
     for (int j = 0; j < SAMPLE_COUNT / 2; ++j) {
@@ -718,49 +569,6 @@ vec3 compute_indirect_irradiance(
     return result;
 }
 
-
-/*
-IrradianceSpectrum ComputeIndirectIrradiance(
-    IN(AtmosphereParameters) atmosphere,
-    IN(ReducedScatteringTexture) single_rayleigh_scattering_texture,
-    IN(ReducedScatteringTexture) single_mie_scattering_texture,
-    IN(ScatteringTexture) multiple_scattering_texture,
-    Length r, Number mu_s, int scattering_order
-) {
-    assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
-    assert(mu_s >= -1.0 && mu_s <= 1.0);
-    assert(scattering_order >= 1);
-
-    const int SAMPLE_COUNT = 32;
-    const Angle dphi = pi / Number(SAMPLE_COUNT);
-    const Angle dtheta = pi / Number(SAMPLE_COUNT);
-
-    IrradianceSpectrum result =
-    IrradianceSpectrum(0.0 * watt_per_square_meter_per_nm);
-    vec3 omega_s = vec3(sqrt(1.0 - mu_s * mu_s), 0.0, mu_s);
-    for (int j = 0; j < SAMPLE_COUNT / 2; ++j) {
-        Angle theta = (Number(j) + 0.5) * dtheta;
-        for (int i = 0; i < 2 * SAMPLE_COUNT; ++i) {
-            Angle phi = (Number(i) + 0.5) * dphi;
-            vec3 omega =
-            vec3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
-            SolidAngle domega = (dtheta / rad) * (dphi / rad) * sin(theta) * sr;
-
-            Number nu = dot(omega, omega_s);
-            result += GetScattering(
-                atmosphere,
-                single_rayleigh_scattering_texture,
-                single_mie_scattering_texture,
-                multiple_scattering_texture,
-                r, omega.z, mu_s, nu,
-                false, // ray_r_theta_intersects_ground,
-                scattering_order) * omega.z * domega;
-        }
-    }
-    return result;
-}
-*/
-
 void compute_indirect_irradiance_program(
     vec2 frag_coord,
     uint scattering_order,
@@ -769,7 +577,7 @@ void compute_indirect_irradiance_program(
     sampler3D delta_mie_scattering_texture,
     sampler3D delta_multiple_scattering_texture,
     writeonly image2D delta_indirect_irradiance,
-    out vec3 indirect_irradiance
+    out vec4 indirect_irradiance
 ) {
     const vec2 TEXTURE_SIZE = vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
     vec2 uv = frag_coord / TEXTURE_SIZE;
@@ -789,6 +597,6 @@ void compute_indirect_irradiance_program(
     imageStore(
         delta_indirect_irradiance,
         ivec2(frag_coord),
-        vec4(indirect_irradiance, 1.0)
+        indirect_irradiance
     );
 }

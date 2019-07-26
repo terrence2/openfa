@@ -377,7 +377,7 @@ impl SkyRenderer {
         // Planet properties.
         let earth = EarthParameters::new();
         let mut params = earth.sample(RGB_LAMBDAS);
-        params.ground_albedo = [0f32, 0f32, 0.04f32];
+        params.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
         let atmosphere_params_buffer =
             CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), params)?;
 

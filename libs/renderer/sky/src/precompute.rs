@@ -19,8 +19,8 @@ use crate::{
     fs,
 };
 use failure::{bail, Fallible};
-use image::{ImageBuffer, Rgb};
-use nalgebra::Matrix3;
+use image::{ImageBuffer, Luma, Rgb};
+use nalgebra::{Matrix3, Matrix4};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -116,7 +116,7 @@ mod compute_transmittance_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-        #include \"lut_builder.glsl\"
+        #include \"lut_transmittance_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(binding = 0) uniform Data { AtmosphereParameters atmosphere; } data;
@@ -135,7 +135,7 @@ mod compute_transmittance_shader {
 impl Precompute {
     fn compute_transmittance_at(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
@@ -164,11 +164,12 @@ impl Precompute {
         finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_TRANSMITTANCE {
-            let path = format!(
-                "dump/sky/transmittance-{}-{}-{}.png",
-                lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
-            );
-            Self::dump_2d(&path, self.transmittance_texture.clone(), window)?;
+            Self::dump_2d_x4(
+                "transmittance",
+                lambdas,
+                self.transmittance_texture.clone(),
+                window,
+            )?;
         }
 
         Ok(())
@@ -181,7 +182,7 @@ mod compute_direct_irradiance_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-        #include \"lut_builder.glsl\"
+        #include \"lut_direct_irradiance_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(binding = 0) uniform Data { AtmosphereParameters atmosphere; } data;
@@ -202,7 +203,7 @@ mod compute_direct_irradiance_shader {
 impl Precompute {
     fn compute_direct_irradiance_at(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
@@ -235,11 +236,12 @@ impl Precompute {
         finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_DIRECT_IRRADIANCE {
-            let path = format!(
-                "dump/sky/direct-irradiance-{}-{}-{}.png",
-                lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
-            );
-            Self::dump_2d(&path, self.delta_irradiance_texture.clone(), window)?;
+            Self::dump_2d_x4(
+                "direct-irradiance",
+                lambdas,
+                self.delta_irradiance_texture.clone(),
+                window,
+            )?;
         }
 
         Ok(())
@@ -264,11 +266,11 @@ mod compute_single_scattering_shader {
         layout(binding = 6, rgba8) uniform coherent image3D single_mie_scattering_texture;
 
         void main() {
-            vec3 scattering = vec3(0);
-            vec3 single_mie_scattering = vec3(0);
+            vec3 scattering;
+            vec3 single_mie_scattering;
             compute_single_scattering_program(
                 gl_GlobalInvocationID.xyz + vec3(0.5),
-                mat3(data2.rad_to_lum),
+                data2.rad_to_lum,
                 data1.atmosphere,
                 transmittance_texture,
                 delta_rayleigh_scattering_texture,
@@ -300,7 +302,7 @@ mod compute_single_scattering_shader {
 impl Precompute {
     fn compute_single_scattering_at(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
         rad_to_lum_buffer: Arc<CpuAccessibleBuffer<[f32; 16]>>,
@@ -414,7 +416,7 @@ mod compute_scattering_density_shader {
 impl Precompute {
     fn compute_scattering_density_at(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         scattering_order: usize,
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
@@ -500,7 +502,7 @@ mod compute_indirect_irradiance_shader {
         layout(binding = 6, rgba32f) uniform image2D irradiance_texture;
 
         void main() {
-            vec3 indirect_irradiance;
+            vec4 indirect_irradiance;
             compute_indirect_irradiance_program(
                 gl_GlobalInvocationID.xy + vec2(0.5, 0.5),
                 pc.scattering_order,
@@ -519,7 +521,7 @@ mod compute_indirect_irradiance_shader {
             imageStore(
                 irradiance_texture,
                 ivec2(gl_GlobalInvocationID.xy),
-                vec4(prior_irradiance + (mat3(data2.rad_to_lum) * indirect_irradiance), 1.0)
+                vec4(prior_irradiance + vec3(data2.rad_to_lum * indirect_irradiance), 1.0)
             );
         }
         "
@@ -529,7 +531,7 @@ mod compute_indirect_irradiance_shader {
 impl Precompute {
     fn compute_indirect_irradiance_at(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         scattering_order: usize,
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
@@ -613,7 +615,7 @@ mod compute_multiple_scattering_shader {
 
         void main() {
             ScatterCoord sc;
-            vec3 delta_multiple_scattering;
+            vec4 delta_multiple_scattering;
             compute_multiple_scattering_program(
                 gl_GlobalInvocationID.xyz + vec3(0.5, 0.5, 0.5),
                 data1.atmosphere,
@@ -627,7 +629,7 @@ mod compute_multiple_scattering_shader {
             );
 
             vec4 scattering = vec4(
-                  mat3(data2.rad_to_lum) * delta_multiple_scattering.rgb / rayleigh_phase_function(sc.nu),
+                  vec3(data2.rad_to_lum * delta_multiple_scattering) / rayleigh_phase_function(sc.nu),
                   0.0);
             vec4 prior_scattering = imageLoad(
                 scattering_texture,
@@ -646,7 +648,7 @@ mod compute_multiple_scattering_shader {
 impl Precompute {
     fn compute_multiple_scattering_at(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         scattering_order: usize,
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
@@ -891,13 +893,14 @@ impl Precompute {
         num_scattering_passes: usize,
         window: &GraphicsWindow,
     ) -> Fallible<()> {
-        let num_iterations = (num_precomputed_wavelengths + 2) / 3;
-        let delta_lambda = (MAX_LAMBDA - MIN_LAMBDA) / (3.0 * num_iterations as f64);
+        let num_iterations = (num_precomputed_wavelengths + 3) / 4;
+        let delta_lambda = (MAX_LAMBDA - MIN_LAMBDA) / (4.0 * num_iterations as f64);
         for i in 0..num_iterations {
             let lambdas = [
                 MIN_LAMBDA + (3.0 * i as f64 + 0.5) * delta_lambda,
                 MIN_LAMBDA + (3.0 * i as f64 + 1.5) * delta_lambda,
                 MIN_LAMBDA + (3.0 * i as f64 + 2.5) * delta_lambda,
+                MIN_LAMBDA + (3.0 * i as f64 + 3.5) * delta_lambda,
             ];
             // Do not include MAX_LUMINOUS_EFFICACY here to keep values
             // as close to 0 as possible to preserve maximal precision.
@@ -906,11 +909,14 @@ impl Precompute {
             let l0 = wavelength_to_srgb(lambdas[0], delta_lambda);
             let l1 = wavelength_to_srgb(lambdas[1], delta_lambda);
             let l2 = wavelength_to_srgb(lambdas[2], delta_lambda);
+            let l3 = wavelength_to_srgb(lambdas[3], delta_lambda);
             // Stuff these factors into a matrix by columns so that our GPU can do the
-            // conversion for us quickly.
-            let rad_to_lum = Matrix3::new(
-                l0[0], l1[0], l2[0], l0[1], l1[1], l2[1], l0[2], l1[2], l2[2],
-            );
+            // conversion for us quickly; Note that glsl is in column-major order, so this
+            // is just the concatenation of our 4 arrays with 0s interspersed.
+            let rad_to_lum = [
+                l0[0], l0[1], l0[2], 0f64, l1[0], l1[1], l1[2], 0f64, l2[0], l2[1], l2[2], 0f64,
+                l3[0], l3[1], l3[2], 0f64,
+            ];
             self.precompute_one_step(lambdas, num_scattering_passes, rad_to_lum, window)?;
         }
 
@@ -951,9 +957,9 @@ impl Precompute {
 
     fn precompute_one_step(
         &self,
-        lambdas: [f64; 3],
+        lambdas: [f64; 4],
         num_scattering_passes: usize,
-        rad_to_lum: Matrix3<f64>,
+        rad_to_lum: [f64; 16],
         window: &GraphicsWindow,
     ) -> Fallible<()> {
         // Upload atmosphere parameters for this set of wavelengths.
@@ -962,13 +968,23 @@ impl Precompute {
             BufferUsage::all(),
             self.params.sample(lambdas),
         )?;
-        let mut q: [f32; 9] = Default::default();
-        let m: Matrix3<f32> = nalgebra::convert(rad_to_lum);
-        q.copy_from_slice(m.as_slice());
-        // Expand into a mat4 to handle alignment restrictions.
-        let raw = [
-            q[0], q[1], q[2], 0f32, q[3], q[4], q[5], 0f32, q[6], q[7], q[8], 0f32, 0f32, 0f32,
-            0f32, 0f32,
+        let raw: [f32; 16] = [
+            rad_to_lum[0] as f32,
+            rad_to_lum[1] as f32,
+            rad_to_lum[2] as f32,
+            rad_to_lum[3] as f32,
+            rad_to_lum[4] as f32,
+            rad_to_lum[5] as f32,
+            rad_to_lum[6] as f32,
+            rad_to_lum[7] as f32,
+            rad_to_lum[8] as f32,
+            rad_to_lum[9] as f32,
+            rad_to_lum[10] as f32,
+            rad_to_lum[11] as f32,
+            rad_to_lum[12] as f32,
+            rad_to_lum[13] as f32,
+            rad_to_lum[14] as f32,
+            rad_to_lum[15] as f32,
         ];
         let rad_to_lum_buffer =
             CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), raw)?;
@@ -1038,6 +1054,80 @@ impl Precompute {
         println!("RANGE: {} -> {} in {}", minf, maxf, path);
     }
 
+    fn split_pixels(src: &[f32], dim: Dimensions) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
+        let mut p0 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
+        let mut p1 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
+        let mut p2 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
+        let mut p3 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
+        const WHITE_POINT_R: f32 = 1.082414f32;
+        const WHITE_POINT_G: f32 = 0.967556f32;
+        const WHITE_POINT_B: f32 = 0.950030f32;
+        const WHITE_POINT_A: f32 = 1.0;
+        const EXPOSURE: f32 = 683f32 * 0.0001f32;
+        for i in 0usize..(dim.width() * dim.height() * dim.depth()) as usize {
+            let r0 = src[4 * i + 0];
+            let g0 = src[4 * i + 1];
+            let b0 = src[4 * i + 2];
+            let a0 = src[4 * i + 3];
+
+            let mut r1 = (1.0 - (-r0 / WHITE_POINT_R * EXPOSURE).exp()).powf(1.0 / 2.2);
+            let mut g1 = (1.0 - (-g0 / WHITE_POINT_G * EXPOSURE).exp()).powf(1.0 / 2.2);
+            let mut b1 = (1.0 - (-b0 / WHITE_POINT_B * EXPOSURE).exp()).powf(1.0 / 2.2);
+            let mut a1 = (1.0 - (-a0 / WHITE_POINT_A * EXPOSURE).exp()).powf(1.0 / 2.2);
+
+            if r1.is_nan() {
+                r1 = 0f32;
+            }
+            if g1.is_nan() {
+                g1 = 0f32;
+            }
+            if b1.is_nan() {
+                b1 = 0f32;
+            }
+            if a1.is_nan() {
+                a1 = 0f32;
+            }
+
+            assert!(r1 >= 0.0 && r1 <= 1.0);
+            assert!(g1 >= 0.0 && g1 <= 1.0);
+            assert!(b1 >= 0.0 && b1 <= 1.0);
+            assert!(a1 >= 0.0 && a1 <= 1.0);
+
+            p0.push((r1 * 255f32) as u8);
+            p1.push((g1 * 255f32) as u8);
+            p2.push((b1 * 255f32) as u8);
+            p3.push((a1 * 255f32) as u8);
+        }
+        (p0, p1, p2, p3)
+    }
+
+    fn dump_2d(
+        path: &str,
+        image: Arc<StorageImage<Format>>,
+        window: &GraphicsWindow,
+    ) -> Fallible<()> {
+        let dim = image.dimensions();
+        let nelems = dim.width() * dim.height() * 4;
+        let buf = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            (0..nelems).map(|_| 0f32),
+        )?;
+        let command_buffer =
+            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
+                .copy_image_to_buffer(image.clone(), buf.clone())?
+                .build()?;
+        let finished = command_buffer.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
+        Self::show_range(&buf.read()?, path);
+        let bytes = Self::compress_pixels(&buf.read()?, dim);
+        let image =
+            ImageBuffer::<Rgb<u8>, _>::from_raw(dim.width(), dim.height(), bytes.as_slice())
+                .unwrap();
+        image.save(path)?;
+        Ok(())
+    }
+
     fn compress_pixels(src: &[f32], dim: Dimensions) -> Vec<u8> {
         const WHITE_POINT_R: f32 = 1.082414f32;
         const WHITE_POINT_G: f32 = 0.967556f32;
@@ -1074,8 +1164,9 @@ impl Precompute {
         bytes
     }
 
-    fn dump_2d(
+    fn dump_2d_x4(
         path: &str,
+        lambdas: [f64; 4],
         image: Arc<StorageImage<Format>>,
         window: &GraphicsWindow,
     ) -> Fallible<()> {
@@ -1093,11 +1184,19 @@ impl Precompute {
         let finished = command_buffer.execute(window.queue())?;
         finished.then_signal_fence_and_flush()?.wait(None)?;
         Self::show_range(&buf.read()?, path);
-        let bytes = Self::compress_pixels(&buf.read()?, dim);
-        let image =
-            ImageBuffer::<Rgb<u8>, _>::from_raw(dim.width(), dim.height(), bytes.as_slice())
-                .unwrap();
-        image.save(path)?;
+        let (p0, p1, p2, p3) = Self::split_pixels(&buf.read()?, dim);
+        let i0 =
+            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p0.as_slice()).unwrap();
+        let i1 =
+            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p1.as_slice()).unwrap();
+        let i2 =
+            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p2.as_slice()).unwrap();
+        let i3 =
+            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p3.as_slice()).unwrap();
+        i0.save(&format!("dump/sky/{}-{}.png", path, lambdas[0]))?;
+        i1.save(&format!("dump/sky/{}-{}.png", path, lambdas[1]))?;
+        i2.save(&format!("dump/sky/{}-{}.png", path, lambdas[2]))?;
+        i3.save(&format!("dump/sky/{}-{}.png", path, lambdas[3]))?;
         Ok(())
     }
 

@@ -70,7 +70,7 @@ struct DensityProfile {
 
 struct AtmosphereParameters {
     // Energy received into the system from the nearby star.
-    vec3 sun_irradiance;
+    vec4 sun_irradiance;
 
     // The size of the nearby star in radians.
     float sun_angular_radius; // radians
@@ -93,16 +93,16 @@ struct AtmosphereParameters {
     DensityProfile rayleigh_density;
 
     // Per component, at max density.
-    vec3 rayleigh_scattering_coefficient;
+    vec4 rayleigh_scattering_coefficient;
 
     // The density profile of aerosols.
     DensityProfile mie_density;
 
     // Per component, at max density.
-    vec3 mie_scattering_coefficient;
+    vec4 mie_scattering_coefficient;
 
     // Per component, at max density.
-    vec3 mie_extinction_coefficient;
+    vec4 mie_extinction_coefficient;
 
     // The asymmetry parameter for the Cornette-Shanks phase function for the
     // aerosols.
@@ -112,10 +112,10 @@ struct AtmosphereParameters {
     DensityProfile absorption_density;
 
     // Per component, at max density.
-    vec3 absorption_extinction_coefficient;
+    vec4 absorption_extinction_coefficient;
 
     // The average albedo of the ground, per component.
-    vec3 ground_albedo;
+    vec4 ground_albedo;
 
     // The cosine of the maximum Sun zenith angle for which atmospheric scattering
     // must be precomputed (for maximum precision, use the smallest Sun zenith
@@ -254,7 +254,8 @@ vec2 transmittance_uv_to_rmu(
     return vec2(r, mu);
 }
 
-vec3 get_transmittance_to_top_atmosphere_boundary(
+vec4
+get_transmittance_to_top_atmosphere_boundary(
     vec2 rmu,
     sampler2D transmittance_texture,
     float bottom_radius,
@@ -262,10 +263,10 @@ vec3 get_transmittance_to_top_atmosphere_boundary(
 ) {
     // assert(r >= bottom_radius && r <= top_radius);
     vec2 uv = transmittance_rmu_to_uv(rmu, bottom_radius, top_radius);
-    return vec3(texture(transmittance_texture, uv));
+    return texture(transmittance_texture, uv);
 }
 
-vec3 get_transmittance_to_sun(
+vec4 get_transmittance_to_sun(
     sampler2D transmittance_texture,
     float r,
     float mu_s,
@@ -275,19 +276,19 @@ vec3 get_transmittance_to_sun(
 ) {
     float sin_theta_h = bottom_radius / r;
     float cos_theta_h = -sqrt(max(1.0 - sin_theta_h * sin_theta_h, 0.0));
-    vec3 base = get_transmittance_to_top_atmosphere_boundary(
-    vec2(r, mu_s),
-    transmittance_texture,
-    bottom_radius,
-    top_radius
+    vec4 base = get_transmittance_to_top_atmosphere_boundary(
+        vec2(r, mu_s),
+        transmittance_texture,
+        bottom_radius,
+        top_radius
     );
     return  base * smoothstep(
-    -sin_theta_h * sun_angular_radius,
-    sin_theta_h * sun_angular_radius,
-    mu_s - cos_theta_h);
+        -sin_theta_h * sun_angular_radius,
+        sin_theta_h * sun_angular_radius,
+        mu_s - cos_theta_h);
 }
 
-vec3 get_transmittance(
+vec4 get_transmittance(
     sampler2D transmittance_texture,
     float r,
     float mu,
@@ -309,18 +310,18 @@ vec3 get_transmittance(
 
     if (ray_r_mu_intersects_ground) {
         return min(
-        get_transmittance_to_top_atmosphere_boundary(
-        vec2(r_d, -mu_d), transmittance_texture, bottom_radius, top_radius) /
-        get_transmittance_to_top_atmosphere_boundary(
-        vec2(r, -mu), transmittance_texture, bottom_radius, top_radius),
-        vec3(1.0));
+            get_transmittance_to_top_atmosphere_boundary(
+                vec2(r_d, -mu_d), transmittance_texture, bottom_radius, top_radius) /
+            get_transmittance_to_top_atmosphere_boundary(
+                vec2(r, -mu), transmittance_texture, bottom_radius, top_radius),
+            vec4(1.0));
     } else {
         return min(
-        get_transmittance_to_top_atmosphere_boundary(
-        vec2(r, mu), transmittance_texture, bottom_radius, top_radius) /
-        get_transmittance_to_top_atmosphere_boundary(
-        vec2(r_d, mu_d), transmittance_texture, bottom_radius, top_radius),
-        vec3(1.0));
+            get_transmittance_to_top_atmosphere_boundary(
+                vec2(r, mu), transmittance_texture, bottom_radius, top_radius) /
+            get_transmittance_to_top_atmosphere_boundary(
+                vec2(r_d, mu_d), transmittance_texture, bottom_radius, top_radius),
+            vec4(1.0));
     }
 }
 
@@ -359,14 +360,14 @@ vec2 irradiance_uv_to_rmus(
     return vec2(r, mu_s);
 }
 
-vec3 get_irradiance(
+vec4 get_irradiance(
     sampler2D irradiance_texture,
     vec2 rmus,
     float bottom_radius,
     float top_radius
 ) {
     vec2 uv = irradiance_rmus_to_uv(rmus, bottom_radius, top_radius);
-    return vec3(texture(irradiance_texture, uv));
+    return texture(irradiance_texture, uv);
 }
 
 struct ScatterCoord {

@@ -18,7 +18,7 @@ use crate::fs;
 use num_traits::pow::Pow;
 use std::{f64::consts::PI as PI64, ops::Range};
 
-pub const RGB_LAMBDAS: [f64; 3] = [680.0, 550.0, 440.0];
+pub const RGB_LAMBDAS: [f64; 4] = [680.0, 550.0, 440.0, 440.0];
 
 // Evaluate the wavelength-based table at the given wavelength,
 // interpolating between adjacent table values.
@@ -36,11 +36,12 @@ fn interpolate_at_lambda(wavelengths: &[f64], properties: &[f64], wavelength: f6
     *properties.last().expect("non empty list")
 }
 
-fn interpolate(wavelengths: &[f64], properties: &[f64], lambdas: [f64; 3], scale: f64) -> [f32; 3] {
+fn interpolate(wavelengths: &[f64], properties: &[f64], lambdas: [f64; 4], scale: f64) -> [f32; 4] {
     [
         (interpolate_at_lambda(wavelengths, properties, lambdas[0]) * scale) as f32,
         (interpolate_at_lambda(wavelengths, properties, lambdas[1]) * scale) as f32,
         (interpolate_at_lambda(wavelengths, properties, lambdas[2]) * scale) as f32,
+        (interpolate_at_lambda(wavelengths, properties, lambdas[3]) * scale) as f32,
     ]
 }
 
@@ -180,7 +181,7 @@ impl EarthParameters {
         out
     }
 
-    pub fn sample(&self, lambdas: [f64; 3]) -> fs::ty::AtmosphereParameters {
+    pub fn sample(&self, lambdas: [f64; 4]) -> fs::ty::AtmosphereParameters {
         // Evaluate our physical model for use in a shader.
         const LENGTH_SCALE: f64 = 1000.0;
         let atmosphere = fs::ty::AtmosphereParameters {
@@ -271,7 +272,7 @@ impl EarthParameters {
             _dummy4: Default::default(),
             _dummy5: Default::default(),
             _dummy6: Default::default(),
-            _dummy7: Default::default(),
+            //_dummy7: Default::default(),
         };
 
         /*
