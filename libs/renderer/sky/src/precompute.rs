@@ -20,8 +20,7 @@ use crate::{
 };
 use failure::{bail, Fallible};
 use image::{ImageBuffer, Luma, Rgb};
-use nalgebra::{Matrix3, Matrix4};
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
@@ -85,6 +84,7 @@ pub struct Precompute {
     transmittance_dimensions: Dimensions,
     irradiance_dimensions: Dimensions,
     scattering_dimensions: Dimensions,
+    sampler: Arc<Sampler>,
 
     // Shaders.
     compute_transmittance: Arc<dyn ComputePipelineAbstract + Send + Sync>,
@@ -135,10 +135,11 @@ mod compute_transmittance_shader {
 impl Precompute {
     fn compute_transmittance_at(
         &self,
+        cbb: AutoCommandBufferBuilder,
         lambdas: [f64; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-    ) -> Fallible<()> {
+    ) -> Fallible<AutoCommandBufferBuilder> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_transmittance.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
@@ -146,33 +147,44 @@ impl Precompute {
                 .build()?,
         );
 
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .dispatch(
-                    [
-                        self.transmittance_dimensions.width() / 8,
-                        self.transmittance_dimensions.height() / 8,
-                        1,
-                    ],
-                    self.compute_transmittance.clone(),
-                    pds.clone(),
-                    (),
-                )?
-                .build()?;
+        //let command_buffer =
+        //    AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
+        //        .dispatch(
+        //            [
+        //                self.transmittance_dimensions.width() / 8,
+        //                self.transmittance_dimensions.height() / 8,
+        //                1,
+        //            ],
+        //            self.compute_transmittance.clone(),
+        //            pds.clone(),
+        //            (),
+        //        )?
+        //        .build()?;
 
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        Ok(cbb.dispatch(
+            [
+                self.transmittance_dimensions.width() / 8,
+                self.transmittance_dimensions.height() / 8,
+                1,
+            ],
+            self.compute_transmittance.clone(),
+            pds.clone(),
+            (),
+        )?)
 
-        if DUMP_TRANSMITTANCE {
-            Self::dump_2d_x4(
-                "transmittance",
-                lambdas,
-                self.transmittance_texture.clone(),
-                window,
-            )?;
-        }
+        //let finished = command_buffer.execute(window.queue())?;
+        //finished.then_signal_fence_and_flush()?.wait(None)?;
 
-        Ok(())
+        //if DUMP_TRANSMITTANCE {
+        //    Self::dump_2d_x4(
+        //        "transmittance",
+        //        lambdas,
+        //        self.transmittance_texture.clone(),
+        //        window,
+        //    )?;
+        //}
+
+        //Ok(())
     }
 }
 
@@ -210,10 +222,7 @@ impl Precompute {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_direct_irradiance.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
-                .add_sampled_image(
-                    self.transmittance_texture.clone(),
-                    Self::make_sampler(window.device())?,
-                )?
+                .add_sampled_image(self.transmittance_texture.clone(), self.sampler.clone())?
                 .add_image(self.delta_irradiance_texture.clone())?
                 .build()?,
         );
@@ -254,23 +263,25 @@ mod compute_single_scattering_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-        #include \"lut_builder.glsl\"
+        #include \"lut_single_scattering_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+        layout(push_constant) uniform PushConstantData {
+            mat4 rad_to_lum;
+        } pc;
         layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; } data1;
-        layout(binding = 1) uniform Data2 { mat4 rad_to_lum; } data2;
-        layout(binding = 2) uniform sampler2D transmittance_texture;
-        layout(binding = 3, rgba8) uniform restrict writeonly image3D delta_rayleigh_scattering_texture;
-        layout(binding = 4, rgba8) uniform restrict writeonly image3D delta_mie_scattering_texture;
-        layout(binding = 5, rgba8) uniform coherent image3D scattering_texture;
-        layout(binding = 6, rgba8) uniform coherent image3D single_mie_scattering_texture;
+        layout(binding = 1) uniform sampler2D transmittance_texture;
+        layout(binding = 2, rgba8) uniform restrict writeonly image3D delta_rayleigh_scattering_texture;
+        layout(binding = 3, rgba8) uniform restrict writeonly image3D delta_mie_scattering_texture;
+        layout(binding = 4, rgba8) uniform coherent image3D scattering_texture;
+        layout(binding = 5, rgba8) uniform coherent image3D single_mie_scattering_texture;
 
         void main() {
             vec3 scattering;
             vec3 single_mie_scattering;
             compute_single_scattering_program(
                 gl_GlobalInvocationID.xyz + vec3(0.5),
-                data2.rad_to_lum,
+                pc.rad_to_lum,
                 data1.atmosphere,
                 transmittance_texture,
                 delta_rayleigh_scattering_texture,
@@ -303,18 +314,14 @@ impl Precompute {
     fn compute_single_scattering_at(
         &self,
         lambdas: [f64; 4],
+        rad_to_lum: [[f32; 4]; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-        rad_to_lum_buffer: Arc<CpuAccessibleBuffer<[f32; 16]>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_single_scattering.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
-                .add_buffer(rad_to_lum_buffer)?
-                .add_sampled_image(
-                    self.transmittance_texture.clone(),
-                    Self::make_sampler(window.device())?,
-                )?
+                .add_sampled_image(self.transmittance_texture.clone(), self.sampler.clone())?
                 .add_image(self.delta_rayleigh_scattering_texture.clone())?
                 .add_image(self.delta_mie_scattering_texture.clone())?
                 .add_image(self.scattering_texture.clone())?
@@ -332,12 +339,12 @@ impl Precompute {
                     ],
                     self.compute_single_scattering.clone(),
                     pds,
-                    (),
+                    compute_single_scattering_shader::ty::PushConstantData { rad_to_lum },
                 )?
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        //finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_SINGLE_RAYLEIGH {
             let path = format!(
@@ -382,25 +389,25 @@ mod compute_scattering_density_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-        #include \"lut_builder.glsl\"
+        #include \"lut_scattering_density_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+        layout(push_constant) uniform PushConstantData {
+            uint scattering_order;
+        } pc;
         layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; } data1;
-        layout(binding = 1) uniform Data2 { mat4 rad_to_lum; } data2;
-        layout(binding = 2) uniform Data3 { uint scattering_order; } data3;
-        layout(binding = 3) uniform sampler2D transmittance_texture;
-        layout(binding = 4) uniform sampler3D delta_rayleigh_scattering_texture;
-        layout(binding = 5) uniform sampler3D delta_mie_scattering_texture;
-        layout(binding = 6) uniform sampler3D delta_multiple_scattering_texture;
-        layout(binding = 7) uniform sampler2D delta_irradiance_texture;
-        layout(binding = 8, rgba8) uniform writeonly image3D delta_scattering_density_texture;
+        layout(binding = 1) uniform sampler2D transmittance_texture;
+        layout(binding = 2) uniform sampler3D delta_rayleigh_scattering_texture;
+        layout(binding = 3) uniform sampler3D delta_mie_scattering_texture;
+        layout(binding = 4) uniform sampler3D delta_multiple_scattering_texture;
+        layout(binding = 5) uniform sampler2D delta_irradiance_texture;
+        layout(binding = 6, rgba8) uniform writeonly image3D delta_scattering_density_texture;
 
         void main() {
             compute_scattering_density_program(
                 gl_GlobalInvocationID.xyz + vec3(0.5, 0.5, 0.5),
                 data1.atmosphere,
-                mat3(data2.rad_to_lum),
-                data3.scattering_order,
+                pc.scattering_order,
                 transmittance_texture,
                 delta_rayleigh_scattering_texture,
                 delta_mie_scattering_texture,
@@ -420,34 +427,24 @@ impl Precompute {
         scattering_order: usize,
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-        rad_to_lum_buffer: Arc<CpuAccessibleBuffer<[f32; 16]>>,
-        scattering_order_buffer: Arc<CpuAccessibleBuffer<u32>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_scattering_density.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
-                .add_buffer(rad_to_lum_buffer)?
-                .add_buffer(scattering_order_buffer)?
-                .add_sampled_image(
-                    self.transmittance_texture.clone(),
-                    Self::make_sampler(window.device())?,
-                )?
+                .add_sampled_image(self.transmittance_texture.clone(), self.sampler.clone())?
                 .add_sampled_image(
                     self.delta_rayleigh_scattering_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
                 .add_sampled_image(
                     self.delta_mie_scattering_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
                 .add_sampled_image(
                     self.delta_multiple_scattering_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
-                .add_sampled_image(
-                    self.delta_irradiance_texture.clone(),
-                    Self::make_sampler(window.device())?,
-                )?
+                .add_sampled_image(self.delta_irradiance_texture.clone(), self.sampler.clone())?
                 .add_image(self.delta_scattering_density_texture.clone())?
                 .build()?,
         );
@@ -462,12 +459,14 @@ impl Precompute {
                     ],
                     self.compute_scattering_density.clone(),
                     pds,
-                    (),
+                    compute_scattering_density_shader::ty::PushConstantData {
+                        scattering_order: scattering_order as u32,
+                    },
                 )?
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        //finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_SCATTERING_DENSITY {
             let path = format!(
@@ -491,15 +490,15 @@ mod compute_indirect_irradiance_shader {
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(push_constant) uniform PushConstantData {
+            mat4 rad_to_lum;
             uint scattering_order;
         } pc;
         layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; } data1;
-        layout(binding = 1) uniform Data2 { mat4 rad_to_lum; } data2;
-        layout(binding = 2) uniform sampler3D delta_rayleigh_scattering_texture;
-        layout(binding = 3) uniform sampler3D delta_mie_scattering_texture;
-        layout(binding = 4) uniform sampler3D delta_multiple_scattering_texture;
-        layout(binding = 5, rgba32f) uniform writeonly image2D delta_irradiance_texture;
-        layout(binding = 6, rgba32f) uniform image2D irradiance_texture;
+        layout(binding = 1) uniform sampler3D delta_rayleigh_scattering_texture;
+        layout(binding = 2) uniform sampler3D delta_mie_scattering_texture;
+        layout(binding = 3) uniform sampler3D delta_multiple_scattering_texture;
+        layout(binding = 4, rgba32f) uniform writeonly image2D delta_irradiance_texture;
+        layout(binding = 5, rgba32f) uniform image2D irradiance_texture;
 
         void main() {
             vec4 indirect_irradiance;
@@ -521,7 +520,7 @@ mod compute_indirect_irradiance_shader {
             imageStore(
                 irradiance_texture,
                 ivec2(gl_GlobalInvocationID.xy),
-                vec4(prior_irradiance + vec3(data2.rad_to_lum * indirect_irradiance), 1.0)
+                vec4(prior_irradiance + vec3(pc.rad_to_lum * indirect_irradiance), 1.0)
             );
         }
         "
@@ -533,25 +532,24 @@ impl Precompute {
         &self,
         lambdas: [f64; 4],
         scattering_order: usize,
+        rad_to_lum: [[f32; 4]; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-        rad_to_lum_buffer: Arc<CpuAccessibleBuffer<[f32; 16]>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_indirect_irradiance.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
-                .add_buffer(rad_to_lum_buffer)?
                 .add_sampled_image(
                     self.delta_rayleigh_scattering_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
                 .add_sampled_image(
                     self.delta_mie_scattering_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
                 .add_sampled_image(
                     self.delta_multiple_scattering_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
                 .add_image(self.delta_irradiance_texture.clone())?
                 .add_image(self.irradiance_texture.clone())?
@@ -569,13 +567,14 @@ impl Precompute {
                     self.compute_indirect_irradiance.clone(),
                     pds,
                     compute_indirect_irradiance_shader::ty::PushConstantData {
+                        rad_to_lum,
                         scattering_order: (scattering_order - 1) as u32,
                     },
                 )?
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        //finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_INDIRECT_IRRADIANCE_DELTA {
             let path = format!(
@@ -602,16 +601,18 @@ mod compute_multiple_scattering_shader {
     include: ["./libs/renderer/sky/src"],
     src: "
         #version 450
-        #include \"lut_builder.glsl\"
+        #include \"lut_multiple_scattering_builder.glsl\"
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+        layout(push_constant) uniform PushConstantData {
+            mat4 rad_to_lum;
+            uint scattering_order;
+        } pc;
         layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; } data1;
-        layout(binding = 1) uniform Data2 { mat4 rad_to_lum; } data2;
-        layout(binding = 2) uniform Data3 { uint scattering_order; } data3;
-        layout(binding = 3) uniform sampler2D transmittance_texture;
-        layout(binding = 4) uniform sampler3D delta_scattering_density_texture; // density_lambda;
-        layout(binding = 5, rgba8) uniform writeonly image3D delta_multiple_scattering_texture; // scattering_lambda;
-        layout(binding = 6, rgba8) uniform image3D scattering_texture;
+        layout(binding = 1) uniform sampler2D transmittance_texture;
+        layout(binding = 2) uniform sampler3D delta_scattering_density_texture; // density_lambda;
+        layout(binding = 3, rgba8) uniform writeonly image3D delta_multiple_scattering_texture; // scattering_lambda;
+        layout(binding = 4, rgba8) uniform image3D scattering_texture;
 
         void main() {
             ScatterCoord sc;
@@ -619,8 +620,7 @@ mod compute_multiple_scattering_shader {
             compute_multiple_scattering_program(
                 gl_GlobalInvocationID.xyz + vec3(0.5, 0.5, 0.5),
                 data1.atmosphere,
-                mat3(data2.rad_to_lum),
-                data3.scattering_order,
+                pc.scattering_order,
                 transmittance_texture,
                 delta_scattering_density_texture,
                 delta_multiple_scattering_texture,
@@ -629,7 +629,7 @@ mod compute_multiple_scattering_shader {
             );
 
             vec4 scattering = vec4(
-                  vec3(data2.rad_to_lum * delta_multiple_scattering) / rayleigh_phase_function(sc.nu),
+                  vec3(pc.rad_to_lum * delta_multiple_scattering) / rayleigh_phase_function(sc.nu),
                   0.0);
             vec4 prior_scattering = imageLoad(
                 scattering_texture,
@@ -650,23 +650,17 @@ impl Precompute {
         &self,
         lambdas: [f64; 4],
         scattering_order: usize,
+        rad_to_lum: [[f32; 4]; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-        rad_to_lum_buffer: Arc<CpuAccessibleBuffer<[f32; 16]>>,
-        scattering_order_buffer: Arc<CpuAccessibleBuffer<u32>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_multiple_scattering.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
-                .add_buffer(rad_to_lum_buffer)?
-                .add_buffer(scattering_order_buffer)?
-                .add_sampled_image(
-                    self.transmittance_texture.clone(),
-                    Self::make_sampler(window.device())?,
-                )?
+                .add_sampled_image(self.transmittance_texture.clone(), self.sampler.clone())?
                 .add_sampled_image(
                     self.delta_scattering_density_texture.clone(),
-                    Self::make_sampler(window.device())?,
+                    self.sampler.clone(),
                 )?
                 .add_image(self.delta_multiple_scattering_texture.clone())?
                 .add_image(self.scattering_texture.clone())?
@@ -683,12 +677,15 @@ impl Precompute {
                     ],
                     self.compute_multiple_scattering.clone(),
                     pds,
-                    (),
+                    compute_multiple_scattering_shader::ty::PushConstantData {
+                        rad_to_lum,
+                        scattering_order: scattering_order as u32,
+                    },
                 )?
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        //finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_MULTIPLE_SCATTERING {
             let path = format!(
@@ -713,6 +710,7 @@ impl Precompute {
 
 impl Precompute {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
+        let precompute_start = Instant::now();
         let params = EarthParameters::new();
 
         let transmittance_dimensions = Dimensions::Dim2d {
@@ -842,10 +840,18 @@ impl Precompute {
             .then_signal_fence_and_flush()?
             .wait(None)?;
 
+        let precompute_time = precompute_start.elapsed();
+        println!(
+            "Precompute::new: {}.{}ms",
+            precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
+            precompute_time.subsec_micros()
+        );
+
         Ok(Self {
             transmittance_dimensions,
             irradiance_dimensions,
             scattering_dimensions,
+            sampler: Self::make_sampler(window.device())?,
 
             compute_transmittance,
             compute_direct_irradiance,
@@ -927,7 +933,15 @@ impl Precompute {
             BufferUsage::all(),
             self.params.sample(RGB_LAMBDAS),
         )?;
-        self.compute_transmittance_at(RGB_LAMBDAS, window, atmosphere_params_buffer.clone())?;
+        let cbb = AutoCommandBufferBuilder::new(window.device(), window.queue().family())?;
+        let cbb = self.compute_transmittance_at(
+            cbb,
+            RGB_LAMBDAS,
+            window,
+            atmosphere_params_buffer.clone(),
+        )?;
+        let finished = cbb.build()?.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_FINAL {
             Self::dump_2d(
@@ -968,70 +982,126 @@ impl Precompute {
             BufferUsage::all(),
             self.params.sample(lambdas),
         )?;
-        let raw: [f32; 16] = [
-            rad_to_lum[0] as f32,
-            rad_to_lum[1] as f32,
-            rad_to_lum[2] as f32,
-            rad_to_lum[3] as f32,
-            rad_to_lum[4] as f32,
-            rad_to_lum[5] as f32,
-            rad_to_lum[6] as f32,
-            rad_to_lum[7] as f32,
-            rad_to_lum[8] as f32,
-            rad_to_lum[9] as f32,
-            rad_to_lum[10] as f32,
-            rad_to_lum[11] as f32,
-            rad_to_lum[12] as f32,
-            rad_to_lum[13] as f32,
-            rad_to_lum[14] as f32,
-            rad_to_lum[15] as f32,
+        let rad_to_lum32: [[f32; 4]; 4] = [
+            [
+                rad_to_lum[0] as f32,
+                rad_to_lum[1] as f32,
+                rad_to_lum[2] as f32,
+                rad_to_lum[3] as f32,
+            ],
+            [
+                rad_to_lum[4] as f32,
+                rad_to_lum[5] as f32,
+                rad_to_lum[6] as f32,
+                rad_to_lum[7] as f32,
+            ],
+            [
+                rad_to_lum[8] as f32,
+                rad_to_lum[9] as f32,
+                rad_to_lum[10] as f32,
+                rad_to_lum[11] as f32,
+            ],
+            [
+                rad_to_lum[12] as f32,
+                rad_to_lum[13] as f32,
+                rad_to_lum[14] as f32,
+                rad_to_lum[15] as f32,
+            ],
         ];
-        let rad_to_lum_buffer =
-            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), raw)?;
 
-        self.compute_transmittance_at(lambdas, window, atmosphere_params_buffer.clone())?;
+        let cbb = AutoCommandBufferBuilder::new(window.device(), window.queue().family())?;
 
+        let transmittance_start = Instant::now();
+        let cbb =
+            self.compute_transmittance_at(cbb, lambdas, window, atmosphere_params_buffer.clone())?;
+        let transmittance_time = transmittance_start.elapsed();
+        println!(
+            "transmittance      {:?}: {}.{}ms",
+            lambdas,
+            transmittance_time.as_secs() * 1000 + u64::from(transmittance_time.subsec_millis()),
+            transmittance_time.subsec_micros()
+        );
+
+        let finished = cbb.build()?.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
+
+        let direct_irradiance_start = Instant::now();
         self.compute_direct_irradiance_at(lambdas, window, atmosphere_params_buffer.clone())?;
+        let direct_irradiance_time = direct_irradiance_start.elapsed();
+        println!(
+            "direct-irradiance  {:?}: {}.{}ms",
+            lambdas,
+            direct_irradiance_time.as_secs() * 1000
+                + u64::from(direct_irradiance_time.subsec_millis()),
+            direct_irradiance_time.subsec_micros()
+        );
 
+        let single_scattering_start = Instant::now();
         self.compute_single_scattering_at(
             lambdas,
+            rad_to_lum32,
             window,
             atmosphere_params_buffer.clone(),
-            rad_to_lum_buffer.clone(),
         )?;
+        let single_scattering_time = single_scattering_start.elapsed();
+        println!(
+            "single-scattering  {:?}: {}.{}ms",
+            lambdas,
+            single_scattering_time.as_secs() * 1000
+                + u64::from(single_scattering_time.subsec_millis()),
+            single_scattering_time.subsec_micros()
+        );
 
         for scattering_order in 2..=num_scattering_passes {
-            let scattering_order_buffer = CpuAccessibleBuffer::from_data(
-                window.device(),
-                BufferUsage::all(),
-                scattering_order as u32,
-            )?;
-
+            let scattering_density_start = Instant::now();
             self.compute_scattering_density_at(
                 lambdas,
                 scattering_order,
                 window,
                 atmosphere_params_buffer.clone(),
-                rad_to_lum_buffer.clone(),
-                scattering_order_buffer.clone(),
             )?;
+            let scattering_density_time = scattering_density_start.elapsed();
+            println!(
+                "scattering-density {:?}: {}.{}ms",
+                lambdas,
+                scattering_density_time.as_secs() * 1000
+                    + u64::from(scattering_density_time.subsec_millis()),
+                scattering_density_time.subsec_micros()
+            );
 
+            let indirect_irradiance_start = Instant::now();
             self.compute_indirect_irradiance_at(
                 lambdas,
                 scattering_order,
+                rad_to_lum32,
                 window,
                 atmosphere_params_buffer.clone(),
-                rad_to_lum_buffer.clone(),
             )?;
+            let indirect_irradiance_time = indirect_irradiance_start.elapsed();
+            println!(
+                "indirect-irradiance{:?}: {}.{}ms",
+                lambdas,
+                indirect_irradiance_time.as_secs() * 1000
+                    + u64::from(indirect_irradiance_time.subsec_millis()),
+                indirect_irradiance_time.subsec_micros()
+            );
 
+            let multiple_scattering_start = Instant::now();
             self.compute_multiple_scattering_at(
                 lambdas,
                 scattering_order,
+                rad_to_lum32,
                 window,
                 atmosphere_params_buffer.clone(),
-                rad_to_lum_buffer.clone(),
-                scattering_order_buffer.clone(),
             )?;
+            let multiple_scattering_time = multiple_scattering_start.elapsed();
+            println!(
+                "multiple-scattering{:?}: {}.{}ms",
+                lambdas,
+                multiple_scattering_time.as_secs() * 1000
+                    + u64::from(multiple_scattering_time.subsec_millis()),
+                multiple_scattering_time.subsec_micros()
+            );
         }
 
         Ok(())

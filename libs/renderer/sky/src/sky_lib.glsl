@@ -53,7 +53,7 @@ void get_sun_and_sky_irradiance(
     // Indirect irradiance (approximated if the surface is not horizontal).
     vec4 irradiance_at_point = get_irradiance(
         irradiance_texture,
-        vec2(r, mu_s),
+        r, mu_s,
         atmosphere.bottom_radius,
         atmosphere.top_radius
     );

@@ -55,45 +55,49 @@ compute_transmittance_to_top_atmosphere_boundary(
     // assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
     // assert(mu >= -1.0 && mu <= 1.0);
     vec4 rayleigh_depth = atmosphere.rayleigh_scattering_coefficient *
-    compute_optical_length_to_top_atmosphere_boundary(
-    rmu,
-    atmosphere.rayleigh_density,
-    atmosphere.bottom_radius,
-    atmosphere.top_radius);
+        compute_optical_length_to_top_atmosphere_boundary(
+            rmu,
+            atmosphere.rayleigh_density,
+            atmosphere.bottom_radius,
+            atmosphere.top_radius
+        );
 
     vec4 mie_depth = atmosphere.mie_extinction_coefficient *
-    compute_optical_length_to_top_atmosphere_boundary(
-    rmu,
-    atmosphere.mie_density,
-    atmosphere.bottom_radius,
-    atmosphere.top_radius);
+        compute_optical_length_to_top_atmosphere_boundary(
+            rmu,
+            atmosphere.mie_density,
+            atmosphere.bottom_radius,
+            atmosphere.top_radius
+        );
 
     vec4 ozone_depth = atmosphere.absorption_extinction_coefficient *
-    compute_optical_length_to_top_atmosphere_boundary(
-    rmu,
-    atmosphere.absorption_density,
-    atmosphere.bottom_radius,
-    atmosphere.top_radius);
+        compute_optical_length_to_top_atmosphere_boundary(
+            rmu,
+            atmosphere.absorption_density,
+            atmosphere.bottom_radius,
+            atmosphere.top_radius
+        );
 
     return exp(-(rayleigh_depth + mie_depth + ozone_depth));
 }
 
-void compute_transmittance_program(
-vec2 coord,
-AtmosphereParameters atmosphere,
-writeonly image2D transmittance_lambda
+void
+compute_transmittance_program(
+    vec2 coord,
+    AtmosphereParameters atmosphere,
+    writeonly image2D transmittance_lambda
 ) {
     const vec2 TEXTURE_SIZE = vec2(TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
     vec2 uv = coord / TEXTURE_SIZE;
     vec2 rmu = transmittance_uv_to_rmu(
-    uv,
-    atmosphere.bottom_radius,
-    atmosphere.top_radius
+        uv,
+        atmosphere.bottom_radius,
+        atmosphere.top_radius
     );
     vec4 transmittance = compute_transmittance_to_top_atmosphere_boundary(rmu, atmosphere);
     imageStore(
-    transmittance_lambda,
-    ivec2(coord),
-    transmittance
+        transmittance_lambda,
+        ivec2(coord),
+        transmittance
     );
 }

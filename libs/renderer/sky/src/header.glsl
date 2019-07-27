@@ -332,12 +332,11 @@ vec4 get_transmittance(
 // $(u,v)$ texture coordinates. The simplest, affine mapping is sufficient here,
 // because the ground irradiance function is very smooth:
 vec2 irradiance_rmus_to_uv(
-    vec2 rmus,
+    float r,
+    float mu_s,
     float bottom_radius,
     float top_radius
 ) {
-    float r = rmus.x;
-    float mu_s = rmus.y;
     float x_r = (r - bottom_radius) / (top_radius - bottom_radius);
     float x_mu_s = mu_s * 0.5 + 0.5;
     return vec2(
@@ -362,11 +361,12 @@ vec2 irradiance_uv_to_rmus(
 
 vec4 get_irradiance(
     sampler2D irradiance_texture,
-    vec2 rmus,
+    float r,
+    float mu_s,
     float bottom_radius,
     float top_radius
 ) {
-    vec2 uv = irradiance_rmus_to_uv(rmus, bottom_radius, top_radius);
+    vec2 uv = irradiance_rmus_to_uv(r, mu_s, bottom_radius, top_radius);
     return texture(irradiance_texture, uv);
 }
 
@@ -432,13 +432,11 @@ vec4 scattering_rmumusnu_to_uvwz(
 // phase function terms - they are added at <a href="#rendering">render time</a>
 // for better angular precision. We provide them here for completeness:
 float rayleigh_phase_function(float nu) {
-    return 0.1;
     float k = 3.0 / (16.0 * PI);
     return k * (1.0 + nu * nu);
 }
 
 float mie_phase_function(float g, float nu) {
-    return 0.1;
     float k = 3.0 / (8.0 * PI) * (1.0 - g * g) / (2.0 + g * g);
     return k * (1.0 + nu * nu) / pow(1.0 + g * g - 2.0 * g * nu, 1.5);
 }

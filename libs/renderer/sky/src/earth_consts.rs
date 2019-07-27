@@ -272,7 +272,6 @@ impl EarthParameters {
             _dummy4: Default::default(),
             _dummy5: Default::default(),
             _dummy6: Default::default(),
-            //_dummy7: Default::default(),
         };
 
         /*
