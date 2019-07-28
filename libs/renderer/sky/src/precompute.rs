@@ -26,7 +26,6 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
     descriptor::descriptor_set::PersistentDescriptorSet,
-    device::Device,
     format::Format,
     image::{Dimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount, StorageImage},
     pipeline::{ComputePipeline, ComputePipelineAbstract},

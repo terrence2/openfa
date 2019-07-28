@@ -297,7 +297,19 @@ impl SkyRenderer {
 
         let (vertex_buffer, index_buffer) = Self::build_vbo(window)?;
 
-        let sampler = Self::make_sampler(window.device())?;
+        let sampler = Sampler::new(
+            window.device(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )?;
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
             PersistentDescriptorSet::start(pipeline.clone(), 0)
                 .add_buffer(atmosphere_params_buffer.clone())?
@@ -315,24 +327,6 @@ impl SkyRenderer {
             index_buffer,
             pds,
         })
-    }
-
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Linear,
-            Filter::Linear,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
     }
 
     pub fn build_vbo(
