@@ -108,6 +108,7 @@ pub struct EarthParameters {
     absorption_extinction: Vec<f64>,
     ground_albedo: Vec<f64>,
     sun_spectral_radiance_to_luminance: [f32; 3],
+    whitepoint: [f32; 4],
 }
 
 impl EarthParameters {
@@ -142,6 +143,14 @@ impl EarthParameters {
                 &sun_irradiance,
                 0.0,
             );
+        let srgb = Self::compute_solar_irradiance_to_linear_srgb(&wavelengths, &sun_irradiance);
+        let avg = (srgb[0] + srgb[1] + srgb[2]) / 3.0;
+        let whitepoint = [
+            (srgb[0] / avg) as f32,
+            (srgb[1] / avg) as f32,
+            (srgb[2] / avg) as f32,
+            1f32,
+        ];
 
         Self {
             wavelengths,
@@ -152,6 +161,7 @@ impl EarthParameters {
             absorption_extinction,
             ground_albedo,
             sun_spectral_radiance_to_luminance,
+            whitepoint,
         }
     }
 
@@ -163,8 +173,6 @@ impl EarthParameters {
     ) -> [f32; 3] {
         let mut out = [0f32; 3];
         let solar = interpolate(&wavelengths, &sun_irradiance, RGB_LAMBDAS, 1.0);
-        //for &lambda in &self.wavelengths {
-        let lambda_step = 1;
         for lambda in LAMBDA_RANGE {
             let xyz_bar = cie_color_coefficient_at_wavelength(lambda as f64);
             let rgb_bar = convert_xyz_to_srgb(xyz_bar, 1.0);
@@ -176,9 +184,26 @@ impl EarthParameters {
             }
         }
         for i in 0..3 {
-            out[i] *= (MAX_LUMINOUS_EFFICACY * lambda_step as f64) as f32;
+            out[i] *= MAX_LUMINOUS_EFFICACY as f32;
         }
         out
+    }
+
+    pub fn compute_solar_irradiance_to_linear_srgb(
+        wavelengths: &[f64],
+        sun_irradiance: &[f64],
+    ) -> [f64; 3] {
+        let mut x = 0f64;
+        let mut y = 0f64;
+        let mut z = 0f64;
+        for lambda in LAMBDA_RANGE {
+            let value = interpolate_at_lambda(wavelengths, sun_irradiance, lambda as f64);
+            let xyz = cie_color_coefficient_at_wavelength(lambda as f64);
+            x += xyz[0] * value;
+            y += xyz[1] * value;
+            z += xyz[2] * value;
+        }
+        convert_xyz_to_srgb([x, y, z], MAX_LUMINOUS_EFFICACY)
     }
 
     pub fn sample(&self, lambdas: [f64; 4]) -> fs::ty::AtmosphereParameters {
@@ -187,9 +212,6 @@ impl EarthParameters {
         let atmosphere = fs::ty::AtmosphereParameters {
             sun_irradiance: interpolate(&self.wavelengths, &self.sun_irradiance, lambdas, 1.0),
             sun_angular_radius: 0.00935 / 2.0,
-            //  double sun_k_r, sun_k_g, sun_k_b;
-            // ComputeSpectralRadianceToLuminanceFactors(wavelengths, solar_irradiance,
-            //     0 /* lambda_power */, &sun_k_r, &sun_k_g, &sun_k_b);
             sun_spectral_radiance_to_luminance: self.sun_spectral_radiance_to_luminance,
             sky_spectral_radiance_to_luminance: [
                 MAX_LUMINOUS_EFFICACY as f32,
@@ -263,6 +285,7 @@ impl EarthParameters {
                 LENGTH_SCALE,
             ),
             ground_albedo: interpolate(&self.wavelengths, &self.ground_albedo, lambdas, 1.0),
+            whitepoint: self.whitepoint.clone(),
             mu_s_min: MAX_SUN_ZENITH_ANGLE.cos() as f32,
             //mu_s_min: -0.207912,
             _dummy0: Default::default(),

@@ -135,11 +135,10 @@ mod compute_transmittance_shader {
 impl Precompute {
     fn compute_transmittance_at(
         &self,
-        cbb: AutoCommandBufferBuilder,
         lambdas: [f64; 4],
         window: &GraphicsWindow,
         atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-    ) -> Fallible<AutoCommandBufferBuilder> {
+    ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_transmittance.clone(), 0)
                 .add_buffer(atmosphere_params_buffer)?
@@ -147,44 +146,33 @@ impl Precompute {
                 .build()?,
         );
 
-        //let command_buffer =
-        //    AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-        //        .dispatch(
-        //            [
-        //                self.transmittance_dimensions.width() / 8,
-        //                self.transmittance_dimensions.height() / 8,
-        //                1,
-        //            ],
-        //            self.compute_transmittance.clone(),
-        //            pds.clone(),
-        //            (),
-        //        )?
-        //        .build()?;
+        let command_buffer =
+            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
+                .dispatch(
+                    [
+                        self.transmittance_dimensions.width() / 8,
+                        self.transmittance_dimensions.height() / 8,
+                        1,
+                    ],
+                    self.compute_transmittance.clone(),
+                    pds.clone(),
+                    (),
+                )?
+                .build()?;
 
-        Ok(cbb.dispatch(
-            [
-                self.transmittance_dimensions.width() / 8,
-                self.transmittance_dimensions.height() / 8,
-                1,
-            ],
-            self.compute_transmittance.clone(),
-            pds.clone(),
-            (),
-        )?)
+        let finished = command_buffer.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
 
-        //let finished = command_buffer.execute(window.queue())?;
-        //finished.then_signal_fence_and_flush()?.wait(None)?;
+        if DUMP_TRANSMITTANCE {
+            Self::dump_2d_x4(
+                "transmittance",
+                lambdas,
+                self.transmittance_texture.clone(),
+                window,
+            )?;
+        }
 
-        //if DUMP_TRANSMITTANCE {
-        //    Self::dump_2d_x4(
-        //        "transmittance",
-        //        lambdas,
-        //        self.transmittance_texture.clone(),
-        //        window,
-        //    )?;
-        //}
-
-        //Ok(())
+        Ok(())
     }
 }
 
@@ -344,7 +332,7 @@ impl Precompute {
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        //finished.then_signal_fence_and_flush()?.wait(None)?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_SINGLE_RAYLEIGH {
             let path = format!(
@@ -466,7 +454,7 @@ impl Precompute {
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        //finished.then_signal_fence_and_flush()?.wait(None)?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_SCATTERING_DENSITY {
             let path = format!(
@@ -933,15 +921,8 @@ impl Precompute {
             BufferUsage::all(),
             self.params.sample(RGB_LAMBDAS),
         )?;
-        let cbb = AutoCommandBufferBuilder::new(window.device(), window.queue().family())?;
-        let cbb = self.compute_transmittance_at(
-            cbb,
-            RGB_LAMBDAS,
-            window,
-            atmosphere_params_buffer.clone(),
-        )?;
-        let finished = cbb.build()?.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        let cbb =
+            self.compute_transmittance_at(RGB_LAMBDAS, window, atmosphere_params_buffer.clone())?;
 
         if DUMP_FINAL {
             Self::dump_2d(
@@ -1009,11 +990,8 @@ impl Precompute {
             ],
         ];
 
-        let cbb = AutoCommandBufferBuilder::new(window.device(), window.queue().family())?;
-
         let transmittance_start = Instant::now();
-        let cbb =
-            self.compute_transmittance_at(cbb, lambdas, window, atmosphere_params_buffer.clone())?;
+        self.compute_transmittance_at(lambdas, window, atmosphere_params_buffer.clone())?;
         let transmittance_time = transmittance_start.elapsed();
         println!(
             "transmittance      {:?}: {}.{}ms",
@@ -1021,9 +999,6 @@ impl Precompute {
             transmittance_time.as_secs() * 1000 + u64::from(transmittance_time.subsec_millis()),
             transmittance_time.subsec_micros()
         );
-
-        let finished = cbb.build()?.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
 
         let direct_irradiance_start = Instant::now();
         self.compute_direct_irradiance_at(lambdas, window, atmosphere_params_buffer.clone())?;
@@ -1338,6 +1313,7 @@ impl Precompute {
         self,
         window: &GraphicsWindow,
     ) -> Fallible<(
+        Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
         Arc<ImmutableImage<Format>>,
         Arc<ImmutableImage<Format>>,
         Arc<ImmutableImage<Format>>,
@@ -1457,9 +1433,19 @@ impl Precompute {
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+        let finished_future = finished.then_signal_fence_and_flush()?;
+
+        // Concurrent to the above copies, re-sample our EarthParams at RGB for the renderer.
+        let mut srgb_atmosphere = self.params.sample(RGB_LAMBDAS);
+        srgb_atmosphere.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
+
+        finished_future.wait(None)?;
+
+        let srgb_atmosphere_buffer =
+            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), srgb_atmosphere)?;
 
         Ok((
+            srgb_atmosphere_buffer,
             read_transmittance_texture,
             read_scattering_texture,
             read_single_mie_scattering_texture,

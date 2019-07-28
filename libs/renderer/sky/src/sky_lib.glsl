@@ -32,11 +32,6 @@ vec3 get_solar_luminance(
       (PI * sun_angular_radius * sun_angular_radius) * sun_spectral_radiance_to_luminance;
 }
 
-//vec3 get_sun_radiance(vec3 sun_irradiance, float sun_angular_radius) {
-//    return sun_irradiance / (PI * sun_angular_radius * sun_angular_radius);
-//}
-
-
 void get_sun_and_sky_irradiance(
     AtmosphereParameters atmosphere,
     sampler2D transmittance_texture,
@@ -297,9 +292,6 @@ void get_sky_radiance(
     out vec3 transmittance,
     out vec3 radiance
 ) {
-//    transmittance = vec3(1);
-//    radiance = vec3(0);
-
     // Compute the distance to the top atmosphere boundary along the view ray,
     // assuming the viewer is in space (or NaN if the view ray does not intersect
     // the atmosphere).
@@ -342,7 +334,7 @@ void get_sky_radiance(
         scattering,
         single_mie_scattering);
 
-    radiance = scattering = scattering * rayleigh_phase_function(nu) +
+    radiance = scattering * rayleigh_phase_function(nu) +
                single_mie_scattering * mie_phase_function(atmosphere.mie_phase_function_g, nu);
 }
 

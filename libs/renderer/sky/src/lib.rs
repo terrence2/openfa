@@ -57,10 +57,10 @@ mod vs {
         layout(location = 0) in vec2 position;
 
         layout(push_constant) uniform PushConstantData {
-          mat4 inverse_projection;
-          mat4 inverse_view;
-          vec4 eye_position;
-          vec4 sun_direction;
+            mat4 inverse_projection;
+            mat4 inverse_view;
+            vec4 eye_position;
+            vec4 sun_direction;
         } pc;
 
         layout(location = 0) out vec3 v_ray;
@@ -109,6 +109,8 @@ mod fs {
         layout(set = 0, binding = 3) uniform sampler3D single_mie_scattering_texture;
         layout(set = 0, binding = 4) uniform sampler2D irradiance_texture;
 
+        const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
+
         float density(float h) {
             float a0 =  7.001985e-2;
             float a1 = -4.336216e-3;
@@ -154,11 +156,9 @@ mod fs {
 
             vec3 radiance = sky_radiance;
             radiance = mix(radiance, ground_radiance, ground_alpha);
-            vec3 white_point = vec3(1.082414, 0.967556, 0.950030);
-            float exposure = 681 * 0.0001;
 
             vec3 color = pow(
-                    vec3(1.0) - exp(-radiance / white_point * exposure),
+                    vec3(1.0) - exp(-radiance / vec3(cd.atmosphere.whitepoint) * EXPOSURE),
                     vec3(1.0 / 2.2)
                 );
             f_color = vec4(color, 1.0);
@@ -256,6 +256,7 @@ impl SkyRenderer {
         let precompute = Precompute::new(window)?;
         precompute.build_textures(NUM_PRECOMPUTED_WAVELENGTHS, NUM_SCATTERING_ORDER, window)?;
         let (
+            earth_srgb_params,
             transmittance_texture,
             scattering_texture,
             single_mie_scattering_texture,
@@ -267,6 +268,13 @@ impl SkyRenderer {
             precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
             precompute_time.subsec_micros()
         );
+
+        // Planet properties.
+        let earth = EarthParameters::new();
+        let mut params = earth.sample(RGB_LAMBDAS);
+        params.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
+        let atmosphere_params_buffer =
+            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), params)?;
 
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;
@@ -289,7 +297,6 @@ impl SkyRenderer {
                     stencil_back: Default::default(),
                 })
                 */
-                //.blend_alpha_blending()
                 .render_pass(
                     Subpass::from(window.render_pass(), 0)
                         .expect("gfx: did not find a render pass"),
@@ -297,7 +304,7 @@ impl SkyRenderer {
                 .build(window.device())?,
         );
 
-        let (vertex_buffer, index_buffer, atmosphere_params_buffer) = Self::build_buffers(window)?;
+        let (vertex_buffer, index_buffer) = Self::build_vbo(window)?;
 
         let sampler = Self::make_sampler(window.device())?;
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
@@ -337,12 +344,11 @@ impl SkyRenderer {
         Ok(sampler)
     }
 
-    pub fn build_buffers(
+    pub fn build_vbo(
         window: &GraphicsWindow,
     ) -> Fallible<(
         Arc<CpuAccessibleBuffer<[Vertex]>>,
         Arc<CpuAccessibleBuffer<[u32]>>,
-        Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
     )> {
         // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
         let x0 = -1f32;
@@ -374,14 +380,7 @@ impl SkyRenderer {
             indices.into_iter(),
         )?;
 
-        // Planet properties.
-        let earth = EarthParameters::new();
-        let mut params = earth.sample(RGB_LAMBDAS);
-        params.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
-        let atmosphere_params_buffer =
-            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), params)?;
-
-        Ok((vertex_buffer, index_buffer, atmosphere_params_buffer))
+        Ok((vertex_buffer, index_buffer))
     }
 
     pub fn before_frame(

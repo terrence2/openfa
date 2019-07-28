@@ -117,6 +117,9 @@ struct AtmosphereParameters {
     // The average albedo of the ground, per component.
     vec4 ground_albedo;
 
+    // The whitepoint, given the relative contributions of all possible wavelengths.
+    vec4 whitepoint;
+
     // The cosine of the maximum Sun zenith angle for which atmospheric scattering
     // must be precomputed (for maximum precision, use the smallest Sun zenith
     // angle yielding negligible sky light radiance values. For instance, for the
