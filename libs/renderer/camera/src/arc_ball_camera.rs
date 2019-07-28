@@ -54,6 +54,10 @@ impl ArcBallCamera {
         self.distance = distance;
     }
 
+    pub fn set_target(&mut self, x: f32, y: f32, z: f32) {
+        self.target = Point3::new(x, y, z);
+    }
+
     pub fn set_angle(&mut self, pitch: f32, yaw: f32) {
         self.pitch = pitch;
         self.yaw = yaw;
@@ -139,5 +143,9 @@ impl CameraAbstract for ArcBallCamera {
         Isometry3::look_at_rh(&self.eye(), &self.target, &Vector3::y())
             .inverse()
             .to_homogeneous()
+    }
+
+    fn position(&self) -> Vector3<f32> {
+        self.eye().coords
     }
 }

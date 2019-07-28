@@ -10,7 +10,7 @@ log = "^ 0.4"
 failure = "^ 0.1.2"
 smallvec = "^ 0.6"
 unicase = "^ 2.4"
-winit = "^ 0.18"
+winit = "^ 0.19"
 
 [dev-dependencies]
 approx = "^ 0.3"

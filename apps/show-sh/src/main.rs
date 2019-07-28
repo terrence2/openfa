@@ -106,7 +106,6 @@ fn main() -> Fallible<()> {
         &window,
     )?;
 
-    //let model = Isometry3::new(nalgebra::zero(), nalgebra::zero());
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
     camera.set_distance(40f32);
 

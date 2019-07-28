@@ -18,6 +18,7 @@ members = [
         "apps/show-dlg",
         "apps/show-sh",
         "apps/show-sh-raw",
+        "apps/show-sky",
 
         "libs/animate",
         "libs/ansi",
@@ -42,8 +43,11 @@ members = [
         "libs/pt",
         "libs/render",
         "libs/renderer/camera",
+        "libs/renderer/geometry",
         "libs/renderer/shape",
+        "libs/renderer/sky",
         "libs/renderer/starbox",
+        "libs/renderer/subocean",
         "libs/renderer/text",
         "libs/resource",
         "libs/reverse",
@@ -53,6 +57,14 @@ members = [
         "libs/window",
         "libs/xt",
 ]
+
+# Emit debugging symbols for tracing
+[profile.release]
+debug = true
+
+# Need profile-overrides from nightly
+#[profile.dev.overrides.image]
+#opt-level = 3
 
 # pkware is unusable at opt level 0.
 # [profile.dev.]
