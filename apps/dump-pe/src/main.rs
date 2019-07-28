@@ -19,11 +19,13 @@ use peff::PE;
 use std::{collections::HashSet, iter};
 use structopt::StructOpt;
 
-make_opt_struct!(#[structopt(
-    name = "pedump",
-    about = "Show the contents of a PF portable executable file"
-)]
-Opts {});
+make_opt_struct!(
+    #[structopt(
+        name = "pedump",
+        about = "Show the contents of a PF portable executable file"
+    )]
+    Opts {}
+);
 
 fn main() -> Fallible<()> {
     let opt = Opts::from_args();
