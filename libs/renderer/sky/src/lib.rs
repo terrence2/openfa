@@ -17,10 +17,7 @@ mod colorspace;
 mod earth_consts;
 mod precompute;
 
-use crate::{
-    earth_consts::{EarthParameters, RGB_LAMBDAS},
-    precompute::Precompute,
-};
+use crate::precompute::Precompute;
 use camera::CameraAbstract;
 use failure::Fallible;
 use log::trace;
@@ -30,7 +27,6 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
-    device::Device,
     framebuffer::Subpass,
     impl_vertex,
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
@@ -253,28 +249,23 @@ impl SkyRenderer {
         trace!("SkyRenderer::new");
 
         let precompute_start = Instant::now();
-        let precompute = Precompute::new(window)?;
-        precompute.build_textures(NUM_PRECOMPUTED_WAVELENGTHS, NUM_SCATTERING_ORDER, window)?;
         let (
-            earth_srgb_params,
+            atmosphere_params_buffer,
             transmittance_texture,
             scattering_texture,
             single_mie_scattering_texture,
             irradiance_texture,
-        ) = precompute.make_immutable(window)?;
+        ) = Precompute::new(window)?.run(
+            NUM_PRECOMPUTED_WAVELENGTHS,
+            NUM_SCATTERING_ORDER,
+            window,
+        )?;
         let precompute_time = precompute_start.elapsed();
-        println!(
-            "precompute: {}.{}ms",
+        trace!(
+            "SkyRenderer::precompute timing: {}.{}ms",
             precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
             precompute_time.subsec_micros()
         );
-
-        // Planet properties.
-        let earth = EarthParameters::new();
-        let mut params = earth.sample(RGB_LAMBDAS);
-        params.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
-        let atmosphere_params_buffer =
-            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), params)?;
 
         let vs = vs::Shader::load(window.device())?;
         let fs = fs::Shader::load(window.device())?;

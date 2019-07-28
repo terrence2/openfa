@@ -79,11 +79,8 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(&[&shape_bindings]);
 
-    //let mut sh_renderer = ShRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
-    //let mut starbox_renderer = StarboxRenderer::new(&window)?;
     let mut sky_renderer = SkyRenderer::new(&window)?;
-    //let mut subocean_renderer = SubOceanRenderer::new(&window)?;
 
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
@@ -92,23 +89,6 @@ fn main() -> Fallible<()> {
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
-    //let state_handle = text_renderer
-    //    .add_screen_text(Font::HUD11, "", &window)?
-    //    .with_color(&[1f32, 0.5f32, 0f32, 1f32])
-    //    .with_horizontal_position(TextPositionH::Right)
-    //    .with_horizontal_anchor(TextAnchorH::Right)
-    //    .with_vertical_position(TextPositionV::Bottom)
-    //    .with_vertical_anchor(TextAnchorV::Bottom);
-
-    //let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    //let instance = sh_renderer.add_shape_to_render(
-    //    name,
-    //    &sh,
-    //    DrawSelection::NormalModel,
-    //    &system_palette,
-    //    &lib,
-    //    &window,
-    //)?;
 
     let mut camera = UfoCamera::new(window.aspect_ratio()? as f64, 0.1f64, 3.4e+38f64);
     camera.set_position(6_378_001.0, 0.0, 0.0);
@@ -162,45 +142,6 @@ fn main() -> Fallible<()> {
                 "-move-backward" => camera.minus_move_backward(),
                 "+move-forward" => camera.plus_move_forward(),
                 "-move-forward" => camera.minus_move_forward(),
-                // "+rudder-left" => instance.draw_state().borrow_mut().move_rudder_left(),
-                // "-rudder-left" => instance.draw_state().borrow_mut().move_rudder_center(),
-                // "+rudder-right" => instance.draw_state().borrow_mut().move_rudder_right(),
-                // "-rudder-right" => instance.draw_state().borrow_mut().move_rudder_center(),
-                // "+stick-backward" => instance.draw_state().borrow_mut().move_stick_backward(),
-                // "-stick-backward" => instance.draw_state().borrow_mut().move_stick_center(),
-                // "+stick-forward" => instance.draw_state().borrow_mut().move_stick_forward(),
-                // "-stick-forward" => instance.draw_state().borrow_mut().move_stick_center(),
-                // "+stick-left" => instance.draw_state().borrow_mut().move_stick_left(),
-                // "-stick-left" => instance.draw_state().borrow_mut().move_stick_center(),
-                // "+stick-right" => instance.draw_state().borrow_mut().move_stick_right(),
-                // "-stick-right" => instance.draw_state().borrow_mut().move_stick_center(),
-                // "+vector-thrust-backward" => {
-                //     instance.draw_state().borrow_mut().vector_thrust_backward()
-                // }
-                // "+vector-thrust-forward" => {
-                //     instance.draw_state().borrow_mut().vector_thrust_forward()
-                // }
-                // "-vector-thrust-forward" => instance.draw_state().borrow_mut().vector_thrust_stop(),
-                // "-vector-thrust-backward" => {
-                //     instance.draw_state().borrow_mut().vector_thrust_stop()
-                // }
-                // "bump-eject-state" => instance.draw_state().borrow_mut().bump_eject_state(),
-                // "consume-sam" => instance.draw_state().borrow_mut().consume_sam(),
-                // "+decrease-wing-sweep" => instance.draw_state().borrow_mut().decrease_wing_sweep(),
-                // "+increase-wing-sweep" => instance.draw_state().borrow_mut().increase_wing_sweep(),
-                // "-decrease-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
-                // "-increase-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
-                // "disable-afterburner" => instance.draw_state().borrow_mut().disable_afterburner(),
-                // "enable-afterburner" => instance.draw_state().borrow_mut().enable_afterburner(),
-                // "toggle-airbrake" => instance.draw_state().borrow_mut().toggle_airbrake(),
-                // "toggle-bay" => instance.draw_state().borrow_mut().toggle_bay(&loop_start),
-                // "toggle-flaps" => {
-                //     instance.draw_state().borrow_mut().toggle_flaps();
-                //     instance.draw_state().borrow_mut().toggle_slats();
-                // }
-                // "toggle-gear" => instance.draw_state().borrow_mut().toggle_gear(&loop_start),
-                // "toggle-hook" => instance.draw_state().borrow_mut().toggle_hook(),
-                // "toggle-player-dead" => instance.draw_state().borrow_mut().toggle_player_dead(),
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
@@ -215,8 +156,6 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
-            //subocean_renderer.before_frame(&camera)?;
-            //starbox_renderer.before_frame(&camera)?;
             let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
             sky_renderer.before_frame(&camera, &sun_direction)?;
             text_renderer.before_frame(&window)?;
@@ -226,18 +165,13 @@ fn main() -> Fallible<()> {
                 window.queue().family(),
             )?;
 
-            //cbb = sh_renderer.before_render(cbb)?;
-
             cbb = cbb.begin_render_pass(
                 frame.framebuffer(&window),
                 false,
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
-            //cbb = starbox_renderer.render(cbb, &window.dynamic_state)?;
             cbb = sky_renderer.render(cbb, &window.dynamic_state)?;
-            //cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
-            //cbb = subocean_renderer.render(cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;
@@ -257,22 +191,5 @@ fn main() -> Fallible<()> {
             render_time.subsec_micros(),
         );
         fps_handle.set_span(&ts, &window)?;
-
-        /*
-        let params = format!(
-            "speed: {:.3}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
-            camera.speed,
-            !instance.draw_state().borrow().gear_retracted(),
-            instance.draw_state().borrow().gear_position(),
-            instance.draw_state().borrow().flaps_down(),
-            instance.draw_state().borrow().airbrake_extended(),
-            instance.draw_state().borrow().hook_extended(),
-            !instance.draw_state().borrow().bay_closed(),
-            instance.draw_state().borrow().bay_position(),
-            instance.draw_state().borrow().afterburner_enabled(),
-            instance.draw_state().borrow().wing_sweep_angle(),
-        );
-        state_handle.set_span(&params, &window)?;
-        */
     }
 }

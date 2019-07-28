@@ -20,6 +20,7 @@ use crate::{
 };
 use failure::{bail, Fallible};
 use image::{ImageBuffer, Luma, Rgb};
+use log::trace;
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -33,24 +34,6 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
-
-// Checklist:
-// Final
-//     final transmittance:   correct
-//     final irradiance:      wrong
-//     final scattering:      correct
-//     final mie scatter:     correct
-// Single Round
-//     delta transmittance:   correct
-//     direct irradiance:     correct
-//     single delta rayleigh: correct
-//     single delta mie:      correct
-//     single rayleigh acc:   correct
-//     single mie acc:        correct
-// Multi Round
-//     density
-//     delta irradiance:
-//     irradiance acc:        wrong - a little too bright
 
 const DUMP_TRANSMITTANCE: bool = false;
 const DUMP_DIRECT_IRRADIANCE: bool = false;
@@ -562,7 +545,7 @@ impl Precompute {
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        //finished.then_signal_fence_and_flush()?.wait(None)?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_INDIRECT_IRRADIANCE_DELTA {
             let path = format!(
@@ -673,7 +656,7 @@ impl Precompute {
                 .build()?;
 
         let finished = command_buffer.execute(window.queue())?;
-        //finished.then_signal_fence_and_flush()?.wait(None)?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
 
         if DUMP_MULTIPLE_SCATTERING {
             let path = format!(
@@ -698,7 +681,6 @@ impl Precompute {
 
 impl Precompute {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
-        let precompute_start = Instant::now();
         let params = EarthParameters::new();
 
         let transmittance_dimensions = Dimensions::Dim2d {
@@ -828,18 +810,23 @@ impl Precompute {
             .then_signal_fence_and_flush()?
             .wait(None)?;
 
-        let precompute_time = precompute_start.elapsed();
-        println!(
-            "Precompute::new: {}.{}ms",
-            precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
-            precompute_time.subsec_micros()
-        );
-
         Ok(Self {
             transmittance_dimensions,
             irradiance_dimensions,
             scattering_dimensions,
-            sampler: Self::make_sampler(window.device())?,
+            sampler: Sampler::new(
+                window.device(),
+                Filter::Linear,
+                Filter::Linear,
+                MipmapMode::Nearest,
+                SamplerAddressMode::ClampToEdge,
+                SamplerAddressMode::ClampToEdge,
+                SamplerAddressMode::ClampToEdge,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+            )?,
 
             compute_transmittance,
             compute_direct_irradiance,
@@ -863,30 +850,12 @@ impl Precompute {
         })
     }
 
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Linear,
-            Filter::Linear,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
-    }
-
     pub fn build_textures(
         &self,
         num_precomputed_wavelengths: usize,
         num_scattering_passes: usize,
         window: &GraphicsWindow,
-    ) -> Fallible<()> {
+    ) -> Fallible<Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>> {
         let num_iterations = (num_precomputed_wavelengths + 3) / 4;
         let delta_lambda = (MAX_LAMBDA - MIN_LAMBDA) / (4.0 * num_iterations as f64);
         for i in 0..num_iterations {
@@ -916,13 +885,11 @@ impl Precompute {
 
         // Rebuild transmittance at RGB instead of high UV.
         // Upload atmosphere parameters for this set of wavelengths.
-        let atmosphere_params_buffer = CpuAccessibleBuffer::from_data(
-            window.device(),
-            BufferUsage::all(),
-            self.params.sample(RGB_LAMBDAS),
-        )?;
-        let cbb =
-            self.compute_transmittance_at(RGB_LAMBDAS, window, atmosphere_params_buffer.clone())?;
+        let mut srgb_atmosphere = self.params.sample(RGB_LAMBDAS);
+        srgb_atmosphere.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
+        let srgb_atmosphere_buffer =
+            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), srgb_atmosphere)?;
+        self.compute_transmittance_at(RGB_LAMBDAS, window, srgb_atmosphere_buffer.clone())?;
 
         if DUMP_FINAL {
             Self::dump_2d(
@@ -947,7 +914,7 @@ impl Precompute {
             )?;
         }
 
-        Ok(())
+        Ok(srgb_atmosphere_buffer)
     }
 
     fn precompute_one_step(
@@ -993,7 +960,7 @@ impl Precompute {
         let transmittance_start = Instant::now();
         self.compute_transmittance_at(lambdas, window, atmosphere_params_buffer.clone())?;
         let transmittance_time = transmittance_start.elapsed();
-        println!(
+        trace!(
             "transmittance      {:?}: {}.{}ms",
             lambdas,
             transmittance_time.as_secs() * 1000 + u64::from(transmittance_time.subsec_millis()),
@@ -1003,7 +970,7 @@ impl Precompute {
         let direct_irradiance_start = Instant::now();
         self.compute_direct_irradiance_at(lambdas, window, atmosphere_params_buffer.clone())?;
         let direct_irradiance_time = direct_irradiance_start.elapsed();
-        println!(
+        trace!(
             "direct-irradiance  {:?}: {}.{}ms",
             lambdas,
             direct_irradiance_time.as_secs() * 1000
@@ -1019,7 +986,7 @@ impl Precompute {
             atmosphere_params_buffer.clone(),
         )?;
         let single_scattering_time = single_scattering_start.elapsed();
-        println!(
+        trace!(
             "single-scattering  {:?}: {}.{}ms",
             lambdas,
             single_scattering_time.as_secs() * 1000
@@ -1036,7 +1003,7 @@ impl Precompute {
                 atmosphere_params_buffer.clone(),
             )?;
             let scattering_density_time = scattering_density_start.elapsed();
-            println!(
+            trace!(
                 "scattering-density {:?}: {}.{}ms",
                 lambdas,
                 scattering_density_time.as_secs() * 1000
@@ -1053,7 +1020,7 @@ impl Precompute {
                 atmosphere_params_buffer.clone(),
             )?;
             let indirect_irradiance_time = indirect_irradiance_start.elapsed();
-            println!(
+            trace!(
                 "indirect-irradiance{:?}: {}.{}ms",
                 lambdas,
                 indirect_irradiance_time.as_secs() * 1000
@@ -1070,7 +1037,7 @@ impl Precompute {
                 atmosphere_params_buffer.clone(),
             )?;
             let multiple_scattering_time = multiple_scattering_start.elapsed();
-            println!(
+            trace!(
                 "multiple-scattering{:?}: {}.{}ms",
                 lambdas,
                 multiple_scattering_time.as_secs() * 1000
@@ -1080,6 +1047,146 @@ impl Precompute {
         }
 
         Ok(())
+    }
+
+    pub fn run(
+        self,
+        num_precomputed_wavelengths: usize,
+        num_scattering_passes: usize,
+        window: &GraphicsWindow,
+    ) -> Fallible<(
+        Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        Arc<ImmutableImage<Format>>,
+        Arc<ImmutableImage<Format>>,
+        Arc<ImmutableImage<Format>>,
+        Arc<ImmutableImage<Format>>,
+    )> {
+        let srgb_atmosphere_buffer =
+            self.build_textures(num_precomputed_wavelengths, num_scattering_passes, window)?;
+
+        let usage = ImageUsage {
+            transfer_destination: true,
+            sampled: true,
+            ..ImageUsage::none()
+        };
+
+        let (read_transmittance_texture, upload_transmittance_texture) =
+            ImmutableImage::uninitialized(
+                window.device(),
+                self.transmittance_dimensions,
+                Format::R32G32B32A32Sfloat,
+                MipmapsCount::One,
+                usage,
+                ImageLayout::TransferDstOptimal,
+                Some(window.queue().family()),
+            )?;
+        let (read_scattering_texture, upload_scattering_texture) = ImmutableImage::uninitialized(
+            window.device(),
+            self.scattering_dimensions,
+            Format::R32G32B32A32Sfloat,
+            MipmapsCount::One,
+            usage,
+            ImageLayout::TransferDstOptimal,
+            Some(window.queue().family()),
+        )?;
+        let (read_single_mie_scattering_texture, upload_single_mie_scattering_texture) =
+            ImmutableImage::uninitialized(
+                window.device(),
+                self.scattering_dimensions,
+                Format::R32G32B32A32Sfloat,
+                MipmapsCount::One,
+                usage,
+                ImageLayout::TransferDstOptimal,
+                Some(window.queue().family()),
+            )?;
+        let (read_irradiance_texture, upload_irradiance_texture) = ImmutableImage::uninitialized(
+            window.device(),
+            self.irradiance_dimensions,
+            Format::R32G32B32A32Sfloat,
+            MipmapsCount::One,
+            usage,
+            ImageLayout::TransferDstOptimal,
+            Some(window.queue().family()),
+        )?;
+
+        let command_buffer =
+            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
+                .copy_image(
+                    self.transmittance_texture.clone(),
+                    [0, 0, 0],
+                    0,
+                    0,
+                    upload_transmittance_texture,
+                    [0, 0, 0],
+                    0,
+                    0,
+                    [
+                        self.transmittance_dimensions.width(),
+                        self.transmittance_dimensions.height(),
+                        1,
+                    ],
+                    1,
+                )?
+                .copy_image(
+                    self.scattering_texture.clone(),
+                    [0, 0, 0],
+                    0,
+                    0,
+                    upload_scattering_texture,
+                    [0, 0, 0],
+                    0,
+                    0,
+                    [
+                        self.scattering_dimensions.width(),
+                        self.scattering_dimensions.height(),
+                        self.scattering_dimensions.depth(),
+                    ],
+                    1,
+                )?
+                .copy_image(
+                    self.single_mie_scattering_texture.clone(),
+                    [0, 0, 0],
+                    0,
+                    0,
+                    upload_single_mie_scattering_texture,
+                    [0, 0, 0],
+                    0,
+                    0,
+                    [
+                        self.scattering_dimensions.width(),
+                        self.scattering_dimensions.height(),
+                        self.scattering_dimensions.depth(),
+                    ],
+                    1,
+                )?
+                .copy_image(
+                    self.irradiance_texture.clone(),
+                    [0, 0, 0],
+                    0,
+                    0,
+                    upload_irradiance_texture,
+                    [0, 0, 0],
+                    0,
+                    0,
+                    [
+                        self.irradiance_dimensions.width(),
+                        self.irradiance_dimensions.height(),
+                        1,
+                    ],
+                    1,
+                )?
+                .build()?;
+
+        let finished = command_buffer.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
+
+        Ok((
+            srgb_atmosphere_buffer,
+            read_transmittance_texture,
+            read_scattering_texture,
+            read_single_mie_scattering_texture,
+            read_irradiance_texture,
+        ))
     }
 }
 
@@ -1307,149 +1414,5 @@ impl Precompute {
                 .build()?;
         let finished = command_buffer.execute(window.queue())?;
         Ok(Box::new(finished) as Box<GpuFuture>)
-    }
-
-    pub fn make_immutable(
-        self,
-        window: &GraphicsWindow,
-    ) -> Fallible<(
-        Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
-        Arc<ImmutableImage<Format>>,
-        Arc<ImmutableImage<Format>>,
-        Arc<ImmutableImage<Format>>,
-        Arc<ImmutableImage<Format>>,
-    )> {
-        let usage = ImageUsage {
-            transfer_destination: true,
-            sampled: true,
-            ..ImageUsage::none()
-        };
-
-        let (read_transmittance_texture, upload_transmittance_texture) =
-            ImmutableImage::uninitialized(
-                window.device(),
-                self.transmittance_dimensions,
-                Format::R32G32B32A32Sfloat,
-                MipmapsCount::One,
-                usage,
-                ImageLayout::TransferDstOptimal,
-                Some(window.queue().family()),
-            )?;
-        let (read_scattering_texture, upload_scattering_texture) = ImmutableImage::uninitialized(
-            window.device(),
-            self.scattering_dimensions,
-            Format::R32G32B32A32Sfloat,
-            MipmapsCount::One,
-            usage,
-            ImageLayout::TransferDstOptimal,
-            Some(window.queue().family()),
-        )?;
-        let (read_single_mie_scattering_texture, upload_single_mie_scattering_texture) =
-            ImmutableImage::uninitialized(
-                window.device(),
-                self.scattering_dimensions,
-                Format::R32G32B32A32Sfloat,
-                MipmapsCount::One,
-                usage,
-                ImageLayout::TransferDstOptimal,
-                Some(window.queue().family()),
-            )?;
-        let (read_irradiance_texture, upload_irradiance_texture) = ImmutableImage::uninitialized(
-            window.device(),
-            self.irradiance_dimensions,
-            Format::R32G32B32A32Sfloat,
-            MipmapsCount::One,
-            usage,
-            ImageLayout::TransferDstOptimal,
-            Some(window.queue().family()),
-        )?;
-
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_image(
-                    self.transmittance_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_transmittance_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        self.transmittance_dimensions.width(),
-                        self.transmittance_dimensions.height(),
-                        1,
-                    ],
-                    1,
-                )?
-                .copy_image(
-                    self.scattering_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_scattering_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        self.scattering_dimensions.width(),
-                        self.scattering_dimensions.height(),
-                        self.scattering_dimensions.depth(),
-                    ],
-                    1,
-                )?
-                .copy_image(
-                    self.single_mie_scattering_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_single_mie_scattering_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        self.scattering_dimensions.width(),
-                        self.scattering_dimensions.height(),
-                        self.scattering_dimensions.depth(),
-                    ],
-                    1,
-                )?
-                .copy_image(
-                    self.irradiance_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_irradiance_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        self.irradiance_dimensions.width(),
-                        self.irradiance_dimensions.height(),
-                        1,
-                    ],
-                    1,
-                )?
-                .build()?;
-
-        let finished = command_buffer.execute(window.queue())?;
-        let finished_future = finished.then_signal_fence_and_flush()?;
-
-        // Concurrent to the above copies, re-sample our EarthParams at RGB for the renderer.
-        let mut srgb_atmosphere = self.params.sample(RGB_LAMBDAS);
-        srgb_atmosphere.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
-
-        finished_future.wait(None)?;
-
-        let srgb_atmosphere_buffer =
-            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), srgb_atmosphere)?;
-
-        Ok((
-            srgb_atmosphere_buffer,
-            read_transmittance_texture,
-            read_scattering_texture,
-            read_single_mie_scattering_texture,
-            read_irradiance_texture,
-        ))
     }
 }
