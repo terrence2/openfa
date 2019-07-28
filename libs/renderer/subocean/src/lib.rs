@@ -16,12 +16,11 @@ use camera::CameraAbstract;
 use failure::Fallible;
 use geometry::IcoSphere;
 use log::trace;
-use nalgebra::{Matrix4, Vector3};
-use std::{collections::HashSet, f32::consts::PI, sync::Arc};
+use nalgebra::Matrix4;
+use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
-    descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     framebuffer::Subpass,
     impl_vertex,
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
@@ -248,9 +247,4 @@ impl SubOceanRenderer {
 
         Ok(cb)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

@@ -90,7 +90,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
-    let mut camera = UfoCamera::new(window.aspect_ratio()? as f64, 0.1f64, 3.4e+38f64);
+    let mut camera = UfoCamera::new(f64::from(window.aspect_ratio()?), 0.1f64, 3.4e+38f64);
     camera.set_position(6_378_001.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
@@ -105,7 +105,7 @@ fn main() -> Fallible<()> {
             match command.name.as_str() {
                 "window-resize" => {
                     window.note_resize();
-                    camera.set_aspect_ratio(window.aspect_ratio()? as f64);
+                    camera.set_aspect_ratio(f64::from(window.aspect_ratio()?));
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "+enter-move-sun" => in_sun_move = true,

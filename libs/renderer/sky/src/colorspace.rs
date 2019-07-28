@@ -148,23 +148,14 @@ pub fn cie_color_coefficient_at_wavelength(wavelength: f64) -> [f64; 3] {
 const XYZ_TO_SRGB: [f64; 9] = [
      3.2406, -1.5372, -0.4986,
     -0.9689,  1.8758,  0.0415,
-     0.0557, -0.2040,  1.0570
+     0.0557, -0.2040,  1.0570,
 ];
 
 pub fn convert_xyz_to_srgb(xyz: [f64; 3], scale: f64) -> [f64; 3] {
     [
-        (XYZ_TO_SRGB[0 * 3] * xyz[0]
-            + XYZ_TO_SRGB[0 * 3 + 1] * xyz[1]
-            + XYZ_TO_SRGB[0 * 3 + 2] * xyz[2])
-            * scale,
-        (XYZ_TO_SRGB[1 * 3] * xyz[0]
-            + XYZ_TO_SRGB[1 * 3 + 1] * xyz[1]
-            + XYZ_TO_SRGB[1 * 3 + 2] * xyz[2])
-            * scale,
-        (XYZ_TO_SRGB[2 * 3] * xyz[0]
-            + XYZ_TO_SRGB[2 * 3 + 1] * xyz[1]
-            + XYZ_TO_SRGB[2 * 3 + 2] * xyz[2])
-            * scale,
+        (XYZ_TO_SRGB[0] * xyz[0] + XYZ_TO_SRGB[1] * xyz[1] + XYZ_TO_SRGB[2] * xyz[2]) * scale,
+        (XYZ_TO_SRGB[3] * xyz[0] + XYZ_TO_SRGB[4] * xyz[1] + XYZ_TO_SRGB[5] * xyz[2]) * scale,
+        (XYZ_TO_SRGB[6] * xyz[0] + XYZ_TO_SRGB[7] * xyz[1] + XYZ_TO_SRGB[8] * xyz[2]) * scale,
     ]
 }
 

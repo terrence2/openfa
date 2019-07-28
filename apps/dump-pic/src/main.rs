@@ -124,7 +124,7 @@ fn main() -> Fallible<()> {
                 for w in 0..width {
                     print!("{:02X} ", image.get_pixel(w, h).data[0]);
                 }
-                println!("");
+                println!();
             }
         }
     }

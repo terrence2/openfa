@@ -13,6 +13,15 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
+// All code in this module is heavily inspired by -- and all too
+// frequently directly copied from -- the most excellent:
+//     https://ebruneton.github.io/precomputed_atmospheric_scattering/
+// Which is:
+//     Copyright (c) 2017 Eric Bruneton
+// All errors and omissions below were introduced in transcription
+// to Rust/Vulkan and are not reflective of the high quality of the
+// original work in any way.
+
 mod colorspace;
 mod earth_consts;
 mod precompute;
@@ -400,12 +409,4 @@ impl SkyRenderer {
 
         Ok(cb)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use approx::assert_relative_eq;
-
-    use super::SkyRenderer as SR;
-    use super::*;
 }

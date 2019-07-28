@@ -197,7 +197,7 @@ impl UfoCamera {
 
 impl CameraAbstract for UfoCamera {
     fn view_matrix(&self) -> Matrix4<f32> {
-        let simi = Similarity3::from_parts(self.position.clone(), self.rotation.clone(), 1.0);
+        let simi = Similarity3::from_parts(self.position, self.rotation, 1.0);
         nalgebra::convert(simi.inverse().to_homogeneous())
     }
 
@@ -210,7 +210,7 @@ impl CameraAbstract for UfoCamera {
     }
 
     fn inverted_view_matrix(&self) -> Matrix4<f32> {
-        let simi = Similarity3::from_parts(self.position.clone(), self.rotation.clone(), 1.0);
+        let simi = Similarity3::from_parts(self.position, self.rotation, 1.0);
         nalgebra::convert(simi.to_homogeneous())
     }
 
@@ -270,7 +270,7 @@ mod test {
         camera.think();
         camera.plus_move_up();
         camera.think();
-        assert_relative_eq!(camera.position.y, -2f64.sqrt() / 2.0);
+        assert_relative_eq!(camera.position.y, -(2f64.sqrt()) / 2.0);
         assert_relative_eq!(camera.position.z, 2f64.sqrt() / 2.0);
 
         let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
@@ -280,6 +280,6 @@ mod test {
         camera.plus_move_right();
         camera.think();
         assert_relative_eq!(camera.position.x, 2f64.sqrt() / 2.0);
-        assert_relative_eq!(camera.position.z, -2f64.sqrt() / 2.0);
+        assert_relative_eq!(camera.position.z, -(2f64.sqrt()) / 2.0);
     }
 }

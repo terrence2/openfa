@@ -127,9 +127,10 @@ impl EarthParameters {
             .zip(SOLAR_IRRADIANCE.iter())
             .zip(OZONE_CROSS_SECTION.iter())
         {
-            wavelengths.push(l as f64);
+            let lf = f64::from(l);
+            wavelengths.push(lf);
             sun_irradiance.push(*sun_irr);
-            let lambda = f64::from(l) / 1000.0; // um
+            let lambda = lf / 1000.0; // um
             rayleigh_scattering.push(RAYLEIGH_SCATTER_COEFFICIENT * lambda.pow(-4.0));
             let mie = MIE_ANGSTROM_BETA / MIE_SCALE_HEIGHT * lambda.pow(-MIE_ANGSTROM_ALPHA);
             mie_scattering.push(mie * MIE_SINGLE_SCATTERING_ALBEDO);
@@ -174,17 +175,18 @@ impl EarthParameters {
         let mut out = [0f32; 3];
         let solar = interpolate(&wavelengths, &sun_irradiance, RGB_LAMBDAS, 1.0);
         for lambda in LAMBDA_RANGE {
-            let xyz_bar = cie_color_coefficient_at_wavelength(lambda as f64);
+            let f_lambda = f64::from(lambda);
+            let xyz_bar = cie_color_coefficient_at_wavelength(f_lambda);
             let rgb_bar = convert_xyz_to_srgb(xyz_bar, 1.0);
-            let irradiance = interpolate_at_lambda(&wavelengths, &sun_irradiance, lambda as f64);
+            let irradiance = interpolate_at_lambda(&wavelengths, &sun_irradiance, f_lambda);
             for i in 0..3 {
-                out[i] += (rgb_bar[i] * irradiance / (solar[i] as f64)
-                    * (lambda as f64 / RGB_LAMBDAS[i]).pow(lambda_power))
+                out[i] += (rgb_bar[i] * irradiance / f64::from(solar[i])
+                    * (f_lambda / RGB_LAMBDAS[i]).pow(lambda_power))
                     as f32;
             }
         }
-        for i in 0..3 {
-            out[i] *= MAX_LUMINOUS_EFFICACY as f32;
+        for o in &mut out {
+            *o *= MAX_LUMINOUS_EFFICACY as f32;
         }
         out
     }
@@ -197,8 +199,9 @@ impl EarthParameters {
         let mut y = 0f64;
         let mut z = 0f64;
         for lambda in LAMBDA_RANGE {
-            let value = interpolate_at_lambda(wavelengths, sun_irradiance, lambda as f64);
-            let xyz = cie_color_coefficient_at_wavelength(lambda as f64);
+            let f_lambda = f64::from(lambda);
+            let value = interpolate_at_lambda(wavelengths, sun_irradiance, f_lambda);
+            let xyz = cie_color_coefficient_at_wavelength(f_lambda);
             x += xyz[0] * value;
             y += xyz[1] * value;
             z += xyz[2] * value;
@@ -209,7 +212,7 @@ impl EarthParameters {
     pub fn sample(&self, lambdas: [f64; 4]) -> fs::ty::AtmosphereParameters {
         // Evaluate our physical model for use in a shader.
         const LENGTH_SCALE: f64 = 1000.0;
-        let atmosphere = fs::ty::AtmosphereParameters {
+        fs::ty::AtmosphereParameters {
             sun_irradiance: interpolate(&self.wavelengths, &self.sun_irradiance, lambdas, 1.0),
             sun_angular_radius: 0.00935 / 2.0,
             sun_spectral_radiance_to_luminance: self.sun_spectral_radiance_to_luminance,
@@ -285,7 +288,7 @@ impl EarthParameters {
                 LENGTH_SCALE,
             ),
             ground_albedo: interpolate(&self.wavelengths, &self.ground_albedo, lambdas, 1.0),
-            whitepoint: self.whitepoint.clone(),
+            whitepoint: self.whitepoint,
             mu_s_min: MAX_SUN_ZENITH_ANGLE.cos() as f32,
             //mu_s_min: -0.207912,
             _dummy0: Default::default(),
@@ -295,49 +298,6 @@ impl EarthParameters {
             _dummy4: Default::default(),
             _dummy5: Default::default(),
             _dummy6: Default::default(),
-        };
-
-        /*
-        println!("sun_irradiance: {:?}", atmosphere.sun_irradiance);
-        println!("sun_angular_radius: {:?}", atmosphere.sun_angular_radius);
-        println!("bottom_radius: {:?}", atmosphere.bottom_radius);
-        println!("top_radius: {:?}", atmosphere.top_radius);
-        //DensityProfile rayleigh_density
-        println!(
-            "rayleigh_scattering_coefficient: {:?}",
-            atmosphere.rayleigh_scattering_coefficient
-        );
-        //DensityProfile mie_density
-        println!(
-            "mie_scattering_coefficient: {:?}",
-            atmosphere.mie_scattering_coefficient
-        );
-        println!(
-            "mie_extinction_coefficient: {:?}",
-            atmosphere.mie_extinction_coefficient
-        );
-        println!(
-            "mie_phase_function_g: {:?}",
-            atmosphere.mie_phase_function_g
-        );
-        //DensityProfile absorption_density;
-        println!(
-            "absorption_extinction_coefficient: {:?}",
-            atmosphere.absorption_extinction_coefficient
-        );
-        println!("ground_albedo: {:?}", atmosphere.ground_albedo);
-        // WRONG! where does mu_s_min come from?
-        println!("mu_s_min: {:?}", atmosphere.mu_s_min);
-        println!(
-            "sky_spectral_radiance_to_luminance: {:?}",
-            atmosphere.sky_spectral_radiance_to_luminance
-        );
-        println!(
-            "sun_spectral_radiance_to_luminance: {:?}",
-            atmosphere.sun_spectral_radiance_to_luminance
-        );
-        */
-
-        atmosphere
+        }
     }
 }

@@ -100,7 +100,7 @@ impl SizeDependent {
             .expect("missing composite alpha support");
 
         // FIXME: search our formats for something suitable.
-        let format = caps.supported_formats[0].0.clone();
+        let format = caps.supported_formats[0].0;
         //for fmt in caps.supported_formats {
         //    println!("FMT: {:?}", fmt);
         //}

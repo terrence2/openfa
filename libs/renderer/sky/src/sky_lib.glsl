@@ -13,14 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-// Derived in large part from the excellent work at:
-//     https://ebruneton.github.io/precomputed_atmospheric_scattering/
-// Which is:
-//     Copyright (c) 2017 Eric Bruneton
-// All errors and omissions below were introduced in transcription
-// to Rust and are not reflective of the high quality fo the
-// original work in any way.
-
 #include "header.glsl"
 
 vec3 get_solar_luminance(

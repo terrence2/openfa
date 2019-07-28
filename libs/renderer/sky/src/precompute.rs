@@ -1210,13 +1210,13 @@ impl Precompute {
         let mut p1 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
         let mut p2 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
         let mut p3 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
-        const WHITE_POINT_R: f32 = 1.082414f32;
-        const WHITE_POINT_G: f32 = 0.967556f32;
-        const WHITE_POINT_B: f32 = 0.950030f32;
+        const WHITE_POINT_R: f32 = 1.082_414f32;
+        const WHITE_POINT_G: f32 = 0.967_556f32;
+        const WHITE_POINT_B: f32 = 0.950_030f32;
         const WHITE_POINT_A: f32 = 1.0;
         const EXPOSURE: f32 = 683f32 * 0.0001f32;
         for i in 0usize..(dim.width() * dim.height() * dim.depth()) as usize {
-            let r0 = src[4 * i + 0];
+            let r0 = src[4 * i];
             let g0 = src[4 * i + 1];
             let b0 = src[4 * i + 2];
             let a0 = src[4 * i + 3];
@@ -1280,13 +1280,13 @@ impl Precompute {
     }
 
     fn compress_pixels(src: &[f32], dim: Dimensions) -> Vec<u8> {
-        const WHITE_POINT_R: f32 = 1.082414f32;
-        const WHITE_POINT_G: f32 = 0.967556f32;
-        const WHITE_POINT_B: f32 = 0.950030f32;
+        const WHITE_POINT_R: f32 = 1.082_414f32;
+        const WHITE_POINT_G: f32 = 0.967_556f32;
+        const WHITE_POINT_B: f32 = 0.950_030f32;
         const EXPOSURE: f32 = 683f32 * 0.0001f32;
         let mut bytes = Vec::with_capacity(dim.width() as usize * dim.height() as usize * 3);
         for i in 0usize..(dim.width() * dim.height() * dim.depth()) as usize {
-            let r0 = src[4 * i + 0];
+            let r0 = src[4 * i];
             let g0 = src[4 * i + 1];
             let b0 = src[4 * i + 2];
 
