@@ -463,6 +463,10 @@ pub struct Library {
 }
 
 impl Library {
+    pub fn empty() -> Fallible<Self> {
+        Self::from_paths(&[])
+    }
+
     pub fn from_paths(libpaths: &[PathBuf]) -> Fallible<Self> {
         // Ensure that all libs in the stack have a unique priority.
         let mut priorities = HashMap::new();

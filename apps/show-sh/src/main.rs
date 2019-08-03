@@ -78,7 +78,7 @@ fn main() -> Fallible<()> {
     let mut input = InputSystem::new(&[&shape_bindings]);
 
     let mut sh_renderer = ShRenderer::new(&window)?;
-    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let mut starbox_renderer = StarboxRenderer::new(&window)?;
 
     let fps_handle = text_renderer

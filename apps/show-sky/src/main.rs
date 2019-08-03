@@ -13,36 +13,23 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::UfoCamera;
-use failure::{bail, Fallible};
+use failure::Fallible;
 use input::{InputBindings, InputSystem};
+use lib::Library;
 use log::trace;
 use nalgebra::Vector3;
-use omnilib::{make_opt_struct, OmniLib};
-use pal::Palette;
 use simplelog::{Config, LevelFilter, TermLogger};
 use sky::SkyRenderer;
-use std::{f64::consts::PI, rc::Rc, time::Instant};
-use structopt::StructOpt;
+use std::{f64::consts::PI, time::Instant};
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 
-make_opt_struct!(
-    #[structopt(name = "sh_explorer", about = "Show the contents of a SH file")]
-    Opt {}
-);
-
 fn main() -> Fallible<()> {
-    let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Debug, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs()?;
-    if inputs.is_empty() {
-        bail!("no inputs");
-    }
-    let (game, _name) = inputs.first().unwrap();
-    let lib = omni.library(&game);
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
+    use std::sync::Arc;
+    let lib = Arc::new(Box::new(Library::empty()?));
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
@@ -79,11 +66,11 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(&[&shape_bindings]);
 
-    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let mut sky_renderer = SkyRenderer::new(&window)?;
 
     let fps_handle = text_renderer
-        .add_screen_text(Font::HUD11, "", &window)?
+        .add_screen_text(Font::QUANTICO, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)

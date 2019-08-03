@@ -52,8 +52,8 @@ pub fn main() -> Fallible<()> {
         .bind("exit", "q")?;
     let mut input = InputSystem::new(&[&bindings]);
 
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-    let mut text_renderer = TextRenderer::new(system_palette.clone(), &lib, &window)?;
+    let _system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
+    let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
