@@ -12,30 +12,28 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use codepage_437::{ToCp437, CP437_CONTROL};
-use failure::{bail, ensure, Fallible};
+mod glyph_cache;
+
+use crate::glyph_cache::GlyphCache;
+use failure::{ensure, Fallible};
 use fnt::Fnt;
-use i386::{Interpreter, Reg};
-use image::{GrayImage, ImageBuffer, Luma, Rgba};
 use lib::Library;
 use log::trace;
 use nalgebra::{Matrix4, Vector3};
-use pal::Palette;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
-    descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
-    device::Device,
-    format::Format,
+    descriptor::descriptor_set::DescriptorSet,
     framebuffer::Subpass,
-    image::{Dimensions, ImmutableImage},
     impl_vertex,
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
-    sync::GpuFuture,
 };
 use window::GraphicsWindow;
+
+// Fallback for when we have no libs loaded.
+// https://fonts.google.com/specimen/Quantico?selection.family=Quantico
+const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../assets/quantico.ttf");
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -88,7 +86,7 @@ mod fs {
             layout(set = 0, binding = 0) uniform sampler2D tex;
 
             void main() {
-                f_color = vec4(v_color.xyz, texture(tex, v_tex_coord).w);
+                f_color = vec4(v_color.xyz, texture(tex, v_tex_coord).r);
             }
             "
     }
@@ -275,8 +273,8 @@ impl LayoutHandle {
 
         let dy = match layout.anchor_y {
             TextAnchorV::Top => 0f32,
-            TextAnchorV::Bottom => -layout.font_info.render_height,
-            TextAnchorV::Center => -layout.font_info.render_height / 2f32,
+            TextAnchorV::Bottom => -layout.glyph_cache.render_height(),
+            TextAnchorV::Center => -layout.glyph_cache.render_height() / 2f32,
         };
 
         let scale = layout.scale;
@@ -294,7 +292,7 @@ impl LayoutHandle {
 
 pub struct Layout {
     // The font used for rendering this layout.
-    font_info: Rc<Box<FontInfo>>,
+    glyph_cache: Rc<Box<GlyphCache>>,
 
     // Cached per-frame render state.
     //push_consts: vs::ty::PushConstantData,
@@ -313,10 +311,14 @@ pub struct Layout {
 }
 
 impl Layout {
-    fn new(text: &str, font_info: Rc<Box<FontInfo>>, window: &GraphicsWindow) -> Fallible<Self> {
-        let (render_width, pds, vb, ib) = Self::build_text_span(text, &font_info, window)?;
+    fn new(
+        text: &str,
+        glyph_cache: Rc<Box<GlyphCache>>,
+        window: &GraphicsWindow,
+    ) -> Fallible<Self> {
+        let (render_width, pds, vb, ib) = Self::build_text_span(text, &glyph_cache, window)?;
         Ok(Self {
-            font_info,
+            glyph_cache,
 
             //push_consts: vs::ty::PushConstantData::new(),
             render_width,
@@ -334,7 +336,7 @@ impl Layout {
     }
 
     fn set_span(&mut self, text: &str, window: &GraphicsWindow) -> Fallible<()> {
-        let (render_width, pds, vb, ib) = Self::build_text_span(text, &self.font_info, window)?;
+        let (render_width, pds, vb, ib) = Self::build_text_span(text, &self.glyph_cache, window)?;
         self.render_width = render_width;
         self.pds = pds;
         self.vertex_buffer = vb;
@@ -344,7 +346,7 @@ impl Layout {
 
     fn build_text_span(
         text: &str,
-        info: &FontInfo,
+        glyph_cache: &GlyphCache,
         window: &GraphicsWindow,
     ) -> Fallible<(
         f32,
@@ -355,47 +357,50 @@ impl Layout {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
-        let encoded = match text.to_cp437(&CP437_CONTROL) {
-            Ok(encoded) => encoded,
-            Err(_) => bail!("attempted to render non cp437 text"),
-        };
         let mut offset = 0f32;
-        for c in encoded.iter() {
-            if *c == b' ' {
+        let mut prior = None;
+        for c in text.chars() {
+            if c == ' ' {
                 offset += 5f32 / 640f32;
                 continue;
             }
 
             ensure!(
-                info.glyph_layout.contains_key(c),
+                glyph_cache.can_render_char(c),
                 "attempted to render nonprintable char: {}",
                 c
             );
 
-            let layout = &info.glyph_layout[c];
+            let frame = glyph_cache.frame_for(c);
+            let kerning = if let Some(p) = prior {
+                glyph_cache.pair_kerning(p, c)
+            } else {
+                0f32
+            };
+            prior = Some(c);
 
             // Always do layout from 0-> and let our transform put us in the right spot.
-            let x0 = offset;
-            let x1 = offset + layout.render_width;
+            let x0 = offset + frame.left_side_bearing + kerning;
+            let x1 = offset + frame.advance_width;
             let y0 = 0f32;
-            let y1 = info.render_height;
+            let y1 = glyph_cache.render_height();
 
             let base = verts.len() as u32;
             verts.push(Vertex {
                 position: [x0, y0],
-                tex_coord: [layout.s0, 0f32],
+                tex_coord: [frame.s0, 0f32],
             });
             verts.push(Vertex {
                 position: [x0, y1],
-                tex_coord: [layout.s0, 1f32],
+                tex_coord: [frame.s0, 1f32],
             });
             verts.push(Vertex {
                 position: [x1, y0],
-                tex_coord: [layout.s1, 0f32],
+                tex_coord: [frame.s1, 0f32],
             });
             verts.push(Vertex {
                 position: [x1, y1],
-                tex_coord: [layout.s1, 1f32],
+                tex_coord: [frame.s1, 1f32],
             });
 
             indices.push(base);
@@ -405,7 +410,7 @@ impl Layout {
             indices.push(base + 3u32);
             indices.push(base + 2u32);
 
-            offset += layout.render_width;
+            offset += frame.advance_width;
         }
 
         let vertex_buffer =
@@ -416,153 +421,12 @@ impl Layout {
             indices.into_iter(),
         )?;
 
-        Ok((offset, info.pds.clone(), vertex_buffer, index_buffer))
-    }
-}
-
-struct GlyphLayout {
-    // Left and right texture coordinates.
-    s0: f32,
-    s1: f32,
-
-    // Width scaled into the right perspective for rendering.
-    render_width: f32,
-}
-
-struct FontInfo {
-    // These get composited in software, then uploaded in a single texture.
-    pds: Arc<dyn DescriptorSet + Send + Sync>,
-
-    // The positions of glyphs within the texture (as needed for layout later)
-    // are stored in a map by glyph index.
-    glyph_layout: HashMap<u8, GlyphLayout>,
-
-    // The intended render height of the font in vulkan coordinates.
-    render_height: f32,
-}
-
-impl FontInfo {
-    fn new_transparent(
-        fnt: &Fnt,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        window: &GraphicsWindow,
-    ) -> Fallible<Self> {
-        let mut width = 0;
-        for glyph_index in 0..=255 {
-            if !fnt.glyphs.contains_key(&glyph_index) {
-                continue;
-            }
-            let glyph = &fnt.glyphs[&glyph_index];
-            width += glyph.width;
-        }
-
-        let mut buf = GrayImage::new(width as u32, fnt.height as u32);
-        for p in buf.pixels_mut() {
-            *p = Luma { data: [1] };
-        }
-
-        let mut interp = Interpreter::new();
-        interp.add_trampoline(0x60_0000, "finish", 0);
-        interp.set_register_value(Reg::EAX, 0);
-        interp.set_register_value(Reg::ECX, width as u32);
-        interp.set_register_value(Reg::EDI, 0x30_0000);
-        interp.map_writable(0x30_0000, buf.into_raw())?;
-
-        let mut x = 0;
-        let mut glyph_layout = HashMap::new();
-        for glyph_index in 0..=255 {
-            if !fnt.glyphs.contains_key(&glyph_index) {
-                continue;
-            }
-            let glyph = &fnt.glyphs[&glyph_index];
-
-            interp.clear_code();
-            interp.add_code(glyph.bytecode.clone());
-            interp.push_stack_value(0x60_0000);
-
-            let rv = interp.interpret(0)?;
-            let (trampoline_name, args) = rv.ok_trampoline()?;
-            ensure!(trampoline_name == "finish", "expect return to finish");
-            ensure!(args.is_empty(), "expect no args out");
-
-            glyph_layout.insert(
-                glyph_index,
-                GlyphLayout {
-                    s0: x as f32 / width as f32,
-                    s1: (x + glyph.width) as f32 / width as f32,
-                    render_width: glyph.width as f32 / 640f32 * 2f32,
-                },
-            );
-            x += glyph.width;
-            interp.set_register_value(Reg::EDI, 0x30_0000 + x as u32);
-        }
-
-        let plane = interp.unmap_writable(0x30_0000)?;
-        let buf =
-            GrayImage::from_raw(width as u32, fnt.height as u32, plane).expect("same parameters");
-        let buf = buf.expand_palette(&[(0, 0, 0), (0xFF, 0xFF, 0xFF)], Some(1));
-        let img = image::ImageRgba8(buf);
-
-        let (texture, tex_future) = Self::upload_texture_rgba(window, img.to_rgba())?;
-        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
-        let sampler = Self::make_sampler(window.device())?;
-
-        let pds = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
-                .build()?,
-        );
-
-        // The intended display resolution of these fonts was a 640x480 screen.
-        let render_height = fnt.height as f32 / 480f32 * 2f32;
-
-        Ok(Self {
-            pds,
-            glyph_layout,
-            render_height,
-        })
-    }
-
-    fn upload_texture_rgba(
-        window: &GraphicsWindow,
-        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
-        let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
-
-        let dimensions = Dimensions::Dim2d {
-            width: image_dim.0,
-            height: image_dim.1,
-        };
-        let (texture, tex_future) = ImmutableImage::from_iter(
-            image_data.iter().cloned(),
-            dimensions,
-            Format::R8G8B8A8Unorm,
-            window.queue(),
-        )?;
-        trace!(
-            "uploading texture with {} bytes",
-            image_dim.0 * image_dim.1 * 4
-        );
-        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
-    }
-
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Nearest,
-            Filter::Nearest,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
+        Ok((
+            offset,
+            glyph_cache.descriptor_set(),
+            vertex_buffer,
+            index_buffer,
+        ))
     }
 }
 
@@ -608,21 +472,17 @@ const _FONT_BACKGROUNDS: [&str; 21] = [
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Font {
     HUD11,
+    QUANTICO,
 }
 
 pub struct TextRenderer {
-    _palette: Rc<Box<Palette>>,
     screen_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    fonts: HashMap<Font, Rc<Box<FontInfo>>>,
+    glyph_caches: HashMap<Font, Rc<Box<GlyphCache>>>,
     layouts: Vec<LayoutHandle>,
 }
 
 impl TextRenderer {
-    pub fn new(
-        palette: Rc<Box<Palette>>,
-        lib: &Arc<Box<Library>>,
-        window: &GraphicsWindow,
-    ) -> Fallible<Self> {
+    pub fn new(lib: &Arc<Box<Library>>, window: &GraphicsWindow) -> Fallible<Self> {
         trace!("TextRenderer::new");
 
         let vs = vs::Shader::load(window.device())?;
@@ -645,19 +505,35 @@ impl TextRenderer {
                 .build(window.device())?,
         );
 
-        let mut fonts = HashMap::new();
-        fonts.insert(
-            Font::HUD11,
-            Rc::new(Box::new(FontInfo::new_transparent(
-                &Fnt::from_bytes("", "", &lib.load("HUD11.FNT")?)?,
+        let mut glyph_caches = HashMap::new();
+
+        // Cache all standard fonts on the GPU.
+        for (name, filename) in &[(Font::HUD11, "HUD11.FNT")] {
+            let maybe_data = lib.load(filename);
+            if maybe_data.is_ok() {
+                glyph_caches.insert(
+                    *name,
+                    Rc::new(Box::new(GlyphCache::new_transparent_fnt(
+                        &Fnt::from_bytes("", "", &maybe_data.unwrap())?,
+                        screen_pipeline.clone(),
+                        window,
+                    )?)),
+                );
+            }
+        }
+
+        // Add fallback font.
+        glyph_caches.insert(
+            Font::QUANTICO,
+            Rc::new(Box::new(GlyphCache::new_ttf(
+                &QUANTICO_TTF_DATA,
                 screen_pipeline.clone(),
                 window,
             )?)),
         );
 
         Ok(Self {
-            fonts,
-            _palette: palette,
+            glyph_caches,
             screen_pipeline,
             layouts: Vec::new(),
         })
@@ -669,8 +545,8 @@ impl TextRenderer {
         text: &str,
         window: &GraphicsWindow,
     ) -> Fallible<LayoutHandle> {
-        let info = self.fonts[&font].clone();
-        let layout = LayoutHandle::new(Layout::new(text, info, window)?);
+        let glyph_cache = self.glyph_caches[&font].clone();
+        let layout = LayoutHandle::new(Layout::new(text, glyph_cache, window)?);
         self.layouts.push(layout.clone());
         Ok(layout)
     }
@@ -732,8 +608,7 @@ mod test {
         for (game, lib) in omni.libraries() {
             println!("At: {}", game);
 
-            let palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-            let mut renderer = TextRenderer::new(palette, &lib, &window)?;
+            let mut renderer = TextRenderer::new(&lib, &window)?;
 
             renderer
                 .add_screen_text(Font::HUD11, "Top Left (r)", &window)?
@@ -825,6 +700,109 @@ mod test {
 
                     frame.submit(cb, &mut window)?;
                 }
+            }
+        }
+        std::mem::drop(window);
+        Ok(())
+    }
+
+    #[test]
+    fn it_can_render_without_a_library() -> Fallible<()> {
+        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        window.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
+
+        let lib = Arc::new(Box::new(Library::empty()?));
+        let mut renderer = TextRenderer::new(&lib, &window)?;
+
+        renderer
+            .add_screen_text(Font::QUANTICO, "Top Left (r)", &window)?
+            .with_color(&[1f32, 0f32, 0f32, 1f32])
+            .with_horizontal_position(TextPositionH::Left)
+            .with_horizontal_anchor(TextAnchorH::Left)
+            .with_vertical_position(TextPositionV::Top)
+            .with_vertical_anchor(TextAnchorV::Top);
+
+        renderer
+            .add_screen_text(Font::QUANTICO, "Top Right (b)", &window)?
+            .with_color(&[0f32, 0f32, 1f32, 1f32])
+            .with_horizontal_position(TextPositionH::Right)
+            .with_horizontal_anchor(TextAnchorH::Right)
+            .with_vertical_position(TextPositionV::Top)
+            .with_vertical_anchor(TextAnchorV::Top);
+
+        renderer
+            .add_screen_text(Font::QUANTICO, "Bottom Left (w)", &window)?
+            .with_color(&[1f32, 1f32, 1f32, 1f32])
+            .with_horizontal_position(TextPositionH::Left)
+            .with_horizontal_anchor(TextAnchorH::Left)
+            .with_vertical_position(TextPositionV::Bottom)
+            .with_vertical_anchor(TextAnchorV::Bottom);
+
+        renderer
+            .add_screen_text(Font::QUANTICO, "Bottom Right (m)", &window)?
+            .with_color(&[1f32, 0f32, 1f32, 1f32])
+            .with_horizontal_position(TextPositionH::Right)
+            .with_horizontal_anchor(TextAnchorH::Right)
+            .with_vertical_position(TextPositionV::Bottom)
+            .with_vertical_anchor(TextAnchorV::Bottom);
+
+        let handle_clr = renderer
+            .add_screen_text(Font::QUANTICO, "", &window)?
+            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &window)?
+            .with_color(&[1f32, 0f32, 0f32, 1f32])
+            .with_horizontal_position(TextPositionH::Center)
+            .with_horizontal_anchor(TextAnchorH::Center)
+            .with_vertical_position(TextPositionV::Bottom)
+            .with_vertical_anchor(TextAnchorV::Bottom);
+
+        let handle_fin = renderer
+            .add_screen_text(Font::QUANTICO, "DONE: 0%", &window)?
+            .with_color(&[0f32, 1f32, 0f32, 1f32])
+            .with_horizontal_position(TextPositionH::Center)
+            .with_horizontal_anchor(TextAnchorH::Center)
+            .with_vertical_position(TextPositionV::Center)
+            .with_vertical_anchor(TextAnchorV::Center);
+
+        for i in 0..32 {
+            if i < 16 {
+                handle_clr.set_color(&[0f32, i as f32 / 16f32, 0f32, 1f32])
+            } else {
+                handle_clr.set_color(&[
+                    (i as f32 - 16f32) / 16f32,
+                    1f32,
+                    (i as f32 - 16f32) / 16f32,
+                    1f32,
+                ])
+            };
+            let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
+            handle_fin.set_span(&msg, &window)?;
+
+            {
+                let frame = window.begin_frame()?;
+                if !frame.is_valid() {
+                    continue;
+                }
+
+                renderer.before_frame(&window)?;
+
+                let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                    window.device(),
+                    window.queue().family(),
+                )?;
+
+                cbb = cbb.begin_render_pass(
+                    frame.framebuffer(&window),
+                    false,
+                    vec![[0f32, 0f32, 0f32, 1f32].into(), 0f32.into()],
+                )?;
+
+                cbb = renderer.render(cbb, &window.dynamic_state)?;
+
+                cbb = cbb.end_render_pass()?;
+
+                let cb = cbb.build()?;
+
+                frame.submit(cb, &mut window)?;
             }
         }
         std::mem::drop(window);

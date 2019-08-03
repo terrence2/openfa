@@ -23,6 +23,10 @@ pub struct Palette {
 }
 
 impl Palette {
+    pub fn empty() -> Fallible<Self> {
+        Self::from_bytes(&[])
+    }
+
     pub fn grayscale() -> Fallible<Self> {
         let mut arr = [0u8; 256 * 3];
         for i in 0..256 {

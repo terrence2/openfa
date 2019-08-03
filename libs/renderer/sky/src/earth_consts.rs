@@ -290,7 +290,6 @@ impl EarthParameters {
             ground_albedo: interpolate(&self.wavelengths, &self.ground_albedo, lambdas, 1.0),
             whitepoint: self.whitepoint,
             mu_s_min: MAX_SUN_ZENITH_ANGLE.cos() as f32,
-            //mu_s_min: -0.207912,
             _dummy0: Default::default(),
             _dummy1: Default::default(),
             _dummy2: Default::default(),
