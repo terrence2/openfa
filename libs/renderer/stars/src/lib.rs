@@ -242,6 +242,8 @@ impl StarsRenderer {
             }
         }
 
+        // FIXME: relocate these to the GPU proper
+
         println!(
             "uploading declination bands buffer with {} bytes",
             std::mem::size_of::<fs::ty::BandMetadata>() * DEC_BANDS.len()

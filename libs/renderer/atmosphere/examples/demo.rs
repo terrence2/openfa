@@ -12,13 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use atmosphere::AtmosphereRenderer;
 use base::{RayMarchingRenderer, RayMarchingVertex};
 use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::{Matrix4, Point3, Vector3};
-use sky::SkyRenderer;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
@@ -64,7 +64,7 @@ mod fs {
 
     shader! {
     ty: "fragment",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
 
@@ -223,7 +223,8 @@ fn main() -> Fallible<()> {
             .build(window.device())?,
     ) as Arc<dyn GraphicsPipelineAbstract + Send + Sync>;
     let raymarching_renderer = RayMarchingRenderer::new(pipeline.clone(), &window)?;
-    let atmosphere_renderer = SkyRenderer::new(&raymarching_renderer, pipeline.clone(), &window)?;
+    let atmosphere_renderer =
+        AtmosphereRenderer::new(&raymarching_renderer, pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);

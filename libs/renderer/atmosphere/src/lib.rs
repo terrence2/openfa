@@ -44,7 +44,7 @@ const NUM_SCATTERING_ORDER: usize = 4;
 mod fs {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
 
@@ -56,17 +56,17 @@ mod fs {
     }
 }
 
-pub struct SkyRenderer {
+pub struct AtmosphereRenderer {
     descriptorset: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
-impl SkyRenderer {
+impl AtmosphereRenderer {
     pub fn new(
         _raymarching_renderer: &RayMarchingRenderer,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
-        trace!("SkyRenderer::new");
+        trace!("AtmosphereRenderer::new");
 
         let precompute_start = Instant::now();
         let (
@@ -82,7 +82,7 @@ impl SkyRenderer {
         )?;
         let precompute_time = precompute_start.elapsed();
         trace!(
-            "SkyRenderer::precompute timing: {}.{}ms",
+            "AtmosphereRenderer::precompute timing: {}.{}ms",
             precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
             precompute_time.subsec_micros()
         );

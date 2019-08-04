@@ -95,7 +95,7 @@ pub struct Precompute {
 mod compute_transmittance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_transmittance_builder.glsl\"
@@ -161,7 +161,7 @@ impl Precompute {
 mod compute_direct_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_direct_irradiance_builder.glsl\"
@@ -230,7 +230,7 @@ impl Precompute {
 mod compute_single_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_single_scattering_builder.glsl\"
@@ -318,7 +318,7 @@ impl Precompute {
 
         if DUMP_SINGLE_RAYLEIGH {
             let path = format!(
-                "dump/sky/single-scattering-delta-rayleigh-{}-{}-{}",
+                "dump/atmosphere/single-scattering-delta-rayleigh-{}-{}-{}",
                 lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(
@@ -329,21 +329,21 @@ impl Precompute {
         }
         if DUMP_SINGLE_ACC {
             let path = format!(
-                "dump/sky/single-scattering-acc-{}-{}-{}",
+                "dump/atmosphere/single-scattering-acc-{}-{}-{}",
                 lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(&path, self.scattering_texture.clone(), window)?;
         }
         if DUMP_SINGLE_MIE {
             let path = format!(
-                "dump/sky/single-scattering-delta-mie-{}-{}-{}",
+                "dump/atmosphere/single-scattering-delta-mie-{}-{}-{}",
                 lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(&path, self.delta_mie_scattering_texture.clone(), window)?;
         }
         if DUMP_SINGLE_MIE_ACC {
             let path = format!(
-                "dump/sky/single-scattering-mie-acc-{}-{}-{}",
+                "dump/atmosphere/single-scattering-mie-acc-{}-{}-{}",
                 lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(&path, self.single_mie_scattering_texture.clone(), window)?;
@@ -356,7 +356,7 @@ impl Precompute {
 mod compute_scattering_density_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_scattering_density_builder.glsl\"
@@ -440,7 +440,7 @@ impl Precompute {
 
         if DUMP_SCATTERING_DENSITY {
             let path = format!(
-                "dump/sky/delta-scattering-density-@{}-{}-{}-{}",
+                "dump/atmosphere/delta-scattering-density-@{}-{}-{}-{}",
                 scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(&path, self.delta_scattering_density_texture.clone(), window)?;
@@ -453,7 +453,7 @@ impl Precompute {
 mod compute_indirect_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_indirect_irradiance_builder.glsl\"
@@ -548,14 +548,14 @@ impl Precompute {
 
         if DUMP_INDIRECT_IRRADIANCE_DELTA {
             let path = format!(
-                "dump/sky/indirect-delta-irradiance-@{}-{}-{}-{}.png",
+                "dump/atmosphere/indirect-delta-irradiance-@{}-{}-{}-{}.png",
                 scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_2d(&path, self.delta_irradiance_texture.clone(), window)?;
         }
         if DUMP_INDIRECT_IRRADIANCE_ACC {
             let path = format!(
-                "dump/sky/indirect-irradiance-acc-@{}-{}-{}-{}.png",
+                "dump/atmosphere/indirect-irradiance-acc-@{}-{}-{}-{}.png",
                 scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_2d(&path, self.irradiance_texture.clone(), window)?;
@@ -568,7 +568,7 @@ impl Precompute {
 mod compute_multiple_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/sky/src"],
+    include: ["./libs/renderer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_multiple_scattering_builder.glsl\"
@@ -659,7 +659,7 @@ impl Precompute {
 
         if DUMP_MULTIPLE_SCATTERING {
             let path = format!(
-                "dump/sky/delta-multiple-scattering-@{}-{}-{}-{}",
+                "dump/atmosphere/delta-multiple-scattering-@{}-{}-{}-{}",
                 scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(
@@ -668,7 +668,7 @@ impl Precompute {
                 window,
             )?;
             let path = format!(
-                "dump/sky/multiple-scattering-@{}-{}-{}-{}",
+                "dump/atmosphere/multiple-scattering-@{}-{}-{}-{}",
                 scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
             );
             Self::dump_3d(&path, self.scattering_texture.clone(), window)?;
@@ -892,22 +892,22 @@ impl Precompute {
 
         if DUMP_FINAL {
             Self::dump_2d(
-                "dump/sky/final-transmittance-texture.png",
+                "dump/atmosphere/final-transmittance-texture.png",
                 self.transmittance_texture.clone(),
                 window,
             )?;
             Self::dump_2d(
-                "dump/sky/final-irradiance-texture.png",
+                "dump/atmosphere/final-irradiance-texture.png",
                 self.irradiance_texture.clone(),
                 window,
             )?;
             Self::dump_3d(
-                "dump/sky/final-scattering-texture",
+                "dump/atmosphere/final-scattering-texture",
                 self.scattering_texture.clone(),
                 window,
             )?;
             Self::dump_3d(
-                "dump/sky/final-single-mie-scattering-texture",
+                "dump/atmosphere/final-single-mie-scattering-texture",
                 self.single_mie_scattering_texture.clone(),
                 window,
             )?;
@@ -1344,10 +1344,10 @@ impl Precompute {
             ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p2.as_slice()).unwrap();
         let i3 =
             ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p3.as_slice()).unwrap();
-        i0.save(&format!("dump/sky/{}-{}.png", path, lambdas[0]))?;
-        i1.save(&format!("dump/sky/{}-{}.png", path, lambdas[1]))?;
-        i2.save(&format!("dump/sky/{}-{}.png", path, lambdas[2]))?;
-        i3.save(&format!("dump/sky/{}-{}.png", path, lambdas[3]))?;
+        i0.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[0]))?;
+        i1.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[1]))?;
+        i2.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[2]))?;
+        i3.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[3]))?;
         Ok(())
     }
 
