@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use atmosphere::AtmosphereRenderer;
+use atmosphere::AtmosphereBuffers;
 use base::{RayMarchingRenderer, RayMarchingVertex};
 use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
@@ -223,8 +223,7 @@ fn main() -> Fallible<()> {
             .build(window.device())?,
     ) as Arc<dyn GraphicsPipelineAbstract + Send + Sync>;
     let raymarching_renderer = RayMarchingRenderer::new(pipeline.clone(), &window)?;
-    let atmosphere_renderer =
-        AtmosphereRenderer::new(&raymarching_renderer, pipeline.clone(), &window)?;
+    let atmosphere = AtmosphereBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -291,7 +290,7 @@ fn main() -> Fallible<()> {
                 &window.dynamic_state,
                 vec![raymarching_renderer.vertex_buffer.clone()],
                 raymarching_renderer.index_buffer.clone(),
-                (empty0.clone(), atmosphere_renderer.descriptor_set()),
+                (empty0.clone(), atmosphere.descriptor_set()),
                 push_constants,
             )?;
 

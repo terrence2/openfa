@@ -57,17 +57,17 @@ mod fs {
     }
 }
 
-pub struct AtmosphereRenderer {
+pub struct AtmosphereBuffers {
     descriptorset: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
-impl AtmosphereRenderer {
+impl AtmosphereBuffers {
     pub fn new(
         _raymarching_renderer: &RayMarchingRenderer,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
-        trace!("AtmosphereRenderer::new");
+        trace!("AtmosphereBuffers::new");
 
         let precompute_start = Instant::now();
         let (
@@ -83,7 +83,7 @@ impl AtmosphereRenderer {
         )?;
         let precompute_time = precompute_start.elapsed();
         trace!(
-            "AtmosphereRenderer::precompute timing: {}.{}ms",
+            "AtmosphereBuffers::precompute timing: {}.{}ms",
             precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
             precompute_time.subsec_micros()
         );

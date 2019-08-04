@@ -43,7 +43,7 @@ mod fs {
     }
 }
 
-pub struct StarsRenderer {
+pub struct StarsBuffer {
     descriptorset: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
@@ -125,13 +125,13 @@ const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
     mkband!(63, 1, 5433),
 ];
 
-impl StarsRenderer {
+impl StarsBuffer {
     pub fn new(
         _raymarching_renderer: &RayMarchingRenderer,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
-        trace!("StarsRenderer::new");
+        trace!("StarsBuffer::new");
         Ok(Self {
             descriptorset: Self::upload_stars(pipeline.clone(), window)?,
         })
@@ -304,7 +304,7 @@ impl StarsRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::StarsRenderer as SB;
+    use super::StarsBuffer as SB;
     use super::*;
     use approx::assert_relative_eq;
 
