@@ -13,7 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::CameraAbstract;
-use nalgebra::{Matrix4, Perspective3, Similarity3, Translation3, Unit, UnitQuaternion, Vector3};
+use nalgebra::{
+    Matrix4, Perspective3, Point3, Similarity3, Translation3, Unit, UnitQuaternion, Vector3,
+};
 use std::f64::consts::PI;
 
 pub struct UfoCamera {
@@ -214,8 +216,9 @@ impl CameraAbstract for UfoCamera {
         nalgebra::convert(simi.to_homogeneous())
     }
 
-    fn position(&self) -> Vector3<f32> {
-        nalgebra::convert(self.position.vector)
+    fn position(&self) -> Point3<f32> {
+        let down: Translation3<f32> = nalgebra::convert(self.position);
+        Point3::new(down.vector[0], down.vector[1], down.vector[2])
     }
 }
 

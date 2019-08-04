@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use nalgebra::{Matrix4, Vector3};
+use nalgebra::{Matrix4, Point3};
 
 mod arc_ball_camera;
 mod ufo_camera;
@@ -25,7 +25,7 @@ pub trait CameraAbstract {
     fn projection_matrix(&self) -> Matrix4<f32>;
     fn inverted_projection_matrix(&self) -> Matrix4<f32>;
     fn inverted_view_matrix(&self) -> Matrix4<f32>;
-    fn position(&self) -> Vector3<f32>;
+    fn position(&self) -> Point3<f32>;
 }
 
 pub struct IdentityCamera;
@@ -47,7 +47,7 @@ impl CameraAbstract for IdentityCamera {
         Matrix4::identity()
     }
 
-    fn position(&self) -> Vector3<f32> {
-        Vector3::identity()
+    fn position(&self) -> Point3<f32> {
+        Point3::new(0f32, 0f32, 0f32)
     }
 }

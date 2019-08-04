@@ -25,8 +25,6 @@ pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 shape = { path = "../../libs/renderer/shape" }
 sh = { path = "../../libs/sh" }
-atmosphere = { path = "../../libs/render/buffer/atmosphere" }
-stars = { path = "../../libs/render/buffer/stars" }
-subocean = { path = "../../libs/renderer/subocean" }
+skybox = { path = "../../libs/render/draw/skybox" }
 text = { path = "../../libs/renderer/text" }
 window = { path = "../../libs/window" }

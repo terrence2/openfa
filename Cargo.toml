@@ -47,6 +47,7 @@ members = [
         "libs/render/buffer/stars",
         "libs/render/common/camera",
         "libs/render/common/geometry",
+        "libs/render/draw/skybox",
         "libs/renderer/base",
         "libs/renderer/shape",
         "libs/renderer/subocean",

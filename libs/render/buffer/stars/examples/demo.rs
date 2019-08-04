@@ -18,7 +18,7 @@ use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::Matrix4;
-use stars::StarsBuffer;
+use stars::StarsBuffers;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
@@ -163,7 +163,7 @@ fn main() -> Fallible<()> {
             .build(window.device())?,
     ) as Arc<dyn GraphicsPipelineAbstract + Send + Sync>;
     let raymarching_renderer = RayMarchingRenderer::new(pipeline.clone(), &window)?;
-    let stars_buffer = StarsBuffer::new(&raymarching_renderer, pipeline.clone(), &window)?;
+    let stars_buffers = StarsBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -219,7 +219,7 @@ fn main() -> Fallible<()> {
                 (
                     empty0.clone(),
                     empty1.clone(),
-                    stars_buffer.descriptor_set(),
+                    stars_buffers.descriptor_set(),
                 ),
                 push_constants,
             )?;

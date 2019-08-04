@@ -149,7 +149,7 @@ impl CameraAbstract for ArcBallCamera {
             .to_homogeneous()
     }
 
-    fn position(&self) -> Vector3<f32> {
-        self.eye().coords
+    fn position(&self) -> Point3<f32> {
+        self.eye()
     }
 }
