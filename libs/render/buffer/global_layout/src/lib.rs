@@ -13,6 +13,24 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-mod raymarching_renderer;
+pub enum GlobalSets {
+    Atmosphere = 1,
+    Stars = 2,
+}
 
-pub use raymarching_renderer::{RayMarchingRenderer, RayMarchingVertex};
+impl From<GlobalSets> for usize {
+    fn from(gs: GlobalSets) -> usize {
+        gs as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let v: usize = GlobalSets::Stars.into();
+        assert_eq!(v, 2);
+    }
+}

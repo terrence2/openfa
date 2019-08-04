@@ -17,6 +17,7 @@ vulkano-win = "^ 0.12"
 winit = "^ 0.19"
 base = { path = "../../../renderer/base" }
 camera = { path = "../../../renderer/camera" }
+global_layout = { path = "../../../render/buffer/global_layout" }
 input = { path = "../../../input" }
 star_catalog = { path = "../../../star_catalog" }
 window = { path = "../../../window" }

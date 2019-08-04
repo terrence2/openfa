@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use base::{GlobalSets, RayMarchingRenderer};
 use failure::Fallible;
+use global_layout::GlobalSets;
 use log::trace;
 use nalgebra::Vector3;
 use star_catalog::Stars;

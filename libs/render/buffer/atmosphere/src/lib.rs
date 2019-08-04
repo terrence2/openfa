@@ -27,8 +27,9 @@ mod earth_consts;
 mod precompute;
 
 use crate::precompute::Precompute;
-use base::{GlobalSets, RayMarchingRenderer};
+use base::RayMarchingRenderer;
 use failure::Fallible;
+use global_layout::GlobalSets;
 use log::trace;
 use std::{sync::Arc, time::Instant};
 use vulkano::{

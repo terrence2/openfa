@@ -43,6 +43,7 @@ members = [
         "libs/pt",
         "libs/legacy_render",
         "libs/render/buffer/atmosphere",
+        "libs/render/buffer/global_layout",
         "libs/render/buffer/stars",
         "libs/renderer/base",
         "libs/renderer/camera",
