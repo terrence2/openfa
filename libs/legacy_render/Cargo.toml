@@ -15,20 +15,20 @@ vulkano = "^ 0.12"
 vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
-asset = { path = "../../libs/asset" }
-camera = { path = "../../libs/renderer/camera" }
-dlg = { path = "../../libs/dlg" }
-i386 = { path = "../../libs/i386" }
-lay = { path = "../../libs/lay" }
-lib = { path = "../../libs/lib" }
-mm = { path = "../../libs/mm" }
-pal = { path = "../../libs/pal" }
-pic = { path = "../../libs/pic" }
-sh = { path = "../../libs/sh" }
-t2 = { path = "../../libs/t2" }
+asset = { path = "../asset" }
+camera = { path = "../render/common/camera" }
+dlg = { path = "../dlg" }
+i386 = { path = "../i386" }
+lay = { path = "../lay" }
+lib = { path = "../lib" }
+mm = { path = "../mm" }
+pal = { path = "../pal" }
+pic = { path = "../pic" }
+sh = { path = "../sh" }
+t2 = { path = "../t2" }
 window = { path = "../window" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"
-omnilib = { path = "../../libs/omnilib" }
-xt = { path = "../../libs/xt" }
+omnilib = { path = "../omnilib" }
+xt = { path = "../xt" }

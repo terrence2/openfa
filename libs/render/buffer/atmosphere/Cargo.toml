@@ -18,7 +18,7 @@ vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
 base = { path = "../../../renderer/base" }
-camera = { path = "../../../renderer/camera" }
+camera = { path = "../../../render/common/camera" }
 global_layout = { path = "../../../render/buffer/global_layout" }
 input = { path = "../../../input" }
 window = { path = "../../../window" }

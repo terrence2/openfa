@@ -15,6 +15,6 @@ vulkano = "^ 0.12"
 vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
-camera = { path = "../camera" }
-geometry = { path = "../geometry" }
+camera = { path = "../../render/common/camera" }
+geometry = { path = "../../render/common/geometry" }
 window = { path = "../../window" }

@@ -16,7 +16,7 @@ vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
-camera = { path = "../../libs/renderer/camera" }
+camera = { path = "../../libs/render/common/camera" }
 input = { path = "../../libs/input" }
 lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
