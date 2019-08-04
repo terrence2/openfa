@@ -32,7 +32,7 @@ const RADIUS: f32 = 0.0015f32;
 mod fs {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/renderer/stars/src"],
+    include: ["./libs/render/buffer/stars/src"],
     src: "
         #version 450
         #include \"include_stars.glsl\"

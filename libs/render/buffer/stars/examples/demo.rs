@@ -58,7 +58,7 @@ mod fs {
 
     shader! {
     ty: "fragment",
-    include: ["./libs/renderer/stars/src"],
+    include: ["./libs/render/buffer/stars/src"],
     src: "
         #version 450
 

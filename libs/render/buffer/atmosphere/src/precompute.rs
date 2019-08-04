@@ -95,7 +95,7 @@ pub struct Precompute {
 mod compute_transmittance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_transmittance_builder.glsl\"
@@ -161,7 +161,7 @@ impl Precompute {
 mod compute_direct_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_direct_irradiance_builder.glsl\"
@@ -230,7 +230,7 @@ impl Precompute {
 mod compute_single_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_single_scattering_builder.glsl\"
@@ -356,7 +356,7 @@ impl Precompute {
 mod compute_scattering_density_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_scattering_density_builder.glsl\"
@@ -453,7 +453,7 @@ impl Precompute {
 mod compute_indirect_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_indirect_irradiance_builder.glsl\"
@@ -568,7 +568,7 @@ impl Precompute {
 mod compute_multiple_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
         #include \"lut_multiple_scattering_builder.glsl\"

@@ -64,7 +64,7 @@ mod fs {
 
     shader! {
     ty: "fragment",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
 

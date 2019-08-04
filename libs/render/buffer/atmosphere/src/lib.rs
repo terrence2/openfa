@@ -44,7 +44,7 @@ const NUM_SCATTERING_ORDER: usize = 4;
 mod fs {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/renderer/atmosphere/src"],
+    include: ["./libs/render/buffer/atmosphere/src"],
     src: "
         #version 450
 
