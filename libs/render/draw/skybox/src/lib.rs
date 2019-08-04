@@ -256,7 +256,10 @@ impl SkyboxRenderer {
             .set_inverse_projection(camera.inverted_projection_matrix());
         self.push_constants
             .set_inverse_view(camera.inverted_view_matrix());
-        self.push_constants.set_eye_position(camera.position());
+
+        // Camera is in meters, but we draw the (massive) skybox in kilometers because f32.
+        self.push_constants
+            .set_eye_position(camera.position() / 1000.0);
 
         // FIXME: this should take an orrery that can give us the direction exactly.
         self.push_constants.set_sun_direction(&sun_direction);
