@@ -20,12 +20,13 @@ use std::{
 };
 use vulkano::{
     command_buffer::{AutoCommandBuffer, DynamicState},
+    descriptor::{descriptor_set::PersistentDescriptorSet, DescriptorSet},
     device::{Device, Queue, RawDeviceExtensions},
     format::Format,
     framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract},
     image::{attachment::AttachmentImage, traits::ImageAccess},
     instance::{Instance, PhysicalDevice},
-    pipeline::viewport::Viewport,
+    pipeline::{viewport::Viewport, GraphicsPipelineAbstract},
     single_pass_renderpass,
     swapchain::{
         acquire_next_image, AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain,
@@ -305,6 +306,15 @@ impl GraphicsWindow {
         Ok([dim[0] as f32, dim[1] as f32])
     }
 
+    pub fn empty_descriptor_set(
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        id: usize,
+    ) -> Fallible<Arc<dyn DescriptorSet + Send + Sync>> {
+        Ok(Arc::new(
+            PersistentDescriptorSet::start(pipeline, id).build()?,
+        ))
+    }
+
     pub fn surface_dimensions(surface: &Arc<Surface<Window>>) -> Fallible<[u32; 2]> {
         if let Some(dimensions) = surface.window().get_inner_size() {
             let dim: (u32, u32) = dimensions
@@ -327,6 +337,26 @@ impl GraphicsWindow {
 
     pub fn queue(&self) -> Arc<Queue> {
         self.queues[0].clone()
+    }
+
+    pub fn center_cursor(&self) -> Fallible<()> {
+        let dim = self.dimensions()?;
+        use winit::dpi::LogicalPosition;
+        match self
+            .surface
+            .window()
+            .set_cursor_position(LogicalPosition::new(
+                f64::from(dim[0] / 2f32),
+                f64::from(dim[1] / 2f32),
+            )) {
+            Ok(_) => Ok(()),
+            Err(s) => Err(err_msg(s)),
+        }
+    }
+
+    pub fn hide_cursor(&self) -> Fallible<()> {
+        self.surface.window().hide_cursor(true);
+        Ok(())
     }
 
     pub fn render_pass(&self) -> Arc<RenderPassAbstract + Send + Sync> {

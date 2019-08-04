@@ -13,8 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "header.glsl"
-
 vec3 get_solar_luminance(
     vec3 sun_irradiance,
     float sun_angular_radius,

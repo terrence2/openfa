@@ -15,6 +15,8 @@ vulkano = "^ 0.12"
 vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
+base = { path = "../base" }
 camera = { path = "../camera" }
-stars = { path = "../../stars" }
+input = { path = "../../input" }
+star_catalog = { path = "../../star_catalog" }
 window = { path = "../../window" }

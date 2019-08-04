@@ -46,12 +46,16 @@ impl ArcBallCamera {
         }
     }
 
-    pub fn get_distance(&mut self) -> f32 {
+    pub fn get_distance(&self) -> f32 {
         self.distance
     }
 
     pub fn set_distance(&mut self, distance: f32) {
         self.distance = distance;
+    }
+
+    pub fn get_target(&self) -> Point3<f32> {
+        self.target
     }
 
     pub fn set_target(&mut self, x: f32, y: f32, z: f32) {

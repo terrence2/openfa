@@ -12,278 +12,38 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::CameraAbstract;
+use base::{GlobalSets, RayMarchingRenderer};
 use failure::Fallible;
 use log::trace;
-use nalgebra::{Matrix4, Vector3};
-use stars::Stars;
+use nalgebra::Vector3;
+use star_catalog::Stars;
 use std::{collections::HashSet, f32::consts::PI, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
-    framebuffer::Subpass,
-    impl_vertex,
-    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
+    pipeline::GraphicsPipelineAbstract,
 };
 use window::GraphicsWindow;
 
 const TAU: f32 = PI * 2f32;
 const PI_2: f32 = PI / 2f32;
-
-#[derive(Copy, Clone)]
-pub struct Vertex {
-    position: [f32; 2],
-}
-
-impl_vertex!(Vertex, position);
-
-mod vs {
-    use vulkano_shaders::shader;
-
-    shader! {
-    ty: "vertex",
-        src: "
-            #version 450
-
-            layout(location = 0) in vec2 position;
-
-            layout(push_constant) uniform PushConstantData {
-              mat4 inverse_projection;
-              mat4 inverse_view;
-            } pc;
-
-            layout(location = 0) out vec3 v_ray;
-
-            void main() {
-                vec4 reverse_vec;
-
-                // inverse perspective projection
-                reverse_vec = vec4(position, 0.0, 1.0);
-                reverse_vec = pc.inverse_projection * reverse_vec;
-
-                // inverse modelview, without translation
-                reverse_vec.w = 0.0;
-                reverse_vec = pc.inverse_view * reverse_vec;
-
-                v_ray = vec3(reverse_vec);
-                gl_Position = vec4(position.xy, 0.0, 1.0);
-            }"
-    }
-}
-
 const RADIUS: f32 = 0.0015f32;
 
 mod fs {
-    use vulkano_shaders::shader;
-
-    shader! {
+    vulkano_shaders::shader! {
     ty: "fragment",
-        src: "
-            #version 450
-
-            // Constants
-            #define PI 3.1415926538
-            #define PI_2 (PI / 2.0)
-            #define TAU (PI * 2.0)
-            #define RADIUS (0.001 * 5.0)
-
-            // Utility
-            void v_to_ra_d(vec3 v, out float ra, out float dec) {
-                ra = atan(v.x, v.z) + PI;
-                dec = atan(v.y, sqrt(v.x * v.x + v.z * v.z));
-            }
-
-            vec3 ra_d_to_v(float ra, float dec) {
-                return vec3(
-                    cos(dec) * sin(ra),
-                    -sin(dec),
-                    cos(dec) * cos(ra)
-                );
-            }
-
-            // Bin arrangement
-            #define DEC_BINS 64
-            struct BandMetadata {
-                uint index;
-                uint bins_per_row;
-                uint base_index;
-            };
-            #define SHOW_BINS 0
-            void show_bins();
-
-            // Bin Info
-            struct BinPosition {
-                // Base offset into the star index buffer.
-                uint index_base;
-
-                // Number of stars in this bin.
-                uint num_indexes;
-            };
-
-            struct StarInst {
-                float ra;
-                float dec;
-                float color[3];
-                float radius;
-            };
-
-            layout(location = 0) in vec3 v_ray;
-
-            layout(location = 0) out vec4 f_color;
-
-            layout(binding = 0) buffer DeclinationBands {
-                BandMetadata arr[33];
-            } bands;
-
-            layout(binding = 1) buffer BinPositions {
-                BinPosition arr[5434];
-            } bins;
-
-            layout(binding = 2) buffer Indexes {
-                uint arr[];
-            } indexes;
-
-            layout(binding = 3) buffer StarBlock {
-                StarInst arr[];
-            } stars;
-
-            BandMetadata band_for_dec(float dec) {
-                // Project dec into 0..1
-                float decz = ((dec + PI_2) * 2.0) / TAU;
-
-                // Quantize dec into bands.
-                uint deci = uint(decz * DEC_BINS);
-                return bands.arr[deci];
-            }
-
-            uint bin_for_ra_d(float ra, float dec) {
-                BandMetadata band = band_for_dec(dec);
-                float raz = ra / TAU;
-                uint rai = uint(float(band.bins_per_row) * raz);
-                return band.base_index + rai;
-            }
-
-            void main() {
-                #if SHOW_BINS
-                    show_bins();
-                    return;
-                #endif
-
-                float ra, dec;
-                v_to_ra_d(v_ray, ra, dec);
-
-                uint bin = bin_for_ra_d(ra, dec);
-                BinPosition pos = bins.arr[bin];
-
-                vec3 clr = vec3(0.0, 0.0, 0.0);
-                for (uint i = pos.index_base; i < pos.index_base + pos.num_indexes; ++i) {
-                    uint star_index = indexes.arr[i];
-                    StarInst star = stars.arr[star_index];
-                    vec3 star_ray = ra_d_to_v(star.ra, star.dec);
-                    float dist = acos(dot(star_ray, normalize(v_ray)));
-                    if (dist < star.radius) {
-                        clr = vec3(
-                            star.color[0], star.color[1], star.color[2]
-                        );
-                    }
-                }
-
-                f_color = vec4(clr, 1.0);
-            }
-
-            void show_bins() {
-                float ra, dec;
-                v_to_ra_d(v_ray, ra, dec);
-
-                float raz = ra / TAU;
-                float decz = ((dec + PI_2) * 2.0) / TAU;
-
-                BandMetadata meta = band_for_dec(dec);
-                uint rai = uint(raz * meta.bins_per_row);
-                int deci = int(decz * DEC_BINS);
-
-                if ((rai & 1) != 0) {
-                    if ((deci & 1) != 0) {
-                        f_color = vec4(0.0, 1.0, 1.0, 1.0);
-                    } else {
-                        f_color = vec4(1.0, 0.0, 1.0, 1.0);
-                    }
-                } else {
-                    if ((deci & 1) != 0) {
-                        f_color = vec4(1.0, 0.0, 1.0, 1.0);
-                    } else {
-                        f_color = vec4(0.0, 1.0, 1.0, 1.0);
-                    }
-                }
-            }
-            "
-    }
-}
-
-impl vs::ty::PushConstantData {
-    fn new() -> Self {
-        Self {
-            inverse_projection: [
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-            ],
-            inverse_view: [
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-            ],
-        }
-    }
-
-    fn set_inverse_projection(&mut self, mat: Matrix4<f32>) {
-        self.inverse_projection[0][0] = mat[0];
-        self.inverse_projection[0][1] = mat[1];
-        self.inverse_projection[0][2] = mat[2];
-        self.inverse_projection[0][3] = mat[3];
-        self.inverse_projection[1][0] = mat[4];
-        self.inverse_projection[1][1] = mat[5];
-        self.inverse_projection[1][2] = mat[6];
-        self.inverse_projection[1][3] = mat[7];
-        self.inverse_projection[2][0] = mat[8];
-        self.inverse_projection[2][1] = mat[9];
-        self.inverse_projection[2][2] = mat[10];
-        self.inverse_projection[2][3] = mat[11];
-        self.inverse_projection[3][0] = mat[12];
-        self.inverse_projection[3][1] = mat[13];
-        self.inverse_projection[3][2] = mat[14];
-        self.inverse_projection[3][3] = mat[15];
-    }
-
-    fn set_inverse_view(&mut self, mat: Matrix4<f32>) {
-        self.inverse_view[0][0] = mat[0];
-        self.inverse_view[0][1] = mat[1];
-        self.inverse_view[0][2] = mat[2];
-        self.inverse_view[0][3] = mat[3];
-        self.inverse_view[1][0] = mat[4];
-        self.inverse_view[1][1] = mat[5];
-        self.inverse_view[1][2] = mat[6];
-        self.inverse_view[1][3] = mat[7];
-        self.inverse_view[2][0] = mat[8];
-        self.inverse_view[2][1] = mat[9];
-        self.inverse_view[2][2] = mat[10];
-        self.inverse_view[2][3] = mat[11];
-        self.inverse_view[3][0] = mat[12];
-        self.inverse_view[3][1] = mat[13];
-        self.inverse_view[3][2] = mat[14];
-        self.inverse_view[3][3] = mat[15];
+    include: ["./libs/renderer/starbox/src"],
+    src: "
+        #version 450
+        #include \"include_starbox.glsl\"
+        #include \"descriptorset_starbox.glsl\"
+        void main() {}
+        "
     }
 }
 
 pub struct StarboxRenderer {
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    push_constants: vs::ty::PushConstantData,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
-    pds: Arc<dyn DescriptorSet + Send + Sync>,
+    descriptorset: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
 macro_rules! mkband {
@@ -365,48 +125,14 @@ const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
 ];
 
 impl StarboxRenderer {
-    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
+    pub fn new(
+        _raymarching_renderer: &RayMarchingRenderer,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        window: &GraphicsWindow,
+    ) -> Fallible<Self> {
         trace!("StarboxRenderer::new");
-
-        let vs = vs::Shader::load(window.device())?;
-        let fs = fs::Shader::load(window.device())?;
-
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_strip()
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                /*
-                .depth_stencil(DepthStencil {
-                    depth_write: false,
-                    depth_compare: Compare::GreaterOrEqual,
-                    depth_bounds_test: DepthBounds::Disabled,
-                    stencil_front: Default::default(),
-                    stencil_back: Default::default(),
-                })
-                */
-                //.blend_alpha_blending()
-                .render_pass(
-                    Subpass::from(window.render_pass(), 0)
-                        .expect("gfx: did not find a render pass"),
-                )
-                .build(window.device())?,
-        );
-
-        let (vertex_buffer, index_buffer) = Self::build_buffers(window)?;
-
-        let pds = Self::upload_stars(pipeline.clone(), window)?;
-
         Ok(Self {
-            pipeline,
-            push_constants: vs::ty::PushConstantData::new(),
-            vertex_buffer,
-            index_buffer,
-            pds,
+            descriptorset: Self::upload_stars(pipeline.clone(), window)?,
         })
     }
 
@@ -557,7 +283,7 @@ impl StarboxRenderer {
         )?;
 
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), 0)
+            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Stars)
                 .add_buffer(band_buffer.clone())?
                 .add_buffer(bin_pos_buffer.clone())?
                 .add_buffer(star_index_buffer.clone())?
@@ -568,45 +294,11 @@ impl StarboxRenderer {
         Ok(pds)
     }
 
-    pub fn build_buffers(
-        window: &GraphicsWindow,
-    ) -> Fallible<(
-        Arc<CpuAccessibleBuffer<[Vertex]>>,
-        Arc<CpuAccessibleBuffer<[u32]>>,
-    )> {
-        // Compute vertices such that we can handle any aspect ratio, or set up the camera to handle this?
-        let x0 = -1f32;
-        let x1 = 1f32;
-        let y0 = -1f32;
-        let y1 = 1f32;
-        let verts = vec![
-            Vertex { position: [x0, y0] },
-            Vertex { position: [x0, y1] },
-            Vertex { position: [x1, y0] },
-            Vertex { position: [x1, y1] },
-        ];
-        let indices = vec![0u32, 1u32, 2u32, 3u32];
-
-        trace!(
-            "uploading vertex buffer with {} bytes",
-            std::mem::size_of::<Vertex>() * verts.len()
-        );
-        let vertex_buffer =
-            CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
-
-        trace!(
-            "uploading index buffer with {} bytes",
-            std::mem::size_of::<u32>() * indices.len()
-        );
-        let index_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            indices.into_iter(),
-        )?;
-
-        Ok((vertex_buffer, index_buffer))
+    pub fn descriptor_set(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
+        self.descriptorset.clone()
     }
 
+    /*
     pub fn before_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
         self.push_constants
             .set_inverse_projection(camera.inverted_projection_matrix());
@@ -621,17 +313,22 @@ impl StarboxRenderer {
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = cb;
+        let empty0: Arc<dyn DescriptorSet + Send + Sync> =
+            Arc::new(PersistentDescriptorSet::start(self.pipeline.clone(), 0).build()?);
+        let empty1: Arc<dyn DescriptorSet + Send + Sync> =
+            Arc::new(PersistentDescriptorSet::start(self.pipeline.clone(), 1).build()?);
         cb = cb.draw_indexed(
             self.pipeline.clone(),
             dynamic_state,
             vec![self.vertex_buffer.clone()],
             self.index_buffer.clone(),
-            self.pds.clone(),
+            (empty0, empty1, self.pds.clone()),
             self.push_constants,
         )?;
 
         Ok(cb)
     }
+    */
 }
 
 #[cfg(test)]
