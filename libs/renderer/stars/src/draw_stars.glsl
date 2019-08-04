@@ -38,7 +38,7 @@ BandMetadata band_for_dec(float dec) {
 
     // Quantize dec into bands.
     uint deci = uint(decz * DEC_BINS);
-    return starbox_bands.arr[deci];
+    return stars_bands.arr[deci];
 }
 
 uint bin_for_ra_d(float ra, float dec) {
@@ -53,12 +53,12 @@ vec3 show_stars(vec3 view) {
     v_to_ra_d(view, ra, dec);
 
     uint bin = bin_for_ra_d(ra, dec);
-    BinPosition pos = starbox_bins.arr[bin];
+    BinPosition pos = stars_bins.arr[bin];
 
     vec3 clr = vec3(0.0, 0.0, 0.0);
     for (uint i = pos.index_base; i < pos.index_base + pos.num_indexes; ++i) {
-        uint star_index = starbox_indexes.arr[i];
-        StarInst star = starbox_stars.arr[star_index];
+        uint star_index = stars_indexes.arr[i];
+        StarInst star = stars_stars.arr[star_index];
         vec3 star_ray = ra_d_to_v(star.ra, star.dec);
         float dist = acos(dot(star_ray, normalize(view)));
         if (dist < star.radius) {

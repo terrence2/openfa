@@ -47,7 +47,7 @@ members = [
         "libs/renderer/geometry",
         "libs/renderer/shape",
         "libs/renderer/sky",
-        "libs/renderer/starbox",
+        "libs/renderer/stars",
         "libs/renderer/subocean",
         "libs/renderer/text",
         "libs/resource",

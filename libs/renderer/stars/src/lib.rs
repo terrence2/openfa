@@ -32,17 +32,17 @@ const RADIUS: f32 = 0.0015f32;
 mod fs {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/renderer/starbox/src"],
+    include: ["./libs/renderer/stars/src"],
     src: "
         #version 450
-        #include \"include_starbox.glsl\"
-        #include \"descriptorset_starbox.glsl\"
+        #include \"include_stars.glsl\"
+        #include \"descriptorset_stars.glsl\"
         void main() {}
         "
     }
 }
 
-pub struct StarboxRenderer {
+pub struct StarsRenderer {
     descriptorset: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
@@ -124,13 +124,13 @@ const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
     mkband!(63, 1, 5433),
 ];
 
-impl StarboxRenderer {
+impl StarsRenderer {
     pub fn new(
         _raymarching_renderer: &RayMarchingRenderer,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
-        trace!("StarboxRenderer::new");
+        trace!("StarsRenderer::new");
         Ok(Self {
             descriptorset: Self::upload_stars(pipeline.clone(), window)?,
         })
@@ -283,7 +283,7 @@ impl StarboxRenderer {
         )?;
 
         let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Stars)
+            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Stars.into())
                 .add_buffer(band_buffer.clone())?
                 .add_buffer(bin_pos_buffer.clone())?
                 .add_buffer(star_index_buffer.clone())?
@@ -297,43 +297,11 @@ impl StarboxRenderer {
     pub fn descriptor_set(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
         self.descriptorset.clone()
     }
-
-    /*
-    pub fn before_frame(&mut self, camera: &CameraAbstract) -> Fallible<()> {
-        self.push_constants
-            .set_inverse_projection(camera.inverted_projection_matrix());
-        self.push_constants
-            .set_inverse_view(camera.inverted_view_matrix());
-        Ok(())
-    }
-
-    pub fn render(
-        &self,
-        cb: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut cb = cb;
-        let empty0: Arc<dyn DescriptorSet + Send + Sync> =
-            Arc::new(PersistentDescriptorSet::start(self.pipeline.clone(), 0).build()?);
-        let empty1: Arc<dyn DescriptorSet + Send + Sync> =
-            Arc::new(PersistentDescriptorSet::start(self.pipeline.clone(), 1).build()?);
-        cb = cb.draw_indexed(
-            self.pipeline.clone(),
-            dynamic_state,
-            vec![self.vertex_buffer.clone()],
-            self.index_buffer.clone(),
-            (empty0, empty1, self.pds.clone()),
-            self.push_constants,
-        )?;
-
-        Ok(cb)
-    }
-    */
 }
 
 #[cfg(test)]
 mod tests {
-    use super::StarboxRenderer as SB;
+    use super::StarsRenderer as SB;
     use super::*;
     use approx::assert_relative_eq;
 

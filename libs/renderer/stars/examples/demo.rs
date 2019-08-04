@@ -18,7 +18,7 @@ use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::Matrix4;
-use starbox::StarboxRenderer;
+use stars::StarsRenderer;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
@@ -58,16 +58,16 @@ mod fs {
 
     shader! {
     ty: "fragment",
-    include: ["./libs/renderer/starbox/src"],
+    include: ["./libs/renderer/stars/src"],
     src: "
         #version 450
 
         layout(location = 0) in vec3 v_ray;
         layout(location = 0) out vec4 f_color;
 
-        #include \"include_starbox.glsl\"
-        #include \"descriptorset_starbox.glsl\"
-        #include \"draw_starbox.glsl\"
+        #include \"include_stars.glsl\"
+        #include \"descriptorset_stars.glsl\"
+        #include \"draw_stars.glsl\"
 
         void main() {
             #if SHOW_BINS
@@ -163,7 +163,7 @@ fn main() -> Fallible<()> {
             .build(window.device())?,
     ) as Arc<dyn GraphicsPipelineAbstract + Send + Sync>;
     let raymarching_renderer = RayMarchingRenderer::new(pipeline.clone(), &window)?;
-    let starbox_renderer = StarboxRenderer::new(&raymarching_renderer, pipeline.clone(), &window)?;
+    let stars_renderer = StarsRenderer::new(&raymarching_renderer, pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
@@ -219,7 +219,7 @@ fn main() -> Fallible<()> {
                 (
                     empty0.clone(),
                     empty1.clone(),
-                    starbox_renderer.descriptor_set(),
+                    stars_renderer.descriptor_set(),
                 ),
                 push_constants,
             )?;

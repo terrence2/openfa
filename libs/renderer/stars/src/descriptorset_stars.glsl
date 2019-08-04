@@ -15,14 +15,14 @@
 
 layout(set = 2, binding = 0) buffer DeclinationBands {
     BandMetadata arr[33];
-} starbox_bands;
+} stars_bands;
 layout(set = 2, binding = 1) buffer BinPositions {
     BinPosition arr[5434];
-} starbox_bins;
+} stars_bins;
 layout(set = 2, binding = 2) buffer Indexes {
     uint arr[];
-} starbox_indexes;
+} stars_indexes;
 layout(set = 2, binding = 3) buffer StarBlock {
     StarInst arr[];
-} starbox_stars;
+} stars_stars;
 
