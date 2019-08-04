@@ -16,8 +16,8 @@ winit = "^ 0.19"
 camera = { path = "../../libs/renderer/camera" }
 dlg = { path = "../../libs/dlg" }
 input = { path = "../../libs/input" }
+legacy_render = { path = "../../libs/legacy_render" }
 omnilib = { path = "../../libs/omnilib" }
 pal = { path = "../../libs/pal" }
-render = { path = "../../libs/render" }
 text = { path = "../../libs/renderer/text" }
 window = { path = "../../libs/window" }

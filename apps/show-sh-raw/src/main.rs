@@ -14,10 +14,10 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
+use legacy_render::{DrawMode, RawShRenderer};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::{DrawMode, RawShRenderer};
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{num::ParseIntError, rc::Rc, time::Instant};

@@ -24,7 +24,7 @@ mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-render = { path = "../../libs/render" }
+legacy_render = { path = "../../libs/legacy_render" }
 t2 = { path = "../../libs/t2" }
 text = { path = "../../libs/renderer/text" }
 xt = { path = "../../libs/xt" }

@@ -15,10 +15,10 @@
 use dlg::Dialog;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
+use legacy_render::DialogRenderer;
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::DialogRenderer;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;

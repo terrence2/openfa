@@ -41,7 +41,7 @@ members = [
         "libs/pic",
         "libs/pkware",
         "libs/pt",
-        "libs/render",
+        "libs/legacy_render",
         "libs/renderer/atmosphere",
         "libs/renderer/base",
         "libs/renderer/camera",
