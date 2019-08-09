@@ -1,0 +1,19 @@
+[package]
+name = "skybox"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
+vulkano = "^ 0.12"
+vulkano-shaders = "^ 0.12"
+vulkano-win = "^ 0.12"
+winit = "^ 0.19"
+base = { path = "../../../renderer/base" }
+atmosphere = { path = "../../../render/buffer/atmosphere" }
+camera = { path = "../../../render/common/camera" }
+stars = { path = "../../../render/buffer/stars" }
+window = { path = "../../../window" }

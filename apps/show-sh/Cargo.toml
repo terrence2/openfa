@@ -16,7 +16,7 @@ vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
-camera = { path = "../../libs/renderer/camera" }
+camera = { path = "../../libs/render/common/camera" }
 input = { path = "../../libs/input" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
@@ -25,6 +25,6 @@ pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 shape = { path = "../../libs/renderer/shape" }
 sh = { path = "../../libs/sh" }
-starbox = { path = "../../libs/renderer/starbox" }
+skybox = { path = "../../libs/render/draw/skybox" }
 text = { path = "../../libs/renderer/text" }
 window = { path = "../../libs/window" }

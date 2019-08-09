@@ -19,7 +19,7 @@ use lib::Library;
 use log::trace;
 use nalgebra::Vector3;
 use simplelog::{Config, LevelFilter, TermLogger};
-use sky::SkyRenderer;
+use skybox::SkyboxRenderer;
 use std::{f64::consts::PI, time::Instant};
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
@@ -67,7 +67,7 @@ fn main() -> Fallible<()> {
     let mut input = InputSystem::new(&[&shape_bindings]);
 
     let mut text_renderer = TextRenderer::new(&lib, &window)?;
-    let mut sky_renderer = SkyRenderer::new(&window)?;
+    let mut skybox_renderer = SkyboxRenderer::new(&window)?;
 
     let fps_handle = text_renderer
         .add_screen_text(Font::QUANTICO, "", &window)?
@@ -144,7 +144,7 @@ fn main() -> Fallible<()> {
             }
 
             let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
-            sky_renderer.before_frame(&camera, &sun_direction)?;
+            skybox_renderer.before_frame(&camera, &sun_direction)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -158,7 +158,7 @@ fn main() -> Fallible<()> {
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
-            cbb = sky_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = skybox_renderer.draw(cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;

@@ -477,9 +477,10 @@ impl ShapeInstance {
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
     ) -> Fallible<AutoCommandBufferBuilder> {
+        let transform = Matrix4::new_translation(&Vector3::new(6_378_000.0 + 1000.0, 0.0, 0.0));
         let mut push_consts = vs::ty::PushConstantData::new();
         push_consts.set_projection(&camera.projection_matrix());
-        push_consts.set_view(&camera.view_matrix());
+        push_consts.set_view(&(camera.view_matrix() * transform));
         push_consts.set_mask(
             self.draw_state
                 .borrow()
@@ -1564,13 +1565,13 @@ mod test {
     use failure::Error;
     use omnilib::OmniLib;
     use sh::RawShape;
-    use std::{f32::consts::PI, rc::Rc};
+    use std::{f64::consts::PI, rc::Rc};
     use window::GraphicsConfigBuilder;
 
     #[test]
     fn it_can_render_shapes() -> Fallible<()> {
         let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
+        let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
         camera.set_distance(100.);
         camera.set_angle(115. * PI / 180., -135. * PI / 180.);
 

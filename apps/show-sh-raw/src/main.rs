@@ -14,10 +14,10 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
+use legacy_render::{DrawMode, RawShRenderer};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::{DrawMode, RawShRenderer};
 use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{num::ParseIntError, rc::Rc, time::Instant};
@@ -117,8 +117,8 @@ fn main() -> Fallible<()> {
     };
     sh_renderer.add_shape_to_render("foo", &sh, stop_at_offset, &draw_mode, &lib, &window)?;
 
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
-    camera.set_distance(40f32);
+    let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
+    camera.set_distance(40.0);
 
     let mut need_reset = false;
     loop {
@@ -158,7 +158,7 @@ fn main() -> Fallible<()> {
                 event: MouseMotion { delta: (x, y) },
                 ..
             } => {
-                camera.on_mousemove(x as f32, y as f32);
+                camera.on_mousemove(x, y);
             }
             WindowEvent {
                 event:
@@ -191,7 +191,7 @@ fn main() -> Fallible<()> {
                         ..
                     },
                 ..
-            } => camera.on_mousescroll(-x, -y),
+            } => camera.on_mousescroll(f64::from(-x), f64::from(-y)),
 
             // Keyboard Press
             WindowEvent {
@@ -366,7 +366,7 @@ fn main() -> Fallible<()> {
         }
         if resized {
             window.note_resize();
-            camera.set_aspect_ratio(window.aspect_ratio()?);
+            camera.set_aspect_ratio(window.aspect_ratio_f64()?);
         }
 
         {

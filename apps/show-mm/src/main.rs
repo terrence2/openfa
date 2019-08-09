@@ -16,11 +16,11 @@ use asset::AssetManager;
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
+use legacy_render::{PalRenderer, T2Renderer};
 use log::trace;
 use mm::MissionMap;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-use render::{PalRenderer, T2Renderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -99,7 +99,7 @@ pub fn main() -> Fallible<()> {
     pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
     ///////////////////////////////////////////////////////////
 
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.001f32, 3.4e+38f32);
+    let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.001, 3.4e+38);
 
     let mut need_reset = false;
     loop {
@@ -116,17 +116,15 @@ pub fn main() -> Fallible<()> {
             match command.name.as_str() {
                 "window-resize" => {
                     window.note_resize();
-                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                    camera.set_aspect_ratio(window.aspect_ratio_f64()?);
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "mouse-move" => camera.on_mousemove(
-                    command.displacement()?.0 as f32,
-                    command.displacement()?.1 as f32,
-                ),
-                "mouse-wheel" => camera.on_mousescroll(
-                    command.displacement()?.0 as f32,
-                    command.displacement()?.1 as f32,
-                ),
+                "mouse-move" => {
+                    camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                }
+                "mouse-wheel" => {
+                    camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
+                }
                 "+pan-view" => camera.on_mousebutton_down(1),
                 "-pan-view" => camera.on_mousebutton_up(1),
                 "+move-view" => camera.on_mousebutton_down(3),

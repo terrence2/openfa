@@ -1,5 +1,5 @@
 [package]
-name = "subocean"
+name = "atmosphere"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -8,13 +8,17 @@ edition = "2018"
 approx = "^ 0.3"
 bitflags = ">= 1.0"
 failure = "^ 0.1.2"
+image = "^ 0.21"
 lazy_static = ">= 1"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
+num-traits = "^ 0.2"
 vulkano = "^ 0.12"
 vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
-camera = { path = "../../render/common/camera" }
-geometry = { path = "../../render/common/geometry" }
-window = { path = "../../window" }
+base = { path = "../../../renderer/base" }
+camera = { path = "../../../render/common/camera" }
+global_layout = { path = "../../../render/buffer/global_layout" }
+input = { path = "../../../input" }
+window = { path = "../../../window" }
