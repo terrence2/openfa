@@ -16,13 +16,14 @@ use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
 use log::trace;
+use nalgebra::{Unit, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
 use shape::{DrawSelection, ShRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
-use stars::StarsRenderer;
-use std::{rc::Rc, time::Instant};
+use skybox::SkyboxRenderer;
+use std::{f64::consts::PI, rc::Rc, time::Instant};
 use structopt::StructOpt;
 use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
@@ -79,7 +80,7 @@ fn main() -> Fallible<()> {
 
     let mut sh_renderer = ShRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(&lib, &window)?;
-    let mut stars_renderer = StarsRenderer::new(&window)?;
+    let mut skybox_renderer = SkyboxRenderer::new(&window)?;
 
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
@@ -106,8 +107,14 @@ fn main() -> Fallible<()> {
         &window,
     )?;
 
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
-    camera.set_distance(40f32);
+    let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
+    camera.set_up(-Vector3::x());
+    camera.set_rotation(UnitQuaternion::from_axis_angle(
+        &Unit::new_normalize(Vector3::z()),
+        PI / 2.0,
+    ));
+    camera.set_target(6_378_000.0 + 1000.0, 0.0, 0.0);
+    camera.set_distance(40.0);
 
     loop {
         let loop_start = Instant::now();
@@ -116,17 +123,15 @@ fn main() -> Fallible<()> {
             match command.name.as_str() {
                 "window-resize" => {
                     window.note_resize();
-                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                    camera.set_aspect_ratio(window.aspect_ratio_f64()?);
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "mouse-move" => camera.on_mousemove(
-                    command.displacement()?.0 as f32,
-                    command.displacement()?.1 as f32,
-                ),
-                "mouse-wheel" => camera.on_mousescroll(
-                    command.displacement()?.0 as f32,
-                    command.displacement()?.1 as f32,
-                ),
+                "mouse-move" => {
+                    camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                }
+                "mouse-wheel" => {
+                    camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
+                }
                 "+pan-view" => camera.on_mousebutton_down(1),
                 "-pan-view" => camera.on_mousebutton_up(1),
                 "+move-view" => camera.on_mousebutton_down(3),
@@ -183,7 +188,9 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
-            stars_renderer.before_frame(&camera)?;
+            let sun_angle = 0.0f64;
+            let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+            skybox_renderer.before_frame(&camera, &sun_direction)?;
             text_renderer.before_frame(&window)?;
 
             let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
@@ -199,7 +206,7 @@ fn main() -> Fallible<()> {
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
-            cbb = stars_renderer.render(cbb, &window.dynamic_state)?;
+            cbb = skybox_renderer.draw(cbb, &window.dynamic_state)?;
             cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 

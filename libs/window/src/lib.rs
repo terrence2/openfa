@@ -330,6 +330,10 @@ impl GraphicsWindow {
         let dim = self.dimensions()?;
         Ok(dim[1] / dim[0])
     }
+    pub fn aspect_ratio_f64(&self) -> Fallible<f64> {
+        let dim = self.dimensions()?;
+        Ok(f64::from(dim[1] / dim[0]))
+    }
 
     pub fn device(&self) -> Arc<Device> {
         self.device.clone()

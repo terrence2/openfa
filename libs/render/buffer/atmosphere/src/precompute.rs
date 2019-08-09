@@ -1063,6 +1063,17 @@ impl Precompute {
         let srgb_atmosphere_buffer =
             self.build_textures(num_precomputed_wavelengths, num_scattering_passes, window)?;
 
+        println!(
+            "PRECOMPUTE_SIZE: {} bytes",
+            (self.transmittance_dimensions.width() * self.transmittance_dimensions.height()
+                + self.irradiance_dimensions.width() * self.irradiance_dimensions.height()
+                + self.scattering_dimensions.width()
+                    * self.scattering_dimensions.height()
+                    * self.scattering_dimensions.depth())
+                * 4
+                * 4
+        );
+
         let usage = ImageUsage {
             transfer_destination: true,
             sampled: true,

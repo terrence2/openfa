@@ -18,7 +18,7 @@ use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use log::trace;
-use nalgebra::{Matrix4, Point3, Vector3};
+use nalgebra::{convert, Matrix4, Point3, Vector3};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
@@ -226,10 +226,10 @@ fn main() -> Fallible<()> {
     let atmosphere = AtmosphereBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
-    //camera.set_target(6_378_001.0, 0.0, 0.0);
-    camera.set_target(6_378.0, 0.0, 0.0);
-    camera.set_distance(40f32);
+    let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
+    camera.set_target(6_378.1, 0.0, 0.0);
+    camera.set_up(Vector3::x());
+    camera.set_distance(40.0);
     camera.on_mousebutton_down(1);
     let mut sun_angle = 0f64;
     let mut in_sun_move = false;
@@ -241,7 +241,7 @@ fn main() -> Fallible<()> {
             match command.name.as_str() {
                 "window-resize" => {
                     window.note_resize();
-                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                    camera.set_aspect_ratio(window.aspect_ratio_f64()?);
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "+enter-move-sun" => in_sun_move = true,
@@ -251,8 +251,8 @@ fn main() -> Fallible<()> {
                         sun_angle += command.displacement()?.0 / (180.0 * 2.0);
                     } else {
                         camera.on_mousemove(
-                            command.displacement()?.0 as f32 / 4f32,
-                            command.displacement()?.1 as f32 / 4f32,
+                            command.displacement()?.0 / 4.0,
+                            command.displacement()?.1 / 4.0,
                         )
                     }
                 }
@@ -270,7 +270,7 @@ fn main() -> Fallible<()> {
 
             push_constants.set_inverse_projection(camera.inverted_projection_matrix());
             push_constants.set_inverse_view(camera.inverted_view_matrix());
-            push_constants.set_eye_position(camera.get_target());
+            push_constants.set_eye_position(convert(camera.get_target()));
             let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
             push_constants.set_sun_direction(&sun_direction);
 

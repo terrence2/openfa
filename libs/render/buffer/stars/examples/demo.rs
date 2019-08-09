@@ -166,8 +166,8 @@ fn main() -> Fallible<()> {
     let stars_buffers = StarsBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
-    let mut camera = ArcBallCamera::new(window.aspect_ratio()?, 0.1f32, 3.4e+38f32);
-    camera.set_distance(40f32);
+    let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
+    camera.set_distance(40.0);
     camera.on_mousebutton_down(1);
 
     let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
@@ -178,12 +178,12 @@ fn main() -> Fallible<()> {
             match command.name.as_str() {
                 "window-resize" => {
                     window.note_resize();
-                    camera.set_aspect_ratio(window.aspect_ratio()?);
+                    camera.set_aspect_ratio(window.aspect_ratio_f64()?);
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "mouse-move" => camera.on_mousemove(
-                    command.displacement()?.0 as f32 / 4f32,
-                    command.displacement()?.1 as f32 / 4f32,
+                    command.displacement()?.0 / 4.0,
+                    command.displacement()?.1 / 4.0,
                 ),
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
