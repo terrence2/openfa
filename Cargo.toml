@@ -50,7 +50,6 @@ members = [
         "libs/render/draw/skybox",
         "libs/renderer/base",
         "libs/renderer/shape",
-        "libs/renderer/subocean",
         "libs/renderer/text",
         "libs/resource",
         "libs/reverse",
