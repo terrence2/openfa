@@ -26,6 +26,6 @@ pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 legacy_render = { path = "../../libs/legacy_render" }
 t2 = { path = "../../libs/t2" }
-text = { path = "../../libs/renderer/text" }
+text = { path = "../../libs/render/draw/text" }
 xt = { path = "../../libs/xt" }
 window = { path = "../../libs/window" }
