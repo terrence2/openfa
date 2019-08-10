@@ -16,11 +16,11 @@
 // Accumulate all depthless raymarching passes into one draw operation.
 
 use atmosphere::AtmosphereBuffers;
-use base::{RayMarchingRenderer, RayMarchingVertex};
 use camera::CameraAbstract;
 use failure::Fallible;
 use log::trace;
 use nalgebra::{Matrix4, Point3, Vector3};
+use raymarching::{RaymarchingBuffer, RaymarchingVertex};
 use stars::StarsBuffers;
 use std::sync::Arc;
 use vulkano::{
@@ -34,11 +34,11 @@ use window::GraphicsWindow;
 mod vs {
     vulkano_shaders::shader! {
     ty: "vertex",
-    include: ["./libs/renderer/base/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
 
-        #include \"include_raymarching.glsl\"
+        #include <buffer/raymarching/src/include_raymarching.glsl>
 
         layout(push_constant) uniform PushConstantData {
             mat4 inverse_view;
@@ -206,7 +206,7 @@ impl vs::ty::PushConstantData {
 }
 
 pub struct SkyboxRenderer {
-    raymarching_renderer: RayMarchingRenderer,
+    raymarching_buffer: RaymarchingBuffer,
     empty_ds0: Arc<dyn DescriptorSet + Send + Sync>,
     atmosphere_buffers: AtmosphereBuffers,
     stars_buffers: StarsBuffers,
@@ -223,7 +223,7 @@ impl SkyboxRenderer {
         let frag_shader = fs::Shader::load(window.device())?;
         let pipeline = Arc::new(
             GraphicsPipeline::start()
-                .vertex_input_single_buffer::<RayMarchingVertex>()
+                .vertex_input_single_buffer::<RaymarchingVertex>()
                 .vertex_shader(vert_shader.main_entry_point(), ())
                 .triangle_strip()
                 .cull_mode_back()
@@ -237,14 +237,13 @@ impl SkyboxRenderer {
                 .build(window.device())?,
         ) as Arc<dyn GraphicsPipelineAbstract + Send + Sync>;
         let push_constants = vs::ty::PushConstantData::new();
-        let raymarching_renderer = RayMarchingRenderer::new(pipeline.clone(), &window)?;
-        let atmosphere_buffers =
-            AtmosphereBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
-        let stars_buffers = StarsBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
+        let raymarching_buffer = RaymarchingBuffer::new(&window)?;
+        let atmosphere_buffers = AtmosphereBuffers::new(pipeline.clone(), &window)?;
+        let stars_buffers = StarsBuffers::new(pipeline.clone(), &window)?;
         let empty_ds0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
 
         Ok(Self {
-            raymarching_renderer,
+            raymarching_buffer,
             empty_ds0,
             atmosphere_buffers,
             stars_buffers,
@@ -281,8 +280,8 @@ impl SkyboxRenderer {
         Ok(cbb.draw_indexed(
             self.pipeline.clone(),
             dynamic_state,
-            vec![self.raymarching_renderer.vertex_buffer.clone()],
-            self.raymarching_renderer.index_buffer.clone(),
+            vec![self.raymarching_buffer.vertex_buffer.clone()],
+            self.raymarching_buffer.index_buffer.clone(),
             (
                 self.empty_ds0.clone(),
                 self.atmosphere_buffers.descriptor_set(),

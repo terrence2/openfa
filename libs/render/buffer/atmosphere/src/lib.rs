@@ -27,7 +27,6 @@ mod earth_consts;
 mod precompute;
 
 use crate::precompute::Precompute;
-use base::RayMarchingRenderer;
 use failure::Fallible;
 use global_layout::GlobalSets;
 use log::trace;
@@ -64,7 +63,6 @@ pub struct AtmosphereBuffers {
 
 impl AtmosphereBuffers {
     pub fn new(
-        _raymarching_renderer: &RayMarchingRenderer,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
