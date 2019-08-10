@@ -96,10 +96,11 @@ pub struct Precompute {
 mod compute_transmittance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_transmittance_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_transmittance_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(binding = 0) uniform Data { AtmosphereParameters atmosphere; } data;
@@ -162,10 +163,11 @@ impl Precompute {
 mod compute_direct_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_direct_irradiance_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_direct_irradiance_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(binding = 0) uniform Data { AtmosphereParameters atmosphere; } data;
@@ -231,10 +233,11 @@ impl Precompute {
 mod compute_single_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_single_scattering_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_single_scattering_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
         layout(push_constant) uniform PushConstantData {
@@ -357,10 +360,11 @@ impl Precompute {
 mod compute_scattering_density_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_scattering_density_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_scattering_density_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
         layout(push_constant) uniform PushConstantData {
@@ -454,10 +458,11 @@ impl Precompute {
 mod compute_indirect_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_indirect_irradiance_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_indirect_irradiance_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(push_constant) uniform PushConstantData {
@@ -569,10 +574,11 @@ impl Precompute {
 mod compute_multiple_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_multiple_scattering_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_multiple_scattering_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
         layout(push_constant) uniform PushConstantData {

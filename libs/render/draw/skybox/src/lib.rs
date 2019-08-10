@@ -64,25 +64,26 @@ mod vs {
 mod fs {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/render/buffer"],
+    include: ["./libs/render"],
     src: "
         #version 450
+        #include <common/include/include_global.glsl>
 
         layout(location = 0) in vec3 v_ray;
         layout(location = 1) in vec3 camera;
         layout(location = 2) in vec3 sun_direction;
         layout(location = 0) out vec4 f_color;
 
-        #include <atmosphere/src/include_atmosphere.glsl>
-        #include <stars/src/include_stars.glsl>
+        #include <buffer/atmosphere/src/include_atmosphere.glsl>
+        #include <buffer/stars/src/include_stars.glsl>
 
         const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 
-        #include <atmosphere/src/descriptorset_atmosphere.glsl>
-        #include <stars/src/descriptorset_stars.glsl>
+        #include <buffer/atmosphere/src/descriptorset_atmosphere.glsl>
+        #include <buffer/stars/src/descriptorset_stars.glsl>
 
-        #include <atmosphere/src/draw_atmosphere.glsl>
-        #include <stars/src/draw_stars.glsl>
+        #include <buffer/atmosphere/src/draw_atmosphere.glsl>
+        #include <buffer/stars/src/draw_stars.glsl>
 
         void main() {
             vec3 view = normalize(v_ray);

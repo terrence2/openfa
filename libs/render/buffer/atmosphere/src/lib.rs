@@ -45,12 +45,13 @@ const NUM_SCATTERING_ORDER: usize = 4;
 mod buffers {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
 
-        #include \"include_atmosphere.glsl\"
-        #include \"descriptorset_atmosphere.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/include_atmosphere.glsl>
+        #include <buffer/atmosphere/src/descriptorset_atmosphere.glsl>
 
         void main() {}
         "

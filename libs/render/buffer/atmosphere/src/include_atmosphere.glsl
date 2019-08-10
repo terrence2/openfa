@@ -13,11 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-#define PI 3.14159265358979323846
-#define PI_2 (PI / 2.0)
-#define TAU (PI * 2.0)
-#define RADIUS 6378.0
-
 // The conversion factor between watts and lumens.
 const float MAX_LUMINOUS_EFFICACY = 683.0;
 
