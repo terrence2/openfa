@@ -12,12 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use base::{RayMarchingRenderer, RayMarchingVertex};
 use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::Matrix4;
+use raymarching::{RaymarchingBuffer, RaymarchingVertex};
 use stars::StarsBuffers;
 use std::sync::Arc;
 use vulkano::{
@@ -32,11 +32,11 @@ mod vs {
 
     shader! {
     ty: "vertex",
-    include: ["./libs/renderer/base/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
 
-        #include \"include_raymarching.glsl\"
+        #include <buffer/raymarching/src/include_raymarching.glsl>
 
         layout(push_constant) uniform PushConstantData {
           mat4 inverse_view;
@@ -154,7 +154,7 @@ fn main() -> Fallible<()> {
     let frag_shader = fs::Shader::load(window.device())?;
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input_single_buffer::<RayMarchingVertex>()
+            .vertex_input_single_buffer::<RaymarchingVertex>()
             .vertex_shader(vert_shader.main_entry_point(), ())
             .triangle_strip()
             .cull_mode_back()
@@ -166,8 +166,8 @@ fn main() -> Fallible<()> {
             )
             .build(window.device())?,
     ) as Arc<dyn GraphicsPipelineAbstract + Send + Sync>;
-    let raymarching_renderer = RayMarchingRenderer::new(pipeline.clone(), &window)?;
-    let stars_buffers = StarsBuffers::new(&raymarching_renderer, pipeline.clone(), &window)?;
+    let raymarching_renderer = RaymarchingBuffer::new(&window)?;
+    let stars_buffers = StarsBuffers::new(pipeline.clone(), &window)?;
     let mut push_constants = vs::ty::PushConstantData::new();
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);

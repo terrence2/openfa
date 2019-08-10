@@ -19,5 +19,5 @@ input = { path = "../../libs/input" }
 legacy_render = { path = "../../libs/legacy_render" }
 omnilib = { path = "../../libs/omnilib" }
 pal = { path = "../../libs/pal" }
-text = { path = "../../libs/renderer/text" }
+text = { path = "../../libs/render/draw/text" }
 window = { path = "../../libs/window" }

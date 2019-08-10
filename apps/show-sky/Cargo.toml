@@ -15,16 +15,10 @@ vulkano = "^ 0.12"
 vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
 winit = "^ 0.19"
-asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/render/common/camera" }
 input = { path = "../../libs/input" }
 lib = { path = "../../libs/lib" }
-mm = { path = "../../libs/mm" }
-omnilib = { path = "../../libs/omnilib" }
-pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-shape = { path = "../../libs/renderer/shape" }
-sh = { path = "../../libs/sh" }
 skybox = { path = "../../libs/render/draw/skybox" }
-text = { path = "../../libs/renderer/text" }
+text = { path = "../../libs/render/draw/text" }
 window = { path = "../../libs/window" }

@@ -23,8 +23,8 @@ mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-shape = { path = "../../libs/renderer/shape" }
+shape = { path = "../../libs/render/draw/shape" }
 sh = { path = "../../libs/sh" }
 skybox = { path = "../../libs/render/draw/skybox" }
-text = { path = "../../libs/renderer/text" }
+text = { path = "../../libs/render/draw/text" }
 window = { path = "../../libs/window" }

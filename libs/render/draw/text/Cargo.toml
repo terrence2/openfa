@@ -15,14 +15,14 @@ rusttype = "^ 0.7"
 vulkano = "^ 0.12"
 vulkano-shaders = "^ 0.12"
 vulkano-win = "^ 0.12"
-camera = { path = "../../render/common/camera" }
-fnt = { path = "../../fnt" }
-i386 = { path = "../../i386" }
-lib = { path = "../../lib" }
-pal = { path = "../../pal" }
-pic = { path = "../../pic" }
-window = { path = "../../window" }
+camera = { path = "../../../render/common/camera" }
+fnt = { path = "../../../fnt" }
+i386 = { path = "../../../i386" }
+lib = { path = "../../../lib" }
+pal = { path = "../../../pal" }
+pic = { path = "../../../pic" }
+window = { path = "../../../window" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"
-omnilib = { path = "../../omnilib" }
+omnilib = { path = "../../../omnilib" }

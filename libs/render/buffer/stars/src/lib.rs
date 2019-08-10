@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use base::RayMarchingRenderer;
 use failure::Fallible;
 use global_layout::GlobalSets;
 use log::trace;
@@ -33,11 +32,11 @@ const RADIUS: f32 = 0.0015f32;
 mod fs {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/render/buffer/stars/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"include_stars.glsl\"
-        #include \"descriptorset_stars.glsl\"
+        #include <buffer/stars/src/include_stars.glsl>
+        #include <buffer/stars/src/descriptorset_stars.glsl>
         void main() {}
         "
     }
@@ -127,7 +126,6 @@ const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
 
 impl StarsBuffers {
     pub fn new(
-        _raymarching_renderer: &RayMarchingRenderer,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
