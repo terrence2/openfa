@@ -82,6 +82,7 @@ mod fs {
         #include <stars/src/descriptorset_stars.glsl>
 
         #include <atmosphere/src/draw_atmosphere.glsl>
+        #include <stars/src/draw_stars.glsl>
 
         void main() {
             vec3 view = normalize(v_ray);
@@ -113,13 +114,17 @@ mod fs {
                 sky_radiance
             );
 
-            vec3 radiance = sky_radiance;
+            vec3 star_radiance;
+            float star_alpha = 0.5;
+            show_stars(view, star_radiance, star_alpha);
+
+            vec3 radiance = sky_radiance + star_radiance * star_alpha;
             radiance = mix(radiance, ground_radiance, ground_alpha);
 
             vec3 color = pow(
-                    vec3(1.0) - exp(-radiance / vec3(cd.atmosphere.whitepoint) * EXPOSURE),
-                    vec3(1.0 / 2.2)
-                );
+                vec3(1.0) - exp(-radiance / vec3(cd.atmosphere.whitepoint) * EXPOSURE),
+                vec3(1.0 / 2.2)
+            );
             f_color = vec4(color, 1.0);
         }
         "
