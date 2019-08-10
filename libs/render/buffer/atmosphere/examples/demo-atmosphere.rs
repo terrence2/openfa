@@ -18,8 +18,8 @@ use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use log::trace;
-use nalgebra::{convert, Matrix4, Point3, Vector3};
-use std::sync::Arc;
+use nalgebra::{convert, Matrix4, Point3, Unit, UnitQuaternion, Vector3};
+use std::{f64::consts::PI, sync::Arc};
 use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
     framebuffer::Subpass,
@@ -64,22 +64,23 @@ mod fs {
 
     shader! {
     ty: "fragment",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
+        #include <common/include/include_global.glsl>
 
         layout(location = 0) in vec3 v_ray;
         layout(location = 1) in vec3 camera;
         layout(location = 2) in vec3 sun_direction;
         layout(location = 0) out vec4 f_color;
 
-        #include \"include_atmosphere.glsl\"
+        #include <buffer/atmosphere/src/include_atmosphere.glsl>
 
         const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 
-        #include \"descriptorset_atmosphere.glsl\"
+        #include <buffer/atmosphere/src/descriptorset_atmosphere.glsl>
 
-        #include \"draw_atmosphere.glsl\"
+        #include <buffer/atmosphere/src/draw_atmosphere.glsl>
 
         void main() {
             vec3 view = normalize(v_ray);
@@ -228,7 +229,12 @@ fn main() -> Fallible<()> {
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_target(6_378.1, 0.0, 0.0);
-    camera.set_up(Vector3::x());
+    camera.set_angle(PI / 2.0, -PI / 2.0);
+    camera.set_up(-Vector3::x());
+    camera.set_rotation(UnitQuaternion::from_axis_angle(
+        &Unit::new_normalize(Vector3::z()),
+        PI / 2.0,
+    ));
     camera.set_distance(40.0);
     camera.on_mousebutton_down(1);
     let mut sun_angle = 0f64;

@@ -14,14 +14,15 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::earth_consts::RGB_LAMBDAS;
 use crate::{
+    buffers,
     colorspace::{wavelength_to_srgb, MAX_LAMBDA, MIN_LAMBDA},
     earth_consts::EarthParameters,
-    fs,
 };
-use failure::{bail, Fallible};
+use failure::{bail, ensure, Fallible};
 use image::{ImageBuffer, Luma, Rgb};
 use log::trace;
-use std::{sync::Arc, time::Instant};
+use memmap::MmapOptions;
+use std::{fs, ops::DerefMut, sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
@@ -95,10 +96,11 @@ pub struct Precompute {
 mod compute_transmittance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_transmittance_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_transmittance_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(binding = 0) uniform Data { AtmosphereParameters atmosphere; } data;
@@ -119,7 +121,7 @@ impl Precompute {
         &self,
         lambdas: [f64; 4],
         window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_transmittance.clone(), 0)
@@ -161,10 +163,11 @@ impl Precompute {
 mod compute_direct_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_direct_irradiance_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_direct_irradiance_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(binding = 0) uniform Data { AtmosphereParameters atmosphere; } data;
@@ -187,7 +190,7 @@ impl Precompute {
         &self,
         lambdas: [f64; 4],
         window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_direct_irradiance.clone(), 0)
@@ -230,10 +233,11 @@ impl Precompute {
 mod compute_single_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_single_scattering_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_single_scattering_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
         layout(push_constant) uniform PushConstantData {
@@ -286,7 +290,7 @@ impl Precompute {
         lambdas: [f64; 4],
         rad_to_lum: [[f32; 4]; 4],
         window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_single_scattering.clone(), 0)
@@ -356,10 +360,11 @@ impl Precompute {
 mod compute_scattering_density_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_scattering_density_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_scattering_density_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
         layout(push_constant) uniform PushConstantData {
@@ -396,7 +401,7 @@ impl Precompute {
         lambdas: [f64; 4],
         scattering_order: usize,
         window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_scattering_density.clone(), 0)
@@ -453,10 +458,11 @@ impl Precompute {
 mod compute_indirect_irradiance_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_indirect_irradiance_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_indirect_irradiance_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
         layout(push_constant) uniform PushConstantData {
@@ -504,7 +510,7 @@ impl Precompute {
         scattering_order: usize,
         rad_to_lum: [[f32; 4]; 4],
         window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_indirect_irradiance.clone(), 0)
@@ -568,10 +574,11 @@ impl Precompute {
 mod compute_multiple_scattering_shader {
     vulkano_shaders::shader! {
     ty: "compute",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
-        #include \"lut_multiple_scattering_builder.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/lut_multiple_scattering_builder.glsl>
 
         layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
         layout(push_constant) uniform PushConstantData {
@@ -622,7 +629,7 @@ impl Precompute {
         scattering_order: usize,
         rad_to_lum: [[f32; 4]; 4],
         window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
     ) -> Fallible<()> {
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.compute_multiple_scattering.clone(), 0)
@@ -854,15 +861,26 @@ impl Precompute {
         num_precomputed_wavelengths: usize,
         num_scattering_passes: usize,
         window: &GraphicsWindow,
-    ) -> Fallible<Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>> {
+    ) -> Fallible<Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>> {
+        let mut srgb_atmosphere = self.params.sample(RGB_LAMBDAS);
+        srgb_atmosphere.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
+        let srgb_atmosphere_buffer =
+            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), srgb_atmosphere)?;
+
+        if self.load_cache(window).is_ok() {
+            trace!("Using from cached atmosphere parameters");
+            return Ok(srgb_atmosphere_buffer);
+        }
+        trace!("Building atmosphere parameters");
+
         let num_iterations = (num_precomputed_wavelengths + 3) / 4;
         let delta_lambda = (MAX_LAMBDA - MIN_LAMBDA) / (4.0 * num_iterations as f64);
         for i in 0..num_iterations {
             let lambdas = [
-                MIN_LAMBDA + (3.0 * i as f64 + 0.5) * delta_lambda,
-                MIN_LAMBDA + (3.0 * i as f64 + 1.5) * delta_lambda,
-                MIN_LAMBDA + (3.0 * i as f64 + 2.5) * delta_lambda,
-                MIN_LAMBDA + (3.0 * i as f64 + 3.5) * delta_lambda,
+                MIN_LAMBDA + (4.0 * i as f64 + 0.5) * delta_lambda,
+                MIN_LAMBDA + (4.0 * i as f64 + 1.5) * delta_lambda,
+                MIN_LAMBDA + (4.0 * i as f64 + 2.5) * delta_lambda,
+                MIN_LAMBDA + (4.0 * i as f64 + 3.5) * delta_lambda,
             ];
             // Do not include MAX_LUMINOUS_EFFICACY here to keep values
             // as close to 0 as possible to preserve maximal precision.
@@ -884,10 +902,6 @@ impl Precompute {
 
         // Rebuild transmittance at RGB instead of high UV.
         // Upload atmosphere parameters for this set of wavelengths.
-        let mut srgb_atmosphere = self.params.sample(RGB_LAMBDAS);
-        srgb_atmosphere.ground_albedo = [0f32, 0f32, 0.04f32, 0f32];
-        let srgb_atmosphere_buffer =
-            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), srgb_atmosphere)?;
         self.compute_transmittance_at(RGB_LAMBDAS, window, srgb_atmosphere_buffer.clone())?;
 
         if DUMP_FINAL {
@@ -913,6 +927,7 @@ impl Precompute {
             )?;
         }
 
+        self.update_cache(window)?;
         Ok(srgb_atmosphere_buffer)
     }
 
@@ -1048,31 +1063,21 @@ impl Precompute {
         Ok(())
     }
 
-    pub fn run(
-        self,
+    pub fn precompute(
         num_precomputed_wavelengths: usize,
         num_scattering_passes: usize,
         window: &GraphicsWindow,
     ) -> Fallible<(
-        Arc<CpuAccessibleBuffer<fs::ty::AtmosphereParameters>>,
+        Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
         Arc<ImmutableImage<Format>>,
         Arc<ImmutableImage<Format>>,
         Arc<ImmutableImage<Format>>,
         Arc<ImmutableImage<Format>>,
     )> {
-        let srgb_atmosphere_buffer =
-            self.build_textures(num_precomputed_wavelengths, num_scattering_passes, window)?;
+        let pc = Self::new(window)?;
 
-        println!(
-            "PRECOMPUTE_SIZE: {} bytes",
-            (self.transmittance_dimensions.width() * self.transmittance_dimensions.height()
-                + self.irradiance_dimensions.width() * self.irradiance_dimensions.height()
-                + self.scattering_dimensions.width()
-                    * self.scattering_dimensions.height()
-                    * self.scattering_dimensions.depth())
-                * 4
-                * 4
-        );
+        let srgb_atmosphere_buffer =
+            pc.build_textures(num_precomputed_wavelengths, num_scattering_passes, window)?;
 
         let usage = ImageUsage {
             transfer_destination: true,
@@ -1083,7 +1088,7 @@ impl Precompute {
         let (read_transmittance_texture, upload_transmittance_texture) =
             ImmutableImage::uninitialized(
                 window.device(),
-                self.transmittance_dimensions,
+                pc.transmittance_dimensions,
                 Format::R32G32B32A32Sfloat,
                 MipmapsCount::One,
                 usage,
@@ -1092,7 +1097,7 @@ impl Precompute {
             )?;
         let (read_scattering_texture, upload_scattering_texture) = ImmutableImage::uninitialized(
             window.device(),
-            self.scattering_dimensions,
+            pc.scattering_dimensions,
             Format::R32G32B32A32Sfloat,
             MipmapsCount::One,
             usage,
@@ -1102,7 +1107,7 @@ impl Precompute {
         let (read_single_mie_scattering_texture, upload_single_mie_scattering_texture) =
             ImmutableImage::uninitialized(
                 window.device(),
-                self.scattering_dimensions,
+                pc.scattering_dimensions,
                 Format::R32G32B32A32Sfloat,
                 MipmapsCount::One,
                 usage,
@@ -1111,7 +1116,7 @@ impl Precompute {
             )?;
         let (read_irradiance_texture, upload_irradiance_texture) = ImmutableImage::uninitialized(
             window.device(),
-            self.irradiance_dimensions,
+            pc.irradiance_dimensions,
             Format::R32G32B32A32Sfloat,
             MipmapsCount::One,
             usage,
@@ -1122,7 +1127,7 @@ impl Precompute {
         let command_buffer =
             AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
                 .copy_image(
-                    self.transmittance_texture.clone(),
+                    pc.transmittance_texture.clone(),
                     [0, 0, 0],
                     0,
                     0,
@@ -1131,14 +1136,14 @@ impl Precompute {
                     0,
                     0,
                     [
-                        self.transmittance_dimensions.width(),
-                        self.transmittance_dimensions.height(),
+                        pc.transmittance_dimensions.width(),
+                        pc.transmittance_dimensions.height(),
                         1,
                     ],
                     1,
                 )?
                 .copy_image(
-                    self.scattering_texture.clone(),
+                    pc.scattering_texture.clone(),
                     [0, 0, 0],
                     0,
                     0,
@@ -1147,14 +1152,14 @@ impl Precompute {
                     0,
                     0,
                     [
-                        self.scattering_dimensions.width(),
-                        self.scattering_dimensions.height(),
-                        self.scattering_dimensions.depth(),
+                        pc.scattering_dimensions.width(),
+                        pc.scattering_dimensions.height(),
+                        pc.scattering_dimensions.depth(),
                     ],
                     1,
                 )?
                 .copy_image(
-                    self.single_mie_scattering_texture.clone(),
+                    pc.single_mie_scattering_texture.clone(),
                     [0, 0, 0],
                     0,
                     0,
@@ -1163,14 +1168,14 @@ impl Precompute {
                     0,
                     0,
                     [
-                        self.scattering_dimensions.width(),
-                        self.scattering_dimensions.height(),
-                        self.scattering_dimensions.depth(),
+                        pc.scattering_dimensions.width(),
+                        pc.scattering_dimensions.height(),
+                        pc.scattering_dimensions.depth(),
                     ],
                     1,
                 )?
                 .copy_image(
-                    self.irradiance_texture.clone(),
+                    pc.irradiance_texture.clone(),
                     [0, 0, 0],
                     0,
                     0,
@@ -1179,8 +1184,8 @@ impl Precompute {
                     0,
                     0,
                     [
-                        self.irradiance_dimensions.width(),
-                        self.irradiance_dimensions.height(),
+                        pc.irradiance_dimensions.width(),
+                        pc.irradiance_dimensions.height(),
                         1,
                     ],
                     1,
@@ -1198,9 +1203,214 @@ impl Precompute {
             read_irradiance_texture,
         ))
     }
-}
 
-impl Precompute {
+    fn update_cache(&self, window: &GraphicsWindow) -> Fallible<()> {
+        let _ = fs::create_dir(".__openfa_cache__");
+
+        let transmittance_buf_size = self.transmittance_dimensions.width() as usize
+            * self.transmittance_dimensions.height() as usize
+            * 16;
+        let irradiance_buf_size = self.irradiance_dimensions.width() as usize
+            * self.irradiance_dimensions.height() as usize
+            * 16;
+        let scattering_buf_size = self.scattering_dimensions.width() as usize
+            * self.scattering_dimensions.height() as usize
+            * self.scattering_dimensions.depth() as usize
+            * 16;
+        let transmittance_cpu_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            (0..transmittance_buf_size).map(|_| 0u8),
+        )?;
+        let irradiance_cpu_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            (0..irradiance_buf_size).map(|_| 0u8),
+        )?;
+        let scattering_cpu_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            (0..scattering_buf_size).map(|_| 0u8),
+        )?;
+        let single_mie_scattering_cpu_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            (0..scattering_buf_size).map(|_| 0u8),
+        )?;
+
+        let command_buffer =
+            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
+                .copy_image_to_buffer(
+                    self.transmittance_texture.clone(),
+                    transmittance_cpu_buffer.clone(),
+                )?
+                .copy_image_to_buffer(
+                    self.irradiance_texture.clone(),
+                    irradiance_cpu_buffer.clone(),
+                )?
+                .copy_image_to_buffer(
+                    self.scattering_texture.clone(),
+                    scattering_cpu_buffer.clone(),
+                )?
+                .copy_image_to_buffer(
+                    self.single_mie_scattering_texture.clone(),
+                    single_mie_scattering_cpu_buffer.clone(),
+                )?
+                .build()?;
+
+        let finished = command_buffer.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
+
+        fs::write(
+            ".__openfa_cache__/solar_transmittance.bin",
+            &*transmittance_cpu_buffer.read()?,
+        )?;
+        fs::write(
+            ".__openfa_cache__/solar_irradiance.bin",
+            &*irradiance_cpu_buffer.read()?,
+        )?;
+        fs::write(
+            ".__openfa_cache__/solar_scattering.bin",
+            &*scattering_cpu_buffer.read()?,
+        )?;
+        fs::write(
+            ".__openfa_cache__/solar_single_mie_scattering.bin",
+            &*single_mie_scattering_cpu_buffer.read()?,
+        )?;
+
+        Ok(())
+    }
+
+    fn load_cache(&self, window: &GraphicsWindow) -> Fallible<()> {
+        let transmittance_buf_size = self.transmittance_dimensions.width() as usize
+            * self.transmittance_dimensions.height() as usize
+            * 16;
+        let irradiance_buf_size = self.irradiance_dimensions.width() as usize
+            * self.irradiance_dimensions.height() as usize
+            * 16;
+        let scattering_buf_size = self.scattering_dimensions.width() as usize
+            * self.scattering_dimensions.height() as usize
+            * self.scattering_dimensions.depth() as usize
+            * 16;
+
+        let transmittance_fp = fs::File::open(".__openfa_cache__/solar_transmittance.bin")?;
+        let irradiance_fp = fs::File::open(".__openfa_cache__/solar_irradiance.bin")?;
+        let scattering_fp = fs::File::open(".__openfa_cache__/solar_scattering.bin")?;
+        let single_mie_scattering_fp =
+            fs::File::open(".__openfa_cache__/solar_single_mie_scattering.bin")?;
+
+        let transmittance_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::raw(
+                window.device(),
+                transmittance_buf_size,
+                BufferUsage::all(),
+                vec![window.queue().family()],
+            )?
+        };
+        let irradiance_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::raw(
+                window.device(),
+                irradiance_buf_size,
+                BufferUsage::all(),
+                vec![window.queue().family()],
+            )?
+        };
+        let scattering_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::raw(
+                window.device(),
+                scattering_buf_size,
+                BufferUsage::all(),
+                vec![window.queue().family()],
+            )?
+        };
+        let single_mie_scattering_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::raw(
+                window.device(),
+                scattering_buf_size,
+                BufferUsage::all(),
+                vec![window.queue().family()],
+            )?
+        };
+        unsafe {
+            let transmittance_tgt: *mut u8 =
+                transmittance_cpu_buffer.write()?.deref_mut().as_mut_ptr();
+            let transmittance_map = MmapOptions::new().map(&transmittance_fp)?;
+            ensure!(
+                transmittance_map.len() == transmittance_buf_size,
+                "transmittance cache size mismatch"
+            );
+            std::ptr::copy_nonoverlapping(
+                transmittance_map.as_ptr(),
+                transmittance_tgt,
+                transmittance_buf_size,
+            );
+
+            let irradiance_tgt: *mut u8 = irradiance_cpu_buffer.write()?.deref_mut().as_mut_ptr();
+            let irradiance_map = MmapOptions::new().map(&irradiance_fp)?;
+            ensure!(
+                irradiance_map.len() == irradiance_buf_size,
+                "irradiance cache size mismatch"
+            );
+            std::ptr::copy_nonoverlapping(
+                irradiance_map.as_ptr(),
+                irradiance_tgt,
+                irradiance_buf_size,
+            );
+
+            let scattering_tgt: *mut u8 = scattering_cpu_buffer.write()?.deref_mut().as_mut_ptr();
+            let scattering_map = MmapOptions::new().map(&scattering_fp)?;
+            ensure!(
+                scattering_map.len() == scattering_buf_size,
+                "scattering cache size mismatch"
+            );
+            std::ptr::copy_nonoverlapping(
+                scattering_map.as_ptr(),
+                scattering_tgt,
+                scattering_buf_size,
+            );
+
+            let single_mie_scattering_tgt: *mut u8 = single_mie_scattering_cpu_buffer
+                .write()?
+                .deref_mut()
+                .as_mut_ptr();
+            let single_mie_scattering_map = MmapOptions::new().map(&single_mie_scattering_fp)?;
+            ensure!(
+                single_mie_scattering_map.len() == scattering_buf_size,
+                "single_mie_scattering cache size mismatch"
+            );
+            std::ptr::copy_nonoverlapping(
+                single_mie_scattering_map.as_ptr(),
+                single_mie_scattering_tgt,
+                scattering_buf_size,
+            );
+        }
+
+        let command_buffer =
+            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
+                .copy_buffer_to_image(
+                    transmittance_cpu_buffer.clone(),
+                    self.transmittance_texture.clone(),
+                )?
+                .copy_buffer_to_image(
+                    irradiance_cpu_buffer.clone(),
+                    self.irradiance_texture.clone(),
+                )?
+                .copy_buffer_to_image(
+                    scattering_cpu_buffer.clone(),
+                    self.scattering_texture.clone(),
+                )?
+                .copy_buffer_to_image(
+                    single_mie_scattering_cpu_buffer.clone(),
+                    self.single_mie_scattering_texture.clone(),
+                )?
+                .build()?;
+
+        let finished = command_buffer.execute(window.queue())?;
+        finished.then_signal_fence_and_flush()?.wait(None)?;
+
+        Ok(())
+    }
+
     fn show_range(buf: &[f32], path: &str) {
         use num_traits::float::Float;
         let mut minf = f32::max_value();
@@ -1404,7 +1614,7 @@ impl Precompute {
         image: Arc<StorageImage<Format>>,
         window: &GraphicsWindow,
     ) -> Fallible<Box<GpuFuture>> {
-        let nelems = match image.dimensions() {
+        let nelems = (match image.dimensions() {
             Dimensions::Dim2d { width, height } => width * height,
             Dimensions::Dim3d {
                 width,
@@ -1412,12 +1622,18 @@ impl Precompute {
                 depth,
             } => width * height * depth,
             dim => bail!("don't know how to handle dimensions: {:?}", dim),
-        } * 4;
-        let buf = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..nelems).map(|_| 0f32),
-        )?;
+        } * 4) as usize;
+        let buf: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            let buf: Arc<CpuAccessibleBuffer<[u8]>> = CpuAccessibleBuffer::raw(
+                window.device(),
+                nelems * 4,
+                BufferUsage::all(),
+                vec![window.queue().family()],
+            )?;
+            let tgt: *mut u8 = buf.write()?.deref_mut().as_mut_ptr();
+            std::ptr::write_bytes(tgt, 0u8, nelems * 4);
+            buf
+        };
         let command_buffer =
             AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
                 .copy_buffer_to_image(buf.clone(), image.clone())?

@@ -58,16 +58,17 @@ mod fs {
 
     shader! {
     ty: "fragment",
-    include: ["./libs/render/buffer/stars/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
+        #include <common/include/include_global.glsl>
 
         layout(location = 0) in vec3 v_ray;
         layout(location = 0) out vec4 f_color;
 
-        #include \"include_stars.glsl\"
-        #include \"descriptorset_stars.glsl\"
-        #include \"draw_stars.glsl\"
+        #include <buffer/stars/src/include_stars.glsl>
+        #include <buffer/stars/src/descriptorset_stars.glsl>
+        #include <buffer/stars/src/draw_stars.glsl>
 
         void main() {
             #if SHOW_BINS
@@ -75,7 +76,10 @@ mod fs {
                 return;
             #endif
 
-            f_color = vec4(show_stars(v_ray), 1.0);
+            vec3 star_radiance = vec3(0);
+            float star_alpha = 0;
+            show_stars(v_ray, star_radiance, star_alpha);
+            f_color = vec4(star_radiance, 1.0);
         }
         "
     }

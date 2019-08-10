@@ -13,12 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::buffers;
 use crate::colorspace::{cie_color_coefficient_at_wavelength, convert_xyz_to_srgb};
-use crate::fs;
 use num_traits::pow::Pow;
 use std::{f64::consts::PI as PI64, ops::Range};
 
-pub const RGB_LAMBDAS: [f64; 4] = [680.0, 550.0, 440.0, 440.0];
+pub const RGB_LAMBDAS: [f64; 4] = [680.0, 550.0, 440.0, 0.0];
 
 // Evaluate the wavelength-based table at the given wavelength,
 // interpolating between adjacent table values.
@@ -45,7 +45,7 @@ fn interpolate(wavelengths: &[f64], properties: &[f64], lambdas: [f64; 4], scale
     ]
 }
 
-impl Default for fs::ty::DensityProfileLayer {
+impl Default for buffers::ty::DensityProfileLayer {
     fn default() -> Self {
         Self {
             width: 0f32,
@@ -209,10 +209,10 @@ impl EarthParameters {
         convert_xyz_to_srgb([x, y, z], MAX_LUMINOUS_EFFICACY)
     }
 
-    pub fn sample(&self, lambdas: [f64; 4]) -> fs::ty::AtmosphereParameters {
+    pub fn sample(&self, lambdas: [f64; 4]) -> buffers::ty::AtmosphereParameters {
         // Evaluate our physical model for use in a shader.
         const LENGTH_SCALE: f64 = 1000.0;
-        fs::ty::AtmosphereParameters {
+        buffers::ty::AtmosphereParameters {
             sun_irradiance: interpolate(&self.wavelengths, &self.sun_irradiance, lambdas, 1.0),
             sun_angular_radius: 0.00935 / 2.0,
             sun_spectral_radiance_to_luminance: self.sun_spectral_radiance_to_luminance,
@@ -223,9 +223,9 @@ impl EarthParameters {
             ],
             bottom_radius: (6_360_000.0 / LENGTH_SCALE) as f32,
             top_radius: (6_420_000.0 / LENGTH_SCALE) as f32,
-            rayleigh_density: fs::ty::DensityProfile {
+            rayleigh_density: buffers::ty::DensityProfile {
                 layer0: Default::default(),
-                layer1: fs::ty::DensityProfileLayer {
+                layer1: buffers::ty::DensityProfileLayer {
                     width: 0f32,
                     exp_term: 1f32,
                     exp_scale: (-1.0 / RAYLEIGH_SCALE_HEIGHT * LENGTH_SCALE) as f32,
@@ -240,9 +240,9 @@ impl EarthParameters {
                 lambdas,
                 LENGTH_SCALE,
             ),
-            mie_density: fs::ty::DensityProfile {
+            mie_density: buffers::ty::DensityProfile {
                 layer0: Default::default(),
-                layer1: fs::ty::DensityProfileLayer {
+                layer1: buffers::ty::DensityProfileLayer {
                     width: 0f32,
                     exp_term: 1f32,
                     exp_scale: (-1.0 / MIE_SCALE_HEIGHT * LENGTH_SCALE) as f32,
@@ -264,15 +264,15 @@ impl EarthParameters {
                 LENGTH_SCALE,
             ),
             mie_phase_function_g: MIE_PHASE_FUNCTION_G as f32,
-            absorption_density: fs::ty::DensityProfile {
-                layer0: fs::ty::DensityProfileLayer {
+            absorption_density: buffers::ty::DensityProfile {
+                layer0: buffers::ty::DensityProfileLayer {
                     width: (25_000.0 / LENGTH_SCALE) as f32,
                     exp_term: 0f32,
                     exp_scale: 0f32,
                     linear_term: (1.0 / 15_000.0 * LENGTH_SCALE) as f32,
                     constant_term: -2f32 / 3f32,
                 },
-                layer1: fs::ty::DensityProfileLayer {
+                layer1: buffers::ty::DensityProfileLayer {
                     width: 0f32,
                     exp_term: 0f32,
                     exp_scale: 0f32,

@@ -39,18 +39,19 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-const NUM_PRECOMPUTED_WAVELENGTHS: usize = 15;
+const NUM_PRECOMPUTED_WAVELENGTHS: usize = 40;
 const NUM_SCATTERING_ORDER: usize = 4;
 
-mod fs {
+mod buffers {
     vulkano_shaders::shader! {
     ty: "fragment",
-    include: ["./libs/render/buffer/atmosphere/src"],
+    include: ["./libs/render"],
     src: "
         #version 450
 
-        #include \"include_atmosphere.glsl\"
-        #include \"descriptorset_atmosphere.glsl\"
+        #include <common/include/include_global.glsl>
+        #include <buffer/atmosphere/src/include_atmosphere.glsl>
+        #include <buffer/atmosphere/src/descriptorset_atmosphere.glsl>
 
         void main() {}
         "
@@ -76,13 +77,9 @@ impl AtmosphereBuffers {
             scattering_texture,
             single_mie_scattering_texture,
             irradiance_texture,
-        ) = Precompute::new(window)?.run(
-            NUM_PRECOMPUTED_WAVELENGTHS,
-            NUM_SCATTERING_ORDER,
-            window,
-        )?;
+        ) = Precompute::precompute(NUM_PRECOMPUTED_WAVELENGTHS, NUM_SCATTERING_ORDER, window)?;
         let precompute_time = precompute_start.elapsed();
-        trace!(
+        println!(
             "AtmosphereBuffers::precompute timing: {}.{}ms",
             precompute_time.as_secs() * 1000 + u64::from(precompute_time.subsec_millis()),
             precompute_time.subsec_micros()

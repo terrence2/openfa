@@ -14,9 +14,9 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Constants
-#define PI 3.1415926538
-#define PI_2 (PI / 2.0)
-#define TAU (PI * 2.0)
+//#define PI 3.1415926538
+//#define PI_2 (PI / 2.0)
+//#define TAU (PI * 2.0)
 #define SHOW_BINS 0
 
 void v_to_ra_d(vec3 v, out float ra, out float dec) {
@@ -48,27 +48,30 @@ uint bin_for_ra_d(float ra, float dec) {
     return band.base_index + rai;
 }
 
-vec3 show_stars(vec3 view) {
+void show_stars(
+    vec3 view,
+    out vec3 star_radiance,
+    out float star_alpha
+) {
     float ra, dec;
     v_to_ra_d(view, ra, dec);
 
     uint bin = bin_for_ra_d(ra, dec);
     BinPosition pos = stars_bins.arr[bin];
 
-    vec3 clr = vec3(0.0, 0.0, 0.0);
+    star_alpha = 0.0;
     for (uint i = pos.index_base; i < pos.index_base + pos.num_indexes; ++i) {
         uint star_index = stars_indexes.arr[i];
         StarInst star = stars_stars.arr[star_index];
         vec3 star_ray = ra_d_to_v(star.ra, star.dec);
         float dist = acos(dot(star_ray, normalize(view)));
         if (dist < star.radius) {
-            clr = vec3(
-            star.color[0], star.color[1], star.color[2]
+            star_radiance = vec3(
+                star.color[0], star.color[1], star.color[2]
             );
+            star_alpha = 1.0;
         }
     }
-
-    return clr;
 }
 
 vec3 show_bins(vec3 view) {
