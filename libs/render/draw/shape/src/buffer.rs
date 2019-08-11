@@ -1021,6 +1021,7 @@ impl ShapesBuffer {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_model(
         &self,
         name: &str,
@@ -1217,6 +1218,7 @@ impl ShapesBuffer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn upload_shape(
         &mut self,
         name: &str,
