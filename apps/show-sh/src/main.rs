@@ -20,7 +20,7 @@ use nalgebra::{Unit, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
-use shape::{DrawSelection, ShRenderer};
+use shape::{buffer::DrawSelection, ShapeRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderer;
 use std::{f64::consts::PI, rc::Rc, time::Instant};
@@ -78,7 +78,7 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(&[&shape_bindings]);
 
-    let mut sh_renderer = ShRenderer::new(&window)?;
+    let mut sh_renderer = ShapeRenderer::new(&window)?;
     let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let mut skybox_renderer = SkyboxRenderer::new(&window)?;
 
