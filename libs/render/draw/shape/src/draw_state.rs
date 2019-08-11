@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{ShapeErrata, VertexFlags};
+use crate::buffer::{ShapeErrata, VertexFlags};
 use animate::{Animation, LinearAnimationTemplate};
 use bitflags::bitflags;
 use failure::{bail, Fallible};
@@ -275,7 +275,7 @@ impl DrawState {
         self.wing_sweep_pos += self.wing_sweep_delta;
     }
 
-    pub(crate) fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
+    pub(crate) fn build_mask(&self, start: &Instant, errata: ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         let elapsed = start.elapsed().as_millis() as usize;
