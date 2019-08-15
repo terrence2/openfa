@@ -106,6 +106,7 @@ fn main() -> Fallible<()> {
         &lib,
         &window,
     )?;
+    sh_renderer.finish_loading_phase(&window)?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_up(-Vector3::x());

@@ -13,11 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod buffer;
+mod buffer_manager;
 mod draw_state;
 mod texture_atlas;
 
 use crate::{
     buffer::{DrawSelection, ShapeBufferRef, ShapesBuffer, Vertex},
+    buffer_manager::{BufferManager, BufferPointer},
     draw_state::DrawState,
 };
 use camera::CameraAbstract;
@@ -29,7 +31,7 @@ use pal::Palette;
 use sh::RawShape;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc, time::Instant};
 use vulkano::{
-    buffer::{BufferUsage, CpuBufferPool, DeviceLocalBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, DynamicState},
     framebuffer::Subpass,
     pipeline::{
@@ -194,16 +196,16 @@ impl vs::ty::PushConstantData {
 
 pub struct ShapeInstance {
     buffer: ShapeBufferRef,
-
+    buffer_pointer: BufferPointer,
     transform_states: HashMap<u32, [f32; 6]>,
-
     draw_state: Rc<RefCell<DrawState>>,
 }
 
 impl ShapeInstance {
-    fn new(buffer: ShapeBufferRef) -> Fallible<Self> {
+    fn new(buffer: ShapeBufferRef, buffer_pointer: BufferPointer) -> Fallible<Self> {
         Ok(Self {
             buffer,
+            buffer_pointer,
             transform_states: HashMap::new(),
             draw_state: Default::default(),
         })
@@ -230,6 +232,7 @@ impl ShapeInstance {
 
     fn render(
         &self,
+        buffer_manager: &BufferManager,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         camera: &CameraAbstract,
         cb: AutoCommandBufferBuilder,
@@ -245,11 +248,12 @@ impl ShapeInstance {
                 .build_mask(self.draw_state.borrow().time_origin(), self.buffer.errata())?,
         );
 
+        let (vb, ib) = buffer_manager.buffers_at(&self.buffer_pointer);
         Ok(cb.draw_indexed(
             pipeline,
             dynamic_state,
-            vec![self.buffer.vertex_buffer_ref()],
-            self.buffer.index_buffer_ref(),
+            vec![vb],
+            ib,
             self.buffer.descriptor_set_ref(),
             push_consts,
         )?)
@@ -290,6 +294,7 @@ impl ShapeInstanceRef {
 
     fn render(
         &self,
+        buffer_manager: &BufferManager,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         camera: &CameraAbstract,
         cb: AutoCommandBufferBuilder,
@@ -297,7 +302,7 @@ impl ShapeInstanceRef {
     ) -> Fallible<AutoCommandBufferBuilder> {
         self.value
             .borrow()
-            .render(pipeline, camera, cb, dynamic_state)
+            .render(buffer_manager, pipeline, camera, cb, dynamic_state)
     }
 }
 
@@ -308,6 +313,7 @@ pub struct ShapeRenderer {
     uniform_upload_pool: Arc<CpuBufferPool<[f32; UNIFORM_POOL_SIZE]>>,
     device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
     buffers: ShapesBuffer,
+    buffer_manager: BufferManager,
 
     last_instance_handle: usize,
     instances: HashMap<usize, ShapeInstanceRef>,
@@ -360,6 +366,7 @@ impl ShapeRenderer {
             device_uniform_buffer,
             uniform_upload_pool,
             buffers,
+            buffer_manager: BufferManager::new(window)?,
             last_instance_handle: 0,
             instances: HashMap::new(),
         })
@@ -374,21 +381,31 @@ impl ShapeRenderer {
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<ShapeInstanceRef> {
+        let (pointer, bus) = self.buffer_manager.prepare_upload()?;
+
         let buffer = self.buffers.upload_shape(
             name,
             sh,
             selection,
+            bus,
             self.device_uniform_buffer.clone(),
             palette,
             lib,
             window,
         )?;
-        let instance = ShapeInstance::new(buffer)?;
+
+        let instance = ShapeInstance::new(buffer, pointer)?;
         let instance_ref = ShapeInstanceRef::new(instance);
         let instance_handle = self.last_instance_handle + 1;
         self.last_instance_handle += 1;
         self.instances.insert(instance_handle, instance_ref.clone());
+
         Ok(instance_ref)
+    }
+
+    pub fn finish_loading_phase(&mut self, window: &GraphicsWindow) -> Fallible<()> {
+        self.buffer_manager.finish_loading_phase(window)?;
+        Ok(())
     }
 
     pub fn animate(&mut self, now: &Instant) -> Fallible<()> {
@@ -419,7 +436,13 @@ impl ShapeRenderer {
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for instance in self.instances.values() {
-            cb = instance.render(self.pipeline.clone(), camera, cb, dynamic_state)?;
+            cb = instance.render(
+                &self.buffer_manager,
+                self.pipeline.clone(),
+                camera,
+                cb,
+                dynamic_state,
+            )?;
         }
         Ok(cb)
     }

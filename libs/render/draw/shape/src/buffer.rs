@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
+    buffer_manager::BufferUploadState,
     draw_state::DrawState,
     texture_atlas::{Frame, TextureAtlas},
     UNIFORM_POOL_SIZE,
@@ -529,8 +530,6 @@ impl Transformer {
 
 pub struct ShapeBuffer {
     descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
-    vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
-    index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
 
     // Self contained vm/instructions for how to set up each required transform
     // to draw this shape buffer.
@@ -568,14 +567,6 @@ impl ShapeBufferRef {
 
     pub fn errata(&self) -> ShapeErrata {
         self.value.borrow().errata
-    }
-
-    pub fn vertex_buffer_ref(&self) -> Arc<DeviceLocalBuffer<[Vertex]>> {
-        self.value.borrow().vertex_buffer.clone()
-    }
-
-    pub fn index_buffer_ref(&self) -> Arc<DeviceLocalBuffer<[u32]>> {
-        self.value.borrow().index_buffer.clone()
     }
 
     pub fn descriptor_set_ref(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
@@ -653,13 +644,11 @@ impl ShapesBuffer {
         palette: &Palette,
         active_frame: Option<&Frame>,
         override_flags: Option<VertexFlags>,
-        verts: &mut Vec<Vertex>,
-        indices: &mut Vec<u32>,
+        bus: &mut BufferUploadState,
     ) -> Fallible<()> {
         // Load all vertices in this facet into the vertex upload
         // buffer, copying in the color and texture coords for each
         // face. The layout appears to be for triangle fans.
-        let mut v_base = verts.len() as u32;
         for i in 2..facet.indices.len() {
             // Given that most facets are very short strips, and we
             // need to copy the vertices anyway, it's not *that*
@@ -700,9 +689,7 @@ impl ShapesBuffer {
                     let frame = active_frame.unwrap();
                     v.tex_coord = frame.tex_coord_at(tex_coord);
                 }
-                verts.push(v);
-                indices.push(v_base);
-                v_base += 1;
+                bus.push_with_index(v);
             }
         }
         Ok(())
@@ -1021,20 +1008,17 @@ impl ShapesBuffer {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn draw_model(
         &self,
         name: &str,
         sh: &RawShape,
-        uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
+        selection: DrawSelection,
         palette: &Palette,
         atlas: &TextureAtlas,
-        selection: DrawSelection,
-        window: &GraphicsWindow,
-    ) -> Fallible<ShapeBuffer> {
+        bus: &mut BufferUploadState,
+    ) -> Fallible<(Vec<Transformer>, ShapeErrata)> {
         // Outputs
-        let mut verts = Vec::new();
-        let mut indices = Vec::new();
+        let mut transformers = Vec::new();
         let mut xforms = Vec::new();
         xforms.push(Matrix4::<f32>::identity());
 
@@ -1045,7 +1029,6 @@ impl ShapesBuffer {
             next_xform_id: 1,
             active_xform_id: 0,
         };
-        let mut transformers = Vec::new();
         let mut active_frame = None;
         let mut section_close_byte_offset = None;
         let mut damage_model_byte_offset = None;
@@ -1111,8 +1094,7 @@ impl ShapesBuffer {
                             palette,
                             active_frame,
                             VertexFlags::from_bits(mask_base << i),
-                            &mut verts,
-                            &mut indices,
+                            bus,
                         )?;
                     }
                     pc.set_byte_offset(frame.target_for_frame(0), sh)?;
@@ -1139,15 +1121,7 @@ impl ShapesBuffer {
                 }
 
                 Instr::Facet(facet) => {
-                    Self::push_facet(
-                        facet,
-                        &vert_pool,
-                        palette,
-                        active_frame,
-                        None,
-                        &mut verts,
-                        &mut indices,
-                    )?;
+                    Self::push_facet(facet, &vert_pool, palette, active_frame, None, bus)?;
                 }
                 _ => {}
             }
@@ -1155,67 +1129,29 @@ impl ShapesBuffer {
             pc.advance(sh);
         }
 
-        trace!(
-            "uploading vertex buffer with {} bytes",
-            std::mem::size_of::<Vertex>() * verts.len()
-        );
-        let vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>> = DeviceLocalBuffer::array(
-            window.device(),
-            verts.len(),
-            BufferUsage::vertex_buffer_transfer_destination(),
-            window.device().active_queue_families(),
-        )?;
-        let vertex_upload_buffer =
-            CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
+        Ok((transformers, ShapeErrata::from_flags(prop_man.seen_flags)))
+    }
 
-        trace!(
-            "uploading index buffer with {} bytes",
-            std::mem::size_of::<u32>() * indices.len()
-        );
-        let index_buffer: Arc<DeviceLocalBuffer<[u32]>> = DeviceLocalBuffer::array(
-            window.device(),
-            indices.len(),
-            BufferUsage::index_buffer_transfer_destination(),
-            window.device().active_queue_families(),
-        )?;
-        let index_upload_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            indices.into_iter(),
-        )?;
-
-        let cb = AutoCommandBufferBuilder::primary_one_time_submit(
-            window.device(),
-            window.queue().family(),
-        )?
-        .copy_buffer(vertex_upload_buffer.clone(), vertex_buffer.clone())?
-        .copy_buffer(index_upload_buffer.clone(), index_buffer.clone())?
-        .build()?;
-        let upload_future = cb.execute(window.queue())?;
-
+    // We take a pre-pass to load all textures so that we can pre-allocate
+    // the full texture atlas up front and deliver frames for translating
+    // texture coordinates in the main loop below. Note that we could
+    // probably get away with creating frames on the fly if we want to cut
+    // out this pass and load the atlas after the fact.
+    pub fn upload_atlas(
+        sh: &RawShape,
+        palette: &Palette,
+        lib: &Library,
+        window: &GraphicsWindow,
+    ) -> Fallible<(TextureAtlas, Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+        let texture_filenames = sh.all_textures();
+        let mut texture_headers = Vec::new();
+        for filename in texture_filenames {
+            let data = lib.load(&filename.to_uppercase())?;
+            texture_headers.push((filename.to_owned(), Pic::from_bytes(&data)?, data));
+        }
+        let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
         let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
-        let sampler = Self::make_sampler(window.device())?;
-
-        // FIXME: lift this up to the top level
-        upload_future
-            .join(tex_future)
-            .then_signal_fence_and_flush()?
-            .cleanup_finished();
-
-        let descriptor_set = Arc::new(
-            PersistentDescriptorSet::start(self.pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
-                .add_buffer(uniform_buffer.clone())?
-                .build()?,
-        );
-
-        Ok(ShapeBuffer {
-            descriptor_set,
-            vertex_buffer,
-            index_buffer,
-            transformers,
-            errata: ShapeErrata::from_flags(prop_man.seen_flags),
-        })
+        Ok((atlas, texture, tex_future))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1224,6 +1160,7 @@ impl ShapesBuffer {
         name: &str,
         sh: &RawShape,
         selection: DrawSelection,
+        bus: &mut BufferUploadState,
         uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
         palette: &Palette,
         lib: &Library,
@@ -1233,25 +1170,26 @@ impl ShapesBuffer {
             return Ok(self.buffers[name].clone());
         }
 
-        // We take a pre-pass to load all textures so that we can pre-allocate
-        // the full texture atlas up front and deliver frames for translating
-        // texture coordinates in the main loop below. Note that we could
-        // probably get away with creating frames on the fly if we want to cut
-        // out this pass and load the atlas after the fact.
-        let texture_filenames = sh.all_textures();
-        let mut texture_headers = Vec::new();
-        for filename in texture_filenames {
-            let data = lib.load(&filename.to_uppercase())?;
-            texture_headers.push((filename.to_owned(), Pic::from_bytes(&data)?, data));
-        }
-        let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
-        let buffer =
-            self.draw_model(name, sh, uniform_buffer, palette, &atlas, selection, window)?;
+        let (atlas, texture, future) = Self::upload_atlas(sh, palette, lib, window)?;
+        let (transformers, errata) = self.draw_model(name, sh, selection, palette, &atlas, bus)?;
 
-        let instance_ref = ShapeBufferRef::new(buffer);
+        future.then_signal_fence_and_flush()?.cleanup_finished();
+        let descriptor_set = Arc::new(
+            PersistentDescriptorSet::start(self.pipeline.clone(), 0)
+                .add_sampled_image(texture.clone(), Self::make_sampler(window.device())?)?
+                .add_buffer(uniform_buffer.clone())?
+                .build()?,
+        );
 
-        self.buffers.insert(name.to_owned(), instance_ref.clone());
-        Ok(instance_ref)
+        let buffer = ShapeBuffer {
+            descriptor_set,
+            transformers,
+            errata,
+        };
+        let buffer_ref = ShapeBufferRef::new(buffer);
+
+        self.buffers.insert(name.to_owned(), buffer_ref.clone());
+        Ok(buffer_ref)
     }
 
     fn upload_texture_rgba(
