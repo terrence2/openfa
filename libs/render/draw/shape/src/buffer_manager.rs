@@ -16,13 +16,8 @@ use crate::upload::Vertex;
 use failure::Fallible;
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState},
-    framebuffer::Subpass,
-    pipeline::{
-        depth_stencil::{Compare, DepthBounds, DepthStencil},
-        GraphicsPipeline, GraphicsPipelineAbstract,
-    },
+    buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
@@ -159,7 +154,6 @@ impl<'a> BufferUploadState<'a> {
 #[derive(Clone, Copy)]
 pub struct BufferPointer {
     buffer_index: usize,
-    start_of_object: BufferCursor,
     pub index_count: usize,
 }
 
@@ -204,7 +198,6 @@ impl<'a> BufferManager {
         // TODO: Check if overflowing and move to next chunk if so.
         BufferPointer {
             buffer_index: bus.buffer_index,
-            start_of_object: bus.start_of_object,
             index_count: bus.target.cursor.index_offset - bus.start_of_object.index_offset,
         }
     }

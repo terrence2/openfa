@@ -18,7 +18,7 @@ mod texture_atlas;
 pub mod upload;
 
 use crate::{
-    buffer_manager::{BufferManager, BufferPointer},
+    buffer_manager::BufferManager,
     draw_state::DrawState,
     upload::{DrawSelection, ShapeBuffer, ShapeUploader, Vertex},
 };
@@ -39,11 +39,15 @@ use std::{
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DynamicState},
+    descriptor::descriptor_set::PersistentDescriptorSet,
+    device::Device,
     framebuffer::Subpass,
     pipeline::{
         depth_stencil::{Compare, DepthBounds, DepthStencil},
         GraphicsPipeline, GraphicsPipelineAbstract,
     },
+    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
+    sync::GpuFuture,
 };
 use window::GraphicsWindow;
 
@@ -401,6 +405,24 @@ impl ShapeRenderer {
         })
     }
 
+    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
+        let sampler = Sampler::new(
+            device.clone(),
+            Filter::Nearest,
+            Filter::Nearest,
+            MipmapMode::Nearest,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            SamplerAddressMode::ClampToEdge,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )?;
+
+        Ok(sampler)
+    }
+
     pub fn ensure_uploaded(
         &mut self,
         name: &str,
@@ -419,18 +441,31 @@ impl ShapeRenderer {
             }
         }
 
+        // Start uploading the texture atlas.
+        let (atlas, texture, future) = ShapeUploader::upload_atlas(sh, palette, lib, window)?;
+
+        // While that's going, do the heavy cpu lifting; we might not be uploading
+        // a buffer for these verts/indices as the buffer is chunked.
         let mut bus = self.buffer_manager.prepare_upload()?;
-        let mut buffer = Rc::new(ShapeUploader::upload(
-            name,
-            sh,
-            selection,
-            bus,
-            self.device_uniform_buffer.clone(),
-            palette,
-            lib,
-            self.pipeline.clone(),
-            window,
-        )?);
+        let (transformers, errata) =
+            ShapeUploader::draw_model(name, sh, selection, palette, &atlas, &mut bus)?;
+        let pointer = BufferManager::finish_upload(bus);
+
+        future.then_signal_fence_and_flush()?.cleanup_finished();
+        let descriptor_set = Arc::new(
+            PersistentDescriptorSet::start(self.pipeline.clone(), 0)
+                .add_sampled_image(texture.clone(), Self::make_sampler(window.device())?)?
+                .add_buffer(self.device_uniform_buffer.clone())?
+                .build()?,
+        );
+
+        let buffer = Rc::new(ShapeBuffer::new(
+            descriptor_set,
+            transformers,
+            errata,
+            pointer,
+        ));
+
         self.buffers.insert(name.to_owned(), Rc::downgrade(&buffer));
         Ok(buffer)
     }
@@ -481,7 +516,7 @@ impl ShapeRenderer {
 
     pub fn render(
         &self,
-        camera: &CameraAbstract,
+        camera: &dyn CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
         window: &GraphicsWindow,

@@ -13,10 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
-    buffer_manager::{BufferManager, BufferPointer, BufferUploadState},
+    buffer_manager::{BufferPointer, BufferUploadState},
     draw_state::DrawState,
     texture_atlas::{Frame, TextureAtlas},
-    UNIFORM_POOL_SIZE,
 };
 use bitflags::bitflags;
 use failure::{bail, ensure, err_msg, Fallible};
@@ -36,15 +35,10 @@ use std::{
     time::Instant,
 };
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
-    descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
-    device::Device,
+    descriptor::descriptor_set::DescriptorSet,
     format::Format,
     image::{Dimensions, ImmutableImage},
     impl_vertex,
-    pipeline::GraphicsPipelineAbstract,
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
@@ -546,6 +540,20 @@ pub struct ShapeBuffer {
 }
 
 impl ShapeBuffer {
+    pub fn new(
+        descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
+        transformers: Vec<Transformer>,
+        errata: ShapeErrata,
+        pointer: BufferPointer,
+    ) -> Self {
+        Self {
+            descriptor_set,
+            transformers,
+            errata,
+            pointer,
+        }
+    }
+
     pub fn animate(
         &self,
         draw_state: &DrawState,
@@ -675,7 +683,7 @@ impl ShapeUploader {
                     let frame = active_frame.unwrap();
                     v.tex_coord = frame.tex_coord_at(tex_coord);
                 }
-                bus.push_with_index(v);
+                bus.push_with_index(v)?;
             }
         }
         Ok(())
@@ -994,7 +1002,7 @@ impl ShapeUploader {
         Ok(())
     }
 
-    fn draw_model(
+    pub fn draw_model(
         name: &str,
         sh: &RawShape,
         selection: DrawSelection,
@@ -1157,58 +1165,5 @@ impl ShapeUploader {
             window.queue(),
         )?;
         Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
-    }
-
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Nearest,
-            Filter::Nearest,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn upload(
-        name: &str,
-        sh: &RawShape,
-        selection: DrawSelection,
-        mut bus: BufferUploadState,
-        uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
-        palette: &Palette,
-        lib: &Library,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        window: &GraphicsWindow,
-    ) -> Fallible<ShapeBuffer> {
-        let (atlas, texture, future) = Self::upload_atlas(sh, palette, lib, window)?;
-        let (transformers, errata) =
-            Self::draw_model(name, sh, selection, palette, &atlas, &mut bus)?;
-
-        future.then_signal_fence_and_flush()?.cleanup_finished();
-        let descriptor_set = Arc::new(
-            PersistentDescriptorSet::start(pipeline, 0)
-                .add_sampled_image(texture.clone(), Self::make_sampler(window.device())?)?
-                .add_buffer(uniform_buffer.clone())?
-                .build()?,
-        );
-
-        let buffer = ShapeBuffer {
-            descriptor_set,
-            transformers,
-            errata,
-            pointer: BufferManager::finish_upload(bus),
-        };
-        //let buffer_ref = ShapeBufferRef::new(buffer);
-
-        Ok(buffer)
     }
 }
