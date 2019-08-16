@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::buffer::Vertex;
+use crate::upload::Vertex;
 use failure::Fallible;
 use std::sync::Arc;
 use vulkano::{
@@ -27,22 +27,38 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
+const CHUNK_MODEL_TARGET_COUNT: usize = 64;
+
 const AVERAGE_VERTEX_BYTES: usize = 24_783;
 const MAX_VERTEX_BYTES: usize = 157_968;
-const VERTEX_CHUNK_SIZE: usize = AVERAGE_VERTEX_BYTES * 64; // ~1.5 MiB
+const VERTEX_CHUNK_SIZE: usize = AVERAGE_VERTEX_BYTES * CHUNK_MODEL_TARGET_COUNT; // ~1.5 MiB
 
 const AVERAGE_INDEX_BYTES: usize = 2_065;
 const MAX_INDEX_BYTES: usize = 13_164;
-const INDEX_CHUNK_SIZE: usize = AVERAGE_INDEX_BYTES * 64; // ~129 KiB
+const INDEX_CHUNK_SIZE: usize = AVERAGE_INDEX_BYTES * CHUNK_MODEL_TARGET_COUNT; // ~129 KiB
 
-pub struct BufferUploadState {
-    vertex_upload_offset: usize,
-    vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    index_upload_offset: usize,
-    index_upload_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+#[derive(Clone, Copy)]
+pub struct BufferCursor {
+    vertex_offset: usize,
+    index_offset: usize,
 }
 
-impl BufferUploadState {
+impl Default for BufferCursor {
+    fn default() -> Self {
+        Self {
+            vertex_offset: 0,
+            index_offset: 0,
+        }
+    }
+}
+
+pub struct BufferUploadTarget {
+    vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    index_upload_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+    cursor: BufferCursor,
+}
+
+impl BufferUploadTarget {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
         let vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>> = unsafe {
             CpuAccessibleBuffer::raw(
@@ -63,20 +79,22 @@ impl BufferUploadState {
         };
 
         Ok(Self {
-            vertex_upload_offset: 0,
             vertex_upload_buffer,
-            index_upload_offset: 0,
             index_upload_buffer,
+            cursor: BufferCursor {
+                vertex_offset: 0,
+                index_offset: 0,
+            },
         })
     }
 
     pub fn push_with_index(&mut self, vertex: Vertex) -> Fallible<()> {
         let mut vertex_buffer = self.vertex_upload_buffer.write()?;
         let mut index_buffer = self.index_upload_buffer.write()?;
-        vertex_buffer[self.vertex_upload_offset] = vertex;
-        index_buffer[self.index_upload_offset] = self.vertex_upload_offset as u32;
-        self.vertex_upload_offset += 1;
-        self.index_upload_offset += 1;
+        vertex_buffer[self.cursor.vertex_offset] = vertex;
+        index_buffer[self.cursor.index_offset] = self.cursor.vertex_offset as u32;
+        self.cursor.vertex_offset += 1;
+        self.cursor.index_offset += 1;
         Ok(())
     }
 
@@ -89,22 +107,22 @@ impl BufferUploadState {
     )> {
         println!(
             "uploading vertex buffer with {} bytes",
-            std::mem::size_of::<Vertex>() * self.vertex_upload_offset
+            std::mem::size_of::<Vertex>() * self.cursor.vertex_offset
         );
         let vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>> = DeviceLocalBuffer::array(
             window.device(),
-            self.vertex_upload_offset,
+            self.cursor.vertex_offset,
             BufferUsage::vertex_buffer_transfer_destination(),
             window.device().active_queue_families(),
         )?;
 
         println!(
             "uploading index buffer with {} bytes",
-            std::mem::size_of::<u32>() * self.index_upload_offset
+            std::mem::size_of::<u32>() * self.cursor.index_offset
         );
         let index_buffer: Arc<DeviceLocalBuffer<[u32]>> = DeviceLocalBuffer::array(
             window.device(),
-            self.index_upload_offset,
+            self.cursor.index_offset,
             BufferUsage::index_buffer_transfer_destination(),
             window.device().active_queue_families(),
         )?;
@@ -121,43 +139,44 @@ impl BufferUploadState {
         // to re-use the CpuAccessibleBuffer immediately.
         let upload_future = cb.execute(window.queue())?;
         upload_future.then_signal_fence_and_flush()?.wait(None)?;
-        self.vertex_upload_offset = 0;
-        self.index_upload_offset = 0;
-
+        self.cursor = Default::default();
         Ok((vertex_buffer, index_buffer))
     }
 }
 
-pub struct BufferPointer {
-    // Selects the vertex and index buffer.
+pub struct BufferUploadState<'a> {
+    target: &'a mut BufferUploadTarget,
+    start_of_object: BufferCursor,
     buffer_index: usize,
-    // Indicates the offset inside the buffers to start at.
-    vertex_buffer_offset: usize,
-    index_buffer_offset: usize,
+}
+
+impl<'a> BufferUploadState<'a> {
+    pub fn push_with_index(&mut self, vertex: Vertex) -> Fallible<()> {
+        self.target.push_with_index(vertex)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BufferPointer {
+    buffer_index: usize,
+    start_of_object: BufferCursor,
+    pub index_count: usize,
 }
 
 pub struct BufferManager {
-    buffer_upload_state: BufferUploadState,
+    buffer_upload_target: BufferUploadTarget,
     chunks: Vec<(
         Arc<DeviceLocalBuffer<[Vertex]>>,
         Arc<DeviceLocalBuffer<[u32]>>,
     )>,
 }
 
-impl BufferManager {
+impl<'a> BufferManager {
     pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
         Ok(Self {
-            buffer_upload_state: BufferUploadState::new(window)?,
+            buffer_upload_target: BufferUploadTarget::new(window)?,
             chunks: vec![],
         })
-    }
-
-    pub fn buffer_pointer(&self) -> BufferPointer {
-        BufferPointer {
-            buffer_index: self.chunks.len(),
-            vertex_buffer_offset: self.buffer_upload_state.vertex_upload_offset,
-            index_buffer_offset: self.buffer_upload_state.index_upload_offset,
-        }
     }
 
     pub fn buffers_at(
@@ -173,13 +192,25 @@ impl BufferManager {
         )
     }
 
-    pub fn prepare_upload(&mut self) -> Fallible<(BufferPointer, &mut BufferUploadState)> {
+    pub fn prepare_upload(&'a mut self) -> Fallible<BufferUploadState<'a>> {
+        Ok(BufferUploadState {
+            start_of_object: self.buffer_upload_target.cursor,
+            buffer_index: self.chunks.len(),
+            target: &mut self.buffer_upload_target,
+        })
+    }
+
+    pub fn finish_upload(bus: BufferUploadState<'a>) -> BufferPointer {
         // TODO: Check if overflowing and move to next chunk if so.
-        Ok((self.buffer_pointer(), &mut self.buffer_upload_state))
+        BufferPointer {
+            buffer_index: bus.buffer_index,
+            start_of_object: bus.start_of_object,
+            index_count: bus.target.cursor.index_offset - bus.start_of_object.index_offset,
+        }
     }
 
     pub fn finish_loading_phase(&mut self, window: &GraphicsWindow) -> Fallible<()> {
-        let (vertex_chunk, index_chunk) = self.buffer_upload_state.finish(window)?;
+        let (vertex_chunk, index_chunk) = self.buffer_upload_target.finish(window)?;
         self.chunks.push((vertex_chunk, index_chunk));
         Ok(())
     }

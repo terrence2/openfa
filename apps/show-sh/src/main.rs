@@ -20,7 +20,7 @@ use nalgebra::{Unit, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
-use shape::{buffer::DrawSelection, ShapeRenderer};
+use shape::{upload::DrawSelection, ShapeRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderer;
 use std::{f64::consts::PI, rc::Rc, time::Instant};
@@ -208,7 +208,7 @@ fn main() -> Fallible<()> {
             )?;
 
             cbb = skybox_renderer.draw(cbb, &window.dynamic_state)?;
-            cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
+            cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state, &window)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;

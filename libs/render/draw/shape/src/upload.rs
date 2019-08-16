@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
-    buffer_manager::BufferUploadState,
+    buffer_manager::{BufferManager, BufferPointer, BufferUploadState},
     draw_state::DrawState,
     texture_atlas::{Frame, TextureAtlas},
     UNIFORM_POOL_SIZE,
@@ -436,7 +436,10 @@ impl BufferPropsManager {
 // configured and where to put them.
 pub struct Transformer {
     xform_id: u32,
-    vm: Interpreter,
+    // Note that mutability is an implementation detail here. We could construct
+    // a new one for each frame, for each instance, for each transform, but that
+    // would get expensive fast and we shouldn't actually be changing the state.
+    vm: RefCell<Interpreter>,
     code_offset: u32,
     data_offset: u32,
     inputs: Vec<TransformInput>,
@@ -445,7 +448,7 @@ pub struct Transformer {
 
 impl Transformer {
     pub fn transform(
-        &mut self,
+        &self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
@@ -458,7 +461,7 @@ impl Transformer {
         let bay_position = draw_state.bay_position() as u32;
         let thrust_vectoring = draw_state.thrust_vector_position() as i32 as u32;
         let wing_sweep = i32::from(draw_state.wing_sweep_angle()) as u32;
-        let vm = &mut self.vm;
+        let mut vm = self.vm.borrow_mut();
         let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
         for input in &self.inputs {
             match input {
@@ -537,28 +540,20 @@ pub struct ShapeBuffer {
 
     // Draw properties based on what's in the shape file.
     errata: ShapeErrata,
+
+    // Reference to the vert/index buffer.
+    pointer: BufferPointer,
 }
 
-#[derive(Clone)]
-pub struct ShapeBufferRef {
-    value: Arc<RefCell<ShapeBuffer>>,
-}
-
-impl ShapeBufferRef {
-    pub fn new(buffer: ShapeBuffer) -> Self {
-        ShapeBufferRef {
-            value: Arc::new(RefCell::new(buffer)),
-        }
-    }
-
-    pub fn apply_animation(
-        &mut self,
+impl ShapeBuffer {
+    pub fn animate(
+        &self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
     ) -> Fallible<HashMap<u32, [f32; 6]>> {
         let mut xform_states = HashMap::new();
-        for transformer in self.value.borrow_mut().transformers.iter_mut() {
+        for transformer in self.transformers.iter() {
             let xform = transformer.transform(draw_state, start, now)?;
             xform_states.insert(transformer.xform_id, xform);
         }
@@ -566,29 +561,20 @@ impl ShapeBufferRef {
     }
 
     pub fn errata(&self) -> ShapeErrata {
-        self.value.borrow().errata
+        self.errata
     }
 
     pub fn descriptor_set_ref(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
-        self.value.borrow().descriptor_set.clone()
+        self.descriptor_set.clone()
+    }
+
+    pub fn get_pointer(&self) -> BufferPointer {
+        self.pointer
     }
 }
 
-pub struct ShapesBuffer {
-    buffers: HashMap<String, ShapeBufferRef>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-}
-
-impl ShapesBuffer {
-    pub fn new(pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>) -> Fallible<Self> {
-        trace!("ShapeBuffer::new");
-
-        Ok(Self {
-            pipeline,
-            buffers: HashMap::new(),
-        })
-    }
-
+pub struct ShapeUploader;
+impl ShapeUploader {
     fn align_vertex_pool(vert_pool: &mut Vec<Vertex>, initial_elems: usize) {
         if initial_elems < vert_pool.len() {
             vert_pool.truncate(initial_elems);
@@ -998,7 +984,7 @@ impl ShapesBuffer {
 
         transformers.push(Transformer {
             xform_id,
-            vm: interp,
+            vm: RefCell::new(interp),
             code_offset: x86.code_offset(SHAPE_LOAD_BASE),
             data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
             inputs,
@@ -1009,7 +995,6 @@ impl ShapesBuffer {
     }
 
     fn draw_model(
-        &self,
         name: &str,
         sh: &RawShape,
         selection: DrawSelection,
@@ -1154,44 +1139,6 @@ impl ShapesBuffer {
         Ok((atlas, texture, tex_future))
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn upload_shape(
-        &mut self,
-        name: &str,
-        sh: &RawShape,
-        selection: DrawSelection,
-        bus: &mut BufferUploadState,
-        uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
-        palette: &Palette,
-        lib: &Library,
-        window: &GraphicsWindow,
-    ) -> Fallible<ShapeBufferRef> {
-        if self.buffers.contains_key(name) {
-            return Ok(self.buffers[name].clone());
-        }
-
-        let (atlas, texture, future) = Self::upload_atlas(sh, palette, lib, window)?;
-        let (transformers, errata) = self.draw_model(name, sh, selection, palette, &atlas, bus)?;
-
-        future.then_signal_fence_and_flush()?.cleanup_finished();
-        let descriptor_set = Arc::new(
-            PersistentDescriptorSet::start(self.pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), Self::make_sampler(window.device())?)?
-                .add_buffer(uniform_buffer.clone())?
-                .build()?,
-        );
-
-        let buffer = ShapeBuffer {
-            descriptor_set,
-            transformers,
-            errata,
-        };
-        let buffer_ref = ShapeBufferRef::new(buffer);
-
-        self.buffers.insert(name.to_owned(), buffer_ref.clone());
-        Ok(buffer_ref)
-    }
-
     fn upload_texture_rgba(
         window: &GraphicsWindow,
         image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -1228,5 +1175,40 @@ impl ShapesBuffer {
         )?;
 
         Ok(sampler)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn upload(
+        name: &str,
+        sh: &RawShape,
+        selection: DrawSelection,
+        mut bus: BufferUploadState,
+        uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
+        palette: &Palette,
+        lib: &Library,
+        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        window: &GraphicsWindow,
+    ) -> Fallible<ShapeBuffer> {
+        let (atlas, texture, future) = Self::upload_atlas(sh, palette, lib, window)?;
+        let (transformers, errata) =
+            Self::draw_model(name, sh, selection, palette, &atlas, &mut bus)?;
+
+        future.then_signal_fence_and_flush()?.cleanup_finished();
+        let descriptor_set = Arc::new(
+            PersistentDescriptorSet::start(pipeline, 0)
+                .add_sampled_image(texture.clone(), Self::make_sampler(window.device())?)?
+                .add_buffer(uniform_buffer.clone())?
+                .build()?,
+        );
+
+        let buffer = ShapeBuffer {
+            descriptor_set,
+            transformers,
+            errata,
+            pointer: BufferManager::finish_upload(bus),
+        };
+        //let buffer_ref = ShapeBufferRef::new(buffer);
+
+        Ok(buffer)
     }
 }

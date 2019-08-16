@@ -12,15 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub mod buffer;
 mod buffer_manager;
 mod draw_state;
 mod texture_atlas;
+pub mod upload;
 
 use crate::{
-    buffer::{DrawSelection, ShapeBufferRef, ShapesBuffer, Vertex},
     buffer_manager::{BufferManager, BufferPointer},
     draw_state::DrawState,
+    upload::{DrawSelection, ShapeBuffer, ShapeUploader, Vertex},
 };
 use camera::CameraAbstract;
 use failure::Fallible;
@@ -29,10 +29,16 @@ use log::trace;
 use nalgebra::{Matrix4, Vector3};
 use pal::Palette;
 use sh::RawShape;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::{Rc, Weak},
+    sync::Arc,
+    time::Instant,
+};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
+    command_buffer::{AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DynamicState},
     framebuffer::Subpass,
     pipeline::{
         depth_stencil::{Compare, DepthBounds, DepthStencil},
@@ -195,26 +201,34 @@ impl vs::ty::PushConstantData {
 }
 
 pub struct ShapeInstance {
-    buffer: ShapeBufferRef,
-    buffer_pointer: BufferPointer,
-    transform_states: HashMap<u32, [f32; 6]>,
+    // A strong reference to the associated uploaded state. When all instances
+    // using this uploaded data get clobbered, the buffer should go away.
+    //
+    // TODO: make it so that all buffers uploaded into a chunk disappearing will actually remove the chunk
+    buffer: Rc<ShapeBuffer>,
+
+    // The current state of this instance; combined with the buffer's Transformers each
+    // animation cycle.
     draw_state: Rc<RefCell<DrawState>>,
+
+    // To produce an animation state. We need a way to carry these through to the
+    // before-render step as the animation and render loops are decoupled.
+    //
+    // TODO: there is no point decoupling animation and display for the display states
+    transform_states: HashMap<u32, [f32; 6]>,
 }
 
 impl ShapeInstance {
-    fn new(buffer: ShapeBufferRef, buffer_pointer: BufferPointer) -> Fallible<Self> {
+    fn new(buffer: Rc<ShapeBuffer>) -> Fallible<Self> {
         Ok(Self {
             buffer,
-            buffer_pointer,
             transform_states: HashMap::new(),
             draw_state: Default::default(),
         })
     }
 
     fn animate(&mut self, start: &Instant, now: &Instant) -> Fallible<()> {
-        self.transform_states =
-            self.buffer
-                .apply_animation(&self.draw_state.borrow(), start, now)?;
+        self.transform_states = self.buffer.animate(&self.draw_state.borrow(), start, now)?;
         Ok(())
     }
 
@@ -234,9 +248,10 @@ impl ShapeInstance {
         &self,
         buffer_manager: &BufferManager,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        camera: &CameraAbstract,
+        camera: &dyn CameraAbstract,
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
+        window: &GraphicsWindow,
     ) -> Fallible<AutoCommandBufferBuilder> {
         let transform = Matrix4::new_translation(&Vector3::new(6_378_000.0 + 1000.0, 0.0, 0.0));
         let mut push_consts = vs::ty::PushConstantData::new();
@@ -248,12 +263,27 @@ impl ShapeInstance {
                 .build_mask(self.draw_state.borrow().time_origin(), self.buffer.errata())?,
         );
 
-        let (vb, ib) = buffer_manager.buffers_at(&self.buffer_pointer);
-        Ok(cb.draw_indexed(
+        let (vb, ib) = buffer_manager.buffers_at(&self.buffer.get_pointer());
+
+        let bufs = [DrawIndexedIndirectCommand {
+            index_count: self.buffer.get_pointer().index_count as u32,
+            first_index: 0,
+            vertex_offset: 0,
+            first_instance: 0,
+            instance_count: 1,
+        }];
+        let indirect_buffer = CpuAccessibleBuffer::from_iter(
+            window.device(),
+            BufferUsage::all(),
+            bufs.iter().cloned(),
+        )?;
+
+        Ok(cb.draw_indexed_indirect(
             pipeline,
             dynamic_state,
             vec![vb],
             ib,
+            indirect_buffer,
             self.buffer.descriptor_set_ref(),
             push_consts,
         )?)
@@ -299,10 +329,11 @@ impl ShapeInstanceRef {
         camera: &CameraAbstract,
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
+        window: &GraphicsWindow,
     ) -> Fallible<AutoCommandBufferBuilder> {
         self.value
             .borrow()
-            .render(buffer_manager, pipeline, camera, cb, dynamic_state)
+            .render(buffer_manager, pipeline, camera, cb, dynamic_state, window)
     }
 }
 
@@ -312,11 +343,11 @@ pub struct ShapeRenderer {
 
     uniform_upload_pool: Arc<CpuBufferPool<[f32; UNIFORM_POOL_SIZE]>>,
     device_uniform_buffer: Arc<DeviceLocalBuffer<[f32; UNIFORM_POOL_SIZE]>>,
-    buffers: ShapesBuffer,
     buffer_manager: BufferManager,
 
     last_instance_handle: usize,
     instances: HashMap<usize, ShapeInstanceRef>,
+    buffers: HashMap<String, Weak<ShapeBuffer>>,
 }
 
 impl ShapeRenderer {
@@ -358,18 +389,50 @@ impl ShapeRenderer {
 
         let uniform_upload_pool = Arc::new(CpuBufferPool::upload(window.device()));
 
-        let buffers = ShapesBuffer::new(pipeline.clone())?;
-
         Ok(Self {
             start: Instant::now(),
             pipeline,
             device_uniform_buffer,
             uniform_upload_pool,
-            buffers,
             buffer_manager: BufferManager::new(window)?,
             last_instance_handle: 0,
             instances: HashMap::new(),
+            buffers: HashMap::new(),
         })
+    }
+
+    pub fn ensure_uploaded(
+        &mut self,
+        name: &str,
+        sh: &RawShape,
+        selection: DrawSelection,
+        palette: &Palette,
+        lib: &Library,
+        window: &GraphicsWindow,
+    ) -> Fallible<Rc<ShapeBuffer>> {
+        // Check if we have already uploaded the shape. If not upload it to the GPU.
+        if self.buffers.contains_key(name) {
+            if let Some(buffer) = self.buffers[name].upgrade() {
+                return Ok(buffer.clone());
+            } else {
+                self.buffers.remove(name);
+            }
+        }
+
+        let mut bus = self.buffer_manager.prepare_upload()?;
+        let mut buffer = Rc::new(ShapeUploader::upload(
+            name,
+            sh,
+            selection,
+            bus,
+            self.device_uniform_buffer.clone(),
+            palette,
+            lib,
+            self.pipeline.clone(),
+            window,
+        )?);
+        self.buffers.insert(name.to_owned(), Rc::downgrade(&buffer));
+        Ok(buffer)
     }
 
     pub fn add_shape_to_render(
@@ -381,20 +444,8 @@ impl ShapeRenderer {
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<ShapeInstanceRef> {
-        let (pointer, bus) = self.buffer_manager.prepare_upload()?;
-
-        let buffer = self.buffers.upload_shape(
-            name,
-            sh,
-            selection,
-            bus,
-            self.device_uniform_buffer.clone(),
-            palette,
-            lib,
-            window,
-        )?;
-
-        let instance = ShapeInstance::new(buffer, pointer)?;
+        let buffer = self.ensure_uploaded(name, sh, selection, palette, lib, window)?;
+        let instance = ShapeInstance::new(buffer)?;
         let instance_ref = ShapeInstanceRef::new(instance);
         let instance_handle = self.last_instance_handle + 1;
         self.last_instance_handle += 1;
@@ -433,6 +484,7 @@ impl ShapeRenderer {
         camera: &CameraAbstract,
         command_buffer: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
+        window: &GraphicsWindow,
     ) -> Fallible<AutoCommandBufferBuilder> {
         let mut cb = command_buffer;
         for instance in self.instances.values() {
@@ -442,6 +494,7 @@ impl ShapeRenderer {
                 camera,
                 cb,
                 dynamic_state,
+                window,
             )?;
         }
         Ok(cb)
