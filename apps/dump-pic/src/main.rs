@@ -65,13 +65,16 @@ Opt {
         long = "output",
         help = "Write the image to the given file"
     )]
-    write_image => Option<String>
+    write_image => Option<String>,
+
+    #[structopt(help = "PIC files to process")]
+    omni_inputs => Vec<String>
 });
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
 
-    let (omni, inputs) = opt.find_inputs()?;
+    let (omni, inputs) = opt.find_inputs(&opt.omni_inputs)?;
     if inputs.is_empty() {
         println!("No inputs found!");
         return Ok(());

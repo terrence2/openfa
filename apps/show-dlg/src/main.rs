@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use dlg::Dialog;
-use failure::{bail, Fallible};
+use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use legacy_render::DialogRenderer;
 use log::trace;
@@ -32,18 +32,17 @@ make_opt_struct!(#[structopt(
 )]
 Opt {
     #[structopt(short = "b", long = "background", help = "The background for this dialog")]
-    background => Option<String>
+    background => Option<String>,
+
+    #[structopt(help = "DLG file to draw")]
+    omni_input => String
 });
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Trace, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs()?;
-    if inputs.is_empty() {
-        bail!("no inputs");
-    }
-    let (game, name) = inputs.first().unwrap();
+    let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
@@ -67,7 +66,7 @@ pub fn main() -> Fallible<()> {
     } else {
         "CHOOSEAC.PIC".to_owned()
     };
-    let dlg = Arc::new(Box::new(Dialog::from_bytes(&lib.load(name)?)?));
+    let dlg = Arc::new(Box::new(Dialog::from_bytes(&lib.load(&name)?)?));
 
     ///////////////////////////////////////////////////////////
     let mut dlg_renderer = DialogRenderer::new(dlg, &background, &lib, &window)?;

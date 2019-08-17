@@ -24,7 +24,10 @@ make_opt_struct!(
         name = "pedump",
         about = "Show the contents of a PF portable executable file"
     )]
-    Opts {}
+    Opts {
+        #[structopt(help = "PE files to output")]
+        omni_inputs => Vec<String>
+    }
 );
 
 fn main() -> Fallible<()> {
@@ -34,7 +37,7 @@ fn main() -> Fallible<()> {
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
 
-    let (omni, inputs) = opt.find_inputs()?;
+    let (omni, inputs) = opt.find_inputs(&opt.omni_inputs)?;
     if inputs.is_empty() {
         println!("No inputs found!");
         return Ok(());
