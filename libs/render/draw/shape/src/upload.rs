@@ -1151,7 +1151,11 @@ impl ShapeUploader {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<(TextureAtlas, Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+    ) -> Fallible<(
+        TextureAtlas,
+        Arc<ImmutableImage<Format>>,
+        Box<dyn GpuFuture>,
+    )> {
         let texture_filenames = sh.all_textures();
         let mut texture_headers = Vec::new();
         for filename in texture_filenames {
@@ -1166,7 +1170,7 @@ impl ShapeUploader {
     fn upload_texture_rgba(
         window: &GraphicsWindow,
         image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<dyn GpuFuture>)> {
         let image_dim = image_buf.dimensions();
         let image_data = image_buf.into_raw().clone();
 
@@ -1180,6 +1184,6 @@ impl ShapeUploader {
             Format::R8G8B8A8Unorm,
             window.queue(),
         )?;
-        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
+        Ok((texture, Box::new(tex_future) as Box<dyn GpuFuture>))
     }
 }

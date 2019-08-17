@@ -1613,7 +1613,7 @@ impl Precompute {
     fn clear_image(
         image: Arc<StorageImage<Format>>,
         window: &GraphicsWindow,
-    ) -> Fallible<Box<GpuFuture>> {
+    ) -> Fallible<Box<dyn GpuFuture>> {
         let nelems = (match image.dimensions() {
             Dimensions::Dim2d { width, height } => width * height,
             Dimensions::Dim3d {
@@ -1639,6 +1639,6 @@ impl Precompute {
                 .copy_buffer_to_image(buf.clone(), image.clone())?
                 .build()?;
         let finished = command_buffer.execute(window.queue())?;
-        Ok(Box::new(finished) as Box<GpuFuture>)
+        Ok(Box::new(finished) as Box<dyn GpuFuture>)
     }
 }

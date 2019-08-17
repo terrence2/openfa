@@ -254,7 +254,7 @@ impl SkyboxRenderer {
 
     pub fn before_frame(
         &mut self,
-        camera: &CameraAbstract,
+        camera: &dyn CameraAbstract,
         sun_direction: &Vector3<f32>,
     ) -> Fallible<()> {
         self.push_constants

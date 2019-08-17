@@ -195,7 +195,7 @@ impl QuadRenderer {
     fn upload_texture_rgba(
         window: &GraphicsWindow,
         image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<GpuFuture>)> {
+    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<dyn GpuFuture>)> {
         let image_dim = image_buf.dimensions();
         let image_data = image_buf.into_raw().clone();
 
@@ -213,7 +213,7 @@ impl QuadRenderer {
             "uploading texture with {} bytes",
             image_dim.0 * image_dim.1 * 4
         );
-        Ok((texture, Box::new(tex_future) as Box<GpuFuture>))
+        Ok((texture, Box::new(tex_future) as Box<dyn GpuFuture>))
     }
 
     fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
