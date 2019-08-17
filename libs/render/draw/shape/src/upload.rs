@@ -35,6 +35,7 @@ use std::{
     time::Instant,
 };
 use vulkano::{
+    buffer::DeviceLocalBuffer,
     descriptor::descriptor_set::DescriptorSet,
     format::Format,
     image::{Dimensions, ImmutableImage},
@@ -537,6 +538,10 @@ pub struct ShapeBuffer {
 
     // Reference to the vert/index buffer.
     pointer: BufferPointer,
+
+    // Strong references to the containing buffer.
+    vertex_buffer: RefCell<Option<Arc<DeviceLocalBuffer<[Vertex]>>>>,
+    index_buffer: RefCell<Option<Arc<DeviceLocalBuffer<[u32]>>>>,
 }
 
 impl ShapeBuffer {
@@ -551,6 +556,8 @@ impl ShapeBuffer {
             transformers,
             errata,
             pointer,
+            vertex_buffer: RefCell::new(None),
+            index_buffer: RefCell::new(None),
         }
     }
 
@@ -578,6 +585,15 @@ impl ShapeBuffer {
 
     pub fn get_pointer(&self) -> BufferPointer {
         self.pointer
+    }
+
+    pub fn note_buffers(
+        &self,
+        vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
+        index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
+    ) {
+        *self.vertex_buffer.borrow_mut() = Some(vertex_buffer);
+        *self.index_buffer.borrow_mut() = Some(index_buffer);
     }
 }
 

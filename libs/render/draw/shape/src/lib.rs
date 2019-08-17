@@ -32,8 +32,8 @@ use sh::RawShape;
 use std::{
     cell::RefCell,
     collections::HashMap,
-    rc::{Rc, Weak},
-    sync::Arc,
+    rc::Rc,
+    sync::{Arc, Weak},
     time::Instant,
 };
 use vulkano::{
@@ -209,7 +209,7 @@ pub struct ShapeInstance {
     // using this uploaded data get clobbered, the buffer should go away.
     //
     // TODO: make it so that all buffers uploaded into a chunk disappearing will actually remove the chunk
-    buffer: Rc<ShapeBuffer>,
+    buffer: Arc<ShapeBuffer>,
 
     // The current state of this instance; combined with the buffer's Transformers each
     // animation cycle.
@@ -223,7 +223,7 @@ pub struct ShapeInstance {
 }
 
 impl ShapeInstance {
-    fn new(buffer: Rc<ShapeBuffer>) -> Fallible<Self> {
+    fn new(buffer: Arc<ShapeBuffer>) -> Fallible<Self> {
         Ok(Self {
             buffer,
             transform_states: HashMap::new(),
@@ -237,7 +237,7 @@ impl ShapeInstance {
     }
 
     fn before_render(&self, uniforms: &mut [f32; UNIFORM_POOL_SIZE], uniforms_offset: &mut usize) {
-        assert_eq!(*uniforms_offset, 0);
+        //assert_eq!(*uniforms_offset, 0);
         const COUNT: usize = 6;
         for (xform_id, xform) in self.transform_states.iter() {
             let xform_id = *xform_id as usize;
@@ -267,12 +267,13 @@ impl ShapeInstance {
                 .build_mask(self.draw_state.borrow().time_origin(), self.buffer.errata())?,
         );
 
-        let (vb, ib) = buffer_manager.buffers_at(&self.buffer.get_pointer());
+        let chunk = buffer_manager.buffers_at(&self.buffer.get_pointer());
 
         let bufs = [DrawIndexedIndirectCommand {
-            index_count: self.buffer.get_pointer().index_count as u32,
-            first_index: 0,
-            vertex_offset: 0,
+            first_index: self.buffer.get_pointer().first_index(),
+            index_count: self.buffer.get_pointer().index_count(),
+            vertex_offset: self.buffer.get_pointer().vertex_offset(),
+
             first_instance: 0,
             instance_count: 1,
         }];
@@ -285,8 +286,8 @@ impl ShapeInstance {
         Ok(cb.draw_indexed_indirect(
             pipeline,
             dynamic_state,
-            vec![vb],
-            ib,
+            vec![chunk.vertex_buffer()],
+            chunk.index_buffer(),
             indirect_buffer,
             self.buffer.descriptor_set_ref(),
             push_consts,
@@ -330,7 +331,7 @@ impl ShapeInstanceRef {
         &self,
         buffer_manager: &BufferManager,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        camera: &CameraAbstract,
+        camera: &dyn CameraAbstract,
         cb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
         window: &GraphicsWindow,
@@ -431,7 +432,7 @@ impl ShapeRenderer {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<Rc<ShapeBuffer>> {
+    ) -> Fallible<Arc<ShapeBuffer>> {
         // Check if we have already uploaded the shape. If not upload it to the GPU.
         if self.buffers.contains_key(name) {
             if let Some(buffer) = self.buffers[name].upgrade() {
@@ -446,10 +447,10 @@ impl ShapeRenderer {
 
         // While that's going, do the heavy cpu lifting; we might not be uploading
         // a buffer for these verts/indices as the buffer is chunked.
-        let mut bus = self.buffer_manager.prepare_upload()?;
+        let mut bus = self.buffer_manager.prepare_to_upload_new_shape(window)?;
         let (transformers, errata) =
             ShapeUploader::draw_model(name, sh, selection, palette, &atlas, &mut bus)?;
-        let pointer = BufferManager::finish_upload(bus);
+        let pointer = bus.mark_end_of_object_upload();
 
         future.then_signal_fence_and_flush()?.cleanup_finished();
         let descriptor_set = Arc::new(
@@ -459,14 +460,16 @@ impl ShapeRenderer {
                 .build()?,
         );
 
-        let buffer = Rc::new(ShapeBuffer::new(
+        let buffer = Arc::new(ShapeBuffer::new(
             descriptor_set,
             transformers,
             errata,
             pointer,
         ));
+        BufferManager::mark_buffer(bus, buffer.clone());
 
-        self.buffers.insert(name.to_owned(), Rc::downgrade(&buffer));
+        self.buffers
+            .insert(name.to_owned(), Arc::downgrade(&buffer));
         Ok(buffer)
     }
 
@@ -571,13 +574,14 @@ mod test {
         for (game, lib) in omni.libraries() {
             let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 
+            let mut sh_renderer = ShapeRenderer::new(&window)?;
             for name in &lib.find_matching("*.SH")? {
                 if skipped.contains(&name.as_ref()) {
                     continue;
                 }
 
                 println!(
-                    "At: {}:{:13} @ {}",
+                    "Loading: {}:{:13} @ {}",
                     game,
                     name,
                     omni.path(&game, name)
@@ -585,8 +589,6 @@ mod test {
                 );
 
                 let sh = RawShape::from_bytes(&lib.load(name)?)?;
-                let mut sh_renderer = ShapeRenderer::new(&window)?;
-
                 let sh_instance = sh_renderer.add_shape_to_render(
                     &(game.to_owned() + ":" + name),
                     &sh,
@@ -595,39 +597,41 @@ mod test {
                     &lib,
                     &window,
                 )?;
+
                 sh_instance
                     .draw_state()
                     .borrow_mut()
                     .toggle_gear(&Instant::now());
                 sh_renderer.animate(&Instant::now())?;
+            }
+            sh_renderer.finish_loading_phase(&window)?;
 
-                {
-                    let frame = window.begin_frame()?;
-                    if !frame.is_valid() {
-                        continue;
-                    }
-
-                    let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-                        window.device(),
-                        window.queue().family(),
-                    )?;
-
-                    cbb = sh_renderer.before_render(cbb)?;
-
-                    cbb = cbb.begin_render_pass(
-                        frame.framebuffer(&window),
-                        false,
-                        vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
-                    )?;
-
-                    cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
-
-                    cbb = cbb.end_render_pass()?;
-
-                    let cb = cbb.build()?;
-
-                    frame.submit(cb, &mut window)?;
+            loop {
+                let frame = window.begin_frame()?;
+                if !frame.is_valid() {
+                    continue;
                 }
+
+                let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+                    window.device(),
+                    window.queue().family(),
+                )?;
+
+                cbb = sh_renderer.before_render(cbb)?;
+
+                cbb = cbb.begin_render_pass(
+                    frame.framebuffer(&window),
+                    false,
+                    vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
+                )?;
+
+                cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state, &window)?;
+
+                cbb = cbb.end_render_pass()?;
+
+                let cb = cbb.build()?;
+
+                frame.submit(cb, &mut window)?;
             }
         }
         std::mem::drop(window);
