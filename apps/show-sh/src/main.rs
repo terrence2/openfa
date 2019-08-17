@@ -20,7 +20,7 @@ use nalgebra::{Unit, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
-use shape::{buffer::DrawSelection, ShapeRenderer};
+use shape::{upload::DrawSelection, ShapeRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderer;
 use std::{f64::consts::PI, rc::Rc, time::Instant};
@@ -31,20 +31,22 @@ use window::{GraphicsConfigBuilder, GraphicsWindow};
 
 make_opt_struct!(
     #[structopt(name = "sh_explorer", about = "Show the contents of a SH file")]
-    Opt {}
+    Opt {
+        #[structopt(help = "Shapes to load")]
+        shapes => Vec<String>
+    }
 );
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Debug, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs()?;
+    let (omni, inputs) = opt.find_inputs(&opt.shapes)?;
     if inputs.is_empty() {
         bail!("no inputs");
     }
-    let (game, name) = inputs.first().unwrap();
+    let (game, _) = inputs.first().unwrap();
     let lib = omni.library(&game);
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
@@ -78,10 +80,9 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(&[&shape_bindings]);
 
-    let mut sh_renderer = ShapeRenderer::new(&window)?;
-    let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let mut skybox_renderer = SkyboxRenderer::new(&window)?;
 
+    let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let fps_handle = text_renderer
         .add_screen_text(Font::HUD11, "", &window)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
@@ -97,15 +98,23 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-    let instance = sh_renderer.add_shape_to_render(
-        name,
-        &sh,
-        DrawSelection::NormalModel,
-        &system_palette,
-        &lib,
-        &window,
-    )?;
+    let mut instances = Vec::new();
+    let mut sh_renderer = ShapeRenderer::new(&window)?;
+    for (game, name) in &inputs {
+        let lib = omni.library(&game);
+        let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
+        let sh = RawShape::from_bytes(&lib.load(&name)?)?;
+        let instance = sh_renderer.add_shape_to_render(
+            name,
+            &sh,
+            DrawSelection::NormalModel,
+            &system_palette,
+            &lib,
+            &window,
+        )?;
+        instances.push(instance);
+    }
+    sh_renderer.finish_loading_phase(&window)?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_up(-Vector3::x());
@@ -136,45 +145,61 @@ fn main() -> Fallible<()> {
                 "-pan-view" => camera.on_mousebutton_up(1),
                 "+move-view" => camera.on_mousebutton_down(3),
                 "-move-view" => camera.on_mousebutton_up(3),
-                "+rudder-left" => instance.draw_state().borrow_mut().move_rudder_left(),
-                "-rudder-left" => instance.draw_state().borrow_mut().move_rudder_center(),
-                "+rudder-right" => instance.draw_state().borrow_mut().move_rudder_right(),
-                "-rudder-right" => instance.draw_state().borrow_mut().move_rudder_center(),
-                "+stick-backward" => instance.draw_state().borrow_mut().move_stick_backward(),
-                "-stick-backward" => instance.draw_state().borrow_mut().move_stick_center(),
-                "+stick-forward" => instance.draw_state().borrow_mut().move_stick_forward(),
-                "-stick-forward" => instance.draw_state().borrow_mut().move_stick_center(),
-                "+stick-left" => instance.draw_state().borrow_mut().move_stick_left(),
-                "-stick-left" => instance.draw_state().borrow_mut().move_stick_center(),
-                "+stick-right" => instance.draw_state().borrow_mut().move_stick_right(),
-                "-stick-right" => instance.draw_state().borrow_mut().move_stick_center(),
-                "+vector-thrust-backward" => {
-                    instance.draw_state().borrow_mut().vector_thrust_backward()
+                "+rudder-left" => instances[0].draw_state().borrow_mut().move_rudder_left(),
+                "-rudder-left" => instances[0].draw_state().borrow_mut().move_rudder_center(),
+                "+rudder-right" => instances[0].draw_state().borrow_mut().move_rudder_right(),
+                "-rudder-right" => instances[0].draw_state().borrow_mut().move_rudder_center(),
+                "+stick-backward" => instances[0].draw_state().borrow_mut().move_stick_backward(),
+                "-stick-backward" => instances[0].draw_state().borrow_mut().move_stick_center(),
+                "+stick-forward" => instances[0].draw_state().borrow_mut().move_stick_forward(),
+                "-stick-forward" => instances[0].draw_state().borrow_mut().move_stick_center(),
+                "+stick-left" => instances[0].draw_state().borrow_mut().move_stick_left(),
+                "-stick-left" => instances[0].draw_state().borrow_mut().move_stick_center(),
+                "+stick-right" => instances[0].draw_state().borrow_mut().move_stick_right(),
+                "-stick-right" => instances[0].draw_state().borrow_mut().move_stick_center(),
+                "+vector-thrust-backward" => instances[0]
+                    .draw_state()
+                    .borrow_mut()
+                    .vector_thrust_backward(),
+                "+vector-thrust-forward" => instances[0]
+                    .draw_state()
+                    .borrow_mut()
+                    .vector_thrust_forward(),
+                "-vector-thrust-forward" => {
+                    instances[0].draw_state().borrow_mut().vector_thrust_stop()
                 }
-                "+vector-thrust-forward" => {
-                    instance.draw_state().borrow_mut().vector_thrust_forward()
-                }
-                "-vector-thrust-forward" => instance.draw_state().borrow_mut().vector_thrust_stop(),
                 "-vector-thrust-backward" => {
-                    instance.draw_state().borrow_mut().vector_thrust_stop()
+                    instances[0].draw_state().borrow_mut().vector_thrust_stop()
                 }
-                "bump-eject-state" => instance.draw_state().borrow_mut().bump_eject_state(),
-                "consume-sam" => instance.draw_state().borrow_mut().consume_sam(),
-                "+decrease-wing-sweep" => instance.draw_state().borrow_mut().decrease_wing_sweep(),
-                "+increase-wing-sweep" => instance.draw_state().borrow_mut().increase_wing_sweep(),
-                "-decrease-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
-                "-increase-wing-sweep" => instance.draw_state().borrow_mut().stop_wing_sweep(),
-                "disable-afterburner" => instance.draw_state().borrow_mut().disable_afterburner(),
-                "enable-afterburner" => instance.draw_state().borrow_mut().enable_afterburner(),
-                "toggle-airbrake" => instance.draw_state().borrow_mut().toggle_airbrake(),
-                "toggle-bay" => instance.draw_state().borrow_mut().toggle_bay(&loop_start),
+                "bump-eject-state" => instances[0].draw_state().borrow_mut().bump_eject_state(),
+                "consume-sam" => instances[0].draw_state().borrow_mut().consume_sam(),
+                "+decrease-wing-sweep" => {
+                    instances[0].draw_state().borrow_mut().decrease_wing_sweep()
+                }
+                "+increase-wing-sweep" => {
+                    instances[0].draw_state().borrow_mut().increase_wing_sweep()
+                }
+                "-decrease-wing-sweep" => instances[0].draw_state().borrow_mut().stop_wing_sweep(),
+                "-increase-wing-sweep" => instances[0].draw_state().borrow_mut().stop_wing_sweep(),
+                "disable-afterburner" => {
+                    instances[0].draw_state().borrow_mut().disable_afterburner()
+                }
+                "enable-afterburner" => instances[0].draw_state().borrow_mut().enable_afterburner(),
+                "toggle-airbrake" => instances[0].draw_state().borrow_mut().toggle_airbrake(),
+                "toggle-bay" => instances[0]
+                    .draw_state()
+                    .borrow_mut()
+                    .toggle_bay(&loop_start),
                 "toggle-flaps" => {
-                    instance.draw_state().borrow_mut().toggle_flaps();
-                    instance.draw_state().borrow_mut().toggle_slats();
+                    instances[0].draw_state().borrow_mut().toggle_flaps();
+                    instances[0].draw_state().borrow_mut().toggle_slats();
                 }
-                "toggle-gear" => instance.draw_state().borrow_mut().toggle_gear(&loop_start),
-                "toggle-hook" => instance.draw_state().borrow_mut().toggle_hook(),
-                "toggle-player-dead" => instance.draw_state().borrow_mut().toggle_player_dead(),
+                "toggle-gear" => instances[0]
+                    .draw_state()
+                    .borrow_mut()
+                    .toggle_gear(&loop_start),
+                "toggle-hook" => instances[0].draw_state().borrow_mut().toggle_hook(),
+                "toggle-player-dead" => instances[0].draw_state().borrow_mut().toggle_player_dead(),
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
@@ -207,7 +232,7 @@ fn main() -> Fallible<()> {
             )?;
 
             cbb = skybox_renderer.draw(cbb, &window.dynamic_state)?;
-            cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state)?;
+            cbb = sh_renderer.render(&camera, cbb, &window.dynamic_state, &window)?;
             cbb = text_renderer.render(cbb, &window.dynamic_state)?;
 
             cbb = cbb.end_render_pass()?;
@@ -231,15 +256,15 @@ fn main() -> Fallible<()> {
         let params = format!(
             "dist: {}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
             camera.get_distance(),
-            !instance.draw_state().borrow().gear_retracted(),
-            instance.draw_state().borrow().gear_position(),
-            instance.draw_state().borrow().flaps_down(),
-            instance.draw_state().borrow().airbrake_extended(),
-            instance.draw_state().borrow().hook_extended(),
-            !instance.draw_state().borrow().bay_closed(),
-            instance.draw_state().borrow().bay_position(),
-            instance.draw_state().borrow().afterburner_enabled(),
-            instance.draw_state().borrow().wing_sweep_angle(),
+            !instances[0].draw_state().borrow().gear_retracted(),
+            instances[0].draw_state().borrow().gear_position(),
+            instances[0].draw_state().borrow().flaps_down(),
+            instances[0].draw_state().borrow().airbrake_extended(),
+            instances[0].draw_state().borrow().hook_extended(),
+            !instances[0].draw_state().borrow().bay_closed(),
+            instances[0].draw_state().borrow().bay_position(),
+            instances[0].draw_state().borrow().afterburner_enabled(),
+            instances[0].draw_state().borrow().wing_sweep_angle(),
         );
         state_handle.set_span(&params, &window)?;
     }

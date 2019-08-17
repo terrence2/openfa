@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, Fallible};
+use failure::Fallible;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use structopt::StructOpt;
@@ -24,21 +24,19 @@ make_opt_struct!(
         dump => bool,
 
         #[structopt(short = "p", long = "position", help = "Show the color at this offset offset")]
-        position => Option<String>
+        position => Option<String>,
+
+        #[structopt(help = "PAL file to context")]
+        omni_input => String
     }
 );
 
 fn main() -> Fallible<()> {
     let opt = Opts::from_args();
 
-    let (omni, inputs) = opt.find_inputs()?;
-    if inputs.is_empty() {
-        bail!("no inputs");
-    }
-
-    let (game, name) = inputs.first().unwrap();
+    let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
-    let pal = Palette::from_bytes(&lib.load(name)?)?;
+    let pal = Palette::from_bytes(&lib.load(&name)?)?;
 
     if opt.dump {
         let size = 80;

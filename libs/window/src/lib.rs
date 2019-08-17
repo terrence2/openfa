@@ -80,8 +80,8 @@ impl Default for GraphicsConfigBuilder {
 
 struct SizeDependent {
     swapchain: Arc<Swapchain<Window>>,
-    framebuffers: Vec<Arc<FramebufferAbstract + Send + Sync>>,
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
 }
 
 impl SizeDependent {
@@ -160,7 +160,7 @@ impl SizeDependent {
                 .add(image.clone())?
                 .add(depth_buffer.clone())?
                 .build()?;
-            framebuffers.push(Arc::new(framebuffer) as Arc<FramebufferAbstract + Send + Sync>);
+            framebuffers.push(Arc::new(framebuffer) as Arc<dyn FramebufferAbstract + Send + Sync>);
         }
         trace!("created {} frame buffers", framebuffers.len());
 
@@ -199,7 +199,7 @@ impl SizeDependent {
                 .add(image.clone())?
                 .add(depth_buffer.clone())?
                 .build()?;
-            framebuffers.push(Arc::new(framebuffer) as Arc<FramebufferAbstract + Send + Sync>);
+            framebuffers.push(Arc::new(framebuffer) as Arc<dyn FramebufferAbstract + Send + Sync>);
         }
         self.framebuffers = framebuffers;
 
@@ -220,7 +220,7 @@ pub struct GraphicsWindow {
 
     // Per-frame resources
     pub dynamic_state: DynamicState,
-    outstanding_frame: Option<Box<GpuFuture>>,
+    outstanding_frame: Option<Box<dyn GpuFuture>>,
     dirty_size: bool,
     pub idle_time: Duration,
     clear_color: [f32; 4],
@@ -363,7 +363,7 @@ impl GraphicsWindow {
         Ok(())
     }
 
-    pub fn render_pass(&self) -> Arc<RenderPassAbstract + Send + Sync> {
+    pub fn render_pass(&self) -> Arc<dyn RenderPassAbstract + Send + Sync> {
         self.recreatable.render_pass.clone()
     }
 
@@ -371,7 +371,7 @@ impl GraphicsWindow {
         self.recreatable.swapchain.clone()
     }
 
-    fn framebuffer(&self, offset: usize) -> Arc<FramebufferAbstract + Send + Sync> {
+    fn framebuffer(&self, offset: usize) -> Arc<dyn FramebufferAbstract + Send + Sync> {
         self.recreatable.framebuffers[offset].clone()
     }
 
@@ -419,7 +419,7 @@ impl GraphicsWindow {
         Ok(FrameState {
             valid: true,
             swapchain_offset: image_num,
-            acquire_future: Some(Box::new(acquire_future) as Box<GpuFuture>),
+            acquire_future: Some(Box::new(acquire_future) as Box<dyn GpuFuture>),
             prior_frame_future: Some(prior_frame_future.unwrap()),
         })
     }
@@ -428,8 +428,8 @@ impl GraphicsWindow {
 pub struct FrameState {
     valid: bool,
     swapchain_offset: usize,
-    acquire_future: Option<Box<GpuFuture>>,
-    prior_frame_future: Option<Box<GpuFuture>>,
+    acquire_future: Option<Box<dyn GpuFuture>>,
+    prior_frame_future: Option<Box<dyn GpuFuture>>,
 }
 
 impl FrameState {
@@ -446,7 +446,10 @@ impl FrameState {
         self.valid
     }
 
-    pub fn framebuffer(&self, window: &GraphicsWindow) -> Arc<FramebufferAbstract + Send + Sync> {
+    pub fn framebuffer(
+        &self,
+        window: &GraphicsWindow,
+    ) -> Arc<dyn FramebufferAbstract + Send + Sync> {
         window.framebuffer(self.swapchain_offset)
     }
 

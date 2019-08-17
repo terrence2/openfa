@@ -42,9 +42,6 @@ macro_rules! make_opt_struct {
             )]
             omni_game_dir: Option<::std::path::PathBuf>,
 
-            #[structopt(help = "The component to load either from the libs in the current directory.")]
-            omni_input: String,
-
             $(
                 #[$structopt_options]
                 $opt_name: $opt_type
@@ -53,13 +50,13 @@ macro_rules! make_opt_struct {
 
         impl $opt_struct_name {
             // Return true if the input is of the form {game}:{name}.
-            fn omni_from_test(&self) -> bool {
-                self.omni_input.contains(':')
+            fn omni_from_test(&self, omni_input: &str) -> bool {
+                omni_input.contains(':')
             }
 
-            pub fn find_inputs(&self) -> Fallible<(OmniLib, Vec<(String, String)>)> {
-                // Load relevant libraries.
-                let omni = if self.omni_from_test() {
+            fn load_omni_for_inputs(&self, omni_input: &str) -> Fallible<OmniLib> {
+                // FIXME: if in test most, load all libs references, rather than just the first
+                Ok(if self.omni_from_test(omni_input) {
                     OmniLib::new_for_test()
                 } else {
                     if let Some(ref game_dir) = self.omni_game_dir {
@@ -67,11 +64,13 @@ macro_rules! make_opt_struct {
                     } else {
                         OmniLib::new_for_game_directory(&::std::env::current_dir()?)
                     }
-                }?;
+                }?)
+            }
 
+            fn expand_inputs(&self, omni_input: &str, omni: &OmniLib) -> Fallible<Vec<(String, String)>> {
                 // If the name is in a : form, it is a game:name pair.
-                let inputs = if self.omni_input.contains(':') {
-                    let parts = self.omni_input.splitn(2, ':').collect::<Vec<_>>();
+                Ok(if omni_input.contains(':') {
+                    let parts = omni_input.splitn(2, ':').collect::<Vec<_>>();
                     ::failure::ensure!(
                         parts.len() == 2,
                         "expected two parts in file spec with a colon"
@@ -86,9 +85,24 @@ macro_rules! make_opt_struct {
                             .collect::<Vec<_>>()
                     }
                 } else {
-                    omni.find_matching(&self.omni_input)?
-                };
+                    omni.find_matching(&omni_input)?
+                })
+            }
 
+            pub fn find_input(&self, omni_input: &str) -> Fallible<(OmniLib, String, String)> {
+                let omni = self.load_omni_for_inputs(omni_input)?;
+                let inputs = self.expand_inputs(omni_input, &omni)?;
+                ::failure::ensure!(inputs.len() == 1, "expected a single input, but expanded to many");
+                Ok((omni, inputs[0].0.to_owned(), inputs[0].1.to_owned()))
+            }
+
+            pub fn find_inputs(&self, omni_inputs: &[String]) -> Fallible<(OmniLib, Vec<(String, String)>)> {
+                let omni = self.load_omni_for_inputs(&omni_inputs[0])?;
+                let mut inputs = Vec::new();
+                for omni_input in omni_inputs {
+                    let mut expanded_inputs = self.expand_inputs(omni_input, &omni)?;
+                    inputs.append(&mut expanded_inputs);
+                }
                 Ok((omni, inputs))
             }
         }

@@ -404,7 +404,7 @@ impl MissionMap {
     // USNF:
     //     installdir: UKR.T2, $UKR[1-8].T2
     //     MM+M refs: ukr.T2, $ukr[1-8].T2
-    pub fn find_t2_for_map(&self, file_exists: &Fn(&str) -> bool) -> Fallible<String> {
+    pub fn find_t2_for_map(&self, file_exists: &dyn Fn(&str) -> bool) -> Fallible<String> {
         let raw = self.map_name.to_uppercase();
 
         if file_exists(&raw) {

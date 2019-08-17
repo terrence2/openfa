@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetManager;
 use camera::ArcBallCamera;
-use failure::{bail, Fallible};
+use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use legacy_render::{PalRenderer, T2Renderer};
 use log::trace;
@@ -31,18 +31,17 @@ use xt::TypeManager;
 
 make_opt_struct!(
     #[structopt(name = "mm_explorer", about = "Show the contents of an MM file")]
-    Opt {}
+    Opt {
+        #[structopt(help = "MM file to load")]
+        omni_input => String
+    }
 );
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Trace, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs()?;
-    if inputs.is_empty() {
-        bail!("no inputs");
-    }
-    let (game, name) = inputs.first().unwrap();
+    let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
 
     let _system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));

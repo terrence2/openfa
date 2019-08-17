@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
-use failure::{bail, Fallible};
+use failure::Fallible;
 use legacy_render::{DrawMode, RawShRenderer};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
@@ -54,18 +54,17 @@ Opt {
     stop_at_offset => Option<usize>,
 
     #[structopt(short = "r", long = "range", help = "Show only this range.")]
-    ranged => Option<String>
+    ranged => Option<String>,
+
+    #[structopt(help = "SH file to draw")]
+    omni_input => String
 });
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Trace, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs()?;
-    if inputs.is_empty() {
-        bail!("no inputs");
-    }
-    let (game, name) = inputs.first().unwrap();
+    let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;

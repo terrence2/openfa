@@ -56,7 +56,10 @@ Opt {
     dump_code => bool,
 
     #[structopt(short = "c", long = "custom", help = "Custom")]
-    custom => bool
+    custom => bool,
+
+    #[structopt(help = "Shape files to display.")]
+    omni_inputs => Vec<String>
 });
 
 #[allow(clippy::cognitive_complexity)] // Impossible to organize if you don't know what the goal is.
@@ -69,7 +72,7 @@ fn main() -> Fallible<()> {
     };
     TermLogger::init(level, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs()?;
+    let (omni, inputs) = opt.find_inputs(&opt.omni_inputs)?;
     for (game, name) in &inputs {
         let lib = omni.library(&game);
         let data = lib.load(name)?;

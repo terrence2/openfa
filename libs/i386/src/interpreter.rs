@@ -75,7 +75,7 @@ pub struct Interpreter {
     memmap_w: Vec<MemMapW>,
     memmap_r: Vec<MemMapR>,
     bytecode: Vec<Rc<RefCell<ByteCode>>>,
-    ports_r: HashMap<u32, Box<Fn() -> u32>>,
+    ports_r: HashMap<u32, Box<dyn Fn() -> u32>>,
     trampolines: HashMap<u32, (String, usize)>,
 }
 
@@ -112,7 +112,7 @@ impl Interpreter {
         self.trampolines.insert(addr, (name.to_owned(), arg_count));
     }
 
-    pub fn add_read_port(&mut self, addr: u32, func: Box<Fn() -> u32>) {
+    pub fn add_read_port(&mut self, addr: u32, func: Box<dyn Fn() -> u32>) {
         self.ports_r.insert(addr, func);
     }
 
