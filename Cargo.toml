@@ -45,6 +45,7 @@ members = [
         "libs/render/buffer/atmosphere",
         "libs/render/buffer/global_layout",
         "libs/render/buffer/raymarching",
+        "libs/render/buffer/shape_chunk",
         "libs/render/buffer/stars",
         "libs/render/common/camera",
         "libs/render/common/geometry",

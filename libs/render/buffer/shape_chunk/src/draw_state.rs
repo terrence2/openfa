@@ -268,14 +268,26 @@ impl DrawState {
         self.bay_animation.start_or_reverse(start);
     }
 
-    pub(crate) fn animate(&mut self, _start: &Instant, now: &Instant) {
+    pub fn animate(&mut self, _start: &Instant, now: &Instant) {
         self.gear_animation.animate(now);
         self.bay_animation.animate(now);
         self.thrust_vector_pos += self.thrust_vector_delta;
         self.wing_sweep_pos += self.wing_sweep_delta;
     }
 
-    pub(crate) fn build_mask(&self, start: &Instant, errata: ShapeErrata) -> Fallible<u64> {
+    pub fn build_mask_into(
+        &self,
+        start: &Instant,
+        errata: &ShapeErrata,
+        buffer: &mut [u32],
+    ) -> Fallible<()> {
+        let flags = self.build_mask(start, errata)?;
+        buffer[0] = (flags & 0xFFFF_FFFF) as u32;
+        buffer[1] = (flags >> 32) as u32;
+        Ok(())
+    }
+
+    pub fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         let elapsed = start.elapsed().as_millis() as usize;

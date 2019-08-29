@@ -158,6 +158,35 @@ impl Pic {
         Ok(())
     }
 
+    pub fn decode_into_buffer(
+        system_palette: &Palette,
+        into_buffer: &mut [u8],
+        span: usize,
+        offset: [u32; 2],
+        pic: &Pic,
+        data: &[u8],
+    ) -> Fallible<()> {
+        match pic.format {
+            PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
+            PicFormat::Format0 => {
+                ensure!(
+                    pic.palette.is_none(),
+                    "format0 image loaded into texture atlas must not have a custom palette"
+                );
+                Self::decode_format0_into_buffer(
+                    into_buffer,
+                    offset,
+                    span,
+                    pic.width,
+                    system_palette,
+                    &data[pic.pixels_offset..pic.pixels_offset + pic.pixels_size],
+                )?;
+            }
+            PicFormat::Format1 => bail!("cannot load format 1 pic into a texture atlas"),
+        }
+        Ok(())
+    }
+
     fn make_palette<'a>(
         header: &'a Header,
         data: &'a [u8],
@@ -209,6 +238,28 @@ impl Pic {
                 clr.data[3] = 0x00;
             }
             into_image.put_pixel(offset_x + i % width, offset_y + i / width, clr);
+        }
+        Ok(())
+    }
+
+    fn decode_format0_into_buffer(
+        into_buffer: &mut [u8],
+        offset: [u32; 2],
+        span: usize,
+        width: u32,
+        palette: &Palette,
+        pixels: &[u8],
+    ) -> Fallible<()> {
+        for (index, p) in pixels.iter().enumerate() {
+            let i = index as u32;
+            let pix = *p as usize;
+            let mut clr = palette.rgba(pix)?;
+            if pix == 0xFF {
+                clr.data[3] = 0x00;
+            }
+            let pos = (offset[0] + i % width, offset[1] + i / width);
+            let base = 4 * (pos.1 as usize * span + pos.0 as usize);
+            into_buffer[base..base + 4].copy_from_slice(&clr.data);
         }
         Ok(())
     }

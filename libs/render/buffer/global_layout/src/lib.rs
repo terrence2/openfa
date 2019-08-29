@@ -16,6 +16,8 @@
 pub enum GlobalSets {
     Atmosphere = 1,
     Stars = 2,
+    ShapeTextures = 3,
+    ShapeBuffers = 4,
 }
 
 impl From<GlobalSets> for usize {
