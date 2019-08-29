@@ -47,7 +47,7 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct Vertex {
     position: [f32; 3],
     color: [f32; 4],
@@ -55,17 +55,6 @@ struct Vertex {
     flags: u32,
 }
 impl_vertex!(Vertex, position, color, tex_coord, flags);
-
-impl Default for Vertex {
-    fn default() -> Self {
-        Self {
-            position: [0f32, 0f32, 0f32],
-            color: [0.75f32, 0.5f32, 0f32, 1f32],
-            tex_coord: [0f32, 0f32],
-            flags: 0,
-        }
-    }
-}
 
 mod vs {
     use vulkano_shaders::shader;

@@ -22,7 +22,7 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct RaymarchingVertex {
     position: [f32; 2],
 }

@@ -11,9 +11,9 @@ image = "^ 0.21"
 lazy_static = ">= 1"
 log = ">= 0.4"
 nalgebra = "^ 0.18"
-vulkano = "^ 0.12"
-vulkano-shaders = "^ 0.12"
-vulkano-win = "^ 0.12"
+vulkano = "^ 0.14"
+vulkano-shaders = "^ 0.14"
+vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../asset" }
 camera = { path = "../render/common/camera" }

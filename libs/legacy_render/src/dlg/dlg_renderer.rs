@@ -36,12 +36,11 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct Vertex {
     position: [f32; 2],
     tex_coord: [f32; 2],
 }
-
 impl_vertex!(Vertex, position, tex_coord);
 
 mod vs {

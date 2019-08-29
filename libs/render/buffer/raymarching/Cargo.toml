@@ -9,8 +9,8 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 log = "^ 0.4"
-vulkano = "^ 0.12"
-vulkano-shaders = "^ 0.12"
-vulkano-win = "^ 0.12"
+vulkano = "^ 0.14"
+vulkano-shaders = "^ 0.14"
+vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 window = { path = "../../../window" }

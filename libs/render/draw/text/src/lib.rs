@@ -35,12 +35,11 @@ use window::GraphicsWindow;
 // https://fonts.google.com/specimen/Quantico?selection.family=Quantico
 const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../assets/quantico.ttf");
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Default)]
 struct Vertex {
     position: [f32; 2],
     tex_coord: [f32; 2],
 }
-
 impl_vertex!(Vertex, position, tex_coord);
 
 mod vs {
