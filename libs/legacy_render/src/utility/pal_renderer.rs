@@ -32,7 +32,7 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct Vertex {
     position: [f32; 3],
     tex_coord: [f32; 2],
