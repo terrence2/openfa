@@ -248,24 +248,15 @@ fn main() -> Fallible<()> {
     future.then_signal_fence_and_flush()?.wait(None)?;
 
     let f18_part = chunk.part_for("F18.SH")?;
-    let f8_part = chunk.part_for("F8.SH")?;
-
-    //let mut offsets_arr = Vec::new();
 
     // Upload flags
-    let mut draw_state1: DrawState = Default::default();
-    draw_state1.toggle_gear(&Instant::now());
-    let draw_state2: DrawState = Default::default();
-    let mut flags_arr = [0u32; 4];
-    draw_state1.build_mask_into(
-        draw_state1.time_origin(),
-        f8_part.errata(),
+    let mut draw_state: DrawState = Default::default();
+    draw_state.toggle_gear(&Instant::now());
+    let mut flags_arr = [0u32; 2];
+    draw_state.build_mask_into(
+        draw_state.time_origin(),
+        f18_part.widgets().errata(),
         &mut flags_arr[0..2],
-    )?;
-    draw_state2.build_mask_into(
-        draw_state2.time_origin(),
-        f18_part.errata(),
-        &mut flags_arr[2..4],
     )?;
     let flags_buffer = CpuAccessibleBuffer::from_iter(
         window.device(),
@@ -275,23 +266,15 @@ fn main() -> Fallible<()> {
 
     // Upload transforms
     let now = Instant::now();
-    let xforms_len = f8_part.num_transformer_values() + f18_part.num_transformer_values();
+    let xforms_len = f18_part.widgets().num_transformer_floats();
     let mut xforms = Vec::with_capacity(xforms_len);
     xforms.resize(xforms_len, 0f32);
-    let mut base = 0;
-    for transformer in f8_part.transformers() {
-        let xform = transformer.transform(&draw_state1, draw_state1.time_origin(), &now)?;
-        for i in 0..6 {
-            xforms[base + transformer.offset() * 6 + i] = xform[i];
-        }
-    }
-    base += f8_part.num_transformer_values();
-    for transformer in f18_part.transformers() {
-        let xform = transformer.transform(&draw_state1, draw_state1.time_origin(), &now)?;
-        for i in 0..6 {
-            xforms[base + transformer.offset() * 6 + i] = xform[i];
-        }
-    }
+    f18_part.widgets().animate_into(
+        &draw_state,
+        draw_state.time_origin(),
+        &now,
+        &mut xforms[0..],
+    )?;
     let xforms_buffer = CpuAccessibleBuffer::from_iter(
         window.device(),
         BufferUsage::all(),
@@ -308,9 +291,7 @@ fn main() -> Fallible<()> {
     let indirect_buffer = CpuAccessibleBuffer::from_iter(
         window.device(),
         BufferUsage::all(),
-        [f18_part.command(0, 1), f8_part.command(0, 1)]
-            .iter()
-            .cloned(),
+        [f18_part.draw_command(0, 1)].iter().cloned(),
     )?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);

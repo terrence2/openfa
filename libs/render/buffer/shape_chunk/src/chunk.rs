@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
     texture_atlas::MegaAtlas,
-    upload::{DrawSelection, ShapeErrata, ShapeUploader, Transformer, Vertex},
+    upload::{DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
 use failure::{ensure, err_msg, Fallible};
 use global_layout::GlobalSets;
@@ -50,14 +50,20 @@ pub enum Chunk {
 pub struct ChunkPart {
     vertex_start: usize,
     vertex_count: usize,
-    transformers: Vec<Transformer>,
-    errata: ShapeErrata,
+    shape_widgets: ShapeWidgets,
 }
 
 impl ChunkPart {
     // TODO: make this an initializer and figure out max_transformer_values up front.
+    pub fn new(vertex_start: usize, vertex_end: usize, shape_widgets: ShapeWidgets) -> Self {
+        ChunkPart {
+            vertex_start,
+            vertex_count: vertex_end - vertex_start,
+            shape_widgets,
+        }
+    }
 
-    pub fn command(&self, first_instance: u32, instance_count: u32) -> DrawIndirectCommand {
+    pub fn draw_command(&self, first_instance: u32, instance_count: u32) -> DrawIndirectCommand {
         DrawIndirectCommand {
             first_vertex: self.vertex_start as u32,
             vertex_count: self.vertex_count as u32,
@@ -66,27 +72,8 @@ impl ChunkPart {
         }
     }
 
-    pub fn errata(&self) -> ShapeErrata {
-        self.errata
-    }
-
-    pub fn transformers(&self) -> &[Transformer] {
-        &self.transformers
-    }
-
-    // Number of floats required for all transforms in this part.
-    pub fn num_transformer_values(&self) -> usize {
-        (self.max_transformer_offset() + 1) * 6
-    }
-
-    fn max_transformer_offset(&self) -> usize {
-        let mut max = 0;
-        for transformer in &self.transformers {
-            if transformer.offset() > max {
-                max = transformer.offset();
-            }
-        }
-        max
+    pub fn widgets(&self) -> &ShapeWidgets {
+        &self.shape_widgets
     }
 }
 
@@ -132,15 +119,10 @@ impl OpenChunk {
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
 
         let start_vertex = self.vertex_offset;
-        let (transformers, errata) =
+        let shape_widgets =
             ShapeUploader::draw_model(name, &sh, selection, palette, lib, window, self)?;
 
-        let part = ChunkPart {
-            vertex_start: start_vertex,
-            vertex_count: self.vertex_offset - start_vertex,
-            transformers,
-            errata,
-        };
+        let part = ChunkPart::new(start_vertex, self.vertex_offset, shape_widgets);
         self.chunk_parts.insert(name.to_owned(), part);
         Ok(())
     }
