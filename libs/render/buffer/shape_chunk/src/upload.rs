@@ -170,8 +170,6 @@ pub enum TransformInput {
 #[derive(Copy, Clone)]
 pub struct ShapeErrata {
     pub no_upper_aileron: bool,
-    // has_toggle_gear: bool,
-    // has_toggle_bay: bool,
 }
 
 impl ShapeErrata {

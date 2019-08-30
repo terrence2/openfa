@@ -278,7 +278,7 @@ impl DrawState {
     pub fn build_mask_into(
         &self,
         start: &Instant,
-        errata: &ShapeErrata,
+        errata: ShapeErrata,
         buffer: &mut [u32],
     ) -> Fallible<()> {
         let flags = self.build_mask(start, errata)?;
@@ -287,7 +287,7 @@ impl DrawState {
         Ok(())
     }
 
-    pub fn build_mask(&self, start: &Instant, errata: &ShapeErrata) -> Fallible<u64> {
+    pub fn build_mask(&self, start: &Instant, errata: ShapeErrata) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         let elapsed = start.elapsed().as_millis() as usize;

@@ -181,7 +181,7 @@ impl MegaAtlas {
                 height: pic.height as f32,
             },
         );
-        println!("mega-atlas frame {}: {:?}", name, self.frames[name]);
+        trace!("mega-atlas loaded {}", name);
 
         Ok(self.frames[name].clone())
     }

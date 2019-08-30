@@ -66,8 +66,8 @@ impl ChunkPart {
         }
     }
 
-    pub fn errata(&self) -> &ShapeErrata {
-        &self.errata
+    pub fn errata(&self) -> ShapeErrata {
+        self.errata
     }
 
     pub fn transformers(&self) -> &[Transformer] {
