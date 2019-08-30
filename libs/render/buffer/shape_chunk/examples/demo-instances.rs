@@ -20,14 +20,12 @@ use log::trace;
 use nalgebra::Matrix4;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{Chunk, ClosedChunk, DrawSelection, DrawState, OpenChunk, Vertex};
+use shape_chunk::{ClosedChunk, DrawSelection, DrawState, OpenChunk, Vertex};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DynamicState},
-    descriptor::descriptor_set::{
-        DescriptorSet, PersistentDescriptorSet, PersistentDescriptorSetBuilderArray,
-    },
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::AutoCommandBufferBuilder,
+    descriptor::descriptor_set::PersistentDescriptorSet,
     framebuffer::Subpass,
     pipeline::{
         depth_stencil::{Compare, DepthBounds, DepthStencil},
@@ -65,12 +63,10 @@ mod vs {
         layout(push_constant) uniform PushConstantData {
             mat4 view;
             mat4 projection;
-            uint flag_mask0;
-            uint flag_mask1;
         } pc;
 
         #include <common/include/include_global.glsl>
-        #include <draw/shape/src/include_shape.glsl>
+        #include <buffer/shape_chunk/src/include_shape.glsl>
 
         layout(location = 0) smooth out vec4 v_color;
         layout(location = 1) smooth out vec2 v_tex_coord;
@@ -159,8 +155,6 @@ impl vs::ty::PushConstantData {
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
                 [0.0f32, 0.0f32, 0.0f32, 0.0f32],
             ],
-            flag_mask0: 0xFFFF_FFFF,
-            flag_mask1: 0xFFFF_FFFF,
         }
     }
 
@@ -200,11 +194,6 @@ impl vs::ty::PushConstantData {
         self.projection[3][1] = mat[13];
         self.projection[3][2] = mat[14];
         self.projection[3][3] = mat[15];
-    }
-
-    pub fn set_mask(&mut self, mask: u64) {
-        self.flag_mask0 = (mask & 0xFFFF_FFFF) as u32;
-        self.flag_mask1 = (mask >> 32) as u32;
     }
 }
 
@@ -303,7 +292,6 @@ fn main() -> Fallible<()> {
             xforms[base + transformer.offset() * 6 + i] = xform[i];
         }
     }
-    base += f18_part.num_transformer_values();
     let xforms_buffer = CpuAccessibleBuffer::from_iter(
         window.device(),
         BufferUsage::all(),

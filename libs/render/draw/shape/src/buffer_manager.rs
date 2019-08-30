@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-/*
 use crate::upload::{ShapeBuffer, Vertex};
 use failure::Fallible;
 use std::{mem, sync::Arc};
@@ -269,4 +268,3 @@ impl<'a> BufferManager {
         Ok(())
     }
 }
-*/

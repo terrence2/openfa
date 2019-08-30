@@ -25,14 +25,9 @@ use std::{collections::HashMap, mem, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DrawIndirectCommand},
-    descriptor::descriptor_set::{
-        DescriptorSet, PersistentDescriptorSet, PersistentDescriptorSetBuilderArray,
-    },
-    device::Device,
-    format::Format,
-    image::ImmutableImage,
+    descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     pipeline::GraphicsPipelineAbstract,
-    sync::{now, GpuFuture},
+    sync::GpuFuture,
 };
 use window::GraphicsWindow;
 
@@ -194,17 +189,17 @@ impl ClosedChunk {
             window.device().active_queue_families(),
         )?;
 
-        let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+        let cbb = AutoCommandBufferBuilder::primary_one_time_submit(
             window.device(),
             window.queue().family(),
         )?
         .copy_buffer(chunk.vertex_upload_buffer.clone(), vertex_buffer.clone())?;
-        let (mut cbb, atlas_texture) = chunk.atlas_builder.finish(cbb, window)?;
+        let (cbb, atlas_texture) = chunk.atlas_builder.finish(cbb, window)?;
         let cb = cbb.build()?;
         let upload_future = Box::new(cb.execute(window.queue())?) as Box<dyn GpuFuture>;
 
         let sampler = MegaAtlas::make_sampler(window.device())?;
-        let mut atlas_descriptor_set = Arc::new(
+        let atlas_descriptor_set = Arc::new(
             PersistentDescriptorSet::start(pipeline, GlobalSets::ShapeTextures.into())
                 .add_sampled_image(atlas_texture, sampler)?
                 .build()?,

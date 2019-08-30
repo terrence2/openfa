@@ -12,10 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{chunk::OpenChunk, draw_state::DrawState, texture_atlas::Frame};
+use crate::{
+    buffer_manager::{BufferPointer, BufferUploadState},
+    draw_state::DrawState,
+    texture_atlas::{Frame, TextureAtlas},
+};
 use bitflags::bitflags;
 use failure::{bail, ensure, err_msg, Fallible};
 use i386::Interpreter;
+use image::{ImageBuffer, Rgba};
 use lazy_static::lazy_static;
 use lib::Library;
 use log::trace;
@@ -26,9 +31,17 @@ use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, 
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
+    sync::Arc,
     time::Instant,
 };
-use vulkano::impl_vertex;
+use vulkano::{
+    buffer::DeviceLocalBuffer,
+    descriptor::descriptor_set::DescriptorSet,
+    format::Format,
+    image::{Dimensions, ImmutableImage},
+    impl_vertex,
+    sync::GpuFuture,
+};
 use window::GraphicsWindow;
 
 bitflags! {
@@ -429,10 +442,6 @@ pub struct Transformer {
 }
 
 impl Transformer {
-    pub fn offset(&self) -> usize {
-        self.xform_id as usize
-    }
-
     pub fn transform(
         &self,
         draw_state: &DrawState,
@@ -512,27 +521,43 @@ impl Transformer {
                 TransformInput::SwingWing(loc) => vm.remove_read_port(*loc),
             }
         }
+        //Ok(xform)
         Ok(arr)
     }
 }
 
-/*
 pub struct ShapeBuffer {
+    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
+
     // Self contained vm/instructions for how to set up each required transform
     // to draw this shape buffer.
     transformers: Vec<Transformer>,
 
     // Draw properties based on what's in the shape file.
     errata: ShapeErrata,
+
+    // Reference to the vert/index buffer.
+    pointer: BufferPointer,
+
+    // Strong references to the containing buffer.
+    vertex_buffer: RefCell<Option<Arc<DeviceLocalBuffer<[Vertex]>>>>,
+    index_buffer: RefCell<Option<Arc<DeviceLocalBuffer<[u32]>>>>,
 }
 
 impl ShapeBuffer {
     pub fn new(
+        descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
         transformers: Vec<Transformer>,
         errata: ShapeErrata,
+        pointer: BufferPointer,
     ) -> Self {
+        Self {
+            descriptor_set,
             transformers,
             errata,
+            pointer,
+            vertex_buffer: RefCell::new(None),
+            index_buffer: RefCell::new(None),
         }
     }
 
@@ -553,8 +578,24 @@ impl ShapeBuffer {
     pub fn errata(&self) -> ShapeErrata {
         self.errata
     }
+
+    pub fn descriptor_set_ref(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
+        self.descriptor_set.clone()
+    }
+
+    pub fn get_pointer(&self) -> BufferPointer {
+        self.pointer
+    }
+
+    pub fn note_buffers(
+        &self,
+        vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
+        index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
+    ) {
+        *self.vertex_buffer.borrow_mut() = Some(vertex_buffer);
+        *self.index_buffer.borrow_mut() = Some(index_buffer);
+    }
 }
-*/
 
 pub struct ShapeUploader;
 impl ShapeUploader {
@@ -611,9 +652,9 @@ impl ShapeUploader {
         facet: &Facet,
         vert_pool: &[Vertex],
         palette: &Palette,
-        active_frame: &Option<Frame>,
+        active_frame: Option<&Frame>,
         override_flags: Option<VertexFlags>,
-        chunk: &mut OpenChunk,
+        bus: &mut BufferUploadState,
     ) -> Fallible<()> {
         // Load all vertices in this facet into the vertex upload
         // buffer, copying in the color and texture coords for each
@@ -655,10 +696,10 @@ impl ShapeUploader {
                 }
                 if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
                     assert!(active_frame.is_some());
-                    let frame = active_frame.as_ref().unwrap();
+                    let frame = active_frame.unwrap();
                     v.tex_coord = frame.tex_coord_at(tex_coord);
                 }
-                chunk.push_vertex(v)?;
+                bus.push_with_index(v)?;
             }
         }
         Ok(())
@@ -982,12 +1023,9 @@ impl ShapeUploader {
         sh: &RawShape,
         selection: DrawSelection,
         palette: &Palette,
-        lib: &Library,
-        window: &GraphicsWindow,
-        chunk: &mut OpenChunk,
+        atlas: &TextureAtlas,
+        bus: &mut BufferUploadState,
     ) -> Fallible<(Vec<Transformer>, ShapeErrata)> {
-        println!("MODEL: {}", name);
-
         // Outputs
         let mut transformers = Vec::new();
         let mut xforms = Vec::new();
@@ -1063,9 +1101,9 @@ impl ShapeUploader {
                             facet,
                             &vert_pool,
                             palette,
-                            &active_frame,
+                            active_frame,
                             VertexFlags::from_bits(mask_base << i),
-                            chunk,
+                            bus,
                         )?;
                     }
                     pc.set_byte_offset(frame.target_for_frame(0), sh)?;
@@ -1083,14 +1121,7 @@ impl ShapeUploader {
                 }
 
                 Instr::TextureRef(texture) => {
-                    let filename = texture.filename.to_uppercase();
-                    let data = lib.load(&filename)?;
-                    let pic = Pic::from_bytes(&data)?;
-                    active_frame = Some(
-                        chunk
-                            .atlas_mut()
-                            .push(&filename, &pic, data, palette, window)?,
-                    );
+                    active_frame = Some(&atlas.frames[&texture.filename]);
                 }
 
                 Instr::VertexBuf(vert_buf) => {
@@ -1099,7 +1130,7 @@ impl ShapeUploader {
                 }
 
                 Instr::Facet(facet) => {
-                    Self::push_facet(facet, &vert_pool, palette, &active_frame, None, chunk)?;
+                    Self::push_facet(facet, &vert_pool, palette, active_frame, None, bus)?;
                 }
                 _ => {}
             }
@@ -1108,5 +1139,51 @@ impl ShapeUploader {
         }
 
         Ok((transformers, ShapeErrata::from_flags(prop_man.seen_flags)))
+    }
+
+    // We take a pre-pass to load all textures so that we can pre-allocate
+    // the full texture atlas up front and deliver frames for translating
+    // texture coordinates in the main loop below. Note that we could
+    // probably get away with creating frames on the fly if we want to cut
+    // out this pass and load the atlas after the fact.
+    pub fn upload_atlas(
+        sh: &RawShape,
+        palette: &Palette,
+        lib: &Library,
+        window: &GraphicsWindow,
+    ) -> Fallible<(
+        TextureAtlas,
+        Arc<ImmutableImage<Format>>,
+        Box<dyn GpuFuture>,
+    )> {
+        let texture_filenames = sh.all_textures();
+        let mut texture_headers = Vec::new();
+        for filename in texture_filenames {
+            let data = lib.load(&filename.to_uppercase())?;
+            texture_headers.push((filename.to_owned(), Pic::from_bytes(&data)?, data));
+        }
+        let atlas = TextureAtlas::from_raw_data(&palette, texture_headers)?;
+        let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
+        Ok((atlas, texture, tex_future))
+    }
+
+    fn upload_texture_rgba(
+        window: &GraphicsWindow,
+        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<dyn GpuFuture>)> {
+        let image_dim = image_buf.dimensions();
+        let image_data = image_buf.into_raw().clone();
+
+        let dimensions = Dimensions::Dim2d {
+            width: image_dim.0,
+            height: image_dim.1,
+        };
+        let (texture, tex_future) = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            Format::R8G8B8A8Unorm,
+            window.queue(),
+        )?;
+        Ok((texture, Box::new(tex_future) as Box<dyn GpuFuture>))
     }
 }

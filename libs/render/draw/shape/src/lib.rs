@@ -12,17 +12,26 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod buffer_manager;
+mod draw_state;
+mod texture_atlas;
+pub mod upload;
+
+use crate::{
+    buffer_manager::BufferManager,
+    draw_state::DrawState,
+    upload::{DrawSelection, ShapeBuffer, ShapeUploader, Vertex},
+};
 use camera::CameraAbstract;
 use failure::Fallible;
 use lib::Library;
 use log::trace;
-use nalgebra::{Matrix4, Point3, Vector3};
+use nalgebra::{Matrix4, Vector3};
 use pal::Palette;
 use sh::RawShape;
-use shape_chunk::{Chunk, ClosedChunk, OpenChunk, Vertex};
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     rc::Rc,
     sync::{Arc, Weak},
     time::Instant,
@@ -30,7 +39,7 @@ use std::{
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DynamicState},
-    descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
+    descriptor::descriptor_set::PersistentDescriptorSet,
     device::Device,
     framebuffer::Subpass,
     pipeline::{
@@ -42,372 +51,6 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-mod vs {
-    use vulkano_shaders::shader;
-
-    shader! {
-    ty: "vertex",
-    include: ["./libs/render"],
-    src: "
-        #version 450
-
-        layout(location = 0) in vec3 position;
-        layout(location = 1) in vec4 color;
-        layout(location = 2) in vec2 tex_coord;
-        layout(location = 3) in uint flags0;
-        layout(location = 4) in uint flags1;
-        layout(location = 5) in uint xform_id;
-
-        layout(binding = 1) buffer MatrixArray {
-            float xform_data[];
-        } ma;
-
-
-        layout(push_constant) uniform PushConstantData {
-          mat4 view;
-          mat4 projection;
-          uint flag_mask0;
-          uint flag_mask1;
-        } pc;
-
-        #include <common/include/include_global.glsl>
-        #include <draw/shape/src/include_shape.glsl>
-
-        layout(location = 0) smooth out vec4 v_color;
-        layout(location = 1) smooth out vec2 v_tex_coord;
-        layout(location = 2) flat out uint f_flags0;
-        layout(location = 3) flat out uint f_flags1;
-
-        void main() {
-            gl_Position = pc.projection * pc.view * matrix_for_xform(xform_id) * vec4(position, 1.0);
-            v_color = color;
-            v_tex_coord = tex_coord;
-            f_flags0 = flags0 & pc.flag_mask0;
-            f_flags1 = flags1 & pc.flag_mask1;
-        }"
-    }
-}
-
-mod fs {
-    use vulkano_shaders::shader;
-
-    shader! {
-    ty: "fragment",
-    src: "
-        #version 450
-
-        layout(location = 0) smooth in vec4 v_color;
-        layout(location = 1) smooth in vec2 v_tex_coord;
-        layout(location = 2) flat in uint f_flags0;
-        layout(location = 3) flat in uint f_flags1;
-
-        layout(location = 0) out vec4 f_color;
-
-        layout(set = 0, binding = 0) uniform sampler2D tex;
-
-        void main() {
-            if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
-                discard;
-            } else if (v_tex_coord.x == 0.0) {
-                f_color = v_color;
-            } else {
-                vec4 tex_color = texture(tex, v_tex_coord);
-
-                if ((f_flags0 & 1) == 1) {
-                    f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
-                } else {
-                    if (tex_color.a < 0.5)
-                        discard;
-                    else
-                        f_color = tex_color;
-                }
-            }
-        }
-        "
-    }
-}
-
-impl vs::ty::PushConstantData {
-    fn new() -> Self {
-        Self {
-            view: [
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-            ],
-            projection: [
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-            ],
-            flag_mask0: 0xFFFF_FFFF,
-            flag_mask1: 0xFFFF_FFFF,
-        }
-    }
-
-    fn set_view(&mut self, mat: &Matrix4<f32>) {
-        self.view[0][0] = mat[0];
-        self.view[0][1] = mat[1];
-        self.view[0][2] = mat[2];
-        self.view[0][3] = mat[3];
-        self.view[1][0] = mat[4];
-        self.view[1][1] = mat[5];
-        self.view[1][2] = mat[6];
-        self.view[1][3] = mat[7];
-        self.view[2][0] = mat[8];
-        self.view[2][1] = mat[9];
-        self.view[2][2] = mat[10];
-        self.view[2][3] = mat[11];
-        self.view[3][0] = mat[12];
-        self.view[3][1] = mat[13];
-        self.view[3][2] = mat[14];
-        self.view[3][3] = mat[15];
-    }
-
-    fn set_projection(&mut self, mat: &Matrix4<f32>) {
-        self.projection[0][0] = mat[0];
-        self.projection[0][1] = mat[1];
-        self.projection[0][2] = mat[2];
-        self.projection[0][3] = mat[3];
-        self.projection[1][0] = mat[4];
-        self.projection[1][1] = mat[5];
-        self.projection[1][2] = mat[6];
-        self.projection[1][3] = mat[7];
-        self.projection[2][0] = mat[8];
-        self.projection[2][1] = mat[9];
-        self.projection[2][2] = mat[10];
-        self.projection[2][3] = mat[11];
-        self.projection[3][0] = mat[12];
-        self.projection[3][1] = mat[13];
-        self.projection[3][2] = mat[14];
-        self.projection[3][3] = mat[15];
-    }
-
-    pub fn set_mask(&mut self, mask: u64) {
-        self.flag_mask0 = (mask & 0xFFFF_FFFF) as u32;
-        self.flag_mask1 = (mask >> 32) as u32;
-    }
-}
-struct Entity(u64);
-
-struct World {
-    // Record entities that have been removed so that we can re-use them.
-    recyclable_entities: HashSet<Entity>,
-
-    // Map from entities to the offset within the storage.
-    // TODO: do we need the reverse map as well?
-    entity_offset: HashMap<Entity, usize>,
-
-    // Linear storage for each subsystem.
-    // Not every entity will use every storage, so each storage type must be defaultable.
-    // TODO: This wastes some space; figure out how much we should care.
-    position: Vec<Point3<f64>>,
-    velocity: Vec<Vector3<f64>>,
-}
-
-pub struct InstanceInfo {}
-
-pub struct OpenInstances {
-    chunk: Chunk,
-    instances: Vec<InstanceInfo>,
-}
-
-impl OpenInstances {
-    pub fn new(chunk: OpenChunk) -> Fallible<Self> {
-        Ok(Self {
-            chunk: Chunk::Open(chunk),
-            instances: Vec::new(),
-        })
-    }
-}
-
-pub struct ClosedInstances {
-    chunk: ClosedChunk,
-    indirect_buffer: Arc<DeviceLocalBuffer<[DrawIndexedIndirectCommand]>>,
-    pds_images: Arc<dyn DescriptorSet + Send + Sync>,
-}
-
-impl ClosedInstances {
-    pub fn render(
-        &self,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        camera: &dyn CameraAbstract,
-        cbb: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-        window: &GraphicsWindow,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut cbb = cbb;
-        /*
-        let transform = Matrix4::new_translation(&Vector3::new(6_378_000.0 + 1000.0, 0.0, 0.0));
-        let mut push_consts = vs::ty::PushConstantData::new();
-        push_consts.set_projection(&camera.projection_matrix());
-        push_consts.set_view(&(camera.view_matrix()));
-        push_consts.set_mask(
-            self.draw_state
-                .borrow()
-                .build_mask(self.draw_state.borrow().time_origin(), self.buffer.errata())?,
-        );
-
-        let chunk = buffer_manager.buffers_at(&self.buffer.get_pointer());
-
-        let bufs = [DrawIndexedIndirectCommand {
-            first_index: self.buffer.get_pointer().first_index(),
-            index_count: self.buffer.get_pointer().index_count(),
-            vertex_offset: self.buffer.get_pointer().vertex_offset(),
-
-            first_instance: 0,
-            instance_count: 1,
-        }];
-        let indirect_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            bufs.iter().cloned(),
-        )?;
-        */
-
-        cbb = cbb.draw_indexed_indirect(
-            pipeline,
-            dynamic_state,
-            vec![self.chunk.vertex_buffer()],
-            self.chunk.index_buffer(),
-            self.indirect_buffer,
-            self.chunk.atlas_descriptor_set_ref(),
-            (), //push_consts,
-        )?;
-
-        Ok(cbb)
-    }
-}
-
-struct ShapeRenderer {
-    // Rendering system.
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-
-    // Map from shape names to the chunk that contains that shape.
-    shape_to_chunk: HashMap<String, usize>,
-
-    // List of all building ChunkInstances.
-    building_instances: Vec<OpenInstances>,
-
-    // Completed and built instances.
-    baked_instances: Vec<ClosedInstances>,
-}
-
-impl ShapeRenderer {
-    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
-        trace!("ShapeRenderer::new");
-
-        let vs = vs::Shader::load(window.device())?;
-        let fs = fs::Shader::load(window.device())?;
-
-        let pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .cull_mode_back()
-                .front_face_clockwise()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .depth_stencil(DepthStencil {
-                    depth_write: true,
-                    depth_compare: Compare::GreaterOrEqual,
-                    depth_bounds_test: DepthBounds::Disabled,
-                    stencil_front: Default::default(),
-                    stencil_back: Default::default(),
-                })
-                .blend_alpha_blending()
-                .render_pass(
-                    Subpass::from(window.render_pass(), 0)
-                        .expect("gfx: did not find a render pass"),
-                )
-                .build(window.device())?,
-        );
-
-        Ok(Self {
-            pipeline,
-            shape_to_chunk: HashMap::new(),
-            building_instances: Vec::new(),
-            baked_instances: Vec::new(),
-        })
-    }
-
-    pub fn add_instance(
-        &mut self,
-        name: &str,
-        lib: &Library,
-        window: &GraphicsWindow,
-    ) -> Fallible<()> {
-        Ok(())
-    }
-
-    pub fn render(
-        &self,
-        camera: &dyn CameraAbstract,
-        cbb: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-        window: &GraphicsWindow,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut cbb = cbb;
-        for chunk_instances in &self.baked_instances {
-            cbb = chunk_instances.render(
-                //                &self.buffer_manager,
-                self.pipeline.clone(),
-                camera,
-                cbb,
-                dynamic_state,
-                window,
-            )?;
-        }
-        Ok(cbb)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use camera::ArcBallCamera;
-    use failure::Error;
-    use omnilib::OmniLib;
-    use sh::RawShape;
-    use std::{f64::consts::PI, rc::Rc};
-    use window::GraphicsConfigBuilder;
-
-    #[test]
-    fn test_build_shape_renderer() -> Fallible<()> {
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
-        camera.set_distance(100.);
-        camera.set_angle(115. * PI / 180., -135. * PI / 180.);
-
-        let mut renderer = ShapeRenderer::new(&window)?;
-
-        let skipped = vec![
-            "CHAFF.SH",
-            "CRATER.SH",
-            "DEBRIS.SH",
-            "EXP.SH",
-            "FIRE.SH",
-            "FLARE.SH",
-            "MOTHB.SH",
-            "SMOKE.SH",
-            "WAVE1.SH",
-            "WAVE2.SH",
-        ];
-        let omni = OmniLib::new_for_test_in_games(&[
-            "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
-        ])?;
-        for (game, lib) in omni.libraries() {
-            renderer.add_instance("F22.SH", &lib, &window)?;
-        }
-
-        Ok(())
-    }
-}
-
-/*
 // NOTE: if updating MAX_UNIFORMS, the same constant must be fixed up in the vertex shader.
 const MAX_XFORMS: usize = 14;
 const UNIFORM_POOL_SIZE: usize = MAX_XFORMS * 6;
@@ -994,4 +637,3 @@ mod test {
         Ok(())
     }
 }
-*/

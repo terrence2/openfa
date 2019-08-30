@@ -17,9 +17,6 @@ mod draw_state;
 mod texture_atlas;
 mod upload;
 
-use failure::Fallible;
-use window::GraphicsWindow;
-
 pub use chunk::{Chunk, ClosedChunk, OpenChunk};
 pub use draw_state::DrawState;
 pub use upload::{DrawSelection, Vertex};
@@ -68,11 +65,6 @@ mod test {
     use pal::Palette;
     use std::sync::Arc;
     use vulkano::{
-        buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
-        command_buffer::{AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DynamicState},
-        descriptor::descriptor_set::{
-            DescriptorSet, PersistentDescriptorSet, PersistentDescriptorSetBuilderArray,
-        },
         framebuffer::Subpass,
         pipeline::{
             depth_stencil::{Compare, DepthBounds, DepthStencil},
@@ -80,11 +72,11 @@ mod test {
         },
         sync::GpuFuture,
     };
-    use window::GraphicsConfigBuilder;
+    use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn test_load_all() -> Fallible<()> {
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
         let vert_shader = vs::Shader::load(window.device())?;
         let frag_shader = fs::Shader::load(window.device())?;

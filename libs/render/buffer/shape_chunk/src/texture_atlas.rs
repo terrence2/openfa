@@ -20,7 +20,7 @@ use pic::Pic;
 use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
+    command_buffer::AutoCommandBufferBuilder,
     device::Device,
     format::Format,
     image::{Dimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount},
