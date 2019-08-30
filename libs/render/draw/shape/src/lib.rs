@@ -75,7 +75,6 @@ mod vs {
             float xform_data[];
         } ma;
 
-
         layout(push_constant) uniform PushConstantData {
           mat4 view;
           mat4 projection;

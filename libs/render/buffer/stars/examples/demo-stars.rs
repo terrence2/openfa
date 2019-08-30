@@ -39,8 +39,8 @@ mod vs {
         #include <buffer/raymarching/src/include_raymarching.glsl>
 
         layout(push_constant) uniform PushConstantData {
-          mat4 inverse_view;
-          mat4 inverse_projection;
+            mat4 inverse_view;
+            mat4 inverse_projection;
         } pc;
 
         layout(location = 0) in vec2 position;

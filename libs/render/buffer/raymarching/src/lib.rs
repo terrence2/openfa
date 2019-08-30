@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-//use camera::CameraAbstract;
 use failure::Fallible;
 use log::trace;
 use std::sync::Arc;
@@ -22,7 +21,7 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct RaymarchingVertex {
     position: [f32; 2],
 }
