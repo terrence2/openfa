@@ -373,6 +373,15 @@ struct BufferPropsManager {
 }
 
 impl BufferPropsManager {
+    pub fn new() -> Self {
+        Self {
+            seen_flags: VertexFlags::NONE,
+            props: HashMap::new(),
+            next_xform_id: 0,
+            active_xform_id: 0,
+        }
+    }
+
     pub fn add_or_update_toggle_flags(&mut self, tgt: usize, flags: VertexFlags, context: &str) {
         let entry = self.props.entry(tgt).or_insert(BufferProps {
             context: context.to_owned(),
@@ -514,8 +523,9 @@ impl Transformer {
     }
 }
 
-/*
-pub struct ShapeBuffer {
+// Contains information about what parts of the shape can be mutated by
+// standard actions. e.g. Gears, flaps, etc.
+pub struct ShapeWidgets {
     // Self contained vm/instructions for how to set up each required transform
     // to draw this shape buffer.
     transformers: Vec<Transformer>,
@@ -524,35 +534,39 @@ pub struct ShapeBuffer {
     errata: ShapeErrata,
 }
 
-impl ShapeBuffer {
-    pub fn new(
-        transformers: Vec<Transformer>,
-        errata: ShapeErrata,
-    ) -> Self {
+impl ShapeWidgets {
+    pub fn new(transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
+        Self {
             transformers,
             errata,
         }
     }
 
-    pub fn animate(
+    pub fn animate_into(
         &self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
-    ) -> Fallible<HashMap<u32, [f32; 6]>> {
-        let mut xform_states = HashMap::new();
+        buffer: &mut [f32],
+    ) -> Fallible<()> {
+        assert!(buffer.len() >= self.num_transformer_floats());
+        let mut offset = 0;
         for transformer in self.transformers.iter() {
             let xform = transformer.transform(draw_state, start, now)?;
-            xform_states.insert(transformer.xform_id, xform);
+            buffer[offset..].copy_from_slice(&xform);
+            offset += 6;
         }
-        Ok(xform_states)
+        Ok(())
     }
 
     pub fn errata(&self) -> ShapeErrata {
         self.errata
     }
+
+    pub fn num_transformer_floats(&self) -> usize {
+        self.transformers.len() * 6
+    }
 }
-*/
 
 pub struct ShapeUploader;
 impl ShapeUploader {
@@ -983,7 +997,7 @@ impl ShapeUploader {
         lib: &Library,
         window: &GraphicsWindow,
         chunk: &mut OpenChunk,
-    ) -> Fallible<(Vec<Transformer>, ShapeErrata)> {
+    ) -> Fallible<ShapeWidgets> {
         println!("MODEL: {}", name);
 
         // Outputs
@@ -992,12 +1006,7 @@ impl ShapeUploader {
         xforms.push(Matrix4::<f32>::identity());
 
         // State
-        let mut prop_man = BufferPropsManager {
-            seen_flags: VertexFlags::NONE,
-            props: HashMap::new(),
-            next_xform_id: 1,
-            active_xform_id: 0,
-        };
+        let mut prop_man = BufferPropsManager::new();
         let mut active_frame = None;
         let mut section_close_byte_offset = None;
         let mut damage_model_byte_offset = None;
@@ -1099,12 +1108,16 @@ impl ShapeUploader {
                 Instr::Facet(facet) => {
                     Self::push_facet(facet, &vert_pool, palette, &active_frame, None, chunk)?;
                 }
+
                 _ => {}
             }
 
             pc.advance(sh);
         }
 
-        Ok((transformers, ShapeErrata::from_flags(prop_man.seen_flags)))
+        Ok(ShapeWidgets::new(
+            transformers,
+            ShapeErrata::from_flags(prop_man.seen_flags),
+        ))
     }
 }
