@@ -50,6 +50,7 @@ members = [
         "libs/render/common/camera",
         "libs/render/common/geometry",
         "libs/render/draw/shape",
+        "libs/render/draw/shape_instance",
         "libs/render/draw/skybox",
         "libs/render/draw/text",
         "libs/resource",
