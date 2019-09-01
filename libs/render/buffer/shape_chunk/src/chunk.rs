@@ -129,14 +129,9 @@ impl OpenChunk {
             return Ok(*shape_id);
         }
 
-        let shape_id = self
-            .shape_ids
-            .insert(
-                name.to_owned(),
-                ShapeId((self.base_shape_id, self.last_shape_id)),
-            )
-            .unwrap();
+        let shape_id = ShapeId((self.base_shape_id, self.last_shape_id));
         self.last_shape_id += 1;
+        self.shape_ids.insert(name.to_owned(), shape_id);
 
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
 

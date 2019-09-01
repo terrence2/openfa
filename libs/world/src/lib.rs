@@ -14,59 +14,93 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use lib::Library;
-use nalgebra::{Point3, UnitQuaternion, Vector3};
+use nalgebra::Point3;
 use pal::Palette;
-use specs::{Builder, Component, VecStorage, World as SpecsWorld, WorldExt};
+use shape_chunk::{DrawSelection, ShapeId};
+use specs::{Builder, World as SpecsWorld, WorldExt};
+use std::sync::Arc;
 
 pub use specs::Entity;
 
-// Components
-struct Position(Point3<f64>);
-impl Component for Position {
-    type Storage = VecStorage<Self>;
-}
+mod component;
 
-struct Rotation(UnitQuaternion<f64>);
-impl Component for Rotation {
-    type Storage = VecStorage<Self>;
-}
+use component::{
+    flight_dynamics::FlightDynamics, shape_mesh::ShapeMesh, transform::Transform,
+    wheeled_dynamics::WheeledDynamics,
+};
 
-struct Velocity(Vector3<f64>);
-impl Component for Velocity {
-    type Storage = VecStorage<Self>;
-}
-
-// Entities / World
 pub struct World {
     ecs: SpecsWorld,
-    lib: Library,
-    system_palette: Palette,
+
+    // Resources
+    lib: Arc<Box<Library>>,
+    palette: Arc<Palette>,
 }
 
 impl World {
-    pub fn new(lib: Library) -> Fallible<Self> {
+    pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
         let mut ecs = SpecsWorld::new();
-        ecs.register::<Position>();
-        ecs.register::<Rotation>();
-        ecs.register::<Velocity>();
+        ecs.register::<FlightDynamics>();
+        ecs.register::<WheeledDynamics>();
+        ecs.register::<ShapeMesh>();
+        ecs.register::<Transform>();
 
         Ok(Self {
             ecs,
-            system_palette: Palette::from_bytes(&lib.load("PALETTE.PAL")?)?,
+            palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
             lib,
         })
     }
 
-    pub fn create_ground_mover(&mut self, position: Point3<f64>) -> Entity {
-        self.ecs
+    pub fn library(&self) -> &Library {
+        &self.lib
+    }
+
+    pub fn system_palette(&self) -> &Palette {
+        &self.palette
+    }
+
+    pub fn create_ground_mover(
+        &mut self,
+        shape_id: ShapeId,
+        position: Point3<f64>,
+    ) -> Fallible<Entity> {
+        Ok(self
+            .ecs
             .create_entity()
-            .with(Position(position))
-            .with(Rotation(UnitQuaternion::identity()))
-            .with(Velocity(Vector3::zeros()))
-            .build()
+            .with(Transform::new(position))
+            .with(WheeledDynamics::new())
+            .with(ShapeMesh::new(shape_id))
+            .build())
     }
 
     pub fn destroy_entity(&mut self, entity: Entity) -> Fallible<()> {
         Ok(self.ecs.delete_entity(entity)?)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use omnilib::OmniLib;
+    use shape_chunk::{ClosedChunk, OpenChunk};
+    use window::{GraphicsConfigBuilder, GraphicsWindow};
+
+    #[test]
+    fn test_it_works() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
+        let mut world = World::new(omni.library("FA"))?;
+        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let mut upload = OpenChunk::new(0, &window)?;
+        let shape_id = upload.upload_shape(
+            "T80.SH",
+            DrawSelection::NormalModel,
+            world.system_palette(),
+            world.library(),
+            &window,
+        )?;
+        let ent = world.create_ground_mover(shape_id, Point3::new(0f64, 0f64, 0f64))?;
+        world.destroy_entity(ent)?;
+        Ok(())
     }
 }
