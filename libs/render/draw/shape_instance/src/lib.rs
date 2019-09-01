@@ -12,20 +12,20 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use failure::{bail, ensure, Fallible};
 use lib::Library;
 use nalgebra::Matrix4;
 use nalgebra::Point3;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{Chunk, ClosedChunk, DrawSelection, OpenChunk};
-use std::collections::HashMap;
+use shape_chunk::{Chunk, ClosedChunk, DrawSelection, OpenChunk, ShapeId};
+use std::{collections::HashMap, mem};
 use vulkano::{
     buffer::{CpuAccessibleBuffer, CpuBufferPool},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DrawIndirectCommand},
 };
 use window::GraphicsWindow;
-use world::Entity;
+use world::{Entity, World};
 
 const BLOCK_SIZE: usize = 128;
 
@@ -67,30 +67,88 @@ pub struct ChunkInstances {
 }
 
 pub struct ShapeInstanceRenderer {
-    per_chunk: Vec<ChunkInstances>,
+    //per_chunk: Vec<ChunkInstances>,
+    open_mover_chunk: OpenChunk,
+    mover_chunks: Vec<ClosedChunk>,
 }
 
 impl ShapeInstanceRenderer {
-    pub fn new() -> Self {
-        Self {
-            per_chunk: Vec::new(),
-        }
+    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
+        Ok(Self {
+            open_mover_chunk: OpenChunk::new(window)?,
+            mover_chunks: Vec::new(),
+        })
     }
 
     // pub fn create_building
 
     // pub fn create_airplane -- need to hook into shape state?
 
-    pub fn create_ground_mover(
+    pub fn upload_mover(
         &mut self,
-        position: Point3<f64>,
         name: &str,
-        world: &mut World,
+        selection: DrawSelection,
+        world: &World,
         window: &GraphicsWindow,
-    ) -> Fallible<Entity> {
-        let entity = world.create_ground_mover(position);
+    ) -> Fallible<ShapeId> {
+        if self.open_mover_chunk.chunk_is_full() {
+            let mut open_chunk = OpenChunk::new(window)?;
+            mem::swap(&mut open_chunk, &mut self.open_mover_chunk);
+            //self.mover_chunks.push(ClosedChunk::new(open_chunk, pipeline, window))
+        }
+        let shape_id = self.open_mover_chunk.upload_shape(
+            name,
+            selection,
+            world.system_palette(),
+            world.library(),
+            window,
+        )?;
+        Ok(shape_id)
+    }
 
-        Ok(entity)
+    /*
+    fn find_open_mover_chunk(&mut self, window: &GraphicsWindow) -> Fallible<&mut OpenChunk> {
+        for instances in &mut self.per_chunk {
+            if instances.chunk.is_open() {
+                return Ok(instances.chunk.as_open_chunk_mut());
+            }
+        }
+
+        unimplemented!()
+        /*
+        self.per_chunk.push(ChunkInstances {
+            chunk: Chunk::Open(OpenChunk::new(window)?),
+            blocks: Vec::new(),
+        });
+        self.find_open_mover_chunk(window)
+        */
+    }
+    */
+}
+
+use specs::prelude::*;
+use world::component::{ShapeMesh, Transform};
+
+struct ShapeRenderSystem;
+
+impl<'a> System<'a> for ShapeRenderSystem {
+    // These are the resources required for execution.
+    // You can also define a struct and `#[derive(SystemData)]`,
+    // see the `full` example.
+    type SystemData = (ReadStorage<'a, Transform>, ReadStorage<'a, ShapeMesh>);
+
+    fn run(&mut self, (transform, shape_mesh): Self::SystemData) {
+        // The `.join()` combines multiple components,
+        // so we only access those entities which have
+        // both of them.
+
+        // This joins the component storages for Position
+        // and Velocity together; it's also possible to do this
+        // in parallel using rayon's `ParallelIterator`s.
+        // See `ParJoin` for more.
+        for (transform, shape_mesh) in (&transform, &shape_mesh).join() {
+            println!("shape_id: {:?}", shape_mesh.shape_id());
+        }
     }
 }
 
@@ -106,12 +164,20 @@ mod tests {
 
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let lib = omni.library("FA");
-        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-        let mut world = World::new(lib, window)?;
-        let mut shape_system = ShapeInstanceRenderer::new();
+        let mut world = World::new(lib)?;
 
-        shape_system.create_ground_mover(Point3::zeros(), "SOLDIER.SH", &mut world, &window)?;
+        let mut shape_renderer = ShapeInstanceRenderer::new(&window)?;
+        let t80_id =
+            shape_renderer.upload_mover("T80.SH", DrawSelection::NormalModel, &world, &window)?;
+
+        let t80_ent = world.create_ground_mover(t80_id, Point3::new(0f64, 0f64, 0f64))?;
+
+        let mut dispatcher = DispatcherBuilder::new()
+            .with(ShapeRenderSystem, "", &[])
+            .build();
+        //dispatcher.dispatch(&mut world);
+        world.run(&mut dispatcher);
 
         Ok(())
     }

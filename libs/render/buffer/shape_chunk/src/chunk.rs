@@ -18,10 +18,15 @@ use crate::{
 };
 use failure::{ensure, err_msg, Fallible};
 use global_layout::GlobalSets;
+use lazy_static::lazy_static;
 use lib::Library;
 use pal::Palette;
 use sh::RawShape;
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{
+    collections::HashMap,
+    mem,
+    sync::{Arc, Mutex},
+};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DrawIndirectCommand},
@@ -41,9 +46,37 @@ const VERTEX_CHUNK_HIGH_WATER_COUNT: usize =
 const VERTEX_CHUNK_BYTES: usize = VERTEX_CHUNK_HIGH_WATER_BYTES + MAX_VERTEX_BYTES;
 const VERTEX_CHUNK_COUNT: usize = VERTEX_CHUNK_BYTES / mem::size_of::<Vertex>();
 
+lazy_static! {
+    static ref GLOBAL_CHUNK_ID: Mutex<u32> = Mutex::new(0);
+}
+
+fn allocate_base_shape_id() -> u32 {
+    let mut global = GLOBAL_CHUNK_ID.lock().unwrap();
+    let base_id = *global;
+    assert!(base_id < std::u32::MAX, "overflowed base shape id");
+    *global += 1;
+    base_id
+}
+
 pub enum Chunk {
     Open(OpenChunk),
     Closed(ClosedChunk),
+}
+
+impl Chunk {
+    pub fn is_open(&self) -> bool {
+        match self {
+            Self::Open(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn as_open_chunk_mut(&mut self) -> &mut OpenChunk {
+        match self {
+            Self::Open(chunk) => chunk,
+            _ => panic!("not an open chunk"),
+        }
+    }
 }
 
 // Where a shape lives in a chunk.
@@ -77,7 +110,7 @@ impl ChunkPart {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ShapeId((u32, u32));
 
 pub struct OpenChunk {
@@ -91,7 +124,7 @@ pub struct OpenChunk {
 }
 
 impl OpenChunk {
-    pub fn new(base_shape_id: u32, window: &GraphicsWindow) -> Fallible<Self> {
+    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
         let vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>> = unsafe {
             CpuAccessibleBuffer::raw(
                 window.device(),
@@ -102,7 +135,7 @@ impl OpenChunk {
         };
 
         Ok(Self {
-            base_shape_id,
+            base_shape_id: allocate_base_shape_id(),
             vertex_offset: 0,
             atlas_builder: MegaAtlas::new(window)?,
             vertex_upload_buffer,

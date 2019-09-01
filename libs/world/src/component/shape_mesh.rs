@@ -31,4 +31,8 @@ impl ShapeMesh {
             draw_state: Default::default(),
         }
     }
+
+    pub fn shape_id(&self) -> ShapeId {
+        self.shape_id
+    }
 }

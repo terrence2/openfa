@@ -12,22 +12,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+pub mod component;
+
+use crate::component::*;
 use failure::Fallible;
 use lib::Library;
 use nalgebra::Point3;
 use pal::Palette;
 use shape_chunk::{DrawSelection, ShapeId};
-use specs::{Builder, World as SpecsWorld, WorldExt};
+use specs::{Builder, Dispatcher, World as SpecsWorld, WorldExt};
 use std::sync::Arc;
 
 pub use specs::Entity;
-
-mod component;
-
-use component::{
-    flight_dynamics::FlightDynamics, shape_mesh::ShapeMesh, transform::Transform,
-    wheeled_dynamics::WheeledDynamics,
-};
 
 pub struct World {
     ecs: SpecsWorld,
@@ -50,6 +46,10 @@ impl World {
             palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
             lib,
         })
+    }
+
+    pub fn run(&mut self, dispatcher: &mut Dispatcher) {
+        dispatcher.dispatch(&mut self.ecs)
     }
 
     pub fn library(&self) -> &Library {

@@ -250,7 +250,7 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let mut open_chunk = OpenChunk::new(0, &window)?;
+    let mut open_chunk = OpenChunk::new(&window)?;
     open_chunk.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
     open_chunk.upload_shape(
         "F18.SH",

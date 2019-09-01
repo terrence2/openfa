@@ -998,8 +998,6 @@ impl ShapeUploader {
         window: &GraphicsWindow,
         chunk: &mut OpenChunk,
     ) -> Fallible<ShapeWidgets> {
-        println!("MODEL: {}", name);
-
         // Outputs
         let mut transformers = Vec::new();
         let mut xforms = Vec::new();
