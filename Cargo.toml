@@ -59,6 +59,7 @@ members = [
         "libs/star_catalog",
         "libs/t2",
         "libs/window",
+        "libs/world",
         "libs/xt",
 ]
 

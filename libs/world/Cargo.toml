@@ -1,0 +1,12 @@
+[package]
+name = "world"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+nalgebra = "^ 0.18"
+specs = "^ 0.15"
+lib = { path = "../lib" }
+pal = { path = "../pal" }

@@ -12,20 +12,112 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-/*
 use failure::{ensure, Fallible};
 use lib::Library;
 use nalgebra::Matrix4;
+use nalgebra::Point3;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{ClosedChunk, DrawSelection, OpenChunk};
+use shape_chunk::{Chunk, ClosedChunk, DrawSelection, OpenChunk};
 use std::collections::HashMap;
 use vulkano::{
-    buffer::CpuAccessibleBuffer,
+    buffer::{CpuAccessibleBuffer, CpuBufferPool},
     command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DrawIndirectCommand},
 };
 use window::GraphicsWindow;
+use world::Entity;
 
+const BLOCK_SIZE: usize = 128;
+
+// Fixed reservation blocks for upload of a number of entities. Unfortunately, because of
+// xforms, we don't know exactly how many instances will fit in any given block.
+pub struct DynamicInstanceBlock {
+    // Buffers for all instances stored in this instance set. One command per unique entity.
+    // 16 bytes per entity; index unnecessary for draw
+    command_buf: CpuBufferPool<[DrawIndirectCommand; BLOCK_SIZE]>,
+
+    // Base position and orientation in xyz+euler angles stored as 6 adjacent floats.
+    // 24 bytes per entity; buffer index inferable from drawing index
+    base_buffer: CpuBufferPool<[[f32; 6]; BLOCK_SIZE]>, // Flags buffers
+
+    // 2 32bit flags words for each entity.
+    // 8 bytes per entity; buffer index inferable from drawing index
+    flags_buffer: CpuBufferPool<[[u32; 2]; BLOCK_SIZE]>,
+
+    // 0 to 14 position/orientation [f32; 6], depending on the shape.
+    // assume 96 bytes per entity if we're talking about planes
+    // cannot infer position, so needs an index buffer
+    xform_buffer: CpuBufferPool<[[f32; 6]; 4 * BLOCK_SIZE]>,
+
+    // 4 bytes per entity; can infer position from index
+    xform_index_buffer: CpuBufferPool<[i32; BLOCK_SIZE]>,
+}
+
+// Combines a single shape chunk with a collection of instance blocks.
+//
+// We are uploading data on every frame, so we need fixed sized upload pools.
+// Each pool can only handle so many instances though, so we may need more than
+// one block of pools to service every instance that needs vertices in a chunk.
+pub struct ChunkInstances {
+    chunk: Chunk,
+
+    // FIXME: we probably want to store these as traits so that we can have
+    // FIXME: blocks with different upload characteristics.
+    blocks: Vec<DynamicInstanceBlock>,
+}
+
+pub struct ShapeInstanceRenderer {
+    per_chunk: Vec<ChunkInstances>,
+}
+
+impl ShapeInstanceRenderer {
+    pub fn new() -> Self {
+        Self {
+            per_chunk: Vec::new(),
+        }
+    }
+
+    // pub fn create_building
+
+    // pub fn create_airplane -- need to hook into shape state?
+
+    pub fn create_ground_mover(
+        &mut self,
+        position: Point3<f64>,
+        name: &str,
+        world: &mut World,
+        window: &GraphicsWindow,
+    ) -> Fallible<Entity> {
+        let entity = world.create_ground_mover(position);
+
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use window::GraphicsConfigBuilder;
+    use world::World;
+
+    #[test]
+    fn it_works() -> Fallible<()> {
+        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
+
+        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let lib = omni.library("FA");
+        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
+
+        let mut world = World::new(lib, window)?;
+        let mut shape_system = ShapeInstanceRenderer::new();
+
+        shape_system.create_ground_mover(Point3::zeros(), "SOLDIER.SH", &mut world, &window)?;
+
+        Ok(())
+    }
+}
+
+/*
 pub struct Entity {
     id: u64,
 }
@@ -139,23 +231,4 @@ impl ShapeInstanceRenderer {
     pub fn finish_loading() {}
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use window::GraphicsConfigBuilder;
-
-    #[test]
-    fn it_works() -> Fallible<()> {
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-
-        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let lib = omni.library("FA");
-        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-
-        let mut shapes = ShapeInstanceRenderer::new(&window)?;
-        shapes.add_static_immortal_model("TREEA.SH", &palette, &lib, &window);
-
-        Ok(())
-    }
-}
 */

@@ -17,7 +17,7 @@ mod draw_state;
 mod texture_atlas;
 mod upload;
 
-pub use chunk::{Chunk, ClosedChunk, OpenChunk};
+pub use chunk::{Chunk, ClosedChunk, OpenChunk, ShapeId};
 pub use draw_state::DrawState;
 pub use upload::{DrawSelection, Vertex};
 

@@ -77,15 +77,21 @@ impl ChunkPart {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub struct ShapeId((u32, u32));
+
 pub struct OpenChunk {
+    base_shape_id: u32,
     vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     atlas_builder: MegaAtlas,
     vertex_offset: usize,
-    chunk_parts: HashMap<String, ChunkPart>,
+    last_shape_id: u32,
+    shape_ids: HashMap<String, ShapeId>,
+    chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
 
 impl OpenChunk {
-    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
+    pub fn new(base_shape_id: u32, window: &GraphicsWindow) -> Fallible<Self> {
         let vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>> = unsafe {
             CpuAccessibleBuffer::raw(
                 window.device(),
@@ -96,9 +102,12 @@ impl OpenChunk {
         };
 
         Ok(Self {
+            base_shape_id,
             vertex_offset: 0,
             atlas_builder: MegaAtlas::new(window)?,
             vertex_upload_buffer,
+            last_shape_id: 0,
+            shape_ids: HashMap::new(),
             chunk_parts: HashMap::new(),
         })
     }
@@ -115,7 +124,20 @@ impl OpenChunk {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<()> {
+    ) -> Fallible<ShapeId> {
+        if let Some(shape_id) = self.shape_ids.get(name) {
+            return Ok(*shape_id);
+        }
+
+        let shape_id = self
+            .shape_ids
+            .insert(
+                name.to_owned(),
+                ShapeId((self.base_shape_id, self.last_shape_id)),
+            )
+            .unwrap();
+        self.last_shape_id += 1;
+
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
 
         let start_vertex = self.vertex_offset;
@@ -123,8 +145,8 @@ impl OpenChunk {
             ShapeUploader::draw_model(name, &sh, selection, palette, lib, window, self)?;
 
         let part = ChunkPart::new(start_vertex, self.vertex_offset, shape_widgets);
-        self.chunk_parts.insert(name.to_owned(), part);
-        Ok(())
+        self.chunk_parts.insert(shape_id, part);
+        Ok(shape_id)
     }
 
     pub fn push_vertex(&mut self, vertex: Vertex) -> Fallible<()> {
@@ -145,7 +167,8 @@ impl OpenChunk {
 
 pub struct ClosedChunk {
     vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
-    chunk_parts: HashMap<String, ChunkPart>,
+    shape_ids: HashMap<String, ShapeId>,
+    chunk_parts: HashMap<ShapeId, ChunkPart>,
     atlas_descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
@@ -190,6 +213,7 @@ impl ClosedChunk {
         Ok((
             ClosedChunk {
                 vertex_buffer,
+                shape_ids: chunk.shape_ids,
                 chunk_parts: chunk.chunk_parts,
                 atlas_descriptor_set,
             },
@@ -206,8 +230,10 @@ impl ClosedChunk {
     }
 
     pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
-        self.chunk_parts
+        let id = self
+            .shape_ids
             .get(name)
-            .ok_or_else(|| err_msg("shape not found"))
+            .ok_or_else(|| err_msg("shape not found"))?;
+        Ok(&self.chunk_parts[id])
     }
 }
