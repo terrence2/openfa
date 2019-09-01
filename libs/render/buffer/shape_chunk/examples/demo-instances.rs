@@ -43,6 +43,29 @@ mod vs {
     include: ["./libs/render"],
     src: "
         #version 450
+        #include <common/include/include_global.glsl>
+        #include <buffer/shape_chunk/src/include_shape.glsl>
+
+        // Scene info
+        layout(push_constant) uniform PushConstantData {
+            mat4 view;
+            mat4 projection;
+        } pc;
+
+        // Per shape input
+        const uint MAX_XFORM_ID = 32;
+        layout(set = 3, binding = 0) buffer ChunkBaseTransforms {
+            float data[];
+        } shape_transforms;
+        layout(set = 3, binding = 1) buffer ChunkFlags {
+            uint data[];
+        } shape_flags;
+        layout(set = 3, binding = 2) buffer ChunkXforms {
+            float data[];
+        } shape_xforms;
+        layout(set = 3, binding = 3) buffer ChunkXformOffsets {
+            uint data[];
+        } shape_xform_offsets;
 
         // Per Vertex input
         layout(location = 0) in vec3 position;
@@ -52,51 +75,40 @@ mod vs {
         layout(location = 4) in uint flags1;
         layout(location = 5) in uint xform_id;
 
-        // Per shape input
-        layout(set = 4, binding = 0) buffer ChunkFlags {
-            uint flag_data[];
-        } flags;
-        layout(set = 4, binding = 1) buffer ChunkTransforms {
-            float xform_data[];
-        } xforms;
-
-        layout(push_constant) uniform PushConstantData {
-            mat4 view;
-            mat4 projection;
-        } pc;
-
-        #include <common/include/include_global.glsl>
-        #include <buffer/shape_chunk/src/include_shape.glsl>
-
         layout(location = 0) smooth out vec4 v_color;
         layout(location = 1) smooth out vec2 v_tex_coord;
         layout(location = 2) flat out uint f_flags0;
         layout(location = 3) flat out uint f_flags1;
 
         void main() {
-            uint shape_base_flag = 0;
-            uint shape_base_xform = 0;
-            if (gl_InstanceIndex >= 10) {
-                shape_base_flag = 2;
-                shape_base_xform = 24;
+            uint base_transform = gl_InstanceIndex * 6;
+            uint base_flag = gl_InstanceIndex * 2;
+            uint base_xform = shape_xform_offsets.data[gl_InstanceIndex];
+
+            float transform[6] = {
+                shape_transforms.data[base_transform + 0],
+                shape_transforms.data[base_transform + 1],
+                shape_transforms.data[base_transform + 2],
+                shape_transforms.data[base_transform + 3],
+                shape_transforms.data[base_transform + 4],
+                shape_transforms.data[base_transform + 5]
+            };
+            float xform[6] = {0, 0, 0, 0, 0, 0};
+            if (xform_id < MAX_XFORM_ID) {
+                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
+                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
+                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
+                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
+                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
+                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
             }
 
-            float xform[6] = {
-                xforms.xform_data[shape_base_xform + 6 * xform_id + 0],
-                xforms.xform_data[shape_base_xform + 6 * xform_id + 1],
-                xforms.xform_data[shape_base_xform + 6 * xform_id + 2],
-                xforms.xform_data[shape_base_xform + 6 * xform_id + 3],
-                xforms.xform_data[shape_base_xform + 6 * xform_id + 4],
-                xforms.xform_data[shape_base_xform + 6 * xform_id + 5],
-            };
-
-            gl_Position = pc.projection * pc.view * matrix_for_xform(xform) * vec4(position, 1.0);
-            gl_Position.x += float(gl_InstanceIndex) * 10.0;
+            gl_Position = pc.projection * pc.view * matrix_for_xform(transform) * matrix_for_xform(xform) * vec4(position, 1.0);
             v_color = color;
             v_tex_coord = tex_coord;
 
-            f_flags0 = flags0 & flags.flag_data[shape_base_flag + 0];
-            f_flags1 = flags1 & flags.flag_data[shape_base_flag + 1];
+            f_flags0 = flags0 & shape_flags.data[base_flag + 0];
+            f_flags1 = flags1 & shape_flags.data[base_flag + 1];
         }"
     }
 }
@@ -117,7 +129,11 @@ mod fs {
 
         layout(location = 0) out vec4 f_color;
 
-        layout(set = 3, binding = 0) uniform sampler2DArray mega_atlas;
+        layout(set = 4, binding = 0) uniform sampler2DArray mega_atlas;
+        //layout(set = 5, binding = 1) uniform sampler2DArray nose_art; NOSE\d\d.PIC
+        //layout(set = 5, binding = 2) uniform sampler2DArray left_tail_art; LEFT\d\d.PIC
+        //layout(set = 5, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\d\d.PIC
+        //layout(set = 5, binding = 4) uniform sampler2DArray round_art; ROUND\d\d.PIC
 
         void main() {
             if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
@@ -199,7 +215,6 @@ impl vs::ty::PushConstantData {
 
 fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-    window.hide_cursor()?;
     let bindings = InputBindings::new("base")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
@@ -235,7 +250,7 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let mut open_chunk = OpenChunk::new(&window)?;
+    let mut open_chunk = OpenChunk::new(0, &window)?;
     open_chunk.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
     open_chunk.upload_shape(
         "F18.SH",
@@ -248,6 +263,14 @@ fn main() -> Fallible<()> {
     future.then_signal_fence_and_flush()?.wait(None)?;
 
     let f18_part = chunk.part_for("F18.SH")?;
+
+    // Upload tranforms
+    let transforms = vec![0, 0, 0, 0, 0, 0];
+    let transforms_buffer = CpuAccessibleBuffer::from_iter(
+        window.device(),
+        BufferUsage::all(),
+        transforms.iter().cloned(),
+    )?;
 
     // Upload flags
     let mut draw_state: DrawState = Default::default();
@@ -264,27 +287,34 @@ fn main() -> Fallible<()> {
         flags_arr.iter().cloned(),
     )?;
 
-    // Upload transforms
+    // Upload xforms
     let now = Instant::now();
     let xforms_len = f18_part.widgets().num_transformer_floats();
     let mut xforms = Vec::with_capacity(xforms_len);
     xforms.resize(xforms_len, 0f32);
-    f18_part.widgets().animate_into(
-        &draw_state,
-        draw_state.time_origin(),
-        &now,
-        &mut xforms[0..],
-    )?;
+    f18_part
+        .widgets()
+        .animate_into(&draw_state, draw_state.time_origin(), &now, &mut xforms)?;
     let xforms_buffer = CpuAccessibleBuffer::from_iter(
         window.device(),
         BufferUsage::all(),
         xforms.iter().cloned(),
     )?;
 
+    // Upload xform buffer offsets
+    let xform_offsets = vec![0];
+    let xform_offsets_buffer = CpuAccessibleBuffer::from_iter(
+        window.device(),
+        BufferUsage::all(),
+        xform_offsets.iter().cloned(),
+    )?;
+
     let shape_descriptor_set = Arc::new(
         PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::ShapeBuffers.into())
+            .add_buffer(transforms_buffer)?
             .add_buffer(flags_buffer)?
             .add_buffer(xforms_buffer)?
+            .add_buffer(xform_offsets_buffer)?
             .build()?,
     );
 
@@ -301,6 +331,7 @@ fn main() -> Fallible<()> {
     let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
     let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
     let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
+    window.hide_cursor()?;
     loop {
         for command in input.poll(&mut window.events_loop) {
             match command.name.as_str() {

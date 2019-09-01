@@ -553,7 +553,7 @@ impl ShapeWidgets {
         let mut offset = 0;
         for transformer in self.transformers.iter() {
             let xform = transformer.transform(draw_state, start, now)?;
-            buffer[offset..].copy_from_slice(&xform);
+            buffer[offset..offset + 6].copy_from_slice(&xform);
             offset += 6;
         }
         Ok(())
@@ -594,7 +594,7 @@ impl ShapeUploader {
             .unwrap_or_else(|| BufferProps {
                 context: "Static".to_owned(),
                 flags: VertexFlags::STATIC,
-                xform_id: 0,
+                xform_id: std::u32::MAX,
             });
         for v in vert_buf.vertices() {
             let v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), -f32::from(v[1]));
@@ -627,15 +627,15 @@ impl ShapeUploader {
         override_flags: Option<VertexFlags>,
         chunk: &mut OpenChunk,
     ) -> Fallible<()> {
-        // Load all vertices in this facet into the vertex upload
-        // buffer, copying in the color and texture coords for each
-        // face. The layout appears to be for triangle fans.
+        // Load all vertices in this facet into the vertex upload buffer, copying in the color and
+        // texture coords for each face. The layout appears to be for triangle fans.
         for i in 2..facet.indices.len() {
-            // Given that most facets are very short strips, and we
-            // need to copy the vertices anyway, it's not *that*
-            // must worse to just copy the tris over instead of
-            // trying to get strips or fans working.
-            // TODO: use triangle fans directly
+            // Unlike modern rendering systems, FA had all of the non-position properties on the
+            // face instead of the vertex. The upshot is that we end up needing to split most
+            // vertices per face in order to move the face properties to the vertices. We could
+            // take the time to reverse these into fans or strips, deduping vertices, but since the
+            // models were not designed with that in mind, we don't end up saving as much space as
+            // we'd like. Instead, we just upload three vertices per triangle and call it good.
             let js = [0, i - 1, i];
             for j in &js {
                 let index = facet.indices[*j] as usize;
