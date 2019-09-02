@@ -191,6 +191,10 @@ impl OpenChunk {
     pub fn atlas_mut(&mut self) -> &mut MegaAtlas {
         &mut self.atlas_builder
     }
+
+    pub fn part(&self, id: ShapeId) -> Option<&ChunkPart> {
+        self.chunk_parts.get(&id)
+    }
 }
 
 pub struct ClosedChunk {
@@ -255,6 +259,10 @@ impl ClosedChunk {
 
     pub fn vertex_buffer(&self) -> Arc<DeviceLocalBuffer<[Vertex]>> {
         self.vertex_buffer.clone()
+    }
+
+    pub fn part(&self, id: ShapeId) -> Option<&ChunkPart> {
+        self.chunk_parts.get(&id)
     }
 
     pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {

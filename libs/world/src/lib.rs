@@ -93,7 +93,7 @@ mod test {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
         let mut world = World::new(omni.library("FA"))?;
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let mut upload = OpenChunk::new(0, &window)?;
+        let mut upload = OpenChunk::new(&window)?;
         let shape_id = upload.upload_shape(
             "T80.SH",
             DrawSelection::NormalModel,

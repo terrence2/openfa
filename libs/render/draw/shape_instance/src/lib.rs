@@ -17,16 +17,20 @@ use nalgebra::Matrix4;
 use nalgebra::Point3;
 use omnilib::OmniLib;
 use shape_chunk::{Chunk, ClosedChunk, DrawSelection, OpenChunk, ShapeId, Vertex};
-use specs::{world::Index, DispatcherBuilder, Entities, Join, ReadStorage, System, VecStorage};
+use specs::{
+    world::Index as EntityId, DispatcherBuilder, Entities, Join, ReadStorage, System, VecStorage,
+};
 use std::{collections::HashMap, mem, sync::Arc};
 use vulkano::{
-    buffer::{CpuAccessibleBuffer, CpuBufferPool},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DrawIndirectCommand},
+    buffer::{BufferUsage, CpuBufferPool},
+    command_buffer::DrawIndirectCommand,
+    device::Device,
     framebuffer::Subpass,
     pipeline::{
         depth_stencil::{Compare, DepthBounds, DepthStencil},
         GraphicsPipeline, GraphicsPipelineAbstract,
     },
+    sync::GpuFuture,
 };
 use window::GraphicsWindow;
 use world::{
@@ -179,18 +183,30 @@ impl ShapeChunkManager {
 
     // pub fn create_airplane -- need to hook into shape state?
 
+    pub fn finish(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
+        self.finish_open_chunk(window)
+    }
+
+    pub fn finish_open_chunk(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
+        let mut open_chunk = OpenChunk::new(window)?;
+        mem::swap(&mut open_chunk, &mut self.open_mover_chunk);
+        let (chunk, future) = ClosedChunk::new(open_chunk, self.pipeline.clone(), window)?;
+        self.mover_chunks.push(chunk);
+        Ok(future)
+    }
+
     pub fn upload_mover(
         &mut self,
         name: &str,
         selection: DrawSelection,
         world: &World,
         window: &GraphicsWindow,
-    ) -> Fallible<ShapeId> {
-        if self.open_mover_chunk.chunk_is_full() {
-            let mut open_chunk = OpenChunk::new(window)?;
-            mem::swap(&mut open_chunk, &mut self.open_mover_chunk);
-            //self.mover_chunks.push(ClosedChunk::new(open_chunk, pipeline, window))
-        }
+    ) -> Fallible<(ShapeId, Box<dyn GpuFuture>)> {
+        let future = if self.open_mover_chunk.chunk_is_full() {
+            self.finish_open_chunk(window)?
+        } else {
+            window.now()
+        };
         let shape_id = self.open_mover_chunk.upload_shape(
             name,
             selection,
@@ -198,7 +214,17 @@ impl ShapeChunkManager {
             world.library(),
             window,
         )?;
-        Ok(shape_id)
+        Ok((shape_id, future))
+    }
+
+    // TODO: we should maybe speed this up with a hash from shape_id to chunk_index
+    fn find_chunk_for_shape(&mut self, shape_id: ShapeId) -> Fallible<ChunkIndex> {
+        for (chunk_offset, chunk) in self.mover_chunks.iter().enumerate() {
+            if chunk.part(shape_id).is_some() {
+                return Ok(ChunkIndex(chunk_offset));
+            }
+        }
+        bail!("shape_id {:?} has not been uploaded", shape_id)
     }
 }
 
@@ -217,20 +243,29 @@ pub struct ChunkInstances {
 }
 */
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ChunkIndex(usize);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct BlockIndex(usize);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct SlotIndex(usize);
+
 // Fixed reservation blocks for upload of a number of entities. Unfortunately, because of
 // xforms, we don't know exactly how many instances will fit in any given block.
 pub struct DynamicInstanceBlock {
     // Weak reference to the associated chunk in the Manager.
-    chunk_offset: usize,
+    chunk_index: ChunkIndex,
     //chunk_type: ChunkType,
 
     // Map from the entity to the stored offset and from the offset to the entity.
-    slot_map: HashMap<Index, usize>,
-    reverse_slot_map: HashMap<usize, Index>,
+    slot_reservations: [Option<EntityId>; BLOCK_SIZE],
+    entity_to_slot_map: HashMap<EntityId, SlotIndex>,
 
     // Buffers for all instances stored in this instance set. One command per unique entity.
     // 16 bytes per entity; index unnecessary for draw
-    command_buf: CpuBufferPool<[DrawIndirectCommand; BLOCK_SIZE]>,
+    command_buffer: CpuBufferPool<[DrawIndirectCommand; BLOCK_SIZE]>,
 
     // Base position and orientation in xyz+euler angles stored as 6 adjacent floats.
     // 24 bytes per entity; buffer index inferable from drawing index
@@ -249,7 +284,39 @@ pub struct DynamicInstanceBlock {
     xform_index_buffer: CpuBufferPool<[i32; BLOCK_SIZE]>,
 }
 
-impl DynamicInstanceBlock {}
+impl DynamicInstanceBlock {
+    fn new(chunk_index: ChunkIndex, device: Arc<Device>) -> Fallible<Self> {
+        Ok(Self {
+            chunk_index,
+            slot_reservations: [None; BLOCK_SIZE],
+            entity_to_slot_map: HashMap::new(),
+            command_buffer: CpuBufferPool::new(device.clone(), BufferUsage::indirect_buffer()),
+            base_buffer: CpuBufferPool::new(device.clone(), BufferUsage::index_buffer()),
+            flags_buffer: CpuBufferPool::new(device.clone(), BufferUsage::index_buffer()),
+            xform_buffer: CpuBufferPool::new(device.clone(), BufferUsage::index_buffer()),
+            xform_index_buffer: CpuBufferPool::new(device, BufferUsage::index_buffer()),
+        })
+    }
+
+    fn reserve_slot_for(&mut self, slot: SlotIndex, id: EntityId) {
+        self.slot_reservations[slot.0] = Some(id);
+        self.entity_to_slot_map.insert(id, slot);
+    }
+
+    fn reserve_free_slot(&mut self, id: EntityId, chunk_index: ChunkIndex) -> Option<SlotIndex> {
+        if chunk_index != self.chunk_index {
+            return None;
+        }
+        for (slot_offset, entity_id) in self.slot_reservations.iter().enumerate() {
+            if entity_id.is_none() {
+                let slot = SlotIndex(slot_offset);
+                self.reserve_slot_for(slot, id);
+                return Some(slot);
+            }
+        }
+        None
+    }
+}
 
 struct ShapeRenderSystem {
     chunks: ShapeChunkManager,
@@ -258,15 +325,18 @@ struct ShapeRenderSystem {
     blocks: Vec<DynamicInstanceBlock>,
 
     // Map from the index to the block that it has a reserved upload slot in.
-    upload_block_map: HashMap<Index, usize>,
+    upload_block_map: HashMap<EntityId, BlockIndex>,
+
+    device: Arc<Device>,
 }
 
 impl ShapeRenderSystem {
-    pub fn new(chunks: ShapeChunkManager) -> Self {
+    pub fn new(chunks: ShapeChunkManager, device: Arc<Device>) -> Self {
         Self {
             chunks,
             blocks: Vec::new(),
             upload_block_map: HashMap::new(),
+            device,
         }
     }
 
@@ -301,25 +371,43 @@ impl ShapeRenderSystem {
     }
 
     // First fit: find the first block with a free upload slot.
-    fn reserve_free_slot(&mut self) -> (usize, usize) {
-        for (block_index, block) in self.blocks.iter().enumerate() {
-            if let Some(slot_index) = block.reserve_free_slot(id) {
-                return (block_index, slot_index);
+    fn reserve_free_slot(
+        &mut self,
+        id: EntityId,
+        shape_id: ShapeId,
+        device: Arc<Device>,
+    ) -> Fallible<BlockIndex> {
+        let chunk_index = self.chunks.find_chunk_for_shape(shape_id)?;
+
+        for (block_index, block) in self.blocks.iter_mut().enumerate() {
+            if let Some(_) = block.reserve_free_slot(id, chunk_index) {
+                return Ok(BlockIndex(block_index));
             }
         }
 
         // No free slots in any blocks. Build a new one.
-        let block_index = self.blocks.len();
-        self.blocks.push(DynamicInstanceBlock::new());
-        let slot_index = self.blocks.last().unwrap().reserve_free_slot(id).unwrap();
-        return (block_index, slot_index);
+        let next_block_index = BlockIndex(self.blocks.len());
+        self.blocks
+            .push(DynamicInstanceBlock::new(chunk_index, device)?);
+        let slot_index = self
+            .blocks
+            .last_mut()
+            .unwrap()
+            .reserve_free_slot(id, chunk_index)
+            .unwrap();
+        Ok(next_block_index)
     }
 
-    pub fn reserve_entity_slot(&mut self, id: Index) -> Fallible<()> {
-        if self.upload_slots.contains_key(&id) {
-            return Ok(());
+    pub fn reserve_entity_slot(
+        &mut self,
+        id: EntityId,
+        shape_id: ShapeId,
+        device: Arc<Device>,
+    ) -> Fallible<BlockIndex> {
+        if let Some(block_index) = self.upload_block_map.get(&id) {
+            return Ok(*block_index);
         }
-        let (block_index, slot_index) = self.reserve_free_slot();
+        self.reserve_free_slot(id, shape_id, device)
     }
 }
 
@@ -335,13 +423,11 @@ impl<'a> System<'a> for ShapeRenderSystem {
 
     fn run(&mut self, (entities, transform, shape_mesh): Self::SystemData) {
         for (entity, transform, shape_mesh) in (&entities, &transform, &shape_mesh).join() {
-            self.reserve_entity_slot(entity.id());
-            // Check if entity has been uploaded.
-            //   if not, then allocate slot and add map to mapping
-            // Update slot with new values from transform, flags, and xforms
-            // after all updates, push all buffer pools?
-            println!("{:?} => shape_id: {:?}", entity.id(), shape_mesh.shape_id());
-            //self.push_mesh(transform, shape_mesh);
+            let block_index = self
+                .reserve_entity_slot(entity.id(), shape_mesh.shape_id(), self.device.clone())
+                .expect("unable to reserve instance slot");
+            //self.blocks[block_index];
+            println!("{:?} => block_index: {:?}", entity.id(), block_index);
         }
     }
 }
@@ -364,13 +450,18 @@ mod tests {
 
         let pipeline = ShapeRenderSystem::build_pipeline(&window)?;
         let mut shape_chunk_man = ShapeChunkManager::new(pipeline, &window)?;
-        let t80_id =
+        let (t80_id, fut1) =
             shape_chunk_man.upload_mover("T80.SH", DrawSelection::NormalModel, &world, &window)?;
+        let future = shape_chunk_man.finish(&window)?;
 
         let t80_ent1 = world.create_ground_mover(t80_id, Point3::new(0f64, 0f64, 0f64))?;
 
         let mut dispatcher = DispatcherBuilder::new()
-            .with(ShapeRenderSystem::new(shape_chunk_man), "", &[])
+            .with(
+                ShapeRenderSystem::new(shape_chunk_man, window.device()),
+                "",
+                &[],
+            )
             .build();
         world.run(&mut dispatcher);
         let t80_ent2 = world.create_ground_mover(t80_id, Point3::new(0f64, 0f64, 0f64))?;
