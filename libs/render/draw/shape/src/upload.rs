@@ -29,6 +29,7 @@ use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
     time::Instant,
@@ -433,7 +434,7 @@ pub struct Transformer {
     // Note that mutability is an implementation detail here. We could construct
     // a new one for each frame, for each instance, for each transform, but that
     // would get expensive fast and we shouldn't actually be changing the state.
-    vm: Arc<Mutex<Interpreter>>,
+    vm: Arc<RwLock<Interpreter>>,
     code_offset: u32,
     data_offset: u32,
     inputs: Vec<TransformInput>,
