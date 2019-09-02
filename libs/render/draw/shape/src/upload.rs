@@ -29,9 +29,8 @@ use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Instant,
 };
 use vulkano::{
@@ -434,7 +433,7 @@ pub struct Transformer {
     // Note that mutability is an implementation detail here. We could construct
     // a new one for each frame, for each instance, for each transform, but that
     // would get expensive fast and we shouldn't actually be changing the state.
-    vm: RefCell<Interpreter>,
+    vm: Arc<Mutex<Interpreter>>,
     code_offset: u32,
     data_offset: u32,
     inputs: Vec<TransformInput>,
@@ -456,7 +455,7 @@ impl Transformer {
         let bay_position = draw_state.bay_position() as u32;
         let thrust_vectoring = draw_state.thrust_vector_position() as i32 as u32;
         let wing_sweep = i32::from(draw_state.wing_sweep_angle()) as u32;
-        let mut vm = self.vm.borrow_mut();
+        let mut vm = self.vm.write().unwrap();
         let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
         for input in &self.inputs {
             match input {
@@ -712,7 +711,7 @@ impl ShapeUploader {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.borrow().instrs {
+        for instr in &x86.bytecode.read().unwrap().instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -732,7 +731,7 @@ impl ShapeUploader {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.borrow().instrs {
+        for instr in &x86.bytecode.read().unwrap().instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
@@ -1008,7 +1007,7 @@ impl ShapeUploader {
 
         transformers.push(Transformer {
             xform_id,
-            vm: RefCell::new(interp),
+            vm: Arc::new(RwLock::new(interp)),
             code_offset: x86.code_offset(SHAPE_LOAD_BASE),
             data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
             inputs,

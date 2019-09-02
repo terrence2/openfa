@@ -49,7 +49,9 @@ impl World {
     }
 
     pub fn run(&mut self, dispatcher: &mut Dispatcher) {
-        dispatcher.dispatch(&mut self.ecs)
+        println!("RUN:");
+        dispatcher.dispatch(&mut self.ecs);
+        self.ecs.maintain();
     }
 
     pub fn library(&self) -> &Library {

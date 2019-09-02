@@ -130,10 +130,10 @@ mod fs {
         layout(location = 0) out vec4 f_color;
 
         layout(set = 4, binding = 0) uniform sampler2DArray mega_atlas;
-        //layout(set = 5, binding = 1) uniform sampler2DArray nose_art; NOSE\d\d.PIC
-        //layout(set = 5, binding = 2) uniform sampler2DArray left_tail_art; LEFT\d\d.PIC
-        //layout(set = 5, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\d\d.PIC
-        //layout(set = 5, binding = 4) uniform sampler2DArray round_art; ROUND\d\d.PIC
+        //layout(set = 5, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
+        //layout(set = 5, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
+        //layout(set = 5, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
+        //layout(set = 5, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
 
         void main() {
             if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
