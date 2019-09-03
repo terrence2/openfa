@@ -21,12 +21,12 @@ use nalgebra::Point3;
 use pal::Palette;
 use shape_chunk::{DrawSelection, ShapeId};
 use specs::{Builder, Dispatcher, World as SpecsWorld, WorldExt};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub use specs::Entity;
 
 pub struct World {
-    ecs: SpecsWorld,
+    ecs: RwLock<SpecsWorld>,
 
     // Resources
     lib: Arc<Box<Library>>,
@@ -42,16 +42,16 @@ impl World {
         ecs.register::<Transform>();
 
         Ok(Self {
-            ecs,
+            ecs: RwLock::new(ecs),
             palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
             lib,
         })
     }
 
-    pub fn run(&mut self, dispatcher: &mut Dispatcher) {
-        println!("RUN:");
-        dispatcher.dispatch(&mut self.ecs);
-        self.ecs.maintain();
+    pub fn run(&self, dispatcher: &mut Dispatcher) {
+        let mut ecs = self.ecs.write().unwrap();
+        dispatcher.dispatch(&mut ecs);
+        ecs.maintain();
     }
 
     pub fn library(&self) -> &Library {
@@ -63,12 +63,14 @@ impl World {
     }
 
     pub fn create_ground_mover(
-        &mut self,
+        &self,
         shape_id: ShapeId,
         position: Point3<f64>,
     ) -> Fallible<Entity> {
         Ok(self
             .ecs
+            .write()
+            .unwrap()
             .create_entity()
             .with(Transform::new(position))
             .with(WheeledDynamics::new())
@@ -76,8 +78,21 @@ impl World {
             .build())
     }
 
+    pub fn create_flyer(&self, shape_id: ShapeId, position: Point3<f64>) -> Fallible<Entity> {
+        Ok(self
+            .ecs
+            .write()
+            .unwrap()
+            .create_entity()
+            .with(Transform::new(position))
+            .with(WheeledDynamics::new())
+            .with(FlightDynamics::new())
+            .with(ShapeMesh::new(shape_id))
+            .build())
+    }
+
     pub fn destroy_entity(&mut self, entity: Entity) -> Fallible<()> {
-        Ok(self.ecs.delete_entity(entity)?)
+        Ok(self.ecs.write().unwrap().delete_entity(entity)?)
     }
 }
 

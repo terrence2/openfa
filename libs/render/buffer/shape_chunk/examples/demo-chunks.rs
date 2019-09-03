@@ -16,11 +16,10 @@ use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use global_layout::GlobalSets;
 use input::{InputBindings, InputSystem};
-use log::trace;
 use nalgebra::Matrix4;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{ClosedChunk, DrawSelection, DrawState, OpenChunk, Vertex};
+use shape_chunk::{DrawSelection, DrawState, ShapeChunkManager, Vertex};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -52,9 +51,10 @@ mod vs {
             mat4 projection;
         } pc;
 
-        // Per shape input
         const uint MAX_XFORM_ID = 32;
-        layout(set = 3, binding = 0) buffer ChunkBaseTransforms {
+
+        // Per shape input
+        layout(set = 3, binding = 0) buffer ChunkTransforms {
             float data[];
         } shape_transforms;
         layout(set = 3, binding = 1) buffer ChunkFlags {
@@ -250,23 +250,26 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let mut open_chunk = OpenChunk::new(&window)?;
-    open_chunk.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
-    open_chunk.upload_shape(
+    let mut chunk_man = ShapeChunkManager::new(pipeline.clone(), &window)?;
+    let (_f8_id, _) =
+        chunk_man.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
+    let (f18_id, _) = chunk_man.upload_shape(
         "F18.SH",
         DrawSelection::NormalModel,
         &palette,
         &lib,
         &window,
     )?;
-    let (chunk, future) = ClosedChunk::new(open_chunk, pipeline.clone(), &window)?;
+    let future = chunk_man.finish(&window)?;
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let f18_part = chunk.part_for("F18.SH")?;
+    let chunk_index = chunk_man.find_chunk_for_shape(f18_id)?;
+    let chunk = chunk_man.at(chunk_index);
+    let f18_part = chunk.part(f18_id).unwrap();
 
-    // Upload tranforms
-    let transforms = vec![0, 0, 0, 0, 0, 0];
-    let transforms_buffer = CpuAccessibleBuffer::from_iter(
+    // Upload transforms
+    let transforms = vec![0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
+    let transforms_buffer: Arc<CpuAccessibleBuffer<[f32]>> = CpuAccessibleBuffer::from_iter(
         window.device(),
         BufferUsage::all(),
         transforms.iter().cloned(),
@@ -345,7 +348,7 @@ fn main() -> Fallible<()> {
                     command.displacement()?.1 / 4.0,
                 ),
                 "window-cursor-move" => {}
-                _ => trace!("unhandled command: {}", command.name),
+                _ => println!("unhandled command: {}", command.name),
             }
         }
         window.center_cursor()?;
@@ -379,8 +382,8 @@ fn main() -> Fallible<()> {
                     empty0.clone(),
                     empty1.clone(),
                     empty2.clone(),
-                    chunk.atlas_descriptor_set_ref(),
                     shape_descriptor_set.clone(),
+                    chunk.atlas_descriptor_set_ref(),
                 ),
                 push_constants,
             )?;

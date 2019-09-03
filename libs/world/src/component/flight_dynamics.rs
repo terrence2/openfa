@@ -22,3 +22,11 @@ pub struct FlightDynamics {
 impl Component for FlightDynamics {
     type Storage = VecStorage<Self>;
 }
+
+impl FlightDynamics {
+    pub fn new() -> Self {
+        Self {
+            velocity: Vector3::zeros(),
+        }
+    }
+}

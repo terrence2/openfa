@@ -13,11 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod chunk;
+mod chunk_manager;
 mod draw_state;
 mod texture_atlas;
 mod upload;
 
 pub use chunk::{Chunk, ClosedChunk, OpenChunk, ShapeId};
+pub use chunk_manager::{ChunkIndex, ShapeChunkManager};
 pub use draw_state::DrawState;
 pub use upload::{DrawSelection, Vertex};
 
