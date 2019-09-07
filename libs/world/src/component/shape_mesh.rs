@@ -35,4 +35,8 @@ impl ShapeMesh {
     pub fn shape_id(&self) -> ShapeId {
         self.shape_id
     }
+
+    pub fn draw_state(&self) -> &DrawState {
+        &self.draw_state
+    }
 }

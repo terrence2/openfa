@@ -91,7 +91,7 @@ impl World {
             .build())
     }
 
-    pub fn destroy_entity(&mut self, entity: Entity) -> Fallible<()> {
+    pub fn destroy_entity(&self, entity: Entity) -> Fallible<()> {
         Ok(self.ecs.write().unwrap().delete_entity(entity)?)
     }
 }

@@ -27,7 +27,7 @@ use specs::{
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::AutoCommandBufferBuilder,
+    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
     descriptor::descriptor_set::PersistentDescriptorSet,
     framebuffer::Subpass,
     pipeline::{
@@ -161,6 +161,63 @@ mod fs {
     }
 }
 
+impl crate::vs::ty::PushConstantData {
+    fn new() -> Self {
+        Self {
+            view: [
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+            ],
+            projection: [
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+            ],
+        }
+    }
+
+    fn set_view(&mut self, mat: &Matrix4<f32>) {
+        self.view[0][0] = mat[0];
+        self.view[0][1] = mat[1];
+        self.view[0][2] = mat[2];
+        self.view[0][3] = mat[3];
+        self.view[1][0] = mat[4];
+        self.view[1][1] = mat[5];
+        self.view[1][2] = mat[6];
+        self.view[1][3] = mat[7];
+        self.view[2][0] = mat[8];
+        self.view[2][1] = mat[9];
+        self.view[2][2] = mat[10];
+        self.view[2][3] = mat[11];
+        self.view[3][0] = mat[12];
+        self.view[3][1] = mat[13];
+        self.view[3][2] = mat[14];
+        self.view[3][3] = mat[15];
+    }
+
+    fn set_projection(&mut self, mat: &Matrix4<f32>) {
+        self.projection[0][0] = mat[0];
+        self.projection[0][1] = mat[1];
+        self.projection[0][2] = mat[2];
+        self.projection[0][3] = mat[3];
+        self.projection[1][0] = mat[4];
+        self.projection[1][1] = mat[5];
+        self.projection[1][2] = mat[6];
+        self.projection[1][3] = mat[7];
+        self.projection[2][0] = mat[8];
+        self.projection[2][1] = mat[9];
+        self.projection[2][2] = mat[10];
+        self.projection[2][3] = mat[11];
+        self.projection[3][0] = mat[12];
+        self.projection[3][1] = mat[13];
+        self.projection[3][2] = mat[14];
+        self.projection[3][3] = mat[15];
+    }
+}
+
 fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let bindings = InputBindings::new("base")
@@ -171,27 +228,43 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let world = Arc::new(World::new(lib)?);
 
-    let shape_renderer = Arc::new(ShapeRenderer::new(world.clone(), &window)?);
-    let (f8_id, _) = shape_renderer.upload_shape("F8.SH", DrawSelection::NormalModel, &window)?;
-    let (f18_id, _) = shape_renderer.upload_shape("F18.SH", DrawSelection::NormalModel, &window)?;
+    let mut shape_renderer = ShapeRenderer::new(world.clone(), &window)?;
+    let (f8_id, fut1) =
+        shape_renderer.upload_shape("F8.SH", DrawSelection::NormalModel, &window)?;
+    let (f18_id, fut2) =
+        shape_renderer.upload_shape("F18.SH", DrawSelection::NormalModel, &window)?;
     let future = shape_renderer.ensure_uploaded(&window)?;
 
+    assert!(fut1.is_none());
+    assert!(fut2.is_none());
     future.then_signal_fence_and_flush()?.wait(None)?;
 
     let f18_ent1 = world.create_flyer(f18_id, Point3::new(0f64, 0f64, 0f64))?;
     let f18_ent2 = world.create_flyer(f18_id, Point3::new(40f64, -10f64, 10f64))?;
 
     // Pump the renderer once to upload all of our buffers
-    let shape_render_system = ShapeRenderSystem::new(shape_renderer.clone());
-    let mut shape_instance_updater = DispatcherBuilder::new()
-        .with(shape_render_system, "", &[])
-        .build();
-    world.run(&mut shape_instance_updater);
+    {
+        let shape_render_system = ShapeRenderSystem::new(&mut shape_renderer);
+        let mut shape_instance_updater = DispatcherBuilder::new()
+            .with(shape_render_system, "", &[])
+            .build();
+        world.run(&mut shape_instance_updater);
+    }
+
+    let chunks = shape_renderer.chunks();
+    let chunk = chunks.at(shape_renderer.chunks().find_chunk_for_shape(f18_id)?);
+    let f18_part = chunk.part(f18_id).unwrap();
+    let pipeline = shape_renderer.pipeline();
+    let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
+    let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
+    let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
+    let mut push_constants = crate::vs::ty::PushConstantData::new();
 
     /*
     let chunk_index = chunk_man.find_chunk_for_shape(f18_id)?;
     let chunk = chunk_man.at(chunk_index);
     let f18_part = chunk.part(f18_id).unwrap();
+    */
 
     // Upload transforms
     let transforms = vec![0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
@@ -252,11 +325,12 @@ fn main() -> Fallible<()> {
         BufferUsage::all(),
         [f18_part.draw_command(0, 1)].iter().cloned(),
     )?;
-    */
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
-    camera.set_distance(80.0);
+    camera.set_distance(120.0);
     camera.on_mousebutton_down(1);
+    push_constants.set_projection(&camera.projection_matrix());
+    push_constants.set_view(&camera.view_matrix());
 
     window.hide_cursor()?;
     loop {
@@ -288,13 +362,44 @@ fn main() -> Fallible<()> {
                 window.queue().family(),
             )?;
 
+            cbb = shape_renderer.update_buffers(cbb)?;
+
             cbb = cbb.begin_render_pass(
                 frame.framebuffer(&window),
                 false,
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
-            cbb = shape_renderer.render(cbb, &camera, &window)?;
+            cbb = shape_renderer.render(cbb, &camera, &window, &f18_part)?;
+            /*
+            if false {
+                // foo
+                cbb = shape_renderer.blocks()[0].render(
+                    cbb,
+                    shape_renderer.pipeline(),
+                    chunk,
+                    //&push_constants,
+                    &camera,
+                    &window,
+                    f18_part,
+                )?;
+            } else if false {
+                cbb = cbb.draw_indirect(
+                    pipeline.clone(),
+                    &window.dynamic_state,
+                    vec![chunk.vertex_buffer()],
+                    indirect_buffer.clone(),
+                    (
+                        empty0.clone(),
+                        empty1.clone(),
+                        empty2.clone(),
+                        shape_descriptor_set.clone(),
+                        chunk.atlas_descriptor_set_ref(),
+                    ),
+                    push_constants,
+                )?;
+            }
+            */
 
             cbb = cbb.end_render_pass()?;
 

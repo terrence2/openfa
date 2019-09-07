@@ -49,10 +49,6 @@ impl ShapeChunkManager {
 
     // pub fn create_airplane -- need to hook into shape state?
 
-    pub fn get_chunk(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
-        &self.closed_chunks[chunk_index.0]
-    }
-
     pub fn finish(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
         self.finish_open_chunk(window)
     }
@@ -72,11 +68,11 @@ impl ShapeChunkManager {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<(ShapeId, Box<dyn GpuFuture>)> {
+    ) -> Fallible<(ShapeId, Option<Box<dyn GpuFuture>>)> {
         let future = if self.open_chunk.chunk_is_full() {
-            self.finish_open_chunk(window)?
+            Some(self.finish_open_chunk(window)?)
         } else {
-            window.now()
+            None
         };
         let shape_id = self
             .open_chunk
@@ -92,6 +88,10 @@ impl ShapeChunkManager {
             }
         }
         bail!("shape_id {:?} has not been uploaded", shape_id)
+    }
+
+    pub fn get_chunk(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
+        &self.closed_chunks[chunk_index.0]
     }
 
     pub fn at(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
