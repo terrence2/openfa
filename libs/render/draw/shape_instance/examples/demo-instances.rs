@@ -36,7 +36,7 @@ fn main() -> Fallible<()> {
     let world = Arc::new(World::new(lib)?);
 
     let mut shape_renderer = ShapeRenderer::new(world.clone(), &window)?;
-    let (_f8_id, fut1) =
+    let (f8_id, fut1) =
         shape_renderer.upload_shape("F8.SH", DrawSelection::NormalModel, &window)?;
     let (f18_id, fut2) =
         shape_renderer.upload_shape("F18.SH", DrawSelection::NormalModel, &window)?;
@@ -52,7 +52,7 @@ fn main() -> Fallible<()> {
     future.then_signal_fence_and_flush()?.wait(None)?;
 
     let _f18_ent1 = world.create_flyer(f18_id, Point3::new(0f64, 0f64, 0f64))?;
-    let _f18_ent2 = world.create_flyer(f18_id, Point3::new(40f64, -10f64, 10f64))?;
+    let _f18_ent2 = world.create_flyer(f8_id, Point3::new(80f64, 0f64, 120f64))?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_distance(120.0);
@@ -113,5 +113,7 @@ fn main() -> Fallible<()> {
 
             frame.submit(cb, &mut window)?;
         }
+
+        shape_renderer.maintain();
     }
 }

@@ -32,4 +32,16 @@ impl Transform {
             rotation: UnitQuaternion::identity(),
         }
     }
+
+    // Convert to dense pack for upload.
+    pub fn compact(&self) -> [f32; 6] {
+        [
+            self.position.x as f32,
+            self.position.y as f32,
+            self.position.z as f32,
+            0f32,
+            0f32,
+            0f32,
+        ]
+    }
 }

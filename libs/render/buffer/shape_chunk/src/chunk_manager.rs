@@ -90,6 +90,15 @@ impl ShapeChunkManager {
         bail!("shape_id {:?} has not been uploaded", shape_id)
     }
 
+    pub fn get_chunk_for_shape(&self, shape_id: ShapeId) -> Fallible<&ClosedChunk> {
+        for chunk in self.closed_chunks.iter() {
+            if chunk.part(shape_id).is_some() {
+                return Ok(chunk);
+            }
+        }
+        bail!("shape_id {:?} has not been uploaded", shape_id)
+    }
+
     pub fn get_chunk(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
         &self.closed_chunks[chunk_index.0]
     }

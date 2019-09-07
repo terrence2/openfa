@@ -16,31 +16,15 @@ use camera::CameraAbstract;
 use failure::{bail, ensure, Fallible};
 use global_layout::GlobalSets;
 use nalgebra::Matrix4;
-use nalgebra::Point3;
-use omnilib::OmniLib;
-use shape_chunk::{
-    Chunk, ChunkIndex, ChunkPart, ClosedChunk, DrawSelection, DrawState, OpenChunk,
-    ShapeChunkManager, ShapeId, Vertex,
-};
-use specs::{
-    world::Index as EntityId, DispatcherBuilder, Entities, Join, ReadStorage, System, VecStorage,
-};
-use std::{
-    collections::HashMap,
-    mem,
-    sync::{Arc, RwLock},
-    time::Instant,
-};
-use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
+use shape_chunk::{ChunkIndex, ClosedChunk, DrawSelection, ShapeChunkManager, ShapeId, Vertex};
+use specs::{world::Index as EntityId, Entities, Join, ReadStorage, System};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferAccess, BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::DrawIndirectCommand,
+    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     framebuffer::Subpass,
-    instance::QueueFamily,
     pipeline::{
         depth_stencil::{Compare, DepthBounds, DepthStencil},
         GraphicsPipeline, GraphicsPipelineAbstract,
@@ -50,7 +34,7 @@ use vulkano::{
 use window::GraphicsWindow;
 use world::{
     component::{ShapeMesh, Transform},
-    Entity, World,
+    World,
 };
 
 mod vs {
@@ -121,7 +105,11 @@ mod vs {
                 xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
             }
 
-            gl_Position = pc.projection * pc.view * matrix_for_xform(transform) * matrix_for_xform(xform) * vec4(position, 1.0);
+            gl_Position = pc.projection *
+                          pc.view *
+                          matrix_for_xform(transform) *
+                          matrix_for_xform(xform) *
+                          vec4(position, 1.0);
             v_color = color;
             v_tex_coord = tex_coord;
 
@@ -249,6 +237,7 @@ pub struct DynamicInstanceBlock {
     // Map from the entity to the stored offset and from the offset to the entity.
     slot_reservations: [Option<EntityId>; BLOCK_SIZE],
     entity_to_slot_map: HashMap<EntityId, SlotIndex>,
+    reservation_offset: usize,       // bump head
     mark_buffer: [bool; BLOCK_SIZE], // GC marked set
 
     descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
@@ -262,6 +251,7 @@ pub struct DynamicInstanceBlock {
     // Buffers for all instances stored in this instance set. One command per unique entity.
     // 16 bytes per entity; index unnecessary for draw
     command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
+    command_upload_set: Vec<usize>,
     command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
     command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
 
@@ -278,8 +268,9 @@ pub struct DynamicInstanceBlock {
     flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
 
     // 4 bytes per entity; can infer position from index
-    xform_index_buffer: Arc<DeviceLocalBuffer<[i32; BLOCK_SIZE]>>,
-    xform_index_buffer_pool: CpuBufferPool<[i32; BLOCK_SIZE]>,
+    xform_index_buffer_scratch: [u32; BLOCK_SIZE],
+    xform_index_buffer_pool: CpuBufferPool<[u32; BLOCK_SIZE]>,
+    xform_index_buffer: Arc<DeviceLocalBuffer<[u32; BLOCK_SIZE]>>,
 
     // 0 to 14 position/orientation [f32; 6], depending on the shape.
     // assume 96 bytes per entity if we're talking about planes
@@ -295,7 +286,7 @@ impl DynamicInstanceBlock {
         command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
         transform_buffer_pool: CpuBufferPool<[f32; 6]>,
         flag_buffer_pool: CpuBufferPool<[u32; 2]>,
-        xform_index_buffer_pool: CpuBufferPool<[i32; BLOCK_SIZE]>,
+        xform_index_buffer_pool: CpuBufferPool<[u32; BLOCK_SIZE]>,
         xform_buffer_pool: CpuBufferPool<[[f32; 6]; 14 * BLOCK_SIZE]>,
         device: Arc<Device>,
     ) -> Fallible<Self> {
@@ -339,6 +330,7 @@ impl DynamicInstanceBlock {
             chunk_index,
             slot_reservations: [None; BLOCK_SIZE],
             entity_to_slot_map: HashMap::new(),
+            reservation_offset: 0,
             mark_buffer: [false; BLOCK_SIZE],
             descriptor_set,
             pds0: GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?,
@@ -351,6 +343,7 @@ impl DynamicInstanceBlock {
                 first_instance: 0u32,
             }; BLOCK_SIZE],
             command_buffer_pool,
+            command_upload_set: Vec::new(),
             command_buffer,
             transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
             transform_buffer_pool,
@@ -358,49 +351,81 @@ impl DynamicInstanceBlock {
             flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
             flag_buffer_pool,
             flag_buffer,
-            xform_index_buffer,
+            xform_index_buffer_scratch: [0u32; BLOCK_SIZE],
             xform_index_buffer_pool,
+            xform_index_buffer,
             xform_buffer,
             xform_buffer_pool,
         })
     }
 
-    fn reserve_slot_for(&mut self, slot: SlotIndex, id: EntityId) {
+    // We expect entities to be added and removed frequently, but not every entity on every frame.
+    // We take some pains here to make sure we only copy change entities up to the GPU each frame.
+    fn allocate_entity_slot(
+        &mut self,
+        id: EntityId,
+        chunk_index: ChunkIndex,
+        draw_command: DrawIndirectCommand,
+    ) -> Option<SlotIndex> {
+        if chunk_index != self.chunk_index {
+            return None; // block not for this chunk
+        }
+
+        // GC compacts all ids so that allocation can just bump.
+        if self.reservation_offset >= BLOCK_SIZE {
+            return None; // block full
+        }
+        let slot = SlotIndex(self.reservation_offset);
+        self.reservation_offset += 1;
         self.slot_reservations[slot.0] = Some(id);
         self.entity_to_slot_map.insert(id, slot);
-        /*
-        let foo = &mut self.command_buffer_scratch[slot.0];
-        foo.vertex_count = 10;
-        foo.instance_count = 1;
-        */
+
+        // Update the draw commands and add an upload slot for the new one.
+        self.command_buffer_scratch[slot.0] = draw_command;
+        self.command_upload_set.push(slot.0);
+
+        Some(slot)
     }
 
-    fn find_free_slot(&self) -> Option<SlotIndex> {
-        for (slot_offset, entity_id) in self.slot_reservations.iter().enumerate() {
-            if entity_id.is_none() {
-                return Some(SlotIndex(slot_offset));
+    // Lookup the existing slot (may be newly created), return the slot index for direct O(1)
+    // access to all of the scratch buffers we need to update. Also marks the entity as alive.
+    fn get_existing_slot(&mut self, id: EntityId) -> SlotIndex {
+        assert!(self.entity_to_slot_map.contains_key(&id));
+        let slot = *self.entity_to_slot_map.get(&id).unwrap();
+        self.mark_buffer[slot.0] = true;
+        slot
+    }
+
+    // Maintain is our GC routine. It must be called at the end of every frame.
+    fn maintain(&mut self) {
+        fn swap<T>(arr: &mut [T], a: usize, b: usize)
+        where
+            T: Copy,
+        {
+            let tmp = arr[a];
+            arr[a] = arr[b];
+            arr[b] = tmp;
+        }
+
+        let mut head = 0;
+        let mut tail = self.reservation_offset - 1;
+
+        // Walk from the front of the buffer to the end of the buffer. If an entity is not marked,
+        // swap it with the tail and shrink the buffer.
+        while head < tail {
+            if !self.mark_buffer[head] {
+                swap(&mut self.mark_buffer, head, tail);
+                swap(&mut self.command_buffer_scratch, head, tail);
+                swap(&mut self.transform_buffer_scratch, head, tail);
+                swap(&mut self.flag_buffer_scratch, head, tail);
+                swap(&mut self.xform_index_buffer_scratch, head, tail);
+                tail -= 1;
+            } else {
+                // Note that we need to re-check head in case tail was itself unmarked.
+                head += 1;
             }
         }
-        None
-    }
-
-    fn reserve_free_slot(&mut self, id: EntityId, chunk_index: ChunkIndex) -> Option<SlotIndex> {
-        if chunk_index != self.chunk_index {
-            return None;
-        }
-        let maybe_slot_index = self.find_free_slot();
-        if let Some(slot_index) = maybe_slot_index {
-            self.reserve_slot_for(slot_index, id);
-        }
-        maybe_slot_index
-    }
-
-    fn get_existing_slot(&mut self, id: EntityId) -> SlotIndex {
-        *self.entity_to_slot_map.get(&id).unwrap()
-    }
-
-    fn get_command_buffer_slot(&mut self, slot_index: SlotIndex) -> &mut DrawIndirectCommand {
-        &mut self.command_buffer_scratch[slot_index.0]
+        self.reservation_offset = tail + 1;
     }
 
     fn get_transform_buffer_slot(&mut self, slot_index: SlotIndex) -> &mut [f32; 6] {
@@ -411,19 +436,9 @@ impl DynamicInstanceBlock {
         &mut self.flag_buffer_scratch[slot_index.0]
     }
 
-    /*
-    fn get_upload_buffer(&mut self, slot_index: SlotIndex) -> Fallible<()> {
-        self.mark_buffer[slot_index.0] = true;
-
-        Ok(())
-    }
-    */
-
     fn update_buffers(
         &self,
         mut cbb: AutoCommandBufferBuilder,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        chunk: &ClosedChunk,
     ) -> Fallible<AutoCommandBufferBuilder> {
         let dic = self.command_buffer_scratch.to_vec();
         let command_buffer_upload = self.command_buffer_pool.chunk(dic)?;
@@ -442,7 +457,7 @@ impl DynamicInstanceBlock {
 
     pub fn render(
         &self,
-        mut cbb: AutoCommandBufferBuilder,
+        cbb: AutoCommandBufferBuilder,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         chunk: &ClosedChunk,
         camera: &dyn CameraAbstract,
@@ -457,7 +472,9 @@ impl DynamicInstanceBlock {
             pipeline.clone(),
             &window.dynamic_state,
             vec![chunk.vertex_buffer()],
-            ib.into_buffer_slice().slice(0..1).unwrap(),
+            ib.into_buffer_slice()
+                .slice(0..self.reservation_offset)
+                .unwrap(),
             (
                 self.pds0.clone(),
                 self.pds1.clone(),
@@ -474,6 +491,7 @@ pub struct ShapeRenderer {
     device: Arc<Device>,
     world: Arc<World>,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    start_time: Instant,
 
     // TODO: push mutability down further -- we'd like to parallelize upload, but in practice we
     // TODO: can currently push all shapes into chunks in under a second, so it may not matter.
@@ -495,7 +513,7 @@ pub struct ShapeRenderer {
     command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
     transform_buffer_pool: CpuBufferPool<[f32; 6]>,
     flag_buffer_pool: CpuBufferPool<[u32; 2]>,
-    xform_index_buffer_pool: CpuBufferPool<[i32; BLOCK_SIZE]>,
+    xform_index_buffer_pool: CpuBufferPool<[u32; BLOCK_SIZE]>,
     xform_buffer_pool: CpuBufferPool<[[f32; 6]; 14 * BLOCK_SIZE]>, // FIXME: hunt down this max somewhere
 }
 
@@ -507,6 +525,7 @@ impl ShapeRenderer {
             device: window.device(),
             world,
             pipeline,
+            start_time: Instant::now(),
             chunks,
             blocks: Vec::new(),
             upload_block_map: HashMap::new(),
@@ -572,12 +591,18 @@ impl ShapeRenderer {
         self.chunks.finish(window)
     }
 
-    // First fit: find the first block with a free upload slot.
-    fn reserve_free_slot(
+    fn knows_entity(&self, id: EntityId) -> bool {
+        self.upload_block_map.contains_key(&id)
+    }
+
+    fn allocate_entity_slot(
         &mut self,
         id: EntityId,
         shape_id: ShapeId,
-    ) -> Fallible<(BlockIndex, SlotIndex)> {
+        draw_command: DrawIndirectCommand,
+    ) -> Fallible<()> {
+        assert!(!self.knows_entity(id));
+
         let chunk_index = self.chunks.find_chunk_for_shape(shape_id)?;
 
         // Note that we do not bother sorting blocks by chunk because we only have to care about
@@ -585,8 +610,9 @@ impl ShapeRenderer {
         // non-matching blocks. The assumption is that we will have few enough chunks that a large
         // fraction of blocks will be relevant, usually.
         for (block_index, block) in self.blocks.iter_mut().enumerate() {
-            if let Some(slot_index) = block.reserve_free_slot(id, chunk_index) {
-                return Ok((BlockIndex(block_index), slot_index));
+            if let Some(_) = block.allocate_entity_slot(id, chunk_index, draw_command) {
+                self.upload_block_map.insert(id, BlockIndex(block_index));
+                return Ok(());
             }
         }
 
@@ -602,24 +628,22 @@ impl ShapeRenderer {
             self.xform_buffer_pool.clone(),
             self.device.clone(),
         )?;
-        let slot_index = block.reserve_free_slot(id, chunk_index).unwrap();
+        block
+            .allocate_entity_slot(id, chunk_index, draw_command)
+            .unwrap();
         self.blocks.push(block);
         self.upload_block_map.insert(id, next_block_index);
-        Ok((next_block_index, slot_index))
+        Ok(())
     }
 
-    pub fn ensure_entity_slot(
-        &mut self,
-        id: EntityId,
-        shape_id: ShapeId,
-    ) -> Fallible<(BlockIndex, SlotIndex)> {
-        // Fast path: in most cases we'll already have a block.
-        if let Some(&block_index) = self.upload_block_map.get(&id) {
-            let slot_index = self.blocks[block_index.0].get_existing_slot(id);
-            return Ok((block_index, slot_index));
-        }
+    fn get_entity_block_mut(&mut self, id: EntityId) -> &mut DynamicInstanceBlock {
+        let block_index = self.upload_block_map[&id];
+        &mut self.blocks[block_index.0]
+    }
 
-        self.reserve_free_slot(id, shape_id)
+    fn get_entity_block(&self, id: EntityId) -> &DynamicInstanceBlock {
+        let block_index = self.upload_block_map[&id];
+        &self.blocks[block_index.0]
     }
 
     pub fn chunks(&self) -> &ShapeChunkManager {
@@ -630,28 +654,8 @@ impl ShapeRenderer {
         &self.blocks
     }
 
-    fn get_chunk_for_slot(&self, index: (BlockIndex, SlotIndex)) -> &ClosedChunk {
-        let (block_index, _) = index;
-        let block = &self.blocks[block_index.0];
+    fn get_chunk_for_block(&self, block: &DynamicInstanceBlock) -> &ClosedChunk {
         self.chunks.at(block.chunk_index)
-    }
-
-    fn get_command_buffer_slot(
-        &mut self,
-        index: (BlockIndex, SlotIndex),
-    ) -> &mut DrawIndirectCommand {
-        let (block_index, slot_index) = index;
-        self.blocks[block_index.0].get_command_buffer_slot(slot_index)
-    }
-
-    fn get_transform_buffer_slot(&mut self, index: (BlockIndex, SlotIndex)) -> &mut [f32; 6] {
-        let (block_index, slot_index) = index;
-        self.blocks[block_index.0].get_transform_buffer_slot(slot_index)
-    }
-
-    fn get_flag_buffer_slot(&mut self, index: (BlockIndex, SlotIndex)) -> &mut [u32; 2] {
-        let (block_index, slot_index) = index;
-        self.blocks[block_index.0].get_flag_buffer_slot(slot_index)
     }
 
     pub fn update_buffers(
@@ -659,8 +663,7 @@ impl ShapeRenderer {
         mut cbb: AutoCommandBufferBuilder,
     ) -> Fallible<AutoCommandBufferBuilder> {
         for block in self.blocks.iter() {
-            let chunk = self.chunks.get_chunk(block.chunk_index);
-            cbb = block.update_buffers(cbb, self.pipeline(), &chunk)?;
+            cbb = block.update_buffers(cbb)?;
         }
         Ok(cbb)
     }
@@ -677,6 +680,12 @@ impl ShapeRenderer {
             cbb = block.render(cbb, self.pipeline(), &chunk, camera, window)?;
         }
         Ok(cbb)
+    }
+
+    pub fn maintain(&mut self) {
+        for block in self.blocks.iter_mut() {
+            block.maintain();
+        }
     }
 }
 
@@ -701,28 +710,38 @@ impl<'a, 'b> System<'a> for ShapeRenderSystem<'b> {
     );
 
     fn run(&mut self, (entities, transform, shape_mesh): Self::SystemData) {
+        let start_time = self.renderer.start_time;
         for (entity, transform, shape_mesh) in (&entities, &transform, &shape_mesh).join() {
-            let index = self
-                .renderer
-                .ensure_entity_slot(entity.id(), shape_mesh.shape_id())
-                .expect("unable to reserve instance slot");
+            if !self.renderer.knows_entity(entity.id()) {
+                let chunk = self
+                    .renderer
+                    .chunks()
+                    .get_chunk_for_shape(shape_mesh.shape_id())
+                    .expect("adding an instance for a non-existing shape");
+                let chunk_part = chunk.part(shape_mesh.shape_id()).unwrap();
+                let draw_command = chunk_part.draw_command(0, 1);
+                self.renderer
+                    .allocate_entity_slot(entity.id(), shape_mesh.shape_id(), draw_command)
+                    .expect("unable to reserve instance slot");
+            }
+            let errata = {
+                let block = self.renderer.get_entity_block(entity.id());
+                let chunk = self.renderer.get_chunk_for_block(block);
+                let chunk_part = chunk.part(shape_mesh.shape_id()).unwrap();
+                chunk_part.widgets().errata()
+            };
+            let block = self.renderer.get_entity_block_mut(entity.id());
+            let slot = block.get_existing_slot(entity.id());
 
             // Push all.
-            let chunk = self.renderer.get_chunk_for_slot(index);
-            let chunk_part = chunk.part(shape_mesh.shape_id()).unwrap();
-            let errata = chunk_part.widgets().errata();
-            *self.renderer.get_command_buffer_slot(index) = chunk_part.draw_command(0, 1);
-            *self.renderer.get_transform_buffer_slot(index) = [0f32; 6];
-            let flag_slot = self.renderer.get_flag_buffer_slot(index);
+            *block.get_transform_buffer_slot(slot) = transform.compact();
+            let flag_slot = block.get_flag_buffer_slot(slot);
 
             // FIXME: get time start somehow
             shape_mesh
                 .draw_state()
-                .build_mask_into(&Instant::now(), errata, flag_slot);
-
-            //let foo = self.acquire_upload_buffers(block_index, slot_index);
-            //self.blocks[block_index];
-            //println!("{:?} => block_index: {:?}", entity.id(), block_index);
+                .build_mask_into(&start_time, errata, flag_slot)
+                .expect("failed to build flags for shape");
         }
     }
 }
@@ -730,6 +749,9 @@ impl<'a, 'b> System<'a> for ShapeRenderSystem<'b> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nalgebra::Point3;
+    use omnilib::OmniLib;
+    use specs::DispatcherBuilder;
     use vulkano::pipeline::GraphicsPipeline;
     use window::GraphicsConfigBuilder;
     use world::World;
@@ -759,7 +781,7 @@ mod tests {
         world.run(&mut dispatcher);
         let t80_ent2 = world.create_ground_mover(t80_id, Point3::new(0f64, 0f64, 0f64))?;
         world.run(&mut dispatcher);
-        let t80_ent3 = world.create_ground_mover(t80_id, Point3::new(0f64, 0f64, 0f64))?;
+        let _t80_ent3 = world.create_ground_mover(t80_id, Point3::new(0f64, 0f64, 0f64))?;
         world.run(&mut dispatcher);
 
         world.destroy_entity(t80_ent2)?;
@@ -770,66 +792,3 @@ mod tests {
         Ok(())
     }
 }
-
-/*
-// Types of data we want to be able to deal with.
-//
-// Static Immortal:
-//   CommandBuf: [ Name1(0...N), Name2(0...M), ...]
-//   BaseBuffer: [A, A, A, ... A{N}, B, B, B, ... B{M}]; A/B: [f32; 6]
-//   FlagsBuffer: []
-//   XFormBuffer: []
-//
-// We need to accumulate before uploading the command buffer, which means we need to be
-// careful with the order in BaseBuffer. Assert that there are no xforms or flags on any of these.
-// How much can we simplify the renderer if we know there are no xforms?
-//
-// Xforms vs no xforms -- most shapes have no xforms, even if they can be destroyed, or
-// move around and be destroyed. How much can we simplify the renderer if we don't have
-// xforms? Probably quite a bit. Is it worth having two pipelines? Benchmark to figure out
-// how many fully dynamic shapes we can have.
-//
-// Fully dynamic:
-//   CommandBuf: [ E0, E1, E2, E3, ... EN ]  <- updated on add/remove entity (as are all)
-//   BaseBuffer: [ B0, B1, B2, B3, ... BN ]  <- updated every frame for movers, never for static
-//   FlagsBuffer: [ F0, F1, F2, F3, ... FN ] <- updated occasionally
-//   XformBuffer: [ X0..M, X0...L, X0...H ... X0...I ] <- updated every frame for some things
-//
-// Implement fullest feature set first. If we can render a million SOLDIER.SH, we can easily
-// render a million TREE.SH.
-
-pub struct OpenChunkInstance {
-    open_chunk: OpenChunk,
-    command_buf: Vec<Entity>,
-    base_buffer: Vec<Matrix4<f32>>,
-    flags_buffer: Vec<[u32; 2]>,
-}
-
-pub struct InstanceSet {
-    // Offset of the chunk these instances draw from.
-    chunk_reference: usize,
-
-    // Buffers for all instances stored in this instance set. One command per unique entity.
-    // 16 bytes per entity; index unnecessary for draw
-    command_buf: CpuAccessibleBuffer<[DrawIndirectCommand]>,
-
-    // Base position and orientation in xyz+euler angles stored as 6 adjacent floats.
-    // 24 bytes per entity; buffer index inferable from drawing index
-    base_buffer: CpuAccessibleBuffer<[f32]>, // Flags buffers
-
-    // 2 32bit flags words for each entity.
-    // 8 bytes per entity; buffer index inferable from drawing index
-    flags_buffer: CpuAccessibleBuffer<[u32]>,
-
-    // 0 to 14 position/orientation [f32; 6], depending on the shape.
-    // assume 240 bytes per entity if we're talking about planes
-    // cannot infer position, so needs an index buffer
-    xform_buffer: CpuAccessibleBuffer<[f32]>,
-
-    // 4 bytes per entity; can infer position from index
-    xform_index_buffer: CpuAccessibleBuffer<[i32]>,
-    //
-    // Total cost per entity is: 16 + 24 + 8 + 240 + 4 ~ 300 bytes per entity
-    // We cannot really upload more than 1MiB per frame, so... ~3000 planes
-}
-*/
