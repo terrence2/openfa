@@ -365,7 +365,7 @@ impl DynamicInstanceBlock {
         &mut self,
         id: EntityId,
         chunk_index: ChunkIndex,
-        draw_command: DrawIndirectCommand,
+        mut draw_command: DrawIndirectCommand,
     ) -> Option<SlotIndex> {
         if chunk_index != self.chunk_index {
             return None; // block not for this chunk
@@ -381,6 +381,7 @@ impl DynamicInstanceBlock {
         self.entity_to_slot_map.insert(id, slot);
 
         // Update the draw commands and add an upload slot for the new one.
+        draw_command.first_instance = slot.0 as u32;
         self.command_buffer_scratch[slot.0] = draw_command;
         self.command_upload_set.push(slot.0);
 
