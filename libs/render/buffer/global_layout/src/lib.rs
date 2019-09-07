@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 pub enum GlobalSets {
+    Global = 0,
     Atmosphere = 1,
     Stars = 2,
     ShapeBuffers = 3,

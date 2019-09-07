@@ -19,6 +19,8 @@ use nalgebra::Matrix4;
 use shape_chunk::{ChunkIndex, ClosedChunk, DrawSelection, ShapeChunkManager, ShapeId, Vertex};
 use specs::{world::Index as EntityId, Entities, Join, ReadStorage, System};
 use std::{collections::HashMap, sync::Arc, time::Instant};
+use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSetBuilderArray;
 use vulkano::{
     buffer::{BufferAccess, BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand},
@@ -53,6 +55,10 @@ mod vs {
             mat4 view;
             mat4 projection;
         } pc;
+
+        layout(set = 0, binding = 0) buffer GlobalData {
+            int dummy;
+        } globals;
 
         // Per shape input
         const uint MAX_XFORM_ID = 32;
@@ -283,6 +289,7 @@ impl DynamicInstanceBlock {
     fn new(
         chunk_index: ChunkIndex,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+        base_descriptors: &[Arc<dyn DescriptorSet + Send + Sync>],
         command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
         transform_buffer_pool: CpuBufferPool<[f32; 6]>,
         flag_buffer_pool: CpuBufferPool<[u32; 2]>,
@@ -333,9 +340,9 @@ impl DynamicInstanceBlock {
             reservation_offset: 0,
             mark_buffer: [false; BLOCK_SIZE],
             descriptor_set,
-            pds0: GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?,
-            pds1: GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?,
-            pds2: GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?,
+            pds0: base_descriptors[0].clone(),
+            pds1: base_descriptors[1].clone(),
+            pds2: base_descriptors[2].clone(),
             command_buffer_scratch: [DrawIndirectCommand {
                 vertex_count: 0u32,
                 instance_count: 0u32,
@@ -493,6 +500,7 @@ pub struct ShapeRenderer {
     world: Arc<World>,
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     start_time: Instant,
+    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
 
     // TODO: push mutability down further -- we'd like to parallelize upload, but in practice we
     // TODO: can currently push all shapes into chunks in under a second, so it may not matter.
@@ -522,11 +530,24 @@ impl ShapeRenderer {
     pub fn new(world: Arc<World>, window: &GraphicsWindow) -> Fallible<Self> {
         let pipeline = Self::build_pipeline(&window)?;
         let chunks = ShapeChunkManager::new(pipeline.clone(), &window)?;
+
+        //let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
+        let globals_buffer =
+            CpuAccessibleBuffer::from_data(window.device(), BufferUsage::all(), 0u32)?;
+        let global0 = Arc::new(
+            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Global.into())
+                .add_buffer(globals_buffer)?
+                .build()?,
+        );
+        let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
+        let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
+
         Ok(Self {
             device: window.device(),
             world,
             pipeline,
             start_time: Instant::now(),
+            base_descriptors: [global0, empty1, empty2],
             chunks,
             blocks: Vec::new(),
             upload_block_map: HashMap::new(),
@@ -622,6 +643,7 @@ impl ShapeRenderer {
         let mut block = DynamicInstanceBlock::new(
             chunk_index,
             self.pipeline.clone(),
+            &self.base_descriptors,
             self.command_buffer_pool.clone(),
             self.transform_buffer_pool.clone(),
             self.flag_buffer_pool.clone(),
