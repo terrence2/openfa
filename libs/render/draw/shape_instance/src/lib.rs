@@ -445,14 +445,12 @@ impl DynamicInstanceBlock {
         mut cbb: AutoCommandBufferBuilder,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         chunk: &ClosedChunk,
-        push_constants: &vs::ty::PushConstantData,
         camera: &dyn CameraAbstract,
         window: &GraphicsWindow,
-        f18_part: &ChunkPart,
     ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut local_push_constants = vs::ty::PushConstantData::new();
-        local_push_constants.set_projection(&camera.projection_matrix());
-        local_push_constants.set_view(&camera.view_matrix());
+        let mut push_constants = vs::ty::PushConstantData::new();
+        push_constants.set_projection(&camera.projection_matrix());
+        push_constants.set_view(&camera.view_matrix());
 
         let ib = self.command_buffer.clone();
         Ok(cbb.draw_indirect(
@@ -672,25 +670,11 @@ impl ShapeRenderer {
         mut cbb: AutoCommandBufferBuilder,
         camera: &dyn CameraAbstract,
         window: &GraphicsWindow,
-        f18_part: &ChunkPart,
     ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut push_constants = vs::ty::PushConstantData::new();
-        push_constants.set_projection(&camera.projection_matrix());
-        push_constants.set_view(&camera.view_matrix());
-
         let chunk_man = &self.chunks;
         for block in self.blocks.iter() {
             let chunk = chunk_man.get_chunk(block.chunk_index);
-            println!("at chunk: {:?}", block.chunk_index);
-            cbb = block.render(
-                cbb,
-                self.pipeline(),
-                &chunk,
-                &push_constants,
-                camera,
-                window,
-                f18_part,
-            )?;
+            cbb = block.render(cbb, self.pipeline(), &chunk, camera, window)?;
         }
         Ok(cbb)
     }

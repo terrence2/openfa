@@ -12,211 +12,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::{ArcBallCamera, CameraAbstract};
+use camera::ArcBallCamera;
 use failure::Fallible;
-use global_layout::GlobalSets;
 use input::{InputBindings, InputSystem};
-use nalgebra::{Matrix4, Point3};
+use nalgebra::Point3;
 use omnilib::OmniLib;
-use pal::Palette;
-use shape_chunk::{DrawSelection, DrawState, ShapeChunkManager, Vertex};
+use shape_chunk::DrawSelection;
 use shape_instance::{ShapeRenderSystem, ShapeRenderer};
-use specs::{
-    world::Index as EntityId, DispatcherBuilder, Entities, Join, ReadStorage, System, VecStorage,
-};
-use std::{sync::Arc, time::Instant};
-use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
-    descriptor::descriptor_set::PersistentDescriptorSet,
-    framebuffer::Subpass,
-    pipeline::{
-        depth_stencil::{Compare, DepthBounds, DepthStencil},
-        GraphicsPipeline, GraphicsPipelineAbstract,
-    },
-    sync::GpuFuture,
-};
+use specs::DispatcherBuilder;
+use std::sync::Arc;
+use vulkano::{command_buffer::AutoCommandBufferBuilder, sync::GpuFuture};
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use world::World;
-
-mod vs {
-    use vulkano_shaders::shader;
-
-    shader! {
-    ty: "vertex",
-    include: ["./libs/render"],
-    src: "
-        #version 450
-        #include <common/include/include_global.glsl>
-        #include <buffer/shape_chunk/src/include_shape.glsl>
-
-        // Scene info
-        layout(push_constant) uniform PushConstantData {
-            mat4 view;
-            mat4 projection;
-        } pc;
-
-        const uint MAX_XFORM_ID = 32;
-
-        // Per shape input
-        layout(set = 3, binding = 0) buffer ChunkTransforms {
-            float data[];
-        } shape_transforms;
-        layout(set = 3, binding = 1) buffer ChunkFlags {
-            uint data[];
-        } shape_flags;
-        layout(set = 3, binding = 2) buffer ChunkXforms {
-            float data[];
-        } shape_xforms;
-        layout(set = 3, binding = 3) buffer ChunkXformOffsets {
-            uint data[];
-        } shape_xform_offsets;
-
-        // Per Vertex input
-        layout(location = 0) in vec3 position;
-        layout(location = 1) in vec4 color;
-        layout(location = 2) in vec2 tex_coord;
-        layout(location = 3) in uint flags0;
-        layout(location = 4) in uint flags1;
-        layout(location = 5) in uint xform_id;
-
-        layout(location = 0) smooth out vec4 v_color;
-        layout(location = 1) smooth out vec2 v_tex_coord;
-        layout(location = 2) flat out uint f_flags0;
-        layout(location = 3) flat out uint f_flags1;
-
-        void main() {
-            uint base_transform = gl_InstanceIndex * 6;
-            uint base_flag = gl_InstanceIndex * 2;
-            uint base_xform = shape_xform_offsets.data[gl_InstanceIndex];
-
-            float transform[6] = {
-                shape_transforms.data[base_transform + 0],
-                shape_transforms.data[base_transform + 1],
-                shape_transforms.data[base_transform + 2],
-                shape_transforms.data[base_transform + 3],
-                shape_transforms.data[base_transform + 4],
-                shape_transforms.data[base_transform + 5]
-            };
-            float xform[6] = {0, 0, 0, 0, 0, 0};
-            if (xform_id < MAX_XFORM_ID) {
-                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
-                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
-                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
-                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
-                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
-                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
-            }
-
-            gl_Position = pc.projection * pc.view * matrix_for_xform(transform) * matrix_for_xform(xform) * vec4(position, 1.0);
-            v_color = color;
-            v_tex_coord = tex_coord;
-
-            f_flags0 = flags0 & shape_flags.data[base_flag + 0];
-            f_flags1 = flags1 & shape_flags.data[base_flag + 1];
-        }"
-    }
-}
-
-mod fs {
-    use vulkano_shaders::shader;
-
-    shader! {
-    ty: "fragment",
-    include: ["./libs/render"],
-    src: "
-        #version 450
-
-        layout(location = 0) smooth in vec4 v_color;
-        layout(location = 1) smooth in vec2 v_tex_coord;
-        layout(location = 2) flat in uint f_flags0;
-        layout(location = 3) flat in uint f_flags1;
-
-        layout(location = 0) out vec4 f_color;
-
-        layout(set = 4, binding = 0) uniform sampler2DArray mega_atlas;
-        //layout(set = 5, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
-        //layout(set = 5, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
-        //layout(set = 5, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
-        //layout(set = 5, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
-
-        void main() {
-            if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
-                discard;
-            } else if (v_tex_coord.x == 0.0) {
-                f_color = v_color;
-            } else {
-                vec4 tex_color = texture(mega_atlas, vec3(v_tex_coord, 0));
-
-                if ((f_flags0 & 1) == 1) {
-                    f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
-                } else {
-                    if (tex_color.a < 0.5)
-                        discard;
-                    else
-                        f_color = tex_color;
-                }
-            }
-        }"
-    }
-}
-
-impl crate::vs::ty::PushConstantData {
-    fn new() -> Self {
-        Self {
-            view: [
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-            ],
-            projection: [
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
-            ],
-        }
-    }
-
-    fn set_view(&mut self, mat: &Matrix4<f32>) {
-        self.view[0][0] = mat[0];
-        self.view[0][1] = mat[1];
-        self.view[0][2] = mat[2];
-        self.view[0][3] = mat[3];
-        self.view[1][0] = mat[4];
-        self.view[1][1] = mat[5];
-        self.view[1][2] = mat[6];
-        self.view[1][3] = mat[7];
-        self.view[2][0] = mat[8];
-        self.view[2][1] = mat[9];
-        self.view[2][2] = mat[10];
-        self.view[2][3] = mat[11];
-        self.view[3][0] = mat[12];
-        self.view[3][1] = mat[13];
-        self.view[3][2] = mat[14];
-        self.view[3][3] = mat[15];
-    }
-
-    fn set_projection(&mut self, mat: &Matrix4<f32>) {
-        self.projection[0][0] = mat[0];
-        self.projection[0][1] = mat[1];
-        self.projection[0][2] = mat[2];
-        self.projection[0][3] = mat[3];
-        self.projection[1][0] = mat[4];
-        self.projection[1][1] = mat[5];
-        self.projection[1][2] = mat[6];
-        self.projection[1][3] = mat[7];
-        self.projection[2][0] = mat[8];
-        self.projection[2][1] = mat[9];
-        self.projection[2][2] = mat[10];
-        self.projection[2][3] = mat[11];
-        self.projection[3][0] = mat[12];
-        self.projection[3][1] = mat[13];
-        self.projection[3][2] = mat[14];
-        self.projection[3][3] = mat[15];
-    }
-}
 
 fn main() -> Fallible<()> {
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
@@ -229,108 +36,27 @@ fn main() -> Fallible<()> {
     let world = Arc::new(World::new(lib)?);
 
     let mut shape_renderer = ShapeRenderer::new(world.clone(), &window)?;
-    let (f8_id, fut1) =
+    let (_f8_id, fut1) =
         shape_renderer.upload_shape("F8.SH", DrawSelection::NormalModel, &window)?;
     let (f18_id, fut2) =
         shape_renderer.upload_shape("F18.SH", DrawSelection::NormalModel, &window)?;
+    //let (soldier_id, fut2) =
+    //    shape_renderer.upload_shape("SOLDIER.SH", DrawSelection::NormalModel, &window)?;
+    let (_windmill_id, fut3) =
+        shape_renderer.upload_shape("WNDMLL.SH", DrawSelection::NormalModel, &window)?;
     let future = shape_renderer.ensure_uploaded(&window)?;
 
     assert!(fut1.is_none());
     assert!(fut2.is_none());
+    assert!(fut3.is_none());
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let f18_ent1 = world.create_flyer(f18_id, Point3::new(0f64, 0f64, 0f64))?;
-    let f18_ent2 = world.create_flyer(f18_id, Point3::new(40f64, -10f64, 10f64))?;
-
-    // Pump the renderer once to upload all of our buffers
-    {
-        let shape_render_system = ShapeRenderSystem::new(&mut shape_renderer);
-        let mut shape_instance_updater = DispatcherBuilder::new()
-            .with(shape_render_system, "", &[])
-            .build();
-        world.run(&mut shape_instance_updater);
-    }
-
-    let chunks = shape_renderer.chunks();
-    let chunk = chunks.at(shape_renderer.chunks().find_chunk_for_shape(f18_id)?);
-    let f18_part = chunk.part(f18_id).unwrap();
-    let pipeline = shape_renderer.pipeline();
-    let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
-    let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
-    let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
-    let mut push_constants = crate::vs::ty::PushConstantData::new();
-
-    /*
-    let chunk_index = chunk_man.find_chunk_for_shape(f18_id)?;
-    let chunk = chunk_man.at(chunk_index);
-    let f18_part = chunk.part(f18_id).unwrap();
-    */
-
-    // Upload transforms
-    let transforms = vec![0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
-    let transforms_buffer: Arc<CpuAccessibleBuffer<[f32]>> = CpuAccessibleBuffer::from_iter(
-        window.device(),
-        BufferUsage::all(),
-        transforms.iter().cloned(),
-    )?;
-
-    // Upload flags
-    let mut draw_state: DrawState = Default::default();
-    draw_state.toggle_gear(&Instant::now());
-    let mut flags_arr = [0u32; 2];
-    draw_state.build_mask_into(
-        draw_state.time_origin(),
-        f18_part.widgets().errata(),
-        &mut flags_arr[0..2],
-    )?;
-    let flags_buffer = CpuAccessibleBuffer::from_iter(
-        window.device(),
-        BufferUsage::all(),
-        flags_arr.iter().cloned(),
-    )?;
-
-    // Upload xforms
-    let now = Instant::now();
-    let xforms_len = f18_part.widgets().num_transformer_floats();
-    let mut xforms = Vec::with_capacity(xforms_len);
-    xforms.resize(xforms_len, 0f32);
-    f18_part
-        .widgets()
-        .animate_into(&draw_state, draw_state.time_origin(), &now, &mut xforms)?;
-    let xforms_buffer = CpuAccessibleBuffer::from_iter(
-        window.device(),
-        BufferUsage::all(),
-        xforms.iter().cloned(),
-    )?;
-
-    // Upload xform buffer offsets
-    let xform_offsets = vec![0];
-    let xform_offsets_buffer = CpuAccessibleBuffer::from_iter(
-        window.device(),
-        BufferUsage::all(),
-        xform_offsets.iter().cloned(),
-    )?;
-
-    let shape_descriptor_set = Arc::new(
-        PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::ShapeBuffers.into())
-            .add_buffer(transforms_buffer)?
-            .add_buffer(flags_buffer)?
-            .add_buffer(xforms_buffer)?
-            .add_buffer(xform_offsets_buffer)?
-            .build()?,
-    );
-
-    let indirect_buffer = CpuAccessibleBuffer::from_iter(
-        window.device(),
-        BufferUsage::all(),
-        [f18_part.draw_command(0, 1)].iter().cloned(),
-    )?;
+    let _f18_ent1 = world.create_flyer(f18_id, Point3::new(0f64, 0f64, 0f64))?;
+    let _f18_ent2 = world.create_flyer(f18_id, Point3::new(40f64, -10f64, 10f64))?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_distance(120.0);
     camera.on_mousebutton_down(1);
-    push_constants.set_projection(&camera.projection_matrix());
-    push_constants.set_view(&camera.view_matrix());
 
     window.hide_cursor()?;
     loop {
@@ -351,6 +77,15 @@ fn main() -> Fallible<()> {
         }
         window.center_cursor()?;
 
+        // Upload entities' current state to the renderer.
+        {
+            let shape_render_system = ShapeRenderSystem::new(&mut shape_renderer);
+            let mut shape_instance_updater = DispatcherBuilder::new()
+                .with(shape_render_system, "", &[])
+                .build();
+            world.run(&mut shape_instance_updater);
+        }
+
         {
             let frame = window.begin_frame()?;
             if !frame.is_valid() {
@@ -370,36 +105,7 @@ fn main() -> Fallible<()> {
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
-            cbb = shape_renderer.render(cbb, &camera, &window, &f18_part)?;
-            /*
-            if false {
-                // foo
-                cbb = shape_renderer.blocks()[0].render(
-                    cbb,
-                    shape_renderer.pipeline(),
-                    chunk,
-                    //&push_constants,
-                    &camera,
-                    &window,
-                    f18_part,
-                )?;
-            } else if false {
-                cbb = cbb.draw_indirect(
-                    pipeline.clone(),
-                    &window.dynamic_state,
-                    vec![chunk.vertex_buffer()],
-                    indirect_buffer.clone(),
-                    (
-                        empty0.clone(),
-                        empty1.clone(),
-                        empty2.clone(),
-                        shape_descriptor_set.clone(),
-                        chunk.atlas_descriptor_set_ref(),
-                    ),
-                    push_constants,
-                )?;
-            }
-            */
+            cbb = shape_renderer.render(cbb, &camera, &window)?;
 
             cbb = cbb.end_render_pass()?;
 
