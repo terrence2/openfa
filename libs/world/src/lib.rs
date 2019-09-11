@@ -19,7 +19,7 @@ use failure::Fallible;
 use lib::Library;
 use nalgebra::Point3;
 use pal::Palette;
-use shape_chunk::{DrawSelection, ShapeId};
+use shape_chunk::{ChunkPart, ShapeId};
 use specs::{Builder, Dispatcher, World as SpecsWorld, WorldExt};
 use std::sync::{Arc, RwLock};
 
@@ -39,6 +39,8 @@ impl World {
         ecs.register::<FlightDynamics>();
         ecs.register::<WheeledDynamics>();
         ecs.register::<ShapeMesh>();
+        ecs.register::<ShapeMeshTransformBuffer>();
+        ecs.register::<ShapeMeshFlagBuffer>();
         ecs.register::<Transform>();
 
         Ok(Self {
@@ -78,7 +80,13 @@ impl World {
             .build())
     }
 
-    pub fn create_flyer(&self, shape_id: ShapeId, position: Point3<f64>) -> Fallible<Entity> {
+    pub fn create_flyer(
+        &self,
+        shape_id: ShapeId,
+        position: Point3<f64>,
+        part: &ChunkPart,
+    ) -> Fallible<Entity> {
+        let errata = part.widgets().errata();
         Ok(self
             .ecs
             .write()
@@ -88,6 +96,8 @@ impl World {
             .with(WheeledDynamics::new())
             .with(FlightDynamics::new())
             .with(ShapeMesh::new(shape_id))
+            .with(ShapeMeshTransformBuffer::new())
+            .with(ShapeMeshFlagBuffer::new(&errata))
             .build())
     }
 
@@ -100,7 +110,7 @@ impl World {
 mod test {
     use super::*;
     use omnilib::OmniLib;
-    use shape_chunk::{ClosedChunk, OpenChunk};
+    use shape_chunk::{ClosedChunk, DrawSelection, OpenChunk};
     use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]

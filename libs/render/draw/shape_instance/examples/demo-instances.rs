@@ -51,8 +51,16 @@ fn main() -> Fallible<()> {
     assert!(fut3.is_none());
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let _f18_ent1 = world.create_flyer(f18_id, Point3::new(0f64, 0f64, 0f64))?;
-    let _f18_ent2 = world.create_flyer(f8_id, Point3::new(80f64, 0f64, 120f64))?;
+    let _f18_ent1 = world.create_flyer(
+        f18_id,
+        Point3::new(0f64, 0f64, 0f64),
+        shape_renderer.chunks().part(f18_id),
+    )?;
+    let _f18_ent2 = world.create_flyer(
+        f8_id,
+        Point3::new(80f64, 0f64, 120f64),
+        shape_renderer.chunks().part(f8_id),
+    )?;
 
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_distance(120.0);

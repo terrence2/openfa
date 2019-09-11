@@ -263,9 +263,8 @@ fn main() -> Fallible<()> {
     let future = chunk_man.finish(&window)?;
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let chunk_index = chunk_man.find_chunk_for_shape(f18_id)?;
-    let chunk = chunk_man.at(chunk_index);
-    let f18_part = chunk.part(f18_id).unwrap();
+    let chunk = chunk_man.get_chunk_for_shape(f18_id);
+    let f18_part = chunk.part(f18_id);
 
     // Upload transforms
     let transforms = vec![0f32, 0f32, 0f32, 0f32, 0f32, 0f32];

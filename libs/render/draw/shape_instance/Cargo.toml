@@ -10,6 +10,7 @@ doctest = false
 [dependencies]
 failure = "^ 0.1.2"
 nalgebra = "^ 0.18"
+rayon = "^ 1.2"
 specs = "^ 0.15"
 vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
@@ -23,5 +24,6 @@ world = { path = "../../../world" }
 window = { path = "../../../window" }
 
 [dev-dependencies]
+rand = "^ 0.7"
 camera = { path = "../../../render/common/camera" }
 input = { path = "../../../input" }

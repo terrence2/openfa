@@ -15,6 +15,7 @@
 use crate::{
     texture_atlas::MegaAtlas,
     upload::{DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
+    ChunkIndex,
 };
 use failure::{ensure, err_msg, Fallible};
 use global_layout::GlobalSets;
@@ -198,6 +199,7 @@ impl OpenChunk {
 }
 
 pub struct ClosedChunk {
+    chunk_index: ChunkIndex,
     vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
     shape_ids: HashMap<String, ShapeId>,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
@@ -207,6 +209,7 @@ pub struct ClosedChunk {
 impl ClosedChunk {
     pub fn new(
         chunk: OpenChunk,
+        chunk_index: ChunkIndex,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<(Self, Box<dyn GpuFuture>)> {
@@ -244,6 +247,7 @@ impl ClosedChunk {
 
         Ok((
             ClosedChunk {
+                chunk_index,
                 vertex_buffer,
                 shape_ids: chunk.shape_ids,
                 chunk_parts: chunk.chunk_parts,
@@ -251,6 +255,10 @@ impl ClosedChunk {
             },
             upload_future,
         ))
+    }
+
+    pub fn index(&self) -> ChunkIndex {
+        self.chunk_index
     }
 
     pub fn atlas_descriptor_set_ref(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
@@ -261,8 +269,8 @@ impl ClosedChunk {
         self.vertex_buffer.clone()
     }
 
-    pub fn part(&self, id: ShapeId) -> Option<&ChunkPart> {
-        self.chunk_parts.get(&id)
+    pub fn part(&self, id: ShapeId) -> &ChunkPart {
+        &self.chunk_parts[&id]
     }
 
     pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
@@ -271,5 +279,9 @@ impl ClosedChunk {
             .get(name)
             .ok_or_else(|| err_msg("shape not found"))?;
         Ok(&self.chunk_parts[id])
+    }
+
+    pub fn all_shapes(&self) -> Vec<ShapeId> {
+        self.chunk_parts.keys().cloned().collect::<Vec<_>>()
     }
 }

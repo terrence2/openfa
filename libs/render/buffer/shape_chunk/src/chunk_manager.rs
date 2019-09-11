@@ -13,24 +13,26 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
-    chunk::{ClosedChunk, OpenChunk, ShapeId},
+    chunk::{ChunkPart, ClosedChunk, OpenChunk, ShapeId},
     upload::DrawSelection,
 };
-use failure::{bail, Fallible};
+use failure::Fallible;
 use lib::Library;
 use pal::Palette;
-use std::{mem, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 use vulkano::{pipeline::GraphicsPipelineAbstract, sync::GpuFuture};
 use window::GraphicsWindow;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ChunkIndex(usize);
+pub struct ChunkIndex(pub usize);
 
 pub struct ShapeChunkManager {
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 
     open_chunk: OpenChunk,
-    closed_chunks: Vec<ClosedChunk>,
+    next_chunk_index: usize,
+    closed_chunks: HashMap<ChunkIndex, ClosedChunk>,
+    shape_map: HashMap<ShapeId, ChunkIndex>,
 }
 
 impl ShapeChunkManager {
@@ -41,13 +43,11 @@ impl ShapeChunkManager {
         Ok(Self {
             pipeline,
             open_chunk: OpenChunk::new(window)?,
-            closed_chunks: Vec::new(),
+            next_chunk_index: 0,
+            closed_chunks: HashMap::new(),
+            shape_map: HashMap::new(),
         })
     }
-
-    // pub fn create_building
-
-    // pub fn create_airplane -- need to hook into shape state?
 
     pub fn finish(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
         self.finish_open_chunk(window)
@@ -56,8 +56,16 @@ impl ShapeChunkManager {
     pub fn finish_open_chunk(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
         let mut open_chunk = OpenChunk::new(window)?;
         mem::swap(&mut open_chunk, &mut self.open_chunk);
-        let (chunk, future) = ClosedChunk::new(open_chunk, self.pipeline.clone(), window)?;
-        self.closed_chunks.push(chunk);
+
+        let chunk_index = ChunkIndex(self.next_chunk_index);
+        self.next_chunk_index += 1;
+        let (chunk, future) =
+            ClosedChunk::new(open_chunk, chunk_index, self.pipeline.clone(), window)?;
+        for shape_id in chunk.all_shapes() {
+            self.shape_map.insert(shape_id, chunk_index);
+        }
+        self.closed_chunks.insert(chunk_index, chunk);
+
         Ok(future)
     }
 
@@ -80,30 +88,16 @@ impl ShapeChunkManager {
         Ok((shape_id, future))
     }
 
-    // TODO: we should maybe speed this up with a hash from shape_id to chunk_index
-    pub fn find_chunk_for_shape(&self, shape_id: ShapeId) -> Fallible<ChunkIndex> {
-        for (chunk_offset, chunk) in self.closed_chunks.iter().enumerate() {
-            if chunk.part(shape_id).is_some() {
-                return Ok(ChunkIndex(chunk_offset));
-            }
-        }
-        bail!("shape_id {:?} has not been uploaded", shape_id)
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        self.get_chunk_for_shape(shape_id).part(shape_id)
     }
 
-    pub fn get_chunk_for_shape(&self, shape_id: ShapeId) -> Fallible<&ClosedChunk> {
-        for chunk in self.closed_chunks.iter() {
-            if chunk.part(shape_id).is_some() {
-                return Ok(chunk);
-            }
-        }
-        bail!("shape_id {:?} has not been uploaded", shape_id)
+    pub fn get_chunk_for_shape(&self, shape_id: ShapeId) -> &ClosedChunk {
+        let chunk_id = self.shape_map[&shape_id];
+        &self.closed_chunks[&chunk_id]
     }
 
     pub fn get_chunk(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
-        &self.closed_chunks[chunk_index.0]
-    }
-
-    pub fn at(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
-        &self.closed_chunks[chunk_index.0]
+        &self.closed_chunks[&chunk_index]
     }
 }

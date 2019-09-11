@@ -21,7 +21,7 @@ mod upload;
 pub use chunk::{Chunk, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
 pub use chunk_manager::{ChunkIndex, ShapeChunkManager};
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, Vertex};
 
 mod vs {
     use vulkano_shaders::shader;
@@ -129,19 +129,31 @@ mod test {
             "WAVE2.SH",
         ];
         let mut chunks = Vec::new();
+        let mut chunk_index = 0;
         for name in shapes {
             if skipped.contains(&name.as_str()) {
                 continue;
             }
             if open_chunk.chunk_is_full() {
-                let (chunk, future) = ClosedChunk::new(open_chunk, pipeline.clone(), &window)?;
+                let (chunk, future) = ClosedChunk::new(
+                    open_chunk,
+                    ChunkIndex(chunk_index),
+                    pipeline.clone(),
+                    &window,
+                )?;
+                chunk_index += 1;
                 future.then_signal_fence_and_flush()?.wait(None)?;
                 chunks.push(chunk);
                 open_chunk = OpenChunk::new(&window)?;
             }
             open_chunk.upload_shape(&name, DrawSelection::NormalModel, &palette, &lib, &window)?;
         }
-        let (chunk, future) = ClosedChunk::new(open_chunk, pipeline.clone(), &window)?;
+        let (chunk, future) = ClosedChunk::new(
+            open_chunk,
+            ChunkIndex(chunk_index),
+            pipeline.clone(),
+            &window,
+        )?;
         future.then_signal_fence_and_flush()?.wait(None)?;
         chunks.push(chunk);
         println!("CHUNK COUNT: {}", chunks.len());

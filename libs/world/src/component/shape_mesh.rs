@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use shape_chunk::{DrawState, ShapeId};
+use shape_chunk::{DrawState, ShapeErrata, ShapeId};
 use specs::{Component, VecStorage};
 
 pub struct ShapeMesh {
@@ -38,5 +38,33 @@ impl ShapeMesh {
 
     pub fn draw_state(&self) -> &DrawState {
         &self.draw_state
+    }
+}
+
+pub struct ShapeMeshTransformBuffer {
+    pub buffer: [f32; 6],
+}
+impl Component for ShapeMeshTransformBuffer {
+    type Storage = VecStorage<Self>;
+}
+impl ShapeMeshTransformBuffer {
+    pub fn new() -> Self {
+        Self { buffer: [0f32; 6] }
+    }
+}
+
+pub struct ShapeMeshFlagBuffer {
+    pub buffer: [u32; 2],
+    pub errata: ShapeErrata,
+}
+impl Component for ShapeMeshFlagBuffer {
+    type Storage = VecStorage<Self>;
+}
+impl ShapeMeshFlagBuffer {
+    pub fn new(errata: &ShapeErrata) -> Self {
+        Self {
+            buffer: [0u32; 2],
+            errata: errata.clone(),
+        }
     }
 }
