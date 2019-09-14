@@ -51,8 +51,7 @@ struct MemMap {
 }
 
 impl MemMap {
-    fn new(start: u32 /*, end: u32*/, mem: Vec<u8>, protection: MapProtection) -> Self {
-        //assert!(start < end);
+    fn new(start: u32, mem: Vec<u8>, protection: MapProtection) -> Self {
         Self {
             start,
             mem,
