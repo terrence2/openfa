@@ -334,236 +334,48 @@ impl RawShRenderer {
                 tramp.name, tramp.mem_location
             );
             match tramp.name.as_ref() {
-                "_currentTicks" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _currentTicks");
-                        current_ticks as u32
-                    }),
-                ),
-                "_lowMemory" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _lowMemory");
-                        0
-                    }),
-                ),
-                "_nightHazing" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _nightHazing");
-                        1
-                    }),
-                ),
-                "_PLafterBurner" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLafterBurner");
-                        if afterburner_enabled {
-                            1
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLbayOpen" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLbayOpen");
-                        if bay_position.is_some() {
-                            1
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLbayDoorPos" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLbayDoorPosition");
-                        if let Some(p) = bay_position {
-                            p
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLbrake" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLbrake");
-                        if airbrake_extended {
-                            1
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLcanardPos" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLcanardPos");
-                        0
-                    }),
-                ),
-                "_PLdead" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLdead");
-                        0
-                    }),
-                ),
-                "_PLgearDown" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLgearDown");
-                        if gear_position.is_some() {
-                            1
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLgearPos" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLgearPos");
-                        if let Some(p) = gear_position {
-                            p
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLhook" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLhook");
-                        if hook_extended {
-                            1
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLrightFlap" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLrightFlap");
-                        if flaps_down {
-                            0xFFFF_FFFF
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLleftFlap" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLleftFlap");
-                        if flaps_down {
-                            0xFFFF_FFFF
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLrightAln" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLrightAln");
-                        right_aileron_position as u32
-                    }),
-                ),
-                "_PLleftAln" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLleftAln");
-                        left_aileron_position as u32
-                    }),
-                ),
-                "_PLrudder" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLrudder");
-                        rudder_position as u32
-                    }),
-                ),
-                "_PLslats" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLslats");
-                        if slats_down {
-                            1
-                        } else {
-                            0
-                        }
-                    }),
-                ),
-                "_PLstate" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLstate");
-                        0
-                    }),
-                ),
-                "_PLswingWing" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLswingWing");
-                        0
-                    }),
-                ),
-                "_PLvtAngle" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP: _PLvtAngle");
-                        0
-                    }),
-                ),
-                "_PLvtOn" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _PLvtOn");
-                        0
-                    }),
-                ),
+                "_currentTicks" => interp.map_value(tramp.mem_location, current_ticks as u32),
+                "_lowMemory" => interp.map_value(tramp.mem_location, 0),
+                "_nightHazing" => interp.map_value(tramp.mem_location, 1),
+                "_PLafterBurner" => {
+                    interp.map_value(tramp.mem_location, afterburner_enabled as u32)
+                }
+                "_PLbayOpen" => interp.map_value(tramp.mem_location, bay_position.is_some() as u32),
+                "_PLbayDoorPos" => interp.map_value(tramp.mem_location, bay_position.unwrap_or(0)),
+                "_PLbrake" => interp.map_value(tramp.mem_location, airbrake_extended as u32),
+                "_PLcanardPos" => interp.map_value(tramp.mem_location, 0),
+                "_PLdead" => interp.map_value(tramp.mem_location, 0),
+                "_PLgearDown" => {
+                    interp.map_value(tramp.mem_location, gear_position.is_some() as u32)
+                }
+                "_PLgearPos" => interp.map_value(tramp.mem_location, gear_position.unwrap_or(0)),
+                "_PLhook" => interp.map_value(tramp.mem_location, hook_extended as u32),
+                "_PLrightFlap" => {
+                    interp.map_value(tramp.mem_location, if flaps_down { 0xFFFF_FFFF } else { 0 })
+                }
+                "_PLleftFlap" => {
+                    interp.map_value(tramp.mem_location, if flaps_down { 0xFFFF_FFFF } else { 0 })
+                }
+                "_PLrightAln" => {
+                    interp.map_value(tramp.mem_location, right_aileron_position as u32)
+                }
+                "_PLleftAln" => interp.map_value(tramp.mem_location, left_aileron_position as u32),
+                "_PLrudder" => interp.map_value(tramp.mem_location, rudder_position as u32),
+                "_PLslats" => interp.map_value(tramp.mem_location, slats_down as u32),
+                "_PLstate" => interp.map_value(tramp.mem_location, 0),
+                "_PLswingWing" => interp.map_value(tramp.mem_location, 0),
+                "_PLvtAngle" => interp.map_value(tramp.mem_location, 0),
+                "_PLvtOn" => interp.map_value(tramp.mem_location, 0),
 
-                "_SAMcount" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP _SAMcount");
-                        sam_count
-                    }),
-                ),
+                "_SAMcount" => interp.map_value(tramp.mem_location, sam_count),
 
-                "brentObjId" => interp.add_read_port(
-                    tramp.mem_location,
-                    Box::new(move || {
-                        println!("LOOKUP brentObjId");
-                        INST_BASE
-                    }),
-                ),
+                "brentObjId" => interp.map_value(tramp.mem_location, INST_BASE),
 
                 "_effectsAllowed" => {
-                    interp.add_read_port(
-                        tramp.mem_location,
-                        Box::new(move || {
-                            println!("LOOKUP _effectsAllowed");
-                            2
-                        }),
-                    );
-                    interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;
+                    interp.map_writable(tramp.mem_location, vec![2, 0, 0, 0])?;
                 }
                 "_effects" => {
-                    interp.add_read_port(
-                        tramp.mem_location,
-                        Box::new(move || {
-                            println!("LOOKUP _effects");
-                            2
-                        }),
-                    );
-                    interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;
+                    interp.map_writable(tramp.mem_location, vec![2, 0, 0, 0])?;
                 }
                 "lighteningAllowed" => {
                     interp.map_writable(tramp.mem_location, vec![0, 0, 0, 0])?;

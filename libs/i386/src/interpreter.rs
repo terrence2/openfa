@@ -37,34 +37,31 @@ impl ExitInfo {
     }
 }
 
-#[derive(Eq, Ord, PartialOrd, PartialEq)]
-struct MemMapR {
-    start: u32,
-    end: u32,
-    mem: Vec<u8>,
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum MapProtection {
+    // Read,
+    Write,
 }
 
-impl MemMapR {
-    fn new(start: u32, end: u32, mem: Vec<u8>) -> Self {
-        assert!(start < end);
-        Self { start, end, mem }
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
+struct MemMap {
+    mem: Vec<u8>,
+    protection: MapProtection,
+    start: u32,
+}
+
+impl MemMap {
+    fn new(start: u32 /*, end: u32*/, mem: Vec<u8>, protection: MapProtection) -> Self {
+        //assert!(start < end);
+        Self {
+            start,
+            mem,
+            protection,
+        }
     }
 }
 
-#[derive(Debug, Eq, Ord, PartialOrd, PartialEq)]
-struct MemMapW {
-    start: u32,
-    end: u32,
-    mem: Vec<u8>,
-}
-
-impl MemMapW {
-    fn new(start: u32, end: u32, mem: Vec<u8>) -> Self {
-        assert!(start < end);
-        Self { start, end, mem }
-    }
-}
-
+#[derive(Clone, Debug)]
 pub struct Interpreter {
     registers: Vec<u32>,
     cf: bool,
@@ -72,10 +69,9 @@ pub struct Interpreter {
     zf: bool,
     sf: bool,
     stack: Vec<u32>,
-    memmap_w: Vec<MemMapW>,
-    memmap_r: Vec<MemMapR>,
+    mem_maps: Vec<MemMap>,
+    value_maps: HashMap<u32, u32>,
     bytecode: Vec<Rc<RefCell<ByteCode>>>,
-    ports_r: HashMap<u32, Box<dyn Fn() -> u32>>,
     trampolines: HashMap<u32, (String, usize)>,
 }
 
@@ -91,10 +87,9 @@ impl Interpreter {
             zf: false,
             sf: false,
             stack: Vec::new(),
-            memmap_r: Vec::new(),
-            memmap_w: Vec::new(),
+            mem_maps: Vec::new(),
             bytecode: Vec::new(),
-            ports_r: HashMap::new(),
+            value_maps: HashMap::new(),
             trampolines: HashMap::new(),
         }
     }
@@ -112,29 +107,12 @@ impl Interpreter {
         self.trampolines.insert(addr, (name.to_owned(), arg_count));
     }
 
-    pub fn add_read_port(&mut self, addr: u32, func: Box<dyn Fn() -> u32>) {
-        self.ports_r.insert(addr, func);
+    pub fn map_value(&mut self, addr: u32, value: u32) {
+        self.value_maps.insert(addr, value);
     }
 
-    pub fn remove_read_port(&mut self, addr: u32) {
-        self.ports_r.remove(&addr);
-    }
-
-    pub fn map_readable(&mut self, start: u32, data: Vec<u8>) -> Fallible<()> {
-        ensure!(
-            data.len() < u32::max_value() as usize,
-            "readonly data segment too large"
-        );
-        let end = start.checked_add(data.len() as u32);
-        ensure!(
-            end.is_some(),
-            "readonly data segment overflowed when mapped at {:08X}",
-            start
-        );
-        let map = MemMapR::new(start, end.unwrap(), data);
-        self.memmap_r.push(map);
-        self.memmap_r.sort();
-        Ok(())
+    pub fn unmap_value(&mut self, addr: u32) -> u32 {
+        self.value_maps.remove(&addr).unwrap()
     }
 
     pub fn map_writable(&mut self, start: u32, data: Vec<u8>) -> Fallible<()> {
@@ -142,27 +120,21 @@ impl Interpreter {
             data.len() < u32::max_value() as usize,
             "readonly data segment too large"
         );
-        let end = start.checked_add(data.len() as u32);
-        ensure!(
-            end.is_some(),
-            "readonly data segment overflowed when mapped at {:08X}",
-            start
-        );
-        let map = MemMapW::new(start, end.unwrap(), data);
-        self.memmap_w.push(map);
-        self.memmap_w.sort();
+        let map = MemMap::new(start, data, MapProtection::Write);
+        self.mem_maps.push(map);
+        self.mem_maps.sort();
         Ok(())
     }
 
     pub fn unmap_writable(&mut self, start: u32) -> Fallible<Vec<u8>> {
-        if let Ok(offset) = self.memmap_w.binary_search_by(|v| v.start.cmp(&start)) {
-            let map = self.memmap_w.remove(offset);
+        if let Ok(offset) = self.mem_maps.binary_search_by(|v| v.start.cmp(&start)) {
+            let map = self.mem_maps.remove(offset);
             return Ok(map.mem);
         }
         bail!(
             "the address {:08X} is not mapped to a writable block",
             start
-        );
+        )
     }
 
     pub fn add_code(&mut self, bc: Rc<RefCell<ByteCode>>) {
@@ -197,7 +169,7 @@ impl Interpreter {
         bail!(
             "attempted to jump to {:08X}, which is not in any code section",
             self.eip()
-        );
+        )
     }
 
     pub fn interpret(&mut self, at: u32) -> Fallible<ExitInfo> {
@@ -698,22 +670,14 @@ impl Interpreter {
     }
 
     fn mem_lookup(&self, addr: u32, size: u8) -> Fallible<u32> {
-        if self.ports_r.contains_key(&addr) {
-            let v = self.ports_r[&addr]();
-            trace!("    read_port {:08X} -> {:08X}", addr, v);
-            return Ok(v);
+        if let Some(value) = self.value_maps.get(&addr) {
+            trace!("    read_val  {:08X} -> {:08X}", addr, value);
+            return Ok(*value);
         }
-        for map in self.memmap_w.iter() {
-            if addr >= map.start && addr < map.end {
+        for map in self.mem_maps.iter() {
+            if addr >= map.start && ((addr - map.start) as usize) < map.mem.len() {
                 let v = self.mem_peek((addr - map.start) as usize, &map.mem, size)?;
                 trace!("    read_rw  {} @ {:08X} -> {:08X}", size, addr, v);
-                return Ok(v);
-            }
-        }
-        for map in self.memmap_r.iter() {
-            if addr >= map.start && addr < map.end {
-                let v = self.mem_peek((addr - map.start) as usize, &map.mem, size)?;
-                trace!("    read_ro  {} @ {:08X} -> {:08X}", size, addr, v);
                 return Ok(v);
             }
         }
@@ -721,7 +685,7 @@ impl Interpreter {
             "no memory or port for address: {:08X} at ip {:08X}",
             addr,
             self.eip()
-        );
+        )
     }
 
     fn mem_peek(&self, rel: usize, v: &[u8], size: u8) -> Fallible<u32> {
@@ -769,8 +733,21 @@ impl Interpreter {
     }
 
     fn mem_write(&mut self, addr: u32, v: u32, size: u8) -> Fallible<()> {
-        for map in self.memmap_w.iter_mut() {
-            if addr >= map.start && addr < map.end {
+        if let Some(value) = self.value_maps.get_mut(&addr) {
+            trace!("    write_rw {}@ {:08X} <- {:08X}", size, addr, v);
+            match size {
+                1 => *value = (*value & 0xFFFF_FF00) | (v & 0xFF),
+                2 => *value = (*value & 0xFFFF_0000) | (v & 0xFFFF),
+                4 => *value = v,
+                _ => bail!("don't know how to handle write size {}", size),
+            }
+        }
+        for map in self.mem_maps.iter_mut() {
+            if addr >= map.start && ((addr - map.start) as usize) < map.mem.len() {
+                ensure!(
+                    map.protection == MapProtection::Write,
+                    "write to read-only memory"
+                );
                 let rel = (addr - map.start) as usize;
                 match size {
                     1 => map.mem[rel] = v as u8,
@@ -788,7 +765,7 @@ impl Interpreter {
                 return Ok(());
             }
         }
-        bail!("no writable memory for address: {:08X}", addr);
+        bail!("no writable memory for address: {:08X}", addr)
     }
 }
 
