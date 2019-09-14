@@ -124,6 +124,38 @@ impl DrawState {
         self.wing_sweep_pos
     }
 
+    pub fn x86_gear_down(&self) -> u32 {
+        (!self.gear_retracted()) as u32
+    }
+
+    pub fn x86_gear_position(&self) -> u32 {
+        self.gear_position() as u32
+    }
+
+    pub fn x86_bay_open(&self) -> u32 {
+        (!self.bay_closed()) as u32
+    }
+
+    pub fn x86_bay_position(&self) -> u32 {
+        self.bay_position() as u32
+    }
+
+    pub fn x86_canard_position(&self) -> u32 {
+        self.thrust_vector_position() as i32 as u32
+    }
+
+    pub fn x86_vertical_angle(&self) -> u32 {
+        self.thrust_vector_position() as i32 as u32
+    }
+
+    pub fn x86_afterburner_enabled(&self) -> u32 {
+        self.afterburner_enabled() as u32
+    }
+
+    pub fn x86_swing_wing(&self) -> u32 {
+        i32::from(self.wing_sweep_angle()) as u32
+    }
+
     pub fn player_dead(&self) -> bool {
         self.flags.contains(DrawStateFlags::PLAYER_DEAD)
     }

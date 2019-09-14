@@ -441,45 +441,25 @@ impl Transformer {
             d * std::f32::consts::PI / 8192f32
         }
 
-        let gear_position = draw_state.gear_position() as u32;
-        let bay_position = draw_state.bay_position() as u32;
-        let thrust_vectoring = draw_state.thrust_vector_position() as i32 as u32;
-        let wing_sweep = i32::from(draw_state.wing_sweep_angle()) as u32;
         let mut vm = self.vm.borrow_mut();
-        let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
         for input in &self.inputs {
-            match input {
+            let (loc, value) = match input {
                 TransformInput::CurrentTicks(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || t));
+                    (*loc, (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF)
                 }
-                TransformInput::GearPosition(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || gear_position));
-                }
-                TransformInput::GearDown(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 1));
-                }
-                TransformInput::BayPosition(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || bay_position));
-                }
-                TransformInput::BayOpen(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 1));
-                }
-                TransformInput::CanardPosition(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || thrust_vectoring));
-                }
-                TransformInput::AfterBurner(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 1));
-                }
+                TransformInput::GearPosition(loc) => (*loc, draw_state.x86_gear_position()),
+                TransformInput::GearDown(loc) => (*loc, draw_state.x86_gear_down()),
+                TransformInput::BayPosition(loc) => (*loc, draw_state.x86_bay_position()),
+                TransformInput::BayOpen(loc) => (*loc, draw_state.x86_bay_open()),
+                TransformInput::CanardPosition(loc) => (*loc, draw_state.x86_canard_position()),
+                TransformInput::AfterBurner(loc) => (*loc, draw_state.x86_afterburner_enabled()),
+                TransformInput::VerticalAngle(loc) => (*loc, draw_state.x86_vertical_angle()),
+                TransformInput::SwingWing(loc) => (*loc, draw_state.x86_swing_wing()),
                 TransformInput::VerticalOn(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 0));
+                    (*loc, 0) // FIXME: need to figure out how harrier is going to work still
                 }
-                TransformInput::VerticalAngle(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || thrust_vectoring));
-                }
-                TransformInput::SwingWing(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || wing_sweep));
-                }
-            }
+            };
+            vm.map_value(loc, value);
         }
         vm.map_writable(self.data_offset, self.xform_base.to_vec())?;
         let result = vm.interpret(self.code_offset)?;
@@ -498,17 +478,17 @@ impl Transformer {
         ];
         for input in &self.inputs {
             match input {
-                TransformInput::CurrentTicks(loc) => vm.remove_read_port(*loc),
-                TransformInput::GearPosition(loc) => vm.remove_read_port(*loc),
-                TransformInput::GearDown(loc) => vm.remove_read_port(*loc),
-                TransformInput::BayPosition(loc) => vm.remove_read_port(*loc),
-                TransformInput::BayOpen(loc) => vm.remove_read_port(*loc),
-                TransformInput::CanardPosition(loc) => vm.remove_read_port(*loc),
-                TransformInput::AfterBurner(loc) => vm.remove_read_port(*loc),
-                TransformInput::VerticalOn(loc) => vm.remove_read_port(*loc),
-                TransformInput::VerticalAngle(loc) => vm.remove_read_port(*loc),
-                TransformInput::SwingWing(loc) => vm.remove_read_port(*loc),
-            }
+                TransformInput::CurrentTicks(loc) => vm.unmap_value(*loc),
+                TransformInput::GearPosition(loc) => vm.unmap_value(*loc),
+                TransformInput::GearDown(loc) => vm.unmap_value(*loc),
+                TransformInput::BayPosition(loc) => vm.unmap_value(*loc),
+                TransformInput::BayOpen(loc) => vm.unmap_value(*loc),
+                TransformInput::CanardPosition(loc) => vm.unmap_value(*loc),
+                TransformInput::AfterBurner(loc) => vm.unmap_value(*loc),
+                TransformInput::VerticalOn(loc) => vm.unmap_value(*loc),
+                TransformInput::VerticalAngle(loc) => vm.unmap_value(*loc),
+                TransformInput::SwingWing(loc) => vm.unmap_value(*loc),
+            };
         }
         Ok(arr)
     }
@@ -777,7 +757,7 @@ impl ShapeUploader {
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
         for &(value, flags) in &TOGGLE_TABLE[trampoline.name.as_str()] {
-            interp.add_read_port(trampoline.mem_location, Box::new(move || value));
+            interp.map_value(trampoline.mem_location, value);
             let exit_info = interp.interpret(x86.code_offset(SHAPE_LOAD_BASE))?;
             let (name, args) = exit_info.ok_trampoline()?;
             ensure!(name == "do_start_interp", "unexpected trampoline return");
@@ -789,7 +769,7 @@ impl ShapeUploader {
                     &trampoline.name,
                 );
             }
-            interp.remove_read_port(trampoline.mem_location);
+            interp.unmap_value(trampoline.mem_location);
         }
 
         Ok(())
@@ -815,7 +795,7 @@ impl ShapeUploader {
         let mut interp = i386::Interpreter::new();
         interp.add_code(x86.bytecode.clone());
         interp.add_code(trailer.unwrap_x86()?.bytecode.clone());
-        interp.add_read_port(brent_obj_id.mem_location, Box::new(move || 0x60000));
+        interp.map_value(brent_obj_id.mem_location, 0x60000);
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
         let num_loaded = sh.lookup_trampoline_by_name("@HARDNumLoaded@8")?;
