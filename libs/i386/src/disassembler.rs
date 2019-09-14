@@ -19,10 +19,7 @@ use ansi::ansi;
 use failure::{bail, ensure, Error, Fail, Fallible};
 use log::trace;
 use reverse::bs2s;
-use std::{
-    fmt, mem,
-    sync::{Arc, RwLock},
-};
+use std::{cell::RefCell, fmt, mem, rc::Rc};
 
 pub use crate::lut::{Memonic, HAS_INLINE_REG, OPCODES, PREFIX_CODES, USE_REG_OPCODES};
 
@@ -1055,8 +1052,8 @@ impl ByteCode {
         sz
     }
 
-    pub fn into_arc(self) -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(self))
+    pub fn into_rc(self) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(self))
     }
 
     pub fn show_relative(&self, base: usize) -> String {

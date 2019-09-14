@@ -24,6 +24,7 @@ use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
     time::Instant,
@@ -423,12 +424,13 @@ impl BufferPropsManager {
 // the virtual machine interpreter, already set up, the xform_id it maps to
 // for upload, the code and data offsets, and all inputs that need to be
 // configured and where to put them.
+#[derive(Clone)]
 pub struct Transformer {
     xform_id: u32,
     // Note that mutability is an implementation detail here. We could construct
     // a new one for each frame, for each instance, for each transform, but that
     // would get expensive fast and we shouldn't actually be changing the state.
-    vm: Arc<RwLock<Interpreter>>,
+    vm: Interpreter,
     code_offset: u32,
     data_offset: u32,
     inputs: Vec<TransformInput>,
@@ -441,7 +443,7 @@ impl Transformer {
     }
 
     pub fn transform(
-        &self,
+        &mut self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
@@ -454,7 +456,7 @@ impl Transformer {
         let bay_position = draw_state.bay_position() as u32;
         let thrust_vectoring = draw_state.thrust_vector_position() as i32 as u32;
         let wing_sweep = i32::from(draw_state.wing_sweep_angle()) as u32;
-        let mut vm = self.vm.write().unwrap();
+        let mut vm = &mut self.vm; //.borrow_mut();
         let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
         for input in &self.inputs {
             match input {
@@ -525,9 +527,11 @@ impl Transformer {
 
 // Contains information about what parts of the shape can be mutated by
 // standard actions. e.g. Gears, flaps, etc.
+#[derive(Clone)]
 pub struct ShapeWidgets {
     // Self contained vm/instructions for how to set up each required transform
     // to draw this shape buffer.
+    num_transformer_floats: usize,
     transformers: Vec<Transformer>,
 
     // Draw properties based on what's in the shape file.
@@ -537,13 +541,14 @@ pub struct ShapeWidgets {
 impl ShapeWidgets {
     pub fn new(transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
         Self {
-            transformers,
+            num_transformer_floats: transformers.len() * 6,
+            transformers: transformers,
             errata,
         }
     }
 
     pub fn animate_into(
-        &self,
+        &mut self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
@@ -551,7 +556,7 @@ impl ShapeWidgets {
     ) -> Fallible<()> {
         assert!(buffer.len() >= self.num_transformer_floats());
         let mut offset = 0;
-        for transformer in self.transformers.iter() {
+        for transformer in self.transformers.iter_mut() {
             let xform = transformer.transform(draw_state, start, now)?;
             buffer[offset..offset + 6].copy_from_slice(&xform);
             offset += 6;
@@ -564,7 +569,7 @@ impl ShapeWidgets {
     }
 
     pub fn num_transformer_floats(&self) -> usize {
-        self.transformers.len() * 6
+        self.num_transformer_floats
     }
 }
 
@@ -683,7 +688,7 @@ impl ShapeUploader {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.read().unwrap().instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -703,7 +708,7 @@ impl ShapeUploader {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.read().unwrap().instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
@@ -979,7 +984,7 @@ impl ShapeUploader {
 
         transformers.push(Transformer {
             xform_id,
-            vm: Arc::new(RwLock::new(interp)),
+            vm: interp,
             code_offset: x86.code_offset(SHAPE_LOAD_BASE),
             data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
             inputs,

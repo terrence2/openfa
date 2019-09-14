@@ -109,6 +109,10 @@ impl ChunkPart {
     pub fn widgets(&self) -> &ShapeWidgets {
         &self.shape_widgets
     }
+
+    pub fn widgets_mut(&mut self) -> &mut ShapeWidgets {
+        &mut self.shape_widgets
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

@@ -19,11 +19,7 @@ use failure::{bail, ensure, Fallible};
 use i386::{ByteCode, Interpreter, Reg};
 use image::{ImageBuffer, LumaA};
 use peff::PE;
-use std::{
-    collections::HashMap,
-    mem,
-    sync::{Arc, RwLock},
-};
+use std::{cell::RefCell, collections::HashMap, mem, rc::Rc};
 
 // Save chars to png when testing.
 const DUMP_CHARS: bool = false;
@@ -32,7 +28,7 @@ pub struct GlyphInfo {
     pub glyph_index: u8,
     pub glyph_char: String,
     pub width: i32,
-    pub bytecode: Arc<RwLock<ByteCode>>,
+    pub bytecode: Rc<RefCell<ByteCode>>,
 }
 
 pub struct Fnt {
@@ -96,7 +92,7 @@ impl Fnt {
                     glyph_index,
                     glyph_char,
                     width,
-                    bytecode: bytecode.into_arc(),
+                    bytecode: bytecode.into_rc(),
                 },
             );
         }
@@ -113,7 +109,7 @@ impl Fnt {
             }
             let glyph = &self.glyphs[&glyph_index];
             println!("{:<2} - {:04X}:", glyph.glyph_char, glyph.glyph_index);
-            println!("{}", glyph.bytecode.read().unwrap().show_relative(0));
+            println!("{}", glyph.bytecode.borrow().show_relative(0));
 
             {
                 let mut interp = Interpreter::new();

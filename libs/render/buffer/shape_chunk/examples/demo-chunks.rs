@@ -265,6 +265,7 @@ fn main() -> Fallible<()> {
 
     let chunk = chunk_man.get_chunk_for_shape(f18_id);
     let f18_part = chunk.part(f18_id);
+    let f18_widgets = *f18_part.widgets().clone();
 
     // Upload transforms
     let transforms = vec![0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
@@ -294,9 +295,12 @@ fn main() -> Fallible<()> {
     let xforms_len = f18_part.widgets().num_transformer_floats();
     let mut xforms = Vec::with_capacity(xforms_len);
     xforms.resize(xforms_len, 0f32);
-    f18_part
-        .widgets()
-        .animate_into(&draw_state, draw_state.time_origin(), &now, &mut xforms)?;
+    f18_part.widgets_mut().animate_into(
+        &draw_state,
+        draw_state.time_origin(),
+        &now,
+        &mut xforms,
+    )?;
     let xforms_buffer = CpuAccessibleBuffer::from_iter(
         window.device(),
         BufferUsage::all(),

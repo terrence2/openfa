@@ -712,7 +712,7 @@ impl ShapeUploader {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.read().unwrap().instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -732,7 +732,7 @@ impl ShapeUploader {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.read().unwrap().instrs {
+        for instr in &x86.bytecode.borrow().instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
