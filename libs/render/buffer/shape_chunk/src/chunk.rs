@@ -150,7 +150,7 @@ impl OpenChunk {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<()> {
+    ) -> Fallible<ShapeId> {
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
 
         let start_vertex = self.vertex_offset;
@@ -161,7 +161,7 @@ impl OpenChunk {
         let shape_id = self.allocate_shape_id();
         self.shape_ids.insert(name.to_owned(), shape_id);
         self.chunk_parts.insert(shape_id, part);
-        Ok(())
+        Ok(shape_id)
     }
 
     fn allocate_shape_id(&mut self) -> ShapeId {
@@ -183,6 +183,10 @@ impl OpenChunk {
 
     pub fn atlas_mut(&mut self) -> &mut MegaAtlas {
         &mut self.atlas_builder
+    }
+
+    pub fn chunk_id(&self) -> ChunkId {
+        self.chunk_id
     }
 }
 
@@ -257,15 +261,16 @@ impl ClosedChunk {
         self.chunk_id
     }
 
-    pub fn part(&self, shape_id: &ShapeId) -> Fallible<&ChunkPart> {
+    pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
         self.chunk_parts
-            .get(shape_id)
+            .get(&shape_id)
             .ok_or_else(|| err_msg("no part for associated shape id"))
     }
 
     pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
         self.part(
-            self.shape_ids
+            *self
+                .shape_ids
                 .get(name)
                 .ok_or_else(|| err_msg("shape not found"))?,
         )
