@@ -17,11 +17,11 @@ mod draw_state;
 mod texture_atlas;
 mod upload;
 
-pub use chunk::{Chunk, ClosedChunk, OpenChunk};
+pub use chunk::{Chunk, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, Vertex};
 
-mod vs {
+mod test_vs {
     use vulkano_shaders::shader;
 
     shader! {
@@ -42,7 +42,7 @@ mod vs {
     }
 }
 
-mod fs {
+mod test_fs {
     use vulkano_shaders::shader;
 
     shader! {
@@ -78,8 +78,8 @@ mod test {
     fn test_load_all() -> Fallible<()> {
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-        let vert_shader = vs::Shader::load(window.device())?;
-        let frag_shader = fs::Shader::load(window.device())?;
+        let vert_shader = test_vs::Shader::load(window.device())?;
+        let frag_shader = test_fs::Shader::load(window.device())?;
         let pipeline = Arc::new(
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
