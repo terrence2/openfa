@@ -58,6 +58,7 @@ members = [
         "libs/star_catalog",
         "libs/t2",
         "libs/window",
+        "libs/world",
         "libs/xt",
 ]
 
@@ -66,17 +67,11 @@ members = [
 debug = true
 
 # Need profile-overrides from nightly
+# The external 'image' crate is extremely slow with optimizations.
+# The internal 'pkware' crate is also extremly slow without opt 1+.
 #[profile.dev.overrides.image]
 #opt-level = 3
-
-# pkware is unusable at opt level 0.
-# [profile.dev.]
-# opt-level = 2
-
-# [profile.test]
-# opt-level = 2
-
-# [profile.test]
-# opt-level = 1
+#[profile.dev.overrides.pkware]
+#opt-level = 2
 
 [dependencies]
