@@ -63,6 +63,7 @@ mod test_fs {
 mod test {
     use super::*;
     use failure::Fallible;
+    use log::trace;
     use omnilib::OmniLib;
     use pal::Palette;
     use std::sync::Arc;
@@ -128,21 +129,29 @@ mod test {
             "WAVE2.SH",
         ];
 
+        let mut all_shapes = Vec::new();
         let mut chunk_man = ShapeChunkManager::new(pipeline, &window)?;
         for name in shapes {
             if skipped.contains(&name.as_str()) {
                 continue;
             }
-            let (_shape_id, _maybe_fut) = chunk_man.upload_shape(
+            let (shape_id, _maybe_fut) = chunk_man.upload_shape(
                 &name,
                 DrawSelection::NormalModel,
                 &palette,
                 &lib,
                 &window,
             )?;
+            all_shapes.push(shape_id);
         }
         let future = chunk_man.finish(&window)?;
         future.then_signal_fence_and_flush()?.wait(None)?;
+
+        for shape_id in &all_shapes {
+            let widgets = chunk_man.part(*shape_id)?.widgets();
+            trace!("{} - {}", widgets.num_xforms(), widgets.name());
+        }
+
         Ok(())
     }
 }
