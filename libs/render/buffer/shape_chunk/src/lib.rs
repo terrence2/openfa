@@ -13,15 +13,17 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod chunk;
+mod chunk_manager;
 mod draw_state;
 mod texture_atlas;
 mod upload;
 
-pub use chunk::{Chunk, ClosedChunk, OpenChunk};
+pub use chunk::{Chunk, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
+pub use chunk_manager::ShapeChunkManager;
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, Vertex};
 
-mod vs {
+mod test_vs {
     use vulkano_shaders::shader;
 
     shader! {
@@ -42,7 +44,7 @@ mod vs {
     }
 }
 
-mod fs {
+mod test_fs {
     use vulkano_shaders::shader;
 
     shader! {
@@ -78,8 +80,8 @@ mod test {
     fn test_load_all() -> Fallible<()> {
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-        let vert_shader = vs::Shader::load(window.device())?;
-        let frag_shader = fs::Shader::load(window.device())?;
+        let vert_shader = test_vs::Shader::load(window.device())?;
+        let frag_shader = test_fs::Shader::load(window.device())?;
         let pipeline = Arc::new(
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
@@ -108,7 +110,6 @@ mod test {
         let lib = omni.library("FA");
         let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-        let mut open_chunk = OpenChunk::new(&window)?;
         let mut shapes = lib.find_matching("*.SH")?;
         shapes.sort();
         let skipped = vec![
@@ -126,23 +127,22 @@ mod test {
             "WAVE1.SH",
             "WAVE2.SH",
         ];
-        let mut chunks = Vec::new();
+
+        let mut chunk_man = ShapeChunkManager::new(pipeline, &window)?;
         for name in shapes {
             if skipped.contains(&name.as_str()) {
                 continue;
             }
-            if open_chunk.chunk_is_full() {
-                let (chunk, future) = ClosedChunk::new(open_chunk, pipeline.clone(), &window)?;
-                future.then_signal_fence_and_flush()?.wait(None)?;
-                chunks.push(chunk);
-                open_chunk = OpenChunk::new(&window)?;
-            }
-            open_chunk.upload_shape(&name, DrawSelection::NormalModel, &palette, &lib, &window)?;
+            let (_shape_id, _maybe_fut) = chunk_man.upload_shape(
+                &name,
+                DrawSelection::NormalModel,
+                &palette,
+                &lib,
+                &window,
+            )?;
         }
-        let (chunk, future) = ClosedChunk::new(open_chunk, pipeline.clone(), &window)?;
+        let future = chunk_man.finish(&window)?;
         future.then_signal_fence_and_flush()?.wait(None)?;
-        chunks.push(chunk);
-        println!("CHUNK COUNT: {}", chunks.len());
         Ok(())
     }
 }
