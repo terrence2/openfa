@@ -16,7 +16,7 @@ members = [
         "apps/pack-pic",
         "apps/show-mm",
         "apps/show-dlg",
-        "apps/show-sh",
+        "apps/show-sh-legacy",
         "apps/show-sh-raw",
         "apps/show-sky",
 
@@ -49,7 +49,7 @@ members = [
         "libs/render/buffer/stars",
         "libs/render/common/camera",
         "libs/render/common/geometry",
-        "libs/render/draw/shape",
+        "libs/render/draw/legacy_shape",
         "libs/render/draw/skybox",
         "libs/render/draw/text",
         "libs/resource",

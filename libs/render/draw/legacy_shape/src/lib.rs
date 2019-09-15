@@ -83,7 +83,7 @@ mod vs {
         } pc;
 
         #include <common/include/include_global.glsl>
-        #include <draw/shape/src/include_shape.glsl>
+        #include <draw/legacy_shape/src/include_shape.glsl>
 
         layout(location = 0) smooth out vec4 v_color;
         layout(location = 1) smooth out vec2 v_tex_coord;
