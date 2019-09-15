@@ -506,6 +506,8 @@ impl Transformer {
 // Contains information about what parts of the shape can be mutated by
 // standard actions. e.g. Gears, flaps, etc.
 pub struct ShapeWidgets {
+    shape_name: String,
+
     // Self contained vm/instructions for how to set up each required transform
     // to draw this shape buffer.
     transformers: Vec<Transformer>,
@@ -515,8 +517,9 @@ pub struct ShapeWidgets {
 }
 
 impl ShapeWidgets {
-    pub fn new(transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
+    pub fn new(name: &str, transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
         Self {
+            shape_name: name.to_owned(),
             transformers,
             errata,
         }
@@ -539,8 +542,16 @@ impl ShapeWidgets {
         Ok(())
     }
 
+    pub fn name(&self) -> &str {
+        &self.shape_name
+    }
+
     pub fn errata(&self) -> ShapeErrata {
         self.errata
+    }
+
+    pub fn num_xforms(&self) -> usize {
+        self.transformers.len()
     }
 
     pub fn num_transformer_floats(&self) -> usize {
@@ -978,7 +989,7 @@ impl ShapeUploader {
         window: &GraphicsWindow,
         chunk: &mut OpenChunk,
     ) -> Fallible<ShapeWidgets> {
-        println!("MODEL: {}", name);
+        trace!("ShapeUploader::draw_model: {}", name);
 
         // Outputs
         let mut transformers = Vec::new();
@@ -1096,6 +1107,7 @@ impl ShapeUploader {
         }
 
         Ok(ShapeWidgets::new(
+            name,
             transformers,
             ShapeErrata::from_flags(prop_man.seen_flags),
         ))

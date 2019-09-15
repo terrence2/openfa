@@ -79,10 +79,10 @@ impl ShapeChunkManager {
     }
 
     pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
-        let id = self
+        let chunk_id = self
             .shape_to_chunk_map
             .get(&shape_id)
             .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
-        self.closed_chunks[id].part(shape_id)
+        self.closed_chunks[chunk_id].part(shape_id)
     }
 }
