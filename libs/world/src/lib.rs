@@ -41,6 +41,7 @@ impl World {
         ecs.register::<ShapeMesh>();
         ecs.register::<ShapeMeshTransformBuffer>();
         ecs.register::<ShapeMeshFlagBuffer>();
+        ecs.register::<ShapeMeshXformBuffer>();
         ecs.register::<Transform>();
 
         Ok(Self {
@@ -86,6 +87,8 @@ impl World {
         position: Point3<f64>,
         part: &ChunkPart,
     ) -> Fallible<Entity> {
+        let widget_ref = part.widgets();
+        let widgets = widget_ref.read().unwrap();
         Ok(self
             .ecs
             .write()
@@ -96,7 +99,8 @@ impl World {
             .with(FlightDynamics::new())
             .with(ShapeMesh::new(shape_id))
             .with(ShapeMeshTransformBuffer::new())
-            .with(ShapeMeshFlagBuffer::new(part.widgets().errata()))
+            .with(ShapeMeshFlagBuffer::new(widgets.errata()))
+            .with(ShapeMeshXformBuffer::new(shape_id, part.widgets()))
             .build())
     }
 

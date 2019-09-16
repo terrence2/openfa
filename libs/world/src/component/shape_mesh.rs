@@ -12,8 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use shape_chunk::{DrawState, ShapeErrata, ShapeId};
+use shape_chunk::{DrawState, ShapeErrata, ShapeId, ShapeWidgets};
 use specs::{Component, VecStorage};
+use std::sync::{Arc, RwLock};
 
 pub struct ShapeMesh {
     shape_id: ShapeId,
@@ -66,6 +67,27 @@ impl ShapeMeshFlagBuffer {
         Self {
             buffer: [0u32; 2],
             errata,
+        }
+    }
+}
+
+pub struct ShapeMeshXformBuffer {
+    pub shape_id: ShapeId,
+    pub buffer: Vec<f32>,
+    pub widgets: Arc<RwLock<ShapeWidgets>>,
+}
+impl Component for ShapeMeshXformBuffer {
+    type Storage = VecStorage<Self>;
+}
+impl ShapeMeshXformBuffer {
+    pub fn new(shape_id: ShapeId, widgets: Arc<RwLock<ShapeWidgets>>) -> Self {
+        let num_floats = widgets.read().unwrap().num_transformer_floats();
+        let mut buffer = Vec::with_capacity(num_floats);
+        buffer.resize(num_floats, 0f32);
+        Self {
+            shape_id,
+            buffer,
+            widgets,
         }
     }
 }

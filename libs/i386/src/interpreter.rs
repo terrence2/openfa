@@ -20,7 +20,7 @@ use crate::{
 };
 use failure::{bail, ensure, Fallible};
 use log::trace;
-use std::{cell::RefCell, collections::HashMap, mem, rc::Rc};
+use std::{collections::HashMap, mem};
 
 #[derive(Debug)]
 pub enum ExitInfo {
@@ -70,7 +70,7 @@ pub struct Interpreter {
     stack: Vec<u32>,
     mem_maps: Vec<MemMap>,
     value_maps: HashMap<u32, u32>,
-    bytecode: Vec<Rc<RefCell<ByteCode>>>,
+    bytecode: Vec<ByteCode>,
     trampolines: HashMap<u32, (String, usize)>,
 }
 
@@ -136,7 +136,7 @@ impl Interpreter {
         )
     }
 
-    pub fn add_code(&mut self, bc: Rc<RefCell<ByteCode>>) {
+    pub fn add_code(&mut self, bc: ByteCode) {
         self.bytecode.push(bc);
     }
 
@@ -144,17 +144,17 @@ impl Interpreter {
         self.bytecode.clear();
     }
 
-    fn find_instr(&self) -> Fallible<(Rc<RefCell<ByteCode>>, usize)> {
+    fn find_instr(&self) -> Fallible<(usize, usize)> {
         trace!("searching for instr at ip: {:08X}", self.eip());
-        for bc_ref in self.bytecode.iter() {
-            let bc = bc_ref.borrow();
+        for (bc_offset, bc) in self.bytecode.iter().enumerate() {
+            //let bc = bc_ref.borrow();
             if self.eip() >= bc.start_addr && self.eip() < bc.start_addr + bc.size {
                 trace!("in bc at {:08X}", bc.start_addr);
                 let mut pos = bc.start_addr;
                 for (offset, instr) in bc.instrs.iter().enumerate() {
                     trace!("checking {}: {:08X} of {:08X}", offset, pos, self.eip());
                     if pos == self.eip() {
-                        return Ok((bc_ref.clone(), offset));
+                        return Ok((bc_offset, offset));
                     }
                     pos += instr.size() as u32;
                 }
@@ -173,10 +173,10 @@ impl Interpreter {
 
     pub fn interpret(&mut self, at: u32) -> Fallible<ExitInfo> {
         *self.eip_mut() = at;
-        let (bc_ref, mut offset) = self.find_instr()?;
-        let bc = bc_ref.borrow();
-        while offset < bc.instrs.len() {
-            let instr = &bc.instrs[offset];
+        let (bc_offset, mut offset) = self.find_instr()?;
+        let bc_len = self.bytecode[bc_offset].instrs.len();
+        while offset < bc_len {
+            let instr = self.bytecode[bc_offset].instrs[offset].to_owned();
             trace!("{:3}:{:04X}: {}", offset, self.eip(), instr);
             offset += 1;
             *self.eip_mut() += instr.size() as u32;
