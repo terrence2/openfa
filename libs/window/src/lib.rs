@@ -335,6 +335,10 @@ impl GraphicsWindow {
         Ok(f64::from(dim[1] / dim[0]))
     }
 
+    pub fn now(&self) -> Box<dyn GpuFuture> {
+        Box::new(sync::now(self.device())) as Box<dyn GpuFuture>
+    }
+
     pub fn device(&self) -> Arc<Device> {
         self.device.clone()
     }

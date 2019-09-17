@@ -31,7 +31,7 @@ use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, 
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Instant,
 };
 use vulkano::{
@@ -434,7 +434,7 @@ pub struct Transformer {
     // Note that mutability is an implementation detail here. We could construct
     // a new one for each frame, for each instance, for each transform, but that
     // would get expensive fast and we shouldn't actually be changing the state.
-    vm: RefCell<Interpreter>,
+    vm: Arc<RwLock<Interpreter>>,
     code_offset: u32,
     data_offset: u32,
     inputs: Vec<TransformInput>,
@@ -452,7 +452,7 @@ impl Transformer {
             d * std::f32::consts::PI / 8192f32
         }
 
-        let mut vm = self.vm.borrow_mut();
+        let mut vm = self.vm.write().unwrap();
         for input in &self.inputs {
             let (loc, value) = match input {
                 TransformInput::CurrentTicks(loc) => {
@@ -987,7 +987,7 @@ impl ShapeUploader {
 
         transformers.push(Transformer {
             xform_id,
-            vm: RefCell::new(interp),
+            vm: Arc::new(RwLock::new(interp)),
             code_offset: x86.code_offset(SHAPE_LOAD_BASE),
             data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
             inputs,

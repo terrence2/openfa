@@ -85,4 +85,12 @@ impl ShapeChunkManager {
             .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
         self.closed_chunks[chunk_id].part(shape_id)
     }
+
+    pub fn chunk(&self, shape_id: ShapeId) -> Fallible<&ClosedChunk> {
+        let chunk_id = self
+            .shape_to_chunk_map
+            .get(&shape_id)
+            .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
+        Ok(&self.closed_chunks[chunk_id])
+    }
 }

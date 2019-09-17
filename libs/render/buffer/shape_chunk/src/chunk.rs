@@ -69,6 +69,22 @@ pub enum Chunk {
     Closed(ClosedChunk),
 }
 
+impl Chunk {
+    pub fn is_open(&self) -> bool {
+        match self {
+            Self::Open(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn as_open_chunk_mut(&mut self) -> &mut OpenChunk {
+        match self {
+            Self::Open(chunk) => chunk,
+            _ => panic!("not an open chunk"),
+        }
+    }
+}
+
 // Where a shape lives in a chunk.
 pub struct ChunkPart {
     vertex_start: usize,
