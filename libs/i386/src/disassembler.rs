@@ -60,7 +60,7 @@ impl DisassemblyError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Reg {
     AL,
     BL,
@@ -205,7 +205,7 @@ impl fmt::Display for Reg {
 }
 
 // size @ [base + index*scale + disp]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MemRef {
     pub displacement: i32,
     pub base: Option<Reg>,
@@ -424,7 +424,7 @@ impl OperandDecodeState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Operand {
     Imm32(u32),
     Imm32s(i32),
@@ -852,7 +852,7 @@ impl OpPrefix {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Instr {
     pub memonic: Memonic,
     pub operands: Vec<Operand>,
@@ -989,7 +989,7 @@ impl fmt::Display for Instr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ByteCode {
     pub start_addr: u32,
     pub size: u32,

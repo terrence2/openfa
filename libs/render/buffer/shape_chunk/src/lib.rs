@@ -21,7 +21,7 @@ mod upload;
 pub use chunk::{Chunk, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
 pub use chunk_manager::ShapeChunkManager;
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, ShapeErrata, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 
 mod test_vs {
     use vulkano_shaders::shader;
@@ -148,7 +148,8 @@ mod test {
         future.then_signal_fence_and_flush()?.wait(None)?;
 
         for shape_id in &all_shapes {
-            let widgets = chunk_man.part(*shape_id)?.widgets();
+            let lifetime = chunk_man.part(*shape_id)?.widgets();
+            let widgets = lifetime.read().unwrap();
             trace!("{} - {}", widgets.num_xforms(), widgets.name());
         }
 

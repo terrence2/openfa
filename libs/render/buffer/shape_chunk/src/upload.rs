@@ -24,7 +24,6 @@ use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     time::Instant,
 };
@@ -154,6 +153,7 @@ impl DrawSelection {
     }
 }
 
+#[derive(Clone)]
 pub enum TransformInput {
     CurrentTicks(u32),
     GearPosition(u32),
@@ -423,12 +423,10 @@ impl BufferPropsManager {
 // the virtual machine interpreter, already set up, the xform_id it maps to
 // for upload, the code and data offsets, and all inputs that need to be
 // configured and where to put them.
+#[derive(Clone)]
 pub struct Transformer {
     xform_id: u32,
-    // Note that mutability is an implementation detail here. We could construct
-    // a new one for each frame, for each instance, for each transform, but that
-    // would get expensive fast and we shouldn't actually be changing the state.
-    vm: RefCell<Interpreter>,
+    vm: Interpreter,
     code_offset: u32,
     data_offset: u32,
     inputs: Vec<TransformInput>,
@@ -441,7 +439,7 @@ impl Transformer {
     }
 
     pub fn transform(
-        &self,
+        &mut self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
@@ -450,7 +448,7 @@ impl Transformer {
             d * std::f32::consts::PI / 8192f32
         }
 
-        let mut vm = self.vm.borrow_mut();
+        let vm = &mut self.vm;
         for input in &self.inputs {
             let (loc, value) = match input {
                 TransformInput::CurrentTicks(loc) => {
@@ -505,6 +503,7 @@ impl Transformer {
 
 // Contains information about what parts of the shape can be mutated by
 // standard actions. e.g. Gears, flaps, etc.
+#[derive(Clone)]
 pub struct ShapeWidgets {
     shape_name: String,
 
@@ -526,7 +525,7 @@ impl ShapeWidgets {
     }
 
     pub fn animate_into(
-        &self,
+        &mut self,
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
@@ -534,9 +533,9 @@ impl ShapeWidgets {
     ) -> Fallible<()> {
         assert!(buffer.len() >= self.num_transformer_floats());
         let mut offset = 0;
-        for transformer in self.transformers.iter() {
+        for transformer in self.transformers.iter_mut() {
             let xform = transformer.transform(draw_state, start, now)?;
-            buffer[offset..].copy_from_slice(&xform);
+            buffer[offset..offset + 6].copy_from_slice(&xform);
             offset += 6;
         }
         Ok(())
@@ -674,7 +673,7 @@ impl ShapeUploader {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.borrow().instrs {
+        for instr in &x86.bytecode.instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -694,7 +693,7 @@ impl ShapeUploader {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.borrow().instrs {
+        for instr in &x86.bytecode.instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
@@ -970,7 +969,7 @@ impl ShapeUploader {
 
         transformers.push(Transformer {
             xform_id,
-            vm: RefCell::new(interp),
+            vm: interp,
             code_offset: x86.code_offset(SHAPE_LOAD_BASE),
             data_offset: SHAPE_LOAD_BASE + xform.at_offset() as u32 + 2u32,
             inputs,

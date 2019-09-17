@@ -25,7 +25,7 @@ use sh::RawShape;
 use std::{
     collections::HashMap,
     mem,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
@@ -73,12 +73,16 @@ pub enum Chunk {
 pub struct ChunkPart {
     vertex_start: usize,
     vertex_count: usize,
-    shape_widgets: ShapeWidgets,
+    shape_widgets: Arc<RwLock<ShapeWidgets>>,
 }
 
 impl ChunkPart {
     // TODO: make this an initializer and figure out max_transformer_values up front.
-    pub fn new(vertex_start: usize, vertex_end: usize, shape_widgets: ShapeWidgets) -> Self {
+    pub fn new(
+        vertex_start: usize,
+        vertex_end: usize,
+        shape_widgets: Arc<RwLock<ShapeWidgets>>,
+    ) -> Self {
         ChunkPart {
             vertex_start,
             vertex_count: vertex_end - vertex_start,
@@ -95,8 +99,8 @@ impl ChunkPart {
         }
     }
 
-    pub fn widgets(&self) -> &ShapeWidgets {
-        &self.shape_widgets
+    pub fn widgets(&self) -> Arc<RwLock<ShapeWidgets>> {
+        self.shape_widgets.clone()
     }
 }
 
@@ -154,8 +158,9 @@ impl OpenChunk {
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
 
         let start_vertex = self.vertex_offset;
-        let shape_widgets =
-            ShapeUploader::draw_model(name, &sh, selection, palette, lib, window, self)?;
+        let shape_widgets = Arc::new(RwLock::new(ShapeUploader::draw_model(
+            name, &sh, selection, palette, lib, window, self,
+        )?));
 
         let part = ChunkPart::new(start_vertex, self.vertex_offset, shape_widgets);
         let shape_id = self.allocate_shape_id();
@@ -187,6 +192,10 @@ impl OpenChunk {
 
     pub fn chunk_id(&self) -> ChunkId {
         self.chunk_id
+    }
+
+    pub unsafe fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        &self.chunk_parts[&shape_id]
     }
 }
 

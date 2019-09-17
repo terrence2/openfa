@@ -13,8 +13,19 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod component;
+pub mod system;
 
-use crate::component::*;
+pub use crate::{
+    component::{
+        flight_dynamics::FlightDynamics,
+        shape_mesh::{
+            ShapeMesh, ShapeMeshFlagBuffer, ShapeMeshTransformBuffer, ShapeMeshXformBuffer,
+        },
+        transform::Transform,
+        wheeled_dynamics::WheeledDynamics,
+    },
+    system::shape_mesh::{FlagUpdateSystem, XformUpdateSystem},
+};
 use failure::Fallible;
 use lib::Library;
 use nalgebra::Point3;
@@ -41,6 +52,7 @@ impl World {
         ecs.register::<ShapeMesh>();
         ecs.register::<ShapeMeshTransformBuffer>();
         ecs.register::<ShapeMeshFlagBuffer>();
+        ecs.register::<ShapeMeshXformBuffer>();
         ecs.register::<Transform>();
 
         Ok(Self {
@@ -86,6 +98,8 @@ impl World {
         position: Point3<f64>,
         part: &ChunkPart,
     ) -> Fallible<Entity> {
+        let widget_ref = part.widgets();
+        let widgets = widget_ref.read().unwrap();
         Ok(self
             .ecs
             .write()
@@ -96,7 +110,8 @@ impl World {
             .with(FlightDynamics::new())
             .with(ShapeMesh::new(shape_id))
             .with(ShapeMeshTransformBuffer::new())
-            .with(ShapeMeshFlagBuffer::new(part.widgets().errata()))
+            .with(ShapeMeshFlagBuffer::new(widgets.errata()))
+            .with(ShapeMeshXformBuffer::new(shape_id, part.widgets()))
             .build())
     }
 
