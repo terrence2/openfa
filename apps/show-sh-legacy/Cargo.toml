@@ -1,5 +1,5 @@
 [package]
-name = "show-sh"
+name = "show-sh-legacy"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -23,7 +23,7 @@ mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-shape = { path = "../../libs/render/draw/legacy_shape" }
+legacy_shape = { path = "../../libs/render/draw/legacy_shape" }
 sh = { path = "../../libs/sh" }
 skybox = { path = "../../libs/render/draw/skybox" }
 text = { path = "../../libs/render/draw/text" }

@@ -15,12 +15,12 @@
 use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use input::{InputBindings, InputSystem};
+use legacy_shape::{upload::DrawSelection, ShapeRenderer};
 use log::trace;
 use nalgebra::{Unit, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use sh::RawShape;
-use shape::{upload::DrawSelection, ShapeRenderer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderer;
 use std::{f64::consts::PI, rc::Rc, time::Instant};
