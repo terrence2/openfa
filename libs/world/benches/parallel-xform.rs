@@ -16,86 +16,14 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use failure::Fallible;
 use nalgebra::Point3;
 use omnilib::OmniLib;
-use shape_chunk::{DrawSelection, OpenChunk, ShapeId, ShapeWidgets};
+use shape_chunk::{DrawSelection, OpenChunk};
 use specs::prelude::*;
-use std::{
-    cell::RefCell,
-    collections::{hash_map::Entry, HashMap},
-    time::Instant,
-};
+use std::time::Instant;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
-use world::{component::*, World};
-
-pub struct FlagUpdateSystem {
-    start: Instant,
-}
-impl FlagUpdateSystem {
-    pub fn new(start: &Instant) -> Self {
-        Self { start: *start }
-    }
-}
-impl<'a> System<'a> for FlagUpdateSystem {
-    type SystemData = (
-        ReadStorage<'a, ShapeMesh>,
-        WriteStorage<'a, ShapeMeshFlagBuffer>,
-    );
-
-    fn run(&mut self, (shape_meshs, mut flag_buffers): Self::SystemData) {
-        (&shape_meshs, &mut flag_buffers)
-            .par_join()
-            .for_each(|(shape_mesh, flag_buffer)| {
-                shape_mesh
-                    .draw_state()
-                    .build_mask_into(&self.start, flag_buffer.errata, &mut flag_buffer.buffer)
-                    .unwrap();
-            });
-    }
-}
-
-thread_local! {
-    pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
-}
-
-pub struct XformUpdateSystem {
-    start: Instant,
-}
-impl XformUpdateSystem {
-    pub fn new(start: &Instant) -> Self {
-        Self { start: *start }
-    }
-}
-impl<'a> System<'a> for XformUpdateSystem {
-    type SystemData = (
-        ReadStorage<'a, ShapeMesh>,
-        WriteStorage<'a, ShapeMeshXformBuffer>,
-    );
-
-    fn run(&mut self, (shape_meshs, mut xform_buffers): Self::SystemData) {
-        let now = Instant::now();
-        (&shape_meshs, &mut xform_buffers)
-            .par_join()
-            .for_each(|(shape_mesh, xform_buffer)| {
-                WIDGET_CACHE.with(|widget_cache| {
-                    match widget_cache.borrow_mut().entry(xform_buffer.shape_id) {
-                        Entry::Occupied(mut e) => {
-                            e.get_mut()
-                                .animate_into(
-                                    shape_mesh.draw_state(),
-                                    &self.start,
-                                    &now,
-                                    &mut xform_buffer.buffer,
-                                )
-                                .unwrap();
-                        }
-                        Entry::Vacant(e) => {
-                            let widgets = xform_buffer.widgets.read().unwrap().clone();
-                            e.insert(widgets);
-                        }
-                    }
-                });
-            });
-    }
-}
+use world::{
+    system::shape_mesh::{FlagUpdateSystem, XformUpdateSystem},
+    World,
+};
 
 fn set_up_world() -> Fallible<World> {
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;

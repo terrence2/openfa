@@ -13,8 +13,19 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod component;
+pub mod system;
 
-use crate::component::*;
+pub use crate::{
+    component::{
+        flight_dynamics::FlightDynamics,
+        shape_mesh::{
+            ShapeMesh, ShapeMeshFlagBuffer, ShapeMeshTransformBuffer, ShapeMeshXformBuffer,
+        },
+        transform::Transform,
+        wheeled_dynamics::WheeledDynamics,
+    },
+    system::shape_mesh::{FlagUpdateSystem, XformUpdateSystem},
+};
 use failure::Fallible;
 use lib::Library;
 use nalgebra::Point3;
