@@ -18,12 +18,12 @@ mod draw_state;
 mod texture_atlas;
 mod upload;
 
-pub use chunk::{Chunk, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
-pub use chunk_manager::{ChunkIndex, ShapeChunkManager};
+pub use chunk::{Chunk, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
+pub use chunk_manager::ShapeChunkManager;
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, ShapeErrata, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 
-mod vs {
+mod test_vs {
     use vulkano_shaders::shader;
 
     shader! {
@@ -44,7 +44,7 @@ mod vs {
     }
 }
 
-mod fs {
+mod test_fs {
     use vulkano_shaders::shader;
 
     shader! {
@@ -63,6 +63,7 @@ mod fs {
 mod test {
     use super::*;
     use failure::Fallible;
+    use log::trace;
     use omnilib::OmniLib;
     use pal::Palette;
     use std::sync::Arc;
@@ -80,8 +81,8 @@ mod test {
     fn test_load_all() -> Fallible<()> {
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
 
-        let vert_shader = vs::Shader::load(window.device())?;
-        let frag_shader = fs::Shader::load(window.device())?;
+        let vert_shader = test_vs::Shader::load(window.device())?;
+        let frag_shader = test_fs::Shader::load(window.device())?;
         let pipeline = Arc::new(
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
@@ -110,7 +111,6 @@ mod test {
         let lib = omni.library("FA");
         let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-        let mut open_chunk = OpenChunk::new(&window)?;
         let mut shapes = lib.find_matching("*.SH")?;
         shapes.sort();
         let skipped = vec![
@@ -128,35 +128,31 @@ mod test {
             "WAVE1.SH",
             "WAVE2.SH",
         ];
-        let mut chunks = Vec::new();
-        let mut chunk_index = 0;
+
+        let mut all_shapes = Vec::new();
+        let mut chunk_man = ShapeChunkManager::new(pipeline, &window)?;
         for name in shapes {
             if skipped.contains(&name.as_str()) {
                 continue;
             }
-            if open_chunk.chunk_is_full() {
-                let (chunk, future) = ClosedChunk::new(
-                    open_chunk,
-                    ChunkIndex(chunk_index),
-                    pipeline.clone(),
-                    &window,
-                )?;
-                chunk_index += 1;
-                future.then_signal_fence_and_flush()?.wait(None)?;
-                chunks.push(chunk);
-                open_chunk = OpenChunk::new(&window)?;
-            }
-            open_chunk.upload_shape(&name, DrawSelection::NormalModel, &palette, &lib, &window)?;
+            let (shape_id, _maybe_fut) = chunk_man.upload_shape(
+                &name,
+                DrawSelection::NormalModel,
+                &palette,
+                &lib,
+                &window,
+            )?;
+            all_shapes.push(shape_id);
         }
-        let (chunk, future) = ClosedChunk::new(
-            open_chunk,
-            ChunkIndex(chunk_index),
-            pipeline.clone(),
-            &window,
-        )?;
+        let future = chunk_man.finish(&window)?;
         future.then_signal_fence_and_flush()?.wait(None)?;
-        chunks.push(chunk);
-        println!("CHUNK COUNT: {}", chunks.len());
+
+        for shape_id in &all_shapes {
+            let lifetime = chunk_man.part(*shape_id)?.widgets();
+            let widgets = lifetime.read().unwrap();
+            trace!("{} - {}", widgets.num_xforms(), widgets.name());
+        }
+
         Ok(())
     }
 }

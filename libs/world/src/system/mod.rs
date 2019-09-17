@@ -12,23 +12,4 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use nalgebra::Vector3;
-use specs::{Component, VecStorage};
-
-pub struct FlightDynamics {
-    #[allow(dead_code)]
-    velocity: Vector3<f64>,
-}
-
-impl Component for FlightDynamics {
-    type Storage = VecStorage<Self>;
-}
-
-impl FlightDynamics {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            velocity: Vector3::zeros(),
-        }
-    }
-}
+pub mod shape_mesh;

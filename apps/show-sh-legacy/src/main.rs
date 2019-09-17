@@ -47,6 +47,7 @@ fn main() -> Fallible<()> {
     }
     let (game, _) = inputs.first().unwrap();
     let lib = omni.library(&game);
+    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
 
     let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
@@ -98,11 +99,11 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let mut instances = Vec::new();
     let mut sh_renderer = ShapeRenderer::new(&window)?;
+
+    let mut instances = Vec::new();
     for (game, name) in &inputs {
         let lib = omni.library(&game);
-        let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
         let instance = sh_renderer.add_shape_to_render(
             name,

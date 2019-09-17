@@ -263,9 +263,9 @@ fn main() -> Fallible<()> {
     let future = chunk_man.finish(&window)?;
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let chunk = chunk_man.get_chunk_for_shape(f18_id);
-    let f18_part = chunk.part(f18_id);
-    let f18_widgets = *f18_part.widgets().clone();
+    let chunk = chunk_man.chunk(f18_id)?;
+    let f18_part = chunk_man.part(f18_id)?;
+    let _f18_widgets = f18_part.widgets().read().unwrap().clone();
 
     // Upload transforms
     let transforms = vec![0f32, 0f32, 0f32, 0f32, 0f32, 0f32];
@@ -281,7 +281,7 @@ fn main() -> Fallible<()> {
     let mut flags_arr = [0u32; 2];
     draw_state.build_mask_into(
         draw_state.time_origin(),
-        f18_part.widgets().errata(),
+        f18_part.widgets().read().unwrap().errata(),
         &mut flags_arr[0..2],
     )?;
     let flags_buffer = CpuAccessibleBuffer::from_iter(
@@ -292,10 +292,10 @@ fn main() -> Fallible<()> {
 
     // Upload xforms
     let now = Instant::now();
-    let xforms_len = f18_part.widgets().num_transformer_floats();
+    let xforms_len = f18_part.widgets().read().unwrap().num_transformer_floats();
     let mut xforms = Vec::with_capacity(xforms_len);
     xforms.resize(xforms_len, 0f32);
-    f18_part.widgets_mut().animate_into(
+    f18_part.widgets().write().unwrap().animate_into(
         &draw_state,
         draw_state.time_origin(),
         &now,

@@ -24,9 +24,7 @@ use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
     time::Instant,
 };
 use vulkano::impl_vertex;
@@ -155,6 +153,7 @@ impl DrawSelection {
     }
 }
 
+#[derive(Clone)]
 pub enum TransformInput {
     CurrentTicks(u32),
     GearPosition(u32),
@@ -427,9 +426,6 @@ impl BufferPropsManager {
 #[derive(Clone)]
 pub struct Transformer {
     xform_id: u32,
-    // Note that mutability is an implementation detail here. We could construct
-    // a new one for each frame, for each instance, for each transform, but that
-    // would get expensive fast and we shouldn't actually be changing the state.
     vm: Interpreter,
     code_offset: u32,
     data_offset: u32,
@@ -452,45 +448,25 @@ impl Transformer {
             d * std::f32::consts::PI / 8192f32
         }
 
-        let gear_position = draw_state.gear_position() as u32;
-        let bay_position = draw_state.bay_position() as u32;
-        let thrust_vectoring = draw_state.thrust_vector_position() as i32 as u32;
-        let wing_sweep = i32::from(draw_state.wing_sweep_angle()) as u32;
-        let mut vm = &mut self.vm; //.borrow_mut();
-        let t = (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF;
+        let vm = &mut self.vm;
         for input in &self.inputs {
-            match input {
+            let (loc, value) = match input {
                 TransformInput::CurrentTicks(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || t));
+                    (*loc, (((*now - *start).as_millis() as u32) >> 4) & 0x0FFF)
                 }
-                TransformInput::GearPosition(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || gear_position));
-                }
-                TransformInput::GearDown(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 1));
-                }
-                TransformInput::BayPosition(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || bay_position));
-                }
-                TransformInput::BayOpen(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 1));
-                }
-                TransformInput::CanardPosition(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || thrust_vectoring));
-                }
-                TransformInput::AfterBurner(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 1));
-                }
+                TransformInput::GearPosition(loc) => (*loc, draw_state.x86_gear_position()),
+                TransformInput::GearDown(loc) => (*loc, draw_state.x86_gear_down()),
+                TransformInput::BayPosition(loc) => (*loc, draw_state.x86_bay_position()),
+                TransformInput::BayOpen(loc) => (*loc, draw_state.x86_bay_open()),
+                TransformInput::CanardPosition(loc) => (*loc, draw_state.x86_canard_position()),
+                TransformInput::AfterBurner(loc) => (*loc, draw_state.x86_afterburner_enabled()),
+                TransformInput::VerticalAngle(loc) => (*loc, draw_state.x86_vertical_angle()),
+                TransformInput::SwingWing(loc) => (*loc, draw_state.x86_swing_wing()),
                 TransformInput::VerticalOn(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || 0));
+                    (*loc, 0) // FIXME: need to figure out how harrier is going to work still
                 }
-                TransformInput::VerticalAngle(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || thrust_vectoring));
-                }
-                TransformInput::SwingWing(loc) => {
-                    vm.add_read_port(*loc, Box::new(move || wing_sweep));
-                }
-            }
+            };
+            vm.map_value(loc, value);
         }
         vm.map_writable(self.data_offset, self.xform_base.to_vec())?;
         let result = vm.interpret(self.code_offset)?;
@@ -509,17 +485,17 @@ impl Transformer {
         ];
         for input in &self.inputs {
             match input {
-                TransformInput::CurrentTicks(loc) => vm.remove_read_port(*loc),
-                TransformInput::GearPosition(loc) => vm.remove_read_port(*loc),
-                TransformInput::GearDown(loc) => vm.remove_read_port(*loc),
-                TransformInput::BayPosition(loc) => vm.remove_read_port(*loc),
-                TransformInput::BayOpen(loc) => vm.remove_read_port(*loc),
-                TransformInput::CanardPosition(loc) => vm.remove_read_port(*loc),
-                TransformInput::AfterBurner(loc) => vm.remove_read_port(*loc),
-                TransformInput::VerticalOn(loc) => vm.remove_read_port(*loc),
-                TransformInput::VerticalAngle(loc) => vm.remove_read_port(*loc),
-                TransformInput::SwingWing(loc) => vm.remove_read_port(*loc),
-            }
+                TransformInput::CurrentTicks(loc) => vm.unmap_value(*loc),
+                TransformInput::GearPosition(loc) => vm.unmap_value(*loc),
+                TransformInput::GearDown(loc) => vm.unmap_value(*loc),
+                TransformInput::BayPosition(loc) => vm.unmap_value(*loc),
+                TransformInput::BayOpen(loc) => vm.unmap_value(*loc),
+                TransformInput::CanardPosition(loc) => vm.unmap_value(*loc),
+                TransformInput::AfterBurner(loc) => vm.unmap_value(*loc),
+                TransformInput::VerticalOn(loc) => vm.unmap_value(*loc),
+                TransformInput::VerticalAngle(loc) => vm.unmap_value(*loc),
+                TransformInput::SwingWing(loc) => vm.unmap_value(*loc),
+            };
         }
         Ok(arr)
     }
@@ -529,6 +505,8 @@ impl Transformer {
 // standard actions. e.g. Gears, flaps, etc.
 #[derive(Clone)]
 pub struct ShapeWidgets {
+    shape_name: String,
+
     // Self contained vm/instructions for how to set up each required transform
     // to draw this shape buffer.
     num_transformer_floats: usize,
@@ -539,10 +517,11 @@ pub struct ShapeWidgets {
 }
 
 impl ShapeWidgets {
-    pub fn new(transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
+    pub fn new(name: &str, transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
         Self {
             num_transformer_floats: transformers.len() * 6,
-            transformers: transformers,
+            shape_name: name.to_owned(),
+            transformers,
             errata,
         }
     }
@@ -564,8 +543,16 @@ impl ShapeWidgets {
         Ok(())
     }
 
+    pub fn name(&self) -> &str {
+        &self.shape_name
+    }
+
     pub fn errata(&self) -> ShapeErrata {
         self.errata
+    }
+
+    pub fn num_xforms(&self) -> usize {
+        self.transformers.len()
     }
 
     pub fn num_transformer_floats(&self) -> usize {
@@ -688,7 +675,7 @@ impl ShapeUploader {
         sh: &'a RawShape,
     ) -> HashMap<&'a str, &'a X86Trampoline> {
         let mut out = HashMap::new();
-        for instr in &x86.bytecode.borrow().instrs {
+        for instr in &x86.bytecode.instrs {
             for operand in &instr.operands {
                 if let i386::Operand::Memory(memref) = operand {
                     if let Ok(tramp) = sh.lookup_trampoline_by_offset(
@@ -708,7 +695,7 @@ impl ShapeUploader {
     ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
-        for instr in &x86.bytecode.borrow().instrs {
+        for instr in &x86.bytecode.instrs {
             if instr.memonic == i386::Memonic::Push {
                 if let i386::Operand::Imm32s(v) = instr.operands[0] {
                     push_value = (v as u32).wrapping_sub(SHAPE_LOAD_BASE);
@@ -796,7 +783,7 @@ impl ShapeUploader {
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
 
         for &(value, flags) in &TOGGLE_TABLE[trampoline.name.as_str()] {
-            interp.add_read_port(trampoline.mem_location, Box::new(move || value));
+            interp.map_value(trampoline.mem_location, value);
             let exit_info = interp.interpret(x86.code_offset(SHAPE_LOAD_BASE))?;
             let (name, args) = exit_info.ok_trampoline()?;
             ensure!(name == "do_start_interp", "unexpected trampoline return");
@@ -808,7 +795,7 @@ impl ShapeUploader {
                     &trampoline.name,
                 );
             }
-            interp.remove_read_port(trampoline.mem_location);
+            interp.unmap_value(trampoline.mem_location);
         }
 
         Ok(())
@@ -834,7 +821,7 @@ impl ShapeUploader {
         let mut interp = i386::Interpreter::new();
         interp.add_code(x86.bytecode.clone());
         interp.add_code(trailer.unwrap_x86()?.bytecode.clone());
-        interp.add_read_port(brent_obj_id.mem_location, Box::new(move || 0x60000));
+        interp.map_value(brent_obj_id.mem_location, 0x60000);
         let do_start_interp = sh.lookup_trampoline_by_name("do_start_interp")?;
         interp.add_trampoline(do_start_interp.mem_location, &do_start_interp.name, 1);
         let num_loaded = sh.lookup_trampoline_by_name("@HARDNumLoaded@8")?;
@@ -1003,6 +990,8 @@ impl ShapeUploader {
         window: &GraphicsWindow,
         chunk: &mut OpenChunk,
     ) -> Fallible<ShapeWidgets> {
+        trace!("ShapeUploader::draw_model: {}", name);
+
         // Outputs
         let mut transformers = Vec::new();
         let mut xforms = Vec::new();
@@ -1119,6 +1108,7 @@ impl ShapeUploader {
         }
 
         Ok(ShapeWidgets::new(
+            name,
             transformers,
             ShapeErrata::from_flags(prop_man.seen_flags),
         ))

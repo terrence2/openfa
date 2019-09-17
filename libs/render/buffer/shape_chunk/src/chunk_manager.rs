@@ -13,26 +13,23 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
-    chunk::{ChunkPart, ClosedChunk, OpenChunk, ShapeId},
+    chunk::{ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId},
     upload::DrawSelection,
 };
-use failure::Fallible;
+use failure::{err_msg, Fallible};
 use lib::Library;
 use pal::Palette;
 use std::{collections::HashMap, mem, sync::Arc};
 use vulkano::{pipeline::GraphicsPipelineAbstract, sync::GpuFuture};
 use window::GraphicsWindow;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ChunkIndex(pub usize);
-
 pub struct ShapeChunkManager {
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 
+    shape_to_chunk_map: HashMap<ShapeId, ChunkId>,
+
     open_chunk: OpenChunk,
-    next_chunk_index: usize,
-    closed_chunks: HashMap<ChunkIndex, ClosedChunk>,
-    shape_map: HashMap<ShapeId, ChunkIndex>,
+    closed_chunks: HashMap<ChunkId, ClosedChunk>,
 }
 
 impl ShapeChunkManager {
@@ -42,10 +39,9 @@ impl ShapeChunkManager {
     ) -> Fallible<Self> {
         Ok(Self {
             pipeline,
+            shape_to_chunk_map: HashMap::new(),
             open_chunk: OpenChunk::new(window)?,
-            next_chunk_index: 0,
             closed_chunks: HashMap::new(),
-            shape_map: HashMap::new(),
         })
     }
 
@@ -56,16 +52,8 @@ impl ShapeChunkManager {
     pub fn finish_open_chunk(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
         let mut open_chunk = OpenChunk::new(window)?;
         mem::swap(&mut open_chunk, &mut self.open_chunk);
-
-        let chunk_index = ChunkIndex(self.next_chunk_index);
-        self.next_chunk_index += 1;
-        let (chunk, future) =
-            ClosedChunk::new(open_chunk, chunk_index, self.pipeline.clone(), window)?;
-        for shape_id in chunk.all_shapes() {
-            self.shape_map.insert(shape_id, chunk_index);
-        }
-        self.closed_chunks.insert(chunk_index, chunk);
-
+        let (chunk, future) = ClosedChunk::new(open_chunk, self.pipeline.clone(), window)?;
+        self.closed_chunks.insert(chunk.chunk_id(), chunk);
         Ok(future)
     }
 
@@ -85,19 +73,24 @@ impl ShapeChunkManager {
         let shape_id = self
             .open_chunk
             .upload_shape(name, selection, palette, lib, window)?;
+        self.shape_to_chunk_map
+            .insert(shape_id, self.open_chunk.chunk_id());
         Ok((shape_id, future))
     }
 
-    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
-        self.get_chunk_for_shape(shape_id).part(shape_id)
+    pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
+        let chunk_id = self
+            .shape_to_chunk_map
+            .get(&shape_id)
+            .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
+        self.closed_chunks[chunk_id].part(shape_id)
     }
 
-    pub fn get_chunk_for_shape(&self, shape_id: ShapeId) -> &ClosedChunk {
-        let chunk_id = self.shape_map[&shape_id];
-        &self.closed_chunks[&chunk_id]
-    }
-
-    pub fn get_chunk(&self, chunk_index: ChunkIndex) -> &ClosedChunk {
-        &self.closed_chunks[&chunk_index]
+    pub fn chunk(&self, shape_id: ShapeId) -> Fallible<&ClosedChunk> {
+        let chunk_id = self
+            .shape_to_chunk_map
+            .get(&shape_id)
+            .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
+        Ok(&self.closed_chunks[chunk_id])
     }
 }

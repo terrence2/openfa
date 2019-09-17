@@ -16,7 +16,9 @@ use nalgebra::{Point3, UnitQuaternion};
 use specs::{Component, VecStorage};
 
 pub struct Transform {
+    #[allow(dead_code)]
     position: Point3<f64>,
+    #[allow(dead_code)]
     rotation: UnitQuaternion<f64>,
     // scale: Vector3<f64>, // we don't have an upload slot for this currently.
 }

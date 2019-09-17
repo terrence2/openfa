@@ -15,7 +15,6 @@
 use crate::{
     texture_atlas::MegaAtlas,
     upload::{DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
-    ChunkIndex,
 };
 use failure::{ensure, err_msg, Fallible};
 use global_layout::GlobalSets;
@@ -26,7 +25,7 @@ use sh::RawShape;
 use std::{
     collections::HashMap,
     mem,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
@@ -47,16 +46,22 @@ const VERTEX_CHUNK_HIGH_WATER_COUNT: usize =
 const VERTEX_CHUNK_BYTES: usize = VERTEX_CHUNK_HIGH_WATER_BYTES + MAX_VERTEX_BYTES;
 const VERTEX_CHUNK_COUNT: usize = VERTEX_CHUNK_BYTES / mem::size_of::<Vertex>();
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ChunkId(u32);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ShapeId((ChunkId, u32));
+
 lazy_static! {
     static ref GLOBAL_CHUNK_ID: Mutex<u32> = Mutex::new(0);
 }
 
-fn allocate_base_shape_id() -> u32 {
+fn allocate_chunk_id() -> ChunkId {
     let mut global = GLOBAL_CHUNK_ID.lock().unwrap();
-    let base_id = *global;
-    assert!(base_id < std::u32::MAX, "overflowed base shape id");
+    let next_id = *global;
+    assert!(next_id < std::u32::MAX, "overflowed chunk id");
     *global += 1;
-    base_id
+    ChunkId(next_id)
 }
 
 pub enum Chunk {
@@ -84,12 +89,16 @@ impl Chunk {
 pub struct ChunkPart {
     vertex_start: usize,
     vertex_count: usize,
-    shape_widgets: ShapeWidgets,
+    shape_widgets: Arc<RwLock<ShapeWidgets>>,
 }
 
 impl ChunkPart {
     // TODO: make this an initializer and figure out max_transformer_values up front.
-    pub fn new(vertex_start: usize, vertex_end: usize, shape_widgets: ShapeWidgets) -> Self {
+    pub fn new(
+        vertex_start: usize,
+        vertex_end: usize,
+        shape_widgets: Arc<RwLock<ShapeWidgets>>,
+    ) -> Self {
         ChunkPart {
             vertex_start,
             vertex_count: vertex_end - vertex_start,
@@ -106,24 +115,23 @@ impl ChunkPart {
         }
     }
 
-    pub fn widgets(&self) -> &ShapeWidgets {
-        &self.shape_widgets
-    }
-
-    pub fn widgets_mut(&mut self) -> &mut ShapeWidgets {
-        &mut self.shape_widgets
+    pub fn widgets(&self) -> Arc<RwLock<ShapeWidgets>> {
+        self.shape_widgets.clone()
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ShapeId((u32, u32));
-
 pub struct OpenChunk {
-    base_shape_id: u32,
+    chunk_id: ChunkId,
+
     vertex_upload_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     atlas_builder: MegaAtlas,
     vertex_offset: usize,
+
+    // So we can give out unique ids to each shape in this chunk.
     last_shape_id: u32,
+
+    // Map from Shape names to an ID and from ID's to parts. This lets us get
+    // to the ChunkPart without having to hash a string every time.
     shape_ids: HashMap<String, ShapeId>,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
@@ -140,7 +148,7 @@ impl OpenChunk {
         };
 
         Ok(Self {
-            base_shape_id: allocate_base_shape_id(),
+            chunk_id: allocate_chunk_id(),
             vertex_offset: 0,
             atlas_builder: MegaAtlas::new(window)?,
             vertex_upload_buffer,
@@ -163,23 +171,24 @@ impl OpenChunk {
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<ShapeId> {
-        if let Some(shape_id) = self.shape_ids.get(name) {
-            return Ok(*shape_id);
-        }
-
-        let shape_id = ShapeId((self.base_shape_id, self.last_shape_id));
-        self.last_shape_id += 1;
-        self.shape_ids.insert(name.to_owned(), shape_id);
-
         let sh = RawShape::from_bytes(&lib.load(&name)?)?;
 
         let start_vertex = self.vertex_offset;
-        let shape_widgets =
-            ShapeUploader::draw_model(name, &sh, selection, palette, lib, window, self)?;
+        let shape_widgets = Arc::new(RwLock::new(ShapeUploader::draw_model(
+            name, &sh, selection, palette, lib, window, self,
+        )?));
 
         let part = ChunkPart::new(start_vertex, self.vertex_offset, shape_widgets);
+        let shape_id = self.allocate_shape_id();
+        self.shape_ids.insert(name.to_owned(), shape_id);
         self.chunk_parts.insert(shape_id, part);
         Ok(shape_id)
+    }
+
+    fn allocate_shape_id(&mut self) -> ShapeId {
+        let shape_index = self.last_shape_id + 1;
+        self.last_shape_id = shape_index;
+        ShapeId((self.chunk_id, shape_index))
     }
 
     pub fn push_vertex(&mut self, vertex: Vertex) -> Fallible<()> {
@@ -197,23 +206,27 @@ impl OpenChunk {
         &mut self.atlas_builder
     }
 
-    pub fn part(&self, id: ShapeId) -> Option<&ChunkPart> {
-        self.chunk_parts.get(&id)
+    pub fn chunk_id(&self) -> ChunkId {
+        self.chunk_id
+    }
+
+    pub unsafe fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        &self.chunk_parts[&shape_id]
     }
 }
 
 pub struct ClosedChunk {
-    chunk_index: ChunkIndex,
     vertex_buffer: Arc<DeviceLocalBuffer<[Vertex]>>,
+    atlas_descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
+
+    chunk_id: ChunkId,
     shape_ids: HashMap<String, ShapeId>,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
-    atlas_descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
 }
 
 impl ClosedChunk {
     pub fn new(
         chunk: OpenChunk,
-        chunk_index: ChunkIndex,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
     ) -> Fallible<(Self, Box<dyn GpuFuture>)> {
@@ -251,18 +264,14 @@ impl ClosedChunk {
 
         Ok((
             ClosedChunk {
-                chunk_index,
                 vertex_buffer,
+                chunk_id: chunk.chunk_id,
                 shape_ids: chunk.shape_ids,
                 chunk_parts: chunk.chunk_parts,
                 atlas_descriptor_set,
             },
             upload_future,
         ))
-    }
-
-    pub fn index(&self) -> ChunkIndex {
-        self.chunk_index
     }
 
     pub fn atlas_descriptor_set_ref(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
@@ -273,19 +282,22 @@ impl ClosedChunk {
         self.vertex_buffer.clone()
     }
 
-    pub fn part(&self, id: ShapeId) -> &ChunkPart {
-        &self.chunk_parts[&id]
+    pub fn chunk_id(&self) -> ChunkId {
+        self.chunk_id
+    }
+
+    pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
+        self.chunk_parts
+            .get(&shape_id)
+            .ok_or_else(|| err_msg("no part for associated shape id"))
     }
 
     pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
-        let id = self
-            .shape_ids
-            .get(name)
-            .ok_or_else(|| err_msg("shape not found"))?;
-        Ok(&self.chunk_parts[id])
-    }
-
-    pub fn all_shapes(&self) -> Vec<ShapeId> {
-        self.chunk_parts.keys().cloned().collect::<Vec<_>>()
+        self.part(
+            *self
+                .shape_ids
+                .get(name)
+                .ok_or_else(|| err_msg("shape not found"))?,
+        )
     }
 }

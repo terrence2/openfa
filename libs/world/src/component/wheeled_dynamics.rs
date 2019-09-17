@@ -16,6 +16,7 @@ use nalgebra::Vector3;
 use specs::{Component, VecStorage};
 
 pub struct WheeledDynamics {
+    #[allow(dead_code)]
     velocity: Vector3<f64>,
 }
 
@@ -24,6 +25,7 @@ impl Component for WheeledDynamics {
 }
 
 impl WheeledDynamics {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             velocity: Vector3::zeros(),

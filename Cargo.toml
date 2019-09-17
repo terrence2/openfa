@@ -16,7 +16,7 @@ members = [
         "apps/pack-pic",
         "apps/show-mm",
         "apps/show-dlg",
-        "apps/show-sh",
+        "apps/show-sh-legacy",
         "apps/show-sh-raw",
         "apps/show-sky",
 
@@ -49,8 +49,7 @@ members = [
         "libs/render/buffer/stars",
         "libs/render/common/camera",
         "libs/render/common/geometry",
-        "libs/render/draw/shape",
-        "libs/render/draw/shape_instance",
+        "libs/render/draw/legacy_shape",
         "libs/render/draw/skybox",
         "libs/render/draw/text",
         "libs/resource",
@@ -68,17 +67,11 @@ members = [
 debug = true
 
 # Need profile-overrides from nightly
+# The external 'image' crate is extremely slow with optimizations.
+# The internal 'pkware' crate is also extremly slow without opt 1+.
 #[profile.dev.overrides.image]
 #opt-level = 3
-
-# pkware is unusable at opt level 0.
-# [profile.dev.]
-# opt-level = 2
-
-# [profile.test]
-# opt-level = 2
-
-# [profile.test]
-# opt-level = 1
+#[profile.dev.overrides.pkware]
+#opt-level = 2
 
 [dependencies]

@@ -13,8 +13,19 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub mod component;
+pub mod system;
 
-use crate::component::*;
+pub use crate::{
+    component::{
+        flight_dynamics::FlightDynamics,
+        shape_mesh::{
+            ShapeMesh, ShapeMeshFlagBuffer, ShapeMeshTransformBuffer, ShapeMeshXformBuffer,
+        },
+        transform::Transform,
+        wheeled_dynamics::WheeledDynamics,
+    },
+    system::shape_mesh::{FlagUpdateSystem, XformUpdateSystem},
+};
 use failure::Fallible;
 use lib::Library;
 use nalgebra::Point3;
@@ -41,6 +52,7 @@ impl World {
         ecs.register::<ShapeMesh>();
         ecs.register::<ShapeMeshTransformBuffer>();
         ecs.register::<ShapeMeshFlagBuffer>();
+        ecs.register::<ShapeMeshXformBuffer>();
         ecs.register::<Transform>();
 
         Ok(Self {
@@ -52,7 +64,7 @@ impl World {
 
     pub fn run(&self, dispatcher: &mut Dispatcher) {
         let mut ecs = self.ecs.write().unwrap();
-        dispatcher.dispatch(&mut ecs);
+        dispatcher.dispatch(&ecs);
         ecs.maintain();
     }
 
@@ -86,7 +98,8 @@ impl World {
         position: Point3<f64>,
         part: &ChunkPart,
     ) -> Fallible<Entity> {
-        let errata = part.widgets().errata();
+        let widget_ref = part.widgets();
+        let widgets = widget_ref.read().unwrap();
         Ok(self
             .ecs
             .write()
@@ -97,7 +110,8 @@ impl World {
             .with(FlightDynamics::new())
             .with(ShapeMesh::new(shape_id))
             .with(ShapeMeshTransformBuffer::new())
-            .with(ShapeMeshFlagBuffer::new(&errata))
+            .with(ShapeMeshFlagBuffer::new(widgets.errata()))
+            .with(ShapeMeshXformBuffer::new(shape_id, part.widgets()))
             .build())
     }
 
@@ -110,13 +124,13 @@ impl World {
 mod test {
     use super::*;
     use omnilib::OmniLib;
-    use shape_chunk::{ClosedChunk, DrawSelection, OpenChunk};
+    use shape_chunk::{DrawSelection, OpenChunk};
     use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn test_it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let mut world = World::new(omni.library("FA"))?;
+        let world = World::new(omni.library("FA"))?;
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let mut upload = OpenChunk::new(&window)?;
         let shape_id = upload.upload_shape(
