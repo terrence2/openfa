@@ -255,7 +255,7 @@ fn main() -> Fallible<()> {
     let mut flags_arr = [0u32; 2];
     draw_state.build_mask_into(
         draw_state.time_origin(),
-        f18_part.widgets().errata(),
+        f18_part.widgets().read().unwrap().errata(),
         &mut flags_arr[0..2],
     )?;
     let flags_buffer = CpuAccessibleBuffer::from_iter(
@@ -266,10 +266,10 @@ fn main() -> Fallible<()> {
 
     // Upload transforms
     let now = Instant::now();
-    let xforms_len = f18_part.widgets().num_transformer_floats();
+    let xforms_len = f18_part.widgets().read().unwrap().num_transformer_floats();
     let mut xforms = Vec::with_capacity(xforms_len);
     xforms.resize(xforms_len, 0f32);
-    f18_part.widgets().animate_into(
+    f18_part.widgets().write().unwrap().animate_into(
         &draw_state,
         draw_state.time_origin(),
         &now,

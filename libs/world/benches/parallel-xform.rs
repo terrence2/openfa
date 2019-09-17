@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use failure::Fallible;
 use nalgebra::Point3;
 use omnilib::OmniLib;
@@ -25,14 +25,6 @@ use std::{
 };
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use world::{component::*, World};
-
-fn fibonacci(n: u64) -> u64 {
-    match n {
-        0 => 1,
-        1 => 1,
-        n => fibonacci(n - 1) + fibonacci(n - 2),
-    }
-}
 
 pub struct FlagUpdateSystem {
     start: Instant,
@@ -51,12 +43,11 @@ impl<'a> System<'a> for FlagUpdateSystem {
     fn run(&mut self, (shape_meshs, mut flag_buffers): Self::SystemData) {
         (&shape_meshs, &mut flag_buffers)
             .par_join()
-            .for_each(|(shape_mesh, mut flag_buffer)| {
-                shape_mesh.draw_state().build_mask_into(
-                    &self.start,
-                    flag_buffer.errata,
-                    &mut flag_buffer.buffer,
-                );
+            .for_each(|(shape_mesh, flag_buffer)| {
+                shape_mesh
+                    .draw_state()
+                    .build_mask_into(&self.start, flag_buffer.errata, &mut flag_buffer.buffer)
+                    .unwrap();
             });
     }
 }
@@ -83,7 +74,7 @@ impl<'a> System<'a> for XformUpdateSystem {
         let now = Instant::now();
         (&shape_meshs, &mut xform_buffers)
             .par_join()
-            .for_each(|(shape_mesh, mut xform_buffer)| {
+            .for_each(|(shape_mesh, xform_buffer)| {
                 WIDGET_CACHE.with(|widget_cache| {
                     match widget_cache.borrow_mut().entry(xform_buffer.shape_id) {
                         Entry::Occupied(mut e) => {
@@ -126,8 +117,8 @@ fn set_up_world() -> Fallible<World> {
     )?;
 
     let part = unsafe { upload.part(shape_id) };
-    for i in 0..10_000 {
-        let ent = world.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
+    for _ in 0..10_000 {
+        let _ent = world.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
     }
     Ok(world)
 }

@@ -24,7 +24,6 @@ use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     time::Instant,
 };
@@ -449,7 +448,7 @@ impl Transformer {
             d * std::f32::consts::PI / 8192f32
         }
 
-        let mut vm = &mut self.vm;
+        let vm = &mut self.vm;
         for input in &self.inputs {
             let (loc, value) = match input {
                 TransformInput::CurrentTicks(loc) => {
