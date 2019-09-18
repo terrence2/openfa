@@ -21,7 +21,9 @@ use specs::prelude::*;
 use std::time::Instant;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use world::{
-    system::shape_mesh::{FlagUpdateSystem, XformUpdateSystem},
+    system::shape_mesh::{
+        FlagCoalesceSystem, FlagUpdateSystem, XformCoalesceSystem, XformUpdateSystem,
+    },
     World,
 };
 
@@ -60,10 +62,21 @@ fn criterion_benchmark(c: &mut Criterion) {
         .with(FlagUpdateSystem::new(&start), "flag-update", &[])
         .with(XformUpdateSystem::new(&start), "xform-update", &[])
         .build();
-
-    c.bench_function("update all flags", move |b| {
+    c.bench_function("update all", move |b| {
         b.iter(|| {
             world.run(&mut update_dispatcher);
+        })
+    });
+
+    let world = set_up_world().unwrap();
+    let mut upload_dispatcher = DispatcherBuilder::new()
+        .with(FlagCoalesceSystem::new(), "flag-coalesce", &[])
+        .with(XformCoalesceSystem::new(), "xform-coalesce", &[])
+        .build();
+
+    c.bench_function("upload all", move |b| {
+        b.iter(|| {
+            world.run(&mut upload_dispatcher);
         })
     });
 }
