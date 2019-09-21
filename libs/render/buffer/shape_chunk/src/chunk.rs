@@ -114,9 +114,6 @@ pub struct OpenChunk {
     // So we can give out unique ids to each shape in this chunk.
     last_shape_id: u32,
 
-    // Map from Shape names to an ID and from ID's to parts. This lets us get
-    // to the ChunkPart without having to hash a string every time.
-    shape_ids: HashMap<String, ShapeId>,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
 
@@ -137,7 +134,6 @@ impl OpenChunk {
             atlas_builder: MegaAtlas::new(window)?,
             vertex_upload_buffer,
             last_shape_id: 0,
-            shape_ids: HashMap::new(),
             chunk_parts: HashMap::new(),
         })
     }
@@ -164,7 +160,6 @@ impl OpenChunk {
 
         let part = ChunkPart::new(start_vertex, self.vertex_offset, shape_widgets);
         let shape_id = self.allocate_shape_id();
-        self.shape_ids.insert(name.to_owned(), shape_id);
         self.chunk_parts.insert(shape_id, part);
         Ok(shape_id)
     }
@@ -204,7 +199,6 @@ pub struct ClosedChunk {
     atlas_descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
 
     chunk_id: ChunkId,
-    shape_ids: HashMap<String, ShapeId>,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
 
@@ -250,7 +244,6 @@ impl ClosedChunk {
             ClosedChunk {
                 vertex_buffer,
                 chunk_id: chunk.chunk_id,
-                shape_ids: chunk.shape_ids,
                 chunk_parts: chunk.chunk_parts,
                 atlas_descriptor_set,
             },
@@ -274,14 +267,5 @@ impl ClosedChunk {
         self.chunk_parts
             .get(&shape_id)
             .ok_or_else(|| err_msg("no part for associated shape id"))
-    }
-
-    pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
-        self.part(
-            *self
-                .shape_ids
-                .get(name)
-                .ok_or_else(|| err_msg("shape not found"))?,
-        )
     }
 }

@@ -74,6 +74,35 @@ impl<'a> System<'a> for XformUpdateSystem {
     }
 }
 
+pub struct XformCoalesceSystem {
+    linear_buffer: Vec<f32>,
+}
+impl XformCoalesceSystem {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            linear_buffer: Vec::new(),
+        }
+    }
+}
+impl<'a> System<'a> for XformCoalesceSystem {
+    type SystemData = (ReadStorage<'a, ShapeMeshXformBuffer>,);
+
+    fn run(&mut self, (xform_buffers,): Self::SystemData) {
+        let mut cnt = 0;
+        for (xform_buffer,) in (&xform_buffers,).join() {
+            cnt += xform_buffer.buffer.len();
+        }
+        self.linear_buffer.resize(cnt, 0f32);
+        let mut offset = 0;
+        for (xform_buffer,) in (&xform_buffers,).join() {
+            let sz = xform_buffer.buffer.len();
+            self.linear_buffer[offset..offset + sz].copy_from_slice(&xform_buffer.buffer);
+            offset += sz;
+        }
+    }
+}
+
 pub struct FlagUpdateSystem {
     start: Instant,
 }
@@ -97,5 +126,34 @@ impl<'a> System<'a> for FlagUpdateSystem {
                     .build_mask_into(&self.start, flag_buffer.errata, &mut flag_buffer.buffer)
                     .unwrap();
             });
+    }
+}
+
+pub struct FlagCoalesceSystem {
+    linear_buffer: Vec<u32>,
+}
+impl FlagCoalesceSystem {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            linear_buffer: Vec::new(),
+        }
+    }
+}
+impl<'a> System<'a> for FlagCoalesceSystem {
+    type SystemData = (ReadStorage<'a, ShapeMeshFlagBuffer>,);
+
+    fn run(&mut self, (flag_buffers,): Self::SystemData) {
+        let mut cnt = 0;
+        for (_flag_buffer,) in (&flag_buffers,).join() {
+            cnt += 2;
+        }
+        self.linear_buffer.resize(cnt, 0u32);
+        let mut offset = 0;
+        for (flag_buffer,) in (&flag_buffers,).join() {
+            self.linear_buffer[offset] = flag_buffer.buffer[0];
+            self.linear_buffer[offset + 1] = flag_buffer.buffer[1];
+            offset += 2;
+        }
     }
 }

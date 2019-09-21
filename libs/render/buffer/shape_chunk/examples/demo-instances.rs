@@ -20,7 +20,7 @@ use log::trace;
 use nalgebra::Matrix4;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{ClosedChunk, DrawSelection, DrawState, OpenChunk, Vertex};
+use shape_chunk::{DrawSelection, DrawState, ShapeChunkManager, Vertex};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -235,19 +235,20 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let mut open_chunk = OpenChunk::new(&window)?;
-    open_chunk.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
-    open_chunk.upload_shape(
+    let mut chunk_man = ShapeChunkManager::new(pipeline.clone(), &window)?;
+    chunk_man.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
+    chunk_man.upload_shape(
         "F18.SH",
         DrawSelection::NormalModel,
         &palette,
         &lib,
         &window,
     )?;
-    let (chunk, future) = ClosedChunk::new(open_chunk, pipeline.clone(), &window)?;
+    let future = chunk_man.finish(&window)?;
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let f18_part = chunk.part_for("F18.SH")?;
+    let f18_id = chunk_man.shape_for("F18.SH")?;
+    let f18_part = chunk_man.part_for("F18.SH")?;
 
     // Upload flags
     let mut draw_state: DrawState = Default::default();
@@ -339,6 +340,7 @@ fn main() -> Fallible<()> {
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
+            let chunk = chunk_man.chunk(f18_id)?;
             cbb = cbb.draw_indirect(
                 pipeline.clone(),
                 &window.dynamic_state,
