@@ -78,6 +78,7 @@ pub struct XformCoalesceSystem {
     linear_buffer: Vec<f32>,
 }
 impl XformCoalesceSystem {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             linear_buffer: Vec::new(),
@@ -132,6 +133,7 @@ pub struct FlagCoalesceSystem {
     linear_buffer: Vec<u32>,
 }
 impl FlagCoalesceSystem {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             linear_buffer: Vec::new(),

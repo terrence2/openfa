@@ -29,7 +29,7 @@ use world::{
 
 fn set_up_world() -> Fallible<World> {
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-    let world = World::new(omni.library("FA"))?;
+    let mut world = World::new(omni.library("FA"))?;
     let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let mut upload = OpenChunk::new(&window)?;
 
@@ -56,7 +56,7 @@ fn set_up_world() -> Fallible<World> {
 fn criterion_benchmark(c: &mut Criterion) {
     // Set up world
     let start = Instant::now();
-    let world = set_up_world().unwrap();
+    let mut world = set_up_world().unwrap();
 
     let mut update_dispatcher = DispatcherBuilder::new()
         .with(FlagUpdateSystem::new(&start), "flag-update", &[])
@@ -68,7 +68,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         })
     });
 
-    let world = set_up_world().unwrap();
+    let mut world = set_up_world().unwrap();
     let mut upload_dispatcher = DispatcherBuilder::new()
         .with(FlagCoalesceSystem::new(), "flag-coalesce", &[])
         .with(XformCoalesceSystem::new(), "xform-coalesce", &[])

@@ -30,7 +30,7 @@ use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 
 make_opt_struct!(
-    #[structopt(name = "sh_explorer", about = "Show the contents of a SH file")]
+    #[structopt(name = "show-sh-legacy", about = "Show the contents of a SH file")]
     Opt {
         #[structopt(help = "Shapes to load")]
         shapes => Vec<String>

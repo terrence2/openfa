@@ -26,6 +26,7 @@ use window::GraphicsWindow;
 pub struct ShapeChunkManager {
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 
+    name_to_shape_map: HashMap<String, ShapeId>,
     shape_to_chunk_map: HashMap<ShapeId, ChunkId>,
 
     open_chunk: OpenChunk,
@@ -39,6 +40,7 @@ impl ShapeChunkManager {
     ) -> Fallible<Self> {
         Ok(Self {
             pipeline,
+            name_to_shape_map: HashMap::new(),
             shape_to_chunk_map: HashMap::new(),
             open_chunk: OpenChunk::new(window)?,
             closed_chunks: HashMap::new(),
@@ -65,6 +67,9 @@ impl ShapeChunkManager {
         lib: &Library,
         window: &GraphicsWindow,
     ) -> Fallible<(ShapeId, Option<Box<dyn GpuFuture>>)> {
+        if let Some(&shape_id) = self.name_to_shape_map.get(name) {
+            return Ok((shape_id, None));
+        }
         let future = if self.open_chunk.chunk_is_full() {
             Some(self.finish_open_chunk(window)?)
         } else {
@@ -73,9 +78,17 @@ impl ShapeChunkManager {
         let shape_id = self
             .open_chunk
             .upload_shape(name, selection, palette, lib, window)?;
+        self.name_to_shape_map.insert(name.to_owned(), shape_id);
         self.shape_to_chunk_map
             .insert(shape_id, self.open_chunk.chunk_id());
         Ok((shape_id, future))
+    }
+
+    pub fn shape_for(&self, name: &str) -> Fallible<ShapeId> {
+        Ok(*self
+            .name_to_shape_map
+            .get(name)
+            .ok_or_else(|| err_msg("no shape for the given name"))?)
     }
 
     pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
@@ -84,5 +97,17 @@ impl ShapeChunkManager {
             .get(&shape_id)
             .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
         self.closed_chunks[chunk_id].part(shape_id)
+    }
+
+    pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
+        self.part(self.shape_for(name)?)
+    }
+
+    pub fn chunk(&self, shape_id: ShapeId) -> Fallible<&ClosedChunk> {
+        let chunk_id = self
+            .shape_to_chunk_map
+            .get(&shape_id)
+            .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
+        Ok(&self.closed_chunks[chunk_id])
     }
 }

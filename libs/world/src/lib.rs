@@ -32,12 +32,12 @@ use nalgebra::Point3;
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use specs::{Builder, Dispatcher, World as SpecsWorld, WorldExt};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 pub use specs::Entity;
 
 pub struct World {
-    ecs: RwLock<SpecsWorld>,
+    ecs: SpecsWorld,
 
     // Resources
     lib: Arc<Box<Library>>,
@@ -56,16 +56,15 @@ impl World {
         ecs.register::<Transform>();
 
         Ok(Self {
-            ecs: RwLock::new(ecs),
+            ecs,
             palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
             lib,
         })
     }
 
-    pub fn run(&self, dispatcher: &mut Dispatcher) {
-        let mut ecs = self.ecs.write().unwrap();
-        dispatcher.dispatch(&ecs);
-        ecs.maintain();
+    pub fn run(&mut self, dispatcher: &mut Dispatcher) {
+        dispatcher.dispatch(&self.ecs);
+        self.ecs.maintain();
     }
 
     pub fn library(&self) -> &Library {
@@ -77,14 +76,12 @@ impl World {
     }
 
     pub fn create_ground_mover(
-        &self,
+        &mut self,
         shape_id: ShapeId,
         position: Point3<f64>,
     ) -> Fallible<Entity> {
         Ok(self
             .ecs
-            .write()
-            .unwrap()
             .create_entity()
             .with(Transform::new(position))
             .with(WheeledDynamics::new())
@@ -93,17 +90,17 @@ impl World {
     }
 
     pub fn create_flyer(
-        &self,
+        &mut self,
         shape_id: ShapeId,
         position: Point3<f64>,
         part: &ChunkPart,
     ) -> Fallible<Entity> {
+        //let slot_id = self.shape_renderer.chunk_manager().reserve_slot()?;
+
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
         Ok(self
             .ecs
-            .write()
-            .unwrap()
             .create_entity()
             .with(Transform::new(position))
             .with(WheeledDynamics::new())
@@ -115,8 +112,8 @@ impl World {
             .build())
     }
 
-    pub fn destroy_entity(&self, entity: Entity) -> Fallible<()> {
-        Ok(self.ecs.write().unwrap().delete_entity(entity)?)
+    pub fn destroy_entity(&mut self, entity: Entity) -> Fallible<()> {
+        Ok(self.ecs.delete_entity(entity)?)
     }
 }
 
@@ -130,7 +127,7 @@ mod test {
     #[test]
     fn test_it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let world = World::new(omni.library("FA"))?;
+        let mut world = World::new(omni.library("FA"))?;
         let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let mut upload = OpenChunk::new(&window)?;
         let shape_id = upload.upload_shape(
