@@ -244,7 +244,7 @@ fn main() -> Fallible<()> {
         &lib,
         &window,
     )?;
-    let future = chunk_man.finish(&window)?;
+    let future = chunk_man.finish(&window)?.unwrap();
     future.then_signal_fence_and_flush()?.wait(None)?;
 
     let f18_part = chunk_man.part_for("F18.SH")?;

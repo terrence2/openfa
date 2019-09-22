@@ -64,11 +64,6 @@ fn allocate_chunk_id() -> ChunkId {
     ChunkId(next_id)
 }
 
-pub enum Chunk {
-    Open(OpenChunk),
-    Closed(ClosedChunk),
-}
-
 // Where a shape lives in a chunk.
 pub struct ChunkPart {
     vertex_start: usize,
@@ -141,6 +136,10 @@ impl OpenChunk {
     pub fn chunk_is_full(&self) -> bool {
         // TODO: also check on atlas?
         self.vertex_offset >= VERTEX_CHUNK_HIGH_WATER_COUNT
+    }
+
+    pub fn chunk_is_empty(&self) -> bool {
+        self.vertex_offset == 0
     }
 
     pub fn upload_shape(

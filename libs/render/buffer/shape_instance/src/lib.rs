@@ -24,7 +24,7 @@ use specs::prelude::*;
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferAccess, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand},
+    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     framebuffer::Subpass,
@@ -462,7 +462,7 @@ impl ShapeInstanceManager {
         None
     }
 
-    fn upload_and_allocate_slot(
+    pub fn upload_and_allocate_slot(
         &mut self,
         name: &str,
         selection: DrawSelection,
@@ -497,13 +497,51 @@ impl ShapeInstanceManager {
 
         Ok(slot_id)
     }
+
+    pub fn ensure_finished(
+        &mut self,
+        window: &GraphicsWindow,
+    ) -> Fallible<Option<Box<dyn GpuFuture>>> {
+        self.chunk_man.finish(window)
+    }
+
+    pub fn render<T>(
+        &self,
+        mut cbb: AutoCommandBufferBuilder,
+        dynamic_state: &DynamicState,
+        push_consts: &T,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        for block in self.blocks.values() {
+            let chunk = &self.chunk_man.chunk(block.chunk_id);
+            cbb = cbb.draw_indirect(
+                self.pipeline.clone(),
+                dynamic_state,
+                vec![chunk.vertex_buffer().clone()],
+                block.command_buffer.clone(),
+                (
+                    self.base_descriptors[0].clone(),
+                    self.base_descriptors[1].clone(),
+                    self.base_descriptors[2].clone(),
+                    chunk.atlas_descriptor_set_ref(),
+                    block.descriptor_set.clone(),
+                ),
+                push_consts,
+            )?;
+        }
+        Ok(cbb)
+    }
 }
 
-struct ShapeComponent {
+pub struct ShapeComponent {
     slot_id: SlotId,
 }
 impl Component for ShapeComponent {
     type Storage = VecStorage<Self>;
+}
+impl ShapeComponent {
+    pub fn new(slot_id: SlotId) -> Self {
+        Self { slot_id }
+    }
 }
 
 mod test_vs {
@@ -624,59 +662,11 @@ mod test {
                 &lib,
                 &window,
             )?;
-            //            let _ent = world
-            //                .create_entity()
-            //                .with(ShapeComponent { slot_id })
-            //                .build();
+            let _ent = world
+                .create_entity()
+                .with(ShapeComponent { slot_id })
+                .build();
         }
-
-        /*
-        let fut = inst_man.chunk_man.finish(&window)?;
-        fut.then_signal_fence_and_flush()?.wait(None)?;
-
-        for _ in 0..1 {
-            let frame = window.begin_frame()?;
-            if !frame.is_valid() {
-                continue;
-            }
-
-            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-                window.device(),
-                window.queue().family(),
-            )?;
-
-            // Lift entity state to our device local buffers using systems.
-
-            cbb = cbb.begin_render_pass(
-                frame.framebuffer(&window),
-                false,
-                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
-            )?;
-
-            // There are copies enqueued to update our state, so we can just render the buffers?
-            for block in inst_man.blocks.values() {
-                let chunk = &inst_man.chunk_man.chunk(block.chunk_id);
-                cbb = cbb.draw_indirect(
-                    inst_man.pipeline.clone(),
-                    &window.dynamic_state,
-                    vec![chunk.vertex_buffer().clone()],
-                    block.command_buffer.clone(),
-                    (
-                        inst_man.base_descriptors[0].clone(),
-                        inst_man.base_descriptors[1].clone(),
-                        inst_man.base_descriptors[2].clone(),
-                        chunk.atlas_descriptor_set_ref(),
-                        block.descriptor_set.clone(),
-                    ),
-                    (),
-                )?;
-            }
-
-            cbb = cbb.end_render_pass()?;
-            let cb = cbb.build()?;
-            frame.submit(cb, &mut window)?;
-        }
-        */
 
         Ok(())
     }

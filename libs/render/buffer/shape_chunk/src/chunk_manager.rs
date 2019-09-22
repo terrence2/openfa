@@ -47,16 +47,22 @@ impl ShapeChunkManager {
         })
     }
 
-    pub fn finish(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
+    pub fn finish(&mut self, window: &GraphicsWindow) -> Fallible<Option<Box<dyn GpuFuture>>> {
         self.finish_open_chunk(window)
     }
 
-    pub fn finish_open_chunk(&mut self, window: &GraphicsWindow) -> Fallible<Box<dyn GpuFuture>> {
+    pub fn finish_open_chunk(
+        &mut self,
+        window: &GraphicsWindow,
+    ) -> Fallible<Option<Box<dyn GpuFuture>>> {
+        if self.open_chunk.chunk_is_empty() {
+            return Ok(None);
+        }
         let mut open_chunk = OpenChunk::new(window)?;
         mem::swap(&mut open_chunk, &mut self.open_chunk);
         let (chunk, future) = ClosedChunk::new(open_chunk, self.pipeline.clone(), window)?;
         self.closed_chunks.insert(chunk.chunk_id(), chunk);
-        Ok(future)
+        Ok(Some(future))
     }
 
     pub fn upload_shape(
@@ -72,7 +78,7 @@ impl ShapeChunkManager {
             return Ok((chunk_id, shape_id, None));
         }
         let future = if self.open_chunk.chunk_is_full() {
-            Some(self.finish_open_chunk(window)?)
+            self.finish_open_chunk(window)?
         } else {
             None
         };
