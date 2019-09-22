@@ -14,10 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 pub enum GlobalSets {
+    Global = 0,
     Atmosphere = 1,
     Stars = 2,
     ShapeTextures = 3,
     ShapeBuffers = 4,
+    ShapeXforms = 5,
 }
 
 impl From<GlobalSets> for usize {

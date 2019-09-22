@@ -237,7 +237,7 @@ fn main() -> Fallible<()> {
 
     let mut chunk_man = ShapeChunkManager::new(pipeline.clone(), &window)?;
     chunk_man.upload_shape("F8.SH", DrawSelection::NormalModel, &palette, &lib, &window)?;
-    chunk_man.upload_shape(
+    let (chunk_id, _shape_id, _) = chunk_man.upload_shape(
         "F18.SH",
         DrawSelection::NormalModel,
         &palette,
@@ -247,7 +247,6 @@ fn main() -> Fallible<()> {
     let future = chunk_man.finish(&window)?;
     future.then_signal_fence_and_flush()?.wait(None)?;
 
-    let f18_id = chunk_man.shape_for("F18.SH")?;
     let f18_part = chunk_man.part_for("F18.SH")?;
 
     // Upload flags
@@ -340,7 +339,7 @@ fn main() -> Fallible<()> {
                 vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
             )?;
 
-            let chunk = chunk_man.chunk(f18_id)?;
+            let chunk = chunk_man.chunk(chunk_id);
             cbb = cbb.draw_indirect(
                 pipeline.clone(),
                 &window.dynamic_state,

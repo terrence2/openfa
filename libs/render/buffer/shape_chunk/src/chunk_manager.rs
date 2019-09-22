@@ -66,9 +66,10 @@ impl ShapeChunkManager {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<(ShapeId, Option<Box<dyn GpuFuture>>)> {
+    ) -> Fallible<(ChunkId, ShapeId, Option<Box<dyn GpuFuture>>)> {
         if let Some(&shape_id) = self.name_to_shape_map.get(name) {
-            return Ok((shape_id, None));
+            let chunk_id = self.shape_to_chunk_map[&shape_id];
+            return Ok((chunk_id, shape_id, None));
         }
         let future = if self.open_chunk.chunk_is_full() {
             Some(self.finish_open_chunk(window)?)
@@ -81,7 +82,7 @@ impl ShapeChunkManager {
         self.name_to_shape_map.insert(name.to_owned(), shape_id);
         self.shape_to_chunk_map
             .insert(shape_id, self.open_chunk.chunk_id());
-        Ok((shape_id, future))
+        Ok((self.open_chunk.chunk_id(), shape_id, future))
     }
 
     pub fn shape_for(&self, name: &str) -> Fallible<ShapeId> {
@@ -91,23 +92,21 @@ impl ShapeChunkManager {
             .ok_or_else(|| err_msg("no shape for the given name"))?)
     }
 
-    pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
-        let chunk_id = self
-            .shape_to_chunk_map
-            .get(&shape_id)
-            .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
-        self.closed_chunks[chunk_id].part(shape_id)
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        let chunk_id = self.shape_to_chunk_map[&shape_id];
+        if let Some(chunk) = self.closed_chunks.get(&chunk_id) {
+            chunk.part(shape_id)
+        } else {
+            self.open_chunk.part(shape_id)
+        }
     }
 
     pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
-        self.part(self.shape_for(name)?)
+        Ok(self.part(self.shape_for(name)?))
     }
 
-    pub fn chunk(&self, shape_id: ShapeId) -> Fallible<&ClosedChunk> {
-        let chunk_id = self
-            .shape_to_chunk_map
-            .get(&shape_id)
-            .ok_or_else(|| err_msg("no chunk for associated shape id"))?;
-        Ok(&self.closed_chunks[chunk_id])
+    // NOTE: The chunk must be closed.
+    pub fn chunk(&self, chunk_id: ChunkId) -> &ClosedChunk {
+        &self.closed_chunks[&chunk_id]
     }
 }

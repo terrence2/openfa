@@ -189,7 +189,7 @@ impl OpenChunk {
         self.chunk_id
     }
 
-    pub unsafe fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         &self.chunk_parts[&shape_id]
     }
 }
@@ -263,9 +263,7 @@ impl ClosedChunk {
         self.chunk_id
     }
 
-    pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
-        self.chunk_parts
-            .get(&shape_id)
-            .ok_or_else(|| err_msg("no part for associated shape id"))
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        &self.chunk_parts[&shape_id]
     }
 }

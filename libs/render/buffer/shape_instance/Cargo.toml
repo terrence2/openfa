@@ -1,0 +1,29 @@
+[package]
+name = "shape_instance"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[lib]
+doctest = false
+
+[dependencies]
+bit-set = "^ 0.5"
+failure = "^ 0.1.2"
+nalgebra = "^ 0.18"
+rayon = "^ 1.2"
+specs = "^ 0.15"
+vulkano = "^ 0.14"
+vulkano-shaders = "^ 0.14"
+camera = { path = "../../../render/common/camera" }
+global_layout = { path = "../../../render/buffer/global_layout" }
+lib = { path = "../../../lib" }
+omnilib = { path = "../../../omnilib" }
+pal = { path = "../../../pal" }
+shape_chunk = { path = "../../../render/buffer/shape_chunk" }
+window = { path = "../../../window" }
+
+[dev-dependencies]
+rand = "^ 0.7"
+pal = { path = "../../../pal" }
+input = { path = "../../../input" }
