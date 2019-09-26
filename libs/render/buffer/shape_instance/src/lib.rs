@@ -17,21 +17,15 @@ use failure::Fallible;
 use global_layout::GlobalSets;
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{
-    ChunkId, ChunkPart, ClosedChunk, DrawSelection, ShapeChunkManager, ShapeId, Vertex,
-};
+use shape_chunk::{ChunkId, DrawSelection, DrawState, ShapeChunkManager, ShapeId};
 use specs::prelude::*;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 use vulkano::{
-    buffer::{BufferAccess, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
+    buffer::{BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
     command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
-    framebuffer::Subpass,
-    pipeline::{
-        depth_stencil::{Compare, DepthBounds, DepthStencil},
-        GraphicsPipeline, GraphicsPipelineAbstract,
-    },
+    pipeline::GraphicsPipelineAbstract,
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
@@ -39,28 +33,49 @@ use window::GraphicsWindow;
 const BLOCK_SIZE: usize = 1 << 14;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct SlotId(usize);
+pub struct BlockId(u32);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct BlockId(u32);
+pub struct SlotId {
+    block_id: BlockId,
+    offset: u32,
+}
+
+impl SlotId {
+    fn new(block_id: BlockId, offset: u32) -> Self {
+        Self { block_id, offset }
+    }
+
+    fn index(&self) -> usize {
+        self.offset as usize
+    }
+}
 
 // Fixed reservation blocks for upload of a number of entities. Unfortunately, because of
 // xforms, we don't know exactly how many instances will fit in any given block.
 pub struct InstanceBlock {
+    // Our own block id, for creating slots.
+    block_id: BlockId,
+
     // Weak reference to the associated chunk in the Manager.
-    chunk_id: ChunkId,
+    pub chunk_id: ChunkId,
 
     // Current allocation head.
-    next_slot: usize,
-    slot_map: Box<[Option<SlotId>; BLOCK_SIZE]>,
+    next_slot: u32,
+
+    // Map from slot offset to the actual storage location. This must be derefed to
+    // know the actual offset into the relevant buffer.
+    slot_map: Box<[usize; BLOCK_SIZE]>,
+
+    // Set of slot offsets that have been dirtied.
     dirty_slots: BitSet,
 
     // Map from the entity to the stored offset and from the offset to the entity.
     //    reservation_offset: usize,       // bump head
     //    mark_buffer: [bool; BLOCK_SIZE], // GC marked set
-    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
+    pub descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
 
-    command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
+    pub command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
     transform_buffer: Arc<DeviceLocalBuffer<[[f32; 6]]>>,
     flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
     xform_index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
@@ -96,6 +111,7 @@ pub struct InstanceBlock {
 
 impl InstanceBlock {
     fn new(
+        block_id: BlockId,
         chunk_id: ChunkId,
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         device: Arc<Device>,
@@ -147,8 +163,9 @@ impl InstanceBlock {
         );
 
         Ok(Self {
+            block_id,
             next_slot: 0,
-            slot_map: Box::new([None; BLOCK_SIZE]),
+            slot_map: Box::new([0; BLOCK_SIZE]),
             dirty_slots: BitSet::new(),
             chunk_id,
             descriptor_set,
@@ -160,105 +177,57 @@ impl InstanceBlock {
     }
 
     fn has_open_slot(&self) -> bool {
-        self.next_slot < BLOCK_SIZE
+        self.next_slot < BLOCK_SIZE as u32
     }
 
-    fn allocate_slot(&mut self, draw_command: DrawIndirectCommand) -> SlotId {
+    fn allocate_slot(&mut self) -> SlotId {
         assert!(self.has_open_slot());
-        let slot_id = SlotId(self.next_slot);
+        let slot_id = SlotId::new(self.block_id, self.next_slot);
         self.next_slot += 1;
 
         // Slots always start pointing at themselves -- as we remove entities and GC,
         // stuff will get mixed around. Also mark ourself as dirty so that we will get
         // uploaded, once we enter the draw portion.
-        self.slot_map[slot_id.0] = Some(slot_id);
-        self.dirty_slots.insert(slot_id.0);
+        self.slot_map[slot_id.index()] = slot_id.index();
+        self.dirty_slots.insert(slot_id.index());
 
         slot_id
     }
 
-    /*
-    fn new(
-        chunk_index: ChunkId,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        base_descriptors: &[Arc<dyn DescriptorSet + Send + Sync>],
-        command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
-        transform_buffer_pool: CpuBufferPool<[f32; 6]>,
-        flag_buffer_pool: CpuBufferPool<[u32; 2]>,
-        xform_index_buffer_pool: CpuBufferPool<u32>,
-        xform_buffer_pool: CpuBufferPool<[f32; 6]>,
-        device: Arc<Device>,
-    ) -> Fallible<Self> {
-        let command_buffer = DeviceLocalBuffer::array(
-            device.clone(),
-            BLOCK_SIZE,
-            BufferUsage::all(),
-            device.active_queue_families(),
-        )?;
-        let transform_buffer = DeviceLocalBuffer::array(
-            device.clone(),
-            BLOCK_SIZE,
-            BufferUsage::all(),
-            device.active_queue_families(),
-        )?;
-        let flag_buffer = DeviceLocalBuffer::array(
-            device.clone(),
-            BLOCK_SIZE,
-            BufferUsage::all(),
-            device.active_queue_families(),
-        )?;
-        let xform_index_buffer = DeviceLocalBuffer::array(
-            device.clone(),
-            BLOCK_SIZE,
-            BufferUsage::all(),
-            device.active_queue_families(),
-        )?;
-        let xform_buffer = DeviceLocalBuffer::array(
-            device.clone(),
-            14 * BLOCK_SIZE,
-            BufferUsage::all(),
-            device.active_queue_families(),
-        )?;
-        let descriptor_set = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::ShapeBuffers.into())
-                .add_buffer(transform_buffer.clone())?
-                .add_buffer(flag_buffer.clone())?
-                .add_buffer(xform_buffer.clone())?
-                .add_buffer(xform_index_buffer.clone())?
-                .build()?,
-        );
-        Ok(Self {
-            chunk_index,
-            reservation_offset: 0,
-            mark_buffer: [false; BLOCK_SIZE],
-            descriptor_set,
-            pds0: base_descriptors[0].clone(),
-            pds1: base_descriptors[1].clone(),
-            pds2: base_descriptors[2].clone(),
-            command_buffer_scratch: [DrawIndirectCommand {
-                vertex_count: 0u32,
-                instance_count: 0u32,
-                first_vertex: 0u32,
-                first_instance: 0u32,
-            }; BLOCK_SIZE],
-            command_buffer_pool,
-            command_upload_set: Vec::new(),
-            command_buffer,
-            transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
-            transform_buffer_pool,
-            transform_buffer,
-            flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
-            flag_buffer_pool,
-            flag_buffer,
-            xform_index_buffer_scratch: [0u32; BLOCK_SIZE],
-            xform_index_buffer_pool,
-            xform_index_buffer,
-            xform_buffer_scratch: [[0f32; 6]; 14 * BLOCK_SIZE],
-            xform_buffer_pool,
-            xform_buffer,
-        })
+    #[inline]
+    fn command_buffer_target(
+        &self,
+        slot_id: SlotId,
+    ) -> BufferSlice<[DrawIndirectCommand], Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>> {
+        let offset = self.slot_map[slot_id.index()];
+        BufferSlice::from_typed_buffer_access(self.command_buffer.clone())
+            .slice(offset..offset + 1)
+            .unwrap()
     }
 
+    #[inline]
+    fn transform_buffer_target(
+        &self,
+        slot_id: SlotId,
+    ) -> BufferSlice<[[f32; 6]], Arc<DeviceLocalBuffer<[[f32; 6]]>>> {
+        let offset = self.slot_map[slot_id.index()];
+        BufferSlice::from_typed_buffer_access(self.transform_buffer.clone())
+            .slice(offset..offset + 1)
+            .unwrap()
+    }
+
+    #[inline]
+    fn flag_buffer_target(
+        &self,
+        slot_id: SlotId,
+    ) -> BufferSlice<[[u32; 2]], Arc<DeviceLocalBuffer<[[u32; 2]]>>> {
+        let offset = self.slot_map[slot_id.index()];
+        BufferSlice::from_typed_buffer_access(self.flag_buffer.clone())
+            .slice(offset..offset + 1)
+            .unwrap()
+    }
+
+    /*
     // We expect entities to be added and removed frequently, but not every entity on every frame.
     // We take some pains here to make sure we only copy change entities up to the GPU each frame.
     fn allocate_entity_slot(
@@ -406,19 +375,19 @@ impl InstanceBlock {
 }
 
 pub struct ShapeInstanceManager {
-    chunk_man: ShapeChunkManager,
+    pub chunk_man: ShapeChunkManager,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
-    blocks: HashMap<BlockId, InstanceBlock>,
+    pub blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
 
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
+    pub base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
 
     // Buffer pools are shared by all blocks for maximum re-use.
-    command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
-    transform_buffer_pool: CpuBufferPool<[f32; 6]>,
-    flag_buffer_pool: CpuBufferPool<[u32; 2]>,
+    pub command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
+    pub transform_buffer_pool: CpuBufferPool<[f32; 6]>,
+    pub flag_buffer_pool: CpuBufferPool<[u32; 2]>,
     xform_index_buffer_pool: CpuBufferPool<u32>,
     xform_buffer_pool: CpuBufferPool<[f32; 6]>, // FIXME: hunt down this max somewhere
 }
@@ -442,6 +411,27 @@ impl ShapeInstanceManager {
             xform_index_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             xform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
         })
+    }
+
+    pub fn command_buffer_target(
+        &self,
+        slot_id: SlotId,
+    ) -> BufferSlice<[DrawIndirectCommand], Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>> {
+        self.blocks[&slot_id.block_id].command_buffer_target(slot_id)
+    }
+
+    pub fn transform_buffer_target(
+        &self,
+        slot_id: SlotId,
+    ) -> BufferSlice<[[f32; 6]], Arc<DeviceLocalBuffer<[[f32; 6]]>>> {
+        self.blocks[&slot_id.block_id].transform_buffer_target(slot_id)
+    }
+
+    pub fn flag_buffer_target(
+        &self,
+        slot_id: SlotId,
+    ) -> BufferSlice<[[u32; 2]], Arc<DeviceLocalBuffer<[[u32; 2]]>>> {
+        self.blocks[&slot_id.block_id].flag_buffer_target(slot_id)
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
@@ -469,33 +459,25 @@ impl ShapeInstanceManager {
         palette: &Palette,
         lib: &Library,
         window: &GraphicsWindow,
-    ) -> Fallible<SlotId> {
+    ) -> Fallible<(ShapeId, SlotId, Option<Box<dyn GpuFuture>>)> {
         // Ensure that the shape is actually in a chunk somewhere.
-        let (chunk_id, shape_id, fut) = self.chunk_man.upload_shape(
-            "T80.SH",
-            DrawSelection::NormalModel,
-            &palette,
-            &lib,
-            &window,
-        )?;
+        let (chunk_id, shape_id, future) = self
+            .chunk_man
+            .upload_shape(name, selection, &palette, &lib, &window)?;
 
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
             block_id
         } else {
             let block_id = self.allocate_block_id();
-            let block = InstanceBlock::new(chunk_id, self.pipeline.clone(), window.device())?;
+            let block =
+                InstanceBlock::new(block_id, chunk_id, self.pipeline.clone(), window.device())?;
             self.blocks.insert(block_id, block);
             block_id
         };
-        let part = self.chunk_man.part(shape_id);
-        let slot_id = self
-            .blocks
-            .get_mut(&block_id)
-            .unwrap()
-            .allocate_slot(part.draw_command(0, 1));
+        let slot_id = self.blocks.get_mut(&block_id).unwrap().allocate_slot();
 
-        Ok(slot_id)
+        Ok((shape_id, slot_id, future))
     }
 
     pub fn ensure_finished(
@@ -522,8 +504,9 @@ impl ShapeInstanceManager {
                     self.base_descriptors[0].clone(),
                     self.base_descriptors[1].clone(),
                     self.base_descriptors[2].clone(),
-                    chunk.atlas_descriptor_set_ref(),
                     block.descriptor_set.clone(),
+                    self.base_descriptors[2].clone(),
+                    chunk.atlas_descriptor_set_ref(),
                 ),
                 push_consts,
             )?;
@@ -533,14 +516,20 @@ impl ShapeInstanceManager {
 }
 
 pub struct ShapeComponent {
-    slot_id: SlotId,
+    pub slot_id: SlotId,
+    pub shape_id: ShapeId,
+    pub draw_state: DrawState,
 }
 impl Component for ShapeComponent {
     type Storage = VecStorage<Self>;
 }
 impl ShapeComponent {
-    pub fn new(slot_id: SlotId) -> Self {
-        Self { slot_id }
+    pub fn new(slot_id: SlotId, shape_id: ShapeId, draw_state: DrawState) -> Self {
+        Self {
+            slot_id,
+            shape_id,
+            draw_state,
+        }
     }
 }
 

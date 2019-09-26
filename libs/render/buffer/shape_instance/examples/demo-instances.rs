@@ -19,13 +19,13 @@ use input::{InputBindings, InputSystem};
 use nalgebra::Matrix4;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{DrawSelection, DrawState, ShapeChunkManager, Vertex};
+use shape_chunk::{DrawSelection, DrawState, Vertex};
 use shape_instance::{ShapeComponent, ShapeInstanceManager};
 use specs::prelude::*;
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::AutoCommandBufferBuilder,
+    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     framebuffer::Subpass,
     pipeline::{
@@ -54,6 +54,7 @@ mod vs {
         layout(set = 0, binding = 0) buffer GlobalData {
             int dummy;
         } globals;
+
         // Per shape input
         const uint MAX_XFORM_ID = 32;
         layout(set = 3, binding = 0) buffer ChunkBaseTransforms {
@@ -62,12 +63,13 @@ mod vs {
         layout(set = 3, binding = 1) buffer ChunkFlags {
             uint data[];
         } shape_flags;
-        layout(set = 3, binding = 2) buffer ChunkXforms {
-            float data[];
-        } shape_xforms;
-        layout(set = 3, binding = 3) buffer ChunkXformOffsets {
+        layout(set = 3, binding = 2) buffer ChunkXformOffsets {
             uint data[];
         } shape_xform_offsets;
+//        layout(set = 4, binding = 2) buffer ChunkXforms {
+//            float data[];
+//        } shape_xforms;
+
         // Per Vertex input
         layout(location = 0) in vec3 position;
         layout(location = 1) in vec4 color;
@@ -92,14 +94,14 @@ mod vs {
                 shape_transforms.data[base_transform + 5]
             };
             float xform[6] = {0, 0, 0, 0, 0, 0};
-            if (xform_id < MAX_XFORM_ID) {
-                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
-                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
-                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
-                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
-                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
-                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
-            }
+//            if (xform_id < MAX_XFORM_ID) {
+//                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
+//                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
+//                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
+//                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
+//                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
+//                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
+//            }
             gl_Position = pc.projection *
                           pc.view *
                           matrix_for_xform(transform) *
@@ -126,7 +128,9 @@ mod fs {
         layout(location = 2) flat in uint f_flags0;
         layout(location = 3) flat in uint f_flags1;
         layout(location = 0) out vec4 f_color;
-        layout(set = 4, binding = 0) uniform sampler2DArray mega_atlas;
+
+        layout(set = 5, binding = 0) uniform sampler2DArray mega_atlas;
+
         //layout(set = 5, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
         //layout(set = 5, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
         //layout(set = 5, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
@@ -266,9 +270,8 @@ fn main() -> Fallible<()> {
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-    let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let pipeline = build_pipeline(&window)?;
-    let push_consts = vs::ty::PushConstantData::new();
+    let mut push_consts = vs::ty::PushConstantData::new();
 
     let mut inst_man = ShapeInstanceManager::new(
         pipeline.clone(),
@@ -279,9 +282,9 @@ fn main() -> Fallible<()> {
     let mut world = World::new();
     world.register::<ShapeComponent>();
 
-    for _ in 0..100 {
-        let slot_id = inst_man.upload_and_allocate_slot(
-            "T80.SH",
+    for _ in 0..1 {
+        let (shape_id, slot_id, _future) = inst_man.upload_and_allocate_slot(
+            "F18.SH",
             DrawSelection::NormalModel,
             &palette,
             &lib,
@@ -289,7 +292,7 @@ fn main() -> Fallible<()> {
         )?;
         let _ent = world
             .create_entity()
-            .with(ShapeComponent::new(slot_id))
+            .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
             .build();
     }
 
@@ -297,18 +300,81 @@ fn main() -> Fallible<()> {
         future.then_signal_fence_and_flush()?.wait(None)?;
     }
 
+    /*
+    let mut dispatcher = DispatcherBuilder::new()
+        //.with(ShapeXformUpdateSystem, "xform-update", &[])
+        //.with(ShapeFlagUpdateSystem, "flag-update", &[])
+        //.with(ShapeTransformUpdateSystem, "flag-update", &[])
+        //.with(ClusterBombSystem, "cluster_bombs", &[])
+        .build();
+    */
+
+    let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
+    camera.set_distance(120.0);
+    camera.on_mousebutton_down(1);
+
+    let start = Instant::now();
     loop {
+        for command in input.poll(&mut window.events_loop) {
+            match command.name.as_str() {
+                "window-resize" => {
+                    window.note_resize();
+                    camera.set_aspect_ratio(window.aspect_ratio_f64()?);
+                }
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
+                "mouse-move" => camera.on_mousemove(
+                    command.displacement()?.0 / 4.0,
+                    command.displacement()?.1 / 4.0,
+                ),
+                "window-cursor-move" => {}
+                _ => println!("unhandled command: {}", command.name),
+            }
+        }
+        window.center_cursor()?;
+
         let frame = window.begin_frame()?;
         if !frame.is_valid() {
             continue;
         }
+
+        push_consts.set_projection(&camera.projection_matrix());
+        push_consts.set_view(&camera.view_matrix());
 
         let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
             window.device(),
             window.queue().family(),
         )?;
 
-        // Lift entity state to our device local buffers using systems.
+        let shape_components = world.read_storage::<ShapeComponent>();
+        for (shape_component,) in (&shape_components,).join() {
+            let cmd = inst_man
+                .chunk_man
+                .part(shape_component.shape_id)
+                .draw_command(0, 1);
+            let src = inst_man.command_buffer_pool.chunk(vec![cmd])?;
+            let dst = inst_man.command_buffer_target(shape_component.slot_id);
+            cbb = cbb.copy_buffer(src, dst)?;
+
+            let src = inst_man.transform_buffer_pool.chunk(vec![[0f32; 6]])?;
+            let dst = inst_man.transform_buffer_target(shape_component.slot_id);
+            cbb = cbb.copy_buffer(src, dst)?;
+
+            let errata = inst_man
+                .chunk_man
+                .part(shape_component.shape_id)
+                .widgets()
+                .read()
+                .unwrap()
+                .errata();
+            let mut flags = [0u32; 2];
+            shape_component
+                .draw_state
+                .build_mask_into(&start, errata, &mut flags)?;
+
+            let src = inst_man.flag_buffer_pool.chunk(vec![flags])?;
+            let dst = inst_man.flag_buffer_target(shape_component.slot_id);
+            cbb = cbb.copy_buffer(src, dst)?;
+        }
 
         cbb = cbb.begin_render_pass(
             frame.framebuffer(&window),
@@ -317,7 +383,25 @@ fn main() -> Fallible<()> {
         )?;
 
         // There are copies enqueued to update our state, so we can just render the buffers?
-        cbb = inst_man.render(cbb, &window.dynamic_state, &push_consts)?;
+        //cbb = inst_man.render(cbb, &window.dynamic_state, &push_consts)?;
+        for block in inst_man.blocks.values() {
+            let chunk = &inst_man.chunk_man.chunk(block.chunk_id);
+            cbb = cbb.draw_indirect(
+                pipeline.clone(),
+                &window.dynamic_state,
+                vec![chunk.vertex_buffer().clone()],
+                block.command_buffer.clone(),
+                (
+                    inst_man.base_descriptors[0].clone(),
+                    inst_man.base_descriptors[1].clone(),
+                    inst_man.base_descriptors[2].clone(),
+                    block.descriptor_set.clone(),
+                    inst_man.base_descriptors[2].clone(),
+                    chunk.atlas_descriptor_set_ref(),
+                ),
+                push_consts,
+            )?;
+        }
 
         cbb = cbb.end_render_pass()?;
         let cb = cbb.build()?;

@@ -53,10 +53,10 @@ mod vs {
         layout(location = 5) in uint xform_id;
 
         // Per shape input
-        layout(set = 4, binding = 0) buffer ChunkFlags {
+        layout(set = 3, binding = 0) buffer ChunkFlags {
             uint flag_data[];
         } flags;
-        layout(set = 4, binding = 1) buffer ChunkTransforms {
+        layout(set = 3, binding = 1) buffer ChunkTransforms {
             float xform_data[];
         } xforms;
 
@@ -117,7 +117,7 @@ mod fs {
 
         layout(location = 0) out vec4 f_color;
 
-        layout(set = 3, binding = 0) uniform sampler2DArray mega_atlas;
+        layout(set = 5, binding = 0) uniform sampler2DArray mega_atlas;
 
         void main() {
             if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
@@ -299,8 +299,6 @@ fn main() -> Fallible<()> {
     camera.on_mousebutton_down(1);
 
     let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
-    let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
-    let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
     loop {
         for command in input.poll(&mut window.events_loop) {
             match command.name.as_str() {
@@ -347,10 +345,11 @@ fn main() -> Fallible<()> {
                 indirect_buffer.clone(),
                 (
                     empty0.clone(),
-                    empty1.clone(),
-                    empty2.clone(),
-                    chunk.atlas_descriptor_set_ref(),
+                    empty0.clone(),
+                    empty0.clone(),
                     shape_descriptor_set.clone(),
+                    empty0.clone(),
+                    chunk.atlas_descriptor_set_ref(),
                 ),
                 push_constants,
             )?;
