@@ -508,12 +508,11 @@ impl TextRenderer {
 
         // Cache all standard fonts on the GPU.
         for (name, filename) in &[(Font::HUD11, "HUD11.FNT")] {
-            let maybe_data = lib.load(filename);
-            if maybe_data.is_ok() {
+            if let Ok(data) = lib.load(filename) {
                 glyph_caches.insert(
                     *name,
                     Rc::new(Box::new(GlyphCache::new_transparent_fnt(
-                        &Fnt::from_bytes("", "", &maybe_data.unwrap())?,
+                        &Fnt::from_bytes("", "", &data)?,
                         screen_pipeline.clone(),
                         window,
                     )?)),
