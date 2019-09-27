@@ -8,7 +8,6 @@ edition = "2018"
 doctest = false
 
 [dependencies]
-bit-set = "^ 0.5"
 failure = "^ 0.1.2"
 nalgebra = "^ 0.18"
 rayon = "^ 1.2"
@@ -22,6 +21,7 @@ omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render/buffer/shape_chunk" }
 window = { path = "../../../window" }
+world = { path = "../../../world" }
 
 [dev-dependencies]
 rand = "^ 0.7"

@@ -16,7 +16,7 @@ use crate::{
     texture_atlas::MegaAtlas,
     upload::{DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
-use failure::{ensure, err_msg, Fallible};
+use failure::{ensure, Fallible};
 use global_layout::GlobalSets;
 use lazy_static::lazy_static;
 use lib::Library;

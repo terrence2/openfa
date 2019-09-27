@@ -12,17 +12,21 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use bit_set::BitSet;
+mod components;
+mod systems;
+
+pub use components::{ShapeComponent, ShapeFlagBuffer, ShapeTransformBuffer, ShapeXformBuffer};
+pub use systems::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
+
 use failure::Fallible;
 use global_layout::GlobalSets;
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{ChunkId, DrawSelection, DrawState, ShapeChunkManager, ShapeId};
-use specs::prelude::*;
+use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeId};
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
     buffer::{BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState},
+    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     pipeline::GraphicsPipelineAbstract,
@@ -30,7 +34,7 @@ use vulkano::{
 };
 use window::GraphicsWindow;
 
-const BLOCK_SIZE: usize = 1 << 14;
+const BLOCK_SIZE: usize = 1 << 10;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BlockId(u32);
@@ -46,7 +50,7 @@ impl SlotId {
         Self { block_id, offset }
     }
 
-    fn index(&self) -> usize {
+    fn index(self) -> usize {
         self.offset as usize
     }
 }
@@ -67,8 +71,8 @@ pub struct InstanceBlock {
     // know the actual offset into the relevant buffer.
     slot_map: Box<[usize; BLOCK_SIZE]>,
 
-    // Set of slot offsets that have been dirtied.
-    dirty_slots: BitSet,
+    // Flag set whenever the slot map changes and we need to re-up the command_buffer.
+    slots_dirty: bool,
 
     // Map from the entity to the stored offset and from the offset to the entity.
     //    reservation_offset: usize,       // bump head
@@ -78,7 +82,13 @@ pub struct InstanceBlock {
     pub command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
     transform_buffer: Arc<DeviceLocalBuffer<[[f32; 6]]>>,
     flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
+
+    #[allow(dead_code)]
     xform_index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
+
+    command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
+    transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
+    flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
     /*
     // Buffers for all instances stored in this instance set. One command per unique entity.
     // 16 bytes per entity; index unnecessary for draw
@@ -117,6 +127,7 @@ impl InstanceBlock {
         device: Arc<Device>,
     ) -> Fallible<Self> {
         // This class contains the fixed-size device local blocks that we will render from.
+        println!("InstanceBlock::new({:?})", block_id);
 
         // Static: except when things change
         let command_buffer = DeviceLocalBuffer::array(
@@ -166,13 +177,21 @@ impl InstanceBlock {
             block_id,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
-            dirty_slots: BitSet::new(),
+            slots_dirty: false,
             chunk_id,
             descriptor_set,
             command_buffer,
             transform_buffer,
             flag_buffer,
             xform_index_buffer,
+            command_buffer_scratch: [DrawIndirectCommand {
+                vertex_count: 0,
+                instance_count: 0,
+                first_vertex: 0,
+                first_instance: 0,
+            }; BLOCK_SIZE],
+            transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
+            flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
         })
     }
 
@@ -180,7 +199,7 @@ impl InstanceBlock {
         self.next_slot < BLOCK_SIZE as u32
     }
 
-    fn allocate_slot(&mut self) -> SlotId {
+    fn allocate_slot(&mut self, draw_cmd: DrawIndirectCommand) -> SlotId {
         assert!(self.has_open_slot());
         let slot_id = SlotId::new(self.block_id, self.next_slot);
         self.next_slot += 1;
@@ -189,42 +208,17 @@ impl InstanceBlock {
         // stuff will get mixed around. Also mark ourself as dirty so that we will get
         // uploaded, once we enter the draw portion.
         self.slot_map[slot_id.index()] = slot_id.index();
-        self.dirty_slots.insert(slot_id.index());
+        self.command_buffer_scratch[slot_id.index()] = draw_cmd;
+        self.slots_dirty = true;
 
         slot_id
     }
 
     #[inline]
-    fn command_buffer_target(
-        &self,
-        slot_id: SlotId,
-    ) -> BufferSlice<[DrawIndirectCommand], Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>> {
+    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
         let offset = self.slot_map[slot_id.index()];
-        BufferSlice::from_typed_buffer_access(self.command_buffer.clone())
-            .slice(offset..offset + 1)
-            .unwrap()
-    }
-
-    #[inline]
-    fn transform_buffer_target(
-        &self,
-        slot_id: SlotId,
-    ) -> BufferSlice<[[f32; 6]], Arc<DeviceLocalBuffer<[[f32; 6]]>>> {
-        let offset = self.slot_map[slot_id.index()];
-        BufferSlice::from_typed_buffer_access(self.transform_buffer.clone())
-            .slice(offset..offset + 1)
-            .unwrap()
-    }
-
-    #[inline]
-    fn flag_buffer_target(
-        &self,
-        slot_id: SlotId,
-    ) -> BufferSlice<[[u32; 2]], Arc<DeviceLocalBuffer<[[u32; 2]]>>> {
-        let offset = self.slot_map[slot_id.index()];
-        BufferSlice::from_typed_buffer_access(self.flag_buffer.clone())
-            .slice(offset..offset + 1)
-            .unwrap()
+        self.transform_buffer_scratch[offset] = *transform;
+        self.flag_buffer_scratch[offset] = flags;
     }
 
     /*
@@ -388,7 +382,11 @@ pub struct ShapeInstanceManager {
     pub command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
     pub transform_buffer_pool: CpuBufferPool<[f32; 6]>,
     pub flag_buffer_pool: CpuBufferPool<[u32; 2]>,
+
+    #[allow(dead_code)]
     xform_index_buffer_pool: CpuBufferPool<u32>,
+
+    #[allow(dead_code)]
     xform_buffer_pool: CpuBufferPool<[f32; 6]>, // FIXME: hunt down this max somewhere
 }
 
@@ -413,25 +411,12 @@ impl ShapeInstanceManager {
         })
     }
 
-    pub fn command_buffer_target(
-        &self,
-        slot_id: SlotId,
-    ) -> BufferSlice<[DrawIndirectCommand], Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>> {
-        self.blocks[&slot_id.block_id].command_buffer_target(slot_id)
-    }
-
-    pub fn transform_buffer_target(
-        &self,
-        slot_id: SlotId,
-    ) -> BufferSlice<[[f32; 6]], Arc<DeviceLocalBuffer<[[f32; 6]]>>> {
-        self.blocks[&slot_id.block_id].transform_buffer_target(slot_id)
-    }
-
-    pub fn flag_buffer_target(
-        &self,
-        slot_id: SlotId,
-    ) -> BufferSlice<[[u32; 2]], Arc<DeviceLocalBuffer<[[u32; 2]]>>> {
-        self.blocks[&slot_id.block_id].flag_buffer_target(slot_id)
+    #[inline]
+    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
+        self.blocks
+            .get_mut(&slot_id.block_id)
+            .unwrap()
+            .push_values(slot_id, transform, flags);
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
@@ -465,6 +450,8 @@ impl ShapeInstanceManager {
             .chunk_man
             .upload_shape(name, selection, &palette, &lib, &window)?;
 
+        let draw_cmd = self.chunk_man.part(shape_id).draw_command(0, 1);
+
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
             block_id
@@ -472,10 +459,19 @@ impl ShapeInstanceManager {
             let block_id = self.allocate_block_id();
             let block =
                 InstanceBlock::new(block_id, chunk_id, self.pipeline.clone(), window.device())?;
+            self.chunk_to_block_map
+                .entry(chunk_id)
+                .or_insert_with(Vec::new)
+                .push(block_id);
             self.blocks.insert(block_id, block);
             block_id
         };
-        let slot_id = self.blocks.get_mut(&block_id).unwrap().allocate_slot();
+
+        let slot_id = self
+            .blocks
+            .get_mut(&block_id)
+            .unwrap()
+            .allocate_slot(draw_cmd);
 
         Ok((shape_id, slot_id, future))
     }
@@ -487,6 +483,42 @@ impl ShapeInstanceManager {
         self.chunk_man.finish(window)
     }
 
+    pub fn upload_buffers(
+        &mut self,
+        mut cbb: AutoCommandBufferBuilder,
+    ) -> Fallible<AutoCommandBufferBuilder> {
+        for block in self.blocks.values_mut() {
+            if block.slots_dirty {
+                let src = self
+                    .command_buffer_pool
+                    .chunk(block.command_buffer_scratch[0..block.next_slot as usize].to_vec())?;
+                let dst = BufferSlice::from_typed_buffer_access(block.command_buffer.clone())
+                    .slice(0..block.next_slot as usize)
+                    .unwrap();
+                cbb = cbb.copy_buffer(src, dst)?;
+                block.slots_dirty = false;
+            }
+
+            let src = self
+                .transform_buffer_pool
+                .chunk(block.transform_buffer_scratch[0..block.next_slot as usize].to_vec())?;
+            let dst = BufferSlice::from_typed_buffer_access(block.transform_buffer.clone())
+                .slice(0..block.next_slot as usize)
+                .unwrap();
+            cbb = cbb.copy_buffer(src, dst)?;
+
+            let src = self
+                .flag_buffer_pool
+                .chunk(block.flag_buffer_scratch[0..block.next_slot as usize].to_vec())?;
+            let dst = BufferSlice::from_typed_buffer_access(block.flag_buffer.clone())
+                .slice(0..block.next_slot as usize)
+                .unwrap();
+            cbb = cbb.copy_buffer(src, dst)?;
+        }
+        Ok(cbb)
+    }
+
+    /*
     pub fn render<T>(
         &self,
         mut cbb: AutoCommandBufferBuilder,
@@ -513,24 +545,7 @@ impl ShapeInstanceManager {
         }
         Ok(cbb)
     }
-}
-
-pub struct ShapeComponent {
-    pub slot_id: SlotId,
-    pub shape_id: ShapeId,
-    pub draw_state: DrawState,
-}
-impl Component for ShapeComponent {
-    type Storage = VecStorage<Self>;
-}
-impl ShapeComponent {
-    pub fn new(slot_id: SlotId, shape_id: ShapeId, draw_state: DrawState) -> Self {
-        Self {
-            slot_id,
-            shape_id,
-            draw_state,
-        }
-    }
+    */
 }
 
 mod test_vs {
@@ -544,9 +559,9 @@ mod test_vs {
         // Per shape input
         layout(set = 0, binding = 0) buffer GlobalData { int dummy; } globals;
 
-        layout(set = 4, binding = 0) buffer ShapeTransforms { uint data[]; } shape_transforms;
-        layout(set = 4, binding = 1) buffer ShapeFlags { uint data[]; } shape_flags;
-        layout(set = 4, binding = 2) buffer ShapeXformIndexes { float data[]; } shape_xform_indexes;
+        layout(set = 3, binding = 0) buffer ShapeTransforms { uint data[]; } shape_transforms;
+        layout(set = 3, binding = 1) buffer ShapeFlags { uint data[]; } shape_flags;
+        layout(set = 3, binding = 2) buffer ShapeXformIndexes { float data[]; } shape_xform_indexes;
 
         void main() {
         }"
@@ -561,7 +576,7 @@ mod test_fs {
     src: "
         #version 450
 
-        layout(set = 3, binding = 0) uniform sampler2DArray mega_atlas;
+        layout(set = 5, binding = 0) uniform sampler2DArray mega_atlas;
 
         void main() {
         }"
@@ -573,9 +588,16 @@ mod test {
     use super::*;
     use omnilib::OmniLib;
     use pal::Palette;
-    use shape_chunk::{DrawSelection, OpenChunk};
-    use specs::prelude::*;
-    use vulkano::buffer::CpuAccessibleBuffer;
+    use shape_chunk::{DrawSelection, Vertex};
+    use vulkano::{
+        buffer::{BufferUsage, CpuAccessibleBuffer},
+        descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
+        framebuffer::Subpass,
+        pipeline::{
+            depth_stencil::{Compare, DepthBounds, DepthStencil},
+            GraphicsPipeline, GraphicsPipelineAbstract,
+        },
+    };
     use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     fn build_pipeline(
@@ -631,7 +653,7 @@ mod test {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
         let lib = omni.library("FA");
         let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
+        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let pipeline = build_pipeline(&window)?;
 
         let mut inst_man = ShapeInstanceManager::new(
@@ -640,21 +662,14 @@ mod test {
             &window,
         )?;
 
-        let mut world = World::new();
-        world.register::<ShapeComponent>();
-
         for _ in 0..100 {
-            let slot_id = inst_man.upload_and_allocate_slot(
+            let (_chunk_id, _slot_id, _future) = inst_man.upload_and_allocate_slot(
                 "T80.SH",
                 DrawSelection::NormalModel,
                 &palette,
                 &lib,
                 &window,
             )?;
-            let _ent = world
-                .create_entity()
-                .with(ShapeComponent { slot_id })
-                .build();
         }
 
         Ok(())

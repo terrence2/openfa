@@ -32,10 +32,10 @@ mod test_vs {
         #version 450
 
         // Per shape input
-        layout(set = 4, binding = 0) buffer ChunkFlags {
+        layout(set = 3, binding = 0) buffer ChunkFlags {
             uint flag_data[];
         } flags;
-        layout(set = 4, binding = 1) buffer ChunkTransforms {
+        layout(set = 3, binding = 1) buffer ChunkTransforms {
             float xform_data[];
         } xforms;
 
@@ -52,7 +52,7 @@ mod test_fs {
     src: "
         #version 450
 
-        layout(set = 3, binding = 0) uniform sampler2DArray mega_atlas;
+        layout(set = 5, binding = 0) uniform sampler2DArray mega_atlas;
 
         void main() {
         }"
@@ -135,7 +135,7 @@ mod test {
             if skipped.contains(&name.as_str()) {
                 continue;
             }
-            let (shape_id, _maybe_fut) = chunk_man.upload_shape(
+            let (_chunk_id, shape_id, _maybe_fut) = chunk_man.upload_shape(
                 &name,
                 DrawSelection::NormalModel,
                 &palette,
@@ -145,10 +145,10 @@ mod test {
             all_shapes.push(shape_id);
         }
         let future = chunk_man.finish(&window)?;
-        future.then_signal_fence_and_flush()?.wait(None)?;
+        future.unwrap().then_signal_fence_and_flush()?.wait(None)?;
 
         for shape_id in &all_shapes {
-            let lifetime = chunk_man.part(*shape_id)?.widgets();
+            let lifetime = chunk_man.part(*shape_id).widgets();
             let widgets = lifetime.read().unwrap();
             trace!("{} - {}", widgets.num_xforms(), widgets.name());
         }

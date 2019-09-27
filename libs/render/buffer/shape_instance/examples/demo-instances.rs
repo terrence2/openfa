@@ -16,16 +16,19 @@ use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use global_layout::GlobalSets;
 use input::{InputBindings, InputSystem};
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4, Point3};
 use omnilib::OmniLib;
 use pal::Palette;
 use shape_chunk::{DrawSelection, DrawState, Vertex};
-use shape_instance::{ShapeComponent, ShapeInstanceManager};
+use shape_instance::{
+    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceManager,
+    ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
+};
 use specs::prelude::*;
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
+    command_buffer::AutoCommandBufferBuilder,
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     framebuffer::Subpass,
     pipeline::{
@@ -35,6 +38,7 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::{GraphicsConfigBuilder, GraphicsWindow};
+use world::Transform;
 
 mod vs {
     use vulkano_shaders::shader;
@@ -281,40 +285,60 @@ fn main() -> Fallible<()> {
 
     let mut world = World::new();
     world.register::<ShapeComponent>();
+    world.register::<ShapeTransformBuffer>();
+    world.register::<ShapeFlagBuffer>();
+    world.register::<ShapeXformBuffer>();
+    world.register::<Transform>();
 
-    for _ in 0..1 {
-        let (shape_id, slot_id, _future) = inst_man.upload_and_allocate_slot(
-            "F18.SH",
-            DrawSelection::NormalModel,
-            &palette,
-            &lib,
-            &window,
-        )?;
-        let _ent = world
-            .create_entity()
-            .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
-            .build();
+    const CNT: i32 = 100;
+    for x in -CNT / 2..CNT / 2 {
+        for y in -CNT / 2..CNT / 2 {
+            let (shape_id, slot_id, _future) = inst_man.upload_and_allocate_slot(
+                "F18.SH",
+                DrawSelection::NormalModel,
+                &palette,
+                &lib,
+                &window,
+            )?;
+            let errata = inst_man
+                .chunk_man
+                .part(shape_id)
+                .widgets()
+                .read()
+                .unwrap()
+                .errata();
+            let _ent = world
+                .create_entity()
+                .with(Transform::new(Point3::new(
+                    f64::from(x) * 10f64,
+                    f64::from(y) * 10f64,
+                    0f64,
+                )))
+                .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
+                .with(ShapeTransformBuffer::new())
+                .with(ShapeFlagBuffer::new(errata))
+                //.with(ShapeXformBuffer::new())
+                .build();
+        }
     }
 
     if let Some(future) = inst_man.ensure_finished(&window)? {
         future.then_signal_fence_and_flush()?.wait(None)?;
     }
 
-    /*
-    let mut dispatcher = DispatcherBuilder::new()
-        //.with(ShapeXformUpdateSystem, "xform-update", &[])
-        //.with(ShapeFlagUpdateSystem, "flag-update", &[])
-        //.with(ShapeTransformUpdateSystem, "flag-update", &[])
-        //.with(ClusterBombSystem, "cluster_bombs", &[])
-        .build();
-    */
-
     let mut camera = ArcBallCamera::new(window.aspect_ratio_f64()?, 0.1, 3.4e+38);
     camera.set_distance(120.0);
     camera.on_mousebutton_down(1);
 
     let start = Instant::now();
+    let mut update_dispatcher = DispatcherBuilder::new()
+        .with(TransformUpdateSystem, "transform-update", &[])
+        .with(FlagUpdateSystem::new(&start), "flag-update", &[])
+        .with(XformUpdateSystem::new(&start), "xform-update", &[])
+        .build();
+
     loop {
+        let loop_head = Instant::now();
         for command in input.poll(&mut window.events_loop) {
             match command.name.as_str() {
                 "window-resize" => {
@@ -340,22 +364,39 @@ fn main() -> Fallible<()> {
         push_consts.set_projection(&camera.projection_matrix());
         push_consts.set_view(&camera.view_matrix());
 
+        update_dispatcher.dispatch(&world);
+        {
+            DispatcherBuilder::new()
+                .with(CoalesceSystem::new(&mut inst_man), "coalesce", &[])
+                .build()
+                .dispatch(&world);
+        }
+
         let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
             window.device(),
             window.queue().family(),
         )?;
 
-        let shape_components = world.read_storage::<ShapeComponent>();
-        for (shape_component,) in (&shape_components,).join() {
-            let cmd = inst_man
-                .chunk_man
-                .part(shape_component.shape_id)
-                .draw_command(0, 1);
-            let src = inst_man.command_buffer_pool.chunk(vec![cmd])?;
-            let dst = inst_man.command_buffer_target(shape_component.slot_id);
-            cbb = cbb.copy_buffer(src, dst)?;
+        cbb = inst_man.upload_buffers(cbb)?;
 
-            let src = inst_man.transform_buffer_pool.chunk(vec![[0f32; 6]])?;
+        /*
+        let upload_head = Instant::now();
+        let shape_components = world.read_storage::<ShapeComponent>();
+        let transforms = world.read_storage::<Transform>();
+        for (shape_component, transform) in (&shape_components, &transforms).join() {
+            if inst_man.get_and_clear_dirty_bit(shape_component.slot_id) {
+                let cmd = inst_man
+                    .chunk_man
+                    .part(shape_component.shape_id)
+                    .draw_command(0, 1);
+                let src = inst_man.command_buffer_pool.chunk(vec![cmd])?;
+                let dst = inst_man.command_buffer_target(shape_component.slot_id);
+                cbb = cbb.copy_buffer(src, dst)?;
+            }
+
+            let src = inst_man
+                .transform_buffer_pool
+                .chunk(vec![transform.compact()])?;
             let dst = inst_man.transform_buffer_target(shape_component.slot_id);
             cbb = cbb.copy_buffer(src, dst)?;
 
@@ -375,6 +416,8 @@ fn main() -> Fallible<()> {
             let dst = inst_man.flag_buffer_target(shape_component.slot_id);
             cbb = cbb.copy_buffer(src, dst)?;
         }
+        //println!("Upload Time: {:?}", upload_head.elapsed());
+        */
 
         cbb = cbb.begin_render_pass(
             frame.framebuffer(&window),
@@ -382,7 +425,6 @@ fn main() -> Fallible<()> {
             vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
         )?;
 
-        // There are copies enqueued to update our state, so we can just render the buffers?
         //cbb = inst_man.render(cbb, &window.dynamic_state, &push_consts)?;
         for block in inst_man.blocks.values() {
             let chunk = &inst_man.chunk_man.chunk(block.chunk_id);
@@ -406,5 +448,7 @@ fn main() -> Fallible<()> {
         cbb = cbb.end_render_pass()?;
         let cb = cbb.build()?;
         frame.submit(cb, &mut window)?;
+
+        println!("Frame time: {:?}", loop_head.elapsed());
     }
 }
