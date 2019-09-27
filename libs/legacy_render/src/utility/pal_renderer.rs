@@ -275,5 +275,4 @@ mod test {
         std::mem::drop(window);
         Ok(())
     }
-
 }
