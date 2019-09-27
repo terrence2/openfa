@@ -16,7 +16,7 @@ use crate::{
     texture_atlas::MegaAtlas,
     upload::{DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
-use failure::{ensure, err_msg, Fallible};
+use failure::{ensure, Fallible};
 use global_layout::GlobalSets;
 use lazy_static::lazy_static;
 use lib::Library;
@@ -62,11 +62,6 @@ fn allocate_chunk_id() -> ChunkId {
     assert!(next_id < std::u32::MAX, "overflowed chunk id");
     *global += 1;
     ChunkId(next_id)
-}
-
-pub enum Chunk {
-    Open(OpenChunk),
-    Closed(ClosedChunk),
 }
 
 // Where a shape lives in a chunk.
@@ -143,6 +138,10 @@ impl OpenChunk {
         self.vertex_offset >= VERTEX_CHUNK_HIGH_WATER_COUNT
     }
 
+    pub fn chunk_is_empty(&self) -> bool {
+        self.vertex_offset == 0
+    }
+
     pub fn upload_shape(
         &mut self,
         name: &str,
@@ -189,7 +188,7 @@ impl OpenChunk {
         self.chunk_id
     }
 
-    pub unsafe fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         &self.chunk_parts[&shape_id]
     }
 }
@@ -263,9 +262,7 @@ impl ClosedChunk {
         self.chunk_id
     }
 
-    pub fn part(&self, shape_id: ShapeId) -> Fallible<&ChunkPart> {
-        self.chunk_parts
-            .get(&shape_id)
-            .ok_or_else(|| err_msg("no part for associated shape id"))
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        &self.chunk_parts[&shape_id]
     }
 }

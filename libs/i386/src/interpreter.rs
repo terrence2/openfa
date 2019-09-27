@@ -507,13 +507,12 @@ impl Interpreter {
         let a = self.get(op1)? as i32;
         let b = self.get(op2)? as i32;
         self.cf = a < b;
-        let rv = a.checked_sub(b);
-        let v = if rv.is_none() {
+        let v = if let Some(v) = a.checked_sub(b) {
+            self.of = false;
+            v
+        } else {
             self.of = true;
             a.wrapping_add(b)
-        } else {
-            self.of = false;
-            rv.unwrap()
         };
         self.zf = v == 0;
         self.sf = (v as i32) < 0;

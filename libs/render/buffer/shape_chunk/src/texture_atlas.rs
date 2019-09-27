@@ -128,8 +128,9 @@ impl MegaAtlas {
             format!("non-standard image width: {}", pic.width)
         );
         ensure!(pic.height + 2 < ATLAS_HEIGHT as u32, "source too tall");
-        let first_fit = self.find_first_fit(pic.height as usize);
-        let (layer, column) = if first_fit.is_none() {
+        let (layer, column) = if let Some(first_fit) = self.find_first_fit(pic.height as usize) {
+            first_fit
+        } else {
             let buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
                 CpuAccessibleBuffer::raw(
                     window.device(),
@@ -141,8 +142,6 @@ impl MegaAtlas {
             self.images.push(buffer);
             self.utilization.push([0; 4]);
             (self.images.len() - 1, 0)
-        } else {
-            first_fit.unwrap()
         };
 
         // Each column in 256 + 2px -- use that to infer the offsets.

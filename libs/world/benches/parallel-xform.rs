@@ -46,7 +46,7 @@ fn set_up_world() -> Fallible<World> {
         &window,
     )?;
 
-    let part = unsafe { upload.part(shape_id) };
+    let part = upload.part(shape_id);
     for _ in 0..10_000 {
         let _ent = world.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
     }
