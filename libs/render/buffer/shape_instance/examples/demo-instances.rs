@@ -300,13 +300,6 @@ fn main() -> Fallible<()> {
                 &lib,
                 &window,
             )?;
-            let errata = inst_man
-                .chunk_man
-                .part(shape_id)
-                .widgets()
-                .read()
-                .unwrap()
-                .errata();
             let _ent = world
                 .create_entity()
                 .with(Transform::new(Point3::new(
@@ -316,7 +309,7 @@ fn main() -> Fallible<()> {
                 )))
                 .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
                 .with(ShapeTransformBuffer::new())
-                .with(ShapeFlagBuffer::new(errata))
+                .with(ShapeFlagBuffer::new(inst_man.errata(shape_id)))
                 //.with(ShapeXformBuffer::new())
                 .build();
         }

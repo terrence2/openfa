@@ -22,7 +22,7 @@ use failure::Fallible;
 use global_layout::GlobalSets;
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeId};
+use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
     buffer::{BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
@@ -77,9 +77,9 @@ pub struct InstanceBlock {
     // Map from the entity to the stored offset and from the offset to the entity.
     //    reservation_offset: usize,       // bump head
     //    mark_buffer: [bool; BLOCK_SIZE], // GC marked set
-    pub descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
+    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
 
-    pub command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
+    command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
     transform_buffer: Arc<DeviceLocalBuffer<[[f32; 6]]>>,
     flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
 
@@ -215,7 +215,7 @@ impl InstanceBlock {
     }
 
     #[inline]
-    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
+    fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
         let offset = self.slot_map[slot_id.index()];
         self.transform_buffer_scratch[offset] = *transform;
         self.flag_buffer_scratch[offset] = flags;
@@ -369,19 +369,19 @@ impl InstanceBlock {
 }
 
 pub struct ShapeInstanceManager {
-    pub chunk_man: ShapeChunkManager,
+    chunk_man: ShapeChunkManager,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
-    pub blocks: HashMap<BlockId, InstanceBlock>,
+    blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
 
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    pub base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
+    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
 
     // Buffer pools are shared by all blocks for maximum re-use.
-    pub command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
-    pub transform_buffer_pool: CpuBufferPool<[f32; 6]>,
-    pub flag_buffer_pool: CpuBufferPool<[u32; 2]>,
+    command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
+    transform_buffer_pool: CpuBufferPool<[f32; 6]>,
+    flag_buffer_pool: CpuBufferPool<[u32; 2]>,
 
     #[allow(dead_code)]
     xform_index_buffer_pool: CpuBufferPool<u32>,
@@ -409,6 +409,15 @@ impl ShapeInstanceManager {
             xform_index_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             xform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
         })
+    }
+
+    pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
+        self.chunk_man
+            .part(shape_id)
+            .widgets()
+            .read()
+            .unwrap()
+            .errata()
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
