@@ -16,10 +16,13 @@ use camera::CameraAbstract;
 use failure::Fallible;
 use global_layout::GlobalSets;
 use lib::Library;
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4, Point3};
 use pal::Palette;
-use shape_chunk::{DrawSelection, Vertex};
-use shape_instance::ShapeInstanceManager;
+use shape_chunk::{DrawSelection, DrawState, Vertex};
+use shape_instance::{
+    ShapeComponent, ShapeFlagBuffer, ShapeInstanceManager, ShapeTransformBuffer, ShapeXformBuffer,
+};
+use specs::prelude::*;
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -33,6 +36,7 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::GraphicsWindow;
+use world::Transform;
 
 mod vs {
     use vulkano_shaders::shader;
@@ -62,12 +66,12 @@ mod vs {
         layout(set = 3, binding = 1) buffer ChunkFlags {
             uint data[];
         } shape_flags;
-        layout(set = 3, binding = 2) buffer ChunkXforms {
-            float data[];
-        } shape_xforms;
-        layout(set = 3, binding = 3) buffer ChunkXformOffsets {
+        layout(set = 3, binding = 2) buffer ChunkXformOffsets {
             uint data[];
         } shape_xform_offsets;
+//        layout(set = 3, binding = 3) buffer ChunkXforms {
+//            float data[];
+//        } shape_xforms;
 
         // Per Vertex input
         layout(location = 0) in vec3 position;
@@ -95,14 +99,14 @@ mod vs {
                 shape_transforms.data[base_transform + 5]
             };
             float xform[6] = {0, 0, 0, 0, 0, 0};
-            if (xform_id < MAX_XFORM_ID) {
-                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
-                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
-                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
-                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
-                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
-                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
-            }
+//            if (xform_id < MAX_XFORM_ID) {
+//                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
+//                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
+//                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
+//                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
+//                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
+//                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
+//            }
             gl_Position = pc.projection *
                           pc.view *
                           matrix_for_xform(transform) *
@@ -225,8 +229,14 @@ pub struct ShapeRenderer {
 }
 
 impl ShapeRenderer {
-    pub fn new(window: &GraphicsWindow) -> Fallible<Self> {
+    pub fn new(world: &mut World, window: &GraphicsWindow) -> Fallible<Self> {
         let pipeline = Self::build_pipeline(&window)?;
+
+        world.register::<ShapeComponent>();
+        world.register::<ShapeTransformBuffer>();
+        world.register::<ShapeFlagBuffer>();
+        world.register::<ShapeXformBuffer>();
+        world.register::<Transform>();
 
         //let empty0 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 0)?;
         let globals_buffer =
@@ -290,18 +300,32 @@ impl ShapeRenderer {
         self.pipeline.clone()
     }
 
-    pub fn upload_shape(
+    pub fn add_instance(
         &mut self,
         name: &str,
         selection: DrawSelection,
+        position: Point3<f64>,
         palette: &Palette,
         lib: &Library,
+        world: &mut World,
         window: &GraphicsWindow,
-    ) -> Fallible<Option<Box<dyn GpuFuture>>> {
-        let (_chunk_id, _slot_id, future) = self
+    ) -> Fallible<(Entity, Option<Box<dyn GpuFuture>>)> {
+        let (shape_id, slot_id, future) = self
             .inst_man
             .upload_and_allocate_slot(name, selection, palette, lib, window)?;
-        Ok(future)
+        //        let (shape_id, slot_id, _future) =
+        //            inst_man.upload_and_allocate_slot(name, selection, palette, lib, window)?;
+
+        let ent = world
+            .create_entity()
+            .with(Transform::new(position))
+            .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
+            .with(ShapeTransformBuffer::new())
+            .with(ShapeFlagBuffer::new(self.inst_man.errata(shape_id)))
+            //.with(ShapeXformBuffer::new())
+            .build();
+
+        Ok((ent, future))
     }
 
     // Close any outstanding chunks and prepare to render.
@@ -312,69 +336,7 @@ impl ShapeRenderer {
         self.inst_man.ensure_uploaded(window)
     }
 
-    /*
-    fn allocate_entity_slot(
-        &mut self,
-        id: EntityId,
-        shape_id: ShapeId,
-        draw_command: DrawIndirectCommand,
-    ) -> Fallible<()> {
-        assert!(!self.knows_entity(id));
-
-        let chunk = self.chunks.get_chunk_for_shape(shape_id);
-
-        // Note that we do not bother sorting blocks by chunk because we only have to care about
-        // that mapping when adding new entries. We do a simple chunk_id check to filter out
-        // non-matching blocks. The assumption is that we will have few enough chunks that a large
-        // fraction of blocks will be relevant, usually.
-        for (block_index, block) in self.blocks.iter_mut() {
-            if let Some(_) = block.allocate_entity_slot(id, chunk.index(), draw_command) {
-                self.upload_block_map.insert(id, *block_index);
-                return Ok(());
-            }
-        }
-
-        // No free slots in any blocks. Build a new one.
-        let next_block_index = BlockIndex(self.next_block_index);
-        self.next_block_index += 1;
-        let mut block = DynamicInstanceBlock::new(
-            chunk.index(),
-            self.pipeline.clone(),
-            &self.base_descriptors,
-            self.command_buffer_pool.clone(),
-            self.transform_buffer_pool.clone(),
-            self.flag_buffer_pool.clone(),
-            self.xform_index_buffer_pool.clone(),
-            self.xform_buffer_pool.clone(),
-            self.device.clone(),
-        )?;
-        block
-            .allocate_entity_slot(id, chunk.index(), draw_command)
-            .unwrap();
-        self.blocks.insert(next_block_index, block);
-        self.upload_block_map.insert(id, next_block_index);
-        Ok(())
-    }
-
-    fn get_entity_block_mut(&mut self, id: EntityId) -> Option<&mut DynamicInstanceBlock> {
-        let block_index = &self.upload_block_map[&id];
-        self.blocks.get_mut(block_index)
-    }
-
-    fn get_entity_block(&self, id: EntityId) -> &DynamicInstanceBlock {
-        &self.blocks[&self.upload_block_map[&id]]
-    }
-
-    pub fn chunks(&self) -> &ShapeChunkManager {
-        &self.chunks
-    }
-
-    fn get_chunk_for_block(&self, block: &DynamicInstanceBlock) -> &ClosedChunk {
-        self.chunks.get_chunk(block.chunk_index)
-    }
-    */
-
-    pub fn update_buffers(
+    pub fn upload_buffers(
         &mut self,
         cbb: AutoCommandBufferBuilder,
     ) -> Fallible<AutoCommandBufferBuilder> {

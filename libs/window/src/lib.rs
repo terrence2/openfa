@@ -35,7 +35,7 @@ use vulkano::{
     sync::{FlushError, GpuFuture},
 };
 use vulkano_win::VkSurfaceBuild;
-use winit::{EventsLoop, Window, WindowBuilder};
+use winit::{dpi::LogicalPosition, EventsLoop, Window, WindowBuilder};
 
 #[derive(Debug)]
 pub struct GraphicsConfig {
@@ -316,7 +316,13 @@ impl GraphicsWindow {
     }
 
     pub fn surface_dimensions(surface: &Arc<Surface<Window>>) -> Fallible<[u32; 2]> {
-        if let Some(dimensions) = surface.window().get_inner_size() {
+        let win = surface.window();
+
+        let gis_head = Instant::now();
+        let gis = win.get_inner_size();
+        println!("gis time: {:?}", gis_head.elapsed());
+
+        if let Some(dimensions) = gis {
             let dim: (u32, u32) = dimensions
                 .to_physical(surface.window().get_hidpi_factor())
                 .into();
@@ -345,7 +351,6 @@ impl GraphicsWindow {
 
     pub fn center_cursor(&self) -> Fallible<()> {
         let dim = self.dimensions()?;
-        use winit::dpi::LogicalPosition;
         match self
             .surface
             .window()

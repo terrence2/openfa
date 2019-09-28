@@ -22,6 +22,7 @@ pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render/buffer/shape_chunk" }
 shape_instance = { path = "../../../render/buffer/shape_instance" }
 window = { path = "../../../window" }
+world = { path = "../../../world" }
 
 [dev-dependencies]
 rand = "^ 0.7"
