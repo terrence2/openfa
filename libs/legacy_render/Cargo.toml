@@ -16,7 +16,7 @@ vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../asset" }
-camera = { path = "../render/common/camera" }
+camera = { path = "../render-vulkano/common/camera" }
 dlg = { path = "../dlg" }
 i386 = { path = "../i386" }
 lay = { path = "../lay" }
@@ -26,7 +26,7 @@ pal = { path = "../pal" }
 pic = { path = "../pic" }
 sh = { path = "../sh" }
 t2 = { path = "../t2" }
-window = { path = "../render/common/window" }
+window = { path = "../render-vulkano/common/window" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"

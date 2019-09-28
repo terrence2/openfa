@@ -1,0 +1,33 @@
+[package]
+name = "legacy_shape"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[lib]
+doctest = false
+
+[dependencies]
+bitflags = ">= 1.0"
+failure = "^ 0.1.2"
+image = "^ 0.21"
+lazy_static = ">= 1"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
+vulkano = "^ 0.14"
+vulkano-shaders = "^ 0.14"
+vulkano-win = "^ 0.14"
+winit = "^ 0.19"
+animate = { path = "../../../animate" }
+camera = { path = "../../../render-vulkano/common/camera" }
+i386 = { path = "../../../i386" }
+lib = { path = "../../../lib" }
+pal = { path = "../../../pal" }
+pic = { path = "../../../pic" }
+sh = { path = "../../../sh" }
+shape_chunk = { path = "../../../render-vulkano/buffer/shape_chunk" }
+window = { path = "../../../render-vulkano/common/window" }
+
+[dev-dependencies]
+simplelog = "^ 0.5"
+omnilib = { path = "../../../omnilib" }
