@@ -16,7 +16,7 @@ vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
-camera = { path = "../../libs/render/common/camera" }
+camera = { path = "../../libs/render-vulkano/common/camera" }
 input = { path = "../../libs/input" }
 lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
@@ -26,6 +26,6 @@ pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 legacy_render = { path = "../../libs/legacy_render" }
 t2 = { path = "../../libs/t2" }
-text = { path = "../../libs/render/draw/text" }
+text = { path = "../../libs/render-vulkano/draw/text" }
 xt = { path = "../../libs/xt" }
-window = { path = "../../libs/render/common/window" }
+window = { path = "../../libs/render-vulkano/common/window" }

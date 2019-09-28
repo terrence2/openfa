@@ -13,11 +13,11 @@ vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
-camera = { path = "../../libs/render/common/camera" }
+camera = { path = "../../libs/render-vulkano/common/camera" }
 dlg = { path = "../../libs/dlg" }
 input = { path = "../../libs/input" }
 legacy_render = { path = "../../libs/legacy_render" }
 omnilib = { path = "../../libs/omnilib" }
 pal = { path = "../../libs/pal" }
-text = { path = "../../libs/render/draw/text" }
-window = { path = "../../libs/render/common/window" }
+text = { path = "../../libs/render-vulkano/draw/text" }
+window = { path = "../../libs/render-vulkano/common/window" }

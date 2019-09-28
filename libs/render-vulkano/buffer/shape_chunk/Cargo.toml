@@ -1,0 +1,26 @@
+[package]
+name = "shape_chunk"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bitflags = ">= 1.0"
+failure = "^ 0.1.2"
+image = "^ 0.21"
+lazy_static = ">= 1"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
+vulkano = "^ 0.14"
+vulkano-shaders = "^ 0.14"
+animate = { path = "../../../animate" }
+camera = { path = "../../../render-vulkano/common/camera" }
+global_layout = { path = "../../../render-vulkano/buffer/global_layout" }
+i386 = { path = "../../../i386" }
+input = { path = "../../../input" }
+lib = { path = "../../../lib" }
+omnilib = { path = "../../../omnilib" }
+pal = { path = "../../../pal" }
+pic = { path = "../../../pic" }
+sh = { path = "../../../sh" }
+window = { path = "../../../render-vulkano/common/window" }

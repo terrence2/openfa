@@ -10,12 +10,12 @@ nalgebra = "^ 0.18"
 specs = "^ 0.15"
 lib = { path = "../lib" }
 pal = { path = "../pal" }
-shape_chunk = { path = "../render/buffer/shape_chunk" }
+shape_chunk = { path = "../render-vulkano/buffer/shape_chunk" }
 
 [dev-dependencies]
 criterion = "0.2"
 omnilib = { path = "../omnilib" }
-window = { path = "../render/common/window" }
+window = { path = "../render-vulkano/common/window" }
 
 [[bench]]
 name = "parallel-xform"
