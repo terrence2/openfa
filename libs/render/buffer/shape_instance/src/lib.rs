@@ -26,7 +26,7 @@ use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeId};
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
     buffer::{BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand},
+    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     pipeline::GraphicsPipelineAbstract,
@@ -62,7 +62,7 @@ pub struct InstanceBlock {
     block_id: BlockId,
 
     // Weak reference to the associated chunk in the Manager.
-    pub chunk_id: ChunkId,
+    chunk_id: ChunkId,
 
     // Current allocation head.
     next_slot: u32,
@@ -411,14 +411,6 @@ impl ShapeInstanceManager {
         })
     }
 
-    #[inline]
-    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
-        self.blocks
-            .get_mut(&slot_id.block_id)
-            .unwrap()
-            .push_values(slot_id, transform, flags);
-    }
-
     fn allocate_block_id(&mut self) -> BlockId {
         assert!(self.next_block_id < std::u32::MAX);
         let bid = self.next_block_id;
@@ -483,6 +475,14 @@ impl ShapeInstanceManager {
         self.chunk_man.finish(window)
     }
 
+    #[inline]
+    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
+        self.blocks
+            .get_mut(&slot_id.block_id)
+            .unwrap()
+            .push_values(slot_id, transform, flags);
+    }
+
     pub fn upload_buffers(
         &mut self,
         mut cbb: AutoCommandBufferBuilder,
@@ -518,8 +518,7 @@ impl ShapeInstanceManager {
         Ok(cbb)
     }
 
-    /*
-    pub fn render<T>(
+    pub fn render<T: Copy>(
         &self,
         mut cbb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
@@ -540,12 +539,11 @@ impl ShapeInstanceManager {
                     self.base_descriptors[2].clone(),
                     chunk.atlas_descriptor_set_ref(),
                 ),
-                push_consts,
+                *push_consts,
             )?;
         }
         Ok(cbb)
     }
-    */
 }
 
 mod test_vs {

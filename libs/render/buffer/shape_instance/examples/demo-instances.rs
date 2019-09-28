@@ -135,10 +135,10 @@ mod fs {
 
         layout(set = 5, binding = 0) uniform sampler2DArray mega_atlas;
 
-        //layout(set = 5, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
-        //layout(set = 5, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
-        //layout(set = 5, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
-        //layout(set = 5, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
+        //layout(set = 6, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
+        //layout(set = 6, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
+        //layout(set = 6, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
+        //layout(set = 6, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
         void main() {
             if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
                 discard;
@@ -379,71 +379,13 @@ fn main() -> Fallible<()> {
 
         cbb = inst_man.upload_buffers(cbb)?;
 
-        /*
-        let upload_head = Instant::now();
-        let shape_components = world.read_storage::<ShapeComponent>();
-        let transforms = world.read_storage::<Transform>();
-        for (shape_component, transform) in (&shape_components, &transforms).join() {
-            if inst_man.get_and_clear_dirty_bit(shape_component.slot_id) {
-                let cmd = inst_man
-                    .chunk_man
-                    .part(shape_component.shape_id)
-                    .draw_command(0, 1);
-                let src = inst_man.command_buffer_pool.chunk(vec![cmd])?;
-                let dst = inst_man.command_buffer_target(shape_component.slot_id);
-                cbb = cbb.copy_buffer(src, dst)?;
-            }
-
-            let src = inst_man
-                .transform_buffer_pool
-                .chunk(vec![transform.compact()])?;
-            let dst = inst_man.transform_buffer_target(shape_component.slot_id);
-            cbb = cbb.copy_buffer(src, dst)?;
-
-            let errata = inst_man
-                .chunk_man
-                .part(shape_component.shape_id)
-                .widgets()
-                .read()
-                .unwrap()
-                .errata();
-            let mut flags = [0u32; 2];
-            shape_component
-                .draw_state
-                .build_mask_into(&start, errata, &mut flags)?;
-
-            let src = inst_man.flag_buffer_pool.chunk(vec![flags])?;
-            let dst = inst_man.flag_buffer_target(shape_component.slot_id);
-            cbb = cbb.copy_buffer(src, dst)?;
-        }
-        //println!("Upload Time: {:?}", upload_head.elapsed());
-        */
-
         cbb = cbb.begin_render_pass(
             frame.framebuffer(&window),
             false,
             vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
         )?;
 
-        //cbb = inst_man.render(cbb, &window.dynamic_state, &push_consts)?;
-        for block in inst_man.blocks.values() {
-            let chunk = &inst_man.chunk_man.chunk(block.chunk_id);
-            cbb = cbb.draw_indirect(
-                pipeline.clone(),
-                &window.dynamic_state,
-                vec![chunk.vertex_buffer().clone()],
-                block.command_buffer.clone(),
-                (
-                    inst_man.base_descriptors[0].clone(),
-                    inst_man.base_descriptors[1].clone(),
-                    inst_man.base_descriptors[2].clone(),
-                    block.descriptor_set.clone(),
-                    inst_man.base_descriptors[2].clone(),
-                    chunk.atlas_descriptor_set_ref(),
-                ),
-                push_consts,
-            )?;
-        }
+        cbb = inst_man.render(cbb, &window.dynamic_state, &push_consts)?;
 
         cbb = cbb.end_render_pass()?;
         let cb = cbb.build()?;
