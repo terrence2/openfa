@@ -376,7 +376,7 @@ pub struct ShapeInstanceManager {
     next_block_id: u32,
 
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
+    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 6],
 
     // Buffer pools are shared by all blocks for maximum re-use.
     command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
@@ -393,7 +393,7 @@ pub struct ShapeInstanceManager {
 impl ShapeInstanceManager {
     pub fn new(
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
+        base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 6],
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
         Ok(Self {
@@ -477,7 +477,7 @@ impl ShapeInstanceManager {
         Ok((shape_id, slot_id, future))
     }
 
-    pub fn ensure_finished(
+    pub fn ensure_uploaded(
         &mut self,
         window: &GraphicsWindow,
     ) -> Fallible<Option<Box<dyn GpuFuture>>> {
@@ -640,7 +640,7 @@ mod test {
     fn base_descriptors(
         pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
         window: &GraphicsWindow,
-    ) -> Fallible<[Arc<dyn DescriptorSet + Send + Sync>; 3]> {
+    ) -> Fallible<[Arc<dyn DescriptorSet + Send + Sync>; 6]> {
         let global0 = Arc::new(
             PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Global.into())
                 .add_buffer(CpuAccessibleBuffer::from_data(
@@ -650,9 +650,15 @@ mod test {
                 )?)?
                 .build()?,
         );
-        let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
-        let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
-        Ok([global0, empty1, empty2])
+        let empty = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
+        Ok([
+            global0,
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+        ])
     }
 
     #[test]
