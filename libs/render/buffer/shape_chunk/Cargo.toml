@@ -23,4 +23,4 @@ omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
 sh = { path = "../../../sh" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }

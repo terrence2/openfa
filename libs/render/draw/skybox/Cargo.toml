@@ -19,4 +19,4 @@ atmosphere = { path = "../../../render/buffer/atmosphere" }
 camera = { path = "../../../render/common/camera" }
 raymarching = { path = "../../../render/buffer/raymarching" }
 stars = { path = "../../../render/buffer/stars" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }

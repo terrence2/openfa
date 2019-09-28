@@ -25,4 +25,4 @@ camera = { path = "../../../render/common/camera" }
 global_layout = { path = "../../../render/buffer/global_layout" }
 input = { path = "../../../input" }
 raymarching = { path = "../../../render/buffer/raymarching" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }

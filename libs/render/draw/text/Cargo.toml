@@ -21,7 +21,7 @@ i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"

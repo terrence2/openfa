@@ -20,4 +20,4 @@ global_layout = { path = "../../../render/buffer/global_layout" }
 input = { path = "../../../input" }
 raymarching = { path = "../../../render/buffer/raymarching" }
 star_catalog = { path = "../../../star_catalog" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }

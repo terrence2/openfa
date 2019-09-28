@@ -51,6 +51,7 @@ members = [
         "libs/render/buffer/stars",
         "libs/render/common/camera",
         "libs/render/common/geometry",
+        "libs/render/common/window",
         "libs/render/draw/legacy_shape",
         "libs/render/draw/shape",
         "libs/render/draw/skybox",
@@ -60,7 +61,6 @@ members = [
         "libs/sh",
         "libs/star_catalog",
         "libs/t2",
-        "libs/window",
         "libs/world",
         "libs/xt",
 ]

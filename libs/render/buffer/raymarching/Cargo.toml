@@ -13,4 +13,4 @@ vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }

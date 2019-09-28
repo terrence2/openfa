@@ -25,4 +25,4 @@ pal = { path = "../../libs/pal" }
 legacy_render = { path = "../../libs/legacy_render" }
 sh = { path = "../../libs/sh" }
 text = { path = "../../libs/render/draw/text" }
-window = { path = "../../libs/window" }
+window = { path = "../../libs/render/common/window" }
