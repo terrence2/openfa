@@ -22,11 +22,11 @@ use failure::Fallible;
 use global_layout::GlobalSets;
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeId};
+use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{
     buffer::{BufferSlice, BufferUsage, CpuBufferPool, DeviceLocalBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand},
+    command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState},
     descriptor::descriptor_set::{DescriptorSet, PersistentDescriptorSet},
     device::Device,
     pipeline::GraphicsPipelineAbstract,
@@ -62,7 +62,7 @@ pub struct InstanceBlock {
     block_id: BlockId,
 
     // Weak reference to the associated chunk in the Manager.
-    pub chunk_id: ChunkId,
+    chunk_id: ChunkId,
 
     // Current allocation head.
     next_slot: u32,
@@ -77,9 +77,9 @@ pub struct InstanceBlock {
     // Map from the entity to the stored offset and from the offset to the entity.
     //    reservation_offset: usize,       // bump head
     //    mark_buffer: [bool; BLOCK_SIZE], // GC marked set
-    pub descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
+    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
 
-    pub command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
+    command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
     transform_buffer: Arc<DeviceLocalBuffer<[[f32; 6]]>>,
     flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
 
@@ -215,7 +215,7 @@ impl InstanceBlock {
     }
 
     #[inline]
-    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
+    fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
         let offset = self.slot_map[slot_id.index()];
         self.transform_buffer_scratch[offset] = *transform;
         self.flag_buffer_scratch[offset] = flags;
@@ -369,19 +369,19 @@ impl InstanceBlock {
 }
 
 pub struct ShapeInstanceManager {
-    pub chunk_man: ShapeChunkManager,
+    chunk_man: ShapeChunkManager,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
-    pub blocks: HashMap<BlockId, InstanceBlock>,
+    blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
 
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    pub base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
+    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 3],
 
     // Buffer pools are shared by all blocks for maximum re-use.
-    pub command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
-    pub transform_buffer_pool: CpuBufferPool<[f32; 6]>,
-    pub flag_buffer_pool: CpuBufferPool<[u32; 2]>,
+    command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
+    transform_buffer_pool: CpuBufferPool<[f32; 6]>,
+    flag_buffer_pool: CpuBufferPool<[u32; 2]>,
 
     #[allow(dead_code)]
     xform_index_buffer_pool: CpuBufferPool<u32>,
@@ -411,12 +411,13 @@ impl ShapeInstanceManager {
         })
     }
 
-    #[inline]
-    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
-        self.blocks
-            .get_mut(&slot_id.block_id)
+    pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
+        self.chunk_man
+            .part(shape_id)
+            .widgets()
+            .read()
             .unwrap()
-            .push_values(slot_id, transform, flags);
+            .errata()
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
@@ -483,6 +484,14 @@ impl ShapeInstanceManager {
         self.chunk_man.finish(window)
     }
 
+    #[inline]
+    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
+        self.blocks
+            .get_mut(&slot_id.block_id)
+            .unwrap()
+            .push_values(slot_id, transform, flags);
+    }
+
     pub fn upload_buffers(
         &mut self,
         mut cbb: AutoCommandBufferBuilder,
@@ -518,8 +527,7 @@ impl ShapeInstanceManager {
         Ok(cbb)
     }
 
-    /*
-    pub fn render<T>(
+    pub fn render<T: Copy>(
         &self,
         mut cbb: AutoCommandBufferBuilder,
         dynamic_state: &DynamicState,
@@ -540,12 +548,11 @@ impl ShapeInstanceManager {
                     self.base_descriptors[2].clone(),
                     chunk.atlas_descriptor_set_ref(),
                 ),
-                push_consts,
+                *push_consts,
             )?;
         }
         Ok(cbb)
     }
-    */
 }
 
 mod test_vs {
