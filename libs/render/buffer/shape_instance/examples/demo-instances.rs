@@ -248,7 +248,7 @@ fn build_pipeline(
 fn base_descriptors(
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     window: &GraphicsWindow,
-) -> Fallible<[Arc<dyn DescriptorSet + Send + Sync>; 3]> {
+) -> Fallible<[Arc<dyn DescriptorSet + Send + Sync>; 6]> {
     let global0 = Arc::new(
         PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Global.into())
             .add_buffer(CpuAccessibleBuffer::from_data(
@@ -258,9 +258,15 @@ fn base_descriptors(
             )?)?
             .build()?,
     );
-    let empty1 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
-    let empty2 = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 2)?;
-    Ok([global0, empty1, empty2])
+    let empty = GraphicsWindow::empty_descriptor_set(pipeline.clone(), 1)?;
+    Ok([
+        global0,
+        empty.clone(),
+        empty.clone(),
+        empty.clone(),
+        empty.clone(),
+        empty.clone(),
+    ])
 }
 
 fn main() -> Fallible<()> {
@@ -315,7 +321,7 @@ fn main() -> Fallible<()> {
         }
     }
 
-    if let Some(future) = inst_man.ensure_finished(&window)? {
+    if let Some(future) = inst_man.ensure_uploaded(&window)? {
         future.then_signal_fence_and_flush()?.wait(None)?;
     }
 

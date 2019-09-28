@@ -52,7 +52,7 @@ members = [
         "libs/render/common/camera",
         "libs/render/common/geometry",
         "libs/render/draw/legacy_shape",
-        #"libs/render/draw/shape",
+        "libs/render/draw/shape",
         "libs/render/draw/skybox",
         "libs/render/draw/text",
         "libs/resource",
