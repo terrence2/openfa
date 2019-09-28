@@ -20,7 +20,7 @@ lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render/buffer/shape_chunk" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }
 world = { path = "../../../world" }
 
 [dev-dependencies]

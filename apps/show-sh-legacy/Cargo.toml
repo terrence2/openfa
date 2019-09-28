@@ -27,4 +27,4 @@ legacy_shape = { path = "../../libs/render/draw/legacy_shape" }
 sh = { path = "../../libs/sh" }
 skybox = { path = "../../libs/render/draw/skybox" }
 text = { path = "../../libs/render/draw/text" }
-window = { path = "../../libs/window" }
+window = { path = "../../libs/render/common/window" }

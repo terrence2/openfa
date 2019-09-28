@@ -20,4 +20,4 @@ legacy_render = { path = "../../libs/legacy_render" }
 omnilib = { path = "../../libs/omnilib" }
 pal = { path = "../../libs/pal" }
 text = { path = "../../libs/render/draw/text" }
-window = { path = "../../libs/window" }
+window = { path = "../../libs/render/common/window" }

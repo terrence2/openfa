@@ -10,14 +10,12 @@ nalgebra = "^ 0.18"
 specs = "^ 0.15"
 lib = { path = "../lib" }
 pal = { path = "../pal" }
-#shape = { path = "../render/draw/shape" }
 shape_chunk = { path = "../render/buffer/shape_chunk" }
-#shape_instance = { path = "../render/buffer/shape_instance" }
 
 [dev-dependencies]
 criterion = "0.2"
 omnilib = { path = "../omnilib" }
-window = { path = "../window" }
+window = { path = "../render/common/window" }
 
 [[bench]]
 name = "parallel-xform"

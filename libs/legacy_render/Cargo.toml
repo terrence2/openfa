@@ -26,7 +26,7 @@ pal = { path = "../pal" }
 pic = { path = "../pic" }
 sh = { path = "../sh" }
 t2 = { path = "../t2" }
-window = { path = "../window" }
+window = { path = "../render/common/window" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"

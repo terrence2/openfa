@@ -21,7 +21,7 @@ omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render/buffer/shape_chunk" }
 shape_instance = { path = "../../../render/buffer/shape_instance" }
-window = { path = "../../../window" }
+window = { path = "../../../render/common/window" }
 
 [dev-dependencies]
 rand = "^ 0.7"

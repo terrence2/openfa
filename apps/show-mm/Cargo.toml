@@ -28,4 +28,4 @@ legacy_render = { path = "../../libs/legacy_render" }
 t2 = { path = "../../libs/t2" }
 text = { path = "../../libs/render/draw/text" }
 xt = { path = "../../libs/xt" }
-window = { path = "../../libs/window" }
+window = { path = "../../libs/render/common/window" }
