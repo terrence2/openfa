@@ -49,7 +49,7 @@ pub fn main() -> Fallible<()> {
     let bindings = InputBindings::new("menu")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(&[&bindings]);
+    let mut input = InputSystem::new(vec![bindings]);
 
     let _system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let mut text_renderer = TextRenderer::new(&lib, &window)?;

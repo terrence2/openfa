@@ -79,7 +79,7 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key3")?
         .bind("disable-afterburner", "key2")?
         .bind("disable-afterburner", "key1")?;
-    let mut input = InputSystem::new(&[&shape_bindings]);
+    let mut input = InputSystem::new(vec![shape_bindings]);
 
     let mut skybox_renderer = SkyboxRenderer::new(&window)?;
 

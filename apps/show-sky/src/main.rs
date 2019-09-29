@@ -45,26 +45,8 @@ fn main() -> Fallible<()> {
         .bind("+move-up", "space")?
         .bind("+move-down", "Control")?
         .bind("exit", "Escape")?
-        .bind("exit", "q")?
-        .bind("consume-sam", "PageUp")?
-        .bind("toggle-gear", "g")?
-        .bind("toggle-flaps", "f")?
-        .bind("toggle-airbrake", "b")?
-        .bind("toggle-hook", "h")?
-        .bind("toggle-bay", "o")?
-        .bind("toggle-player-dead", "k")?
-        .bind("bump-eject-state", "e")?
-        .bind("+vector-thrust-forward", "shift+w")?
-        .bind("+vector-thrust-backward", "shift+s")?
-        .bind("+increase-wing-sweep", "Period")?
-        .bind("+decrease-wing-sweep", "Comma")?
-        .bind("enable-afterburner", "key6")?
-        .bind("disable-afterburner", "key5")?
-        .bind("disable-afterburner", "key4")?
-        .bind("disable-afterburner", "key3")?
-        .bind("disable-afterburner", "key2")?
-        .bind("disable-afterburner", "key1")?;
-    let mut input = InputSystem::new(&[&shape_bindings]);
+        .bind("exit", "q")?;
+    let mut input = InputSystem::new(vec![shape_bindings]);
 
     let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let mut skybox_renderer = SkyboxRenderer::new(&window)?;

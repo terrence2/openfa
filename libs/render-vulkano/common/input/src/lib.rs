@@ -228,37 +228,30 @@ impl Command {
     }
 }
 
-pub struct InputSystem<'a> {
+pub struct InputSystem {
     // Prioritized list of input binding sets. The last set with a matching
     // input binding "wins" and determines the command that is sent for that
     // input event.
-    bindings: Vec<&'a InputBindings>,
+    bindings: Vec<InputBindings>,
 
     // Track key states so that we can match button combos.
     button_state: HashMap<Key, ElementState>,
 }
 
-impl<'a> InputSystem<'a> {
-    pub fn empty() -> Self {
+impl InputSystem {
+    pub fn new(bindings: Vec<InputBindings>) -> Self {
         Self {
-            bindings: Vec::new(),
+            bindings,
             button_state: HashMap::new(),
         }
     }
 
-    pub fn new(bindings: &[&'a InputBindings]) -> Self {
-        Self {
-            bindings: bindings.to_owned(),
-            button_state: HashMap::new(),
-        }
-    }
-
-    pub fn push_bindings(&mut self, bindings: &'a InputBindings) {
+    pub fn push_bindings(&mut self, bindings: InputBindings) {
         self.bindings.push(bindings);
     }
 
-    pub fn pop_bindings(&mut self) {
-        self.bindings.pop();
+    pub fn pop_bindings(&mut self) -> Option<InputBindings> {
+        self.bindings.pop()
     }
 
     pub fn poll(&mut self, events: &mut EventsLoop) -> SmallVec<[Command; 8]> {
@@ -460,7 +453,7 @@ mod test {
 
     #[test]
     fn test_handle_system_events() -> Fallible<()> {
-        let mut input = InputSystem::empty();
+        let mut input = InputSystem::new(vec![]);
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::Resized(logical_size())))
@@ -555,7 +548,7 @@ mod test {
             .bind("+move-forward", "w")?
             .bind("eject", "shift+e")?
             .bind("fire", "mouse0")?;
-        let mut input = InputSystem::new(&[&menu, &fps]);
+        let mut input = InputSystem::new(vec![menu, fps]);
 
         // FPS forward.
         let cmd = input
@@ -618,7 +611,7 @@ mod test {
 
         // Push on a new command set and ensure that it masks.
         let flight = InputBindings::new("flight").bind("+pickle", "mouse0")?;
-        input.push_bindings(&flight);
+        input.push_bindings(flight);
 
         let cmd = input
             .handle_event(dev_evt(DeviceEvent::Button {
@@ -648,7 +641,7 @@ mod test {
         let fps = InputBindings::new("fps")
             .bind("+moveforward", "w")?
             .bind("eject", "shift+e")?;
-        let mut input = InputSystem::new(&[&fps]);
+        let mut input = InputSystem::new(vec![fps]);
         input.poll(&mut window.events_loop);
         Ok(())
     }
@@ -662,7 +655,7 @@ mod test {
         let fps = InputBindings::new("fps")
             .bind("+moveforward", "w")?
             .bind("eject", "shift+e")?;
-        let mut input = InputSystem::new(&[&fps]);
+        let mut input = InputSystem::new(vec![fps]);
         loop {
             let _evt = input.poll(&mut window.events_loop);
             std::thread::sleep(std::time::Duration::from_millis(4));
