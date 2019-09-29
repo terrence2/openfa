@@ -205,7 +205,7 @@ fn main() -> Fallible<()> {
         .bind("+enter-move-sun", "mouse1")?
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(&[&bindings]);
+    let mut input = InputSystem::new(vec![bindings]);
 
     let vert_shader = vs::Shader::load(window.device())?;
     let frag_shader = fs::Shader::load(window.device())?;

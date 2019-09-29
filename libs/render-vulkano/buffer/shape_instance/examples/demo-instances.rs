@@ -275,7 +275,7 @@ fn main() -> Fallible<()> {
     let bindings = InputBindings::new("base")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(&[&bindings]);
+    let mut input = InputSystem::new(vec![bindings]);
 
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;
     let lib = omni.library("FA");

@@ -62,7 +62,7 @@ pub fn main() -> Fallible<()> {
         .bind("e0-down", "k")?
         .bind("f1-up", "o")?
         .bind("f1-down", "l")?;
-    let mut input = InputSystem::new(&[&shape_bindings]);
+    let mut input = InputSystem::new(vec![shape_bindings]);
 
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
     let types = TypeManager::new(lib.clone());
