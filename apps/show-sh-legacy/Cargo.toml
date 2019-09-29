@@ -17,7 +17,7 @@ vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/render-vulkano/common/camera" }
-input = { path = "../../libs/input" }
+input = { path = "../../libs/render-vulkano/common/input" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }

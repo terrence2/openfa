@@ -26,4 +26,4 @@ world = { path = "../../../world" }
 [dev-dependencies]
 rand = "^ 0.7"
 pal = { path = "../../../pal" }
-input = { path = "../../../input" }
+input = { path = "../../../render-vulkano/common/input" }

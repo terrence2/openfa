@@ -15,4 +15,4 @@ winit = "^ 0.19"
 [dev-dependencies]
 approx = "^ 0.3"
 simplelog = "^ 0.5"
-window = { path = "../render-vulkano/common/window/" }
+window = { path = "../../../render-vulkano/common/window/" }
