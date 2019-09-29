@@ -227,7 +227,7 @@ pub struct GraphicsWindow {
 }
 
 impl GraphicsWindow {
-    pub fn new(config: &GraphicsConfig) -> Fallible<Self> {
+    pub fn new(input: &Input, config: &GraphicsConfig) -> Fallible<Self> {
         trace!("GraphicsWindow::new");
         let extensions = vulkano_win::required_extensions();
         let instance = Instance::new(None, &extensions, None)?;

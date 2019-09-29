@@ -21,11 +21,13 @@ use smallvec::{smallvec, SmallVec};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::mpsc::{channel, Receiver, TryRecvError},
+    thread,
 };
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
-    DeviceEvent, DeviceId, ElementState, Event, EventsLoop, KeyboardInput, MouseScrollDelta,
-    WindowEvent, WindowId,
+    ControlFlow, DeviceEvent, DeviceId, ElementState, Event, EventsLoop, KeyboardInput,
+    MouseScrollDelta, Window, WindowBuilder, WindowEvent, WindowId,
 };
 
 // Map from key, buttons, and axes to commands.
@@ -236,14 +238,39 @@ pub struct InputSystem {
 
     // Track key states so that we can match button combos.
     button_state: HashMap<Key, ElementState>,
+
+    event_receiver: Receiver<Event>,
+    //event_handler: thread::JoinHandle<()>,
+    window: Window,
 }
 
 impl InputSystem {
-    pub fn new(bindings: Vec<InputBindings>) -> Self {
-        Self {
+    pub fn new(bindings: Vec<InputBindings>) -> Fallible<Self> {
+        let (tx_window, rx_window) = channel();
+        let (tx_event, rx_event) = channel();
+        // let event_handler =
+        thread::Builder::new()
+            .name("InputSystem".to_owned())
+            .spawn(move || {
+                let mut event_loop = EventsLoop::new();
+                let window = WindowBuilder::new().build(&event_loop);
+                tx_window.send(window).expect("failed to send back window");
+                event_loop.run_forever(move |event| {
+                    // FIXME: we can send a shutdown event and do clean shutdown in winit 20
+                    // FIXME: Until then, just stifle errors.
+                    tx_event.send(event);
+                    //.expect("event loop disconnected")
+                    ControlFlow::Continue
+                });
+            })?;
+        let window = rx_window.recv()??;
+        Ok(Self {
             bindings,
             button_state: HashMap::new(),
-        }
+            //event_handler,
+            event_receiver: rx_event,
+            window,
+        })
     }
 
     pub fn push_bindings(&mut self, bindings: InputBindings) {
@@ -254,12 +281,19 @@ impl InputSystem {
         self.bindings.pop()
     }
 
-    pub fn poll(&mut self, events: &mut EventsLoop) -> SmallVec<[Command; 8]> {
+    pub fn poll(&mut self) -> Fallible<SmallVec<[Command; 8]>> {
         let mut out = SmallVec::new();
-        events.poll_events(|e| {
-            out.extend(self.handle_event(e));
-        });
-        out
+
+        let mut evt = self.event_receiver.try_recv();
+        while evt.is_ok() {
+            out.extend(self.handle_event(evt?));
+            evt = self.event_receiver.try_recv();
+        }
+
+        match evt.err().unwrap() {
+            TryRecvError::Empty => Ok(out),
+            TryRecvError::Disconnected => bail!("event loop disconnected"),
+        }
     }
 
     pub fn handle_event(&mut self, e: Event) -> SmallVec<[Command; 8]> {
@@ -398,11 +432,18 @@ impl InputSystem {
     }
 }
 
+impl Drop for InputSystem {
+    fn drop(&mut self) {
+        // FIXME: send a closeout event and wait for the thread in winit 20.
+        // self.window_proxy.send(Shutdown);
+        // self.event_handler.join();
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use approx::assert_relative_eq;
-    use window::{GraphicsConfigBuilder, GraphicsWindow};
     use winit::{ModifiersState, VirtualKeyCode};
 
     fn logical_size() -> LogicalSize {
@@ -453,7 +494,7 @@ mod test {
 
     #[test]
     fn test_handle_system_events() -> Fallible<()> {
-        let mut input = InputSystem::new(vec![]);
+        let mut input = InputSystem::new(vec![])?;
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::Resized(logical_size())))
@@ -548,7 +589,7 @@ mod test {
             .bind("+move-forward", "w")?
             .bind("eject", "shift+e")?
             .bind("fire", "mouse0")?;
-        let mut input = InputSystem::new(vec![menu, fps]);
+        let mut input = InputSystem::new(vec![menu, fps])?;
 
         // FPS forward.
         let cmd = input
@@ -637,12 +678,11 @@ mod test {
 
     #[test]
     fn test_poll_events() -> Fallible<()> {
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let fps = InputBindings::new("fps")
             .bind("+moveforward", "w")?
             .bind("eject", "shift+e")?;
-        let mut input = InputSystem::new(vec![fps]);
-        input.poll(&mut window.events_loop);
+        let mut input = InputSystem::new(vec![fps])?;
+        input.poll()?;
         Ok(())
     }
 
@@ -651,13 +691,12 @@ mod test {
     fn test_run_forever() -> Fallible<()> {
         use simplelog::{Config, LevelFilter, TermLogger};
         TermLogger::init(LevelFilter::Trace, Config::default())?;
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
         let fps = InputBindings::new("fps")
             .bind("+moveforward", "w")?
             .bind("eject", "shift+e")?;
-        let mut input = InputSystem::new(vec![fps]);
+        let mut input = InputSystem::new(vec![fps])?;
         loop {
-            let _evt = input.poll(&mut window.events_loop);
+            let _evts = input.poll()?;
             std::thread::sleep(std::time::Duration::from_millis(4));
         }
     }
