@@ -239,13 +239,6 @@ pub struct InputSystem<'a> {
 }
 
 impl<'a> InputSystem<'a> {
-    pub fn empty() -> Self {
-        Self {
-            bindings: Vec::new(),
-            button_state: HashMap::new(),
-        }
-    }
-
     pub fn new(bindings: &[&'a InputBindings]) -> Self {
         Self {
             bindings: bindings.to_owned(),
@@ -460,7 +453,7 @@ mod test {
 
     #[test]
     fn test_handle_system_events() -> Fallible<()> {
-        let mut input = InputSystem::empty();
+        let mut input = InputSystem::new();
 
         let cmd = input
             .handle_event(win_evt(WindowEvent::Resized(logical_size())))
