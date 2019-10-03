@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use camera::ArcBallCamera;
 use failure::Fallible;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
@@ -110,19 +111,22 @@ fn main() -> Fallible<()> {
         .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
         .fill_from_slice(&vertices);
 
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
+    camera.set_distance(40.0);
+    camera.on_mousebutton_down(1);
+
     loop {
         for command in input.poll()? {
             match command.name.as_str() {
-                // "window-resize" => {
-                //     window.note_resize();
-                //     camera.set_aspect_ratio(window.aspect_ratio_f64()?);
-                // }
+                "window-resize" => {
+                    gpu.note_resize(&input);
+                    camera.set_aspect_ratio(gpu.aspect_ratio());
+                }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "mouse-move" => {}
-                // camera.on_mousemove(
-                //     command.displacement()?.0 / 4.0,
-                //     command.displacement()?.1 / 4.0,
-                // ),
+                "mouse-move" => camera.on_mousemove(
+                    command.displacement()?.0 / 4.0,
+                    command.displacement()?.1 / 4.0,
+                ),
                 "window-cursor-move" => {}
                 _ => println!("unhandled command: {}", command.name),
             }

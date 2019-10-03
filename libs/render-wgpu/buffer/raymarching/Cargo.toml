@@ -11,6 +11,7 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a585782
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
+camera = { path = "../../../render-shared/common/camera" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]

@@ -14,8 +14,9 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
 use input_wgpu::InputSystem;
-use std::{cell::RefCell, io::Cursor, mem, sync::Arc};
+use std::io::Cursor;
 use wgpu;
+use winit::dpi::PhysicalSize;
 
 pub struct GPUConfig {
     anisotropic_filtering: bool,
@@ -38,11 +39,33 @@ pub struct GPU {
     device: wgpu::Device,
     queue: wgpu::Queue,
     swap_chain: wgpu::SwapChain,
+
+    config: GPUConfig,
+    size: PhysicalSize,
 }
 
 impl GPU {
     pub fn texture_format() -> wgpu::TextureFormat {
         wgpu::TextureFormat::Bgra8UnormSrgb
+    }
+
+    pub fn aspect_ratio(&self) -> f64 {
+        self.size.height.floor() / self.size.width.floor()
+    }
+
+    pub fn note_resize(&mut self, input: &InputSystem) {
+        self.size = input
+            .window()
+            .inner_size()
+            .to_physical(input.window().hidpi_factor());
+        let sc_desc = wgpu::SwapChainDescriptor {
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+            format: Self::texture_format(),
+            width: self.size.width.floor() as u32,
+            height: self.size.height.floor() as u32,
+            present_mode: self.config.preset_mode,
+        };
+        self.swap_chain = self.device.create_swap_chain(&self.surface, &sc_desc);
     }
 
     pub fn new(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
@@ -83,6 +106,8 @@ impl GPU {
             device,
             queue,
             swap_chain,
+            config,
+            size,
         })
     }
 

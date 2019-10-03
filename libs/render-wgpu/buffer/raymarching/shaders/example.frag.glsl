@@ -19,6 +19,5 @@ layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;
 
 void main() {
-    //f_color = vec4(v_ray, 1.0);
-    f_color = vec4(1, 0, 1, 1);
+    f_color = vec4(v_ray, 1.0);
 }

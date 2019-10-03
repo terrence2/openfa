@@ -14,7 +14,7 @@ rayon = "^ 1.2"
 specs = "^ 0.15"
 vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
-camera = { path = "../../../render-vulkano/common/camera" }
+camera = { path = "../../../render-shared/common/camera" }
 global_layout = { path = "../../../render-vulkano/buffer/global_layout" }
 lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
@@ -25,5 +25,4 @@ window = { path = "../../../render-vulkano/common/window" }
 
 [dev-dependencies]
 rand = "^ 0.7"
-camera = { path = "../../../render-vulkano/common/camera" }
 input = { path = "../../../render-vulkano/common/input" }
