@@ -1,0 +1,27 @@
+[package]
+name = "stars-wgpu"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+approx = "^ 0.3"
+bitflags = ">= 1.0"
+failure = "^ 0.1.2"
+lazy_static = ">= 1"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+#camera = { path = "../../../render-wgpu/common/camera" }
+#global_layout = { path = "../../../render-wgpu/buffer/global_layout" }
+#raymarching = { path = "../../../render-vulkano/buffer/raymarching" }
+star_catalog = { path = "../../../star_catalog" }
+#window = { path = "../../../render-vulkano/common/window" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+
+[dev-dependencies]
+input-wgpu = { path = "../../../render-wgpu/common/input" }
+
+[build-dependencies]
+failure = "^ 0.1.2"
+shaderc = "^ 0.6"

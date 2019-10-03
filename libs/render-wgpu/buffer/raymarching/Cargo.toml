@@ -1,0 +1,18 @@
+[package]
+name = "raymarching-wgpu"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+log = "^ 0.4"
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+
+[dev-dependencies]
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+
+[build-dependencies]
+failure = "^ 0.1.2"
+shaderc = "^ 0.6"
