@@ -47,7 +47,7 @@ fn main() -> Fallible<()> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
 
-    const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+    //const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
     let bind_group_layout = gpu
         .device()
@@ -83,7 +83,7 @@ fn main() -> Fallible<()> {
             }),
             primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
             color_states: &[wgpu::ColorStateDescriptor {
-                format: TEXTURE_FORMAT,
+                format: GPU::texture_format(),
                 color_blend: wgpu::BlendDescriptor::REPLACE,
                 alpha_blend: wgpu::BlendDescriptor::REPLACE,
                 write_mask: wgpu::ColorWrite::ALL,

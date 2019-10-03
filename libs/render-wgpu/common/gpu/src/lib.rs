@@ -41,12 +41,16 @@ pub struct GPU {
 }
 
 impl GPU {
+    pub fn texture_format() -> wgpu::TextureFormat {
+        wgpu::TextureFormat::Bgra8UnormSrgb
+    }
+
     pub fn new(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
         input.window().set_title("OpenFA");
         let surface = wgpu::Surface::create(input.window());
 
         let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::Default,
+            power_preference: wgpu::PowerPreference::HighPerformance,
             backends: wgpu::BackendBit::PRIMARY,
         })
         .ok_or_else(|| err_msg("no suitable graphics adapter"))?;
@@ -66,7 +70,7 @@ impl GPU {
             .to_physical(input.window().hidpi_factor());
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: Self::texture_format(),
             width: size.width.floor() as u32,
             height: size.height.floor() as u32,
             present_mode: config.preset_mode,
