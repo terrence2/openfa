@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
 use input_wgpu::InputSystem;
-use std::io::Cursor;
+use std::{cell::RefCell, io::Cursor, mem, sync::Arc};
 use wgpu;
 
 pub struct GPUConfig {
@@ -95,12 +95,39 @@ impl GPU {
         &self.device
     }
 
-    pub fn queue_mut(&mut self) -> &mut wgpu::Queue {
-        &mut self.queue
+    pub fn begin_frame(&mut self) -> Frame {
+        Frame {
+            queue: &mut self.queue,
+            encoder: self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 }),
+            color_attachment: self.swap_chain.get_next_texture(),
+        }
+    }
+}
+
+pub struct Frame<'a> {
+    queue: &'a mut wgpu::Queue,
+    encoder: wgpu::CommandEncoder,
+    color_attachment: wgpu::SwapChainOutput<'a>,
+}
+
+impl<'a> Frame<'a> {
+    pub fn begin_render_pass(&mut self) -> wgpu::RenderPass {
+        self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: &self.color_attachment.view,
+                resolve_target: None,
+                load_op: wgpu::LoadOp::Clear,
+                store_op: wgpu::StoreOp::Store,
+                clear_color: wgpu::Color::GREEN,
+            }],
+            depth_stencil_attachment: None,
+        })
     }
 
-    pub fn swap_chain_mut(&mut self) -> &mut wgpu::SwapChain {
-        &mut self.swap_chain
+    pub fn finish(mut self) {
+        self.queue.submit(&[self.encoder.finish()]);
     }
 }
 

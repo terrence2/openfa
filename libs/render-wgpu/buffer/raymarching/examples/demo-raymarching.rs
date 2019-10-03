@@ -110,7 +110,6 @@ fn main() -> Fallible<()> {
         .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
         .fill_from_slice(&vertices);
 
-    /*
     loop {
         for command in input.poll()? {
             match command.name.as_str() {
@@ -128,33 +127,15 @@ fn main() -> Fallible<()> {
                 _ => println!("unhandled command: {}", command.name),
             }
         }
-        */
 
-    {
-        let mut encoder = gpu
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        let mut frame = gpu.begin_frame();
         {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &gpu.swap_chain_mut().get_next_texture().view,
-                    resolve_target: None,
-                    load_op: wgpu::LoadOp::Clear,
-                    store_op: wgpu::StoreOp::Store,
-                    clear_color: wgpu::Color::GREEN,
-                }],
-                depth_stencil_attachment: None,
-            });
+            let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
             rpass.set_bind_group(0, &bind_group, &[]);
             rpass.set_vertex_buffers(0, &[(&vertex_buf, 0)]);
-            rpass.draw(0..3, 0..1);
+            rpass.draw(0..4, 0..1);
         }
-        gpu.queue_mut().submit(&[encoder.finish()]);
+        frame.finish();
     }
-    /*
-    }
-    */
-
-    Ok(())
 }
