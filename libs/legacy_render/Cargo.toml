@@ -16,7 +16,7 @@ vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../asset" }
-camera = { path = "../render-vulkano/common/camera" }
+camera = { path = "../render-shared/common/camera" }
 dlg = { path = "../dlg" }
 i386 = { path = "../i386" }
 lay = { path = "../lay" }

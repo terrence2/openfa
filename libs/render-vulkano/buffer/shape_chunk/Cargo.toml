@@ -14,7 +14,7 @@ nalgebra = "^ 0.18"
 vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
 animate = { path = "../../../animate" }
-camera = { path = "../../../render-vulkano/common/camera" }
+camera = { path = "../../../render-shared/common/camera" }
 global_layout = { path = "../../../render-vulkano/buffer/global_layout" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }

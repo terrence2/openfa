@@ -15,7 +15,7 @@ rusttype = "^ 0.7"
 vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
-camera = { path = "../../../render-vulkano/common/camera" }
+camera = { path = "../../../render-shared/common/camera" }
 fnt = { path = "../../../fnt" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }

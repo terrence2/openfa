@@ -19,7 +19,7 @@ vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 animate = { path = "../../../animate" }
-camera = { path = "../../../render-vulkano/common/camera" }
+camera = { path = "../../../render-shared/common/camera" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }
 pal = { path = "../../../pal" }
