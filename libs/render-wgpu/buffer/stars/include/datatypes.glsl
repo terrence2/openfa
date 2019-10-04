@@ -19,6 +19,7 @@ struct BandMetadata {
     uint index;
     uint bins_per_row;
     uint base_index;
+    uint pad;
 };
 
 // Bin Info

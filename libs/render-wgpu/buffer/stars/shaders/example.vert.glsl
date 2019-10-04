@@ -16,15 +16,14 @@
 
 #include <buffer/raymarching/include/raymarching_library.glsl>
 
-layout(push_constant) uniform PushConstantData {
-    mat4 inverse_view;
-    mat4 inverse_projection;
-} pc;
+layout(set = 0, binding = 0) buffer InverseViewProjection {
+    mat4[] inv_view_proj;
+};
 
 layout(location = 0) in vec2 position;
 layout(location = 0) out vec3 v_ray;
 
 void main() {
-    v_ray = raymarching_view_ray(position, pc.inverse_view, pc.inverse_projection);
     gl_Position = vec4(position, 0.0, 1.0);
+    v_ray = raymarching_view_ray(position, inv_view_proj[0], inv_view_proj[1]);
 }

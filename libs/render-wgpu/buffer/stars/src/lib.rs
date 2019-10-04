@@ -12,50 +12,59 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-/*
 use failure::Fallible;
-use global_layout::GlobalSets;
+//use global_layout::GlobalSets;
 use log::trace;
 use nalgebra::Vector3;
 use star_catalog::Stars;
-use std::{collections::HashSet, f32::consts::PI, sync::Arc};
-use gpu::{GPUConfig, GPU};
+use static_assertions::{assert_eq_align, assert_eq_size};
+use std::{collections::HashSet, f32::consts::PI, mem};
 
 const TAU: f32 = PI * 2f32;
 const PI_2: f32 = PI / 2f32;
 const RADIUS: f32 = 0.0015f32;
 
-/*
-mod fs {
-    vulkano_shaders::shader! {
-    ty: "fragment",
-    include: ["./libs/render-vulkano"],
-    src: "
-        #version 450
-        #include <buffer/stars/src/include_stars.glsl>
-        #include <buffer/stars/src/descriptorset_stars.glsl>
-        void main() {}
-        "
-    }
+#[derive(Copy, Clone)]
+struct BandMetadata {
+    index: u32,
+    bins_per_row: u32,
+    base_index: u32,
+    _pad: u32,
 }
-*/
+assert_eq_size!(BandMetadata, [f32; 4]);
+assert_eq_align!(BandMetadata, [f32; 4]);
 
-pub struct StarsBuffers {
-    descriptorset: Arc<dyn DescriptorSet + Send + Sync>,
+#[derive(Copy, Clone)]
+struct BinPosition {
+    _index_base: u32,
+    _num_indexes: u32,
 }
+assert_eq_size!(BinPosition, [f32; 2]);
+assert_eq_align!(BinPosition, [f32; 4]);
+
+#[derive(Copy, Clone)]
+struct StarInst {
+    ra: f32,
+    dec: f32,
+    _color: [f32; 3],
+    _radius: f32,
+}
+assert_eq_size!(StarInst, [f32; 6]);
+assert_eq_align!(StarInst, [f32; 4]);
 
 macro_rules! mkband {
     ($index:expr, $bins_per_row:expr, $base_index:expr) => {
-        fs::ty::BandMetadata {
+        BandMetadata {
             index: $index,
             bins_per_row: $bins_per_row,
             base_index: $base_index,
+            _pad: 0,
         }
     };
 }
 
 const DEC_BINS: usize = 64;
-const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
+const DEC_BANDS: [BandMetadata; DEC_BINS] = [
     mkband!(0, 1, 0),
     mkband!(1, 8, 1),
     mkband!(2, 12, 9),
@@ -122,15 +131,18 @@ const DEC_BANDS: [fs::ty::BandMetadata; 64] = [
     mkband!(63, 1, 5433),
 ];
 
-impl StarsBuffers {
-    pub fn new(
-        //pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        window: &GraphicsWindow,
-    ) -> Fallible<Self> {
-        trace!("StarsBuffers::new");
-        Ok(Self {
-            descriptorset: Self::upload_stars(pipeline.clone(), window)?,
-        })
+pub struct StarsBuffer {
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
+}
+
+impl StarsBuffer {
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
     }
 
     fn get_perpendicular(v: &Vector3<f32>) -> Vector3<f32> {
@@ -158,7 +170,7 @@ impl StarsBuffers {
         (last_band.base_index + last_band.bins_per_row) as usize
     }
 
-    fn band_for_dec(dec: f32) -> &'static fs::ty::BandMetadata {
+    fn band_for_dec(dec: f32) -> &'static BandMetadata {
         assert!(dec < PI_2);
         assert!(dec >= -PI_2);
         // See implementation in shader for comments.
@@ -174,10 +186,9 @@ impl StarsBuffers {
         band.base_index as usize + rai
     }
 
-    pub fn upload_stars(
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        window: &GraphicsWindow,
-    ) -> Fallible<Arc<dyn DescriptorSet + Send + Sync>> {
+    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+        trace!("StarsBuffer::new");
+
         let mut offset = 0;
         for (i, band) in DEC_BANDS.iter().enumerate() {
             assert_eq!(band.index as usize, i);
@@ -193,11 +204,11 @@ impl StarsBuffers {
             let dec = entry.declination() as f32;
             let color = entry.color();
             let radius = RADIUS * entry.radius_scale();
-            let star = fs::ty::StarInst {
+            let star = StarInst {
                 ra,
                 dec,
-                color,
-                radius,
+                _color: color,
+                _radius: radius,
             };
             star_buf.push(star);
         }
@@ -229,9 +240,9 @@ impl StarsBuffers {
             let bin_base = indices.len();
             let bin_len = bin_indices.len();
 
-            let pos = fs::ty::BinPosition {
-                index_base: bin_base as u32,
-                num_indexes: bin_len as u32,
+            let pos = BinPosition {
+                _index_base: bin_base as u32,
+                _num_indexes: bin_len as u32,
             };
             bin_positions.push(pos);
             for index in bin_indices {
@@ -239,68 +250,124 @@ impl StarsBuffers {
             }
         }
 
-        // FIXME: relocate these to the GPU proper
-
-        println!(
+        let band_buffer_size = (mem::size_of::<BandMetadata>() * DEC_BANDS.len()) as u64;
+        trace!(
             "uploading declination bands buffer with {} bytes",
-            std::mem::size_of::<fs::ty::BandMetadata>() * DEC_BANDS.len()
+            band_buffer_size
         );
-        let band_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            DEC_BANDS.iter().cloned(),
-        )?;
+        let band_buffer = device
+            .create_buffer_mapped::<BandMetadata>(DEC_BANDS.len(), wgpu::BufferUsage::STORAGE_READ)
+            .fill_from_slice(&DEC_BANDS);
 
-        println!(
+        let bin_positions_buffer_size =
+            (mem::size_of::<BinPosition>() * bin_positions.len()) as u64;
+        trace!(
             "uploading bin position buffer with {} bytes",
-            std::mem::size_of::<fs::ty::BinPosition>() * bin_positions.len()
+            bin_positions_buffer_size
         );
-        let bin_pos_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            bin_positions.into_iter(),
-        )?;
+        let bin_positions_buffer = device
+            .create_buffer_mapped::<BinPosition>(
+                bin_positions.len(),
+                wgpu::BufferUsage::STORAGE_READ,
+            )
+            .fill_from_slice(&bin_positions);
 
-        println!(
+        let star_indices_buffer_size = (mem::size_of::<u32>() * indices.len()) as u64;
+        trace!(
             "uploading star index buffer with {} bytes",
-            std::mem::size_of::<u32>() * indices.len()
+            star_indices_buffer_size
         );
-        let star_index_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            indices.into_iter(),
-        )?;
+        let star_indices_buffer = device
+            .create_buffer_mapped::<u32>(indices.len(), wgpu::BufferUsage::STORAGE_READ)
+            .fill_from_slice(&indices);
 
-        println!(
-            "uploading star buffer with {} bytes",
-            std::mem::size_of::<fs::ty::StarInst>() * star_buf.len()
-        );
-        let star_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            star_buf.into_iter(),
-        )?;
+        let star_buffer_size = (mem::size_of::<StarInst>() * star_buf.len()) as u64;
+        trace!("uploading star buffer with {} bytes", star_buffer_size);
+        let star_buffer = device
+            .create_buffer_mapped::<StarInst>(star_buf.len(), wgpu::BufferUsage::STORAGE_READ)
+            .fill_from_slice(&star_buf);
 
-        let pds: Arc<dyn DescriptorSet + Send + Sync> = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::Stars.into())
-                .add_buffer(band_buffer.clone())?
-                .add_buffer(bin_pos_buffer.clone())?
-                .add_buffer(star_index_buffer.clone())?
-                .add_buffer(star_buffer.clone())?
-                .build()?,
-        );
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            bindings: &[
+                wgpu::BindGroupLayoutBinding {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        readonly: true,
+                    },
+                },
+                wgpu::BindGroupLayoutBinding {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        readonly: true,
+                    },
+                },
+                wgpu::BindGroupLayoutBinding {
+                    binding: 2,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        readonly: true,
+                    },
+                },
+                wgpu::BindGroupLayoutBinding {
+                    binding: 3,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        readonly: true,
+                    },
+                },
+            ],
+        });
 
-        Ok(pds)
-    }
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            bindings: &[
+                wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &band_buffer,
+                        range: 0..band_buffer_size,
+                    },
+                },
+                wgpu::Binding {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &bin_positions_buffer,
+                        range: 0..bin_positions_buffer_size,
+                    },
+                },
+                wgpu::Binding {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &star_indices_buffer,
+                        range: 0..star_indices_buffer_size,
+                    },
+                },
+                wgpu::Binding {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &star_buffer,
+                        range: 0..star_buffer_size,
+                    },
+                },
+            ],
+        });
 
-    pub fn descriptor_set(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
-        self.descriptorset.clone()
+        Ok(Self {
+            bind_group_layout,
+            bind_group,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::StarsBuffers as SB;
+    use super::StarsBuffer as SB;
     use super::*;
     use approx::assert_relative_eq;
 
@@ -339,8 +406,15 @@ mod tests {
             }
             let v = SB::ra_d_to_vec(entry.right_ascension(), entry.declination());
             let (ra, dec) = SB::vec_to_ra_d(&v);
-            assert_relative_eq!(ra, entry.right_ascension(), epsilon = 0.00001);
-            assert_relative_eq!(dec, entry.declination(), epsilon = 0.00001);
+
+            assert_relative_eq!(
+                (ra + PI) % (2.0 * PI),
+                entry.right_ascension(),
+                epsilon = 0.00001
+            );
+
+            // Note: Declination is flipped relative to vulkan coordinates.
+            assert_relative_eq!(-dec, entry.declination(), epsilon = 0.00001);
         }
 
         Ok(())
@@ -371,4 +445,3 @@ mod tests {
         Ok(())
     }
 }
-*/

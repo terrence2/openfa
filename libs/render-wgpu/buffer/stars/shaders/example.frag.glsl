@@ -18,9 +18,9 @@
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;
 
-#include <buffer/stars/src/include_stars.glsl>
-#include <buffer/stars/src/descriptorset_stars.glsl>
-#include <buffer/stars/src/draw_stars.glsl>
+#include <buffer/stars/include/datatypes.glsl>
+#include <buffer/stars/include/descriptorsets.glsl>
+#include <buffer/stars/include/library.glsl>
 
 void main() {
     #if SHOW_BINS

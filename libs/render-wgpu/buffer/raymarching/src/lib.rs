@@ -55,8 +55,11 @@ impl RaymarchingVertex {
 }
 
 pub struct RaymarchingBuffer {
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
     buffer_size: u64,
     device_buffer: wgpu::Buffer,
+    vertex_buffer: wgpu::Buffer,
 }
 
 impl RaymarchingBuffer {
@@ -66,31 +69,48 @@ impl RaymarchingBuffer {
             size: buffer_size,
             usage: wgpu::BufferUsage::STORAGE_READ | wgpu::BufferUsage::COPY_DST,
         });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            bindings: &[wgpu::BindGroupLayoutBinding {
+                binding: 0,
+                visibility: wgpu::ShaderStage::VERTEX,
+                ty: wgpu::BindingType::StorageBuffer {
+                    dynamic: false,
+                    readonly: true,
+                },
+            }],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            bindings: &[wgpu::Binding {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &device_buffer,
+                    range: 0..buffer_size,
+                },
+            }],
+        });
+
         Ok(Self {
+            bind_group_layout,
+            bind_group,
             buffer_size,
             device_buffer,
+            vertex_buffer: RaymarchingVertex::buffer(device),
         })
     }
 
-    pub fn bind_group_layout_binding(binding: u32) -> wgpu::BindGroupLayoutBinding {
-        wgpu::BindGroupLayoutBinding {
-            binding,
-            visibility: wgpu::ShaderStage::VERTEX,
-            ty: wgpu::BindingType::StorageBuffer {
-                dynamic: false,
-                readonly: true,
-            },
-        }
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
     }
 
-    pub fn binding(&self, binding: u32) -> wgpu::Binding {
-        wgpu::Binding {
-            binding,
-            resource: wgpu::BindingResource::Buffer {
-                buffer: &self.device_buffer,
-                range: 0..self.buffer_size,
-            },
-        }
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.vertex_buffer
     }
 
     pub fn make_upload_buffer(

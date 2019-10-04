@@ -14,9 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Constants
-//#define PI 3.1415926538
-//#define PI_2 (PI / 2.0)
-//#define TAU (PI * 2.0)
 #define SHOW_BINS 0
 
 void v_to_ra_d(vec3 v, out float ra, out float dec) {
@@ -38,7 +35,7 @@ BandMetadata band_for_dec(float dec) {
 
     // Quantize dec into bands.
     uint deci = uint(decz * DEC_BINS);
-    return stars_bands.arr[deci];
+    return stars_bands[deci];
 }
 
 uint bin_for_ra_d(float ra, float dec) {
@@ -57,12 +54,12 @@ void show_stars(
     v_to_ra_d(view, ra, dec);
 
     uint bin = bin_for_ra_d(ra, dec);
-    BinPosition pos = stars_bins.arr[bin];
+    BinPosition pos = stars_bins[bin];
 
     star_alpha = 0.0;
     for (uint i = pos.index_base; i < pos.index_base + pos.num_indexes; ++i) {
-        uint star_index = stars_indexes.arr[i];
-        StarInst star = stars_stars.arr[star_index];
+        uint star_index = stars_indexes[i];
+        StarInst star = stars_stars[star_index];
         vec3 star_ray = ra_d_to_v(star.ra, star.dec);
         float dist = acos(dot(star_ray, normalize(view)));
         if (dist < star.radius) {
