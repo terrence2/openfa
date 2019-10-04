@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 
-#include <buffer/raymarching/src/include_raymarching.glsl>
+#include <buffer/raymarching/include/raymarching_library.glsl>
 
 layout(push_constant) uniform PushConstantData {
     mat4 inverse_view;
