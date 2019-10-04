@@ -122,7 +122,7 @@ impl BuildShaders {
 
             let mut options = CompileOptions::new().expect("some options");
             options.set_warnings_as_errors();
-            let opt_level = if env::var("DEBUG").unwrap_or("0".to_owned()) == "1" {
+            let opt_level = if env::var("DEBUG").unwrap_or_else(|_| "0".to_owned()) == "1" {
                 options.set_generate_debug_info();
                 OptimizationLevel::Zero
             } else {
@@ -139,10 +139,9 @@ impl BuildShaders {
                 "main",
                 Some(&options),
             );
-            match &result {
-                Err(Error::CompilationError(_, msg)) => println!("{}", Self::decorate_error(msg)),
-                _ => {}
-            };
+            if let Err(Error::CompilationError(_, ref msg)) = result {
+                println!("{}", Self::decorate_error(msg));
+            }
             let spirv = result?;
             let target_path = Self::output_for_name(
                 pathbuf
@@ -153,7 +152,7 @@ impl BuildShaders {
             );
             fs::write(&target_path, spirv.as_binary_u8())?;
 
-            if env::var("DUMP_SPIRV").unwrap_or("0".to_owned()) == "1" {
+            if env::var("DUMP_SPIRV").unwrap_or_else(|_| "0".to_owned()) == "1" {
                 let spirv_assembly = compiler.compile_into_spirv_assembly(
                     &shader_content,
                     shader_type,

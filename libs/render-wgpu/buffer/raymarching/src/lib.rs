@@ -25,7 +25,7 @@ pub struct RaymarchingVertex {
 impl RaymarchingVertex {
     pub fn new(pos: [i8; 2]) -> Self {
         Self {
-            _pos: [pos[0] as f32, pos[1] as f32],
+            _pos: [f32::from(pos[0]), f32::from(pos[1])],
         }
     }
 
