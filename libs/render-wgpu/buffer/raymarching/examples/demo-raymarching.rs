@@ -30,16 +30,10 @@ fn main() -> Fallible<()> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
 
-    let bind_group_layout =
-        gpu.device()
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                bindings: &[RaymarchingBuffer::bind_group_layout_binding(0)],
-            });
-
     let pipeline_layout = gpu
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[raymarching_buffer.bind_group_layout()],
         });
     let pipeline = gpu
         .device()
@@ -79,12 +73,6 @@ fn main() -> Fallible<()> {
     camera.set_distance(40.0);
     camera.on_mousebutton_down(1);
 
-    let vertex_buffer = RaymarchingVertex::buffer(gpu.device());
-    let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
-        bindings: &[raymarching_buffer.binding(0)],
-    });
-
     loop {
         for command in input.poll()? {
             match command.name.as_str() {
@@ -111,8 +99,8 @@ fn main() -> Fallible<()> {
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, &bind_group, &[]);
-            rpass.set_vertex_buffers(0, &[(&vertex_buffer, 0)]);
+            rpass.set_bind_group(0, raymarching_buffer.bind_group(), &[]);
+            rpass.set_vertex_buffers(0, &[(raymarching_buffer.vertex_buffer(), 0)]);
             rpass.draw(0..4, 0..1);
         }
         frame.finish();

@@ -22,19 +22,14 @@ layout(location = 0) out vec4 f_color;
 #include <buffer/stars/include/descriptorsets.glsl>
 #include <buffer/stars/include/library.glsl>
 
-
 void main() {
     #if SHOW_BINS
         f_color = vec4(show_bins(v_ray), 1.0);
         return;
     #endif
 
-/*
     vec3 star_radiance = vec3(0);
     float star_alpha = 0;
     show_stars(v_ray, star_radiance, star_alpha);
     f_color = vec4(star_radiance, 1.0);
-*/
-
-    f_color = vec4(v_ray, 1.0);
 }

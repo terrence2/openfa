@@ -16,4 +16,3 @@
 #define PI 3.14159265358979323846
 #define PI_2 (PI / 2.0)
 #define TAU (PI * 2.0)
-

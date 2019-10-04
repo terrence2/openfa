@@ -11,6 +11,7 @@ failure = "^ 0.1.2"
 lazy_static = ">= 1"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
+static_assertions = "^ 1"
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 camera = { path = "../../../render-shared/common/camera" }
 #global_layout = { path = "../../../render-wgpu/buffer/global_layout" }
@@ -24,5 +25,4 @@ input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 raymarching = { package = "raymarching-wgpu", path = "../../../render-wgpu/buffer/raymarching" }
 
 [build-dependencies]
-failure = "^ 0.1.2"
-shaderc = "^ 0.6"
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

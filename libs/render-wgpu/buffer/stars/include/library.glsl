@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Constants
-#define SHOW_BINS 1
+#define SHOW_BINS 0
 
 void v_to_ra_d(vec3 v, out float ra, out float dec) {
     ra = atan(v.x, v.z) + PI;
