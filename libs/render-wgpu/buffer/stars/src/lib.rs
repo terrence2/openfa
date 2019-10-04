@@ -137,25 +137,74 @@ pub struct StarsBuffers {
 }
 
 impl StarsBuffers {
-    pub fn band_metadata_bind_group_layout_binding(binding: u32) -> wgpu::BindGroupLayoutBinding {
-        wgpu::BindGroupLayoutBinding {
-            binding,
-            visibility: wgpu::ShaderStage::FRAGMENT,
-            ty: wgpu::BindingType::StorageBuffer {
-                dynamic: false,
-                readonly: true,
+    pub fn bind_group_layout_bindings(binding: u32) -> [wgpu::BindGroupLayoutBinding; 4] {
+        [
+            wgpu::BindGroupLayoutBinding {
+                binding,
+                visibility: wgpu::ShaderStage::FRAGMENT,
+                ty: wgpu::BindingType::StorageBuffer {
+                    dynamic: false,
+                    readonly: true,
+                },
             },
-        }
+            wgpu::BindGroupLayoutBinding {
+                binding: binding + 1,
+                visibility: wgpu::ShaderStage::FRAGMENT,
+                ty: wgpu::BindingType::StorageBuffer {
+                    dynamic: false,
+                    readonly: true,
+                },
+            },
+            wgpu::BindGroupLayoutBinding {
+                binding: binding + 2,
+                visibility: wgpu::ShaderStage::FRAGMENT,
+                ty: wgpu::BindingType::StorageBuffer {
+                    dynamic: false,
+                    readonly: true,
+                },
+            },
+            wgpu::BindGroupLayoutBinding {
+                binding: binding + 3,
+                visibility: wgpu::ShaderStage::FRAGMENT,
+                ty: wgpu::BindingType::StorageBuffer {
+                    dynamic: false,
+                    readonly: true,
+                },
+            },
+        ]
     }
 
-    pub fn band_metadata_binding(&self, binding: u32) -> wgpu::Binding {
-        wgpu::Binding {
-            binding,
-            resource: wgpu::BindingResource::Buffer {
-                buffer: &self.band_buffer,
-                range: 0..self.band_buffer_size,
+    pub fn bindings(&self, binding: u32) -> [wgpu::Binding; 4] {
+        [
+            wgpu::Binding {
+                binding,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &self.band_buffer,
+                    range: 0..self.band_buffer_size,
+                },
             },
-        }
+            wgpu::Binding {
+                binding: binding + 1,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &self.bin_positions_buffer,
+                    range: 0..self.bin_positions_buffer_size,
+                },
+            },
+            wgpu::Binding {
+                binding: binding + 2,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &self.star_indices_buffer,
+                    range: 0..self.star_indices_buffer_size,
+                },
+            },
+            wgpu::Binding {
+                binding: binding + 3,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &self.star_buffer,
+                    range: 0..self.star_buffer_size,
+                },
+            },
+        ]
     }
 
     fn get_perpendicular(v: &Vector3<f32>) -> Vector3<f32> {
