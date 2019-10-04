@@ -154,6 +154,23 @@ impl<'a> Frame<'a> {
     pub fn finish(mut self) {
         self.queue.submit(&[self.encoder.finish()]);
     }
+
+    pub fn copy_buffer_to_buffer(
+        &mut self,
+        source: &wgpu::Buffer,
+        source_offset: wgpu::BufferAddress,
+        destination: &wgpu::Buffer,
+        destination_offset: wgpu::BufferAddress,
+        copy_size: wgpu::BufferAddress,
+    ) {
+        self.encoder.copy_buffer_to_buffer(
+            source,
+            source_offset,
+            destination,
+            destination_offset,
+            copy_size,
+        )
+    }
 }
 
 #[cfg(test)]

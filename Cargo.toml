@@ -58,6 +58,7 @@ members = [
         "libs/render-vulkano/draw/text",
         "libs/render-wgpu/buffer/raymarching",
         "libs/render-wgpu/buffer/stars",
+        "libs/render-wgpu/common/build-shaders",
         "libs/render-wgpu/common/gpu",
         "libs/render-wgpu/common/input",
         "libs/resource",

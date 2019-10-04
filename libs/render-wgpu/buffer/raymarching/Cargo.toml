@@ -6,14 +6,12 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-log = "^ 0.4"
+camera = { path = "../../../render-shared/common/camera" }
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
-camera = { path = "../../../render-shared/common/camera" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]
-failure = "^ 0.1.2"
-shaderc = "^ 0.6"
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

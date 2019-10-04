@@ -16,28 +16,8 @@ use camera::ArcBallCamera;
 use failure::Fallible;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use std::mem;
+use raymarching_wgpu::{RaymarchingBuffer, RaymarchingVertex};
 use wgpu;
-
-#[derive(Clone, Copy)]
-struct Vertex {
-    _pos: [f32; 4],
-}
-
-fn vertex(pos: [i8; 3]) -> Vertex {
-    Vertex {
-        _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
-    }
-}
-
-fn create_vertices() -> Vec<Vertex> {
-    vec![
-        vertex([-1, -1, 0]),
-        vertex([-1, 1, 0]),
-        vertex([1, -1, 0]),
-        vertex([1, 1, 0]),
-    ]
-}
 
 fn main() -> Fallible<()> {
     let mut input = InputSystem::new(vec![InputBindings::new("base")
@@ -45,18 +25,16 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
+    let raymarching_buffer = RaymarchingBuffer::new(gpu.device())?;
+
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
 
-    //const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-
-    let bind_group_layout = gpu
-        .device()
-        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { bindings: &[] });
-    let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
-        bindings: &[],
-    });
+    let bind_group_layout =
+        gpu.device()
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                bindings: &[RaymarchingBuffer::bind_group_layout_binding(0)],
+            });
 
     let pipeline_layout = gpu
         .device()
@@ -91,29 +69,21 @@ fn main() -> Fallible<()> {
             }],
             depth_stencil_state: None,
             index_format: wgpu::IndexFormat::Uint16,
-            vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &[wgpu::VertexAttributeDescriptor {
-                    format: wgpu::VertexFormat::Float4,
-                    offset: 0,
-                    shader_location: 0,
-                }],
-            }],
+            vertex_buffers: &[RaymarchingVertex::descriptor()],
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
         });
 
-    let vertices = create_vertices();
-    let vertex_buf = gpu
-        .device()
-        .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
-        .fill_from_slice(&vertices);
-
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
     camera.set_distance(40.0);
     camera.on_mousebutton_down(1);
+
+    let vertex_buffer = RaymarchingVertex::buffer(gpu.device());
+    let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
+        bindings: &[raymarching_buffer.binding(0)],
+    });
 
     loop {
         for command in input.poll()? {
@@ -132,12 +102,17 @@ fn main() -> Fallible<()> {
             }
         }
 
+        // Prepare new camera parameters.
+        let upload_buffer = raymarching_buffer.make_upload_buffer(&camera, gpu.device());
+
         let mut frame = gpu.begin_frame();
         {
+            raymarching_buffer.upload_from(&mut frame, &upload_buffer);
+
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
             rpass.set_bind_group(0, &bind_group, &[]);
-            rpass.set_vertex_buffers(0, &[(&vertex_buf, 0)]);
+            rpass.set_vertex_buffers(0, &[(&vertex_buffer, 0)]);
             rpass.draw(0..4, 0..1);
         }
         frame.finish();
