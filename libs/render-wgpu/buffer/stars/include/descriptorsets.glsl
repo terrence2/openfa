@@ -13,26 +13,15 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-// Bin arrangement
-#define DEC_BINS 64
-struct BandMetadata {
-    uint index;
-    uint bins_per_row;
-    uint base_index;
+layout(set = 2, binding = 0) buffer DeclinationBands {
+    BandMetadata stars_bands[33];
 };
-
-// Bin Info
-struct BinPosition {
-    // Base offset into the star index buffer.
-    uint index_base;
-
-    // Number of stars in this bin.
-    uint num_indexes;
+layout(set = 2, binding = 1) buffer BinPositions {
+    BinPosition stars_bins[5434];
 };
-
-struct StarInst {
-    float ra;
-    float dec;
-    float color[3];
-    float radius;
+layout(set = 2, binding = 2) buffer Indexes {
+    uint stars_indexes[];
+};
+layout(set = 2, binding = 3) buffer StarBlock {
+    StarInst stars_stars[];
 };
