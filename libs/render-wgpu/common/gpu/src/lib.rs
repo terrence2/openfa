@@ -35,7 +35,7 @@ impl Default for GPUConfig {
 
 pub struct GPU {
     surface: wgpu::Surface,
-    adapter: wgpu::Adapter,
+    _adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     swap_chain: wgpu::SwapChain,
@@ -102,7 +102,7 @@ impl GPU {
 
         Ok(Self {
             surface,
-            adapter,
+            _adapter: adapter,
             device,
             queue,
             swap_chain,
@@ -151,7 +151,7 @@ impl<'a> Frame<'a> {
         })
     }
 
-    pub fn finish(mut self) {
+    pub fn finish(self) {
         self.queue.submit(&[self.encoder.finish()]);
     }
 
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn test_create() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
-        let gpu = GPU::new(&input, Default::default())?;
+        let _gpu = GPU::new(&input, Default::default())?;
         Ok(())
     }
 }
