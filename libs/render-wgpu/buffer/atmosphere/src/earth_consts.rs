@@ -23,14 +23,15 @@ pub const RGB_LAMBDAS: [f64; 4] = [680.0, 550.0, 440.0, 0.0];
 pub struct DensityProfileLayer {
     // Height of this layer, except for the last layer which always
     // extends to the top of the atmosphere region.
-    width: f32, // meters
+    _width: f32, // meters
 
     // Density in this layer in [0,1) as defined by the following function:
     //   'exp_term' * exp('exp_scale' * h) + 'linear_term' * h + 'constant_term',
-    exp_term: f32,
-    exp_scale: f32,   // 1 / meters
-    linear_term: f32, // 1 / meters
-    constant_term: f32,
+    _exp_term: f32,
+    _exp_scale: f32,   // 1 / meters
+    _linear_term: f32, // 1 / meters
+    _constant_term: f32,
+
     _pad: [f32; 3],
 }
 assert_eq_size!(DensityProfileLayer, [f32; 8]);
@@ -40,8 +41,8 @@ assert_eq_align!(DensityProfileLayer, [f32; 4]);
 #[derive(Copy, Clone)]
 pub struct DensityProfile {
     // Note: Arrays are busted in shaderc right now.
-    layer0: DensityProfileLayer,
-    layer1: DensityProfileLayer,
+    _layer0: DensityProfileLayer,
+    _layer1: DensityProfileLayer,
 }
 assert_eq_size!(DensityProfile, [f32; 16]);
 assert_eq_align!(DensityProfile, [f32; 4]);
@@ -49,62 +50,62 @@ assert_eq_align!(DensityProfile, [f32; 4]);
 #[derive(Copy, Clone)]
 pub struct AtmosphereParameters {
     // The density profile of tiny air molecules.
-    rayleigh_density: DensityProfile,
+    _rayleigh_density: DensityProfile,
 
     // The density profile of aerosols.
-    mie_density: DensityProfile,
+    _mie_density: DensityProfile,
 
     // The density profile of O3.
-    absorption_density: DensityProfile,
+    _absorption_density: DensityProfile,
 
     // Per component, at max density.
-    rayleigh_scattering_coefficient: [f32; 4],
+    _rayleigh_scattering_coefficient: [f32; 4],
 
     // Per component, at max density.
-    mie_scattering_coefficient: [f32; 4],
+    _mie_scattering_coefficient: [f32; 4],
 
     // Per component, at max density.
-    mie_extinction_coefficient: [f32; 4],
+    _mie_extinction_coefficient: [f32; 4],
 
     // Per component, at max density.
-    absorption_extinction_coefficient: [f32; 4],
+    _absorption_extinction_coefficient: [f32; 4],
 
     // Energy received into the system from the nearby star.
-    sun_irradiance: [f32; 4],
+    _sun_irradiance: [f32; 4],
 
     // The average albedo of the ground, per component.
     pub ground_albedo: [f32; 4],
 
     // The whitepoint, given the relative contributions of all possible wavelengths.
-    whitepoint: [f32; 4],
+    _whitepoint: [f32; 4],
 
     // Conversion between the solar irradiance above and our desired sRGB luminance output.
-    sun_spectral_radiance_to_luminance: [f32; 3],
+    _sun_spectral_radiance_to_luminance: [f32; 3],
     _pad0: f32,
 
     // Conversion between the irradiance stored in our LUT and sRGB luminance outputs.
     // Note that this is where we re-add the luminous efficacy constant that we factored
     // out of the precomputations to keep the numbers closer to 0 for precision.
-    sky_spectral_radiance_to_luminance: [f32; 3],
+    _sky_spectral_radiance_to_luminance: [f32; 3],
 
     // From center to subocean.
-    bottom_radius: f32, // meters
+    _bottom_radius: f32, // meters
 
     // from center to top of simulated atmosphere.
-    top_radius: f32, // meters
+    _top_radius: f32, // meters
 
     // The size of the nearby star in radians.
-    sun_angular_radius: f32, // radians
+    _sun_angular_radius: f32, // radians
 
     // The asymmetry parameter for the Cornette-Shanks phase function for the
     // aerosols.
-    mie_phase_function_g: f32,
+    _mie_phase_function_g: f32,
 
     // The cosine of the maximum Sun zenith angle for which atmospheric scattering
     // must be precomputed (for maximum precision, use the smallest Sun zenith
     // angle yielding negligible sky light radiance values. For instance, for the
     // Earth case, 102 degrees is a good choice - yielding mu_s_min = -0.2).
-    mu_s_min: f32,
+    _mu_s_min: f32,
 }
 assert_eq_size!(AtmosphereParameters, [f32; 40 + 16 * 3]);
 assert_eq_align!(AtmosphereParameters, [f32; 4]);
@@ -138,11 +139,11 @@ fn interpolate(wavelengths: &[f64], properties: &[f64], lambdas: [f64; 4], scale
 impl Default for DensityProfileLayer {
     fn default() -> Self {
         Self {
-            width: 0f32,
-            exp_term: 0f32,
-            exp_scale: 0f32,
-            linear_term: 0f32,
-            constant_term: 0f32,
+            _width: 0f32,
+            _exp_term: 0f32,
+            _exp_scale: 0f32,
+            _linear_term: 0f32,
+            _constant_term: 0f32,
             _pad: [0f32; 3],
         }
     }
@@ -305,84 +306,84 @@ impl EarthParameters {
         const LENGTH_SCALE: f64 = 1000.0;
         AtmosphereParameters {
             _pad0: 0f32,
-            sun_irradiance: interpolate(&self.wavelengths, &self.sun_irradiance, lambdas, 1.0),
-            sun_angular_radius: 0.00935 / 2.0,
-            sun_spectral_radiance_to_luminance: self.sun_spectral_radiance_to_luminance,
-            sky_spectral_radiance_to_luminance: [
+            _sun_irradiance: interpolate(&self.wavelengths, &self.sun_irradiance, lambdas, 1.0),
+            _sun_angular_radius: 0.00935 / 2.0,
+            _sun_spectral_radiance_to_luminance: self.sun_spectral_radiance_to_luminance,
+            _sky_spectral_radiance_to_luminance: [
                 MAX_LUMINOUS_EFFICACY as f32,
                 MAX_LUMINOUS_EFFICACY as f32,
                 MAX_LUMINOUS_EFFICACY as f32,
             ],
-            bottom_radius: (6_360_000.0 / LENGTH_SCALE) as f32,
-            top_radius: (6_420_000.0 / LENGTH_SCALE) as f32,
-            rayleigh_density: DensityProfile {
-                layer0: Default::default(),
-                layer1: DensityProfileLayer {
-                    width: 0f32,
-                    exp_term: 1f32,
-                    exp_scale: (-1.0 / RAYLEIGH_SCALE_HEIGHT * LENGTH_SCALE) as f32,
-                    linear_term: 0f32,
-                    constant_term: 0f32,
+            _bottom_radius: (6_360_000.0 / LENGTH_SCALE) as f32,
+            _top_radius: (6_420_000.0 / LENGTH_SCALE) as f32,
+            _rayleigh_density: DensityProfile {
+                _layer0: Default::default(),
+                _layer1: DensityProfileLayer {
+                    _width: 0f32,
+                    _exp_term: 1f32,
+                    _exp_scale: (-1.0 / RAYLEIGH_SCALE_HEIGHT * LENGTH_SCALE) as f32,
+                    _linear_term: 0f32,
+                    _constant_term: 0f32,
                     _pad: [0f32; 3],
                 },
             },
-            rayleigh_scattering_coefficient: interpolate(
+            _rayleigh_scattering_coefficient: interpolate(
                 &self.wavelengths,
                 &self.rayleigh_scattering,
                 lambdas,
                 LENGTH_SCALE,
             ),
-            mie_density: DensityProfile {
-                layer0: Default::default(),
-                layer1: DensityProfileLayer {
-                    width: 0f32,
-                    exp_term: 1f32,
-                    exp_scale: (-1.0 / MIE_SCALE_HEIGHT * LENGTH_SCALE) as f32,
-                    linear_term: 0f32,
-                    constant_term: 0f32,
+            _mie_density: DensityProfile {
+                _layer0: Default::default(),
+                _layer1: DensityProfileLayer {
+                    _width: 0f32,
+                    _exp_term: 1f32,
+                    _exp_scale: (-1.0 / MIE_SCALE_HEIGHT * LENGTH_SCALE) as f32,
+                    _linear_term: 0f32,
+                    _constant_term: 0f32,
                     _pad: [0f32; 3],
                 },
             },
-            mie_scattering_coefficient: interpolate(
+            _mie_scattering_coefficient: interpolate(
                 &self.wavelengths,
                 &self.mie_scattering,
                 lambdas,
                 LENGTH_SCALE,
             ),
-            mie_extinction_coefficient: interpolate(
+            _mie_extinction_coefficient: interpolate(
                 &self.wavelengths,
                 &self.mie_extinction,
                 lambdas,
                 LENGTH_SCALE,
             ),
-            mie_phase_function_g: MIE_PHASE_FUNCTION_G as f32,
-            absorption_density: DensityProfile {
-                layer0: DensityProfileLayer {
-                    width: (25_000.0 / LENGTH_SCALE) as f32,
-                    exp_term: 0f32,
-                    exp_scale: 0f32,
-                    linear_term: (1.0 / 15_000.0 * LENGTH_SCALE) as f32,
-                    constant_term: -2f32 / 3f32,
+            _mie_phase_function_g: MIE_PHASE_FUNCTION_G as f32,
+            _absorption_density: DensityProfile {
+                _layer0: DensityProfileLayer {
+                    _width: (25_000.0 / LENGTH_SCALE) as f32,
+                    _exp_term: 0f32,
+                    _exp_scale: 0f32,
+                    _linear_term: (1.0 / 15_000.0 * LENGTH_SCALE) as f32,
+                    _constant_term: -2f32 / 3f32,
                     _pad: [0f32; 3],
                 },
-                layer1: DensityProfileLayer {
-                    width: 0f32,
-                    exp_term: 0f32,
-                    exp_scale: 0f32,
-                    linear_term: (-1.0 / 15_000.0 * LENGTH_SCALE) as f32,
-                    constant_term: 8f32 / 3f32,
+                _layer1: DensityProfileLayer {
+                    _width: 0f32,
+                    _exp_term: 0f32,
+                    _exp_scale: 0f32,
+                    _linear_term: (-1.0 / 15_000.0 * LENGTH_SCALE) as f32,
+                    _constant_term: 8f32 / 3f32,
                     _pad: [0f32; 3],
                 },
             },
-            absorption_extinction_coefficient: interpolate(
+            _absorption_extinction_coefficient: interpolate(
                 &self.wavelengths,
                 &self.absorption_extinction,
                 lambdas,
                 LENGTH_SCALE,
             ),
             ground_albedo: interpolate(&self.wavelengths, &self.ground_albedo, lambdas, 1.0),
-            whitepoint: self.whitepoint,
-            mu_s_min: MAX_SUN_ZENITH_ANGLE.cos() as f32,
+            _whitepoint: self.whitepoint,
+            _mu_s_min: MAX_SUN_ZENITH_ANGLE.cos() as f32,
         }
     }
 }
@@ -405,23 +406,23 @@ mod test {
         let a = earth.sample(RGB_LAMBDAS);
 
         let expect_offsets = [
-            offsetof!(a, rayleigh_density),
-            offsetof!(a, mie_density),
-            offsetof!(a, absorption_density),
-            offsetof!(a, rayleigh_scattering_coefficient),
-            offsetof!(a, mie_scattering_coefficient),
-            offsetof!(a, mie_extinction_coefficient),
-            offsetof!(a, absorption_extinction_coefficient),
-            offsetof!(a, sun_irradiance),
+            offsetof!(a, _rayleigh_density),
+            offsetof!(a, _mie_density),
+            offsetof!(a, _absorption_density),
+            offsetof!(a, _rayleigh_scattering_coefficient),
+            offsetof!(a, _mie_scattering_coefficient),
+            offsetof!(a, _mie_extinction_coefficient),
+            offsetof!(a, _absorption_extinction_coefficient),
+            offsetof!(a, _sun_irradiance),
             offsetof!(a, ground_albedo),
-            offsetof!(a, whitepoint),
-            offsetof!(a, sun_spectral_radiance_to_luminance),
-            offsetof!(a, sky_spectral_radiance_to_luminance),
-            offsetof!(a, bottom_radius),
-            offsetof!(a, top_radius),
-            offsetof!(a, sun_angular_radius),
-            offsetof!(a, mie_phase_function_g),
-            offsetof!(a, mu_s_min),
+            offsetof!(a, _whitepoint),
+            offsetof!(a, _sun_spectral_radiance_to_luminance),
+            offsetof!(a, _sky_spectral_radiance_to_luminance),
+            offsetof!(a, _bottom_radius),
+            offsetof!(a, _top_radius),
+            offsetof!(a, _sun_angular_radius),
+            offsetof!(a, _mie_phase_function_g),
+            offsetof!(a, _mu_s_min),
         ];
 
         let module = ShaderModule::load_u8_data(include_bytes!(

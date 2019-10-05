@@ -30,7 +30,7 @@ use crate::precompute::Precompute;
 use failure::Fallible;
 use global_layout::GlobalSets;
 use log::trace;
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 const NUM_PRECOMPUTED_WAVELENGTHS: usize = 40;
 const NUM_SCATTERING_ORDER: usize = 4;

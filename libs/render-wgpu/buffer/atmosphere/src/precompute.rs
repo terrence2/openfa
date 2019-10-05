@@ -517,7 +517,7 @@ impl Precompute {
                 RGB_LAMBDAS,
                 device,
                 queue,
-                self.transmittance_extent.clone(),
+                self.transmittance_extent,
                 &self.transmittance_texture,
             );
             /*
@@ -743,7 +743,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.transmittance_extent.clone(),
+                self.transmittance_extent,
                 &self.transmittance_texture,
             );
         }
@@ -795,7 +795,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -839,7 +839,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.irradiance_extent.clone(),
+                self.irradiance_extent,
                 &self.delta_irradiance_texture,
             );
         }
@@ -902,7 +902,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -1001,7 +1001,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.scattering_extent.clone(),
+                self.scattering_extent,
                 &self.delta_rayleigh_scattering_texture,
             );
         }
@@ -1011,7 +1011,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.scattering_extent.clone(),
+                self.scattering_extent,
                 &self.scattering_texture,
             );
         }
@@ -1021,7 +1021,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.scattering_extent.clone(),
+                self.scattering_extent,
                 &self.delta_mie_scattering_texture,
             );
         }
@@ -1031,7 +1031,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.scattering_extent.clone(),
+                self.scattering_extent,
                 &self.single_mie_scattering_texture,
             );
         }
@@ -1106,7 +1106,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -1138,7 +1138,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -1170,7 +1170,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -1202,7 +1202,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -1234,7 +1234,7 @@ impl Precompute {
                             min_filter: wgpu::FilterMode::Linear,
                             mipmap_filter: wgpu::FilterMode::Linear,
                             lod_min_clamp: 0f32,
-                            lod_max_clamp: 9999999f32,
+                            lod_max_clamp: 9_999_999f32,
                             compare_function: wgpu::CompareFunction::Never,
                         },
                     )),
@@ -1278,7 +1278,7 @@ impl Precompute {
                 lambdas,
                 device,
                 queue,
-                self.scattering_extent.clone(),
+                self.scattering_extent,
                 &self.delta_scattering_density_texture,
             );
         }
@@ -1296,7 +1296,7 @@ impl Precompute {
     ) {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
-        let staging_buffer_size = (extent.width * extent.height * extent.depth * 16) as u64;
+        let staging_buffer_size = u64::from(extent.width * extent.height * extent.depth * 16);
         let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             size: staging_buffer_size,
             usage: wgpu::BufferUsage::all(),
@@ -1314,7 +1314,7 @@ impl Precompute {
                 row_pitch: extent.width * 16,
                 image_height: extent.height,
             },
-            extent.clone(),
+            extent,
         );
         queue.submit(&[encoder.finish()]);
         staging_buffer.map_read_async(
