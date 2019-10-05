@@ -163,7 +163,7 @@ pub fn build() -> Fallible<()> {
                 "main",
                 Some(&options),
             )?;
-            fs::write("out.spirv.s", spirv_assembly.as_text())?;
+            fs::write(&format!("{}.s", target_path), spirv_assembly.as_text())?;
         }
     }
 

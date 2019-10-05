@@ -26,7 +26,7 @@ use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 
 fn main() -> Fallible<()> {
-    TermLogger::init(LevelFilter::Debug, Config::default())?;
+    TermLogger::init(LevelFilter::Trace, Config::default())?;
 
     use std::sync::Arc;
     let lib = Arc::new(Box::new(Library::empty()?));

@@ -1,24 +1,30 @@
 [package]
-name = "stars-wgpu"
+name = "atmosphere-wgpu"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
+
+[lib]
+doctest = false
 
 [dependencies]
 approx = "^ 0.3"
 bitflags = ">= 1.0"
 failure = "^ 0.1.2"
+image = "^ 0.21"
 lazy_static = ">= 1"
 log = "^ 0.4"
+memmap = "^ 0.6"
 nalgebra = "^ 0.18"
+num-traits = "^ 0.2"
 static_assertions = "^ 1"
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 camera = { path = "../../../render-shared/common/camera" }
-star_catalog = { path = "../../../star_catalog" }
+global_layout = { path = "../../../render-vulkano/buffer/global_layout" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-#global_layout = { path = "../../../render-wgpu/buffer/global_layout" }
 
 [dev-dependencies]
+spirv-reflect = "^ 0.2"
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 raymarching = { package = "raymarching-wgpu", path = "../../../render-wgpu/buffer/raymarching" }
 
