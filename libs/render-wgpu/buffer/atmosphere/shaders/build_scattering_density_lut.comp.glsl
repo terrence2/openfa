@@ -12,19 +12,32 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#include "include_atmosphere.glsl"
-#include "lut_shared_builder.glsl"
+#version 450
+
+#include <common/include/include_global.glsl>
+#include <buffer/atmosphere/include/common.glsl>
+#include <buffer/atmosphere/include/lut_builder_common.glsl>
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(binding = 0) uniform AtmosphereParams { AtmosphereParameters atmosphere; };
+layout(binding = 1) uniform ScatteringOrder { uint scattering_order; };
+layout(binding = 2) uniform texture2D transmittance_texture;
+layout(binding = 3) uniform sampler transmittance_sampler;
+layout(binding = 4) uniform texture3D delta_rayleigh_scattering_texture;
+layout(binding = 5) uniform sampler delta_rayleigh_scattering_sampler;
+layout(binding = 6) uniform texture3D delta_mie_scattering_texture;
+layout(binding = 7) uniform sampler delta_mie_scattering_sampler;
+layout(binding = 8) uniform texture3D delta_multiple_scattering_texture;
+layout(binding = 9) uniform sampler delta_multiple_scattering_sampler;
+layout(binding = 10) uniform texture2D delta_irradiance_texture;
+layout(binding = 11) uniform sampler delta_irradiance_sampler;
+layout(binding = 12, rgba8) uniform writeonly image3D delta_scattering_density_texture;
 
 vec4
 compute_scattering_density(
     ScatterCoord sc,
     AtmosphereParameters atmosphere,
-    uint scattering_order,
-    sampler2D transmittance_texture,
-    sampler3D delta_rayleigh_scattering_texture,
-    sampler3D delta_mie_scattering_texture,
-    sampler3D delta_multiple_scattering_texture,
-    sampler2D delta_irradiance_texture
+    uint scattering_order
 ) {
     // Compute unit direction vectors for the zenith, the view direction omega and
     // and the sun direction omega_s, such that the cosine of the view-zenith
@@ -57,6 +70,7 @@ compute_scattering_density(
             distance_to_ground = distance_to_bottom_atmosphere_boundary(vec2(sc.r, cos_theta), atmosphere.bottom_radius);
             transmittance_to_ground = get_transmittance(
                 transmittance_texture,
+                transmittance_sampler,
                 sc.r,
                 cos_theta,
                 distance_to_ground,
@@ -78,6 +92,7 @@ compute_scattering_density(
             float nu1 = dot(omega_s, omega_i);
             vec4 incident_radiance = get_scattering(
                 delta_multiple_scattering_texture,
+                delta_multiple_scattering_sampler,
                 ScatterCoord(sc.r, omega_i.z, sc.mu_s, nu1),
                 atmosphere.bottom_radius,
                 atmosphere.top_radius,
@@ -92,6 +107,7 @@ compute_scattering_density(
             vec3 ground_normal = normalize(zenith_direction * sc.r + omega_i * distance_to_ground);
             vec4 ground_irradiance = get_irradiance(
                 delta_irradiance_texture,
+                delta_irradiance_sampler,
                 atmosphere.bottom_radius,
                 dot(ground_normal, omega_s),
                 atmosphere.bottom_radius,
@@ -127,22 +143,12 @@ void
 compute_scattering_density_program(
     vec3 frag_coord,
     AtmosphereParameters atmosphere,
-    uint scattering_order,
-    sampler2D transmittance_texture,
-    sampler3D delta_rayleigh_scattering_texture,
-    sampler3D delta_mie_scattering_texture,
-    sampler3D delta_multiple_scattering_texture,
-    sampler2D delta_irradiance_texture,
-    writeonly image3D delta_scattering_density_texture
+    uint scattering_order
 ) {
     bool ray_r_mu_intersects_ground;
     ScatterCoord sc = scattering_frag_coord_to_rmumusnu(frag_coord, atmosphere, ray_r_mu_intersects_ground);
 
-    vec4 rayleigh_mie = compute_scattering_density(
-        sc, atmosphere, scattering_order, transmittance_texture,
-        delta_rayleigh_scattering_texture, delta_mie_scattering_texture,
-        delta_multiple_scattering_texture, delta_irradiance_texture
-    );
+    vec4 rayleigh_mie = compute_scattering_density(sc, atmosphere, scattering_order);
 
     imageStore(
         delta_scattering_density_texture,
@@ -151,3 +157,12 @@ compute_scattering_density_program(
     );
 }
 
+void
+main()
+{
+    compute_scattering_density_program(
+        gl_GlobalInvocationID.xyz + vec3(0.5, 0.5, 0.5),
+        atmosphere,
+        scattering_order
+    );
+}

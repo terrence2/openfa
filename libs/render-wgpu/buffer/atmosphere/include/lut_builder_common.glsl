@@ -122,7 +122,8 @@ scattering_frag_coord_to_rmumusnu(
 
 vec4
 get_scattering(
-    sampler3D scattering_texture,
+    texture3D scattering_texture,
+    sampler scattering_sampler,
     ScatterCoord sc,
     float atmosphere_bottom_radius,
     float atmosphere_top_radius,
@@ -140,15 +141,18 @@ get_scattering(
     float lerp = tex_coord_x - tex_x;
     vec3 uvw0 = vec3((tex_x + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE), uvwz.z, uvwz.w);
     vec3 uvw1 = vec3((tex_x + 1.0 + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE), uvwz.z, uvwz.w);
-    return texture(scattering_texture, uvw0) * (1.0 - lerp) +
-        texture(scattering_texture, uvw1) * lerp;
+    return texture(sampler3D(scattering_texture, scattering_sampler), uvw0) * (1.0 - lerp) +
+        texture(sampler3D(scattering_texture, scattering_sampler), uvw1) * lerp;
 }
 
 vec4
 get_best_scattering(
-    sampler3D delta_rayleigh_scattering_texture,
-    sampler3D delta_mie_scattering_texture,
-    sampler3D delta_multiple_scattering_texture,
+    texture3D delta_rayleigh_scattering_texture,
+    sampler delta_rayleigh_scattering_sampler,
+    texture3D delta_mie_scattering_texture,
+    sampler delta_mie_scattering_sampler,
+    texture3D delta_multiple_scattering_texture,
+    sampler delta_multiple_scattering_sampler,
     ScatterCoord sc,
     float atmosphere_bottom_radius,
     float atmosphere_top_radius,
@@ -160,6 +164,7 @@ get_best_scattering(
     if (scattering_order == 1) {
         vec4 rayleigh = get_scattering(
             delta_rayleigh_scattering_texture,
+            delta_rayleigh_scattering_sampler,
             sc,
             atmosphere_bottom_radius,
             atmosphere_top_radius,
@@ -168,6 +173,7 @@ get_best_scattering(
         );
         vec4 mie = get_scattering(
             delta_mie_scattering_texture,
+            delta_mie_scattering_sampler,
             sc,
             atmosphere_bottom_radius,
             atmosphere_top_radius,
@@ -179,6 +185,7 @@ get_best_scattering(
     } else {
         return get_scattering(
             delta_multiple_scattering_texture,
+            delta_multiple_scattering_sampler,
             sc,
             atmosphere_bottom_radius,
             atmosphere_top_radius,

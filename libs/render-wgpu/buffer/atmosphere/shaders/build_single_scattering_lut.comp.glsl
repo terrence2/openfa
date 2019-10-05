@@ -19,16 +19,14 @@
 #include <buffer/atmosphere/include/lut_builder_common.glsl>
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
-layout(push_constant) uniform PushConstantData {
-    mat4 rad_to_lum;
-} pc;
-layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; };
+layout(binding = 0) uniform AtmosphereParams { AtmosphereParameters atmosphere; };
 layout(binding = 1) uniform texture2D transmittance_texture;
 layout(binding = 2) uniform sampler transmittance_sampler;
-layout(binding = 3, rgba8) uniform restrict writeonly image3D delta_rayleigh_scattering_texture;
-layout(binding = 4, rgba8) uniform restrict writeonly image3D delta_mie_scattering_texture;
-layout(binding = 5, rgba8) uniform coherent image3D scattering_texture;
-layout(binding = 6, rgba8) uniform coherent image3D single_mie_scattering_texture;
+layout(binding = 3) uniform RadToLum { mat4 rad_to_lum; };
+layout(binding = 4, rgba8) uniform restrict writeonly image3D delta_rayleigh_scattering_texture;
+layout(binding = 5, rgba8) uniform restrict writeonly image3D delta_mie_scattering_texture;
+layout(binding = 6, rgba8) uniform coherent image3D scattering_texture;
+layout(binding = 7, rgba8) uniform coherent image3D single_mie_scattering_texture;
 
 void
 compute_single_scattering_integrand(
@@ -159,7 +157,7 @@ void main() {
     vec3 single_mie_scattering;
     compute_single_scattering_program(
         gl_GlobalInvocationID.xyz + vec3(0.5),
-        pc.rad_to_lum,
+        rad_to_lum,
         atmosphere,
         scattering,
         single_mie_scattering

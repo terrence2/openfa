@@ -364,14 +364,15 @@ vec2 irradiance_uv_to_rmus(
 }
 
 vec4 get_irradiance(
-    sampler2D irradiance_texture,
+    texture2D irradiance_texture,
+    sampler irradiance_sampler,
     float r,
     float mu_s,
     float bottom_radius,
     float top_radius
 ) {
     vec2 uv = irradiance_rmus_to_uv(r, mu_s, bottom_radius, top_radius);
-    return texture(irradiance_texture, uv);
+    return texture(sampler2D(irradiance_texture, irradiance_sampler), uv);
 }
 
 struct ScatterCoord {
