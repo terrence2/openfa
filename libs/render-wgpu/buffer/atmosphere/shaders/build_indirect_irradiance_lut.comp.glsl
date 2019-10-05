@@ -12,8 +12,24 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#include "include_atmosphere.glsl"
-#include "lut_shared_builder.glsl"
+#version 450
+
+#include <common/include/include_global.glsl>
+#include <buffer/atmosphere/include/common.glsl>
+#include <buffer/atmosphere/include/lut_builder_common.glsl>
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform AtmosphereParams { AtmosphereParameters atmosphere; };
+layout(binding = 1) uniform RadToLum { mat4 rad_to_lum; };
+layout(binding = 2) uniform ScatteringOrder { uint scattering_order; };
+layout(binding = 3) uniform texture3D delta_rayleigh_scattering_texture;
+layout(binding = 4) uniform sampler delta_rayleigh_scattering_sampler;
+layout(binding = 5) uniform texture3D delta_mie_scattering_texture;
+layout(binding = 6) uniform sampler delta_mie_scattering_sampler;
+layout(binding = 7) uniform texture3D delta_multiple_scattering_texture;
+layout(binding = 8) uniform sampler delta_multiple_scattering_sampler;
+layout(binding = 9, rgba32f) uniform writeonly image2D delta_irradiance_texture;
+layout(binding = 10, rgba32f) uniform image2D irradiance_texture;
 
 // For the indirect ground irradiance the integral over the hemisphere must be
 // computed numerically. More precisely we need to compute the integral over all
@@ -27,10 +43,7 @@
 vec4 compute_indirect_irradiance(
     vec2 rmus,
     uint scattering_order,
-    AtmosphereParameters atmosphere,
-    sampler3D delta_rayleigh_scattering_texture,
-    sampler3D delta_mie_scattering_texture,
-    sampler3D delta_multiple_scattering_texture
+    AtmosphereParameters atmosphere
 ) {
     const int SAMPLE_COUNT = 32;
     const float dphi = PI / float(SAMPLE_COUNT);
@@ -49,8 +62,11 @@ vec4 compute_indirect_irradiance(
             float nu = dot(omega, omega_s);
             result += get_best_scattering(
                 delta_rayleigh_scattering_texture,
+                delta_rayleigh_scattering_sampler,
                 delta_mie_scattering_texture,
+                delta_mie_scattering_sampler,
                 delta_multiple_scattering_texture,
+                delta_multiple_scattering_sampler,
                 ScatterCoord(rmus.x, omega.z, rmus.y, nu),
                 atmosphere.bottom_radius,
                 atmosphere.top_radius,
@@ -67,10 +83,6 @@ void compute_indirect_irradiance_program(
     vec2 frag_coord,
     uint scattering_order,
     AtmosphereParameters atmosphere,
-    sampler3D delta_rayleigh_scattering_texture,
-    sampler3D delta_mie_scattering_texture,
-    sampler3D delta_multiple_scattering_texture,
-    writeonly image2D delta_indirect_irradiance,
     out vec4 indirect_irradiance
 ) {
     const vec2 TEXTURE_SIZE = vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
@@ -83,14 +95,32 @@ void compute_indirect_irradiance_program(
     indirect_irradiance = compute_indirect_irradiance(
         rmus,
         scattering_order,
-        atmosphere,
-        delta_rayleigh_scattering_texture,
-        delta_mie_scattering_texture,
-        delta_multiple_scattering_texture
+        atmosphere
     );
     imageStore(
-        delta_indirect_irradiance,
+        delta_irradiance_texture,
         ivec2(frag_coord),
         indirect_irradiance
+    );
+}
+
+void main() {
+    vec4 indirect_irradiance;
+    compute_indirect_irradiance_program(
+        gl_GlobalInvocationID.xy + vec2(0.5, 0.5),
+        scattering_order,
+        atmosphere,
+        indirect_irradiance
+    );
+
+    vec3 prior_irradiance = imageLoad(
+        irradiance_texture,
+        ivec2(gl_GlobalInvocationID.xy)
+    ).rgb;
+    // FIXME: this should all be vec4... why are we subbing in a 1 here?
+    imageStore(
+        irradiance_texture,
+        ivec2(gl_GlobalInvocationID.xy),
+        vec4(prior_irradiance + vec3(rad_to_lum * indirect_irradiance), 1.0)
     );
 }

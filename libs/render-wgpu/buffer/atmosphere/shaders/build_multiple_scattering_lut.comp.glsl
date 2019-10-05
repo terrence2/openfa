@@ -12,16 +12,28 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#include "include_atmosphere.glsl"
-#include "lut_shared_builder.glsl"
+#version 450
+
+#include <common/include/include_global.glsl>
+#include <buffer/atmosphere/include/common.glsl>
+#include <buffer/atmosphere/include/lut_builder_common.glsl>
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(binding = 0) uniform AtmosphereParams { AtmosphereParameters atmosphere; };
+layout(binding = 1) uniform RadToLum { mat4 rad_to_lum; };
+layout(binding = 2) uniform ScatteringOrder { uint scattering_order; };
+layout(binding = 3) uniform texture2D transmittance_texture;
+layout(binding = 4) uniform sampler transmittance_sampler;
+layout(binding = 5) uniform texture3D delta_scattering_density_texture;
+layout(binding = 6) uniform sampler delta_scattering_density_sampler;
+layout(binding = 7, rgba8) uniform writeonly image3D delta_multiple_scattering_texture;
+layout(binding = 8, rgba8) uniform image3D scattering_texture;
 
 vec4
 compute_multiple_scattering(
     ScatterCoord sc,
     AtmosphereParameters atmosphere,
     uint scattering_order,
-    sampler2D transmittance_texture,
-    sampler3D delta_scattering_density_texture,
     bool ray_r_mu_intersects_ground
 ) {
     // Number of intervals for the numerical integration.
@@ -49,6 +61,7 @@ compute_multiple_scattering(
         // The Rayleigh and Mie multiple scattering at the current sample point.
         vec4 rayleigh_mie_i = get_scattering(
                 delta_scattering_density_texture,
+                delta_scattering_density_sampler,
                 ScatterCoord(r_i, mu_i, mu_s_i, sc.nu),
                 atmosphere.bottom_radius,
                 atmosphere.top_radius,
@@ -56,6 +69,7 @@ compute_multiple_scattering(
                 ray_r_mu_intersects_ground
             ) * get_transmittance(
                 transmittance_texture,
+                transmittance_sampler,
                 sc.r,
                 sc.mu,
                 d_i,
@@ -76,9 +90,6 @@ compute_multiple_scattering_program(
     vec3 frag_coord,
     AtmosphereParameters atmosphere,
     uint scattering_order,
-    sampler2D transmittance_texture,
-    sampler3D delta_scattering_density_texture,
-    writeonly image3D delta_multiple_scattering_texture,
     out ScatterCoord sc,
     out vec4 delta_multiple_scattering
 ) {
@@ -89,14 +100,39 @@ compute_multiple_scattering_program(
         sc,
         atmosphere,
         scattering_order,
-        transmittance_texture,
-        delta_scattering_density_texture,
         ray_r_mu_intersects_ground
     );
     imageStore(
         delta_multiple_scattering_texture,
         ivec3(frag_coord),
         delta_multiple_scattering
+    );
+}
+
+void
+main()
+{
+    ScatterCoord sc;
+    vec4 delta_multiple_scattering;
+    compute_multiple_scattering_program(
+        gl_GlobalInvocationID.xyz + vec3(0.5, 0.5, 0.5),
+        atmosphere,
+        scattering_order,
+        sc,
+        delta_multiple_scattering
+    );
+
+    vec4 scattering = vec4(
+          vec3(rad_to_lum * delta_multiple_scattering) / rayleigh_phase_function(sc.nu),
+          0.0);
+    vec4 prior_scattering = imageLoad(
+        scattering_texture,
+        ivec3(gl_GlobalInvocationID.xyz)
+    );
+    imageStore(
+        scattering_texture,
+        ivec3(gl_GlobalInvocationID.xyz),
+        prior_scattering + scattering
     );
 }
 
