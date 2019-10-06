@@ -120,6 +120,18 @@ impl GPU {
         &self.device
     }
 
+    pub fn device_mut(&mut self) -> &mut wgpu::Device {
+        &mut self.device
+    }
+
+    pub fn queue_mut(&mut self) -> &mut wgpu::Queue {
+        &mut self.queue
+    }
+
+    pub fn device_and_queue_mut(&mut self) -> (&mut wgpu::Device, &mut wgpu::Queue) {
+        (&mut self.device, &mut self.queue)
+    }
+
     pub fn begin_frame(&mut self) -> Frame {
         Frame {
             queue: &mut self.queue,
