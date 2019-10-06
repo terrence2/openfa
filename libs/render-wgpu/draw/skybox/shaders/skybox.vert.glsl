@@ -12,16 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#version 450
 
-layout(set = 2, binding = 0) buffer DeclinationBands {
-    BandMetadata stars_bands[33];
-};
-layout(set = 2, binding = 1) buffer BinPositions {
-    BinPosition stars_bins[5434];
-};
-layout(set = 2, binding = 2) buffer Indexes {
-    uint stars_indexes[];
-};
-layout(set = 2, binding = 3) buffer StarBlock {
-    StarInst stars_stars[];
-};
+#include <buffer/raymarching/include/library.glsl>
+#include <buffer/raymarching/include/descriptorset.glsl>
+
+layout(location = 0) in vec2 position;
+layout(location = 0) out vec3 v_ray;
+
+void main() {
+    v_ray = raymarching_view_ray(position, inv_view_proj[0], inv_view_proj[1]);
+    gl_Position = vec4(position, 0.0, 1.0);
+}

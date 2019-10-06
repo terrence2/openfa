@@ -32,11 +32,20 @@ fn main() -> Fallible<()> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
 
+    let empty_layout = gpu
+        .device()
+        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { bindings: &[] });
+    let empty_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &empty_layout,
+        bindings: &[],
+    });
+
     let pipeline_layout = gpu
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
                 raymarching_buffer.bind_group_layout(),
+                &empty_layout,
                 stars_buffers.bind_group_layout(),
             ],
         });
@@ -105,7 +114,8 @@ fn main() -> Fallible<()> {
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
             rpass.set_bind_group(0, raymarching_buffer.bind_group(), &[]);
-            rpass.set_bind_group(1, &stars_buffers.bind_group(), &[]);
+            rpass.set_bind_group(1, &empty_bind_group, &[]);
+            rpass.set_bind_group(2, stars_buffers.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(raymarching_buffer.vertex_buffer(), 0)]);
             rpass.draw(0..4, 0..1);
         }
