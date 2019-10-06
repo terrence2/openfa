@@ -869,6 +869,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_TRANSMITTANCE {
             Self::dump_texture(
@@ -931,6 +932,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_DIRECT_IRRADIANCE {
             Self::dump_texture(
@@ -1027,6 +1029,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_SINGLE_RAYLEIGH {
             Self::dump_texture(
@@ -1183,6 +1186,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_SCATTERING_DENSITY {
             Self::dump_texture(
@@ -1302,6 +1306,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_INDIRECT_IRRADIANCE_DELTA {
             Self::dump_texture(
@@ -1417,6 +1422,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_MULTIPLE_SCATTERING {
             Self::dump_texture(
@@ -1471,6 +1477,7 @@ impl Precompute {
             extent,
         );
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         staging_buffer.map_read_async(
             0,
