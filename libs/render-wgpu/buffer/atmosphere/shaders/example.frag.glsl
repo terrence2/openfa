@@ -15,16 +15,15 @@
 #version 450
 
 #include <common/include/include_global.glsl>
+#include <buffer/atmosphere/include/global.glsl>
 
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;
 
-#include <buffer/atmosphere/include/common.glsl>
-
 const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 
 #include <buffer/atmosphere/include/descriptorset.glsl>
-#include <buffer/atmosphere/include/draw_atmosphere.glsl>
+#include <buffer/atmosphere/include/library.glsl>
 
 void main() {
     vec3 view = normalize(v_ray);

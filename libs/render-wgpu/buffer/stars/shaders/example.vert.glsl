@@ -14,11 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 
-#include <buffer/raymarching/include/raymarching_library.glsl>
-
-layout(set = 0, binding = 0) buffer InverseViewProjection {
-    mat4[] inv_view_proj;
-};
+#include <buffer/raymarching/include/descriptorset.glsl>
+#include <buffer/raymarching/include/library.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 0) out vec3 v_ray;

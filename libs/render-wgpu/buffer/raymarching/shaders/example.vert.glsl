@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 
-#include <buffer/raymarching/include/raymarching_library.glsl>
+#include <buffer/raymarching/include/library.glsl>
 #include <buffer/raymarching/include/descriptorset.glsl>
 
 layout(location = 0) in vec2 position;
