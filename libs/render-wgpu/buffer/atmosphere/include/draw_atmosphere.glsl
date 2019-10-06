@@ -24,8 +24,10 @@ vec3 get_solar_luminance(
 
 void get_sun_and_sky_irradiance(
     AtmosphereParameters atmosphere,
-    sampler2D transmittance_texture,
-    sampler2D irradiance_texture,
+    texture2D transmittance_texture,
+    sampler transmittance_sampler,
+    texture2D irradiance_texture,
+    sampler irradiance_sampler,
     vec3 point,
     vec3 normal,
     vec3 sun_direction,
@@ -38,6 +40,7 @@ void get_sun_and_sky_irradiance(
     // Indirect irradiance (approximated if the surface is not horizontal).
     vec4 irradiance_at_point = get_irradiance(
         irradiance_texture,
+        irradiance_sampler,
         r, mu_s,
         atmosphere.bottom_radius,
         atmosphere.top_radius
@@ -47,6 +50,7 @@ void get_sun_and_sky_irradiance(
     // Direct irradiance.
     vec4 transmittance_to_point = get_transmittance_to_sun(
         transmittance_texture,
+        transmittance_sampler,
         r,
         mu_s,
         atmosphere.bottom_radius,
@@ -88,8 +92,10 @@ float get_sky_visibility(vec3 point) {
 
 void get_combined_scattering(
     AtmosphereParameters atmosphere,
-    sampler3D scattering_texture,
-    sampler3D single_mie_scattering_texture,
+    texture3D scattering_texture,
+    sampler scattering_sampler,
+    texture3D single_mie_scattering_texture,
+    sampler single_mie_scattering_sampler,
     ScatterCoord sc,
     bool ray_r_mu_intersects_ground,
     out vec3 scattering,
@@ -108,18 +114,21 @@ void get_combined_scattering(
     vec3 uvw0 = vec3((tex_x + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE), uvwz.z, uvwz.w);
     vec3 uvw1 = vec3((tex_x + 1.0 + uvwz.y) / float(SCATTERING_TEXTURE_NU_SIZE), uvwz.z, uvwz.w);
     scattering = vec3(
-        texture(scattering_texture, uvw0) * (1.0 - lerp) +
-        texture(scattering_texture, uvw1) * lerp);
+        texture(sampler3D(scattering_texture, scattering_sampler), uvw0) * (1.0 - lerp) +
+        texture(sampler3D(scattering_texture, scattering_sampler), uvw1) * lerp);
     single_mie_scattering = vec3(
-        texture(single_mie_scattering_texture, uvw0) * (1.0 - lerp) +
-        texture(single_mie_scattering_texture, uvw1) * lerp);
+        texture(sampler3D(single_mie_scattering_texture, single_mie_scattering_sampler), uvw0) * (1.0 - lerp) +
+        texture(sampler3D(single_mie_scattering_texture, single_mie_scattering_sampler), uvw1) * lerp);
 }
 
 void get_sky_radiance_to_point(
     AtmosphereParameters atmosphere,
-    sampler2D transmittance_texture,
-    sampler3D scattering_texture,
-    sampler3D single_mie_scattering_texture,
+    texture2D transmittance_texture,
+    sampler transmittance_sampler,
+    texture3D scattering_texture,
+    sampler scattering_sampler,
+    texture3D single_mie_scattering_texture,
+    sampler single_mie_scattering_sampler,
     vec3 camera,
     vec3 point,
     vec3 sun_direction,
@@ -152,6 +161,7 @@ void get_sky_radiance_to_point(
 
     transmittance = vec3(get_transmittance(
         transmittance_texture,
+        transmittance_sampler,
         r, mu, d,
         ray_r_mu_intersects_ground,
         atmosphere.bottom_radius,
@@ -162,7 +172,9 @@ void get_sky_radiance_to_point(
     get_combined_scattering(
         atmosphere,
         scattering_texture,
+        scattering_sampler,
         single_mie_scattering_texture,
+        single_mie_scattering_sampler,
         ScatterCoord(r, mu, mu_s, nu),
         ray_r_mu_intersects_ground,
         scattering,
@@ -186,7 +198,9 @@ void get_sky_radiance_to_point(
     get_combined_scattering(
         atmosphere,
         scattering_texture,
+        scattering_sampler,
         single_mie_scattering_texture,
+        single_mie_scattering_sampler,
         ScatterCoord(r_p, mu_p, mu_s_p, nu),
         ray_r_mu_intersects_ground,
         scattering_p,
@@ -206,10 +220,14 @@ void get_sky_radiance_to_point(
 
 void compute_ground_radiance(
     AtmosphereParameters atmosphere,
-    sampler2D transmittance_texture,
-    sampler3D scattering_texture,
-    sampler3D single_mie_scattering_texture,
-    sampler2D irradiance_texture,
+    texture2D transmittance_texture,
+    sampler transmittance_sampler,
+    texture3D scattering_texture,
+    sampler scattering_sampler,
+    texture3D single_mie_scattering_texture,
+    sampler single_mie_scattering_sampler,
+    texture2D irradiance_texture,
+    sampler irradiance_sampler,
     vec3 camera,
     vec3 view,
     vec3 sun_direction,
@@ -238,7 +256,9 @@ void compute_ground_radiance(
         get_sun_and_sky_irradiance(
             atmosphere,
             transmittance_texture,
+            transmittance_sampler,
             irradiance_texture,
+            irradiance_sampler,
             intersect,
             normal,
             sun_direction,
@@ -258,8 +278,11 @@ void compute_ground_radiance(
         get_sky_radiance_to_point(
             atmosphere,
             transmittance_texture,
+            transmittance_sampler,
             scattering_texture,
+            scattering_sampler,
             single_mie_scattering_texture,
+            single_mie_scattering_sampler,
             camera,
             intersect,
             sun_direction,
@@ -273,9 +296,12 @@ void compute_ground_radiance(
 
 void get_sky_radiance(
     AtmosphereParameters atmosphere,
-    sampler2D transmittance_texture,
-    sampler3D scattering_texture,
-    sampler3D single_mie_scattering_texture,
+    texture2D transmittance_texture,
+    sampler transmittance_sampler,
+    texture3D scattering_texture,
+    sampler scattering_sampler,
+    texture3D single_mie_scattering_texture,
+    sampler single_mie_scattering_sampler,
     vec3 camera,
     vec3 view,
     vec3 sun_direction,
@@ -311,14 +337,20 @@ void get_sky_radiance(
     transmittance = ray_r_mu_intersects_ground
         ? vec3(0.0)
         : vec3(get_transmittance_to_top_atmosphere_boundary(
-            vec2(r, mu), transmittance_texture, atmosphere.bottom_radius, atmosphere.top_radius));
+            vec2(r, mu),
+            transmittance_texture,
+            transmittance_sampler,
+            atmosphere.bottom_radius,
+            atmosphere.top_radius));
 
     vec3 scattering;
     vec3 single_mie_scattering;
     get_combined_scattering(
         atmosphere,
         scattering_texture,
+        scattering_sampler,
         single_mie_scattering_texture,
+        single_mie_scattering_sampler,
         ScatterCoord(r, mu, mu_s, nu),
         ray_r_mu_intersects_ground,
         scattering,
@@ -330,10 +362,14 @@ void get_sky_radiance(
 
 void compute_sky_radiance(
     AtmosphereParameters atmosphere,
-    sampler2D transmittance_texture,
-    sampler3D scattering_texture,
-    sampler3D single_mie_scattering_texture,
-    sampler2D irradiance_texture,
+    texture2D transmittance_texture,
+    sampler transmittance_sampler,
+    texture3D scattering_texture,
+    sampler scattering_sampler,
+    texture3D single_mie_scattering_texture,
+    sampler single_mie_scattering_sampler,
+    texture2D irradiance_texture,
+    sampler irradiance_sampler,
     vec3 camera,
     vec3 view,
     vec3 sun_direction,
@@ -343,8 +379,11 @@ void compute_sky_radiance(
     get_sky_radiance(
         atmosphere,
         transmittance_texture,
+        transmittance_sampler,
         scattering_texture,
+        scattering_sampler,
         single_mie_scattering_texture,
+        single_mie_scattering_sampler,
         camera,
         view,
         sun_direction,

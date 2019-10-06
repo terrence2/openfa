@@ -14,13 +14,21 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 
+#include <common/include/include_global.glsl>
 #include <buffer/raymarching/include/raymarching_library.glsl>
+#include <buffer/atmosphere/include/common.glsl>
+
 #include <buffer/raymarching/include/descriptorset.glsl>
+#include <buffer/atmosphere/include/descriptorset.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 0) out vec3 v_ray;
+layout(location = 1) out flat vec3 v_camera;
+layout(location = 2) out flat vec3 v_sun_direction;
 
 void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
     v_ray = raymarching_view_ray(position, inv_view_proj[0], inv_view_proj[1]);
+    v_camera = camera_and_sun[0].xyz;
+    v_sun_direction = camera_and_sun[1].xyz;
+    gl_Position = vec4(position, 0.0, 1.0);
 }

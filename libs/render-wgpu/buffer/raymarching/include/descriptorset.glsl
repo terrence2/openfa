@@ -13,10 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-layout(set = 1, binding = 0) uniform ConstantData {
-    AtmosphereParameters atmosphere;
-} cd;
-layout(set = 1, binding = 1) uniform sampler2D transmittance_texture;
-layout(set = 1, binding = 2) uniform sampler3D scattering_texture;
-layout(set = 1, binding = 3) uniform sampler3D single_mie_scattering_texture;
-layout(set = 1, binding = 4) uniform sampler2D irradiance_texture;
+layout(set = 0, binding = 0) buffer InverseViewProjection {
+    mat4[] inv_view_proj;
+};
+

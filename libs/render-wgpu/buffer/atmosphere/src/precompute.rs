@@ -24,7 +24,7 @@ use log::trace;
 use std::{mem, time::Instant};
 use wgpu;
 
-const DUMP_TRANSMITTANCE: bool = true;
+const DUMP_TRANSMITTANCE: bool = false;
 const DUMP_DIRECT_IRRADIANCE: bool = false;
 const DUMP_SINGLE_RAYLEIGH: bool = false;
 const DUMP_SINGLE_MIE: bool = false;
@@ -34,7 +34,7 @@ const DUMP_SCATTERING_DENSITY: bool = false;
 const DUMP_INDIRECT_IRRADIANCE_DELTA: bool = false;
 const DUMP_INDIRECT_IRRADIANCE_ACC: bool = false;
 const DUMP_MULTIPLE_SCATTERING: bool = false;
-const DUMP_FINAL: bool = true;
+const DUMP_FINAL: bool = false;
 
 const TRANSMITTANCE_TEXTURE_WIDTH: u32 = 256;
 const TRANSMITTANCE_TEXTURE_HEIGHT: u32 = 64;
@@ -795,6 +795,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_TRANSMITTANCE {
             Self::dump_texture(
@@ -891,6 +892,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_DIRECT_IRRADIANCE {
             Self::dump_texture(
@@ -1053,6 +1055,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_SINGLE_RAYLEIGH {
             Self::dump_texture(
@@ -1331,6 +1334,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_SCATTERING_DENSITY {
             Self::dump_texture(
@@ -1538,6 +1542,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_INDIRECT_IRRADIANCE_DELTA {
             Self::dump_texture(
@@ -1721,6 +1726,7 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
 
         if DUMP_MULTIPLE_SCATTERING {
             Self::dump_texture(
@@ -1775,6 +1781,8 @@ impl Precompute {
             extent,
         );
         queue.submit(&[encoder.finish()]);
+        device.poll(true);
+
         staging_buffer.map_read_async(
             0,
             staging_buffer_size,
