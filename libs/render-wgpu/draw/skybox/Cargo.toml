@@ -1,0 +1,25 @@
+[package]
+name = "skybox-wgpu"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[lib]
+doctest = false
+
+[dependencies]
+failure = "^ 0.1.2"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
+camera = { path = "../../../render-shared/common/camera" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+raymarching = { package = "raymarching-wgpu", path = "../../../render-wgpu/buffer/raymarching" }
+stars = { package = "stars-wgpu", path = "../../../render-wgpu/buffer/stars" }
+
+[dev-dependencies]
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+
+[build-dependencies]
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

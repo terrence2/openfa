@@ -15,11 +15,12 @@
 #version 450
 
 #include <common/include/include_global.glsl>
-#include <buffer/raymarching/include/raymarching_library.glsl>
-#include <buffer/atmosphere/include/common.glsl>
+#include <buffer/atmosphere/include/global.glsl>
 
 #include <buffer/raymarching/include/descriptorset.glsl>
 #include <buffer/atmosphere/include/descriptorset.glsl>
+
+#include <buffer/raymarching/include/library.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 0) out vec3 v_ray;

@@ -62,6 +62,7 @@ members = [
         "libs/render-wgpu/common/build-shaders",
         "libs/render-wgpu/common/gpu",
         "libs/render-wgpu/common/input",
+        "libs/render-wgpu/draw/skybox",
         "libs/resource",
         "libs/reverse",
         "libs/sh",

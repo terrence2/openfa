@@ -15,7 +15,7 @@
 #version 450
 
 #include <common/include/include_global.glsl>
-#include <buffer/atmosphere/include/common.glsl>
+#include <buffer/atmosphere/include/global.glsl>
 #include <buffer/atmosphere/include/lut_builder_common.glsl>
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
