@@ -88,7 +88,7 @@ impl AtmosphereBuffer {
                         // transmittance texture
                         wgpu::BindGroupLayoutBinding {
                             binding: 2,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
                                 dimension: wgpu::TextureViewDimension::D2,
@@ -96,13 +96,13 @@ impl AtmosphereBuffer {
                         },
                         wgpu::BindGroupLayoutBinding {
                             binding: 3,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler,
                         },
                         // irradiance texture
                         wgpu::BindGroupLayoutBinding {
                             binding: 4,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
                                 dimension: wgpu::TextureViewDimension::D2,
@@ -110,13 +110,13 @@ impl AtmosphereBuffer {
                         },
                         wgpu::BindGroupLayoutBinding {
                             binding: 5,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler,
                         },
                         // scattering texture
                         wgpu::BindGroupLayoutBinding {
                             binding: 6,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
                                 dimension: wgpu::TextureViewDimension::D3,
@@ -124,13 +124,13 @@ impl AtmosphereBuffer {
                         },
                         wgpu::BindGroupLayoutBinding {
                             binding: 7,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler,
                         },
                         // single mie scattering texture
                         wgpu::BindGroupLayoutBinding {
                             binding: 8,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
                                 dimension: wgpu::TextureViewDimension::D3,
@@ -138,7 +138,7 @@ impl AtmosphereBuffer {
                         },
                         wgpu::BindGroupLayoutBinding {
                             binding: 9,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler,
                         },
                     ],

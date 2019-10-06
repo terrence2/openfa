@@ -93,8 +93,6 @@ fn main() -> Fallible<()> {
 
     let poll_start = Instant::now();
     gpu.device().poll(true);
-    gpu.device().poll(true);
-    gpu.device().poll(true);
     println!("poll time: {:?}", poll_start.elapsed());
     loop {
         let frame_start = Instant::now();
@@ -146,7 +144,6 @@ fn main() -> Fallible<()> {
         }
 
         println!("frame time: {:?}", frame_start.elapsed());
-        break;
     }
     Ok(())
 }
