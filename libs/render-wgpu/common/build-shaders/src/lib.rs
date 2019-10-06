@@ -153,7 +153,6 @@ pub fn build() -> Fallible<()> {
                 .to_str()
                 .expect("a string"),
         );
-        println!("cargo:rerun-if-changed={}", target_path);
         fs::write(&target_path, spirv.as_binary_u8())?;
 
         if env::var("DUMP_SPIRV").unwrap_or_else(|_| "0".to_owned()) == "1" {
@@ -164,7 +163,6 @@ pub fn build() -> Fallible<()> {
                 "main",
                 Some(&options),
             )?;
-            println!("cargo:rerun-if-changed={}.s", target_path);
             fs::write(&format!("{}.s", target_path), spirv_assembly.as_text())?;
         }
     }

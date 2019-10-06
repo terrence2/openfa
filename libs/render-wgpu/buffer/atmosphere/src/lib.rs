@@ -28,7 +28,6 @@ mod precompute;
 use crate::{earth_consts::ATMOSPHERE_PARAMETERS_BUFFER_SIZE, precompute::Precompute};
 use camera::CameraAbstract;
 use failure::Fallible;
-use global_layout::GlobalSets;
 use log::trace;
 use nalgebra::Vector3;
 use std::{mem, time::Instant};
@@ -144,6 +143,38 @@ impl AtmosphereBuffer {
                     ],
                 });
 
+        let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            lod_min_clamp: 0f32,
+            lod_max_clamp: 9_999_999f32,
+            compare_function: wgpu::CompareFunction::Never,
+        });
+
+        let t2descriptor = wgpu::TextureViewDescriptor {
+            format: wgpu::TextureFormat::Rgba32Float,
+            dimension: wgpu::TextureViewDimension::D2,
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            level_count: 1, // mip level
+            base_array_layer: 0,
+            array_layer_count: 1,
+        };
+
+        let t3descriptor = wgpu::TextureViewDescriptor {
+            format: wgpu::TextureFormat::Rgba32Float,
+            dimension: wgpu::TextureViewDimension::D3,
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            level_count: 1, // mip level
+            base_array_layer: 0,
+            array_layer_count: 1,
+        };
+
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &bind_group_layout,
             bindings: &[
@@ -167,132 +198,52 @@ impl AtmosphereBuffer {
                 wgpu::Binding {
                     binding: 2,
                     resource: wgpu::BindingResource::TextureView(
-                        &transmittance_texture.create_view(&wgpu::TextureViewDescriptor {
-                            format: wgpu::TextureFormat::Rgba32Float,
-                            dimension: wgpu::TextureViewDimension::D2,
-                            aspect: wgpu::TextureAspect::All,
-                            base_mip_level: 0,
-                            level_count: 1, // mip level
-                            base_array_layer: 0,
-                            array_layer_count: 1,
-                        }),
+                        &transmittance_texture.create_view(&t2descriptor),
                     ),
                 },
                 wgpu::Binding {
                     binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&gpu.device().create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
                 // irradiance texture
                 wgpu::Binding {
                     binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&irradiance_texture.create_view(
-                        &wgpu::TextureViewDescriptor {
-                            format: wgpu::TextureFormat::Rgba32Float,
-                            dimension: wgpu::TextureViewDimension::D2,
-                            aspect: wgpu::TextureAspect::All,
-                            base_mip_level: 0,
-                            level_count: 1, // mip level
-                            base_array_layer: 0,
-                            array_layer_count: 1,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::TextureView(
+                        &irradiance_texture.create_view(&t2descriptor),
+                    ),
                 },
                 wgpu::Binding {
                     binding: 5,
-                    resource: wgpu::BindingResource::Sampler(&gpu.device().create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
                 // scattering texture
                 wgpu::Binding {
                     binding: 6,
-                    resource: wgpu::BindingResource::TextureView(&scattering_texture.create_view(
-                        &wgpu::TextureViewDescriptor {
-                            format: wgpu::TextureFormat::Rgba32Float,
-                            dimension: wgpu::TextureViewDimension::D3,
-                            aspect: wgpu::TextureAspect::All,
-                            base_mip_level: 0,
-                            level_count: 1, // mip level
-                            base_array_layer: 0,
-                            array_layer_count: 1,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::TextureView(
+                        &scattering_texture.create_view(&t3descriptor),
+                    ),
                 },
                 wgpu::Binding {
                     binding: 7,
-                    resource: wgpu::BindingResource::Sampler(&gpu.device().create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
                 // single mie scattering texture
                 wgpu::Binding {
                     binding: 8,
                     resource: wgpu::BindingResource::TextureView(
-                        &single_mie_scattering_texture.create_view(&wgpu::TextureViewDescriptor {
-                            format: wgpu::TextureFormat::Rgba32Float,
-                            dimension: wgpu::TextureViewDimension::D3,
-                            aspect: wgpu::TextureAspect::All,
-                            base_mip_level: 0,
-                            level_count: 1, // mip level
-                            base_array_layer: 0,
-                            array_layer_count: 1,
-                        }),
+                        &single_mie_scattering_texture.create_view(&t3descriptor),
                     ),
                 },
                 wgpu::Binding {
                     binding: 9,
-                    resource: wgpu::BindingResource::Sampler(&gpu.device().create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&sampler),
                 },
             ],
         });
 
         Ok(Self {
-            bind_group_layout: bind_group_layout,
-            bind_group: bind_group,
+            bind_group_layout,
+            bind_group,
             camera_and_sun_buffer,
             camera_and_sun_buffer_size,
         })

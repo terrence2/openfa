@@ -20,7 +20,6 @@ num-traits = "^ 0.2"
 static_assertions = "^ 1"
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 camera = { path = "../../../render-shared/common/camera" }
-global_layout = { path = "../../../render-vulkano/buffer/global_layout" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]

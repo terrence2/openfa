@@ -21,7 +21,8 @@ use crate::{
 use failure::Fallible;
 use image::{ImageBuffer, Luma, Rgb};
 use log::trace;
-use std::{mem, time::Instant};
+use memmap::MmapOptions;
+use std::{fs, mem, time::Instant};
 use wgpu;
 
 const DUMP_TRANSMITTANCE: bool = false;
@@ -72,16 +73,27 @@ pub struct Precompute {
 
     // Temporary textures.
     delta_irradiance_texture: wgpu::Texture,
+    delta_irradiance_texture_view: wgpu::TextureView,
     delta_rayleigh_scattering_texture: wgpu::Texture,
+    delta_rayleigh_scattering_texture_view: wgpu::TextureView,
     delta_mie_scattering_texture: wgpu::Texture,
+    delta_mie_scattering_texture_view: wgpu::TextureView,
     delta_multiple_scattering_texture: wgpu::Texture,
+    delta_multiple_scattering_texture_view: wgpu::TextureView,
     delta_scattering_density_texture: wgpu::Texture,
+    delta_scattering_density_texture_view: wgpu::TextureView,
 
     // Permanent/accumulator textures.
     transmittance_texture: wgpu::Texture,
+    transmittance_texture_view: wgpu::TextureView,
     scattering_texture: wgpu::Texture,
+    scattering_texture_view: wgpu::TextureView,
     single_mie_scattering_texture: wgpu::Texture,
+    single_mie_scattering_texture_view: wgpu::TextureView,
     irradiance_texture: wgpu::Texture,
+    irradiance_texture_view: wgpu::TextureView,
+
+    sampler_resource: wgpu::Sampler,
 
     params: EarthParameters,
 }
@@ -362,6 +374,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let delta_irradiance_texture_view =
+            delta_irradiance_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D2,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let delta_rayleigh_scattering_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: scattering_extent,
             array_layer_count: 1,
@@ -371,6 +393,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let delta_rayleigh_scattering_texture_view =
+            delta_rayleigh_scattering_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D3,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let delta_mie_scattering_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: scattering_extent,
             array_layer_count: 1,
@@ -380,6 +412,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let delta_mie_scattering_texture_view =
+            delta_mie_scattering_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D3,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let delta_multiple_scattering_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: scattering_extent,
             array_layer_count: 1,
@@ -389,6 +431,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let delta_multiple_scattering_texture_view =
+            delta_multiple_scattering_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D3,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let delta_scattering_density_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: scattering_extent,
             array_layer_count: 1,
@@ -398,6 +450,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let delta_scattering_density_texture_view =
+            delta_scattering_density_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D3,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
 
         let transmittance_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: transmittance_extent,
@@ -408,6 +470,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let transmittance_texture_view =
+            transmittance_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D2,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let scattering_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: scattering_extent,
             array_layer_count: 1,
@@ -417,6 +489,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let scattering_texture_view =
+            scattering_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D3,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let single_mie_scattering_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: scattering_extent,
             array_layer_count: 1,
@@ -426,6 +508,16 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let single_mie_scattering_texture_view =
+            single_mie_scattering_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D3,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
         let irradiance_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: irradiance_extent,
             array_layer_count: 1,
@@ -435,44 +527,28 @@ impl Precompute {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsage::all(),
         });
+        let irradiance_texture_view =
+            irradiance_texture.create_view(&wgpu::TextureViewDescriptor {
+                format: wgpu::TextureFormat::Rgba32Float,
+                dimension: wgpu::TextureViewDimension::D2,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: 1, // mip level
+                base_array_layer: 0,
+                array_layer_count: 1,
+            });
 
-        /*
-        // Initialize all accumulator textures.
-        Self::clear_image(scattering_texture.clone(), window)?
-            .join(Self::clear_image(
-                single_mie_scattering_texture.clone(),
-                window,
-            )?)
-            .join(Self::clear_image(irradiance_texture.clone(), window)?)
-            .then_signal_fence_and_flush()?
-            .wait(None)?;
-
-        Ok(Self {
-            transmittance_dimensions,
-            irradiance_dimensions,
-            scattering_dimensions,
-            sampler: Sampler::new(
-                window.device(),
-                Filter::Linear,
-                Filter::Linear,
-                MipmapMode::Nearest,
-                SamplerAddressMode::ClampToEdge,
-                SamplerAddressMode::ClampToEdge,
-                SamplerAddressMode::ClampToEdge,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-            )?,
-
-            compute_transmittance,
-            compute_direct_irradiance,
-            compute_single_scattering,
-            compute_scattering_density,
-            compute_indirect_irradiance,
-            compute_multiple_scattering,
-        })
-        */
+        let sampler_resource = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            lod_min_clamp: 0f32,
+            lod_max_clamp: 9_999_999f32,
+            compare_function: wgpu::CompareFunction::Never,
+        });
 
         Ok(Self {
             build_transmittance_lut_bind_group_layout,
@@ -493,16 +569,26 @@ impl Precompute {
             scattering_extent,
 
             delta_irradiance_texture,
+            delta_irradiance_texture_view,
             delta_rayleigh_scattering_texture,
+            delta_rayleigh_scattering_texture_view,
             delta_mie_scattering_texture,
+            delta_mie_scattering_texture_view,
             delta_multiple_scattering_texture,
+            delta_multiple_scattering_texture_view,
             delta_scattering_density_texture,
+            delta_scattering_density_texture_view,
 
             transmittance_texture,
+            transmittance_texture_view,
             scattering_texture,
+            scattering_texture_view,
             single_mie_scattering_texture,
+            single_mie_scattering_texture_view,
             irradiance_texture,
+            irradiance_texture_view,
 
+            sampler_resource,
             params,
         })
     }
@@ -521,12 +607,10 @@ impl Precompute {
             .create_buffer_mapped::<AtmosphereParameters>(1, wgpu::BufferUsage::UNIFORM)
             .fill_from_slice(&[srgb_atmosphere]);
 
-        /*
-        if self.load_cache(window).is_ok() {
+        if self.load_cache(device, queue).is_ok() {
             trace!("Using from cached atmosphere parameters");
             return Ok(srgb_atmosphere_buffer);
         }
-        */
         trace!("Building atmosphere parameters");
 
         let num_iterations = (num_precomputed_wavelengths + 3) / 4;
@@ -554,6 +638,8 @@ impl Precompute {
                 l3[0], l3[1], l3[2], 0f64,
             ];
             self.precompute_one_step(lambdas, num_scattering_passes, rad_to_lum, device, queue)?;
+
+            device.poll(false);
         }
 
         // Rebuild transmittance at RGB instead of high UV.
@@ -595,7 +681,7 @@ impl Precompute {
             );
         }
 
-        // self.update_cache(window)?;
+        self.update_cache(device, queue)?;
         Ok(srgb_atmosphere_buffer)
     }
 
@@ -765,19 +851,7 @@ impl Precompute {
                 },
                 wgpu::Binding {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .transmittance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.transmittance_texture_view),
                 },
             ],
         });
@@ -795,7 +869,6 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         if DUMP_TRANSMITTANCE {
             Self::dump_texture(
@@ -830,50 +903,16 @@ impl Precompute {
                 },
                 wgpu::Binding {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .transmittance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.transmittance_texture_view),
                 },
                 wgpu::Binding {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 3,
                     resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .delta_irradiance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
+                        &self.delta_irradiance_texture_view,
                     ),
                 },
             ],
@@ -892,7 +931,6 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         if DUMP_DIRECT_IRRADIANCE {
             Self::dump_texture(
@@ -938,35 +976,11 @@ impl Precompute {
                 },
                 wgpu::Binding {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .transmittance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.transmittance_texture_view),
                 },
                 wgpu::Binding {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 3,
@@ -978,65 +992,23 @@ impl Precompute {
                 wgpu::Binding {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_rayleigh_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_rayleigh_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 5,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_mie_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_mie_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 6,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .scattering_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.scattering_texture_view),
                 },
                 wgpu::Binding {
                     binding: 7,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.single_mie_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.single_mie_scattering_texture_view,
                     ),
                 },
             ],
@@ -1055,7 +1027,6 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         if DUMP_SINGLE_RAYLEIGH {
             Self::dump_texture(
@@ -1144,178 +1115,56 @@ impl Precompute {
                 },
                 wgpu::Binding {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .transmittance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.transmittance_texture_view),
                 },
                 wgpu::Binding {
                     binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_rayleigh_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_rayleigh_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 5,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 6,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_mie_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_mie_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 7,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 8,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_multiple_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_multiple_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 9,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 10,
                     resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .delta_irradiance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
+                        &self.delta_irradiance_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 11,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 12,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_scattering_density_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_scattering_density_texture_view,
                     ),
                 },
             ],
@@ -1334,7 +1183,6 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         if DUMP_SCATTERING_DENSITY {
             Self::dump_texture(
@@ -1401,130 +1249,42 @@ impl Precompute {
                 wgpu::Binding {
                     binding: 3,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_rayleigh_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_rayleigh_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 5,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_mie_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_mie_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 6,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 7,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_multiple_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_multiple_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 8,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 9,
                     resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .delta_irradiance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
+                        &self.delta_irradiance_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 10,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .irradiance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.irradiance_texture_view),
                 },
             ],
         });
@@ -1542,7 +1302,6 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         if DUMP_INDIRECT_IRRADIANCE_DELTA {
             Self::dump_texture(
@@ -1616,99 +1375,31 @@ impl Precompute {
                 },
                 wgpu::Binding {
                     binding: 3,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .transmittance_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D2,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.transmittance_texture_view),
                 },
                 wgpu::Binding {
                     binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 5,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_scattering_density_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_scattering_density_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 6,
-                    resource: wgpu::BindingResource::Sampler(&device.create_sampler(
-                        &wgpu::SamplerDescriptor {
-                            address_mode_u: wgpu::AddressMode::ClampToEdge,
-                            address_mode_v: wgpu::AddressMode::ClampToEdge,
-                            address_mode_w: wgpu::AddressMode::ClampToEdge,
-                            mag_filter: wgpu::FilterMode::Linear,
-                            min_filter: wgpu::FilterMode::Linear,
-                            mipmap_filter: wgpu::FilterMode::Linear,
-                            lod_min_clamp: 0f32,
-                            lod_max_clamp: 9_999_999f32,
-                            compare_function: wgpu::CompareFunction::Never,
-                        },
-                    )),
+                    resource: wgpu::BindingResource::Sampler(&self.sampler_resource),
                 },
                 wgpu::Binding {
                     binding: 7,
                     resource: wgpu::BindingResource::TextureView(
-                        &self.delta_multiple_scattering_texture.create_view(
-                            &wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            },
-                        ),
+                        &self.delta_multiple_scattering_texture_view,
                     ),
                 },
                 wgpu::Binding {
                     binding: 8,
-                    resource: wgpu::BindingResource::TextureView(
-                        &self
-                            .scattering_texture
-                            .create_view(&wgpu::TextureViewDescriptor {
-                                format: wgpu::TextureFormat::Rgba32Float,
-                                dimension: wgpu::TextureViewDimension::D3,
-                                aspect: wgpu::TextureAspect::All,
-                                base_mip_level: 0,
-                                level_count: 1, // mip level
-                                base_array_layer: 0,
-                                array_layer_count: 1,
-                            }),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&self.scattering_texture_view),
                 },
             ],
         });
@@ -1726,7 +1417,6 @@ impl Precompute {
             );
         }
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         if DUMP_MULTIPLE_SCATTERING {
             Self::dump_texture(
@@ -1781,7 +1471,6 @@ impl Precompute {
             extent,
         );
         queue.submit(&[encoder.finish()]);
-        device.poll(true);
 
         staging_buffer.map_read_async(
             0,
@@ -1888,6 +1577,231 @@ impl Precompute {
             }
         }
     }
+
+    fn update_cache(&self, device: &wgpu::Device, queue: &mut wgpu::Queue) -> Fallible<()> {
+        let _ = fs::create_dir(".__openfa_cache__");
+
+        let transmittance_buf_size =
+            u64::from(self.transmittance_extent.width * self.transmittance_extent.height * 16);
+        let irradiance_buf_size =
+            u64::from(self.irradiance_extent.width * self.irradiance_extent.height * 16);
+        let scattering_buf_size = u64::from(
+            self.scattering_extent.width
+                * self.scattering_extent.height
+                * self.scattering_extent.depth
+                * 16,
+        );
+
+        let transmittance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: transmittance_buf_size,
+            usage: wgpu::BufferUsage::all(),
+        });
+        let irradiance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: irradiance_buf_size,
+            usage: wgpu::BufferUsage::all(),
+        });
+        let scattering_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: scattering_buf_size,
+            usage: wgpu::BufferUsage::all(),
+        });
+        let single_mie_scattering_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            size: scattering_buf_size,
+            usage: wgpu::BufferUsage::all(),
+        });
+
+        fn mk_copy(
+            encoder: &mut wgpu::CommandEncoder,
+            texture: &wgpu::Texture,
+            buffer: &wgpu::Buffer,
+            extent: wgpu::Extent3d,
+        ) {
+            encoder.copy_texture_to_buffer(
+                wgpu::TextureCopyView {
+                    texture,
+                    mip_level: 0,
+                    array_layer: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                wgpu::BufferCopyView {
+                    buffer,
+                    offset: 0,
+                    row_pitch: extent.width * 16,
+                    image_height: extent.height,
+                },
+                extent,
+            );
+        }
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        mk_copy(
+            &mut encoder,
+            &self.transmittance_texture,
+            &transmittance_buffer,
+            self.transmittance_extent,
+        );
+        mk_copy(
+            &mut encoder,
+            &self.irradiance_texture,
+            &irradiance_buffer,
+            self.irradiance_extent,
+        );
+        mk_copy(
+            &mut encoder,
+            &self.scattering_texture,
+            &scattering_buffer,
+            self.scattering_extent,
+        );
+        mk_copy(
+            &mut encoder,
+            &self.single_mie_scattering_texture,
+            &single_mie_scattering_buffer,
+            self.scattering_extent,
+        );
+        queue.submit(&[encoder.finish()]);
+        device.poll(true);
+
+        transmittance_buffer.map_read_async(
+            0,
+            transmittance_buf_size,
+            move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
+                if let Ok(mapping) = result {
+                    fs::write(
+                        ".__openfa_cache__/solar_transmittance.wgpu.bin",
+                        &mapping.data,
+                    )
+                    .unwrap();
+                }
+            },
+        );
+        irradiance_buffer.map_read_async(
+            0,
+            irradiance_buf_size,
+            move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
+                if let Ok(mapping) = result {
+                    fs::write(".__openfa_cache__/solar_irradiance.wgpu.bin", &mapping.data)
+                        .unwrap();
+                }
+            },
+        );
+        scattering_buffer.map_read_async(
+            0,
+            scattering_buf_size,
+            move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
+                if let Ok(mapping) = result {
+                    fs::write(".__openfa_cache__/solar_scattering.wgpu.bin", &mapping.data)
+                        .unwrap();
+                }
+            },
+        );
+        single_mie_scattering_buffer.map_read_async(
+            0,
+            scattering_buf_size,
+            move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
+                if let Ok(mapping) = result {
+                    fs::write(
+                        ".__openfa_cache__/solar_single_mie_scattering.wgpu.bin",
+                        &mapping.data,
+                    )
+                    .unwrap();
+                }
+            },
+        );
+
+        Ok(())
+    }
+
+    fn load_cache(&self, device: &wgpu::Device, queue: &mut wgpu::Queue) -> Fallible<()> {
+        let transmittance_buf_size =
+            u64::from(self.transmittance_extent.width * self.transmittance_extent.height * 16);
+        let irradiance_buf_size =
+            u64::from(self.irradiance_extent.width * self.irradiance_extent.height * 16);
+        let scattering_buf_size = u64::from(
+            self.scattering_extent.width
+                * self.scattering_extent.height
+                * self.scattering_extent.depth
+                * 16,
+        );
+
+        let transmittance_fp = fs::File::open(".__openfa_cache__/solar_transmittance.wgpu.bin")?;
+        let irradiance_fp = fs::File::open(".__openfa_cache__/solar_irradiance.wgpu.bin")?;
+        let scattering_fp = fs::File::open(".__openfa_cache__/solar_scattering.wgpu.bin")?;
+        let single_mie_scattering_fp =
+            fs::File::open(".__openfa_cache__/solar_single_mie_scattering.wgpu.bin")?;
+
+        let transmittance_map = unsafe { MmapOptions::new().map(&transmittance_fp) }?;
+        let transmittance_buffer = device
+            .create_buffer_mapped(transmittance_buf_size as usize, wgpu::BufferUsage::all())
+            .fill_from_slice(&transmittance_map);
+
+        let irradiance_map = unsafe { MmapOptions::new().map(&irradiance_fp) }?;
+        let irradiance_buffer = device
+            .create_buffer_mapped(irradiance_buf_size as usize, wgpu::BufferUsage::all())
+            .fill_from_slice(&irradiance_map);
+
+        let scattering_map = unsafe { MmapOptions::new().map(&scattering_fp) }?;
+        let scattering_buffer = device
+            .create_buffer_mapped(scattering_buf_size as usize, wgpu::BufferUsage::all())
+            .fill_from_slice(&scattering_map);
+
+        let single_mie_scattering_map =
+            unsafe { MmapOptions::new().map(&single_mie_scattering_fp) }?;
+        let single_mie_scattering_buffer = device
+            .create_buffer_mapped(scattering_buf_size as usize, wgpu::BufferUsage::all())
+            .fill_from_slice(&single_mie_scattering_map);
+
+        fn mk_copy(
+            encoder: &mut wgpu::CommandEncoder,
+            buffer: &wgpu::Buffer,
+            texture: &wgpu::Texture,
+            extent: wgpu::Extent3d,
+        ) {
+            encoder.copy_buffer_to_texture(
+                wgpu::BufferCopyView {
+                    buffer,
+                    offset: 0,
+                    row_pitch: extent.width * 16,
+                    image_height: extent.height,
+                },
+                wgpu::TextureCopyView {
+                    texture,
+                    mip_level: 0,
+                    array_layer: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                extent,
+            );
+        }
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        mk_copy(
+            &mut encoder,
+            &transmittance_buffer,
+            &self.transmittance_texture,
+            self.transmittance_extent,
+        );
+        mk_copy(
+            &mut encoder,
+            &irradiance_buffer,
+            &self.irradiance_texture,
+            self.irradiance_extent,
+        );
+        mk_copy(
+            &mut encoder,
+            &scattering_buffer,
+            &self.scattering_texture,
+            self.scattering_extent,
+        );
+        mk_copy(
+            &mut encoder,
+            &single_mie_scattering_buffer,
+            &self.single_mie_scattering_texture,
+            self.scattering_extent,
+        );
+        queue.submit(&[encoder.finish()]);
+        device.poll(true);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1897,15 +1811,15 @@ mod test {
 
     #[test]
     fn test_create() -> Fallible<()> {
-        let mut input = input::InputSystem::new(vec![])?;
+        let input = input::InputSystem::new(vec![])?;
         let mut gpu = gpu::GPU::new(&input, Default::default())?;
         let precompute_start = Instant::now();
         let (
-            atmosphere_params_buffer,
-            transmittance_texture,
-            irradiance_texture,
-            scattering_texture,
-            single_mie_scattering_texture,
+            _atmosphere_params_buffer,
+            _transmittance_texture,
+            _irradiance_texture,
+            _scattering_texture,
+            _single_mie_scattering_texture,
         ) = Precompute::precompute(40, 4, &mut gpu)?;
         let precompute_time = precompute_start.elapsed();
         println!(
@@ -1916,783 +1830,3 @@ mod test {
         Ok(())
     }
 }
-
-/*
-use crate::{
-    buffers,
-    colorspace::{wavelength_to_srgb, MAX_LAMBDA, MIN_LAMBDA},
-    earth_consts::{EarthParameters, RGB_LAMBDAS},
-};
-use failure::{bail, ensure, Fallible};
-use image::{ImageBuffer, Luma, Rgb};
-use log::trace;
-use memmap::MmapOptions;
-use std::{fs, ops::DerefMut, sync::Arc, time::Instant};
-use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBuffer},
-    descriptor::descriptor_set::PersistentDescriptorSet,
-    format::Format,
-    image::{Dimensions, ImageLayout, ImageUsage, ImmutableImage, MipmapsCount, StorageImage},
-    pipeline::{ComputePipeline, ComputePipelineAbstract},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
-    sync::GpuFuture,
-};
-use window::GraphicsWindow;
-
-const DUMP_TRANSMITTANCE: bool = false;
-const DUMP_DIRECT_IRRADIANCE: bool = false;
-const DUMP_SINGLE_RAYLEIGH: bool = false;
-const DUMP_SINGLE_MIE: bool = false;
-const DUMP_SINGLE_ACC: bool = false;
-const DUMP_SINGLE_MIE_ACC: bool = false;
-const DUMP_SCATTERING_DENSITY: bool = false;
-const DUMP_INDIRECT_IRRADIANCE_DELTA: bool = false;
-const DUMP_INDIRECT_IRRADIANCE_ACC: bool = false;
-const DUMP_MULTIPLE_SCATTERING: bool = false;
-const DUMP_FINAL: bool = false;
-
-const TRANSMITTANCE_TEXTURE_WIDTH: u32 = 256;
-const TRANSMITTANCE_TEXTURE_HEIGHT: u32 = 64;
-
-const SCATTERING_TEXTURE_R_SIZE: u32 = 32;
-const SCATTERING_TEXTURE_MU_SIZE: u32 = 128;
-const SCATTERING_TEXTURE_MU_S_SIZE: u32 = 32;
-const SCATTERING_TEXTURE_NU_SIZE: u32 = 8;
-
-const SCATTERING_TEXTURE_WIDTH: u32 = SCATTERING_TEXTURE_NU_SIZE * SCATTERING_TEXTURE_MU_S_SIZE;
-const SCATTERING_TEXTURE_HEIGHT: u32 = SCATTERING_TEXTURE_MU_SIZE;
-const SCATTERING_TEXTURE_DEPTH: u32 = SCATTERING_TEXTURE_R_SIZE;
-
-const IRRADIANCE_TEXTURE_WIDTH: u32 = 64;
-const IRRADIANCE_TEXTURE_HEIGHT: u32 = 16;
-
-// Temp storage for stuff as we pre-compute the textures we need for fast rendering.
-pub struct Precompute {
-    transmittance_dimensions: Dimensions,
-    irradiance_dimensions: Dimensions,
-    scattering_dimensions: Dimensions,
-    sampler: Arc<Sampler>,
-
-    // Shaders.
-    compute_transmittance: Arc<dyn ComputePipelineAbstract + Send + Sync>,
-    compute_direct_irradiance: Arc<dyn ComputePipelineAbstract + Send + Sync>,
-    compute_single_scattering: Arc<dyn ComputePipelineAbstract + Send + Sync>,
-    compute_scattering_density: Arc<dyn ComputePipelineAbstract + Send + Sync>,
-    compute_indirect_irradiance: Arc<dyn ComputePipelineAbstract + Send + Sync>,
-    compute_multiple_scattering: Arc<dyn ComputePipelineAbstract + Send + Sync>,
-
-    // Temporary textures.
-    delta_irradiance_texture: Arc<StorageImage<Format>>,
-    delta_rayleigh_scattering_texture: Arc<StorageImage<Format>>,
-    delta_mie_scattering_texture: Arc<StorageImage<Format>>,
-    delta_multiple_scattering_texture: Arc<StorageImage<Format>>,
-    delta_scattering_density_texture: Arc<StorageImage<Format>>,
-
-    // Permanent/accumulator textures.
-    transmittance_texture: Arc<StorageImage<Format>>,
-    scattering_texture: Arc<StorageImage<Format>>,
-    single_mie_scattering_texture: Arc<StorageImage<Format>>,
-    irradiance_texture: Arc<StorageImage<Format>>,
-
-    params: EarthParameters,
-}
-
-
-
-
-mod compute_multiple_scattering_shader {
-    vulkano_shaders::shader! {
-    ty: "compute",
-    include: ["./libs/render-vulkano"],
-    src: "
-        #version 450
-        #include <common/include/include_global.glsl>
-        #include <buffer/atmosphere/src/lut_multiple_scattering_builder.glsl>
-
-        layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
-        layout(push_constant) uniform PushConstantData {
-            mat4 rad_to_lum;
-            uint scattering_order;
-        } pc;
-        layout(binding = 0) uniform Data1 { AtmosphereParameters atmosphere; } data1;
-        layout(binding = 1) uniform sampler2D transmittance_texture;
-        layout(binding = 2) uniform sampler3D delta_scattering_density_texture; // density_lambda;
-        layout(binding = 3, rgba8) uniform writeonly image3D delta_multiple_scattering_texture; // scattering_lambda;
-        layout(binding = 4, rgba8) uniform image3D scattering_texture;
-
-        void main() {
-            ScatterCoord sc;
-            vec4 delta_multiple_scattering;
-            compute_multiple_scattering_program(
-                gl_GlobalInvocationID.xyz + vec3(0.5, 0.5, 0.5),
-                data1.atmosphere,
-                pc.scattering_order,
-                transmittance_texture,
-                delta_scattering_density_texture,
-                delta_multiple_scattering_texture,
-                sc,
-                delta_multiple_scattering
-            );
-
-            vec4 scattering = vec4(
-                  vec3(pc.rad_to_lum * delta_multiple_scattering) / rayleigh_phase_function(sc.nu),
-                  0.0);
-            vec4 prior_scattering = imageLoad(
-                scattering_texture,
-                ivec3(gl_GlobalInvocationID.xyz)
-            );
-            imageStore(
-                scattering_texture,
-                ivec3(gl_GlobalInvocationID.xyz),
-                prior_scattering + scattering
-            );
-        }
-        "
-    }
-}
-
-impl Precompute {
-    fn compute_multiple_scattering_at(
-        &self,
-        lambdas: [f64; 4],
-        scattering_order: usize,
-        rad_to_lum: [[f32; 4]; 4],
-        window: &GraphicsWindow,
-        atmosphere_params_buffer: Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
-    ) -> Fallible<()> {
-        let pds = Arc::new(
-            PersistentDescriptorSet::start(self.compute_multiple_scattering.clone(), 0)
-                .add_buffer(atmosphere_params_buffer)?
-                .add_sampled_image(self.transmittance_texture.clone(), self.sampler.clone())?
-                .add_sampled_image(
-                    self.delta_scattering_density_texture.clone(),
-                    self.sampler.clone(),
-                )?
-                .add_image(self.delta_multiple_scattering_texture.clone())?
-                .add_image(self.scattering_texture.clone())?
-                .build()?,
-        );
-
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .dispatch(
-                    [
-                        self.scattering_dimensions.width() / 8,
-                        self.scattering_dimensions.height() / 8,
-                        self.scattering_dimensions.depth() / 8,
-                    ],
-                    self.compute_multiple_scattering.clone(),
-                    pds,
-                    compute_multiple_scattering_shader::ty::PushConstantData {
-                        rad_to_lum,
-                        scattering_order: scattering_order as u32,
-                    },
-                )?
-                .build()?;
-
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-
-        if DUMP_MULTIPLE_SCATTERING {
-            let path = format!(
-                "dump/atmosphere/delta-multiple-scattering-@{}-{}-{}-{}",
-                scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
-            );
-            Self::dump_3d(
-                &path,
-                self.delta_multiple_scattering_texture.clone(),
-                window,
-            )?;
-            let path = format!(
-                "dump/atmosphere/multiple-scattering-@{}-{}-{}-{}",
-                scattering_order, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
-            );
-            Self::dump_3d(&path, self.scattering_texture.clone(), window)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Precompute {
-    pub fn precompute(
-        num_precomputed_wavelengths: usize,
-        num_scattering_passes: usize,
-        window: &GraphicsWindow,
-    ) -> Fallible<(
-        Arc<CpuAccessibleBuffer<buffers::ty::AtmosphereParameters>>,
-        Arc<ImmutableImage<Format>>,
-        Arc<ImmutableImage<Format>>,
-        Arc<ImmutableImage<Format>>,
-        Arc<ImmutableImage<Format>>,
-    )> {
-        let pc = Self::new(window)?;
-
-        let srgb_atmosphere_buffer =
-            pc.build_textures(num_precomputed_wavelengths, num_scattering_passes, window)?;
-
-        let usage = ImageUsage {
-            transfer_destination: true,
-            sampled: true,
-            ..ImageUsage::none()
-        };
-
-        let (read_transmittance_texture, upload_transmittance_texture) =
-            ImmutableImage::uninitialized(
-                window.device(),
-                pc.transmittance_dimensions,
-                Format::R32G32B32A32Sfloat,
-                MipmapsCount::One,
-                usage,
-                ImageLayout::TransferDstOptimal,
-                Some(window.queue().family()),
-            )?;
-        let (read_scattering_texture, upload_scattering_texture) = ImmutableImage::uninitialized(
-            window.device(),
-            pc.scattering_dimensions,
-            Format::R32G32B32A32Sfloat,
-            MipmapsCount::One,
-            usage,
-            ImageLayout::TransferDstOptimal,
-            Some(window.queue().family()),
-        )?;
-        let (read_single_mie_scattering_texture, upload_single_mie_scattering_texture) =
-            ImmutableImage::uninitialized(
-                window.device(),
-                pc.scattering_dimensions,
-                Format::R32G32B32A32Sfloat,
-                MipmapsCount::One,
-                usage,
-                ImageLayout::TransferDstOptimal,
-                Some(window.queue().family()),
-            )?;
-        let (read_irradiance_texture, upload_irradiance_texture) = ImmutableImage::uninitialized(
-            window.device(),
-            pc.irradiance_dimensions,
-            Format::R32G32B32A32Sfloat,
-            MipmapsCount::One,
-            usage,
-            ImageLayout::TransferDstOptimal,
-            Some(window.queue().family()),
-        )?;
-
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_image(
-                    pc.transmittance_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_transmittance_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        pc.transmittance_dimensions.width(),
-                        pc.transmittance_dimensions.height(),
-                        1,
-                    ],
-                    1,
-                )?
-                .copy_image(
-                    pc.scattering_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_scattering_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        pc.scattering_dimensions.width(),
-                        pc.scattering_dimensions.height(),
-                        pc.scattering_dimensions.depth(),
-                    ],
-                    1,
-                )?
-                .copy_image(
-                    pc.single_mie_scattering_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_single_mie_scattering_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        pc.scattering_dimensions.width(),
-                        pc.scattering_dimensions.height(),
-                        pc.scattering_dimensions.depth(),
-                    ],
-                    1,
-                )?
-                .copy_image(
-                    pc.irradiance_texture.clone(),
-                    [0, 0, 0],
-                    0,
-                    0,
-                    upload_irradiance_texture,
-                    [0, 0, 0],
-                    0,
-                    0,
-                    [
-                        pc.irradiance_dimensions.width(),
-                        pc.irradiance_dimensions.height(),
-                        1,
-                    ],
-                    1,
-                )?
-                .build()?;
-
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-
-        Ok((
-            srgb_atmosphere_buffer,
-            read_transmittance_texture,
-            read_scattering_texture,
-            read_single_mie_scattering_texture,
-            read_irradiance_texture,
-        ))
-    }
-
-    fn update_cache(&self, window: &GraphicsWindow) -> Fallible<()> {
-        let _ = fs::create_dir(".__openfa_cache__");
-
-        let transmittance_buf_size = self.transmittance_dimensions.width() as usize
-            * self.transmittance_dimensions.height() as usize
-            * 16;
-        let irradiance_buf_size = self.irradiance_dimensions.width() as usize
-            * self.irradiance_dimensions.height() as usize
-            * 16;
-        let scattering_buf_size = self.scattering_dimensions.width() as usize
-            * self.scattering_dimensions.height() as usize
-            * self.scattering_dimensions.depth() as usize
-            * 16;
-        let transmittance_cpu_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..transmittance_buf_size).map(|_| 0u8),
-        )?;
-        let irradiance_cpu_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..irradiance_buf_size).map(|_| 0u8),
-        )?;
-        let scattering_cpu_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..scattering_buf_size).map(|_| 0u8),
-        )?;
-        let single_mie_scattering_cpu_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..scattering_buf_size).map(|_| 0u8),
-        )?;
-
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_image_to_buffer(
-                    self.transmittance_texture.clone(),
-                    transmittance_cpu_buffer.clone(),
-                )?
-                .copy_image_to_buffer(
-                    self.irradiance_texture.clone(),
-                    irradiance_cpu_buffer.clone(),
-                )?
-                .copy_image_to_buffer(
-                    self.scattering_texture.clone(),
-                    scattering_cpu_buffer.clone(),
-                )?
-                .copy_image_to_buffer(
-                    self.single_mie_scattering_texture.clone(),
-                    single_mie_scattering_cpu_buffer.clone(),
-                )?
-                .build()?;
-
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-
-        fs::write(
-            ".__openfa_cache__/solar_transmittance.bin",
-            &*transmittance_cpu_buffer.read()?,
-        )?;
-        fs::write(
-            ".__openfa_cache__/solar_irradiance.bin",
-            &*irradiance_cpu_buffer.read()?,
-        )?;
-        fs::write(
-            ".__openfa_cache__/solar_scattering.bin",
-            &*scattering_cpu_buffer.read()?,
-        )?;
-        fs::write(
-            ".__openfa_cache__/solar_single_mie_scattering.bin",
-            &*single_mie_scattering_cpu_buffer.read()?,
-        )?;
-
-        Ok(())
-    }
-
-    fn load_cache(&self, window: &GraphicsWindow) -> Fallible<()> {
-        let transmittance_buf_size = self.transmittance_dimensions.width() as usize
-            * self.transmittance_dimensions.height() as usize
-            * 16;
-        let irradiance_buf_size = self.irradiance_dimensions.width() as usize
-            * self.irradiance_dimensions.height() as usize
-            * 16;
-        let scattering_buf_size = self.scattering_dimensions.width() as usize
-            * self.scattering_dimensions.height() as usize
-            * self.scattering_dimensions.depth() as usize
-            * 16;
-
-        let transmittance_fp = fs::File::open(".__openfa_cache__/solar_transmittance.bin")?;
-        let irradiance_fp = fs::File::open(".__openfa_cache__/solar_irradiance.bin")?;
-        let scattering_fp = fs::File::open(".__openfa_cache__/solar_scattering.bin")?;
-        let single_mie_scattering_fp =
-            fs::File::open(".__openfa_cache__/solar_single_mie_scattering.bin")?;
-
-        let transmittance_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
-            CpuAccessibleBuffer::raw(
-                window.device(),
-                transmittance_buf_size,
-                BufferUsage::all(),
-                vec![window.queue().family()],
-            )?
-        };
-        let irradiance_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
-            CpuAccessibleBuffer::raw(
-                window.device(),
-                irradiance_buf_size,
-                BufferUsage::all(),
-                vec![window.queue().family()],
-            )?
-        };
-        let scattering_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
-            CpuAccessibleBuffer::raw(
-                window.device(),
-                scattering_buf_size,
-                BufferUsage::all(),
-                vec![window.queue().family()],
-            )?
-        };
-        let single_mie_scattering_cpu_buffer: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
-            CpuAccessibleBuffer::raw(
-                window.device(),
-                scattering_buf_size,
-                BufferUsage::all(),
-                vec![window.queue().family()],
-            )?
-        };
-        unsafe {
-            let transmittance_tgt: *mut u8 =
-                transmittance_cpu_buffer.write()?.deref_mut().as_mut_ptr();
-            let transmittance_map = MmapOptions::new().map(&transmittance_fp)?;
-            ensure!(
-                transmittance_map.len() == transmittance_buf_size,
-                "transmittance cache size mismatch"
-            );
-            std::ptr::copy_nonoverlapping(
-                transmittance_map.as_ptr(),
-                transmittance_tgt,
-                transmittance_buf_size,
-            );
-
-            let irradiance_tgt: *mut u8 = irradiance_cpu_buffer.write()?.deref_mut().as_mut_ptr();
-            let irradiance_map = MmapOptions::new().map(&irradiance_fp)?;
-            ensure!(
-                irradiance_map.len() == irradiance_buf_size,
-                "irradiance cache size mismatch"
-            );
-            std::ptr::copy_nonoverlapping(
-                irradiance_map.as_ptr(),
-                irradiance_tgt,
-                irradiance_buf_size,
-            );
-
-            let scattering_tgt: *mut u8 = scattering_cpu_buffer.write()?.deref_mut().as_mut_ptr();
-            let scattering_map = MmapOptions::new().map(&scattering_fp)?;
-            ensure!(
-                scattering_map.len() == scattering_buf_size,
-                "scattering cache size mismatch"
-            );
-            std::ptr::copy_nonoverlapping(
-                scattering_map.as_ptr(),
-                scattering_tgt,
-                scattering_buf_size,
-            );
-
-            let single_mie_scattering_tgt: *mut u8 = single_mie_scattering_cpu_buffer
-                .write()?
-                .deref_mut()
-                .as_mut_ptr();
-            let single_mie_scattering_map = MmapOptions::new().map(&single_mie_scattering_fp)?;
-            ensure!(
-                single_mie_scattering_map.len() == scattering_buf_size,
-                "single_mie_scattering cache size mismatch"
-            );
-            std::ptr::copy_nonoverlapping(
-                single_mie_scattering_map.as_ptr(),
-                single_mie_scattering_tgt,
-                scattering_buf_size,
-            );
-        }
-
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_buffer_to_image(
-                    transmittance_cpu_buffer.clone(),
-                    self.transmittance_texture.clone(),
-                )?
-                .copy_buffer_to_image(
-                    irradiance_cpu_buffer.clone(),
-                    self.irradiance_texture.clone(),
-                )?
-                .copy_buffer_to_image(
-                    scattering_cpu_buffer.clone(),
-                    self.scattering_texture.clone(),
-                )?
-                .copy_buffer_to_image(
-                    single_mie_scattering_cpu_buffer.clone(),
-                    self.single_mie_scattering_texture.clone(),
-                )?
-                .build()?;
-
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-
-        Ok(())
-    }
-
-    fn show_range(buf: &[f32], path: &str) {
-        use num_traits::float::Float;
-        let mut minf = f32::max_value();
-        let mut maxf = f32::min_value();
-        for v in buf {
-            if *v > maxf {
-                maxf = *v;
-            }
-            if *v < minf {
-                minf = *v;
-            }
-        }
-        println!("RANGE: {} -> {} in {}", minf, maxf, path);
-    }
-
-    fn split_pixels(src: &[f32], dim: Dimensions) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
-        let mut p0 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
-        let mut p1 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
-        let mut p2 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
-        let mut p3 = Vec::with_capacity(dim.width() as usize * dim.height() as usize);
-        const WHITE_POINT_R: f32 = 1.082_414f32;
-        const WHITE_POINT_G: f32 = 0.967_556f32;
-        const WHITE_POINT_B: f32 = 0.950_030f32;
-        const WHITE_POINT_A: f32 = 1.0;
-        const EXPOSURE: f32 = 683f32 * 0.0001f32;
-        for i in 0usize..(dim.width() * dim.height() * dim.depth()) as usize {
-            let r0 = src[4 * i];
-            let g0 = src[4 * i + 1];
-            let b0 = src[4 * i + 2];
-            let a0 = src[4 * i + 3];
-
-            let mut r1 = (1.0 - (-r0 / WHITE_POINT_R * EXPOSURE).exp()).powf(1.0 / 2.2);
-            let mut g1 = (1.0 - (-g0 / WHITE_POINT_G * EXPOSURE).exp()).powf(1.0 / 2.2);
-            let mut b1 = (1.0 - (-b0 / WHITE_POINT_B * EXPOSURE).exp()).powf(1.0 / 2.2);
-            let mut a1 = (1.0 - (-a0 / WHITE_POINT_A * EXPOSURE).exp()).powf(1.0 / 2.2);
-
-            if r1.is_nan() {
-                r1 = 0f32;
-            }
-            if g1.is_nan() {
-                g1 = 0f32;
-            }
-            if b1.is_nan() {
-                b1 = 0f32;
-            }
-            if a1.is_nan() {
-                a1 = 0f32;
-            }
-
-            assert!(r1 >= 0.0 && r1 <= 1.0);
-            assert!(g1 >= 0.0 && g1 <= 1.0);
-            assert!(b1 >= 0.0 && b1 <= 1.0);
-            assert!(a1 >= 0.0 && a1 <= 1.0);
-
-            p0.push((r1 * 255f32) as u8);
-            p1.push((g1 * 255f32) as u8);
-            p2.push((b1 * 255f32) as u8);
-            p3.push((a1 * 255f32) as u8);
-        }
-        (p0, p1, p2, p3)
-    }
-
-    fn dump_2d(
-        path: &str,
-        image: Arc<StorageImage<Format>>,
-        window: &GraphicsWindow,
-    ) -> Fallible<()> {
-        let dim = image.dimensions();
-        let nelems = dim.width() * dim.height() * 4;
-        let buf = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..nelems).map(|_| 0f32),
-        )?;
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_image_to_buffer(image.clone(), buf.clone())?
-                .build()?;
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-        Self::show_range(&buf.read()?, path);
-        let bytes = Self::compress_pixels(&buf.read()?, dim);
-        let image =
-            ImageBuffer::<Rgb<u8>, _>::from_raw(dim.width(), dim.height(), bytes.as_slice())
-                .unwrap();
-        image.save(path)?;
-        Ok(())
-    }
-
-    fn compress_pixels(src: &[f32], dim: Dimensions) -> Vec<u8> {
-        const WHITE_POINT_R: f32 = 1.082_414f32;
-        const WHITE_POINT_G: f32 = 0.967_556f32;
-        const WHITE_POINT_B: f32 = 0.950_030f32;
-        const EXPOSURE: f32 = 683f32 * 0.0001f32;
-        let mut bytes = Vec::with_capacity(dim.width() as usize * dim.height() as usize * 3);
-        for i in 0usize..(dim.width() * dim.height() * dim.depth()) as usize {
-            let r0 = src[4 * i];
-            let g0 = src[4 * i + 1];
-            let b0 = src[4 * i + 2];
-
-            let mut r1 = (1.0 - (-r0 / WHITE_POINT_R * EXPOSURE).exp()).powf(1.0 / 2.2);
-            let mut g1 = (1.0 - (-g0 / WHITE_POINT_G * EXPOSURE).exp()).powf(1.0 / 2.2);
-            let mut b1 = (1.0 - (-b0 / WHITE_POINT_B * EXPOSURE).exp()).powf(1.0 / 2.2);
-
-            if r1.is_nan() {
-                r1 = 0f32;
-            }
-            if g1.is_nan() {
-                g1 = 0f32;
-            }
-            if b1.is_nan() {
-                b1 = 0f32;
-            }
-
-            assert!(r1 >= 0.0 && r1 <= 1.0);
-            assert!(g1 >= 0.0 && g1 <= 1.0);
-            assert!(b1 >= 0.0 && b1 <= 1.0);
-
-            bytes.push((r1 * 255f32) as u8);
-            bytes.push((g1 * 255f32) as u8);
-            bytes.push((b1 * 255f32) as u8);
-        }
-        bytes
-    }
-
-    fn dump_2d_x4(
-        path: &str,
-        lambdas: [f64; 4],
-        image: Arc<StorageImage<Format>>,
-        window: &GraphicsWindow,
-    ) -> Fallible<()> {
-        let dim = image.dimensions();
-        let nelems = dim.width() * dim.height() * 4;
-        let buf = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..nelems).map(|_| 0f32),
-        )?;
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_image_to_buffer(image.clone(), buf.clone())?
-                .build()?;
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-        Self::show_range(&buf.read()?, path);
-        let (p0, p1, p2, p3) = Self::split_pixels(&buf.read()?, dim);
-        let i0 =
-            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p0.as_slice()).unwrap();
-        let i1 =
-            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p1.as_slice()).unwrap();
-        let i2 =
-            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p2.as_slice()).unwrap();
-        let i3 =
-            ImageBuffer::<Luma<u8>, _>::from_raw(dim.width(), dim.height(), p3.as_slice()).unwrap();
-        i0.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[0]))?;
-        i1.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[1]))?;
-        i2.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[2]))?;
-        i3.save(&format!("dump/atmosphere/{}-{}.png", path, lambdas[3]))?;
-        Ok(())
-    }
-
-    fn dump_3d(
-        base_path: &str,
-        image: Arc<StorageImage<Format>>,
-        window: &GraphicsWindow,
-    ) -> Fallible<()> {
-        let dim = image.dimensions();
-        let nelems = dim.width() * dim.height() * dim.depth() * 4;
-        let buf = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            (0..nelems).map(|_| 0f32),
-        )?;
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_image_to_buffer(image.clone(), buf.clone())?
-                .build()?;
-        let finished = command_buffer.execute(window.queue())?;
-        finished.then_signal_fence_and_flush()?.wait(None)?;
-
-        let raw_pix = &buf.read()?;
-        let buffer_content = Self::compress_pixels(raw_pix, dim);
-        let layer_size = (dim.width() * dim.height() * 3) as usize;
-        for layer_num in 0..dim.depth() as usize {
-            print!("layer: {}, ", layer_num);
-
-            let raw_layer_size = (dim.width() * dim.height() * 4) as usize;
-            let raw_layer = &raw_pix[raw_layer_size * layer_num..raw_layer_size * (layer_num + 1)];
-            Self::show_range(raw_layer, base_path);
-            let layer = &buffer_content[layer_size * layer_num..layer_size * (layer_num + 1)];
-            let image =
-                ImageBuffer::<Rgb<u8>, _>::from_raw(dim.width(), dim.height(), &layer[..]).unwrap();
-            image
-                .save(&format!("{}-{:02}.png", base_path, layer_num))
-                .unwrap();
-        }
-        Ok(())
-    }
-
-    fn clear_image(
-        image: Arc<StorageImage<Format>>,
-        window: &GraphicsWindow,
-    ) -> Fallible<Box<dyn GpuFuture>> {
-        let nelems = (match image.dimensions() {
-            Dimensions::Dim2d { width, height } => width * height,
-            Dimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => width * height * depth,
-            dim => bail!("don't know how to handle dimensions: {:?}", dim),
-        } * 4) as usize;
-        let buf: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
-            let buf: Arc<CpuAccessibleBuffer<[u8]>> = CpuAccessibleBuffer::raw(
-                window.device(),
-                nelems * 4,
-                BufferUsage::all(),
-                vec![window.queue().family()],
-            )?;
-            let tgt: *mut u8 = buf.write()?.deref_mut().as_mut_ptr();
-            std::ptr::write_bytes(tgt, 0u8, nelems * 4);
-            buf
-        };
-        let command_buffer =
-            AutoCommandBufferBuilder::new(window.device(), window.queue().family())?
-                .copy_buffer_to_image(buf.clone(), image.clone())?
-                .build()?;
-        let finished = command_buffer.execute(window.queue())?;
-        Ok(Box::new(finished) as Box<dyn GpuFuture>)
-    }
-}
-*/
