@@ -20,7 +20,6 @@ use log::warn;
 use smallvec::{smallvec, SmallVec};
 use std::{
     collections::{HashMap, HashSet},
-    mem,
     path::PathBuf,
     sync::mpsc::{channel, Receiver, TryRecvError},
     thread,
@@ -31,6 +30,7 @@ use winit::{
         DeviceEvent, DeviceId, ElementState, Event, KeyboardInput, MouseScrollDelta, WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    platform::desktop::EventLoopExtDesktop,
     window::Window,
 };
 
@@ -261,14 +261,14 @@ impl InputSystem {
         let (tx_window, rx_window) = channel();
         let (tx_proxy, rx_proxy) = channel();
         let event_thread = thread::spawn(move || {
-            let event_loop = EventLoop::<MetaEvent>::with_user_event();
+            let mut event_loop = EventLoop::<MetaEvent>::with_user_event();
             tx_proxy
                 .send(event_loop.create_proxy())
                 .expect("unable to return event proxy");
             let window = Window::new(&event_loop).expect("unable to create window");
             tx_window.send(window).expect("unable to return window");
 
-            event_loop.run(move |event, _target, control_flow| {
+            event_loop.run_return(move |event, _target, control_flow| {
                 *control_flow = ControlFlow::Wait;
                 if event == Event::UserEvent(MetaEvent::Stop) {
                     *control_flow = ControlFlow::Exit;
@@ -451,12 +451,11 @@ impl Drop for InputSystem {
         self.event_loop_proxy
             .send_event(MetaEvent::Stop)
             .expect("unable to send stop event");
-        let mut handle = None;
-        mem::swap(&mut self.event_thread, &mut handle);
-        handle
-            .unwrap()
+        self.event_thread
+            .take()
+            .expect("a join handle")
             .join()
-            .expect("input thread is missing at shutdown");
+            .expect("result");
     }
 }
 
