@@ -13,19 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <buffer/camera_parameters/include/library.glsl>
+#include <buffer/camera_parameters/include/descriptorset.glsl>
 
-vec3
-raymarching_view_ray(vec2 position) {
-    vec4 reverse_vec;
-
-    // inverse perspective projection
-    reverse_vec = vec4(position, 0.0, 1.0);
-    reverse_vec = camera_inverse_projection() * reverse_vec;
-
-    // inverse modelview, without translation
-    reverse_vec.w = 0.0;
-    reverse_vec = camera_inverse_view() * reverse_vec;
-
-    return vec3(reverse_vec);
-}
+mat4 camera_inverse_view()       { return camera_parameters[0]; }
+mat4 camera_inverse_projection() { return camera_parameters[1]; }

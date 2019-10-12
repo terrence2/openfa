@@ -57,6 +57,7 @@ members = [
         "libs/render-vulkano/draw/skybox",
         "libs/render-vulkano/draw/text",
         "libs/render-wgpu/buffer/atmosphere",
+        "libs/render-wgpu/buffer/camera_parameters",
         "libs/render-wgpu/buffer/raymarching",
         "libs/render-wgpu/buffer/stars",
         "libs/render-wgpu/common/build-shaders",

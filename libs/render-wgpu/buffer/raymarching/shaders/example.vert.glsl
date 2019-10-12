@@ -22,5 +22,5 @@ layout(location = 0) out vec3 v_ray;
 
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
-    v_ray = raymarching_view_ray(position, inv_view_proj[0], inv_view_proj[1]);
+    v_ray = raymarching_view_ray(position);
 }
