@@ -12,18 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#version 450
 
-vec3
-raymarching_view_ray(vec2 position, mat4 inverse_view, mat4 inverse_projection) {
-    vec4 reverse_vec;
+#include <buffer/camera_parameters/include/library.glsl>
 
-    // inverse perspective projection
-    reverse_vec = vec4(position, 0.0, 1.0);
-    reverse_vec = inverse_projection * reverse_vec;
+layout(location = 0) in vec2 position;
+layout(location = 0) out vec3 v_ray;
 
-    // inverse modelview, without translation
-    reverse_vec.w = 0.0;
-    reverse_vec = inverse_view * reverse_vec;
-
-    return vec3(reverse_vec);
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    v_ray = raymarching_view_ray(position);
 }

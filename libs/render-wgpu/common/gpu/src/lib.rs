@@ -18,6 +18,13 @@ use std::io::Cursor;
 use wgpu;
 use winit::dpi::PhysicalSize;
 
+pub struct DrawIndirectCommand {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}
+
 pub struct GPUConfig {
     anisotropic_filtering: bool,
     max_bind_groups: u32,

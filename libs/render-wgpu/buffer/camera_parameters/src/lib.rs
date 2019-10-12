@@ -17,55 +17,21 @@ use failure::Fallible;
 use std::mem;
 use wgpu;
 
-#[derive(Clone, Copy)]
-pub struct RaymarchingVertex {
-    _pos: [f32; 2],
-}
-
-impl RaymarchingVertex {
-    pub fn new(pos: [i8; 2]) -> Self {
-        Self {
-            _pos: [f32::from(pos[0]), f32::from(pos[1])],
-        }
-    }
-
-    pub fn buffer(device: &wgpu::Device) -> wgpu::Buffer {
-        let vertices = vec![
-            Self::new([-1, -1]),
-            Self::new([-1, 1]),
-            Self::new([1, -1]),
-            Self::new([1, 1]),
-        ];
-        device
-            .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
-            .fill_from_slice(&vertices)
-    }
-
-    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
-        wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[wgpu::VertexAttributeDescriptor {
-                format: wgpu::VertexFormat::Float2,
-                offset: 0,
-                shader_location: 0,
-            }],
-        }
-    }
-}
-
-pub struct RaymarchingBuffer {
+pub struct CameraParametersBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     buffer_size: u64,
-    device_buffer: wgpu::Buffer,
-    vertex_buffer: wgpu::Buffer,
+    parameters_buffer: wgpu::Buffer,
 }
 
-impl RaymarchingBuffer {
+const MATRIX_COUNT: usize = 2;
+const INVERSE_VIEW_OFFSET: usize = 0;
+const INVERSE_PROJ_OFFSET: usize = 1;
+
+impl CameraParametersBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Self> {
-        let buffer_size = mem::size_of::<[[[f32; 4]; 4]; 2]>() as u64;
-        let device_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let buffer_size = mem::size_of::<[[[f32; 4]; 4]; MATRIX_COUNT]>() as u64;
+        let parameters_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             size: buffer_size,
             usage: wgpu::BufferUsage::STORAGE_READ | wgpu::BufferUsage::COPY_DST,
         });
@@ -86,7 +52,7 @@ impl RaymarchingBuffer {
             bindings: &[wgpu::Binding {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer {
-                    buffer: &device_buffer,
+                    buffer: &parameters_buffer,
                     range: 0..buffer_size,
                 },
             }],
@@ -96,8 +62,7 @@ impl RaymarchingBuffer {
             bind_group_layout,
             bind_group,
             buffer_size,
-            device_buffer,
-            vertex_buffer: RaymarchingVertex::buffer(device),
+            parameters_buffer,
         })
     }
 
@@ -109,10 +74,6 @@ impl RaymarchingBuffer {
         &self.bind_group
     }
 
-    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.vertex_buffer
-    }
-
     pub fn make_upload_buffer(
         &self,
         camera: &dyn CameraAbstract,
@@ -120,28 +81,34 @@ impl RaymarchingBuffer {
     ) -> wgpu::Buffer {
         device
             .create_buffer_mapped::<[[f32; 4]; 4]>(
-                2,
+                MATRIX_COUNT,
                 wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
             )
             .fill_from_slice(&Self::camera_to_buffer(camera))
     }
 
-    fn camera_to_buffer(camera: &dyn CameraAbstract) -> [[[f32; 4]; 4]; 2] {
+    fn camera_to_buffer(camera: &dyn CameraAbstract) -> [[[f32; 4]; 4]; MATRIX_COUNT] {
         // Inverted view and projection matrices, packed.
-        let view = camera.inverted_view_matrix();
-        let proj = camera.inverted_projection_matrix();
-        let mut inv_view_proj = [[[0f32; 4]; 4]; 2];
+        let inv_view = camera.inverted_view_matrix();
+        let inv_proj = camera.inverted_projection_matrix();
+        let mut parameters = [[[0f32; 4]; 4]; MATRIX_COUNT];
         for i in 0..16 {
-            inv_view_proj[0][i / 4][i % 4] = view[i];
+            parameters[INVERSE_VIEW_OFFSET][i / 4][i % 4] = inv_view[i];
         }
         for i in 0..16 {
-            inv_view_proj[1][i / 4][i % 4] = proj[i];
+            parameters[INVERSE_PROJ_OFFSET][i / 4][i % 4] = inv_proj[i];
         }
-        inv_view_proj
+        parameters
     }
 
     pub fn upload_from(&self, frame: &mut gpu::Frame, upload_buffer: &wgpu::Buffer) {
-        frame.copy_buffer_to_buffer(upload_buffer, 0, &self.device_buffer, 0, self.buffer_size);
+        frame.copy_buffer_to_buffer(
+            upload_buffer,
+            0,
+            &self.parameters_buffer,
+            0,
+            self.buffer_size,
+        );
     }
 }
 
@@ -155,7 +122,7 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let _raymarching_buffer = RaymarchingBuffer::new(gpu.device())?;
+        let _camera_buffer = CameraParametersBuffer::new(gpu.device())?;
         Ok(())
     }
 }

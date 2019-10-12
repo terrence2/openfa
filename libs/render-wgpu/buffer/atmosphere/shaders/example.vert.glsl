@@ -17,15 +17,14 @@
 #include <common/include/include_global.glsl>
 #include <buffer/atmosphere/include/global.glsl>
 
-#include <buffer/raymarching/include/descriptorset.glsl>
 #include <buffer/atmosphere/include/descriptorset.glsl>
 
-#include <buffer/raymarching/include/library.glsl>
+#include <buffer/camera_parameters/include/library.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 0) out vec3 v_ray;
 
 void main() {
-    v_ray = raymarching_view_ray(position, inv_view_proj[0], inv_view_proj[1]);
     gl_Position = vec4(position, 0.0, 1.0);
+    v_ray = raymarching_view_ray(position);
 }

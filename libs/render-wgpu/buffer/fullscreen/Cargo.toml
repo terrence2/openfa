@@ -1,13 +1,14 @@
 [package]
-name = "raymarching-wgpu"
+name = "fullscreen-wgpu"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-camera = { path = "../../../render-shared/common/camera" }
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+camera = { path = "../../../render-shared/common/camera" }
+camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]

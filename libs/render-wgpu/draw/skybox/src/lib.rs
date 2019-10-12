@@ -17,21 +17,23 @@
 
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
+use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
+use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
-use raymarching::{RaymarchingBuffer, RaymarchingVertex};
 use stars::StarsBuffer;
 use wgpu;
 
 pub struct FrameState {
-    raymarching_upload_buffer: wgpu::Buffer,
+    camera_upload_buffer: wgpu::Buffer,
     atmosphere_upload_buffer: wgpu::Buffer,
 }
 
 pub struct SkyboxRenderer {
-    raymarching_buffer: RaymarchingBuffer,
+    camera_buffer: CameraParametersBuffer,
+    fullscreen_buffer: FullscreenBuffer,
     atmosphere_buffer: AtmosphereBuffer,
     stars_buffer: StarsBuffer,
 
@@ -42,7 +44,8 @@ impl SkyboxRenderer {
     pub fn new(gpu: &mut GPU) -> Fallible<Self> {
         trace!("SkyboxRenderer::new");
 
-        let raymarching_buffer = RaymarchingBuffer::new(gpu.device())?;
+        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+        let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
         let stars_buffer = StarsBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
@@ -55,7 +58,7 @@ impl SkyboxRenderer {
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
-                        raymarching_buffer.bind_group_layout(),
+                        camera_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
                         stars_buffer.bind_group_layout(),
                     ],
@@ -89,14 +92,15 @@ impl SkyboxRenderer {
                 }],
                 depth_stencil_state: None,
                 index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[RaymarchingVertex::descriptor()],
+                vertex_buffers: &[FullscreenVertex::descriptor()],
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
             });
 
         Ok(Self {
-            raymarching_buffer,
+            camera_buffer,
+            fullscreen_buffer,
             stars_buffer,
             atmosphere_buffer,
             pipeline,
@@ -110,7 +114,7 @@ impl SkyboxRenderer {
         device: &wgpu::Device,
     ) -> FrameState {
         FrameState {
-            raymarching_upload_buffer: self.raymarching_buffer.make_upload_buffer(camera, device),
+            camera_upload_buffer: self.camera_buffer.make_upload_buffer(camera, device),
             atmosphere_upload_buffer: self.atmosphere_buffer.make_upload_buffer(
                 camera,
                 *sun_direction,
@@ -120,18 +124,18 @@ impl SkyboxRenderer {
     }
 
     pub fn upload(&self, frame: &mut gpu::Frame, state: FrameState) {
-        self.raymarching_buffer
-            .upload_from(frame, &state.raymarching_upload_buffer);
+        self.camera_buffer
+            .upload_from(frame, &state.camera_upload_buffer);
         self.atmosphere_buffer
             .upload_from(frame, &state.atmosphere_upload_buffer);
     }
 
     pub fn draw(&self, rpass: &mut wgpu::RenderPass) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, self.raymarching_buffer.bind_group(), &[]);
+        rpass.set_bind_group(0, self.camera_buffer.bind_group(), &[]);
         rpass.set_bind_group(1, &self.atmosphere_buffer.bind_group(), &[]);
         rpass.set_bind_group(2, &self.stars_buffer.bind_group(), &[]);
-        rpass.set_vertex_buffers(0, &[(self.raymarching_buffer.vertex_buffer(), 0)]);
+        rpass.set_vertex_buffers(0, &[(self.fullscreen_buffer.vertex_buffer(), 0)]);
         rpass.draw(0..4, 0..1);
     }
 }

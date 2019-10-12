@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-layout(set = 0, binding = 0) buffer InverseViewProjection {
-    mat4[] inv_view_proj;
+layout(set = 0, binding = 0) buffer CameraParameters {
+    mat4[] camera_parameters;
 };
 
