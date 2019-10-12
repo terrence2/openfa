@@ -13,10 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
+use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
+use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use raymarching::{RaymarchingBuffer, RaymarchingVertex};
 use stars_wgpu::StarsBuffer;
 use wgpu;
 
@@ -26,7 +27,8 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let raymarching_buffer = RaymarchingBuffer::new(gpu.device())?;
+    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
     let stars_buffers = StarsBuffer::new(gpu.device())?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
@@ -44,7 +46,7 @@ fn main() -> Fallible<()> {
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                raymarching_buffer.bind_group_layout(),
+                camera_buffer.bind_group_layout(),
                 &empty_layout,
                 stars_buffers.bind_group_layout(),
             ],
@@ -77,7 +79,7 @@ fn main() -> Fallible<()> {
             }],
             depth_stencil_state: None,
             index_format: wgpu::IndexFormat::Uint16,
-            vertex_buffers: &[RaymarchingVertex::descriptor()],
+            vertex_buffers: &[FullscreenVertex::descriptor()],
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
@@ -105,18 +107,18 @@ fn main() -> Fallible<()> {
         }
 
         // Prepare new camera parameters.
-        let upload_buffer = raymarching_buffer.make_upload_buffer(&camera, gpu.device());
+        let upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
 
         let mut frame = gpu.begin_frame();
         {
-            raymarching_buffer.upload_from(&mut frame, &upload_buffer);
+            camera_buffer.upload_from(&mut frame, &upload_buffer);
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, raymarching_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, stars_buffers.bind_group(), &[]);
-            rpass.set_vertex_buffers(0, &[(raymarching_buffer.vertex_buffer(), 0)]);
+            rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);
             rpass.draw(0..4, 0..1);
         }
         frame.finish();

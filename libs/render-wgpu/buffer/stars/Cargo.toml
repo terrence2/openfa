@@ -20,6 +20,7 @@ gpu = { path = "../../../render-wgpu/common/gpu" }
 [dev-dependencies]
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
+camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
