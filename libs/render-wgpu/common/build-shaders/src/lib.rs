@@ -101,16 +101,22 @@ fn find_included_file(
 }
 
 pub fn build() -> Fallible<()> {
-    println!(
-        "cargo:rerun-if-changed={}/shaders/",
-        env::current_dir()?.to_str().expect("a path")
-    );
-    println!(
-        "cargo:rerun-if-changed={}/include/",
-        env::current_dir()?.to_str().expect("a path")
-    );
     println!("cargo:rerun-if-env-changed=DUMP_SPIRV");
     println!("cargo:rerun-if-env-changed=DEBUG");
+    let shaders_dir = env::current_dir()?.as_path().join("shaders");
+    if shaders_dir.is_dir() {
+        println!(
+            "cargo:rerun-if-changed={}/",
+            shaders_dir.to_str().expect("a path")
+        );
+    }
+    let include_dir = env::current_dir()?.as_path().join("include");
+    if include_dir.is_dir() {
+        println!(
+            "cargo:rerun-if-changed={}/",
+            include_dir.to_str().expect("a path")
+        );
+    }
 
     let shader_dir = Path::new("shaders/");
     if !shader_dir.is_dir() {
