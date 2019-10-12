@@ -37,7 +37,7 @@ impl RaymarchingVertex {
             Self::new([1, 1]),
         ];
         device
-            .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::all())
+            .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
             .fill_from_slice(&vertices)
     }
 
