@@ -15,7 +15,7 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a585782
 atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
 camera = { path = "../../../render-shared/common/camera" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-raymarching = { package = "raymarching-wgpu", path = "../../../render-wgpu/buffer/raymarching" }
+fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
 stars = { package = "stars-wgpu", path = "../../../render-wgpu/buffer/stars" }
 
 [dev-dependencies]

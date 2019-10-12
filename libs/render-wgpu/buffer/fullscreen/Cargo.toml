@@ -1,5 +1,5 @@
 [package]
-name = "raymarching-wgpu"
+name = "fullscreen-wgpu"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"

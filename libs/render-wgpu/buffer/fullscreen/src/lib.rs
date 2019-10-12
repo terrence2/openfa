@@ -18,11 +18,11 @@ use std::mem;
 use wgpu;
 
 #[derive(Clone, Copy)]
-pub struct RaymarchingVertex {
+pub struct FullscreenVertex {
     _pos: [f32; 2],
 }
 
-impl RaymarchingVertex {
+impl FullscreenVertex {
     pub fn new(pos: [i8; 2]) -> Self {
         Self {
             _pos: [f32::from(pos[0]), f32::from(pos[1])],
@@ -54,14 +54,14 @@ impl RaymarchingVertex {
     }
 }
 
-pub struct RaymarchingBuffer {
+pub struct FullscreenBuffer {
     vertex_buffer: wgpu::Buffer,
 }
 
-impl RaymarchingBuffer {
+impl FullscreenBuffer {
     pub fn new(_camera_buffer: &CameraParametersBuffer, device: &wgpu::Device) -> Fallible<Self> {
         Ok(Self {
-            vertex_buffer: RaymarchingVertex::buffer(device),
+            vertex_buffer: FullscreenVertex::buffer(device),
         })
     }
 
@@ -81,7 +81,7 @@ mod tests {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
         let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-        let _raymarching_buffer = RaymarchingBuffer::new(&camera_buffer, gpu.device())?;
+        let _fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
         Ok(())
     }
 }

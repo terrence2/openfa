@@ -25,7 +25,7 @@ gpu = { path = "../../../render-wgpu/common/gpu" }
 [dev-dependencies]
 spirv-reflect = "^ 0.2"
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
-raymarching = { package = "raymarching-wgpu", path = "../../../render-wgpu/buffer/raymarching" }
+fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

@@ -15,9 +15,9 @@
 use camera::ArcBallCamera;
 use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
+use fullscreen_wgpu::{FullscreenBuffer, FullscreenVertex};
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use raymarching_wgpu::{RaymarchingBuffer, RaymarchingVertex};
 use wgpu;
 
 fn main() -> Fallible<()> {
@@ -27,7 +27,7 @@ fn main() -> Fallible<()> {
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-    let raymarching_buffer = RaymarchingBuffer::new(&camera_buffer, gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
@@ -65,7 +65,7 @@ fn main() -> Fallible<()> {
             }],
             depth_stencil_state: None,
             index_format: wgpu::IndexFormat::Uint16,
-            vertex_buffers: &[RaymarchingVertex::descriptor()],
+            vertex_buffers: &[FullscreenVertex::descriptor()],
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
@@ -102,7 +102,7 @@ fn main() -> Fallible<()> {
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
             rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
-            rpass.set_vertex_buffers(0, &[(raymarching_buffer.vertex_buffer(), 0)]);
+            rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);
             rpass.draw(0..4, 0..1);
         }
         frame.finish();
