@@ -15,8 +15,10 @@
 
 #include <buffer/camera_parameters/include/descriptorset.glsl>
 
-mat4 camera_inverse_view()       { return camera_parameters[0]; }
-mat4 camera_inverse_projection() { return camera_parameters[1]; }
+mat4 camera_view()               { return camera_parameters[0]; }
+mat4 camera_projection()         { return camera_parameters[1]; }
+mat4 camera_inverse_view()       { return camera_parameters[2]; }
+mat4 camera_inverse_projection() { return camera_parameters[3]; }
 
 vec3
 raymarching_view_ray(vec2 position) {

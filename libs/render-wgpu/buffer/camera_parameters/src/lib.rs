@@ -24,9 +24,11 @@ pub struct CameraParametersBuffer {
     parameters_buffer: wgpu::Buffer,
 }
 
-const MATRIX_COUNT: usize = 2;
-const INVERSE_VIEW_OFFSET: usize = 0;
-const INVERSE_PROJ_OFFSET: usize = 1;
+const MATRIX_COUNT: usize = 4;
+const VIEW_OFFSET: usize = 0;
+const PROJ_OFFSET: usize = 1;
+const INVERSE_VIEW_OFFSET: usize = 2;
+const INVERSE_PROJ_OFFSET: usize = 3;
 
 impl CameraParametersBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Self> {
@@ -88,15 +90,30 @@ impl CameraParametersBuffer {
     }
 
     fn camera_to_buffer(camera: &dyn CameraAbstract) -> [[[f32; 4]; 4]; MATRIX_COUNT] {
-        // Inverted view and projection matrices, packed.
-        let inv_view = camera.inverted_view_matrix();
-        let inv_proj = camera.inverted_projection_matrix();
         let mut parameters = [[[0f32; 4]; 4]; MATRIX_COUNT];
-        for i in 0..16 {
-            parameters[INVERSE_VIEW_OFFSET][i / 4][i % 4] = inv_view[i];
+        {
+            let inv_view = camera.inverted_view_matrix();
+            for i in 0..16 {
+                parameters[INVERSE_VIEW_OFFSET][i / 4][i % 4] = inv_view[i];
+            }
         }
-        for i in 0..16 {
-            parameters[INVERSE_PROJ_OFFSET][i / 4][i % 4] = inv_proj[i];
+        {
+            let inv_proj = camera.inverted_projection_matrix();
+            for i in 0..16 {
+                parameters[INVERSE_PROJ_OFFSET][i / 4][i % 4] = inv_proj[i];
+            }
+        }
+        {
+            let view = camera.view_matrix();
+            for i in 0..16 {
+                parameters[VIEW_OFFSET][i / 4][i % 4] = view[i];
+            }
+        }
+        {
+            let proj = camera.projection_matrix();
+            for i in 0..16 {
+                parameters[PROJ_OFFSET][i / 4][i % 4] = proj[i];
+            }
         }
         parameters
     }
