@@ -291,7 +291,7 @@ impl GraphicsWindow {
         window.dynamic_state.viewports = Some(vec![Viewport {
             origin: [0.0, 0.0],
             dimensions: dim,
-            depth_range: 0.0..1.0,
+            depth_range: 1.0..0.0,
         }]);
 
         Ok(window)

@@ -18,7 +18,9 @@ memmap = "^ 0.6"
 nalgebra = "^ 0.18"
 num-traits = "^ 0.2"
 static_assertions = "^ 1"
-wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 camera = { path = "../../../render-shared/common/camera" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 

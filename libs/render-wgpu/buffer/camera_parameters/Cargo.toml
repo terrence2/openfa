@@ -7,7 +7,9 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 camera = { path = "../../../render-shared/common/camera" }
-wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
