@@ -372,6 +372,8 @@ impl InputSystem {
 
             // We should not need invalidation given our game loop.
             WindowEvent::RedrawRequested => smallvec![],
+
+            WindowEvent::ModifiersChanged { .. } => smallvec![],
         }
     }
 
