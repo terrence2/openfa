@@ -35,13 +35,8 @@ mod test {
 
     #[test]
     fn test_load_all() -> Fallible<()> {
-        let mut input = InputSystem::new(vec![])?;
+        let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-
-        let vert_shader =
-            gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
-        let frag_shader =
-            gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
 
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
         let lib = omni.library("FA");

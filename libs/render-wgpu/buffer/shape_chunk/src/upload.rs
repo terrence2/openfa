@@ -128,6 +128,7 @@ pub struct Vertex {
 }
 
 impl Vertex {
+    #[allow(clippy::unneeded_field_pattern)]
     pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
         let tmp = wgpu::VertexBufferDescriptor {
             stride: mem::size_of::<Self>() as wgpu::BufferAddress,
