@@ -18,6 +18,7 @@ use std::io::Cursor;
 use wgpu;
 use winit::dpi::PhysicalSize;
 
+#[derive(Clone, Debug)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,
@@ -46,33 +47,22 @@ pub struct GPU {
     device: wgpu::Device,
     queue: wgpu::Queue,
     swap_chain: wgpu::SwapChain,
+    depth_texture: wgpu::TextureView,
 
     config: GPUConfig,
     size: PhysicalSize,
 }
 
 impl GPU {
+    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+    pub const SCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
+
     pub fn texture_format() -> wgpu::TextureFormat {
         wgpu::TextureFormat::Bgra8UnormSrgb
     }
 
     pub fn aspect_ratio(&self) -> f64 {
         self.size.height.floor() / self.size.width.floor()
-    }
-
-    pub fn note_resize(&mut self, input: &InputSystem) {
-        self.size = input
-            .window()
-            .inner_size()
-            .to_physical(input.window().hidpi_factor());
-        let sc_desc = wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-            format: Self::texture_format(),
-            width: self.size.width.floor() as u32,
-            height: self.size.height.floor() as u32,
-            present_mode: self.config.preset_mode,
-        };
-        self.swap_chain = self.device.create_swap_chain(&self.surface, &sc_desc);
     }
 
     pub fn new(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
@@ -106,6 +96,19 @@ impl GPU {
             present_mode: config.preset_mode,
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: sc_desc.width,
+                height: sc_desc.height,
+                depth: 1,
+            },
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::DEPTH_FORMAT,
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+        });
 
         Ok(Self {
             surface,
@@ -113,9 +116,41 @@ impl GPU {
             device,
             queue,
             swap_chain,
+            depth_texture: depth_texture.create_default_view(),
             config,
             size,
         })
+    }
+
+    pub fn note_resize(&mut self, input: &InputSystem) {
+        self.size = input
+            .window()
+            .inner_size()
+            .to_physical(input.window().hidpi_factor());
+        let sc_desc = wgpu::SwapChainDescriptor {
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+            format: Self::texture_format(),
+            width: self.size.width.floor() as u32,
+            height: self.size.height.floor() as u32,
+            present_mode: self.config.preset_mode,
+        };
+        self.swap_chain = self.device.create_swap_chain(&self.surface, &sc_desc);
+        self.depth_texture = self
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                size: wgpu::Extent3d {
+                    width: sc_desc.width,
+                    height: sc_desc.height,
+                    depth: 1,
+                },
+                array_layer_count: 1,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: Self::DEPTH_FORMAT,
+                usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+            })
+            .create_default_view();
     }
 
     pub fn create_shader_module(&self, spirv: &[u8]) -> Fallible<wgpu::ShaderModule> {
@@ -146,6 +181,7 @@ impl GPU {
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 }),
             color_attachment: self.swap_chain.get_next_texture(),
+            depth_attachment: &self.depth_texture,
         }
     }
 }
@@ -154,6 +190,7 @@ pub struct Frame<'a> {
     queue: &'a mut wgpu::Queue,
     encoder: wgpu::CommandEncoder,
     color_attachment: wgpu::SwapChainOutput<'a>,
+    depth_attachment: &'a wgpu::TextureView,
 }
 
 impl<'a> Frame<'a> {
@@ -166,7 +203,15 @@ impl<'a> Frame<'a> {
                 store_op: wgpu::StoreOp::Store,
                 clear_color: wgpu::Color::GREEN,
             }],
-            depth_stencil_attachment: None,
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                attachment: self.depth_attachment,
+                depth_load_op: wgpu::LoadOp::Clear,
+                depth_store_op: wgpu::StoreOp::Store,
+                clear_depth: 1f32,
+                stencil_load_op: wgpu::LoadOp::Clear,
+                stencil_store_op: wgpu::StoreOp::Store,
+                clear_stencil: 0,
+            }),
         })
     }
 

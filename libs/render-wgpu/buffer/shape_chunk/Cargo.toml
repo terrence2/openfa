@@ -1,0 +1,36 @@
+[package]
+name = "shape_chunk-wgpu"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[lib]
+doctest = false
+
+[dependencies]
+bitflags = ">= 1.0"
+failure = "^ 0.1.2"
+image = "^ 0.21"
+lazy_static = ">= 1"
+log = "^ 0.4"
+memoffset = "^ 0.5"
+nalgebra = "^ 0.18"
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+animate = { path = "../../../animate" }
+camera = { path = "../../../render-shared/common/camera" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+i386 = { path = "../../../i386" }
+lib = { path = "../../../lib" }
+omnilib = { path = "../../../omnilib" }
+pal = { path = "../../../pal" }
+pic = { path = "../../../pic" }
+sh = { path = "../../../sh" }
+
+[dev-dependencies]
+camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+
+[build-dependencies]
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
