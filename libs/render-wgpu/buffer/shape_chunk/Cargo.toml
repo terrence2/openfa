@@ -16,8 +16,8 @@ log = "^ 0.4"
 memoffset = "^ 0.5"
 nalgebra = "^ 0.18"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
-#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
-wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 animate = { path = "../../../animate" }
 camera = { path = "../../../render-shared/common/camera" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
