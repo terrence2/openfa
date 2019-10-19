@@ -1,0 +1,21 @@
+[package]
+name = "shape-wgpu"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffer/shape_chunk" }
+shape_instance = { package = "shape_instance-wgpu", path = "../../../render-wgpu/buffer/shape_instance" }
+camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
+
+[dev-dependencies]
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+
+[build-dependencies]
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
