@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
-use gpu::GPU;
+use gpu::{Frame, GPU};
 use shape_chunk::Vertex;
 use shape_instance::ShapeInstanceManager;
 use wgpu;
@@ -26,7 +26,6 @@ pub struct ShapeRenderPass {
 impl ShapeRenderPass {
     pub fn new(
         gpu: &GPU,
-        empty_layout: &wgpu::BindGroupLayout,
         camera_buffer: &CameraParametersBuffer,
         inst_man: &ShapeInstanceManager,
     ) -> Fallible<Self> {
@@ -38,10 +37,10 @@ impl ShapeRenderPass {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
                         camera_buffer.bind_group_layout(),
-                        &empty_layout,
-                        &empty_layout,
+                        &gpu.empty_layout(),
+                        &gpu.empty_layout(),
                         inst_man.bind_group_layout(),
-                        &empty_layout,
+                        &gpu.empty_layout(),
                         inst_man.chunk_man.bind_group_layout(),
                     ],
                 });
@@ -90,6 +89,37 @@ impl ShapeRenderPass {
 
         Ok(Self { pipeline })
     }
+
+    pub fn render(
+        &self,
+        empty_bind_group: &wgpu::BindGroup,
+        camera_buffer: &CameraParametersBuffer,
+        inst_man: &ShapeInstanceManager,
+        frame: &mut Frame,
+    ) -> Fallible<()> {
+        let mut rpass = frame.begin_render_pass();
+        rpass.set_pipeline(&self.pipeline);
+        rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+        rpass.set_bind_group(1, &empty_bind_group, &[]);
+        rpass.set_bind_group(2, &empty_bind_group, &[]);
+        rpass.set_bind_group(4, &empty_bind_group, &[]);
+
+        for block in inst_man.blocks.values() {
+            let chunk = inst_man.chunk_man.chunk(block.chunk_id());
+
+            let f18_part = inst_man.chunk_man.part_for("F18.SH")?;
+            let cmd = f18_part.draw_command(0, 1);
+            rpass.set_bind_group(3, block.bind_group(), &[]);
+            rpass.set_bind_group(5, chunk.bind_group(), &[]);
+            rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
+            rpass.draw(
+                cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
+                0..block.len() as u32,
+            );
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -104,14 +134,7 @@ mod tests {
         let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
         let inst_man = ShapeInstanceManager::new(&gpu.device())?;
 
-        let empty_layout = gpu
-            .device()
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { bindings: &[] });
-        let empty_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &empty_layout,
-            bindings: &[],
-        });
-        let _ = ShapeRenderPass::new(&gpu, &empty_layout, &camera_buffer, &inst_man)?;
+        let _ = ShapeRenderPass::new(&gpu, &camera_buffer, &inst_man)?;
 
         Ok(())
     }

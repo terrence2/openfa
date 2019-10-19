@@ -51,6 +51,8 @@ pub struct GPU {
 
     config: GPUConfig,
     size: PhysicalSize,
+
+    empty_layout: wgpu::BindGroupLayout,
 }
 
 impl GPU {
@@ -110,6 +112,9 @@ impl GPU {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
         });
 
+        let empty_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { bindings: &[] });
+
         Ok(Self {
             surface,
             _adapter: adapter,
@@ -119,6 +124,7 @@ impl GPU {
             depth_texture: depth_texture.create_default_view(),
             config,
             size,
+            empty_layout,
         })
     }
 
@@ -172,6 +178,10 @@ impl GPU {
 
     pub fn device_and_queue_mut(&mut self) -> (&mut wgpu::Device, &mut wgpu::Queue) {
         (&mut self.device, &mut self.queue)
+    }
+
+    pub fn empty_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.empty_layout
     }
 
     pub fn begin_frame(&mut self) -> Frame {

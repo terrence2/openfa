@@ -15,7 +15,13 @@ shape_instance = { package = "shape_instance-wgpu", path = "../../../render-wgpu
 camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
 
 [dev-dependencies]
+specs = "^ 0.15"
+camera = { path = "../../../render-shared/common/camera" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+nalgebra = "^ 0.18"
+omnilib = { path = "../../../omnilib" }
+pal = { path = "../../../pal" }
+world = { path = "../../../world" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
