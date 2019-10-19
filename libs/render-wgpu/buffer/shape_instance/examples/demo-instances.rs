@@ -12,21 +12,21 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::{ArcBallCamera, CameraAbstract};
+use camera::ArcBallCamera;
 use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use nalgebra::{Matrix4, Point3};
+use nalgebra::Point3;
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{DrawSelection, DrawState, ShapeChunkManager, Vertex};
+use shape_chunk::{DrawSelection, DrawState, Vertex};
 use shape_instance_wgpu::{
     CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceManager,
     ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
 };
 use specs::prelude::*;
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 use world::Transform;
 
 fn build_pipeline(
@@ -181,7 +181,6 @@ fn main() -> Fallible<()> {
                 _ => println!("unhandled command: {}", command.name),
             }
         }
-        // window.center_cursor()?;
 
         let camera_upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
 
@@ -199,21 +198,21 @@ fn main() -> Fallible<()> {
             camera_buffer.upload_from(&mut frame, &camera_upload_buffer);
             inst_man.upload_from(&mut frame, &instance_upload_buffers);
 
-            for (i, block) in inst_man.blocks.values().enumerate() {
-                let chunk = inst_man.chunk_man.chunk(block.chunk_id());
+            let mut rpass = frame.begin_render_pass();
+            rpass.set_pipeline(&pipeline);
+            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+            rpass.set_bind_group(1, &empty_bind_group, &[]);
+            rpass.set_bind_group(2, &empty_bind_group, &[]);
+            rpass.set_bind_group(4, &empty_bind_group, &[]);
 
-                let mut rpass = frame.begin_render_pass();
-                rpass.set_pipeline(&pipeline);
-                rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
-                rpass.set_bind_group(1, &empty_bind_group, &[]);
-                rpass.set_bind_group(2, &empty_bind_group, &[]);
-                rpass.set_bind_group(3, block.bind_group(), &[]);
-                rpass.set_bind_group(4, &empty_bind_group, &[]);
-                rpass.set_bind_group(5, chunk.bind_group(), &[]);
-                rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
+            for block in inst_man.blocks.values() {
+                let chunk = inst_man.chunk_man.chunk(block.chunk_id());
 
                 let f18_part = inst_man.chunk_man.part_for("F18.SH")?;
                 let cmd = f18_part.draw_command(0, 1);
+                rpass.set_bind_group(3, block.bind_group(), &[]);
+                rpass.set_bind_group(5, chunk.bind_group(), &[]);
+                rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
                 rpass.draw(
                     cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
                     0..block.len() as u32,
@@ -221,5 +220,7 @@ fn main() -> Fallible<()> {
             }
         }
         frame.finish();
+
+        println!("frame time: {:?}", loop_head.elapsed());
     }
 }

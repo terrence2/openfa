@@ -42,11 +42,11 @@ layout(set = 3, binding = 1) buffer ChunkFlags {
 //            float data[];
 //        } shape_xforms;
 
-// Per Vertex input
 layout(location = 0) smooth out vec4 v_color;
 layout(location = 1) smooth out vec2 v_tex_coord;
 layout(location = 2) flat out uint f_flags0;
 layout(location = 3) flat out uint f_flags1;
+
 void main() {
     uint base_transform = gl_InstanceIndex * 6;
     uint base_flag = gl_InstanceIndex * 2;

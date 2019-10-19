@@ -23,14 +23,19 @@ use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
 use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{collections::HashMap, mem};
 use wgpu;
-use wgpu::BindingResource::Buffer;
 
 const BLOCK_SIZE: usize = 1 << 10;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BlockId(u32);
+
+impl BlockId {
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SlotId {
@@ -226,6 +231,10 @@ impl InstanceBlock {
         })
     }
 
+    pub fn id(&self) -> BlockId {
+        self.block_id
+    }
+
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
     }
@@ -262,6 +271,10 @@ impl InstanceBlock {
 
     pub fn len(&self) -> usize {
         self.next_slot as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.next_slot == 0
     }
 
     /*
@@ -661,7 +674,7 @@ mod test {
     use input::InputSystem;
     use omnilib::OmniLib;
     use pal::Palette;
-    use shape_chunk::{DrawSelection, Vertex};
+    use shape_chunk::DrawSelection;
 
     #[test]
     fn test_creation() -> Fallible<()> {
