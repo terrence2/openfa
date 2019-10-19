@@ -18,7 +18,7 @@ use std::io::Cursor;
 use wgpu;
 use winit::dpi::PhysicalSize;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,
