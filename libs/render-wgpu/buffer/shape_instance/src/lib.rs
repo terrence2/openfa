@@ -551,7 +551,7 @@ impl ShapeInstanceManager {
     }
 
     pub fn ensure_uploaded(&mut self, gpu: &mut GPU) -> Fallible<()> {
-        self.chunk_man.finish(gpu)
+        self.chunk_man.finish_open_chunks(gpu)
     }
 
     #[inline]

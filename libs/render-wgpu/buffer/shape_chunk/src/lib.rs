@@ -75,7 +75,7 @@ mod test {
             )?;
             all_shapes.push(shape_id);
         }
-        chunk_man.finish(&mut gpu)?;
+        chunk_man.finish_open_chunks(&mut gpu)?;
         gpu.device().poll(true);
 
         for shape_id in &all_shapes {

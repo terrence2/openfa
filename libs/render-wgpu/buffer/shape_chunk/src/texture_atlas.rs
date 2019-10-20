@@ -37,7 +37,22 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn tex_coord_at(&self, raw: [u16; 2]) -> [f32; 2] {
+    fn new(offset: [u32; 2], pic: &Pic) -> Self {
+        Frame {
+            coord0: TexCoord {
+                s: offset[0] as f32 / ATLAS_WIDTH as f32,
+                t: offset[1] as f32 / ATLAS_HEIGHT as f32,
+            },
+            coord1: TexCoord {
+                s: (offset[0] + pic.width) as f32 / ATLAS_WIDTH as f32,
+                t: (offset[1] + pic.height) as f32 / ATLAS_HEIGHT as f32,
+            },
+            width: pic.width as f32,
+            height: pic.height as f32,
+        }
+    }
+
+    pub(crate) fn tex_coord_at(&self, raw: [u16; 2]) -> [f32; 2] {
         // The raw coords are in terms of bitmap pixels, so normalize first.
         let n = TexCoord {
             s: f32::from(raw[0]) / self.width,
@@ -133,21 +148,7 @@ impl MegaAtlas {
         self.utilization[layer][column] = (offset[1] + pic.height + 1) as usize;
 
         // Build the frame.
-        self.frames.insert(
-            name.to_owned(),
-            Frame {
-                coord0: TexCoord {
-                    s: offset[0] as f32 / ATLAS_WIDTH as f32,
-                    t: offset[1] as f32 / ATLAS_HEIGHT as f32,
-                },
-                coord1: TexCoord {
-                    s: (offset[0] + pic.width) as f32 / ATLAS_WIDTH as f32,
-                    t: (offset[1] + pic.height) as f32 / ATLAS_HEIGHT as f32,
-                },
-                width: pic.width as f32,
-                height: pic.height as f32,
-            },
-        );
+        self.frames.insert(name.to_owned(), Frame::new(offset, pic));
         trace!("mega-atlas loaded {}", name);
 
         Ok(self.frames[name].clone())
