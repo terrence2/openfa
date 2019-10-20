@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
-[lib]
-doctest = false
-
 [dependencies]
 approx = "^ 0.3"
 bitflags = ">= 1.0"

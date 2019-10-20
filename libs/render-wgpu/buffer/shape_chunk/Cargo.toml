@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
-[lib]
-doctest = false
-
 [dependencies]
 bitflags = ">= 1.0"
 failure = "^ 0.1.2"
@@ -19,7 +16,6 @@ nalgebra = "^ 0.18"
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 animate = { path = "../../../animate" }
-camera = { path = "../../../render-shared/common/camera" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }
@@ -29,6 +25,7 @@ pic = { path = "../../../pic" }
 sh = { path = "../../../sh" }
 
 [dev-dependencies]
+camera = { path = "../../../render-shared/common/camera" }
 camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 
