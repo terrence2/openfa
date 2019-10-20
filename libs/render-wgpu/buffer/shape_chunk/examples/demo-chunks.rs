@@ -59,7 +59,7 @@ fn main() -> Fallible<()> {
         &lib,
         &mut gpu,
     )?;
-    chunk_man.finish(&mut gpu)?;
+    chunk_man.finish_open_chunks(&mut gpu)?;
     gpu.device().poll(true);
 
     let f18_part = chunk_man.part_for("F18.SH")?;

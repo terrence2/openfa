@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
     texture_atlas::MegaAtlas,
-    upload::{DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
+    upload::{AnalysisResults, DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
 use failure::Fallible;
 use gpu::DrawIndirectCommand;
@@ -56,6 +56,28 @@ fn allocate_chunk_id() -> ChunkId {
     ChunkId(next_id)
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ChunkFlags {
+    // Passed in by the caller.
+    has_transform: bool,
+
+    // Discovered in the model analysis phase
+    has_flags: bool,
+    has_anim: bool,
+    has_xform: bool,
+}
+
+impl ChunkFlags {
+    pub(crate) fn for_analysis(analysis: &AnalysisResults) -> Self {
+        Self {
+            has_transform: true,
+            has_flags: analysis.has_flags(),
+            has_anim: analysis.has_animation(),
+            has_xform: analysis.has_xforms(),
+        }
+    }
+}
+
 // Where a shape lives in a chunk.
 #[derive(Debug)]
 pub struct ChunkPart {
@@ -94,6 +116,7 @@ impl ChunkPart {
 
 pub struct OpenChunk {
     chunk_id: ChunkId,
+    chunk_flags: ChunkFlags,
 
     vertex_upload_buffer: Vec<Vertex>,
     atlas_builder: MegaAtlas,
@@ -105,9 +128,10 @@ pub struct OpenChunk {
 }
 
 impl OpenChunk {
-    pub fn new() -> Fallible<Self> {
+    pub(crate) fn new(chunk_flags: ChunkFlags) -> Fallible<Self> {
         Ok(Self {
             chunk_id: allocate_chunk_id(),
+            chunk_flags,
             atlas_builder: MegaAtlas::new()?,
             vertex_upload_buffer: Vec::with_capacity(VERTEX_CHUNK_COUNT),
             last_shape_id: 0,
@@ -124,19 +148,28 @@ impl OpenChunk {
         self.vertex_upload_buffer.is_empty()
     }
 
-    pub fn upload_shape(
+    pub(crate) fn upload_shape(
         &mut self,
         name: &str,
-        selection: DrawSelection,
+        analysis: AnalysisResults,
+        sh: &RawShape,
+        selection: &DrawSelection,
         palette: &Palette,
         lib: &Library,
     ) -> Fallible<ShapeId> {
-        let sh = RawShape::from_bytes(&lib.load(&name)?)?;
-
         let start_vertex = self.vertex_upload_buffer.len();
+        let mut verts = Vec::new();
         let shape_widgets = Arc::new(RwLock::new(ShapeUploader::draw_model(
-            name, &sh, selection, palette, lib, self,
+            name,
+            analysis,
+            sh,
+            selection,
+            palette,
+            lib,
+            &mut verts,
+            &mut self.atlas_builder,
         )?));
+        self.vertex_upload_buffer.append(&mut verts);
 
         let part = ChunkPart::new(start_vertex, self.vertex_upload_buffer.len(), shape_widgets);
         let shape_id = self.allocate_shape_id();
@@ -148,14 +181,6 @@ impl OpenChunk {
         let shape_index = self.last_shape_id + 1;
         self.last_shape_id = shape_index;
         ShapeId((self.chunk_id, shape_index))
-    }
-
-    pub(crate) fn push_vertex(&mut self, vertex: Vertex) {
-        self.vertex_upload_buffer.push(vertex);
-    }
-
-    pub(crate) fn atlas_mut(&mut self) -> &mut MegaAtlas {
-        &mut self.atlas_builder
     }
 
     pub fn chunk_id(&self) -> ChunkId {
@@ -174,6 +199,7 @@ pub struct ClosedChunk {
     atlas_bind_group: wgpu::BindGroup,
 
     chunk_id: ChunkId,
+    chunk_flags: ChunkFlags,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
 
@@ -187,7 +213,8 @@ impl ClosedChunk {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
         let a_size = chunk.atlas_builder.atlas_size();
         println!(
-            "uploading vertex/atlas buffer with {} / {} ({} total) bytes",
+            "uploading vertex/atlas buffer {:?} size {} / {} ({} total) bytes",
+            chunk.chunk_flags,
             v_size,
             a_size,
             v_size + a_size
@@ -218,6 +245,7 @@ impl ClosedChunk {
             vertex_buffer,
             vertex_count: chunk.vertex_upload_buffer.len() as u32,
             chunk_id: chunk.chunk_id,
+            chunk_flags: chunk.chunk_flags,
             chunk_parts: chunk.chunk_parts,
             atlas_bind_group,
         })

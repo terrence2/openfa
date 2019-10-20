@@ -12,7 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{chunk::OpenChunk, draw_state::DrawState, texture_atlas::Frame};
+use crate::{
+    draw_state::DrawState,
+    texture_atlas::{Frame, MegaAtlas},
+};
 use bitflags::bitflags;
 use failure::{bail, ensure, err_msg, Fallible};
 use i386::Interpreter;
@@ -20,7 +23,7 @@ use lazy_static::lazy_static;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
-use nalgebra::{Matrix4, Vector3};
+use nalgebra::Vector3;
 use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
@@ -253,6 +256,36 @@ impl ShapeErrata {
             no_upper_aileron: !(flags & VertexFlags::AILERONS_DOWN).is_empty()
                 && (flags & VertexFlags::AILERONS_UP).is_empty(),
         }
+    }
+}
+
+pub(crate) struct AnalysisResults {
+    has_frame_animation: bool,
+    prop_man: BufferPropsManager,
+    transformers: Vec<Transformer>,
+}
+
+impl Default for AnalysisResults {
+    fn default() -> Self {
+        Self {
+            has_frame_animation: false,
+            prop_man: BufferPropsManager::new(),
+            transformers: Vec::new(),
+        }
+    }
+}
+
+impl AnalysisResults {
+    pub fn has_animation(&self) -> bool {
+        self.has_frame_animation
+    }
+
+    pub fn has_xforms(&self) -> bool {
+        self.prop_man.next_xform_id == 0
+    }
+
+    pub fn has_flags(&self) -> bool {
+        self.prop_man.seen_flags == VertexFlags::NONE
     }
 }
 
@@ -689,7 +722,7 @@ impl ShapeUploader {
         palette: &Palette,
         active_frame: &Option<Frame>,
         override_flags: Option<VertexFlags>,
-        chunk: &mut OpenChunk,
+        vertices: &mut Vec<Vertex>,
     ) -> Fallible<()> {
         // Load all vertices in this facet into the vertex upload
         // buffer, copying in the color and texture coords for each
@@ -734,7 +767,7 @@ impl ShapeUploader {
                     let frame = active_frame.as_ref().unwrap();
                     v.tex_coord = frame.tex_coord_at(tex_coord);
                 }
-                chunk.push_vertex(v);
+                vertices.push(v);
             }
         }
         Ok(())
@@ -1053,66 +1086,22 @@ impl ShapeUploader {
         Ok(())
     }
 
-    pub fn draw_model(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn draw_model(
         name: &str,
+        analysis: AnalysisResults,
         sh: &RawShape,
-        selection: DrawSelection,
+        selection: &DrawSelection,
         palette: &Palette,
         lib: &Library,
-        chunk: &mut OpenChunk,
+        vertices: &mut Vec<Vertex>,
+        atlas: &mut MegaAtlas,
     ) -> Fallible<ShapeWidgets> {
         trace!("ShapeUploader::draw_model: {}", name);
-
-        // Outputs
-        let mut transformers = Vec::new();
-        let mut xforms = Vec::new();
-        xforms.push(Matrix4::<f32>::identity());
-
-        // State
-        let mut prop_man = BufferPropsManager::new();
         let mut active_frame = None;
-        let mut section_close_byte_offset = None;
-        let mut damage_model_byte_offset = None;
-        let mut end_byte_offset = None;
         let mut vert_pool = Vec::new();
-
-        let mut pc = ProgramCounter::new(sh.instrs.len());
-        while pc.valid() {
-            if let Some(byte_offset) = damage_model_byte_offset {
-                if pc.matches_byte(byte_offset) && selection != DrawSelection::DamageModel {
-                    pc.set_byte_offset(end_byte_offset.unwrap(), sh)?;
-                }
-            }
-            if let Some(byte_offset) = section_close_byte_offset {
-                if pc.matches_byte(byte_offset) {
-                    pc.set_byte_offset(end_byte_offset.unwrap(), sh)?;
-                }
-            }
-
-            let instr = pc.current_instr(sh);
-            //println!("At: {:3} => {}", pc.instr_offset, instr.show());
+        let mut callback = |_pc: &ProgramCounter, instr: &Instr| {
             match instr {
-                Instr::Header(_) => {}
-                Instr::PtrToObjEnd(end) => end_byte_offset = Some(end.end_byte_offset()),
-                Instr::EndOfObject(_end) => break,
-
-                Instr::Jump(jump) => {
-                    pc.set_byte_offset(jump.target_byte_offset(), sh)?;
-                    continue;
-                }
-                Instr::JumpToDamage(dam) => {
-                    damage_model_byte_offset = Some(dam.damage_byte_offset());
-                    if selection == DrawSelection::DamageModel {
-                        pc.set_byte_offset(dam.damage_byte_offset(), sh)?;
-                        continue;
-                    }
-                }
-                Instr::JumpToDetail(detail) => {
-                    section_close_byte_offset = Some(detail.target_byte_offset());
-                }
-                Instr::JumpToLOD(lod) => {
-                    section_close_byte_offset = Some(lod.target_byte_offset());
-                }
                 Instr::JumpToFrame(frame) => {
                     let mask_base = match frame.num_frames() {
                         2 => VertexFlags::ANIM_FRAME_0_2,
@@ -1135,37 +1124,130 @@ impl ShapeUploader {
                             palette,
                             &active_frame,
                             VertexFlags::from_bits(mask_base << i),
-                            chunk,
+                            vertices,
                         )?;
                     }
-                    pc.set_byte_offset(frame.target_for_frame(0), sh)?;
-                }
-
-                Instr::X86Code(ref x86) => {
-                    Self::maybe_update_buffer_properties(
-                        name,
-                        &pc,
-                        x86,
-                        sh,
-                        &mut prop_man,
-                        &mut transformers,
-                    )?;
                 }
 
                 Instr::TextureRef(texture) => {
                     let filename = texture.filename.to_uppercase();
                     let data = lib.load(&filename)?;
                     let pic = Pic::from_bytes(&data)?;
-                    active_frame = Some(chunk.atlas_mut().push(&filename, &pic, data, palette)?);
+                    active_frame = Some(atlas.push(&filename, &pic, data, palette)?);
                 }
 
                 Instr::VertexBuf(vert_buf) => {
-                    prop_man.active_xform_id =
-                        Self::load_vertex_buffer(&prop_man.props, vert_buf, &mut vert_pool);
+                    Self::load_vertex_buffer(&analysis.prop_man.props, vert_buf, &mut vert_pool);
                 }
 
                 Instr::Facet(facet) => {
-                    Self::push_facet(facet, &vert_pool, palette, &active_frame, None, chunk)?;
+                    Self::push_facet(facet, &vert_pool, palette, &active_frame, None, vertices)?;
+                }
+
+                _ => {}
+            }
+            Ok(())
+        };
+        Self::iterate_instructions(sh, selection, &mut callback)?;
+
+        Ok(ShapeWidgets::new(
+            name,
+            analysis.transformers,
+            ShapeErrata::from_flags(analysis.prop_man.seen_flags),
+        ))
+    }
+
+    pub(crate) fn analyze_model(
+        name: &str,
+        sh: &RawShape,
+        selection: &DrawSelection,
+    ) -> Fallible<AnalysisResults> {
+        let mut result: AnalysisResults = Default::default();
+        let mut callback = |pc: &ProgramCounter, instr: &Instr| {
+            match instr {
+                Instr::JumpToFrame(_) => {
+                    result.has_frame_animation = true;
+                }
+                Instr::X86Code(ref x86) => {
+                    Self::maybe_update_buffer_properties(
+                        name,
+                        &pc,
+                        x86,
+                        sh,
+                        &mut result.prop_man,
+                        &mut result.transformers,
+                    )?;
+                }
+                Instr::VertexBuf(vert_buf) => {
+                    result.prop_man.active_xform_id =
+                        if let Some(props) = result.prop_man.props.get(&vert_buf.at_offset()) {
+                            props.xform_id
+                        } else {
+                            0
+                        };
+                }
+                _ => {}
+            };
+            Ok(())
+        };
+        Self::iterate_instructions(sh, selection, &mut callback)?;
+
+        Ok(result)
+    }
+
+    fn iterate_instructions<F>(
+        sh: &RawShape,
+        selection: &DrawSelection,
+        callback: &mut F,
+    ) -> Fallible<()>
+    where
+        F: FnMut(&ProgramCounter, &Instr) -> Fallible<()>,
+    {
+        let mut section_close_byte_offset = None;
+        let mut damage_model_byte_offset = None;
+        let mut end_byte_offset = None;
+
+        let mut pc = ProgramCounter::new(sh.instrs.len());
+        while pc.valid() {
+            if let Some(byte_offset) = damage_model_byte_offset {
+                if pc.matches_byte(byte_offset) && *selection != DrawSelection::DamageModel {
+                    pc.set_byte_offset(end_byte_offset.unwrap(), sh)?;
+                }
+            }
+            if let Some(byte_offset) = section_close_byte_offset {
+                if pc.matches_byte(byte_offset) {
+                    pc.set_byte_offset(end_byte_offset.unwrap(), sh)?;
+                }
+            }
+
+            let instr = pc.current_instr(sh);
+            callback(&pc, instr)?;
+
+            //println!("At: {:3} => {}", pc.instr_offset, instr.show());
+            match instr {
+                Instr::Header(_) => {}
+                Instr::PtrToObjEnd(end) => end_byte_offset = Some(end.end_byte_offset()),
+                Instr::EndOfObject(_end) => break,
+
+                Instr::Jump(jump) => {
+                    pc.set_byte_offset(jump.target_byte_offset(), sh)?;
+                    continue;
+                }
+                Instr::JumpToDamage(dam) => {
+                    damage_model_byte_offset = Some(dam.damage_byte_offset());
+                    if *selection == DrawSelection::DamageModel {
+                        pc.set_byte_offset(dam.damage_byte_offset(), sh)?;
+                        continue;
+                    }
+                }
+                Instr::JumpToDetail(detail) => {
+                    section_close_byte_offset = Some(detail.target_byte_offset());
+                }
+                Instr::JumpToLOD(lod) => {
+                    section_close_byte_offset = Some(lod.target_byte_offset());
+                }
+                Instr::JumpToFrame(frame) => {
+                    pc.set_byte_offset(frame.target_for_frame(0), sh)?;
                 }
 
                 _ => {}
@@ -1174,11 +1256,7 @@ impl ShapeUploader {
             pc.advance(sh);
         }
 
-        Ok(ShapeWidgets::new(
-            name,
-            transformers,
-            ShapeErrata::from_flags(prop_man.seen_flags),
-        ))
+        Ok(())
     }
 }
 
