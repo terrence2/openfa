@@ -170,7 +170,13 @@ impl T2Renderer {
         //    day2f.LAY 0
         //    day2.LAY 0
         //    day2v.LAY 0
-        let layer = assets.load_lay(&mm.layer_name.to_uppercase())?;
+        println!("terrain_name: {}", terrain_name);
+        let layer_name = if terrain_name.contains("VIET") {
+            "DAY2V.LAY".to_owned()
+        } else {
+            mm.layer_name.to_uppercase()
+        };
+        let layer = assets.load_lay(&layer_name)?;
 
         let mut pic_data = HashMap::new();
         let texture_base_name = mm.get_base_texture_name()?;
@@ -193,7 +199,7 @@ impl T2Renderer {
                 .vertex_shader(vs.main_entry_point(), ())
                 .triangle_strip()
                 .cull_mode_back()
-                .front_face_counter_clockwise()
+                .front_face_clockwise()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
                 .depth_stencil(DepthStencil {
@@ -276,10 +282,17 @@ impl T2Renderer {
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
         // FIXME: this is close except on TVIET, which needs some fiddling around 0xC0.
-        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
-        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
         palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
         palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
+        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
+        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
+
+        // TVIET: C2 -- main color, light green
+        //        C4 -- black (maybe extremely dark green?)
+        //        C5 -- dark green
+        //        C6 -- darkish but slightly lighter green (camo green)
+        //        C7 -- light green (pukish)
+        //palette.override_one(0xDF, [0xFF, 0x00, 0x00]);
 
         //palette.dump_png("terrain_palette")?;
 
@@ -341,7 +354,7 @@ impl T2Renderer {
         };
 
         let x = xi as f32 / (self.terrain.width as f32) - 0.5;
-        let z = zi as f32 / (self.terrain.height as f32) - 0.5;
+        let z = 1f32 - (zi as f32 / (self.terrain.height as f32)) - 0.5;
         let h = -f32::from(sample.height) / 512f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
@@ -349,8 +362,9 @@ impl T2Renderer {
             color.data[3] = 0;
         }
 
+        let scale = 100f32;
         (
-            [x, h, z],
+            [x * scale, h, z * scale],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,

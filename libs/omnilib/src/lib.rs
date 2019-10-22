@@ -92,6 +92,7 @@ macro_rules! make_opt_struct {
             pub fn find_input(&self, omni_input: &str) -> Fallible<(OmniLib, String, String)> {
                 let omni = self.load_omni_for_inputs(omni_input)?;
                 let inputs = self.expand_inputs(omni_input, &omni)?;
+                ::failure::ensure!(inputs.len() > 0, "expected a single input, but expanded to none");
                 ::failure::ensure!(inputs.len() == 1, "expected a single input, but expanded to many");
                 Ok((omni, inputs[0].0.to_owned(), inputs[0].1.to_owned()))
             }
