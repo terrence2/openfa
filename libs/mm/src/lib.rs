@@ -454,6 +454,24 @@ impl MissionMap {
 
         Ok(name.to_owned())
     }
+
+    // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
+    // except when it is a modified version with the first (non-tilde) character of the MM name
+    // appended to the end of the LAY name, before the dot.
+    pub fn get_layer_name(&self, file_exists: &dyn Fn(&str) -> bool) -> Fallible<String> {
+        let first_char = self.map_name.chars().next().expect("the first character");
+        let layer_parts = self.layer_name.split('.').collect::<Vec<&str>>();
+        ensure!(layer_parts.len() == 2, "expected one dot in layer name");
+        ensure!(
+            layer_parts[1].to_uppercase() == "LAY",
+            "expected LAY extension"
+        );
+        let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
+        if file_exists(&alt_layer_name) {
+            return Ok(alt_layer_name);
+        }
+        Ok(self.layer_name.to_uppercase())
+    }
 }
 
 #[cfg(test)]
