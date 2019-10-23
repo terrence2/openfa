@@ -37,6 +37,13 @@ impl TLoc {
             TLoc::Name(ref s) => s.to_owned(),
         }
     }
+
+    pub fn is_named(&self) -> bool {
+        match self {
+            Self::Index(_) => false,
+            Self::Name(_) => true,
+        }
+    }
 }
 
 #[derive(Debug)]

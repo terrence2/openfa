@@ -15,7 +15,7 @@
 use crate::t2::texture_atlas::TextureAtlas;
 use asset::AssetManager;
 use camera::CameraAbstract;
-use failure::Fallible;
+use failure::{ensure, Fallible};
 use image::{ImageBuffer, Rgba};
 use lay::Layer;
 use lib::Library;
@@ -176,11 +176,13 @@ impl T2Renderer {
         let mut pic_data = HashMap::new();
         let texture_base_name = mm.get_base_texture_name()?;
         for tmap in mm.tmaps.values() {
-            if !pic_data.contains_key(&tmap.loc) {
-                let name = tmap.loc.pic_file(&texture_base_name);
-                let data = lib.load(&name)?.to_vec();
-                pic_data.insert(tmap.loc.clone(), data);
+            if pic_data.contains_key(&tmap.loc) {
+                ensure!(!tmap.loc.is_named(), "duplicated named tmap");
+                continue;
             }
+            let name = tmap.loc.pic_file(&texture_base_name);
+            let data = lib.load(&name)?.to_vec();
+            pic_data.insert(tmap.loc.clone(), data);
         }
 
         let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
@@ -353,9 +355,9 @@ impl T2Renderer {
         let h = -f32::from(sample.height) / 512f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
-        if sample.color == 0xFF {
-            color.data[3] = 0;
-        }
+        //        if sample.color == 0xFF {
+        //            color.data[3] = 0;
+        //        }
 
         let scale = 100f32;
         (

@@ -127,29 +127,32 @@ impl TextureAtlas {
         }
 
         let mut count256 = 0;
-        let mut count128 = 0;
         for (_, src) in &sources {
             if src.width() == 256 {
                 count256 += 1;
-                count128 += 1;
+            } else {
+                ensure!(src.width() == 128, "non 128 or 256 wide tile");
             }
         }
+        let mut count128 = sources.len() - count256;
 
         ensure!(
             count128 % 4 == 0,
             "expected count of 128x128 images to be divisible by 4"
         );
         let square_count = count256 + (count128 / 4);
-        let num_across = f64::from(square_count).sqrt().ceil() as u32;
+        let num_across = (square_count as f64).sqrt().ceil() as u32;
         let extra = num_across * num_across - square_count as u32;
         let num_down = num_across - (extra / num_across);
 
         let size = 256;
-        let atlas_width = (num_across * size) + (2 * num_across) + 2;
-        let atlas_height = (num_down * size) + (2 * num_down) + 2;
+        let atlas_width = (num_across * (size + 2)) + 2;
+        let atlas_height = (num_down * (size + 2)) + 2;
 
         trace!(
-            "t2::TextureAtlas::complex: {} squares, {} across, {}x{} pixels",
+            "t2::TextureAtlas::complex: {} 128 px, {} 256 px, {} total squares, {} across, {}x{} pixels",
+            count128,
+            count256,
             square_count,
             num_across,
             atlas_width,
@@ -160,23 +163,41 @@ impl TextureAtlas {
         let mut frames = HashMap::new();
         let mut cursor_x = 1;
         let mut cursor_y = 1;
+        for (tloc, src) in &sources[0..count256] {
+            ensure!(src.width() == 256, "in 256 partition");
+            let coord0 = TexCoord {
+                s: cursor_x as f32 / atlas_width as f32,
+                t: cursor_y as f32 / atlas_height as f32,
+            };
+            let coord1 = TexCoord {
+                s: (cursor_x + size) as f32 / atlas_width as f32,
+                t: (cursor_y + size) as f32 / atlas_height as f32,
+            };
+            frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
+            img.copy_from(src, cursor_x, cursor_y);
+            cursor_x += 258;
+            if (cursor_x + 1) >= atlas_width {
+                cursor_x = 1;
+                cursor_y += 258;
+            }
+        }
+
         let mut offset128 = 0;
-        for (tloc, src) in &sources {
+        for (tloc, src) in &sources[count256..] {
+            ensure!(src.width() == 128, "in 128 partition");
             let mut target_x = cursor_x;
             let mut target_y = cursor_y;
-            if src.width() == 128 {
-                match offset128 {
-                    0 => {}
-                    1 => target_x += 129,
-                    2 => target_y += 129,
-                    3 => {
-                        target_x += 129;
-                        target_y += 129;
-                    }
-                    _ => bail!("offset128 out of range"),
+            match offset128 {
+                0 => {}
+                1 => target_x += 129,
+                2 => target_y += 129,
+                3 => {
+                    target_x += 129;
+                    target_y += 129;
                 }
-                offset128 = (offset128 + 1) % 4;
+                _ => bail!("offset128 out of range"),
             }
+            offset128 = (offset128 + 1) % 4;
 
             let coord0 = TexCoord {
                 s: target_x as f32 / atlas_width as f32,
@@ -187,21 +208,15 @@ impl TextureAtlas {
                 t: (target_y + size) as f32 / atlas_height as f32,
             };
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-
-            trace!(
-                "t2::TextureAtlas::complex: {:?} @ {}x{}",
-                tloc,
-                target_x,
-                target_y
-            );
             img.copy_from(src, target_x, target_y);
-
             cursor_x += size + 2;
-            if cursor_x >= atlas_width {
+            if (cursor_x + 1) >= atlas_width {
                 cursor_x = 1;
                 cursor_y += size + 2;
             }
         }
+
+        // img.save("texture_atlas.png");
 
         Ok(Self { img, frames })
     }
