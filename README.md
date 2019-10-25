@@ -2,7 +2,7 @@
 
 An attempt at a black-box, open-source re-implementation of the Janes Fighters Anthology's engine.
 
-[![Build Status](https://badge.buildkite.com/5f5710df0c75ea999ada3ed52d0967537cdc7859253fcf89ab.svg)](https://buildkite.com/openfa/continuous-integration)
+[![Build status](https://badge.buildkite.com/5f5710df0c75ea999ada3ed52d0967537cdc7859253fcf89ab.svg)](https://buildkite.com/openfa/continuous-release)
 [![Download](https://img.shields.io/static/v1.svg?label=download&message=latest&color=important)](https://github.com/terrence2/openfa/releases/latest)
 [![License](https://img.shields.io/static/v1.svg?label=license&message=GPLv3&color=informational)](https://github.com/terrence2/openfa/blob/master/LICENSE)
 
