@@ -228,7 +228,7 @@ impl T2Renderer {
             index_buffer: None,
         };
         let (pds, vertex_buffer, index_buffer, palette) =
-            t2_renderer.regenerate_with_palette_parameters(window, 0, 0, 0, 0, 0)?;
+            t2_renderer.regenerate_with_palette_parameters(window)?;
         t2_renderer.vertex_buffer = Some(vertex_buffer);
         t2_renderer.index_buffer = Some(index_buffer);
         t2_renderer.pds = Some(pds);
@@ -237,32 +237,9 @@ impl T2Renderer {
         Ok(t2_renderer)
     }
 
-    pub fn set_palette_parameters(
-        &mut self,
-        window: &GraphicsWindow,
-        lay_base: i32,
-        e0_off: i32,
-        f1_off: i32,
-        c2_off: i32,
-        d3_off: i32,
-    ) -> Fallible<()> {
-        let (pds, vertex_buffer, index_buffer, palette) = self
-            .regenerate_with_palette_parameters(window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-        self.pds = Some(pds);
-        self.vertex_buffer = Some(vertex_buffer);
-        self.index_buffer = Some(index_buffer);
-        self.used_palette = palette;
-        Ok(())
-    }
-
     fn regenerate_with_palette_parameters(
         &self,
         window: &GraphicsWindow,
-        lay_base: i32,
-        e0_off: i32,
-        f1_off: i32,
-        c2_off: i32,
-        d3_off: i32,
     ) -> Fallible<(
         Arc<dyn DescriptorSet + Send + Sync>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
@@ -270,19 +247,18 @@ impl T2Renderer {
         Palette,
     )> {
         // Note: we need to really find the right palette.
-        let mut palette = self.base_palette.clone();
-        let layer_data = self.layer.for_index(self.mm.layer_index + 2, lay_base)?;
+        let layer_data = self.layer.for_index(self.mm.layer_index + 2)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        // FIXME: this is close except on TVIET, which needs some fiddling around 0xC0.
-        palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
-        palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
-        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
-        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
+        let mut palette = self.base_palette.clone();
+        palette.overlay_at(&r0, 0xE0 - 1)?;
+        palette.overlay_at(&r1, 0xF0 - 1)?;
+        palette.overlay_at(&r2, 0xC0)?;
+        palette.overlay_at(&r3, 0xD0)?;
 
         // TVIET: C2 -- main color, light green
         //        C4 -- black (maybe extremely dark green?)
@@ -317,7 +293,6 @@ impl T2Renderer {
             let pic = Pic::decode(&palette, data)?;
             pics.push((tloc.clone(), pic));
         }
-
         let atlas = TextureAtlas::new(pics)?;
 
         let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
