@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-mod t2_buffer;
+//mod t2_buffer;
 mod texture_atlas;
 
-pub use t2_buffer::T2Buffer;
+pub use texture_atlas::TextureAtlas;
+//pub use t2_buffer::T2Buffer;
