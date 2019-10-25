@@ -38,23 +38,23 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn interp(&self, fs: f32, ft: f32, orientation: &MapOrientation) -> Fallible<[f32; 2]> {
+    pub fn interp(&self, fs: f32, ft: f32, orientation: &MapOrientation) -> [f32; 2] {
         match orientation {
             MapOrientation::Unk0 => {
                 let (s0, s1, t1, t0) = (self.coord0.s, self.coord1.s, self.coord0.t, self.coord1.t);
-                Ok([s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)])
+                [s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)]
             }
             MapOrientation::Unk1 => {
                 let (s0, s1, t0, t1) = (self.coord1.s, self.coord0.s, self.coord1.t, self.coord0.t);
-                Ok([s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)])
+                [s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)]
             }
             MapOrientation::FlipS => {
                 let (s0, s1, t0, t1) = (self.coord1.s, self.coord0.s, self.coord0.t, self.coord1.t);
-                Ok([s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)])
+                [s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)]
             }
             MapOrientation::RotateCCW => {
                 let (s0, s1, t0, t1) = (self.coord0.s, self.coord1.s, self.coord0.t, self.coord1.t);
-                Ok([s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)])
+                [s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)]
             }
         }
     }

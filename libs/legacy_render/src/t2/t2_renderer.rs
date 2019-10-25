@@ -383,63 +383,60 @@ impl T2Renderer {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
+        // Each patch has a fixed strip pattern.
+        let mut patch_indices = Vec::new();
+        for row in 0..4 {
+            let row_off = row * 5;
+
+            patch_indices.push(row_off);
+            patch_indices.push(row_off);
+
+            for column in 0..5 {
+                patch_indices.push(row_off + column);
+                patch_indices.push(row_off + column + 5);
+            }
+
+            patch_indices.push(row_off + 4 + 5);
+            patch_indices.push(row_off + 4 + 5);
+        }
+        let push_patch_indices = |base: u32, indices: &mut Vec<u32>| {
+            for pi in &patch_indices {
+                indices.push(base + *pi);
+            }
+        };
+
         for zi_base in (0..self.terrain.height).step_by(4) {
             for xi_base in (0..self.terrain.width).step_by(4) {
                 let base = verts.len() as u32;
 
-                // Upload all vertices in patch.
-                if let Some(tmap) = self.mm.tmaps.get(&(xi_base, zi_base)) {
-                    let frame = &atlas.frames[&tmap.loc];
+                // Upload one patch of vertices, possibly with a texture.
+                let frame_info = self
+                    .mm
+                    .tmaps
+                    .get(&(xi_base, zi_base))
+                    .map(|tmap| (&atlas.frames[&tmap.loc], &tmap.orientation));
+                for z_off in 0..=4 {
+                    for x_off in 0..=4 {
+                        let zi = zi_base + z_off;
+                        let xi = xi_base + x_off;
+                        let (position, color) = self.sample_at(palette, xi, zi);
 
-                    for z_off in 0..=4 {
-                        for x_off in 0..=4 {
-                            let zi = zi_base + z_off;
-                            let xi = xi_base + x_off;
-                            let (position, _samp_color) = self.sample_at(palette, xi, zi);
-
-                            verts.push(Vertex {
-                                position,
-                                color: [0f32, 0f32, 0f32, 0f32],
-                                tex_coord: frame.interp(
-                                    x_off as f32 / 4f32,
-                                    z_off as f32 / 4f32,
-                                    &tmap.orientation,
-                                )?,
-                            });
-                        }
-                    }
-                } else {
-                    for z_off in 0..5 {
-                        for x_off in 0..5 {
-                            let zi = zi_base + z_off;
-                            let xi = xi_base + x_off;
-                            let (position, color) = self.sample_at(palette, xi, zi);
-
-                            verts.push(Vertex {
-                                position,
-                                color,
-                                tex_coord: [0f32, 0f32],
-                            });
-                        }
+                        verts.push(Vertex {
+                            position,
+                            color,
+                            tex_coord: frame_info
+                                .map(|(frame, orientation)| {
+                                    frame.interp(
+                                        x_off as f32 / 4f32,
+                                        z_off as f32 / 4f32,
+                                        orientation,
+                                    )
+                                })
+                                .unwrap_or([0f32, 0f32]),
+                        });
                     }
                 }
-
-                // There is a fixed strip pattern here that we could probably make use of.
-                // For now just re-compute per patch with the base offset.
-                for row in 0..4 {
-                    let row_off = row * 5;
-
-                    indices.push(base + row_off);
-                    indices.push(base + row_off);
-
-                    for column in 0..5 {
-                        indices.push(base + row_off + column);
-                        indices.push(base + row_off + column + 5);
-                    }
-
-                    indices.push(base + row_off + 4 + 5);
-                    indices.push(base + row_off + 4 + 5);
-                }
+                push_patch_indices(base, &mut indices);
             }
         }
 
