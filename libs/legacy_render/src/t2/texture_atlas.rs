@@ -23,33 +23,46 @@ pub struct TexCoord {
     pub t: f32,
 }
 
+impl TexCoord {
+    pub fn new(x: u32, y: u32, img: &DynamicImage) -> Self {
+        Self {
+            s: x as f32 / img.width() as f32,
+            t: y as f32 / img.height() as f32,
+        }
+    }
+}
+
 pub struct Frame {
     pub coord0: TexCoord,
     pub coord1: TexCoord,
 }
 
 impl Frame {
-    pub fn interp(&self, fs: f32, ft: f32, orientation: &MapOrientation) -> Fallible<[f32; 2]> {
+    pub fn interp(&self, fs: f32, ft: f32, orientation: &MapOrientation) -> [f32; 2] {
         match orientation {
             MapOrientation::Unk0 => {
                 let (s0, s1, t1, t0) = (self.coord0.s, self.coord1.s, self.coord0.t, self.coord1.t);
-                Ok([s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)])
+                [s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)]
             }
             MapOrientation::Unk1 => {
                 let (s0, s1, t0, t1) = (self.coord1.s, self.coord0.s, self.coord1.t, self.coord0.t);
-                Ok([s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)])
+                [s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)]
             }
             MapOrientation::FlipS => {
                 let (s0, s1, t0, t1) = (self.coord1.s, self.coord0.s, self.coord0.t, self.coord1.t);
-                Ok([s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)])
+                [s0 + ((s1 - s0) * fs), t0 + ((t1 - t0) * ft)]
             }
             MapOrientation::RotateCCW => {
                 let (s0, s1, t0, t1) = (self.coord0.s, self.coord1.s, self.coord0.t, self.coord1.t);
-                Ok([s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)])
+                [s0 + ((s1 - s0) * ft), t0 + ((t1 - t0) * fs)]
             }
         }
     }
 }
+
+// Size of a texture patch.
+const PATCH_SIZE: u32 = 256;
+const HALF_SIZE: u32 = 128;
 
 pub struct TextureAtlas {
     pub img: DynamicImage,
@@ -65,20 +78,20 @@ impl TextureAtlas {
         }
 
         if uniform {
-            Self::pack_trivial(256, sources)
+            Self::pack_trivial(sources)
         } else {
             Self::pack_complex(sources)
         }
     }
 
     // Most terrains all use 256x256 images, so
-    fn pack_trivial(size: u32, sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
+    fn pack_trivial(sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
         let num_across = (sources.len() as f64).sqrt().ceil() as u32;
         let extra = num_across * num_across - sources.len() as u32;
         let num_down = num_across - (extra / num_across);
 
-        let atlas_width = (num_across * size) + num_across + 1;
-        let atlas_height = (num_down * size) + num_down + 1;
+        let atlas_width = (num_across * PATCH_SIZE) + num_across + 1;
+        let atlas_height = (num_down * PATCH_SIZE) + num_down + 1;
 
         trace!(
             "t2::TextureAtlas::trivial: {} images, {} across, {}x{} pixels",
@@ -92,28 +105,15 @@ impl TextureAtlas {
         let mut cursor_x = 1;
         let mut cursor_y = 1;
         for (tloc, src) in &sources {
-            let coord0 = TexCoord {
-                s: cursor_x as f32 / atlas_width as f32,
-                t: cursor_y as f32 / atlas_height as f32,
-            };
-            let coord1 = TexCoord {
-                s: (cursor_x + size) as f32 / atlas_width as f32,
-                t: (cursor_y + size) as f32 / atlas_height as f32,
-            };
+            let coord0 = TexCoord::new(cursor_x, cursor_y, &img);
+            let coord1 = TexCoord::new(cursor_x + PATCH_SIZE, cursor_y + PATCH_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-
-            trace!(
-                "t2::TextureAtlas::trivial: {:?} @ {}x{}",
-                tloc,
-                cursor_x,
-                cursor_y
-            );
             img.copy_from(src, cursor_x, cursor_y);
 
-            cursor_x += size + 1;
+            cursor_x += PATCH_SIZE + 1;
             if cursor_x >= atlas_width {
                 cursor_x = 1;
-                cursor_y += size + 1;
+                cursor_y += PATCH_SIZE + 1;
             }
         }
 
@@ -122,34 +122,25 @@ impl TextureAtlas {
 
     fn pack_complex(mut sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
         sources.sort_unstable_by(|a, b| a.1.width().cmp(&b.1.width()).reverse());
-        for (tloc, src) in &sources {
-            println!("{:?}: {}", tloc, src.width());
-        }
-
-        let mut count256 = 0;
-        let mut count128 = 0;
-        for (_, src) in &sources {
-            if src.width() == 256 {
-                count256 += 1;
-                count128 += 1;
-            }
-        }
+        let count256 = sources.iter().filter(|(_, img)| img.width() == 256).count();
+        let count128 = sources.len() - count256;
 
         ensure!(
             count128 % 4 == 0,
             "expected count of 128x128 images to be divisible by 4"
         );
         let square_count = count256 + (count128 / 4);
-        let num_across = f64::from(square_count).sqrt().ceil() as u32;
+        let num_across = (square_count as f64).sqrt().ceil() as u32;
         let extra = num_across * num_across - square_count as u32;
         let num_down = num_across - (extra / num_across);
 
-        let size = 256;
-        let atlas_width = (num_across * size) + (2 * num_across) + 2;
-        let atlas_height = (num_down * size) + (2 * num_down) + 2;
+        let atlas_width = (num_across * (PATCH_SIZE + 2)) + 2;
+        let atlas_height = (num_down * (PATCH_SIZE + 2)) + 2;
 
         trace!(
-            "t2::TextureAtlas::complex: {} squares, {} across, {}x{} pixels",
+            "t2::TextureAtlas::complex: {} 128px, {} 256px, {} total squares, {} across, {}x{} pixels",
+            count128,
+            count256,
             square_count,
             num_across,
             atlas_width,
@@ -160,49 +151,48 @@ impl TextureAtlas {
         let mut frames = HashMap::new();
         let mut cursor_x = 1;
         let mut cursor_y = 1;
-        let mut offset128 = 0;
-        for (tloc, src) in &sources {
-            let mut target_x = cursor_x;
-            let mut target_y = cursor_y;
-            if src.width() == 128 {
-                match offset128 {
-                    0 => {}
-                    1 => target_x += 129,
-                    2 => target_y += 129,
-                    3 => {
-                        target_x += 129;
-                        target_y += 129;
-                    }
-                    _ => bail!("offset128 out of range"),
-                }
-                offset128 = (offset128 + 1) % 4;
-            }
-
-            let coord0 = TexCoord {
-                s: target_x as f32 / atlas_width as f32,
-                t: target_y as f32 / atlas_height as f32,
-            };
-            let coord1 = TexCoord {
-                s: (target_x + size) as f32 / atlas_width as f32,
-                t: (target_y + size) as f32 / atlas_height as f32,
-            };
+        for (tloc, src) in &sources[..count256] {
+            ensure!(src.width() == 256, "in 256 partition");
+            let coord0 = TexCoord::new(cursor_x, cursor_y, &img);
+            let coord1 = TexCoord::new(cursor_x + PATCH_SIZE, cursor_y + PATCH_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-
-            trace!(
-                "t2::TextureAtlas::complex: {:?} @ {}x{}",
-                tloc,
-                target_x,
-                target_y
-            );
-            img.copy_from(src, target_x, target_y);
-
-            cursor_x += size + 2;
-            if cursor_x >= atlas_width {
+            img.copy_from(src, cursor_x, cursor_y);
+            cursor_x += PATCH_SIZE + 2;
+            if (cursor_x + 1) >= atlas_width {
                 cursor_x = 1;
-                cursor_y += size + 2;
+                cursor_y += PATCH_SIZE + 2;
             }
         }
 
+        let mut offset128 = 0;
+        for (tloc, src) in &sources[count256..] {
+            ensure!(src.width() == 128, "in 128 partition");
+            let mut target_x = cursor_x;
+            let mut target_y = cursor_y;
+            match offset128 {
+                0 => {}
+                1 => target_x += HALF_SIZE + 1,
+                2 => target_y += HALF_SIZE + 1,
+                3 => {
+                    target_x += HALF_SIZE + 1;
+                    target_y += HALF_SIZE + 1;
+                    cursor_x += PATCH_SIZE + 2;
+                }
+                _ => bail!("offset128 out of range"),
+            }
+            offset128 = (offset128 + 1) % 4;
+
+            let coord0 = TexCoord::new(target_x, target_y, &img);
+            let coord1 = TexCoord::new(target_x + HALF_SIZE, target_y + HALF_SIZE, &img);
+            frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
+            img.copy_from(src, target_x, target_y);
+            if (cursor_x + 1) >= atlas_width {
+                cursor_x = 1;
+                cursor_y += PATCH_SIZE + 2;
+            }
+        }
+
+        // img.save("texture_atlas.png")?;
         Ok(Self { img, frames })
     }
 }
@@ -220,7 +210,7 @@ mod test {
     use xt::TypeManager;
 
     #[test]
-    fn test_it_works() -> Fallible<()> {
+    fn test_t2_texture_atlas() -> Fallible<()> {
         //use simplelog::{Config, LevelFilter, TermLogger};
         //TermLogger::init(LevelFilter::Trace, Config::default())?;
 
@@ -278,10 +268,11 @@ mod test {
                 pics.push((tloc.clone(), pic));
             }
 
-            let _atlas = TextureAtlas::new(pics)?;
-            // atlas
-            //     .img
-            //     .save(&format!("dump/atlas-{}-{}.png", game, base_name))?;
+            let atlas = TextureAtlas::new(pics)?;
+            atlas.img.save(&format!(
+                "../../dump/t2_atlas/atlas-{}-{}.png",
+                game, base_name
+            ))?;
         }
 
         Ok(())
@@ -294,7 +285,7 @@ mod test {
     ) -> Fallible<Palette> {
         // Note: we need to really find the right palette.
         let mut palette = base_palette.clone();
-        let layer_data = layer.for_index(layer_index + 2, 0)?;
+        let layer_data = layer.for_index(layer_index + 2)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
