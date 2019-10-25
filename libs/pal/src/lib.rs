@@ -38,25 +38,32 @@ impl Palette {
     }
 
     pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
-        // The VGA palette contains 6 bit colors, so we need to scale by 4.
-        Self::from_bytes_with_scale(data, 4)
-    }
-
-    pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Self> {
-        Self::from_bytes_with_scale(data, 1)
-    }
-
-    fn from_bytes_with_scale(data: &[u8], scale: u8) -> Fallible<Self> {
+        // The VGA palette contains 6 bit colors, so we need to scale by 4 and add the bottom 2 bits.
         ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
             entries.push(Rgb {
                 data: [
-                    data[i * 3] * scale,
-                    data[i * 3 + 1] * scale,
-                    data[i * 3 + 2] * scale,
+                    (data[i * 3] << 2) | (data[i * 3] >> 6),
+                    (data[i * 3 + 1] << 2) | (data[i * 3 + 1] >> 6),
+                    (data[i * 3 + 2] << 2) | (data[i * 3 + 2] >> 6),
                 ],
+            });
+        }
+        Ok(Self {
+            color_count,
+            entries,
+        })
+    }
+
+    pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Self> {
+        ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
+        let mut entries = Vec::new();
+        let color_count = data.len() / 3;
+        for i in 0..color_count {
+            entries.push(Rgb {
+                data: [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]],
             });
         }
         Ok(Self {
@@ -106,6 +113,12 @@ impl Palette {
             dst_i += 1;
         }
         Ok(())
+    }
+
+    pub fn override_one(&mut self, offset: usize, color: [u8; 3]) {
+        self.entries[offset][0] = color[0];
+        self.entries[offset][1] = color[1];
+        self.entries[offset][2] = color[2];
     }
 
     // Slice from [start to end), half-open.

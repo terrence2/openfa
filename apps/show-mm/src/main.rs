@@ -51,17 +51,7 @@ pub fn main() -> Fallible<()> {
         .bind("+move-view", "mouse3")?
         .bind("exit", "Escape")?
         .bind("exit", "q")?
-        .bind("reset", "r")?
-        .bind("layer-base-up", "t")?
-        .bind("layer-base-down", "g")?
-        .bind("c2-up", "y")?
-        .bind("c2-down", "h")?
-        .bind("d3-up", "u")?
-        .bind("d3-down", "j")?
-        .bind("e0-up", "i")?
-        .bind("e0-down", "k")?
-        .bind("f1-up", "o")?
-        .bind("f1-down", "l")?;
+        .bind("reset", "r")?;
     let mut input = InputSystem::new(vec![shape_bindings]);
 
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
@@ -78,22 +68,9 @@ pub fn main() -> Fallible<()> {
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
-    let state_handle = text_renderer
-        .add_screen_text(Font::HUD11, "", &window)?
-        .with_color(&[1f32, 0.5f32, 0f32, 1f32])
-        .with_horizontal_position(TextPositionH::Right)
-        .with_horizontal_anchor(TextAnchorH::Right)
-        .with_vertical_position(TextPositionV::Bottom)
-        .with_vertical_anchor(TextAnchorV::Bottom);
 
     ///////////////////////////////////////////////////////////
     let mut t2_renderer = T2Renderer::new(mm, &assets, &lib, &window)?;
-    let mut lay_base = -3;
-    let mut e0_off = -1;
-    let mut f1_off = -1;
-    let mut c2_off = 0;
-    let mut d3_off = 0;
-    t2_renderer.set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
     let mut pal_renderer = PalRenderer::new(&window)?;
     pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
     ///////////////////////////////////////////////////////////
@@ -106,8 +83,6 @@ pub fn main() -> Fallible<()> {
 
         if need_reset {
             need_reset = false;
-            t2_renderer
-                .set_palette_parameters(&window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
             pal_renderer.update_pal_data(&t2_renderer.used_palette, &window)?;
         }
 
@@ -129,16 +104,7 @@ pub fn main() -> Fallible<()> {
                 "+move-view" => camera.on_mousebutton_down(3),
                 "-move-view" => camera.on_mousebutton_up(3),
                 "reset" => need_reset = true,
-                "layer-base-up" => lay_base += 1,
-                "layer-base-down" => lay_base -= 1,
-                "c2-up" => c2_off += 1,
-                "c2-down" => c2_off -= 1,
-                "d3-up" => d3_off += 1,
-                "d3-down" => d3_off -= 1,
-                "e0-up" => e0_off += 1,
-                "e0-down" => e0_off -= 1,
-                "f1-up" => f1_off += 1,
-                "f1-down" => f1_off -= 1,
+                "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
@@ -173,12 +139,6 @@ pub fn main() -> Fallible<()> {
 
             frame.submit(cb, &mut window)?;
         }
-
-        let offsets = format!(
-            "base: lay:{} c2:{} d3:{} e0:{} f1:{}",
-            lay_base, c2_off, d3_off, e0_off, f1_off
-        );
-        state_handle.set_span(&offsets, &window)?;
 
         let ft = loop_start.elapsed();
         let ts = format!(

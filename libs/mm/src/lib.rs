@@ -37,6 +37,13 @@ impl TLoc {
             TLoc::Name(ref s) => s.to_owned(),
         }
     }
+
+    pub fn is_named(&self) -> bool {
+        match self {
+            Self::Index(_) => false,
+            Self::Name(_) => true,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -223,6 +230,8 @@ impl MissionMap {
                 "tmap" => {
                     let x = parts[1].parse::<i16>()? as u32;
                     let y = parts[2].parse::<i16>()? as u32;
+                    ensure!(x % 4 == 0, "unaligned tmap x index");
+                    ensure!(y % 4 == 0, "unaligned tmap y index");
                     tmaps.insert(
                         (x, y),
                         TMap {
@@ -236,6 +245,8 @@ impl MissionMap {
                 "tmap_named" => {
                     let x = parts[2].parse::<i16>()? as u32;
                     let y = parts[3].parse::<i16>()? as u32;
+                    ensure!(x % 4 == 0, "unaligned tmap_named x index");
+                    ensure!(y % 4 == 0, "unaligned tmap_named y index");
                     tmaps.insert(
                         (x, y),
                         TMap {
@@ -453,6 +464,24 @@ impl MissionMap {
         }
 
         Ok(name.to_owned())
+    }
+
+    // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
+    // except when it is a modified version with the first (non-tilde) character of the MM name
+    // appended to the end of the LAY name, before the dot.
+    pub fn get_layer_name(&self, file_exists: &dyn Fn(&str) -> bool) -> Fallible<String> {
+        let first_char = self.map_name.chars().next().expect("the first character");
+        let layer_parts = self.layer_name.split('.').collect::<Vec<&str>>();
+        ensure!(layer_parts.len() == 2, "expected one dot in layer name");
+        ensure!(
+            layer_parts[1].to_uppercase() == "LAY",
+            "expected LAY extension"
+        );
+        let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
+        if file_exists(&alt_layer_name) {
+            return Ok(alt_layer_name);
+        }
+        Ok(self.layer_name.to_uppercase())
     }
 }
 

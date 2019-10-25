@@ -15,7 +15,7 @@
 use crate::t2::texture_atlas::TextureAtlas;
 use asset::AssetManager;
 use camera::CameraAbstract;
-use failure::Fallible;
+use failure::{ensure, Fallible};
 use image::{ImageBuffer, Rgba};
 use lay::Layer;
 use lib::Library;
@@ -160,6 +160,7 @@ impl T2Renderer {
     ) -> Fallible<Self> {
         trace!("T2Renderer::new");
         let terrain_name = mm.find_t2_for_map(&|s| lib.file_exists(s))?;
+        let layer_name = mm.get_layer_name(&|s| lib.file_exists(s))?;
         let terrain = assets.load_t2(&terrain_name)?;
 
         // The following are used in FA:
@@ -170,16 +171,18 @@ impl T2Renderer {
         //    day2f.LAY 0
         //    day2.LAY 0
         //    day2v.LAY 0
-        let layer = assets.load_lay(&mm.layer_name.to_uppercase())?;
+        let layer = assets.load_lay(&layer_name)?;
 
         let mut pic_data = HashMap::new();
         let texture_base_name = mm.get_base_texture_name()?;
         for tmap in mm.tmaps.values() {
-            if !pic_data.contains_key(&tmap.loc) {
-                let name = tmap.loc.pic_file(&texture_base_name);
-                let data = lib.load(&name)?.to_vec();
-                pic_data.insert(tmap.loc.clone(), data);
+            if pic_data.contains_key(&tmap.loc) {
+                ensure!(!tmap.loc.is_named(), "duplicated named tmap");
+                continue;
             }
+            let name = tmap.loc.pic_file(&texture_base_name);
+            let data = lib.load(&name)?.to_vec();
+            pic_data.insert(tmap.loc.clone(), data);
         }
 
         let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
@@ -193,7 +196,7 @@ impl T2Renderer {
                 .vertex_shader(vs.main_entry_point(), ())
                 .triangle_strip()
                 .cull_mode_back()
-                .front_face_counter_clockwise()
+                .front_face_clockwise()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
                 .depth_stencil(DepthStencil {
@@ -225,7 +228,7 @@ impl T2Renderer {
             index_buffer: None,
         };
         let (pds, vertex_buffer, index_buffer, palette) =
-            t2_renderer.regenerate_with_palette_parameters(window, 0, 0, 0, 0, 0)?;
+            t2_renderer.regenerate_with_palette_parameters(window)?;
         t2_renderer.vertex_buffer = Some(vertex_buffer);
         t2_renderer.index_buffer = Some(index_buffer);
         t2_renderer.pds = Some(pds);
@@ -234,32 +237,9 @@ impl T2Renderer {
         Ok(t2_renderer)
     }
 
-    pub fn set_palette_parameters(
-        &mut self,
-        window: &GraphicsWindow,
-        lay_base: i32,
-        e0_off: i32,
-        f1_off: i32,
-        c2_off: i32,
-        d3_off: i32,
-    ) -> Fallible<()> {
-        let (pds, vertex_buffer, index_buffer, palette) = self
-            .regenerate_with_palette_parameters(window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-        self.pds = Some(pds);
-        self.vertex_buffer = Some(vertex_buffer);
-        self.index_buffer = Some(index_buffer);
-        self.used_palette = palette;
-        Ok(())
-    }
-
     fn regenerate_with_palette_parameters(
         &self,
         window: &GraphicsWindow,
-        lay_base: i32,
-        e0_off: i32,
-        f1_off: i32,
-        c2_off: i32,
-        d3_off: i32,
     ) -> Fallible<(
         Arc<dyn DescriptorSet + Send + Sync>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
@@ -267,19 +247,25 @@ impl T2Renderer {
         Palette,
     )> {
         // Note: we need to really find the right palette.
-        let mut palette = self.base_palette.clone();
-        let layer_data = self.layer.for_index(self.mm.layer_index + 2, lay_base)?;
+        let layer_data = self.layer.for_index(self.mm.layer_index + 2)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        // FIXME: this is close except on TVIET, which needs some fiddling around 0xC0.
-        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
-        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
-        palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
-        palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
+        let mut palette = self.base_palette.clone();
+        palette.overlay_at(&r0, 0xE0 - 1)?;
+        palette.overlay_at(&r1, 0xF0 - 1)?;
+        palette.overlay_at(&r2, 0xC0)?;
+        palette.overlay_at(&r3, 0xD0)?;
+
+        // TVIET: C2 -- main color, light green
+        //        C4 -- black (maybe extremely dark green?)
+        //        C5 -- dark green
+        //        C6 -- darkish but slightly lighter green (camo green)
+        //        C7 -- light green (pukish)
+        //palette.override_one(0xDF, [0xFF, 0x00, 0x00]);
 
         //palette.dump_png("terrain_palette")?;
 
@@ -307,7 +293,6 @@ impl T2Renderer {
             let pic = Pic::decode(&palette, data)?;
             pics.push((tloc.clone(), pic));
         }
-
         let atlas = TextureAtlas::new(pics)?;
 
         let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
@@ -341,7 +326,7 @@ impl T2Renderer {
         };
 
         let x = xi as f32 / (self.terrain.width as f32) - 0.5;
-        let z = zi as f32 / (self.terrain.height as f32) - 0.5;
+        let z = 1f32 - (zi as f32 / (self.terrain.height as f32)) - 0.5;
         let h = -f32::from(sample.height) / 512f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
@@ -349,8 +334,9 @@ impl T2Renderer {
             color.data[3] = 0;
         }
 
+        let scale = 100f32;
         (
-            [x, h, z],
+            [x * scale, h * scale / 8f32, z * scale],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,
@@ -372,63 +358,60 @@ impl T2Renderer {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
+        // Each patch has a fixed strip pattern.
+        let mut patch_indices = Vec::new();
+        for row in 0..4 {
+            let row_off = row * 5;
+
+            patch_indices.push(row_off);
+            patch_indices.push(row_off);
+
+            for column in 0..5 {
+                patch_indices.push(row_off + column);
+                patch_indices.push(row_off + column + 5);
+            }
+
+            patch_indices.push(row_off + 4 + 5);
+            patch_indices.push(row_off + 4 + 5);
+        }
+        let push_patch_indices = |base: u32, indices: &mut Vec<u32>| {
+            for pi in &patch_indices {
+                indices.push(base + *pi);
+            }
+        };
+
         for zi_base in (0..self.terrain.height).step_by(4) {
             for xi_base in (0..self.terrain.width).step_by(4) {
                 let base = verts.len() as u32;
 
-                // Upload all vertices in patch.
-                if let Some(tmap) = self.mm.tmaps.get(&(xi_base, zi_base)) {
-                    let frame = &atlas.frames[&tmap.loc];
+                // Upload one patch of vertices, possibly with a texture.
+                let frame_info = self
+                    .mm
+                    .tmaps
+                    .get(&(xi_base, zi_base))
+                    .map(|tmap| (&atlas.frames[&tmap.loc], &tmap.orientation));
+                for z_off in 0..=4 {
+                    for x_off in 0..=4 {
+                        let zi = zi_base + z_off;
+                        let xi = xi_base + x_off;
+                        let (position, color) = self.sample_at(palette, xi, zi);
 
-                    for z_off in 0..5 {
-                        for x_off in 0..5 {
-                            let zi = zi_base + z_off;
-                            let xi = xi_base + x_off;
-                            let (position, _samp_color) = self.sample_at(palette, xi, zi);
-
-                            verts.push(Vertex {
-                                position,
-                                color: [0f32, 0f32, 0f32, 0f32],
-                                tex_coord: frame.interp(
-                                    x_off as f32 / 4f32,
-                                    z_off as f32 / 4f32,
-                                    &tmap.orientation,
-                                )?,
-                            });
-                        }
-                    }
-                } else {
-                    for z_off in 0..5 {
-                        for x_off in 0..5 {
-                            let zi = zi_base + z_off;
-                            let xi = xi_base + x_off;
-                            let (position, color) = self.sample_at(palette, xi, zi);
-
-                            verts.push(Vertex {
-                                position,
-                                color,
-                                tex_coord: [0f32, 0f32],
-                            });
-                        }
+                        verts.push(Vertex {
+                            position,
+                            color,
+                            tex_coord: frame_info
+                                .map(|(frame, orientation)| {
+                                    frame.interp(
+                                        x_off as f32 / 4f32,
+                                        z_off as f32 / 4f32,
+                                        orientation,
+                                    )
+                                })
+                                .unwrap_or([0f32, 0f32]),
+                        });
                     }
                 }
-
-                // There is a fixed strip pattern here that we could probably make use of.
-                // For now just re-compute per patch with the base offset.
-                for row in 0..4 {
-                    let row_off = row * 5;
-
-                    indices.push(base + row_off);
-                    indices.push(base + row_off);
-
-                    for column in 0..5 {
-                        indices.push(base + row_off + column);
-                        indices.push(base + row_off + column + 5);
-                    }
-
-                    indices.push(base + row_off + 4 + 5);
-                    indices.push(base + row_off + 4 + 5);
-                }
+                push_patch_indices(base, &mut indices);
             }
         }
 

@@ -68,9 +68,11 @@ packed_struct!(LayerPlaneHeader {
     // 0x30 bytes
     _10 => unk_stuff0: [u8; 0x20],
     // 0x50 bytes
-    _11 => unk_stuff1: [u8; 0x1F]
+    _11 => unk_stuff1: [u8; 0x1D]
     // 0x6F bytes
 });
+
+const PALETTE_SLICE_SIZE: usize = 0xC0;
 
 pub struct Layer {
     data: Vec<u8>,
@@ -78,13 +80,9 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn for_index(&self, index: usize, offset: i32) -> Fallible<Palette> {
-        let base = if offset >= 0 {
-            self.frag_offsets[index] + (offset as usize)
-        } else {
-            self.frag_offsets[index] - (-offset as usize)
-        };
-        let slice = &self.data[base..base + 0xC0];
+    pub fn for_index(&self, index: usize) -> Fallible<Palette> {
+        let base = self.frag_offsets[index];
+        let slice = &self.data[base..base + PALETTE_SLICE_SIZE];
         Palette::from_bytes(slice)
     }
 
@@ -98,7 +96,6 @@ impl Layer {
         assert!(!prefix.is_empty());
 
         let mut frag_offsets = Vec::new();
-        let mut _fragments = Vec::new();
 
         let pal_data = lib.load("PALETTE.PAL")?;
         let palette_digest = md5::compute(&pal_data);
@@ -134,35 +131,32 @@ impl Layer {
             "e2c865db4162bed963bfaa9ef6ac18f0"
         );
 
-        let first_size = 0x100 + 46;
+        const FIRST_SIZE: usize = 0x100 + 46;
         let first_addr = header.ptr_first();
-        let first_data = &data[first_addr as usize..first_addr as usize + first_size];
-        let first_pal_data = &first_data[22 * 3 + 2..];
-        let first_pal = Palette::from_bytes(&first_pal_data[0..(16 * 3 + 13) * 3])?;
-        frag_offsets.push(header.ptr_first() as usize + 22 * 3 + 2);
-        _fragments.push(first_pal);
+        frag_offsets.push(header.ptr_first() as usize + 65);
         if dump_stuff {
+            let first_data = &data[first_addr as usize..first_addr as usize + FIRST_SIZE];
+            let first_pal_data = &first_data[22 * 3 + 2..];
+            let _first_pal = Palette::from_bytes(&first_pal_data[0..(16 * 3 + 13) * 3])?;
+
             // Seems to be correct for CLOUD and FOG, but really dark for DAY.
             let name = format!("dump/{}/first_data", prefix);
-            println!("Dumping {}", name);
             Palette::dump_partial(first_pal_data, 4, &(name.clone() + "2"))?;
         }
 
-        let mut plane_offset = 0;
-        let mut offset = first_addr as usize + first_size;
+        let mut offset = first_addr as usize + FIRST_SIZE;
         loop {
-            let plane_size = 0x160;
-            let _pal_size = 0xc1;
-            let hdr_size = mem::size_of::<LayerPlaneHeader>();
+            const HDR_SIZE: usize = mem::size_of::<LayerPlaneHeader>();
+            const PLANE_SIZE: usize = 0x160;
             // 0xc1 + 0x6f = 0x130 bytes
             // 0x130 / 16 => 19
 
-            if offset + plane_size >= header.ptr_second() as usize {
+            if offset + PLANE_SIZE >= header.ptr_second() as usize {
                 break;
             }
 
             // This header recurs every 0x160 bytes, 0x146 bytes after header.ptr_first().
-            let plane_data = &data[offset..offset + hdr_size];
+            let plane_data = &data[offset..offset + HDR_SIZE];
             let plane_ptr: *const LayerPlaneHeader = plane_data.as_ptr() as *const LayerPlaneHeader;
             let plane: &LayerPlaneHeader = unsafe { &*plane_ptr };
             ensure!(
@@ -190,69 +184,8 @@ impl Layer {
             ensure!(plane.unk_00010b30() == 0x0001_0B30, "expected 10B30");
             ensure!(plane.unk_b8e84718() == 0xB8E8_4718, "expected B8E84718");
 
-            //println!("PLANE9: {}", bs2s(&plane.unk_fill_and_shape()));
-            //println!("PLANE: {}", str::from_utf8(&plane.unk_fill_and_shape())?);
-            //assert!(str::from_utf8(&plane.shape())?.starts_with("wave1.SH"));
-            //println!("SHAPE: {}", str::from_utf8(&plane.shape())?);
-            let pal_data = &data[offset + hdr_size + 1..offset + hdr_size + 1 + 0xC0];
-            let pal = Palette::from_bytes(pal_data)?;
-            frag_offsets.push(offset + hdr_size + 1usize);
-            _fragments.push(pal);
-            if dump_stuff {
-                // Dump after the fixed header... we claim the palette only extends for 0xC1 bytes...
-                let name = format!("dump/{}/first-{}", prefix, plane_offset);
-                println!("dumping pal+ {}", name);
-                // Palette::dump_partial(
-                //     &data[offset + hdr_size..offset + hdr_size + 0xC0],
-                //     4,
-                //     &(name.clone() + "-0"),
-                // )?;
-
-                // 0
-                //   CLOUD: white
-                //   DAY: sunrise or sunset?
-                //   FOG: white with blue ramp
-                // 1
-                //   CLOUD: white with blue ramp
-                //   DAY: fully lit
-                //   FOG: black
-                // 2
-                //   CLOUD: black
-                //   DAY: sunrise or sunset
-                // 3
-                //   DAY: very dark, but clearly has color... twilight?
-                // 4
-                //   DAY: black
-                Palette::dump_partial(pal_data, 4, &(name.clone() + "-1"))?;
-
-                // Palette::dump_partial(
-                //     &data[offset + hdr_size + 2..offset + hdr_size + 0xC2],
-                //     4,
-                //     &(name.clone() + "-2"),
-                // )?;
-            }
-
-            // Why 0xc1 bytes here?
-            //            let plane_pal: Vec<u8> = data[offset + hdr_size..offset + hdr_size + _pal_size]
-            //                .to_owned()
-            //                .to_vec();
-            //
-            //            // for i in 0..0x36 {
-            //            //     plane_pal[i] = 0;
-            //            // }
-            //            let mut pal_b: Vec<u8> = EMPTY_PAL_PLANE.to_owned().to_vec();
-            //            pal_b.append(&mut EMPTY_PAL_PLANE.to_owned().to_vec());
-            //            pal_b.append(&mut plane_pal.to_owned());
-            //            if dump_stuff {
-            //                Palette::dump_partial(
-            //                    &pal_b,
-            //                    3,
-            //                    &format!("dump/{}/pal-{}-{:04X}", prefix, "planes", offset + hdr_size),
-            //                ).unwrap();
-            //            }
-
-            offset += plane_size;
-            plane_offset += 1;
+            frag_offsets.push(offset + HDR_SIZE);
+            offset += PLANE_SIZE;
         }
 
         // decode 7 palettes at ptr_second
