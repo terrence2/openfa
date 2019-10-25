@@ -285,7 +285,7 @@ mod test {
     ) -> Fallible<Palette> {
         // Note: we need to really find the right palette.
         let mut palette = base_palette.clone();
-        let layer_data = layer.for_index(layer_index + 2, 0)?;
+        let layer_data = layer.for_index(layer_index + 2)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
