@@ -240,7 +240,7 @@ mod test {
             let assets = AssetManager::new(lib.clone())?;
             let types = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
-            let mm = MissionMap::from_str(&contents, &types)?;
+            let mm = MissionMap::from_str(&contents, &types, &lib)?;
 
             let layer = assets.load_lay(&mm.layer_name.to_uppercase())?;
 

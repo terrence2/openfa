@@ -58,7 +58,7 @@ pub fn main() -> Fallible<()> {
     let types = TypeManager::new(lib.clone());
 
     let contents = lib.load_text(&name)?;
-    let mm = MissionMap::from_str(&contents, &types)?;
+    let mm = MissionMap::from_str(&contents, &types, &lib)?;
 
     let mut text_renderer = TextRenderer::new(&lib, &window)?;
     let fps_handle = text_renderer

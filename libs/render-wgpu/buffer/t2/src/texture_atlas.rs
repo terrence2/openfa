@@ -240,10 +240,9 @@ mod test {
             let assets = AssetManager::new(lib.clone())?;
             let types = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
-            let mm = MissionMap::from_str(&contents, &types)?;
+            let mm = MissionMap::from_str(&contents, &types, &lib)?;
 
-            let layer_name = mm.get_layer_name(&|s| lib.file_exists(s))?;
-            let layer = assets.load_lay(&layer_name)?;
+            let layer = assets.load_lay(&mm.layer_name)?;
 
             let mut pic_data = HashMap::new();
             let base_name = mm.get_base_texture_name()?;

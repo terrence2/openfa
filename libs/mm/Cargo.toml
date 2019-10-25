@@ -9,6 +9,7 @@ failure = ">= 0.1.2"
 mint = ">= 0.5"
 nalgebra = "^ 0.18"
 num-traits = "^ 0.2"
+lib = { path = "../lib" }
 xt = { path = "../xt" }
 
 [dev-dependencies]

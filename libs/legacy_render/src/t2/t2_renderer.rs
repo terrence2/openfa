@@ -159,9 +159,7 @@ impl T2Renderer {
         window: &GraphicsWindow,
     ) -> Fallible<Self> {
         trace!("T2Renderer::new");
-        let terrain_name = mm.find_t2_for_map(&|s| lib.file_exists(s))?;
-        let layer_name = mm.get_layer_name(&|s| lib.file_exists(s))?;
-        let terrain = assets.load_t2(&terrain_name)?;
+        let terrain = assets.load_t2(&mm.t2_name)?;
 
         // The following are used in FA:
         //    cloud1b.LAY 1
@@ -171,7 +169,7 @@ impl T2Renderer {
         //    day2f.LAY 0
         //    day2.LAY 0
         //    day2v.LAY 0
-        let layer = assets.load_lay(&layer_name)?;
+        let layer = assets.load_lay(&mm.layer_name)?;
 
         let mut pic_data = HashMap::new();
         let texture_base_name = mm.get_base_texture_name()?;
