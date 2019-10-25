@@ -230,6 +230,8 @@ impl MissionMap {
                 "tmap" => {
                     let x = parts[1].parse::<i16>()? as u32;
                     let y = parts[2].parse::<i16>()? as u32;
+                    ensure!(x % 4 == 0, "unaligned tmap x index");
+                    ensure!(y % 4 == 0, "unaligned tmap y index");
                     tmaps.insert(
                         (x, y),
                         TMap {
@@ -243,6 +245,8 @@ impl MissionMap {
                 "tmap_named" => {
                     let x = parts[2].parse::<i16>()? as u32;
                     let y = parts[3].parse::<i16>()? as u32;
+                    ensure!(x % 4 == 0, "unaligned tmap_named x index");
+                    ensure!(y % 4 == 0, "unaligned tmap_named y index");
                     tmaps.insert(
                         (x, y),
                         TMap {

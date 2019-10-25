@@ -139,6 +139,7 @@ pub fn main() -> Fallible<()> {
                 "e0-down" => e0_off -= 1,
                 "f1-up" => f1_off += 1,
                 "f1-down" => f1_off -= 1,
+                "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
         }

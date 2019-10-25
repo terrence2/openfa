@@ -355,13 +355,13 @@ impl T2Renderer {
         let h = -f32::from(sample.height) / 512f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
-        //        if sample.color == 0xFF {
-        //            color.data[3] = 0;
-        //        }
+        if sample.color == 0xFF {
+            color.data[3] = 0;
+        }
 
         let scale = 100f32;
         (
-            [x * scale, h, z * scale],
+            [x * scale, h * scale / 8f32, z * scale],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,
@@ -391,8 +391,8 @@ impl T2Renderer {
                 if let Some(tmap) = self.mm.tmaps.get(&(xi_base, zi_base)) {
                     let frame = &atlas.frames[&tmap.loc];
 
-                    for z_off in 0..5 {
-                        for x_off in 0..5 {
+                    for z_off in 0..=4 {
+                        for x_off in 0..=4 {
                             let zi = zi_base + z_off;
                             let xi = xi_base + x_off;
                             let (position, _samp_color) = self.sample_at(palette, xi, zi);
