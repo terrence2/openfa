@@ -16,25 +16,18 @@ use crate::texture_atlas::TextureAtlas;
 use asset::AssetManager;
 use failure::{ensure, Fallible};
 use gpu::GPU;
-use image::{ImageBuffer, Rgba};
-use lay::Layer;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
-use mm::{MissionMap, TLoc};
-use nalgebra::Matrix4;
+use mm::MissionMap;
 use pal::Palette;
 use pic::Pic;
-use std::{
-    collections::{HashMap, HashSet},
-    mem,
-    sync::Arc,
-};
+use std::{collections::HashSet, mem, ops::Range, sync::Arc};
 use t2::Terrain;
 use wgpu;
 
 #[derive(Copy, Clone, Default)]
-struct Vertex {
+pub struct Vertex {
     position: [f32; 3],
     color: [f32; 4],
     tex_coord: [f32; 2],
@@ -86,19 +79,11 @@ impl Vertex {
 }
 
 pub struct T2Buffer {
-    // mm: MissionMap, -- should be able to discard after loading
-    // terrain: Arc<Box<Terrain>>, // why boxed? why do we need to store?
-    // layer: Arc<Box<Layer>>,     // should be able to discard after we load the palette.
-    // pic_data: HashMap<TLoc, Vec<u8>>, // ditto here, we can drop after we have the atlas img
-    // base_palette: Palette,      // can drop after loading up everything.
-    // pub used_palette: Palette,  // and we don't need this either.
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    // Do we need a sampler here too, or can this all just live in the bind group?
-    //atlas_texture: wgpu::Texture,
-    //atlas_texture_view: wgpu::TextureView,
+    index_count: u32,
 }
 
 impl T2Buffer {
@@ -114,7 +99,7 @@ impl T2Buffer {
         let terrain = assets.load_t2(&mm.t2_name)?;
         let palette = Self::load_palette(&mm, system_palette, assets)?;
         let (atlas, bind_group_layout, bind_group) = Self::create_atlas(&mm, &palette, &lib, gpu)?;
-        let (vertex_buffer, index_buffer) =
+        let (vertex_buffer, index_buffer, index_count) =
             Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
 
         Ok(Self {
@@ -122,9 +107,28 @@ impl T2Buffer {
             bind_group,
             vertex_buffer,
             index_buffer,
-            //atlas_texture,
-            //atlas_texture_view,
+            index_count,
         })
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
+
+    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.vertex_buffer
+    }
+
+    pub fn index_buffer(&self) -> &wgpu::Buffer {
+        &self.index_buffer
+    }
+
+    pub fn index_range(&self) -> Range<u32> {
+        0..self.index_count
     }
 
     fn load_palette(
@@ -328,7 +332,7 @@ impl T2Buffer {
         atlas: &TextureAtlas,
         palette: &Palette,
         device: &wgpu::Device,
-    ) -> Fallible<(wgpu::Buffer, wgpu::Buffer)> {
+    ) -> Fallible<(wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
@@ -404,6 +408,6 @@ impl T2Buffer {
             .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&indices);
 
-        Ok((vertex_buffer, index_buffer))
+        Ok((vertex_buffer, index_buffer, indices.len() as u32))
     }
 }

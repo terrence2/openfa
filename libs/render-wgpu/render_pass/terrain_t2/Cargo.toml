@@ -1,30 +1,21 @@
 [package]
-name = "t2-wgpu"
+name = "terrain_t2-wgpu"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-image = "^ 0.21"
-log = ">= 0.4"
-memoffset = "^ 0.5"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-asset = { path = "../../../asset" }
+atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
+camera = { path = "../../../render-shared/common/camera" }
+camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-lay = { path = "../../../lay" }
-lib = { path = "../../../lib" }
-mm = { path = "../../../mm" }
-pal = { path = "../../../pal" }
-pic = { path = "../../../pic" }
-t2 = { path = "../../../t2" }
-
-[dev-dependencies]
-simplelog = "^ 0.5"
-omnilib = { path = "../../../omnilib" }
-xt = { path = "../../../xt" }
+t2 = { package = "t2-wgpu", path = "../../../render-wgpu/buffer/t2" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
