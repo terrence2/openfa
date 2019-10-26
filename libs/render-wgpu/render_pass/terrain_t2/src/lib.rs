@@ -19,7 +19,7 @@ use failure::Fallible;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
-use t2::{T2Buffer, T2Vertex};
+use t2_buffer::{T2Buffer, T2Vertex};
 use wgpu;
 
 pub struct FrameState {
