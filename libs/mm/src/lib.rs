@@ -21,6 +21,7 @@ mod waypoint;
 
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
 use failure::{bail, ensure, err_msg, Fallible};
+use lib::Library;
 use std::{collections::HashMap, str::FromStr};
 use xt::TypeManager;
 
@@ -81,6 +82,7 @@ pub struct TDic {
 #[allow(dead_code)]
 pub struct MissionMap {
     pub map_name: String,
+    pub t2_name: String,
     pub layer_name: String,
     pub layer_index: usize,
     pub tmaps: HashMap<(u32, u32), TMap>,
@@ -91,11 +93,12 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str, type_manager: &TypeManager) -> Fallible<Self> {
+    pub fn from_str(s: &str, type_manager: &TypeManager, lib: &Library) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
         let mut map_name = None;
+        let mut t2_name = None;
         let mut layer_name = None;
         let mut layer_index = None;
         let mut wind = Some((0, 0));
@@ -123,9 +126,14 @@ impl MissionMap {
                 "map" => {
                     assert!(map_name.is_none());
                     map_name = Some(parts[1].to_owned());
+                    t2_name = Some(Self::find_t2_for_map(parts[1], lib)?);
                 }
                 "layer" => {
-                    layer_name = Some(parts[1].to_owned());
+                    layer_name = Some(Self::find_layer(
+                        map_name.as_ref().expect("map before layer"),
+                        parts[1],
+                        lib,
+                    )?);
                     layer_index = Some(parts[2].parse::<usize>()?);
                 }
                 "clouds" => {
@@ -336,6 +344,7 @@ impl MissionMap {
 
         Ok(MissionMap {
             map_name: map_name.ok_or_else(|| err_msg("mm must have a 'map' key"))?,
+            t2_name: t2_name.ok_or_else(|| err_msg("mm must have a 'map' key"))?,
             layer_name: layer_name.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
             layer_index: layer_index.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
             wind: wind.ok_or_else(|| err_msg("mm must have a 'wind' key"))?,
@@ -415,15 +424,15 @@ impl MissionMap {
     // USNF:
     //     installdir: UKR.T2, $UKR[1-8].T2
     //     MM+M refs: ukr.T2, $ukr[1-8].T2
-    pub fn find_t2_for_map(&self, file_exists: &dyn Fn(&str) -> bool) -> Fallible<String> {
-        let raw = self.map_name.to_uppercase();
+    fn find_t2_for_map(map_name: &str, lib: &Library) -> Fallible<String> {
+        let raw = map_name.to_uppercase();
 
-        if file_exists(&raw) {
+        if lib.file_exists(&raw) {
             return Ok(raw.to_owned());
         }
 
         // ~KURILE.T2 && ~TVIET.T2
-        if raw.starts_with('~') && file_exists(&raw[1..]) {
+        if raw.starts_with('~') && lib.file_exists(&raw[1..]) {
             return Ok(raw[1..].to_owned());
         }
 
@@ -446,6 +455,24 @@ impl MissionMap {
         bail!("no map file matching {} found", raw)
     }
 
+    // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
+    // except when it is a modified version with the first (non-tilde) character of the MM name
+    // appended to the end of the LAY name, before the dot.
+    fn find_layer(map_name: &str, layer_name: &str, lib: &Library) -> Fallible<String> {
+        let first_char = map_name.chars().next().expect("the first character");
+        let layer_parts = layer_name.split('.').collect::<Vec<&str>>();
+        ensure!(layer_parts.len() == 2, "expected one dot in layer name");
+        ensure!(
+            layer_parts[1].to_uppercase() == "LAY",
+            "expected LAY extension"
+        );
+        let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
+        if lib.file_exists(&alt_layer_name) {
+            return Ok(alt_layer_name);
+        }
+        Ok(layer_name.to_uppercase())
+    }
+
     // This is a slightly different problem then getting the T2, because even though ~ABCn.T2
     // might exist for ~ABCn.MM, we need to look up ABCi.PIC without the tilda.
     pub fn get_base_texture_name(&self) -> Fallible<String> {
@@ -464,24 +491,6 @@ impl MissionMap {
         }
 
         Ok(name.to_owned())
-    }
-
-    // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
-    // except when it is a modified version with the first (non-tilde) character of the MM name
-    // appended to the end of the LAY name, before the dot.
-    pub fn get_layer_name(&self, file_exists: &dyn Fn(&str) -> bool) -> Fallible<String> {
-        let first_char = self.map_name.chars().next().expect("the first character");
-        let layer_parts = self.layer_name.split('.').collect::<Vec<&str>>();
-        ensure!(layer_parts.len() == 2, "expected one dot in layer name");
-        ensure!(
-            layer_parts[1].to_uppercase() == "LAY",
-            "expected LAY extension"
-        );
-        let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
-        if file_exists(&alt_layer_name) {
-            return Ok(alt_layer_name);
-        }
-        Ok(self.layer_name.to_uppercase())
     }
 }
 
@@ -517,11 +526,9 @@ mod tests {
             let lib = omni.library(game);
             let type_manager = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
-            let mm = MissionMap::from_str(&contents, &type_manager)?;
+            let mm = MissionMap::from_str(&contents, &type_manager, &lib)?;
             assert_eq!(mm.get_base_texture_name()?.len(), 3);
-            assert!(mm
-                .find_t2_for_map(&|s| lib.file_exists(s))?
-                .ends_with(".T2"));
+            assert!(mm.t2_name.ends_with(".T2"));
         }
 
         Ok(())

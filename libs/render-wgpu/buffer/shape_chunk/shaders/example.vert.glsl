@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
+#include <common/include/include_global.glsl>
 
 // Per Vertex input
 layout(location = 0) in vec3 position;
@@ -32,14 +33,6 @@ layout(set = 3, binding = 1) buffer ChunkXforms {
     float xform_data[];
 };
 
-/*
-layout(push_constant) uniform PushConstantData {
-    mat4 view;
-    mat4 projection;
-} pc;
-*/
-
-#include <common/include/include_global.glsl>
 #include <buffer/shape_chunk/include/include_shape.glsl>
 
 layout(location = 0) smooth out vec4 v_color;

@@ -242,7 +242,7 @@ mod test {
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &types, &lib)?;
 
-            let layer = assets.load_lay(&mm.layer_name.to_uppercase())?;
+            let layer = assets.load_lay(&mm.layer_name)?;
 
             let mut pic_data = HashMap::new();
             let base_name = mm.get_base_texture_name()?;
@@ -270,7 +270,7 @@ mod test {
 
             let atlas = TextureAtlas::new(pics)?;
             atlas.img.save(&format!(
-                "../../dump/t2_atlas/atlas-{}-{}.png",
+                "../../../../dump/t2_atlas/atlas-{}-{}.png",
                 game, base_name
             ))?;
         }
@@ -291,15 +291,10 @@ mod test {
         let r2 = layer_data.slice(0x20, 0x30)?;
         let r3 = layer_data.slice(0x30, 0x40)?;
 
-        // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        palette.overlay_at(&r1, 0xF0)?;
-        palette.overlay_at(&r0, 0xE0)?;
-
-        // I'm pretty sure this is correct.
-        palette.overlay_at(&r3, 0xD0)?;
-
+        palette.overlay_at(&r0, 0xE0 - 1)?;
+        palette.overlay_at(&r1, 0xF0 - 1)?;
         palette.overlay_at(&r2, 0xC0)?;
-        //palette.overlay_at(&r2, 0xC1)?;
+        palette.overlay_at(&r3, 0xD0)?;
 
         Ok(palette)
     }

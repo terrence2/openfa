@@ -12,18 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
-// Accumulate all depthless raymarching passes into one draw operation.
-
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
 use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
-use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
-use stars::StarsBuffer;
+use t2::{T2Buffer, T2Vertex};
 use wgpu;
 
 pub struct FrameState {
@@ -31,28 +27,25 @@ pub struct FrameState {
     atmosphere_upload_buffer: wgpu::Buffer,
 }
 
-pub struct SkyboxRenderer {
+pub struct TerrainT2RenderPass {
     camera_buffer: CameraParametersBuffer,
-    fullscreen_buffer: FullscreenBuffer,
     atmosphere_buffer: AtmosphereBuffer,
-    stars_buffer: StarsBuffer,
+    t2_buffer: T2Buffer,
 
     pipeline: wgpu::RenderPipeline,
 }
 
-impl SkyboxRenderer {
-    pub fn new(gpu: &mut GPU) -> Fallible<Self> {
-        trace!("SkyboxRenderer::new");
+impl TerrainT2RenderPass {
+    pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
+        trace!("TerrainT2RenderPass::new");
 
         let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-        let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
-        let stars_buffer = StarsBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
         let vert_shader =
-            gpu.create_shader_module(include_bytes!("../target/skybox.vert.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/terrain_t2.vert.spirv"))?;
         let frag_shader =
-            gpu.create_shader_module(include_bytes!("../target/skybox.frag.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/terrain_t2.frag.spirv"))?;
 
         let pipeline_layout =
             gpu.device()
@@ -60,7 +53,7 @@ impl SkyboxRenderer {
                     bind_group_layouts: &[
                         camera_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
-                        stars_buffer.bind_group_layout(),
+                        t2_buffer.bind_group_layout(),
                     ],
                 });
 
@@ -92,7 +85,7 @@ impl SkyboxRenderer {
                 }],
                 depth_stencil_state: None,
                 index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[FullscreenVertex::descriptor()],
+                vertex_buffers: &[T2Vertex::descriptor()],
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
@@ -100,9 +93,8 @@ impl SkyboxRenderer {
 
         Ok(Self {
             camera_buffer,
-            fullscreen_buffer,
-            stars_buffer,
             atmosphere_buffer,
+            t2_buffer,
             pipeline,
         })
     }
@@ -134,8 +126,15 @@ impl SkyboxRenderer {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(0, self.camera_buffer.bind_group(), &[]);
         rpass.set_bind_group(1, &self.atmosphere_buffer.bind_group(), &[]);
-        rpass.set_bind_group(2, &self.stars_buffer.bind_group(), &[]);
-        rpass.set_vertex_buffers(0, &[(self.fullscreen_buffer.vertex_buffer(), 0)]);
-        rpass.draw(0..4, 0..1);
+        rpass.set_bind_group(2, &self.t2_buffer.bind_group(), &[]);
+        rpass.set_index_buffer(self.t2_buffer.index_buffer(), 0);
+        rpass.set_vertex_buffers(0, &[(self.t2_buffer.vertex_buffer(), 0)]);
+        rpass.draw_indexed(self.t2_buffer.index_range(), 0, 0..1);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {}
 }

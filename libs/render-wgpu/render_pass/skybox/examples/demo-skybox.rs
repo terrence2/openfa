@@ -18,7 +18,7 @@ use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::{Unit, UnitQuaternion, Vector3};
-use skybox_wgpu::SkyboxRenderer;
+use skybox_wgpu::SkyboxRenderPass;
 use std::{f64::consts::PI, time::Instant};
 
 fn main() -> Fallible<()> {
@@ -28,7 +28,7 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let skybox_renderer = SkyboxRenderer::new(&mut gpu)?;
+    let skybox_renderer = SkyboxRenderPass::new(&mut gpu)?;
 
     let poll_start = Instant::now();
     gpu.device().poll(true);
