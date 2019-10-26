@@ -59,6 +59,7 @@ members = [
         "libs/render-wgpu/buffer/atmosphere",
         "libs/render-wgpu/buffer/camera_parameters",
         "libs/render-wgpu/buffer/fullscreen",
+        "libs/render-wgpu/buffer/glyph_cache",
         "libs/render-wgpu/buffer/shape_chunk",
         "libs/render-wgpu/buffer/shape_instance",
         "libs/render-wgpu/buffer/stars",
