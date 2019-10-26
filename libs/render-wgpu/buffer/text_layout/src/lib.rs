@@ -12,85 +12,64 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod glyph_cache;
-
-use crate::glyph_cache::GlyphCache;
 use failure::{ensure, Fallible};
 use fnt::Fnt;
+use glyph_cache::GlyphCache;
+use gpu::GPU;
 use lib::Library;
 use log::trace;
+use memoffset::offset_of;
 use nalgebra::{Matrix4, Vector3};
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
-use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, DynamicState},
-    descriptor::descriptor_set::DescriptorSet,
-    framebuffer::Subpass,
-    impl_vertex,
-    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
-};
-use window::GraphicsWindow;
+use std::{cell::RefCell, collections::HashMap, mem, rc::Rc, sync::Arc};
 
 // Fallback for when we have no libs loaded.
 // https://fonts.google.com/specimen/Quantico?selection.family=Quantico
 const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../../../../../assets/font/quantico.ttf");
 
+const SPACE_WIDTH: f32 = 5f32 / 640f32;
+
 #[derive(Copy, Clone, Default)]
-struct Vertex {
+pub struct LayoutVertex {
     position: [f32; 2],
     tex_coord: [f32; 2],
 }
-impl_vertex!(Vertex, position, tex_coord);
 
-mod vs {
-    use vulkano_shaders::shader;
+impl LayoutVertex {
+    #[allow(clippy::unneeded_field_pattern)]
+    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
+        let tmp = wgpu::VertexBufferDescriptor {
+            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &[
+                // position
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float2,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                // tex_coord
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float2,
+                    offset: 8,
+                    shader_location: 1,
+                },
+            ],
+        };
 
-    shader! {
-    ty: "vertex",
-        src: "
-            #version 450
+        assert_eq!(
+            tmp.attributes[0].offset,
+            offset_of!(LayoutVertex, position) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[1].offset,
+            offset_of!(LayoutVertex, tex_coord) as wgpu::BufferAddress
+        );
 
-            layout(location = 0) in vec2 position;
-            layout(location = 1) in vec2 tex_coord;
-
-            layout(push_constant) uniform PushConstantData {
-              mat4 projection;
-              vec4 color;
-            } pc;
-
-            layout(location = 0) out vec2 v_tex_coord;
-            layout(location = 1) flat out vec4 v_color;
-
-            void main() {
-                gl_Position = pc.projection * vec4(position, 0.0, 1.0);
-                v_tex_coord = tex_coord;
-                v_color = pc.color;
-            }"
+        tmp
     }
 }
 
-mod fs {
-    use vulkano_shaders::shader;
-
-    shader! {
-    ty: "fragment",
-        src: "
-            #version 450
-
-            layout(location = 0) in vec2 v_tex_coord;
-            layout(location = 1) in vec4 v_color;
-
-            layout(location = 0) out vec4 f_color;
-
-            layout(set = 0, binding = 0) uniform sampler2D tex;
-
-            void main() {
-                f_color = vec4(v_color.xyz, texture(tex, v_tex_coord).r);
-            }
-            "
-    }
-}
-
+/*
 impl vs::ty::PushConstantData {
     fn new(m: Matrix4<f32>, c: &[f32; 4]) -> Self {
         Self {
@@ -104,6 +83,7 @@ impl vs::ty::PushConstantData {
         }
     }
 }
+*/
 
 #[derive(Copy, Clone, Debug)]
 pub enum TextAnchorH {
@@ -187,8 +167,8 @@ impl LayoutHandle {
         }
     }
 
-    pub fn with_span(self, span: &str, window: &GraphicsWindow) -> Fallible<Self> {
-        self.set_span(span, window)?;
+    pub fn with_span(self, span: &str, device: &wgpu::Device) -> Fallible<Self> {
+        self.set_span(span, device)?;
         Ok(self)
     }
 
@@ -241,23 +221,22 @@ impl LayoutHandle {
         self.layout.borrow_mut().color = *color;
     }
 
-    pub fn set_span(&self, span: &str, window: &GraphicsWindow) -> Fallible<()> {
-        self.layout.borrow_mut().set_span(span, window)?;
+    pub fn set_span(&self, span: &str, device: &wgpu::Device) -> Fallible<()> {
+        self.layout.borrow_mut().set_span(span, device)?;
         Ok(())
     }
 
-    fn vertex_buffer(&self) -> Arc<CpuAccessibleBuffer<[Vertex]>> {
-        self.layout.borrow().vertex_buffer.clone()
+    /*
+    fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.layout.borrow().vertex_buffer
     }
 
-    fn index_buffer(&self) -> Arc<CpuAccessibleBuffer<[u32]>> {
-        self.layout.borrow().index_buffer.clone()
+    fn index_buffer(&self) -> &wgpu::Buffer {
+        &self.layout.borrow().index_buffer
     }
+    */
 
-    fn pds(&self) -> Arc<dyn DescriptorSet + Send + Sync> {
-        self.layout.borrow().pds.clone()
-    }
-
+    /*
     fn push_consts(&self) -> Fallible<vs::ty::PushConstantData> {
         let layout = self.layout.borrow();
 
@@ -287,6 +266,7 @@ impl LayoutHandle {
         // pcd.set_color(&layout.color);
         // Ok(pcd)
     }
+    */
 }
 
 pub struct Layout {
@@ -304,18 +284,13 @@ pub struct Layout {
     color: [f32; 4],
 
     // Gpu resources
-    pds: Arc<dyn DescriptorSet + Send + Sync>,
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    index_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
 }
 
 impl Layout {
-    fn new(
-        text: &str,
-        glyph_cache: Rc<Box<GlyphCache>>,
-        window: &GraphicsWindow,
-    ) -> Fallible<Self> {
-        let (render_width, pds, vb, ib) = Self::build_text_span(text, &glyph_cache, window)?;
+    fn new(text: &str, glyph_cache: Rc<Box<GlyphCache>>, device: &wgpu::Device) -> Fallible<Self> {
+        let (render_width, vb, ib) = Self::build_text_span(text, &glyph_cache, device)?;
         Ok(Self {
             glyph_cache,
 
@@ -328,16 +303,14 @@ impl Layout {
             scale: [1f32, 1f32],
             color: [1f32, 0f32, 1f32, 1f32],
 
-            pds,
             vertex_buffer: vb,
             index_buffer: ib,
         })
     }
 
-    fn set_span(&mut self, text: &str, window: &GraphicsWindow) -> Fallible<()> {
-        let (render_width, pds, vb, ib) = Self::build_text_span(text, &self.glyph_cache, window)?;
+    fn set_span(&mut self, text: &str, device: &wgpu::Device) -> Fallible<()> {
+        let (render_width, vb, ib) = Self::build_text_span(text, &self.glyph_cache, device)?;
         self.render_width = render_width;
-        self.pds = pds;
         self.vertex_buffer = vb;
         self.index_buffer = ib;
         Ok(())
@@ -346,13 +319,8 @@ impl Layout {
     fn build_text_span(
         text: &str,
         glyph_cache: &GlyphCache,
-        window: &GraphicsWindow,
-    ) -> Fallible<(
-        f32,
-        Arc<dyn DescriptorSet + Send + Sync>,
-        Arc<CpuAccessibleBuffer<[Vertex]>>,
-        Arc<CpuAccessibleBuffer<[u32]>>,
-    )> {
+        device: &wgpu::Device,
+    ) -> Fallible<(f32, wgpu::Buffer, wgpu::Buffer)> {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
@@ -385,23 +353,24 @@ impl Layout {
             let y1 = glyph_cache.render_height();
 
             let base = verts.len() as u32;
-            verts.push(Vertex {
+            verts.push(LayoutVertex {
                 position: [x0, y0],
                 tex_coord: [frame.s0, 0f32],
             });
-            verts.push(Vertex {
+            verts.push(LayoutVertex {
                 position: [x0, y1],
                 tex_coord: [frame.s0, 1f32],
             });
-            verts.push(Vertex {
+            verts.push(LayoutVertex {
                 position: [x1, y0],
                 tex_coord: [frame.s1, 0f32],
             });
-            verts.push(Vertex {
+            verts.push(LayoutVertex {
                 position: [x1, y1],
                 tex_coord: [frame.s1, 1f32],
             });
 
+            // TODO: draw stripped
             indices.push(base);
             indices.push(base + 1u32);
             indices.push(base + 3u32);
@@ -412,20 +381,14 @@ impl Layout {
             offset += frame.advance_width;
         }
 
-        let vertex_buffer =
-            CpuAccessibleBuffer::from_iter(window.device(), BufferUsage::all(), verts.into_iter())?;
-        let index_buffer = CpuAccessibleBuffer::from_iter(
-            window.device(),
-            BufferUsage::all(),
-            indices.into_iter(),
-        )?;
+        let vertex_buffer = device
+            .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
+            .fill_from_slice(&verts);
+        let index_buffer = device
+            .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
+            .fill_from_slice(&indices);
 
-        Ok((
-            offset,
-            glyph_cache.descriptor_set(),
-            vertex_buffer,
-            index_buffer,
-        ))
+        Ok((offset, vertex_buffer, index_buffer))
     }
 }
 
@@ -474,35 +437,14 @@ pub enum Font {
     QUANTICO,
 }
 
-pub struct TextRenderer {
-    screen_pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+pub struct LayoutBuffer {
     glyph_caches: HashMap<Font, Rc<Box<GlyphCache>>>,
-    layouts: Vec<LayoutHandle>,
+    layouts: HashMap<Font, Vec<LayoutHandle>>,
 }
 
-impl TextRenderer {
-    pub fn new(lib: &Arc<Box<Library>>, window: &GraphicsWindow) -> Fallible<Self> {
-        trace!("TextRenderer::new");
-
-        let vs = vs::Shader::load(window.device())?;
-        let fs = fs::Shader::load(window.device())?;
-
-        let screen_pipeline = Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .cull_mode_back()
-                .front_face_counter_clockwise()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .blend_alpha_blending()
-                .render_pass(
-                    Subpass::from(window.render_pass(), 0)
-                        .expect("gfx: did not find a render pass"),
-                )
-                .build(window.device())?,
-        );
+impl LayoutBuffer {
+    pub fn new(lib: &Arc<Box<Library>>, gpu: &mut GPU) -> Fallible<Self> {
+        trace!("LayoutBuffer::new");
 
         let mut glyph_caches = HashMap::new();
 
@@ -513,8 +455,7 @@ impl TextRenderer {
                     *name,
                     Rc::new(Box::new(GlyphCache::new_transparent_fnt(
                         &Fnt::from_bytes("", "", &data)?,
-                        screen_pipeline.clone(),
-                        window,
+                        gpu,
                     )?)),
                 );
             }
@@ -523,17 +464,12 @@ impl TextRenderer {
         // Add fallback font.
         glyph_caches.insert(
             Font::QUANTICO,
-            Rc::new(Box::new(GlyphCache::new_ttf(
-                &QUANTICO_TTF_DATA,
-                screen_pipeline.clone(),
-                window,
-            )?)),
+            Rc::new(Box::new(GlyphCache::new_ttf(&QUANTICO_TTF_DATA, gpu)?)),
         );
 
         Ok(Self {
             glyph_caches,
-            screen_pipeline,
-            layouts: Vec::new(),
+            layouts: HashMap::new(),
         })
     }
 
@@ -541,29 +477,35 @@ impl TextRenderer {
         &mut self,
         font: Font,
         text: &str,
-        window: &GraphicsWindow,
+        device: &wgpu::Device,
     ) -> Fallible<LayoutHandle> {
         let glyph_cache = self.glyph_caches[&font].clone();
-        let layout = LayoutHandle::new(Layout::new(text, glyph_cache, window)?);
-        self.layouts.push(layout.clone());
+        let layout = LayoutHandle::new(Layout::new(text, glyph_cache, device)?);
+        self.layouts
+            .entry(font)
+            .and_modify(|e| e.push(layout.clone()))
+            .or_insert_with(|| vec![layout.clone()]);
         Ok(layout)
     }
 
-    pub fn set_projection(&mut self, window: &GraphicsWindow) -> Fallible<()> {
-        for layout in &mut self.layouts {
-            let dim = window.dimensions()?;
-            let aspect = window.aspect_ratio()? * 4f32 / 3f32;
+    pub fn set_projection(&mut self, gpu: &GPU) -> Fallible<()> {
+        for layouts in self.layouts.values_mut() {
+            for layout in layouts.iter_mut() {
+                let dim = gpu.physical_size();
+                let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
 
-            let (w, h) = if dim[0] > dim[1] {
-                (aspect, 1f32)
-            } else {
-                (1f32, 1f32 / aspect)
-            };
-            layout.set_projection(w, h);
+                let (w, h) = if dim.width > dim.height {
+                    (aspect, 1f32)
+                } else {
+                    (1f32, 1f32 / aspect)
+                };
+                layout.set_projection(w, h);
+            }
         }
         Ok(())
     }
 
+    /*
     pub fn before_frame(&mut self, window: &GraphicsWindow) -> Fallible<()> {
         self.set_projection(&window)
     }
@@ -587,18 +529,19 @@ impl TextRenderer {
 
         Ok(cb)
     }
+    */
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use omnilib::OmniLib;
-    use window::GraphicsConfigBuilder;
 
     #[test]
     fn it_can_render_text() -> Fallible<()> {
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        window.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
+        let mut input = InputSystem::new(vec![]);
+        let mut gpu = GPU::new(&input, Default::default())?;
+        gpu.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
 
         let omni = OmniLib::new_for_test_in_games(&[
             "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
@@ -606,7 +549,7 @@ mod test {
         for (game, lib) in omni.libraries() {
             println!("At: {}", game);
 
-            let mut renderer = TextRenderer::new(&lib, &window)?;
+            let mut renderer = LayoutBuffer::new(&lib, &window)?;
 
             renderer
                 .add_screen_text(Font::HUD11, "Top Left (r)", &window)?
@@ -706,11 +649,12 @@ mod test {
 
     #[test]
     fn it_can_render_without_a_library() -> Fallible<()> {
-        let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        window.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
+        let mut input = InputSystem::new(vec![]);
+        let mut gpu = GPU::new(&input, Default::default())?;
+        gpu.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
 
         let lib = Arc::new(Box::new(Library::empty()?));
-        let mut renderer = TextRenderer::new(&lib, &window)?;
+        let mut renderer = LayoutBuffer::new(&lib, &window)?;
 
         renderer
             .add_screen_text(Font::QUANTICO, "Top Left (r)", &window)?
@@ -805,5 +749,13 @@ mod test {
         }
         std::mem::drop(window);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        assert_eq!(2 + 2, 4);
     }
 }
