@@ -12,15 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
 use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
 use gpu::GPU;
 use log::trace;
-use t2::{T2Buffer, T2Vertex};
 use nalgebra::Vector3;
+use t2::{T2Buffer, T2Vertex};
 use wgpu;
 
 pub struct FrameState {
@@ -37,10 +36,7 @@ pub struct TerrainT2RenderPass {
 }
 
 impl TerrainT2RenderPass {
-    pub fn new(
-        gpu: &mut GPU,
-        t2_buffer: T2Buffer,
-    ) -> Fallible<Self> {
+    pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
         trace!("TerrainT2RenderPass::new");
 
         let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
@@ -140,6 +136,5 @@ impl TerrainT2RenderPass {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn it_works() {
-    }
+    fn it_works() {}
 }
