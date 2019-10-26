@@ -14,17 +14,22 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
 use asset::AssetManager;
-use failure::Fallible;
+use failure::{ensure, Fallible};
 use gpu::GPU;
 use image::{ImageBuffer, Rgba};
 use lay::Layer;
 use lib::Library;
 use log::trace;
+use memoffset::offset_of;
 use mm::{MissionMap, TLoc};
 use nalgebra::Matrix4;
 use pal::Palette;
 use pic::Pic;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    mem,
+    sync::Arc,
+};
 use t2::Terrain;
 use wgpu;
 
@@ -35,58 +40,168 @@ struct Vertex {
     tex_coord: [f32; 2],
 }
 
-pub struct T2Buffer {
-    mm: MissionMap,
-    terrain: Arc<Box<Terrain>>,
-    layer: Arc<Box<Layer>>,
-    pic_data: HashMap<TLoc, Vec<u8>>,
-    base_palette: Palette,
-    pub used_palette: Palette,
+impl Vertex {
+    #[allow(clippy::unneeded_field_pattern)]
+    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
+        let tmp = wgpu::VertexBufferDescriptor {
+            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &[
+                // position
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float3,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                // color
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float4,
+                    offset: 12,
+                    shader_location: 1,
+                },
+                // tex_coord
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float2,
+                    offset: 28,
+                    shader_location: 2,
+                },
+            ],
+        };
 
+        assert_eq!(
+            tmp.attributes[0].offset,
+            offset_of!(Vertex, position) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[1].offset,
+            offset_of!(Vertex, color) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[2].offset,
+            offset_of!(Vertex, tex_coord) as wgpu::BufferAddress
+        );
+
+        tmp
+    }
+}
+
+pub struct T2Buffer {
+    // mm: MissionMap, -- should be able to discard after loading
+    // terrain: Arc<Box<Terrain>>, // why boxed? why do we need to store?
+    // layer: Arc<Box<Layer>>,     // should be able to discard after we load the palette.
+    // pic_data: HashMap<TLoc, Vec<u8>>, // ditto here, we can drop after we have the atlas img
+    // base_palette: Palette,      // can drop after loading up everything.
+    // pub used_palette: Palette,  // and we don't need this either.
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    atlas_texture: wgpu::Texture,
-    atlas_texture_view: wgpu::TextureView,
+    // Do we need a sampler here too, or can this all just live in the bind group?
+    //atlas_texture: wgpu::Texture,
+    //atlas_texture_view: wgpu::TextureView,
 }
 
 impl T2Buffer {
     pub fn new(
         mm: MissionMap,
+        system_palette: &Palette,
         assets: &Arc<Box<AssetManager>>,
         lib: &Arc<Box<Library>>,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
         trace!("T2Renderer::new");
 
-        let terrain_name = mm.find_t2_for_map(&|s| lib.file_exists(s))?;
-        let terrain = assets.load_t2(&terrain_name)?;
+        let terrain = assets.load_t2(&mm.t2_name)?;
+        let palette = Self::load_palette(&mm, system_palette, assets)?;
+        let (atlas, bind_group_layout, bind_group) = Self::create_atlas(&mm, &palette, &lib, gpu)?;
+        let (vertex_buffer, index_buffer) =
+            Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
 
-        // The following are used in FA:
-        //    cloud1b.LAY 1
-        //    day2b.LAY 0
-        //    day2b.LAY 4
-        //    day2e.LAY 0
-        //    day2f.LAY 0
-        //    day2.LAY 0
-        //    day2v.LAY 0
-        let layer = assets.load_lay(&mm.layer_name.to_uppercase())?;
+        Ok(Self {
+            bind_group_layout,
+            bind_group,
+            vertex_buffer,
+            index_buffer,
+            //atlas_texture,
+            //atlas_texture_view,
+        })
+    }
 
-        let mut pic_data = HashMap::new();
+    fn load_palette(
+        mm: &MissionMap,
+        system_palette: &Palette,
+        assets: &Arc<Box<AssetManager>>,
+    ) -> Fallible<Palette> {
+        let layer = assets.load_lay(&mm.layer_name)?;
+
+        let layer_data = layer.for_index(mm.layer_index + 2)?;
+        let r0 = layer_data.slice(0x00, 0x10)?;
+        let r1 = layer_data.slice(0x10, 0x20)?;
+        let r2 = layer_data.slice(0x20, 0x30)?;
+        let r3 = layer_data.slice(0x30, 0x40)?;
+
+        // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
+        let mut palette = system_palette.clone();
+        palette.overlay_at(&r0, 0xE0 - 1)?;
+        palette.overlay_at(&r1, 0xF0 - 1)?;
+        palette.overlay_at(&r2, 0xC0)?;
+        palette.overlay_at(&r3, 0xD0)?;
+
+        Ok(palette)
+    }
+
+    // Texture counts for all FA T2's.
+    // APA: 68 x 256 (6815744 texels)
+    // BAL: 66 x 256
+    // CUB: 66 x 256
+    // EGY: 49 x 256
+    // FRA: 47 x 256
+    // GRE: 68
+    // IRA: 51 x 256
+    // KURILE: 236 (Kxxxxxx) x 128/256 (33554432 texels)
+    // LFA: 68
+    // NSK: 68
+    // PGU: 51
+    // SPA: 49
+    // TVIET: 42 (TVI) x 256
+    // UKR: 29
+    // VLA: 52
+    // WTA: 68
+    fn create_atlas(
+        mm: &MissionMap,
+        palette: &Palette,
+        lib: &Library,
+        gpu: &mut GPU,
+    ) -> Fallible<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
+        // Load all images with our custom palette.
+        let mut pics = Vec::new();
+        let mut loaded = HashSet::new();
         let texture_base_name = mm.get_base_texture_name()?;
         for tmap in mm.tmaps.values() {
-            if !pic_data.contains_key(&tmap.loc) {
-                let name = tmap.loc.pic_file(&texture_base_name);
-                let data = lib.load(&name)?.to_vec();
-                pic_data.insert(tmap.loc.clone(), data);
-            }
+            ensure!(!loaded.contains(&tmap.loc), "already loaded texture map");
+            let name = tmap.loc.pic_file(&texture_base_name);
+            let data = lib.load(&name)?;
+            let pic = Pic::decode(palette, &data)?;
+            loaded.insert(tmap.loc.clone());
+            pics.push((tmap.loc.clone(), pic));
         }
 
-        let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
+        let atlas = TextureAtlas::new(pics)?;
+        let image_buf = atlas.img.to_rgba();
+        let image_dim = image_buf.dimensions();
+        let extent = wgpu::Extent3d {
+            width: image_dim.0,
+            height: image_dim.1,
+            depth: 1,
+        };
+        let image_data = image_buf.into_raw();
 
+        let transfer_buffer = gpu
+            .device()
+            .create_buffer_mapped(image_data.len(), wgpu::BufferUsage::all())
+            .fill_from_slice(&image_data);
         let atlas_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
-            size: wgpu::Extent3d {},
+            size: extent,
             array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
@@ -94,6 +209,27 @@ impl T2Buffer {
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsage::all(),
         });
+        let mut encoder = gpu
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        encoder.copy_buffer_to_texture(
+            wgpu::BufferCopyView {
+                buffer: &transfer_buffer,
+                offset: 0,
+                row_pitch: extent.width * 4,
+                image_height: extent.height,
+            },
+            wgpu::TextureCopyView {
+                texture: &atlas_texture,
+                mip_level: 0,
+                array_layer: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            extent,
+        );
+        gpu.queue_mut().submit(&[encoder.finish()]);
+        gpu.device().poll(true);
+
         let atlas_texture_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
             format: wgpu::TextureFormat::Rgba8Unorm,
             dimension: wgpu::TextureViewDimension::D2,
@@ -103,13 +239,13 @@ impl T2Buffer {
             base_array_layer: 0,
             array_layer_count: 1,
         });
-        let sampler_resource = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler_resource = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
             compare_function: wgpu::CompareFunction::Never,
@@ -142,176 +278,31 @@ impl T2Buffer {
                     resource: wgpu::BindingResource::TextureView(&atlas_texture_view),
                 },
                 wgpu::Binding {
-                    binding: 2,
+                    binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler_resource),
                 },
             ],
         });
 
-        let bind_group_layout = gpu
-            .device()
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { bindings: &[] });
-        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &bind_group_layout,
-            bindings: &[],
-        });
-
-        let mut t2_buffer = Self {
-            mm,
-            terrain,
-            layer,
-            pic_data,
-            base_palette: base_palette.clone(),
-            used_palette: base_palette,
-            bind_group_layout,
-            bind_group,
-            vertex_buffer: gpu.device().create_buffer(1, wgpu::BufferUsage::all()),
-            index_buffer: gpu.device().create_buffer(1, wgpu::BufferUsage::all()),
-            atlas_texture,
-            atlas_texture_view,
-        };
-        let (bind_group, vertex_buffer, index_buffer, palette) =
-            t2_renderer.regenerate_with_palette_parameters(window, 0, 0, 0, 0, 0)?;
-
-        t2_renderer.bind_group_layout = bind_group_layout;
-        t2_renderer.bind_group = bind_group;
-        t2_renderer.vertex_buffer = vertex_buffer;
-        t2_renderer.index_buffer = index_buffer;
-        t2_renderer.used_palette = palette;
-
-        Ok(t2_renderer)
+        Ok((atlas, bind_group_layout, bind_group))
     }
 
-    pub fn set_palette_parameters(
-        &mut self,
-        window: &GraphicsWindow,
-        lay_base: i32,
-        e0_off: i32,
-        f1_off: i32,
-        c2_off: i32,
-        d3_off: i32,
-    ) -> Fallible<()> {
-        let (vertex_buffer, index_buffer, palette) = self
-            .regenerate_with_palette_parameters(window, lay_base, e0_off, f1_off, c2_off, d3_off)?;
-        self.vertex_buffer = vertex_buffer;
-        self.index_buffer = index_buffer;
-        self.used_palette = palette;
-        Ok(())
-    }
-
-    fn regenerate_with_palette_parameters(
-        &self,
-        device: &wgpu::Device,
-        lay_base: i32,
-        e0_off: i32,
-        f1_off: i32,
-        c2_off: i32,
-        d3_off: i32,
-    ) -> Fallible<(wgpu::Buffer, wgpu::Buffer, Palette)> {
-        // Note: we need to really find the right palette.
-        let mut palette = self.base_palette.clone();
-        let layer_data = self.layer.for_index(self.mm.layer_index + 2, lay_base)?;
-        let r0 = layer_data.slice(0x00, 0x10)?;
-        let r1 = layer_data.slice(0x10, 0x20)?;
-        let r2 = layer_data.slice(0x20, 0x30)?;
-        let r3 = layer_data.slice(0x30, 0x40)?;
-
-        // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        // FIXME: this is close except on TVIET, which needs some fiddling around 0xC0.
-        palette.overlay_at(&r2, (0xC0 + c2_off) as usize)?;
-        palette.overlay_at(&r3, (0xD0 + d3_off) as usize)?;
-        palette.overlay_at(&r0, (0xE0 + e0_off) as usize)?;
-        palette.overlay_at(&r1, (0xF0 + f1_off) as usize)?;
-
-        //palette.dump_png("terrain_palette")?;
-
-        // Texture counts for all FA T2's.
-        // APA: 68 x 256 (6815744 texels)
-        // BAL: 66 x 256
-        // CUB: 66 x 256
-        // EGY: 49 x 256
-        // FRA: 47 x 256
-        // GRE: 68
-        // IRA: 51 x 256
-        // KURILE: 236 (Kxxxxxx) x 128/256 (33554432 texels)
-        // LFA: 68
-        // NSK: 68
-        // PGU: 51
-        // SPA: 49
-        // TVIET: 42 (TVI) x 256
-        // UKR: 29
-        // VLA: 52
-        // WTA: 68
-
-        // Load all images with our new palette.
-        let mut pics = Vec::new();
-        for (tloc, data) in &self.pic_data {
-            let pic = Pic::decode(&palette, data)?;
-            pics.push((tloc.clone(), pic));
-        }
-
-        let atlas = TextureAtlas::new(pics)?;
-        let image_buf = atlas.img.to_rgba();
-        let image_dim = image_buf.dimensions();
-        let extent = wgpu::Extent3d {
-            width: image_dim.width,
-            height: image_dim.height,
-            depth: 1,
-        };
-        let image_data = image_buf.into_raw();
-        let transfer_buffer = device
-            .create_buffer_mapped(img.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(image_data);
-        encoder.copy_buffer_to_texture(
-            wgpu::BufferCopyView {
-                transfer_buffer,
-                offset: 0,
-                row_pitch: extent.width * 4,
-                image_height: extent.height,
-            },
-            wgpu::TextureCopyView {
-                texture,
-                mip_level: 0,
-                array_layer: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            extent,
-        );
-
-        /*
-        let (texture, tex_future) = Self::upload_texture_rgba(window, atlas.img.to_rgba())?;
-        tex_future.then_signal_fence_and_flush()?.cleanup_finished();
-        let sampler = Self::make_sampler(window.device())?;
-
-        let (vertex_buffer, index_buffer) =
-            self.upload_terrain_textured_simple(&atlas, &palette, window)?;
-
-        let pds = Arc::new(
-            PersistentDescriptorSet::start(self.pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
-                .build()?,
-        );
-        */
-
-        Ok((pds, vertex_buffer, index_buffer, palette))
-    }
-
-    fn sample_at(&self, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
-        let offset = (zi * self.terrain.width + xi) as usize;
-        let sample = if offset < self.terrain.samples.len() {
-            self.terrain.samples[offset]
+    fn sample_at(terrain: &Terrain, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
+        let offset = (zi * terrain.width + xi) as usize;
+        let sample = if offset < terrain.samples.len() {
+            terrain.samples[offset]
         } else {
-            let offset = ((zi - 1) * self.terrain.width + xi) as usize;
-            if offset < self.terrain.samples.len() {
-                self.terrain.samples[offset]
+            let offset = ((zi - 1) * terrain.width + xi) as usize;
+            if offset < terrain.samples.len() {
+                terrain.samples[offset]
             } else {
-                let offset = ((zi - 1) * self.terrain.width + (xi - 1)) as usize;
-                self.terrain.samples[offset]
+                let offset = ((zi - 1) * terrain.width + (xi - 1)) as usize;
+                terrain.samples[offset]
             }
         };
 
-        let x = xi as f32 / (self.terrain.width as f32) - 0.5;
-        let z = zi as f32 / (self.terrain.height as f32) - 0.5;
+        let x = xi as f32 / (terrain.width as f32) - 0.5;
+        let z = 1f32 - (zi as f32 / (terrain.height as f32)) - 0.5;
         let h = -f32::from(sample.height) / 512f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
@@ -319,8 +310,9 @@ impl T2Buffer {
             color.data[3] = 0;
         }
 
+        let scale = 100f32;
         (
-            [x, h, z],
+            [x * scale, h * scale / 8f32, z * scale],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,
@@ -331,7 +323,8 @@ impl T2Buffer {
     }
 
     fn upload_terrain_textured_simple(
-        &self,
+        mm: &MissionMap,
+        terrain: &Terrain,
         atlas: &TextureAtlas,
         palette: &Palette,
         device: &wgpu::Device,
@@ -339,63 +332,59 @@ impl T2Buffer {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
-        for zi_base in (0..self.terrain.height).step_by(4) {
-            for xi_base in (0..self.terrain.width).step_by(4) {
+        // Each patch has a fixed strip pattern.
+        let mut patch_indices = Vec::new();
+        for row in 0..4 {
+            let row_off = row * 5;
+
+            patch_indices.push(row_off);
+            patch_indices.push(row_off);
+
+            for column in 0..5 {
+                patch_indices.push(row_off + column);
+                patch_indices.push(row_off + column + 5);
+            }
+
+            patch_indices.push(row_off + 4 + 5);
+            patch_indices.push(row_off + 4 + 5);
+        }
+        let push_patch_indices = |base: u32, indices: &mut Vec<u32>| {
+            for pi in &patch_indices {
+                indices.push(base + *pi);
+            }
+        };
+
+        for zi_base in (0..terrain.height).step_by(4) {
+            for xi_base in (0..terrain.width).step_by(4) {
                 let base = verts.len() as u32;
 
-                // Upload all vertices in patch.
-                if let Some(tmap) = self.mm.tmaps.get(&(xi_base, zi_base)) {
-                    let frame = &atlas.frames[&tmap.loc];
+                // Upload one patch of vertices, possibly with a texture.
+                let frame_info = mm
+                    .tmaps
+                    .get(&(xi_base, zi_base))
+                    .map(|tmap| (&atlas.frames[&tmap.loc], &tmap.orientation));
+                for z_off in 0..=4 {
+                    for x_off in 0..=4 {
+                        let zi = zi_base + z_off;
+                        let xi = xi_base + x_off;
+                        let (position, color) = Self::sample_at(terrain, palette, xi, zi);
 
-                    for z_off in 0..5 {
-                        for x_off in 0..5 {
-                            let zi = zi_base + z_off;
-                            let xi = xi_base + x_off;
-                            let (position, _samp_color) = self.sample_at(palette, xi, zi);
-
-                            verts.push(Vertex {
-                                position,
-                                color: [0f32, 0f32, 0f32, 0f32],
-                                tex_coord: frame.interp(
-                                    x_off as f32 / 4f32,
-                                    z_off as f32 / 4f32,
-                                    &tmap.orientation,
-                                )?,
-                            });
-                        }
-                    }
-                } else {
-                    for z_off in 0..5 {
-                        for x_off in 0..5 {
-                            let zi = zi_base + z_off;
-                            let xi = xi_base + x_off;
-                            let (position, color) = self.sample_at(palette, xi, zi);
-
-                            verts.push(Vertex {
-                                position,
-                                color,
-                                tex_coord: [0f32, 0f32],
-                            });
-                        }
+                        verts.push(Vertex {
+                            position,
+                            color,
+                            tex_coord: frame_info
+                                .map(|(frame, orientation)| {
+                                    frame.interp(
+                                        x_off as f32 / 4f32,
+                                        z_off as f32 / 4f32,
+                                        orientation,
+                                    )
+                                })
+                                .unwrap_or([0f32, 0f32]),
+                        });
                     }
                 }
-
-                // There is a fixed strip pattern here that we could probably make use of.
-                // For now just re-compute per patch with the base offset.
-                for row in 0..4 {
-                    let row_off = row * 5;
-
-                    indices.push(base + row_off);
-                    indices.push(base + row_off);
-
-                    for column in 0..5 {
-                        indices.push(base + row_off + column);
-                        indices.push(base + row_off + column + 5);
-                    }
-
-                    indices.push(base + row_off + 4 + 5);
-                    indices.push(base + row_off + 4 + 5);
-                }
+                push_patch_indices(base, &mut indices);
             }
         }
 
@@ -417,66 +406,4 @@ impl T2Buffer {
 
         Ok((vertex_buffer, index_buffer))
     }
-
-    /*
-    fn upload_texture_rgba(
-        device: &wgpu::Device,
-        image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    ) -> Fallible<wgpu::Texture> {
-        let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
-
-        let dimensions = Dimensions::Dim2d {
-            width: image_dim.0,
-            height: image_dim.1,
-        };
-
-        let (texture, tex_future) = ImmutableImage::from_iter(
-            image_data.iter().cloned(),
-            dimensions,
-            Format::R8G8B8A8Unorm,
-            window.queue(),
-        )?;
-        Ok((texture, Box::new(tex_future) as Box<dyn GpuFuture>))
-    }
-
-    fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
-        let sampler = Sampler::new(
-            device.clone(),
-            Filter::Nearest,
-            Filter::Nearest,
-            MipmapMode::Nearest,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            SamplerAddressMode::ClampToEdge,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )?;
-
-        Ok(sampler)
-    }
-
-    pub fn before_frame(&mut self, camera: &dyn CameraAbstract) -> Fallible<()> {
-        self.push_constants
-            .set_projection(camera.projection_matrix() * camera.view_matrix());
-        Ok(())
-    }
-
-    pub fn render(
-        &self,
-        command_buffer: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        Ok(command_buffer.draw_indexed(
-            self.pipeline.clone(),
-            dynamic_state,
-            vec![self.vertex_buffer.clone().unwrap()],
-            self.index_buffer.clone().unwrap(),
-            self.pds.clone().unwrap(),
-            self.push_constants,
-        )?)
-    }
-    */
 }

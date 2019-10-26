@@ -31,7 +31,7 @@ pub struct FrameState {
     atmosphere_upload_buffer: wgpu::Buffer,
 }
 
-pub struct SkyboxRenderer {
+pub struct SkyboxRenderPass {
     camera_buffer: CameraParametersBuffer,
     fullscreen_buffer: FullscreenBuffer,
     atmosphere_buffer: AtmosphereBuffer,
@@ -40,9 +40,9 @@ pub struct SkyboxRenderer {
     pipeline: wgpu::RenderPipeline,
 }
 
-impl SkyboxRenderer {
+impl SkyboxRenderPass {
     pub fn new(gpu: &mut GPU) -> Fallible<Self> {
-        trace!("SkyboxRenderer::new");
+        trace!("SkyboxRenderPass::new");
 
         let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
         let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
