@@ -16,8 +16,6 @@
 
 #include <common/include/include_global.glsl>
 
-#include <buffer/camera_parameters/include/library.glsl>
-
 #include <buffer/atmosphere/include/global.glsl>
 #include <buffer/atmosphere/include/descriptorset.glsl>
 #include <buffer/atmosphere/include/library.glsl>

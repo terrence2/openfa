@@ -20,7 +20,7 @@ star_catalog = { path = "../../../star_catalog" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
-camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
+global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
 

@@ -73,6 +73,7 @@ pub fn main() -> Fallible<()> {
 
     ///////////////////////////////////////////////////////////
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
+
     let t2_render_pass = TerrainT2RenderPass::new(&mut gpu, t2_buffer)?;
     ///////////////////////////////////////////////////////////
 

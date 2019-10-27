@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <buffer/camera_parameters/include/descriptorset.glsl>
+#include <buffer/global_data/include/descriptorset.glsl>
 
 mat4 camera_view()               { return camera_parameters[0]; }
 mat4 camera_projection()         { return camera_parameters[1]; }

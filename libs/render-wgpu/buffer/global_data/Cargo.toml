@@ -1,5 +1,5 @@
 [package]
-name = "camera_parameters-wgpu"
+name = "global_data-wgpu"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <common/include/include_global.glsl>
-#include <buffer/camera_parameters/include/library.glsl>
+#include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec4 color;
