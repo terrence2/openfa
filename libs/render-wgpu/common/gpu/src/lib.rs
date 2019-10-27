@@ -60,7 +60,7 @@ impl GPU {
     pub const SCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
 
     pub fn texture_format() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Bgra8UnormSrgb
+        wgpu::TextureFormat::Bgra8Unorm
     }
 
     pub fn aspect_ratio(&self) -> f64 {
