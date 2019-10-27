@@ -15,7 +15,7 @@ atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/
 camera = { path = "../../../render-shared/common/camera" }
 camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-t2 = { package = "t2-wgpu", path = "../../../render-wgpu/buffer/t2" }
+t2_buffer = { package = "t2_buffer-wgpu", path = "../../../render-wgpu/buffer/t2_buffer" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

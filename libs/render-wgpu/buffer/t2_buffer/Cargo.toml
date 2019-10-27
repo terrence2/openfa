@@ -1,5 +1,5 @@
 [package]
-name = "t2-wgpu"
+name = "t2_buffer-wgpu"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
