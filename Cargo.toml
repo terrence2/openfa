@@ -65,6 +65,7 @@ members = [
         "libs/render-wgpu/buffer/stars",
         "libs/render-wgpu/buffer/t2_buffer",
         "libs/render-wgpu/common/build-shaders",
+        "libs/render-wgpu/common/frame_graph",
         "libs/render-wgpu/common/gpu",
         "libs/render-wgpu/common/input",
         "libs/render-wgpu/render_pass/shape",

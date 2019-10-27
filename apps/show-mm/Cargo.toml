@@ -13,6 +13,7 @@ simplelog = "^ 0.5"
 structopt = "^ 0.2"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/render-shared/common/camera" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../libs/render-wgpu/common/frame_graph" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
 t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }

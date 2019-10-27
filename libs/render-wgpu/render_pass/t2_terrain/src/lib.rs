@@ -14,11 +14,13 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
-use failure::Fallible;
+use failure::{ensure, Fallible};
+use frame_graph::GraphBuffer;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
+use std::sync::Arc;
 use t2_buffer::{T2Buffer, T2Vertex};
 use wgpu;
 
@@ -28,16 +30,17 @@ pub struct FrameState {
 }
 
 pub struct T2TerrainRenderPass {
-    globals_buffer: GlobalParametersBuffer,
-    atmosphere_buffer: AtmosphereBuffer,
-    t2_buffer: T2Buffer,
-
     pipeline: wgpu::RenderPipeline,
 }
 
 impl T2TerrainRenderPass {
-    pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
+    pub fn new(gpu: &mut GPU, inputs: &[Arc<Box<dyn GraphBuffer>>]) -> Fallible<Self> {
         trace!("T2TerrainRenderPass::new");
+
+        ensure!(inputs.len() == 3, "expected 3 inputs");
+        ensure!(inputs[0].name() == "globals", "inputs[0]=globals");
+        ensure!(inputs[1].name() == "atmosphere", "inputs[1]=atmosphere");
+        ensure!(inputs[2].name() == "t2buffer", "inputs[1]=t2buffer");
 
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
@@ -50,11 +53,10 @@ impl T2TerrainRenderPass {
         let pipeline_layout =
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    bind_group_layouts: &[
-                        globals_buffer.bind_group_layout(),
-                        atmosphere_buffer.bind_group_layout(),
-                        t2_buffer.bind_group_layout(),
-                    ],
+                    bind_group_layouts: &inputs
+                        .iter()
+                        .map(|b| b.bind_group_layout())
+                        .collect::<Vec<_>>(),
                 });
 
         let pipeline = gpu
@@ -99,14 +101,10 @@ impl T2TerrainRenderPass {
                 alpha_to_coverage_enabled: false,
             });
 
-        Ok(Self {
-            globals_buffer,
-            atmosphere_buffer,
-            t2_buffer,
-            pipeline,
-        })
+        Ok(Self { pipeline })
     }
 
+    /*
     pub fn prepare_upload(
         &self,
         camera: &dyn CameraAbstract,
@@ -139,6 +137,7 @@ impl T2TerrainRenderPass {
         rpass.set_vertex_buffers(0, &[(self.t2_buffer.vertex_buffer(), 0)]);
         rpass.draw_indexed(self.t2_buffer.index_range(), 0, 0..1);
     }
+    */
 }
 
 #[cfg(test)]

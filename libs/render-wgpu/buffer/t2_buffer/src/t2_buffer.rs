@@ -15,6 +15,7 @@
 use crate::texture_atlas::TextureAtlas;
 use asset::AssetManager;
 use failure::Fallible;
+use frame_graph::GraphBuffer;
 use gpu::GPU;
 use lib::Library;
 use log::trace;
@@ -93,7 +94,7 @@ impl T2Buffer {
         assets: &Arc<Box<AssetManager>>,
         lib: &Arc<Box<Library>>,
         gpu: &mut GPU,
-    ) -> Fallible<Self> {
+    ) -> Fallible<Arc<Box<Self>>> {
         trace!("T2Renderer::new");
 
         let terrain = assets.load_t2(&mm.t2_name)?;
@@ -102,21 +103,13 @@ impl T2Buffer {
         let (vertex_buffer, index_buffer, index_count) =
             Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
 
-        Ok(Self {
+        Ok(Arc::new(Box::new(Self {
             bind_group_layout,
             bind_group,
             vertex_buffer,
             index_buffer,
             index_count,
-        })
-    }
-
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
+        })))
     }
 
     pub fn vertex_buffer(&self) -> &wgpu::Buffer {
@@ -414,4 +407,36 @@ impl T2Buffer {
 
         Ok((vertex_buffer, index_buffer, indices.len() as u32))
     }
+
+    pub fn into_graph_buffer(self: Box<Self>) -> Box<dyn GraphBuffer> {
+        self
+    }
 }
+
+impl GraphBuffer for T2Buffer {
+    fn name(&self) -> &'static str {
+        "t2buffer"
+    }
+
+    fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
+}
+
+impl Into<Box<dyn GraphBuffer>> for Box<T2Buffer> {
+    fn into(self) -> Box<dyn GraphBuffer> {
+        self as Box<dyn GraphBuffer>
+    }
+}
+
+/*
+impl From<Arc<Box<T2Buffer>>> for Arc<Box<dyn GraphBuffer>> {
+    fn from(t2buffer: Arc<Box<T2Buffer>>) -> Arc<Box<dyn GraphBuffer>> {
+        t2buffer as Arc<Box<dyn GraphBuffer>>
+    }
+}
+*/

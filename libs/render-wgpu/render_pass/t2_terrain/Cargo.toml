@@ -13,6 +13,7 @@ wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-h
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
 camera = { path = "../../../render-shared/common/camera" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 t2_buffer = { package = "t2_buffer-wgpu", path = "../../../render-wgpu/buffer/t2_buffer" }

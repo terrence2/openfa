@@ -15,6 +15,7 @@
 use asset::AssetManager;
 use camera::ArcBallCamera;
 use failure::Fallible;
+use frame_graph::{FrameGraphBuilder, GraphBuffer};
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
@@ -27,8 +28,8 @@ use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
-// use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use xt::TypeManager;
+// use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 
 make_opt_struct!(
     #[structopt(name = "mm_explorer", about = "Show the contents of an MM file")]
@@ -73,8 +74,13 @@ pub fn main() -> Fallible<()> {
 
     ///////////////////////////////////////////////////////////
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
+    //let t2_render_pass = T2TerrainRenderPass::new(&mut gpu, t2_buffer)?;
 
-    let t2_render_pass = T2TerrainRenderPass::new(&mut gpu, t2_buffer)?;
+    let frame_graph = FrameGraphBuilder::new(&gpu)
+        //.with_buffer(t2_buffer)
+        .with_buffer(t2_buffer.into_graph_buffer())
+        //.add_pass::<T2TerrainRenderPass>(&["t2"])
+        .build();
     ///////////////////////////////////////////////////////////
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
@@ -104,6 +110,7 @@ pub fn main() -> Fallible<()> {
             }
         }
 
+        /*
         let upload =
             t2_render_pass.prepare_upload(&camera, &Vector3::new(0f32, 1f32, 0f32), gpu.device());
 
@@ -117,6 +124,7 @@ pub fn main() -> Fallible<()> {
             }
             frame.finish();
         }
+        */
 
         /*
         let ft = loop_start.elapsed();

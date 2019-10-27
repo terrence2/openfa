@@ -13,6 +13,7 @@ memoffset = "^ 0.5"
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 asset = { path = "../../../asset" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 lay = { path = "../../../lay" }
 lib = { path = "../../../lib" }
