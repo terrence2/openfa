@@ -19,7 +19,7 @@ use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
@@ -32,7 +32,7 @@ pub struct FrameState {
 }
 
 pub struct SkyboxRenderPass {
-    camera_buffer: CameraParametersBuffer,
+    globals_buffer: GlobalParametersBuffer,
     fullscreen_buffer: FullscreenBuffer,
     atmosphere_buffer: AtmosphereBuffer,
     stars_buffer: StarsBuffer,
@@ -44,8 +44,8 @@ impl SkyboxRenderPass {
     pub fn new(gpu: &mut GPU) -> Fallible<Self> {
         trace!("SkyboxRenderPass::new");
 
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-        let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
+        let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+        let fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
         let stars_buffer = StarsBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
@@ -58,7 +58,7 @@ impl SkyboxRenderPass {
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
-                        camera_buffer.bind_group_layout(),
+                        globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
                         stars_buffer.bind_group_layout(),
                     ],
@@ -99,7 +99,7 @@ impl SkyboxRenderPass {
             });
 
         Ok(Self {
-            camera_buffer,
+            globals_buffer,
             fullscreen_buffer,
             stars_buffer,
             atmosphere_buffer,
@@ -114,7 +114,7 @@ impl SkyboxRenderPass {
         device: &wgpu::Device,
     ) -> FrameState {
         FrameState {
-            camera_upload_buffer: self.camera_buffer.make_upload_buffer(camera, device),
+            camera_upload_buffer: self.globals_buffer.make_upload_buffer(camera, device),
             atmosphere_upload_buffer: self.atmosphere_buffer.make_upload_buffer(
                 camera,
                 *sun_direction,
@@ -124,7 +124,7 @@ impl SkyboxRenderPass {
     }
 
     pub fn upload(&self, frame: &mut gpu::Frame, state: FrameState) {
-        self.camera_buffer
+        self.globals_buffer
             .upload_from(frame, &state.camera_upload_buffer);
         self.atmosphere_buffer
             .upload_from(frame, &state.atmosphere_upload_buffer);
@@ -132,7 +132,7 @@ impl SkyboxRenderPass {
 
     pub fn draw(&self, rpass: &mut wgpu::RenderPass) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, self.camera_buffer.bind_group(), &[]);
+        rpass.set_bind_group(0, self.globals_buffer.bind_group(), &[]);
         rpass.set_bind_group(1, &self.atmosphere_buffer.bind_group(), &[]);
         rpass.set_bind_group(2, &self.stars_buffer.bind_group(), &[]);
         rpass.set_vertex_buffers(0, &[(self.fullscreen_buffer.vertex_buffer(), 0)]);

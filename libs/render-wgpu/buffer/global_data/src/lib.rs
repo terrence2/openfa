@@ -17,7 +17,7 @@ use failure::Fallible;
 use std::mem;
 use wgpu;
 
-pub struct CameraParametersBuffer {
+pub struct GlobalParametersBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     buffer_size: u64,
@@ -30,7 +30,7 @@ const PROJ_OFFSET: usize = 1;
 const INVERSE_VIEW_OFFSET: usize = 2;
 const INVERSE_PROJ_OFFSET: usize = 3;
 
-impl CameraParametersBuffer {
+impl GlobalParametersBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Self> {
         let buffer_size = mem::size_of::<[[[f32; 4]; 4]; MATRIX_COUNT]>() as u64;
         let parameters_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -139,7 +139,7 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let _camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+        let _globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         Ok(())
     }
 }

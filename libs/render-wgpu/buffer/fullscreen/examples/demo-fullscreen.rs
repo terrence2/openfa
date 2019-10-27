@@ -15,7 +15,7 @@
 use camera::ArcBallCamera;
 use failure::Fallible;
 use fullscreen_wgpu::{FullscreenBuffer, FullscreenVertex};
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use wgpu;
@@ -26,8 +26,8 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-    let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
@@ -35,7 +35,7 @@ fn main() -> Fallible<()> {
     let pipeline_layout = gpu
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[camera_buffer.bind_group_layout()],
+            bind_group_layouts: &[globals_buffer.bind_group_layout()],
         });
     let pipeline = gpu
         .device()
@@ -93,15 +93,15 @@ fn main() -> Fallible<()> {
         }
 
         // Prepare new camera parameters.
-        let upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
+        let upload_buffer = globals_buffer.make_upload_buffer(&camera, gpu.device());
 
         let mut frame = gpu.begin_frame();
         {
-            camera_buffer.upload_from(&mut frame, &upload_buffer);
+            globals_buffer.upload_from(&mut frame, &upload_buffer);
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);
             rpass.draw(0..4, 0..1);
         }
