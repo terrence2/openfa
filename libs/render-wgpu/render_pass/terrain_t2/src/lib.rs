@@ -15,7 +15,7 @@
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
 use failure::Fallible;
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
@@ -28,7 +28,7 @@ pub struct FrameState {
 }
 
 pub struct TerrainT2RenderPass {
-    camera_buffer: CameraParametersBuffer,
+    camera_buffer: GlobalParametersBuffer,
     atmosphere_buffer: AtmosphereBuffer,
     t2_buffer: T2Buffer,
 
@@ -39,7 +39,7 @@ impl TerrainT2RenderPass {
     pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
         trace!("TerrainT2RenderPass::new");
 
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+        let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
         let vert_shader =

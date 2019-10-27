@@ -19,7 +19,7 @@ use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
@@ -32,7 +32,7 @@ pub struct FrameState {
 }
 
 pub struct SkyboxRenderPass {
-    camera_buffer: CameraParametersBuffer,
+    camera_buffer: GlobalParametersBuffer,
     fullscreen_buffer: FullscreenBuffer,
     atmosphere_buffer: AtmosphereBuffer,
     stars_buffer: StarsBuffer,
@@ -44,7 +44,7 @@ impl SkyboxRenderPass {
     pub fn new(gpu: &mut GPU) -> Fallible<Self> {
         trace!("SkyboxRenderPass::new");
 
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+        let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
         let stars_buffer = StarsBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::{Frame, GPU};
 use shape_chunk::Vertex;
 use shape_instance::ShapeInstanceManager;
@@ -26,7 +26,7 @@ pub struct ShapeRenderPass {
 impl ShapeRenderPass {
     pub fn new(
         gpu: &GPU,
-        camera_buffer: &CameraParametersBuffer,
+        camera_buffer: &GlobalParametersBuffer,
         inst_man: &ShapeInstanceManager,
     ) -> Fallible<Self> {
         let vert_shader = gpu.create_shader_module(include_bytes!("../target/shape.vert.spirv"))?;
@@ -93,7 +93,7 @@ impl ShapeRenderPass {
     pub fn render(
         &self,
         empty_bind_group: &wgpu::BindGroup,
-        camera_buffer: &CameraParametersBuffer,
+        camera_buffer: &GlobalParametersBuffer,
         inst_man: &ShapeInstanceManager,
         frame: &mut Frame,
     ) -> Fallible<()> {
@@ -131,7 +131,7 @@ mod tests {
     fn it_works() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+        let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let inst_man = ShapeInstanceManager::new(&gpu.device())?;
 
         let _ = ShapeRenderPass::new(&gpu, &camera_buffer, &inst_man)?;

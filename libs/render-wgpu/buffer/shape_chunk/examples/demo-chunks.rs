@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
 use failure::Fallible;
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 //use global_layout::GlobalSets;
 use gpu;
 use gpu::GPU;
@@ -35,7 +35,7 @@ fn main() -> Fallible<()> {
     let mut input = InputSystem::new(vec![bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+    let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
 
     let mut chunk_man = ShapeChunkManager::new(gpu.device())?;
     let (_chunk_id, _shape_id) = chunk_man.upload_shape(

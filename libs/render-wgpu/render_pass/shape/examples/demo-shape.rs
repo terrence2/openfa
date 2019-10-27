@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
 use failure::Fallible;
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use nalgebra::Point3;
@@ -48,7 +48,7 @@ fn main() -> Fallible<()> {
     world.register::<ShapeXformBuffer>();
     world.register::<Transform>();
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+    let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
 
     let mut inst_buffer = ShapeInstanceManager::new(&gpu.device())?;
     const CNT: i32 = 50;

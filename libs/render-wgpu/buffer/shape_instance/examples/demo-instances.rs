@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
 use failure::Fallible;
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use nalgebra::Point3;
@@ -32,7 +32,7 @@ use world::Transform;
 fn build_pipeline(
     gpu: &mut gpu::GPU,
     empty_layout: &wgpu::BindGroupLayout,
-    camera_buffer: &CameraParametersBuffer,
+    camera_buffer: &GlobalParametersBuffer,
     inst_man: &ShapeInstanceManager,
 ) -> Fallible<wgpu::RenderPipeline> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
@@ -105,7 +105,7 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+    let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let mut inst_man = ShapeInstanceManager::new(&gpu.device())?;
 
     let mut world = World::new();

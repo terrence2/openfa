@@ -16,7 +16,7 @@ use atmosphere_wgpu::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
-use global_data::CameraParametersBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
@@ -31,7 +31,7 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+    let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
 
