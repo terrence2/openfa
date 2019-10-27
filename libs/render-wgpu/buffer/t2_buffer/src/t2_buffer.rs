@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
 use asset::AssetManager;
-use failure::{ensure, Fallible};
+use failure::Fallible;
 use gpu::GPU;
 use lib::Library;
 use log::trace;
@@ -179,15 +179,19 @@ impl T2Buffer {
     ) -> Fallible<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
         // Load all images with our custom palette.
         let mut pics = Vec::new();
-        let mut loaded = HashSet::new();
-        let texture_base_name = mm.get_base_texture_name()?;
-        for tmap in mm.tmaps.values() {
-            ensure!(!loaded.contains(&tmap.loc), "already loaded texture map");
-            let name = tmap.loc.pic_file(&texture_base_name);
-            let data = lib.load(&name)?;
-            let pic = Pic::decode(palette, &data)?;
-            loaded.insert(tmap.loc.clone());
-            pics.push((tmap.loc.clone(), pic));
+        {
+            let mut loaded = HashSet::new();
+            let texture_base_name = mm.get_base_texture_name()?;
+            for tmap in mm.tmaps.values() {
+                if loaded.contains(&tmap.loc) {
+                    continue;
+                }
+                let name = tmap.loc.pic_file(&texture_base_name);
+                let data = lib.load(&name)?;
+                let pic = Pic::decode(palette, &data)?;
+                loaded.insert(tmap.loc.clone());
+                pics.push((tmap.loc.clone(), pic));
+            }
         }
 
         let atlas = TextureAtlas::new(pics)?;

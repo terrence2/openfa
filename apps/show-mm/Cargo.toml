@@ -11,20 +11,18 @@ log = "^ 0.4"
 nalgebra = "^ 0.18"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-vulkano = "^ 0.14"
-vulkano-shaders = "^ 0.14"
-vulkano-win = "^ 0.14"
-winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/render-shared/common/camera" }
-input = { path = "../../libs/render-vulkano/common/input" }
+gpu = { path = "../../libs/render-wgpu/common/gpu" }
+input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
+t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }
+terrain_t2 = { package = "terrain_t2-wgpu", path = "../../libs/render-wgpu/render_pass/terrain_t2" }
 lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-legacy_render = { path = "../../libs/legacy_render" }
 t2 = { path = "../../libs/t2" }
 text = { path = "../../libs/render-vulkano/draw/text" }
 xt = { path = "../../libs/xt" }
