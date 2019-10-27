@@ -16,7 +16,7 @@ camera = { path = "../../libs/render-shared/common/camera" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
 t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }
-terrain_t2 = { package = "terrain_t2-wgpu", path = "../../libs/render-wgpu/render_pass/terrain_t2" }
+t2_terrain = { package = "t2_terrain-wgpu", path = "../../libs/render-wgpu/render_pass/t2_terrain" }
 lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }

@@ -26,7 +26,7 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
-use terrain_t2::TerrainT2RenderPass;
+use t2_terrain::T2TerrainRenderPass;
 // use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use xt::TypeManager;
 
@@ -74,7 +74,7 @@ pub fn main() -> Fallible<()> {
     ///////////////////////////////////////////////////////////
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
 
-    let t2_render_pass = TerrainT2RenderPass::new(&mut gpu, t2_buffer)?;
+    let t2_render_pass = T2TerrainRenderPass::new(&mut gpu, t2_buffer)?;
     ///////////////////////////////////////////////////////////
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);

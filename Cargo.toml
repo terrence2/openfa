@@ -69,7 +69,7 @@ members = [
         "libs/render-wgpu/common/input",
         "libs/render-wgpu/render_pass/shape",
         "libs/render-wgpu/render_pass/skybox",
-        "libs/render-wgpu/render_pass/terrain_t2",
+        "libs/render-wgpu/render_pass/t2_terrain",
         "libs/resource",
         "libs/reverse",
         "libs/sh",

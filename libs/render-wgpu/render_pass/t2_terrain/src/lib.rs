@@ -27,7 +27,7 @@ pub struct FrameState {
     atmosphere_upload_buffer: wgpu::Buffer,
 }
 
-pub struct TerrainT2RenderPass {
+pub struct T2TerrainRenderPass {
     globals_buffer: GlobalParametersBuffer,
     atmosphere_buffer: AtmosphereBuffer,
     t2_buffer: T2Buffer,
@@ -35,17 +35,17 @@ pub struct TerrainT2RenderPass {
     pipeline: wgpu::RenderPipeline,
 }
 
-impl TerrainT2RenderPass {
+impl T2TerrainRenderPass {
     pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
-        trace!("TerrainT2RenderPass::new");
+        trace!("T2TerrainRenderPass::new");
 
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
         let vert_shader =
-            gpu.create_shader_module(include_bytes!("../target/terrain_t2.vert.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/t2_terrain.vert.spirv"))?;
         let frag_shader =
-            gpu.create_shader_module(include_bytes!("../target/terrain_t2.frag.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/t2_terrain.frag.spirv"))?;
 
         let pipeline_layout =
             gpu.device()
