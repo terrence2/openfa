@@ -139,7 +139,7 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let _camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
+        let _globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         Ok(())
     }
 }

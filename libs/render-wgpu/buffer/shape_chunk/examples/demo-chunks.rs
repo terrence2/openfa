@@ -35,7 +35,7 @@ fn main() -> Fallible<()> {
     let mut input = InputSystem::new(vec![bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
 
     let mut chunk_man = ShapeChunkManager::new(gpu.device())?;
     let (_chunk_id, _shape_id) = chunk_man.upload_shape(
@@ -102,7 +102,7 @@ fn main() -> Fallible<()> {
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                camera_buffer.bind_group_layout(),
+                globals_buffer.bind_group_layout(),
                 &empty_layout,
                 &empty_layout,
                 &instance_layout,
@@ -231,17 +231,17 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
+        let upload_buffer = globals_buffer.make_upload_buffer(&camera, gpu.device());
 
         let mut frame = gpu.begin_frame();
         {
-            camera_buffer.upload_from(&mut frame, &upload_buffer);
+            globals_buffer.upload_from(&mut frame, &upload_buffer);
 
             let chunk = chunk_man.chunk(chunk_id);
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, &empty_bind_group, &[]);
             rpass.set_bind_group(3, &instance_bind_group, &[]);

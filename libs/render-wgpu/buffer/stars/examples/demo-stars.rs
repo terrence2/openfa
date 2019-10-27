@@ -27,8 +27,8 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
     let stars_buffers = StarsBuffer::new(gpu.device())?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
@@ -46,7 +46,7 @@ fn main() -> Fallible<()> {
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                camera_buffer.bind_group_layout(),
+                globals_buffer.bind_group_layout(),
                 &empty_layout,
                 stars_buffers.bind_group_layout(),
             ],
@@ -107,15 +107,15 @@ fn main() -> Fallible<()> {
         }
 
         // Prepare new camera parameters.
-        let upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
+        let upload_buffer = globals_buffer.make_upload_buffer(&camera, gpu.device());
 
         let mut frame = gpu.begin_frame();
         {
-            camera_buffer.upload_from(&mut frame, &upload_buffer);
+            globals_buffer.upload_from(&mut frame, &upload_buffer);
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, stars_buffers.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);

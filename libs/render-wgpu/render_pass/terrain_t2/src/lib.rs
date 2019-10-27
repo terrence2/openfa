@@ -28,7 +28,7 @@ pub struct FrameState {
 }
 
 pub struct TerrainT2RenderPass {
-    camera_buffer: GlobalParametersBuffer,
+    globals_buffer: GlobalParametersBuffer,
     atmosphere_buffer: AtmosphereBuffer,
     t2_buffer: T2Buffer,
 
@@ -39,7 +39,7 @@ impl TerrainT2RenderPass {
     pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
         trace!("TerrainT2RenderPass::new");
 
-        let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
+        let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
         let vert_shader =
@@ -51,7 +51,7 @@ impl TerrainT2RenderPass {
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
-                        camera_buffer.bind_group_layout(),
+                        globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
                         t2_buffer.bind_group_layout(),
                     ],
@@ -100,7 +100,7 @@ impl TerrainT2RenderPass {
             });
 
         Ok(Self {
-            camera_buffer,
+            globals_buffer,
             atmosphere_buffer,
             t2_buffer,
             pipeline,
@@ -114,7 +114,7 @@ impl TerrainT2RenderPass {
         device: &wgpu::Device,
     ) -> FrameState {
         FrameState {
-            camera_upload_buffer: self.camera_buffer.make_upload_buffer(camera, device),
+            camera_upload_buffer: self.globals_buffer.make_upload_buffer(camera, device),
             atmosphere_upload_buffer: self.atmosphere_buffer.make_upload_buffer(
                 camera,
                 *sun_direction,
@@ -124,7 +124,7 @@ impl TerrainT2RenderPass {
     }
 
     pub fn upload(&self, frame: &mut gpu::Frame, state: FrameState) {
-        self.camera_buffer
+        self.globals_buffer
             .upload_from(frame, &state.camera_upload_buffer);
         self.atmosphere_buffer
             .upload_from(frame, &state.atmosphere_upload_buffer);
@@ -132,7 +132,7 @@ impl TerrainT2RenderPass {
 
     pub fn draw(&self, rpass: &mut wgpu::RenderPass) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, self.camera_buffer.bind_group(), &[]);
+        rpass.set_bind_group(0, self.globals_buffer.bind_group(), &[]);
         rpass.set_bind_group(1, &self.atmosphere_buffer.bind_group(), &[]);
         rpass.set_bind_group(2, &self.t2_buffer.bind_group(), &[]);
         rpass.set_index_buffer(self.t2_buffer.index_buffer(), 0);

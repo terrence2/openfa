@@ -59,7 +59,7 @@ pub struct FullscreenBuffer {
 }
 
 impl FullscreenBuffer {
-    pub fn new(_camera_buffer: &GlobalParametersBuffer, device: &wgpu::Device) -> Fallible<Self> {
+    pub fn new(_globals_buffer: &GlobalParametersBuffer, device: &wgpu::Device) -> Fallible<Self> {
         Ok(Self {
             vertex_buffer: FullscreenVertex::buffer(device),
         })
@@ -80,8 +80,8 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let camera_buffer = GlobalParametersBuffer::new(gpu.device())?;
-        let _fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
+        let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+        let _fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
         Ok(())
     }
 }
