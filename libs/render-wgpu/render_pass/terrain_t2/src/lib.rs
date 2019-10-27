@@ -14,8 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
+use global_data::CameraParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;

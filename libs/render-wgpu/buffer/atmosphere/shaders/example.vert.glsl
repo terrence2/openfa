@@ -19,7 +19,7 @@
 
 #include <buffer/atmosphere/include/descriptorset.glsl>
 
-#include <buffer/camera_parameters/include/library.glsl>
+#include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 0) out vec3 v_ray;

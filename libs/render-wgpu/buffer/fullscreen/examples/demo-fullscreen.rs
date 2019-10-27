@@ -13,9 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
 use fullscreen_wgpu::{FullscreenBuffer, FullscreenVertex};
+use global_data::CameraParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use wgpu;

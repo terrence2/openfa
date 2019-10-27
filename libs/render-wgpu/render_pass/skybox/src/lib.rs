@@ -17,9 +17,9 @@
 
 use atmosphere::AtmosphereBuffer;
 use camera::CameraAbstract;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
+use global_data::CameraParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;

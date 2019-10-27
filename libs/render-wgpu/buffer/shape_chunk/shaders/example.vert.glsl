@@ -23,7 +23,7 @@ layout(location = 3) in uint flags0;
 layout(location = 4) in uint flags1;
 layout(location = 5) in uint xform_id;
 
-#include <buffer/camera_parameters/include/library.glsl>
+#include <buffer/global_data/include/library.glsl>
 
 // Per shape input
 layout(set = 3, binding = 0) buffer ChunkFlags {
