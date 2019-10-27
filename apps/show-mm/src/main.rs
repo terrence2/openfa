@@ -26,7 +26,7 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
-use terrain_t2::TerrainT2RenderPass;
+use t2_terrain::TerrainT2RenderPass;
 // use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use xt::TypeManager;
 

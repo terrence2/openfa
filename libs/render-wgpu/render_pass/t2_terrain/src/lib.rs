@@ -43,9 +43,9 @@ impl TerrainT2RenderPass {
         let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
         let vert_shader =
-            gpu.create_shader_module(include_bytes!("../target/terrain_t2.vert.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/t2_terrain.vert.spirv"))?;
         let frag_shader =
-            gpu.create_shader_module(include_bytes!("../target/terrain_t2.frag.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/t2_terrain.frag.spirv"))?;
 
         let pipeline_layout =
             gpu.device()
