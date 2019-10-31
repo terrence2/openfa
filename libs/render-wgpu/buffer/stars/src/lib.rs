@@ -18,7 +18,7 @@ use log::trace;
 use nalgebra::Vector3;
 use star_catalog::Stars;
 use static_assertions::{assert_eq_align, assert_eq_size};
-use std::{collections::HashSet, f32::consts::PI, mem};
+use std::{collections::HashSet, f32::consts::PI, mem, sync::Arc};
 
 const TAU: f32 = PI * 2f32;
 const PI_2: f32 = PI / 2f32;
@@ -186,7 +186,7 @@ impl StarsBuffer {
         band.base_index as usize + rai
     }
 
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<Box<Self>>> {
         trace!("StarsBuffer::new");
 
         let mut offset = 0;
@@ -358,10 +358,10 @@ impl StarsBuffer {
             ],
         });
 
-        Ok(Self {
+        Ok(Arc::new(Box::new(Self {
             bind_group_layout,
             bind_group,
-        })
+        })))
     }
 }
 

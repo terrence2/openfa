@@ -13,8 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use asset::AssetManager;
+use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use failure::Fallible;
+use frame_graph::make_frame_graph;
+use fullscreen::FullscreenBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
@@ -23,6 +27,8 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use simplelog::{Config, LevelFilter, TermLogger};
+use skybox::SkyboxRenderPass;
+use stars::StarsBuffer;
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
@@ -37,6 +43,24 @@ make_opt_struct!(
         omni_input => String
     }
 );
+
+make_frame_graph!(
+    FrameGraph {
+        buffers: {
+            atmosphere: AtmosphereBuffer,
+            fullscreen: FullscreenBuffer,
+            globals: GlobalParametersBuffer,
+            stars: StarsBuffer,
+            t2: T2Buffer
+        };
+        passes: [
+            skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
+            terrain: T2TerrainRenderPass { globals, atmosphere, t2 }
+        ];
+    }
+);
+
+// screen_text: ScreenTextRenderPass {}
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
@@ -72,9 +96,20 @@ pub fn main() -> Fallible<()> {
     */
 
     ///////////////////////////////////////////////////////////
+    let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
+    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let stars_buffer = StarsBuffer::new(gpu.device())?;
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
 
-    let t2_render_pass = T2TerrainRenderPass::new(&mut gpu, t2_buffer)?;
+    let frame_graph = FrameGraph::new(
+        &mut gpu,
+        atmosphere_buffer.clone(),
+        fullscreen_buffer.clone(),
+        globals_buffer.clone(),
+        stars_buffer.clone(),
+        t2_buffer.clone(),
+    )?;
     ///////////////////////////////////////////////////////////
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
@@ -104,19 +139,12 @@ pub fn main() -> Fallible<()> {
             }
         }
 
-        let upload =
-            t2_render_pass.prepare_upload(&camera, &Vector3::new(0f32, 1f32, 0f32), gpu.device());
+        let sun_direction = Vector3::new(0f32, 1f32, 0f32);
 
-        {
-            let mut frame = gpu.begin_frame();
-            {
-                t2_render_pass.upload(&mut frame, upload);
-
-                let mut rpass = frame.begin_render_pass();
-                t2_render_pass.draw(&mut rpass);
-            }
-            frame.finish();
-        }
+        let mut buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
+        atmosphere_buffer.make_upload_buffer(&camera, sun_direction, gpu.device(), &mut buffers)?;
+        frame_graph.run(&mut gpu, buffers);
 
         /*
         let ft = loop_start.elapsed();

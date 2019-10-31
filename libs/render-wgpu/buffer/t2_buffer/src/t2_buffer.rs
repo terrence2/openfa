@@ -93,7 +93,7 @@ impl T2Buffer {
         assets: &Arc<Box<AssetManager>>,
         lib: &Arc<Box<Library>>,
         gpu: &mut GPU,
-    ) -> Fallible<Self> {
+    ) -> Fallible<Arc<Box<Self>>> {
         trace!("T2Renderer::new");
 
         let terrain = assets.load_t2(&mm.t2_name)?;
@@ -102,13 +102,13 @@ impl T2Buffer {
         let (vertex_buffer, index_buffer, index_count) =
             Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
 
-        Ok(Self {
+        Ok(Arc::new(Box::new(Self {
             bind_group_layout,
             bind_group,
             vertex_buffer,
             index_buffer,
             index_count,
-        })
+        })))
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {

@@ -13,8 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use global_data::GlobalParametersBuffer;
-use std::mem;
+use std::{mem, sync::Arc};
 use wgpu;
 
 #[derive(Clone, Copy)]
@@ -59,10 +58,10 @@ pub struct FullscreenBuffer {
 }
 
 impl FullscreenBuffer {
-    pub fn new(_globals_buffer: &GlobalParametersBuffer, device: &wgpu::Device) -> Fallible<Self> {
-        Ok(Self {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<Box<Self>>> {
+        Ok(Arc::new(Box::new(Self {
             vertex_buffer: FullscreenVertex::buffer(device),
-        })
+        })))
     }
 
     pub fn vertex_buffer(&self) -> &wgpu::Buffer {
@@ -80,7 +79,6 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let _fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
         Ok(())
     }
