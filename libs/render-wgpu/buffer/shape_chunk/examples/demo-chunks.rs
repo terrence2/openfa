@@ -231,11 +231,20 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let upload_buffer = globals_buffer.make_upload_buffer(&camera, gpu.device());
+        let mut upload_buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
-            globals_buffer.upload_from(&mut frame, &upload_buffer);
+            for desc in upload_buffers.drain(..) {
+                frame.copy_buffer_to_buffer(
+                    &desc.source,
+                    desc.source_offset,
+                    &desc.destination,
+                    desc.destination_offset,
+                    desc.copy_size,
+                );
+            }
 
             let chunk = chunk_man.chunk(chunk_id);
 

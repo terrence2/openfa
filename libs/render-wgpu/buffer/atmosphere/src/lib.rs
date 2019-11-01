@@ -28,9 +28,10 @@ mod precompute;
 use crate::{earth_consts::ATMOSPHERE_PARAMETERS_BUFFER_SIZE, precompute::Precompute};
 use camera::CameraAbstract;
 use failure::Fallible;
+use frame_graph::CopyBufferDescriptor;
 use log::trace;
 use nalgebra::Vector3;
-use std::{mem, time::Instant};
+use std::{mem, sync::Arc, time::Instant};
 
 const NUM_PRECOMPUTED_WAVELENGTHS: usize = 40;
 const NUM_SCATTERING_ORDER: usize = 4;
@@ -39,12 +40,12 @@ pub struct AtmosphereBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
 
-    camera_and_sun_buffer: wgpu::Buffer,
-    camera_and_sun_buffer_size: u64,
+    camera_and_sun_buffer: Arc<Box<wgpu::Buffer>>,
+    camera_and_sun_buffer_size: wgpu::BufferAddress,
 }
 
 impl AtmosphereBuffer {
-    pub fn new(gpu: &mut gpu::GPU) -> Fallible<Self> {
+    pub fn new(gpu: &mut gpu::GPU) -> Fallible<Arc<Box<Self>>> {
         trace!("AtmosphereBuffer::new");
 
         let precompute_start = Instant::now();
@@ -63,10 +64,12 @@ impl AtmosphereBuffer {
         );
 
         let camera_and_sun_buffer_size = mem::size_of::<[[f32; 4]; 2]>() as u64;
-        let camera_and_sun_buffer = gpu.device().create_buffer(&wgpu::BufferDescriptor {
-            size: camera_and_sun_buffer_size,
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        });
+        let camera_and_sun_buffer = Arc::new(Box::new(gpu.device().create_buffer(
+            &wgpu::BufferDescriptor {
+                size: camera_and_sun_buffer_size,
+                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            },
+        )));
 
         let bind_group_layout =
             gpu.device()
@@ -241,12 +244,12 @@ impl AtmosphereBuffer {
             ],
         });
 
-        Ok(Self {
+        Ok(Arc::new(Box::new(Self {
             bind_group_layout,
             bind_group,
             camera_and_sun_buffer,
             camera_and_sun_buffer_size,
-        })
+        })))
     }
 
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
@@ -262,7 +265,8 @@ impl AtmosphereBuffer {
         camera: &dyn CameraAbstract,
         sun_direction: Vector3<f32>,
         device: &wgpu::Device,
-    ) -> wgpu::Buffer {
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
         let eye_position = camera.position();
         let buffer = [
             [
@@ -278,21 +282,16 @@ impl AtmosphereBuffer {
                 0.0f32,
             ],
         ];
-        device
-            .create_buffer_mapped::<[f32; 4]>(
-                2,
-                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            )
-            .fill_from_slice(&buffer)
-    }
-
-    pub fn upload_from(&self, frame: &mut gpu::Frame, upload_buffer: &wgpu::Buffer) {
-        frame.copy_buffer_to_buffer(
-            upload_buffer,
-            0,
-            &self.camera_and_sun_buffer,
-            0,
+        upload_buffers.push(CopyBufferDescriptor::new(
+            device
+                .create_buffer_mapped::<[f32; 4]>(
+                    2,
+                    wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+                )
+                .fill_from_slice(&buffer),
+            self.camera_and_sun_buffer.clone(),
             self.camera_and_sun_buffer_size,
-        );
+        ));
+        Ok(())
     }
 }

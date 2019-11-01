@@ -19,6 +19,7 @@ static_assertions = "^ 1"
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 camera = { path = "../../../render-shared/common/camera" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]

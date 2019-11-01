@@ -12,6 +12,7 @@ specs = "^ 0.15"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }

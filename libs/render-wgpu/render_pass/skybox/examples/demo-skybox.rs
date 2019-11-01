@@ -12,13 +12,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use failure::Fallible;
+use fullscreen::FullscreenBuffer;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::{Unit, UnitQuaternion, Vector3};
 use skybox_wgpu::SkyboxRenderPass;
+use stars::StarsBuffer;
 use std::{f64::consts::PI, time::Instant};
 
 fn main() -> Fallible<()> {
@@ -28,7 +32,17 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let skybox_renderer = SkyboxRenderPass::new(&mut gpu)?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
+    let stars_buffer = StarsBuffer::new(gpu.device())?;
+    let skybox_renderer = SkyboxRenderPass::new(
+        &mut gpu,
+        &globals_buffer,
+        &fullscreen_buffer,
+        &stars_buffer,
+        &atmosphere_buffer,
+    )?;
 
     let poll_start = Instant::now();
     gpu.device().poll(true);
@@ -75,15 +89,37 @@ fn main() -> Fallible<()> {
 
         // Prepare new camera parameters.
         let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
-        let state = skybox_renderer.prepare_upload(&camera, &sun_direction, gpu.device());
+
+        let mut upload_buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+        atmosphere_buffer.make_upload_buffer(
+            &camera,
+            sun_direction,
+            gpu.device(),
+            &mut upload_buffers,
+        )?;
 
         {
             let mut frame = gpu.begin_frame();
             {
-                skybox_renderer.upload(&mut frame, state);
+                for desc in upload_buffers.drain(..) {
+                    frame.copy_buffer_to_buffer(
+                        &desc.source,
+                        desc.source_offset,
+                        &desc.destination,
+                        desc.destination_offset,
+                        desc.copy_size,
+                    );
+                }
 
                 let mut rpass = frame.begin_render_pass();
-                skybox_renderer.draw(&mut rpass);
+                skybox_renderer.draw(
+                    &mut rpass,
+                    &globals_buffer,
+                    &fullscreen_buffer,
+                    &stars_buffer,
+                    &atmosphere_buffer,
+                );
             }
             frame.finish();
         }

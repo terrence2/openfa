@@ -7,12 +7,10 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 log = "^ 0.4"
-nalgebra = "^ 0.18"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
-camera = { path = "../../../render-shared/common/camera" }
 global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 t2_buffer = { package = "t2_buffer-wgpu", path = "../../../render-wgpu/buffer/t2_buffer" }

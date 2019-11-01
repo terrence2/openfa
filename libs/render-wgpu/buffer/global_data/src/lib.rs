@@ -14,14 +14,15 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::CameraAbstract;
 use failure::Fallible;
-use std::mem;
+use frame_graph::CopyBufferDescriptor;
+use std::{mem, sync::Arc};
 use wgpu;
 
 pub struct GlobalParametersBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
-    buffer_size: u64,
-    parameters_buffer: wgpu::Buffer,
+    buffer_size: wgpu::BufferAddress,
+    parameters_buffer: Arc<Box<wgpu::Buffer>>,
 }
 
 const MATRIX_COUNT: usize = 4;
@@ -31,12 +32,12 @@ const INVERSE_VIEW_OFFSET: usize = 2;
 const INVERSE_PROJ_OFFSET: usize = 3;
 
 impl GlobalParametersBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
-        let buffer_size = mem::size_of::<[[[f32; 4]; 4]; MATRIX_COUNT]>() as u64;
-        let parameters_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<Box<Self>>> {
+        let buffer_size = mem::size_of::<[[[f32; 4]; 4]; MATRIX_COUNT]>() as wgpu::BufferAddress;
+        let parameters_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: buffer_size,
             usage: wgpu::BufferUsage::STORAGE_READ | wgpu::BufferUsage::COPY_DST,
-        });
+        })));
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[wgpu::BindGroupLayoutBinding {
@@ -60,12 +61,12 @@ impl GlobalParametersBuffer {
             }],
         });
 
-        Ok(Self {
+        Ok(Arc::new(Box::new(Self {
             bind_group_layout,
             bind_group,
             buffer_size,
             parameters_buffer,
-        })
+        })))
     }
 
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
@@ -80,13 +81,19 @@ impl GlobalParametersBuffer {
         &self,
         camera: &dyn CameraAbstract,
         device: &wgpu::Device,
-    ) -> wgpu::Buffer {
-        device
-            .create_buffer_mapped::<[[f32; 4]; 4]>(
-                MATRIX_COUNT,
-                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            )
-            .fill_from_slice(&Self::camera_to_buffer(camera))
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
+        upload_buffers.push(CopyBufferDescriptor::new(
+            device
+                .create_buffer_mapped::<[[f32; 4]; 4]>(
+                    MATRIX_COUNT,
+                    wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+                )
+                .fill_from_slice(&Self::camera_to_buffer(camera)),
+            self.parameters_buffer.clone(),
+            self.buffer_size,
+        ));
+        Ok(())
     }
 
     fn camera_to_buffer(camera: &dyn CameraAbstract) -> [[[f32; 4]; 4]; MATRIX_COUNT] {
