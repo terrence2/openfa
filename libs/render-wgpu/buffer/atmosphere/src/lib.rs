@@ -282,7 +282,7 @@ impl AtmosphereBuffer {
                 0.0f32,
             ],
         ];
-        Ok(upload_buffers.push(CopyBufferDescriptor::new(
+        upload_buffers.push(CopyBufferDescriptor::new(
             device
                 .create_buffer_mapped::<[f32; 4]>(
                     2,
@@ -291,6 +291,7 @@ impl AtmosphereBuffer {
                 .fill_from_slice(&buffer),
             self.camera_and_sun_buffer.clone(),
             self.camera_and_sun_buffer_size,
-        )))
+        ));
+        Ok(())
     }
 }
