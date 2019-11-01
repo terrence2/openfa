@@ -114,7 +114,8 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let camera_upload_buffer = globals_buffer.make_upload_buffer(&camera, gpu.device());
+        let mut upload_buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
         update_dispatcher.dispatch(&world);
         {
             DispatcherBuilder::new()
@@ -122,12 +123,19 @@ fn main() -> Fallible<()> {
                 .build()
                 .dispatch(&world);
         }
-        let instance_upload_buffers = inst_buffer.make_upload_buffer(gpu.device());
+        inst_buffer.make_upload_buffer(gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
-            globals_buffer.upload_from(&mut frame, &camera_upload_buffer);
-            inst_buffer.upload_from(&mut frame, &instance_upload_buffers);
+            for desc in upload_buffers.drain(..) {
+                frame.copy_buffer_to_buffer(
+                    &desc.source,
+                    desc.source_offset,
+                    &desc.destination,
+                    desc.destination_offset,
+                    desc.copy_size,
+                );
+            }
 
             shape_render_pass.render(
                 &empty_bind_group,

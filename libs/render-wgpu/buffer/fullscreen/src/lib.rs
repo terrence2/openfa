@@ -79,7 +79,7 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let _fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
+        let _fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
         Ok(())
     }
 }

@@ -14,6 +14,7 @@ gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

@@ -32,7 +32,7 @@ impl CopyBufferDescriptor {
             source_offset: 0,
             destination,
             destination_offset: 0,
-            copy_size: copy_size,
+            copy_size,
         }
     }
 }

@@ -17,7 +17,9 @@ fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/
 stars = { package = "stars-wgpu", path = "../../../render-wgpu/buffer/stars" }
 
 [dev-dependencies]
+nalgebra = "^ 0.18"
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+camera = { path = "../../../render-shared/common/camera" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

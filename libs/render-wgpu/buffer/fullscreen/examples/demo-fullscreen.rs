@@ -27,7 +27,7 @@ fn main() -> Fallible<()> {
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let fullscreen_buffer = FullscreenBuffer::new(&globals_buffer, gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
@@ -63,7 +63,15 @@ fn main() -> Fallible<()> {
                 alpha_blend: wgpu::BlendDescriptor::REPLACE,
                 write_mask: wgpu::ColorWrite::ALL,
             }],
-            depth_stencil_state: None,
+            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                format: GPU::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_read_mask: 0,
+                stencil_write_mask: 0,
+            }),
             index_format: wgpu::IndexFormat::Uint16,
             vertex_buffers: &[FullscreenVertex::descriptor()],
             sample_count: 1,
@@ -93,11 +101,20 @@ fn main() -> Fallible<()> {
         }
 
         // Prepare new camera parameters.
-        let upload_buffer = globals_buffer.make_upload_buffer(&camera, gpu.device());
+        let mut upload_buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
-            globals_buffer.upload_from(&mut frame, &upload_buffer);
+            for desc in upload_buffers.drain(..) {
+                frame.copy_buffer_to_buffer(
+                    &desc.source,
+                    desc.source_offset,
+                    &desc.destination,
+                    desc.destination_offset,
+                    desc.copy_size,
+                );
+            }
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);

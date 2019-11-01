@@ -57,7 +57,7 @@ pub struct GPU {
 
 impl GPU {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-    pub const SCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
+    pub const SCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
     pub fn texture_format() -> wgpu::TextureFormat {
         wgpu::TextureFormat::Bgra8Unorm

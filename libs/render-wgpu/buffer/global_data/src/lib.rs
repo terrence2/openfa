@@ -83,7 +83,7 @@ impl GlobalParametersBuffer {
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        Ok(upload_buffers.push(CopyBufferDescriptor::new(
+        upload_buffers.push(CopyBufferDescriptor::new(
             device
                 .create_buffer_mapped::<[[f32; 4]; 4]>(
                     MATRIX_COUNT,
@@ -92,7 +92,8 @@ impl GlobalParametersBuffer {
                 .fill_from_slice(&Self::camera_to_buffer(camera)),
             self.parameters_buffer.clone(),
             self.buffer_size,
-        )))
+        ));
+        Ok(())
     }
 
     fn camera_to_buffer(camera: &dyn CameraAbstract) -> [[[f32; 4]; 4]; MATRIX_COUNT] {
