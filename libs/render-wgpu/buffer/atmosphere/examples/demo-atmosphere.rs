@@ -136,12 +136,7 @@ fn main() -> Fallible<()> {
         // Prepare new camera parameters.
         let mut upload_buffers = Vec::new();
         globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
-        atmosphere_buffer.make_upload_buffer(
-            &camera,
-            sun_direction,
-            gpu.device(),
-            &mut upload_buffers,
-        )?;
+        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut upload_buffers)?;
 
         {
             let mut frame = gpu.begin_frame();

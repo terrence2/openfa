@@ -69,7 +69,6 @@ pub fn main() -> Fallible<()> {
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
 
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let shape_bindings = InputBindings::new("map")
         .bind("+pan-view", "mouse1")?
         .bind("+move-view", "mouse3")?
@@ -78,6 +77,7 @@ pub fn main() -> Fallible<()> {
     let mut input = InputSystem::new(vec![shape_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
+    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
     let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
     let types = TypeManager::new(lib.clone());
 
@@ -143,7 +143,7 @@ pub fn main() -> Fallible<()> {
 
         let mut buffers = Vec::new();
         globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
-        atmosphere_buffer.make_upload_buffer(&camera, sun_direction, gpu.device(), &mut buffers)?;
+        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
         frame_graph.run(&mut gpu, buffers);
 
         /*

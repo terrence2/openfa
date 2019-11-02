@@ -262,19 +262,12 @@ impl AtmosphereBuffer {
 
     pub fn make_upload_buffer(
         &self,
-        camera: &dyn CameraAbstract,
         sun_direction: Vector3<f32>,
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let eye_position = camera.position();
         let buffer = [
-            [
-                eye_position.x as f32,
-                eye_position.y as f32,
-                eye_position.z as f32,
-                0.0f32,
-            ],
+            [0.0f32; 4],
             [
                 sun_direction.x as f32,
                 sun_direction.y as f32,

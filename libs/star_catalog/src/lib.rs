@@ -140,6 +140,9 @@ impl SAOEntry {
     }
 }
 
+// This catalog is in J2000 coordinates. Which I believe means *equatorial* RA.
+// Effectively the stars are pre-aligned to the planet, so "up" in this frame is
+// towards the north pole, tilted 23 degrees off of the solar, elliptic "north".
 const BSC_DATA: &[u8] = include_bytes!("../assets/BSC5.stars");
 //const SAO_DATA: &[u8] = include_bytes!("../assets/SAO.pc");
 

@@ -16,6 +16,7 @@
 #include <common/include/include_global.glsl>
 #include <buffer/atmosphere/include/global.glsl>
 #include <buffer/stars/include/global.glsl>
+#include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;
@@ -28,9 +29,12 @@ const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 #include <buffer/atmosphere/include/library.glsl>
 #include <buffer/stars/include/library.glsl>
 
+// Stars are in J2000 coordinates, so vec3(0, 1, 0) points to polaris, rather than elliptical up. This is nice as
+// it means that we don't have to do any work to align the ground / planet we draw to the stars. That said,
+// whatever passes in the sun direction *does* need to account for that relative tilt.
 void main() {
     vec3 view = normalize(v_ray);
-    vec3 camera = camera_and_sun[0].xyz;
+    vec3 camera = camera_position().xyz;
     vec3 sun_direction = camera_and_sun[1].xyz;
 
     vec3 ground_radiance;
