@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
+nalgebra = "^ 0.18"
 camera = { path = "../../../render-shared/common/camera" }
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
