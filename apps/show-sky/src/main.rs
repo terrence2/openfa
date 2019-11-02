@@ -86,7 +86,7 @@ fn main() -> Fallible<()> {
                 "mouse-move" => {
                     if in_sun_move {
                         //sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                        let days = 100 * command.displacement()?.0 as i64;
+                        let days = command.displacement()?.0 as i64;
                         println!("ADDING DAYS: {}", days);
                         sim_time = sim_time.checked_add_signed(Duration::days(days)).unwrap();
                     } else {

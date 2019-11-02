@@ -192,10 +192,10 @@ impl OrbitalParameters {
     // Method taken from: https://space.stackexchange.com/questions/8911/determining-orbital-position-at-a-future-point-in-time
     #[allow(non_snake_case)]
     pub fn eccliptic_position(&self) -> Point3<f64> {
-        let i = self.i * PI / 180f64;
-        let l = self.l * PI / 180f64;
-        let omega_bar = self.omega_bar * PI / 180f64;
-        let capital_omega = self.capital_omega * PI / 180f64;
+        let i = self.i;
+        let l = self.l;
+        let omega_bar = self.omega_bar;
+        let capital_omega = self.capital_omega;
 
         // M = l - w|  =>  mean anomaly = mean longitude - longitude of the periapsis
         let M = l - omega_bar; // mean anomaly
