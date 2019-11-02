@@ -12,9 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
-use std::mem;
+use std::{mem, sync::Arc};
 use wgpu;
 
 #[derive(Clone, Copy)]
@@ -59,10 +58,10 @@ pub struct FullscreenBuffer {
 }
 
 impl FullscreenBuffer {
-    pub fn new(_camera_buffer: &CameraParametersBuffer, device: &wgpu::Device) -> Fallible<Self> {
-        Ok(Self {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<Box<Self>>> {
+        Ok(Arc::new(Box::new(Self {
             vertex_buffer: FullscreenVertex::buffer(device),
-        })
+        })))
     }
 
     pub fn vertex_buffer(&self) -> &wgpu::Buffer {
@@ -80,8 +79,7 @@ mod tests {
     fn it_can_create_a_buffer() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-        let _fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
+        let _fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
         Ok(())
     }
 }

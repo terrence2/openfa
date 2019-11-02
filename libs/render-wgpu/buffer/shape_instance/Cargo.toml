@@ -12,6 +12,7 @@ specs = "^ 0.15"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
@@ -22,7 +23,7 @@ world = { path = "../../../world" }
 [dev-dependencies]
 rand = "^ 0.7"
 camera = { path = "../../../render-shared/common/camera" }
-camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
+global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 pal = { path = "../../../pal" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 

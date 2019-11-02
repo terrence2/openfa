@@ -13,9 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use stars_wgpu::StarsBuffer;
@@ -27,8 +27,8 @@ fn main() -> Fallible<()> {
         .bind("exit", "q")?])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-    let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let stars_buffers = StarsBuffer::new(gpu.device())?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
@@ -46,7 +46,7 @@ fn main() -> Fallible<()> {
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                camera_buffer.bind_group_layout(),
+                globals_buffer.bind_group_layout(),
                 &empty_layout,
                 stars_buffers.bind_group_layout(),
             ],
@@ -77,7 +77,15 @@ fn main() -> Fallible<()> {
                 alpha_blend: wgpu::BlendDescriptor::REPLACE,
                 write_mask: wgpu::ColorWrite::ALL,
             }],
-            depth_stencil_state: None,
+            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                format: GPU::DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                stencil_read_mask: 0,
+                stencil_write_mask: 0,
+            }),
             index_format: wgpu::IndexFormat::Uint16,
             vertex_buffers: &[FullscreenVertex::descriptor()],
             sample_count: 1,
@@ -107,15 +115,24 @@ fn main() -> Fallible<()> {
         }
 
         // Prepare new camera parameters.
-        let upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
+        let mut upload_buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
-            camera_buffer.upload_from(&mut frame, &upload_buffer);
+            for desc in upload_buffers.drain(..) {
+                frame.copy_buffer_to_buffer(
+                    &desc.source,
+                    desc.source_offset,
+                    &desc.destination,
+                    desc.destination_offset,
+                    desc.copy_size,
+                );
+            }
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, stars_buffers.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);

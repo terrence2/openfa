@@ -12,19 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#version 450
 
-layout(location = 0) in vec4 v_color;
-layout(location = 1) in vec2 v_tex_coord;
+layout(set = 0, binding = 0) buffer CameraParameters {
+    mat4 globals_camera_view;
+    mat4 globals_camera_projection;
+    mat4 globals_camera_inverse_view;
+    mat4 globals_camera_inverse_projection;
+    vec4 globals_camera_position;
+};
 
-layout(location = 0) out vec4 f_color;
-
-layout(set = 3, binding = 0) uniform sampler2D tex;
-
-void main() {
-    if (v_tex_coord.x == 0.0) {
-        f_color = v_color;
-    } else {
-        f_color = texture(tex, v_tex_coord);
-    }
-}

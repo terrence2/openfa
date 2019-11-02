@@ -26,7 +26,7 @@ sh = { path = "../../../sh" }
 
 [dev-dependencies]
 camera = { path = "../../../render-shared/common/camera" }
-camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
+global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]

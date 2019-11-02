@@ -13,18 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
+
 #include <common/include/include_global.glsl>
-#include <buffer/camera_parameters/include/library.glsl>
 
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 2) in vec2 tex_coord;
+#include <buffer/atmosphere/include/global.glsl>
+#include <buffer/atmosphere/include/descriptorset.glsl>
+#include <buffer/atmosphere/include/library.glsl>
 
-layout(location = 0) out vec4 v_color;
-layout(location = 1) out vec2 v_tex_coord;
+layout(set = 2, binding = 0) uniform texture2D t2_atlas_texture;
+layout(set = 2, binding = 1) uniform sampler t2_atlas_sampler;
+
+layout(location = 0) in vec4 v_color;
+layout(location = 1) in vec2 v_tex_coord;
+
+layout(location = 0) out vec4 f_color;
 
 void main() {
-    gl_Position = camera_projection() * camera_view() * vec4(position, 1.0);
-    v_color = color;
-    v_tex_coord = tex_coord;
+    if (v_tex_coord.x == 0.0) {
+        f_color = v_color;
+    } else {
+        f_color = texture(sampler2D(t2_atlas_texture, t2_atlas_sampler), v_tex_coord);
+    }
 }

@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::ArcBallCamera;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use nalgebra::Point3;
@@ -32,7 +32,7 @@ use world::Transform;
 fn build_pipeline(
     gpu: &mut gpu::GPU,
     empty_layout: &wgpu::BindGroupLayout,
-    camera_buffer: &CameraParametersBuffer,
+    globals_buffer: &GlobalParametersBuffer,
     inst_man: &ShapeInstanceManager,
 ) -> Fallible<wgpu::RenderPipeline> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
@@ -42,7 +42,7 @@ fn build_pipeline(
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                camera_buffer.bind_group_layout(),
+                globals_buffer.bind_group_layout(),
                 &empty_layout,
                 &empty_layout,
                 inst_man.bind_group_layout(),
@@ -105,7 +105,7 @@ fn main() -> Fallible<()> {
     let lib = omni.library("FA");
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
-    let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let mut inst_man = ShapeInstanceManager::new(&gpu.device())?;
 
     let mut world = World::new();
@@ -151,7 +151,7 @@ fn main() -> Fallible<()> {
         bindings: &[],
     });
 
-    let pipeline = build_pipeline(&mut gpu, &empty_layout, &camera_buffer, &inst_man)?;
+    let pipeline = build_pipeline(&mut gpu, &empty_layout, &globals_buffer, &inst_man)?;
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
     camera.set_distance(1500.0);
@@ -182,7 +182,8 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let camera_upload_buffer = camera_buffer.make_upload_buffer(&camera, gpu.device());
+        let mut upload_buffers = Vec::new();
+        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
 
         update_dispatcher.dispatch(&world);
         {
@@ -191,16 +192,23 @@ fn main() -> Fallible<()> {
                 .build()
                 .dispatch(&world);
         }
-        let instance_upload_buffers = inst_man.make_upload_buffer(gpu.device());
+        inst_man.make_upload_buffer(gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
-            camera_buffer.upload_from(&mut frame, &camera_upload_buffer);
-            inst_man.upload_from(&mut frame, &instance_upload_buffers);
+            for desc in upload_buffers.drain(..) {
+                frame.copy_buffer_to_buffer(
+                    &desc.source,
+                    desc.source_offset,
+                    &desc.destination,
+                    desc.destination_offset,
+                    desc.copy_size,
+                );
+            }
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, camera_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, &empty_bind_group, &[]);
             rpass.set_bind_group(4, &empty_bind_group, &[]);

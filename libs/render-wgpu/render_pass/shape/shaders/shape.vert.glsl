@@ -15,7 +15,7 @@
 #version 450
 #include <common/include/include_global.glsl>
 #include <buffer/shape_chunk/include/include_shape.glsl>
-#include <buffer/camera_parameters/include/library.glsl>
+#include <buffer/global_data/include/library.glsl>
 
 // Vertex data
 layout(location = 0) in vec3 position;

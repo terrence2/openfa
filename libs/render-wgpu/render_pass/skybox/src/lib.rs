@@ -16,38 +16,27 @@
 // Accumulate all depthless raymarching passes into one draw operation.
 
 use atmosphere::AtmosphereBuffer;
-use camera::CameraAbstract;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
-use nalgebra::Vector3;
 use stars::StarsBuffer;
 use wgpu;
 
-pub struct FrameState {
-    camera_upload_buffer: wgpu::Buffer,
-    atmosphere_upload_buffer: wgpu::Buffer,
-}
-
 pub struct SkyboxRenderPass {
-    camera_buffer: CameraParametersBuffer,
-    fullscreen_buffer: FullscreenBuffer,
-    atmosphere_buffer: AtmosphereBuffer,
-    stars_buffer: StarsBuffer,
-
     pipeline: wgpu::RenderPipeline,
 }
 
 impl SkyboxRenderPass {
-    pub fn new(gpu: &mut GPU) -> Fallible<Self> {
+    pub fn new(
+        gpu: &mut GPU,
+        globals_buffer: &GlobalParametersBuffer,
+        _fullscreen_buffer: &FullscreenBuffer,
+        stars_buffer: &StarsBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
+    ) -> Fallible<Self> {
         trace!("SkyboxRenderPass::new");
-
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-        let fullscreen_buffer = FullscreenBuffer::new(&camera_buffer, gpu.device())?;
-        let stars_buffer = StarsBuffer::new(gpu.device())?;
-        let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
 
         let vert_shader =
             gpu.create_shader_module(include_bytes!("../target/skybox.vert.spirv"))?;
@@ -58,7 +47,7 @@ impl SkyboxRenderPass {
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
-                        camera_buffer.bind_group_layout(),
+                        globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
                         stars_buffer.bind_group_layout(),
                     ],
@@ -90,7 +79,15 @@ impl SkyboxRenderPass {
                     alpha_blend: wgpu::BlendDescriptor::REPLACE,
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
-                depth_stencil_state: None,
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: GPU::DEPTH_FORMAT,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
                 index_format: wgpu::IndexFormat::Uint16,
                 vertex_buffers: &[FullscreenVertex::descriptor()],
                 sample_count: 1,
@@ -98,44 +95,22 @@ impl SkyboxRenderPass {
                 alpha_to_coverage_enabled: false,
             });
 
-        Ok(Self {
-            camera_buffer,
-            fullscreen_buffer,
-            stars_buffer,
-            atmosphere_buffer,
-            pipeline,
-        })
+        Ok(Self { pipeline })
     }
 
-    pub fn prepare_upload(
+    pub fn draw(
         &self,
-        camera: &dyn CameraAbstract,
-        sun_direction: &Vector3<f32>,
-        device: &wgpu::Device,
-    ) -> FrameState {
-        FrameState {
-            camera_upload_buffer: self.camera_buffer.make_upload_buffer(camera, device),
-            atmosphere_upload_buffer: self.atmosphere_buffer.make_upload_buffer(
-                camera,
-                *sun_direction,
-                device,
-            ),
-        }
-    }
-
-    pub fn upload(&self, frame: &mut gpu::Frame, state: FrameState) {
-        self.camera_buffer
-            .upload_from(frame, &state.camera_upload_buffer);
-        self.atmosphere_buffer
-            .upload_from(frame, &state.atmosphere_upload_buffer);
-    }
-
-    pub fn draw(&self, rpass: &mut wgpu::RenderPass) {
+        rpass: &mut wgpu::RenderPass,
+        globals_buffer: &GlobalParametersBuffer,
+        fullscreen_buffer: &FullscreenBuffer,
+        stars_buffer: &StarsBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
+    ) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, self.camera_buffer.bind_group(), &[]);
-        rpass.set_bind_group(1, &self.atmosphere_buffer.bind_group(), &[]);
-        rpass.set_bind_group(2, &self.stars_buffer.bind_group(), &[]);
-        rpass.set_vertex_buffers(0, &[(self.fullscreen_buffer.vertex_buffer(), 0)]);
+        rpass.set_bind_group(0, &globals_buffer.bind_group(), &[]);
+        rpass.set_bind_group(1, &atmosphere_buffer.bind_group(), &[]);
+        rpass.set_bind_group(2, &stars_buffer.bind_group(), &[]);
+        rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);
         rpass.draw(0..4, 0..1);
     }
 }

@@ -13,45 +13,36 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use atmosphere::AtmosphereBuffer;
-use camera::CameraAbstract;
-use camera_parameters::CameraParametersBuffer;
 use failure::Fallible;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
-use nalgebra::Vector3;
-use t2::{T2Buffer, T2Vertex};
+use t2_buffer::{T2Buffer, T2Vertex};
 use wgpu;
 
-pub struct FrameState {
-    camera_upload_buffer: wgpu::Buffer,
-    atmosphere_upload_buffer: wgpu::Buffer,
-}
-
-pub struct TerrainT2RenderPass {
-    camera_buffer: CameraParametersBuffer,
-    atmosphere_buffer: AtmosphereBuffer,
-    t2_buffer: T2Buffer,
-
+pub struct T2TerrainRenderPass {
     pipeline: wgpu::RenderPipeline,
 }
 
-impl TerrainT2RenderPass {
-    pub fn new(gpu: &mut GPU, t2_buffer: T2Buffer) -> Fallible<Self> {
-        trace!("TerrainT2RenderPass::new");
-
-        let camera_buffer = CameraParametersBuffer::new(gpu.device())?;
-        let atmosphere_buffer = AtmosphereBuffer::new(gpu)?;
+impl T2TerrainRenderPass {
+    pub fn new(
+        gpu: &mut GPU,
+        globals_buffer: &GlobalParametersBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
+        t2_buffer: &T2Buffer,
+    ) -> Fallible<Self> {
+        trace!("T2TerrainRenderPass::new");
 
         let vert_shader =
-            gpu.create_shader_module(include_bytes!("../target/terrain_t2.vert.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/t2_terrain.vert.spirv"))?;
         let frag_shader =
-            gpu.create_shader_module(include_bytes!("../target/terrain_t2.frag.spirv"))?;
+            gpu.create_shader_module(include_bytes!("../target/t2_terrain.frag.spirv"))?;
 
         let pipeline_layout =
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
-                        camera_buffer.bind_group_layout(),
+                        globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
                         t2_buffer.bind_group_layout(),
                     ],
@@ -70,7 +61,7 @@ impl TerrainT2RenderPass {
                     entry_point: "main",
                 }),
                 rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                    front_face: wgpu::FrontFace::Ccw,
+                    front_face: wgpu::FrontFace::Cw,
                     cull_mode: wgpu::CullMode::Back,
                     depth_bias: 0,
                     depth_bias_slope_scale: 0.0,
@@ -83,58 +74,38 @@ impl TerrainT2RenderPass {
                     alpha_blend: wgpu::BlendDescriptor::REPLACE,
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
-                depth_stencil_state: None,
-                index_format: wgpu::IndexFormat::Uint16,
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: GPU::DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
+                index_format: wgpu::IndexFormat::Uint32,
                 vertex_buffers: &[T2Vertex::descriptor()],
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
             });
 
-        Ok(Self {
-            camera_buffer,
-            atmosphere_buffer,
-            t2_buffer,
-            pipeline,
-        })
+        Ok(Self { pipeline })
     }
 
-    pub fn prepare_upload(
+    pub fn draw(
         &self,
-        camera: &dyn CameraAbstract,
-        sun_direction: &Vector3<f32>,
-        device: &wgpu::Device,
-    ) -> FrameState {
-        FrameState {
-            camera_upload_buffer: self.camera_buffer.make_upload_buffer(camera, device),
-            atmosphere_upload_buffer: self.atmosphere_buffer.make_upload_buffer(
-                camera,
-                *sun_direction,
-                device,
-            ),
-        }
-    }
-
-    pub fn upload(&self, frame: &mut gpu::Frame, state: FrameState) {
-        self.camera_buffer
-            .upload_from(frame, &state.camera_upload_buffer);
-        self.atmosphere_buffer
-            .upload_from(frame, &state.atmosphere_upload_buffer);
-    }
-
-    pub fn draw(&self, rpass: &mut wgpu::RenderPass) {
+        rpass: &mut wgpu::RenderPass,
+        globals_buffer: &GlobalParametersBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
+        t2_buffer: &T2Buffer,
+    ) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, self.camera_buffer.bind_group(), &[]);
-        rpass.set_bind_group(1, &self.atmosphere_buffer.bind_group(), &[]);
-        rpass.set_bind_group(2, &self.t2_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(self.t2_buffer.index_buffer(), 0);
-        rpass.set_vertex_buffers(0, &[(self.t2_buffer.vertex_buffer(), 0)]);
-        rpass.draw_indexed(self.t2_buffer.index_range(), 0, 0..1);
+        rpass.set_bind_group(0, &globals_buffer.bind_group(), &[]);
+        rpass.set_bind_group(1, &atmosphere_buffer.bind_group(), &[]);
+        rpass.set_bind_group(2, &t2_buffer.bind_group(), &[]);
+        rpass.set_index_buffer(t2_buffer.index_buffer(), 0);
+        rpass.set_vertex_buffers(0, &[(t2_buffer.vertex_buffer(), 0)]);
+        rpass.draw_indexed(t2_buffer.index_range(), 0, 0..1);
     }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {}
 }

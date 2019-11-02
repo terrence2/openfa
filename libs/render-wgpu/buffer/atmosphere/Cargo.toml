@@ -19,11 +19,12 @@ static_assertions = "^ 1"
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 camera = { path = "../../../render-shared/common/camera" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
 spirv-reflect = "^ 0.2"
-camera_parameters = { package = "camera_parameters-wgpu", path = "../../../render-wgpu/buffer/camera_parameters" }
+global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
 

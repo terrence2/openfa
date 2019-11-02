@@ -19,11 +19,12 @@ pub use components::{ShapeComponent, ShapeFlagBuffer, ShapeTransformBuffer, Shap
 pub use systems::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
 
 use failure::Fallible;
+use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
 use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, mem, sync::Arc};
 use wgpu;
 
 const BLOCK_SIZE: usize = 1 << 10;
@@ -86,8 +87,8 @@ pub struct InstanceBlock {
     transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
 
-    transform_buffer: wgpu::Buffer,
-    flag_buffer: wgpu::Buffer,
+    transform_buffer: Arc<Box<wgpu::Buffer>>,
+    flag_buffer: Arc<Box<wgpu::Buffer>>,
 
     bind_group: wgpu::BindGroup,
     /*
@@ -132,16 +133,16 @@ impl InstanceBlock {
 
         let transform_buffer_size =
             (mem::size_of::<[f32; 6]>() * BLOCK_SIZE) as wgpu::BufferAddress;
-        let transform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::all(),
-        });
+        })));
 
         let flag_buffer_size = (mem::size_of::<[u32; 2]>() * BLOCK_SIZE) as wgpu::BufferAddress;
-        let flag_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let flag_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: flag_buffer_size,
             usage: wgpu::BufferUsage::all(),
-        });
+        })));
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &layout,
@@ -569,28 +570,28 @@ impl ShapeInstanceManager {
     pub fn make_upload_buffer(
         &self,
         device: &wgpu::Device,
-    ) -> Vec<(wgpu::Buffer, &wgpu::Buffer, wgpu::BufferAddress)> {
-        let mut out = Vec::new();
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
         for block in self.blocks.values() {
             let source = device
                 .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
                 .fill_from_slice(&block.transform_buffer_scratch[..block.len()]);
-            out.push((
+            upload_buffers.push(CopyBufferDescriptor::new(
                 source,
-                &block.transform_buffer,
+                block.transform_buffer.clone(),
                 (mem::size_of::<[f32; 6]>() * block.len()) as wgpu::BufferAddress,
             ));
 
             let source = device
                 .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
                 .fill_from_slice(&block.flag_buffer_scratch[..block.len()]);
-            out.push((
+            upload_buffers.push(CopyBufferDescriptor::new(
                 source,
-                &block.flag_buffer,
+                block.flag_buffer.clone(),
                 (mem::size_of::<[u32; 2]>() * block.len()) as wgpu::BufferAddress,
             ));
         }
-        out
+        Ok(())
     }
 
     pub fn upload_from(
