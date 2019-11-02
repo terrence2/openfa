@@ -26,7 +26,6 @@ mod earth_consts;
 mod precompute;
 
 use crate::{earth_consts::ATMOSPHERE_PARAMETERS_BUFFER_SIZE, precompute::Precompute};
-use camera::CameraAbstract;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use log::trace;
