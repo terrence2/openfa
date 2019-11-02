@@ -27,7 +27,7 @@ use packed_struct::packed_struct;
 use regex::Regex;
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     ffi::OsStr,
     fs,
     io::Read,
@@ -266,6 +266,10 @@ impl LibFile {
             CompressionType::PXPK => unimplemented!(),
         })
     }
+
+    pub fn file_count(&self) -> usize {
+        self.local_index.len()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -281,35 +285,30 @@ pub struct LibDir {
 impl LibDir {
     pub fn from_path(libkey: usize, path: &Path) -> Fallible<Self> {
         trace!("using libdir {:?} with key {}", path, libkey);
-        let mut local_index = HashMap::new();
+
+        // Pre-load all paths so that we can reserve memory for the index to avoid realloc.
+        // This saves us close to 100ms when loading the full unpacked test set.
+        let mut entries = Vec::new();
         for entry in fs::read_dir(path)? {
             let entry = entry?;
-            if !entry.path().is_file() {
+            if !entry.file_type()?.is_file() {
                 continue;
             }
-            let filename = entry
-                .path()
+            entries.push(entry.path());
+        }
+
+        let mut local_index = HashMap::with_capacity(entries.len());
+        for path in entries.drain(..) {
+            let name = path
                 .file_name()
-                .ok_or_else(|| err_msg("libdir: no filename in file"))?
-                .to_owned();
-            let name = filename
+                .expect("a named file")
                 .to_str()
-                .ok_or_else(|| {
-                    err_msg(format!(
-                        "libdir: non-utf8 characters in file: {:?}",
-                        filename,
-                    ))
-                })?
+                .expect("an ascii file name")
                 .to_owned();
-            let rv = local_index.insert(
-                name,
-                UnpackedFileInfo {
-                    libkey,
-                    path: entry.path(),
-                },
-            );
+            let rv = local_index.insert(name, UnpackedFileInfo { libkey, path });
             assert!(rv.is_none());
         }
+
         Ok(Self { local_index })
     }
 
@@ -329,6 +328,31 @@ impl LibDir {
             unpacked_size: stat.len(),
             path: Some(info.path.clone()),
         })
+    }
+
+    pub fn file_count(&self) -> usize {
+        self.local_index.len()
+    }
+
+    pub fn build_index(
+        &mut self,
+        index: &mut HashMap<String, FileRef>,
+        masked: &mut Vec<(String, FileRef)>,
+    ) {
+        for (name, info) in self.local_index.drain() {
+            // This is a bit wonkey, but avoids all allocations and only requires a single
+            // hash lookup, saving us about 14ms on the full test set.
+            match index.entry(name) {
+                Entry::Vacant(v) => {
+                    v.insert(FileRef::Unpacked(info));
+                }
+                Entry::Occupied(mut o) => {
+                    let mut prior = FileRef::Unpacked(info);
+                    mem::swap(&mut prior, o.get_mut());
+                    masked.push((o.key().to_owned(), prior));
+                }
+            }
+        }
     }
 }
 
@@ -371,7 +395,7 @@ impl LibraryPack {
     }
 
     pub fn build_index(
-        &self,
+        &mut self,
         index: &mut HashMap<String, FileRef>,
         masked: &mut Vec<(String, FileRef)>,
     ) -> Fallible<()> {
@@ -384,14 +408,7 @@ impl LibraryPack {
                     }
                 }
             }
-            LibraryData::Dir(ref libdir) => {
-                for (name, info) in libdir.local_index.iter() {
-                    let removed = index.insert(name.to_owned(), FileRef::Unpacked(info.to_owned()));
-                    if let Some(overwritten) = removed {
-                        masked.push((name.to_owned(), overwritten));
-                    }
-                }
-            }
+            LibraryData::Dir(ref mut libdir) => libdir.build_index(index, masked),
         }
         Ok(())
     }
@@ -407,6 +424,13 @@ impl LibraryPack {
         match self.data {
             LibraryData::Dir(ref libdir) => Ok(libdir),
             LibraryData::File(_) => bail!("library: not a libdir"),
+        }
+    }
+
+    pub fn file_count(&self) -> usize {
+        match self.data {
+            LibraryData::File(ref libfile) => libfile.file_count(),
+            LibraryData::Dir(ref libdir) => libdir.file_count(),
         }
     }
 }
@@ -488,15 +512,19 @@ impl Library {
 
         // Load libraries in sorted order. This lets us use the index as a key to
         // avoid a second hash lookup in the load path.
-        let mut libs = Vec::new();
+        let mut total_file_count = 0;
+        let mut libs = Vec::with_capacity(sorted_priorities.len());
         for (libkey, prio) in sorted_priorities.iter().enumerate() {
-            libs.push(LibraryPack::from_path(&prio, libkey, priorities[prio])?);
+            let pack = LibraryPack::from_path(&prio, libkey, priorities[prio])?;
+            total_file_count += pack.file_count();
+            libs.push(pack);
         }
 
         // Build the global index from names to direct references.
-        let mut index = HashMap::new();
+        // Worth about 20ms on the full test set.
+        let mut index = HashMap::with_capacity(total_file_count);
         let mut masked = Vec::new();
-        for lib in libs.iter() {
+        for lib in libs.iter_mut() {
             lib.build_index(&mut index, &mut masked)?;
         }
 
