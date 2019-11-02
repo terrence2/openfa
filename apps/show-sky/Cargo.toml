@@ -5,6 +5,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+chrono = "^ 0.4"
 failure = "^ 0.1.2"
 image = "^ 0.21"
 log = "^ 0.4"
@@ -18,6 +19,7 @@ winit = "^ 0.19"
 camera = { path = "../../libs/render-shared/common/camera" }
 input = { path = "../../libs/render-vulkano/common/input" }
 lib = { path = "../../libs/lib" }
+orrery = { path = "../../libs/orrery" }
 pal = { path = "../../libs/pal" }
 skybox = { path = "../../libs/render-vulkano/draw/skybox" }
 text = { path = "../../libs/render-vulkano/draw/text" }

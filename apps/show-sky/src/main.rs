@@ -13,11 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use camera::UfoCamera;
+use chrono::{prelude::*, Duration};
 use failure::Fallible;
 use input::{InputBindings, InputSystem};
 use lib::Library;
 use log::trace;
-use nalgebra::Vector3;
+use nalgebra::{convert, Vector3};
+use orrery::Orrery;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderer;
 use std::{f64::consts::PI, time::Instant};
@@ -59,13 +61,15 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
+    let mut orrery = Orrery::new();
+
     let mut camera = UfoCamera::new(f64::from(window.aspect_ratio()?), 0.1f64, 3.4e+38f64);
     camera.set_position(6_378_001.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
 
     let mut in_sun_move = false;
-    let mut sun_angle = 0.0;
+    let mut sim_time = Utc.ymd(2000, 1, 1).and_hms_milli(12, 0, 0, 0);
 
     loop {
         let loop_start = Instant::now();
@@ -81,7 +85,10 @@ fn main() -> Fallible<()> {
                 "-enter-move-sun" => in_sun_move = false,
                 "mouse-move" => {
                     if in_sun_move {
-                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
+                        //sun_angle += command.displacement()?.0 / (180.0 * 2.0);
+                        let days = 100 * command.displacement()?.0 as i64;
+                        println!("ADDING DAYS: {}", days);
+                        sim_time = sim_time.checked_add_signed(Duration::days(days)).unwrap();
                     } else {
                         camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
                     }
@@ -125,7 +132,10 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
-            let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+            //let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+            let sun_direction = convert(orrery.sun_position_at(sim_time).coords.normalize());
+            println!("SUN DIRECTION: {:?}", sun_direction);
+
             skybox_renderer.before_frame(&camera, &sun_direction)?;
             text_renderer.before_frame(&window)?;
 
@@ -153,7 +163,8 @@ fn main() -> Fallible<()> {
         let frame_time = loop_start.elapsed();
         let render_time = frame_time - window.idle_time;
         let ts = format!(
-            "frame: {}.{}ms / render: {}.{}ms",
+            "Date: {:?} || frame: {}.{}ms / render: {}.{}ms",
+            sim_time,
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
             render_time.as_secs() * 1000 + u64::from(render_time.subsec_millis()),

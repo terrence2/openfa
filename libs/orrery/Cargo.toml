@@ -1,0 +1,9 @@
+[package]
+name = "orrery"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+chrono = "^ 0.4"
+nalgebra = "^ 0.18"
