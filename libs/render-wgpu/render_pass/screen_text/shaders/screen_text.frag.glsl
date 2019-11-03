@@ -19,8 +19,10 @@ layout(location = 1) in vec4 v_color;
 
 layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler2D tex;
+layout(set = 0, binding = 0) uniform texture2D glyph_texture;
+layout(set = 0, binding = 1) uniform sampler glyph_sampler;
 
 void main() {
-    f_color = vec4(v_color.xyz, texture(tex, v_tex_coord).r);
+    float alpha = texture(sampler2D(glyph_texture, glyph_sampler), v_tex_coord).r;
+    f_color = vec4(v_color.xyz, alpha);
 }

@@ -21,7 +21,7 @@ use lib::Library;
 use log::trace;
 use memoffset::offset_of;
 use nalgebra::{Matrix4, Vector3};
-use std::{cell::RefCell, collections::HashMap, mem, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, mem, ops::Range, rc::Rc, sync::Arc};
 
 // Fallback for when we have no libs loaded.
 // https://fonts.google.com/specimen/Quantico?selection.family=Quantico
@@ -29,7 +29,7 @@ const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../../../../../assets/font/quan
 
 const SPACE_WIDTH: f32 = 5f32 / 640f32;
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct LayoutVertex {
     position: [f32; 2],
     tex_coord: [f32; 2],
@@ -244,23 +244,38 @@ impl LayoutHandle {
         }
         let buffer = device
             .create_buffer_mapped(1, wgpu::BufferUsage::all())
-            .fill_from_slice(&m2v(&m));
+            .fill_from_slice(&[LayoutData {
+                screen_projection: m2v(&m),
+                text_color: layout.color,
+            }]);
         upload_buffers.push(CopyBufferDescriptor::new(
             buffer,
-            layout.position_buffer.clone(),
-            mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
+            layout.layout_data_buffer.clone(),
+            mem::size_of::<LayoutData>() as wgpu::BufferAddress,
         ));
     }
 
-    /*
-    fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.layout.borrow().vertex_buffer
+    pub fn vertex_buffer(&self) -> Arc<Box<wgpu::Buffer>> {
+        self.layout.borrow().vertex_buffer.clone()
     }
 
-    fn index_buffer(&self) -> &wgpu::Buffer {
-        &self.layout.borrow().index_buffer
+    pub fn index_buffer(&self) -> Arc<Box<wgpu::Buffer>> {
+        self.layout.borrow().index_buffer.clone()
     }
-    */
+
+    pub fn index_range(&self) -> Range<u32> {
+        0u32..self.layout.borrow().index_count
+    }
+
+    pub fn bind_group(&self) -> Arc<Box<wgpu::BindGroup>> {
+        self.layout.borrow().bind_group.clone()
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct LayoutData {
+    screen_projection: [[f32; 4]; 4],
+    text_color: [f32; 4],
 }
 
 // Note that each layout has its own vertex/index buffer and a tiny transform
@@ -272,7 +287,6 @@ pub struct Layout {
     glyph_cache: Rc<Box<GlyphCache>>,
 
     // Cached per-frame render state.
-    //push_consts: vs::ty::PushConstantData,
     render_width: f32,
     position_x: TextPositionH,
     position_y: TextPositionV,
@@ -281,41 +295,65 @@ pub struct Layout {
     color: [f32; 4],
 
     // Gpu resources
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    position_buffer: Arc<Box<wgpu::Buffer>>,
+    vertex_buffer: Arc<Box<wgpu::Buffer>>,
+    index_buffer: Arc<Box<wgpu::Buffer>>,
+    index_count: u32,
+    layout_data_buffer: Arc<Box<wgpu::Buffer>>,
+    bind_group: Arc<Box<wgpu::BindGroup>>,
 }
 
 impl Layout {
-    fn new(text: &str, glyph_cache: Rc<Box<GlyphCache>>, device: &wgpu::Device) -> Fallible<Self> {
-        let position_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-            size: mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsage::all(),
-        })));
-        let (render_width, vb, ib) = Self::build_text_span(text, &glyph_cache, device)?;
+    fn new(
+        text: &str,
+        glyph_cache: Rc<Box<GlyphCache>>,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        device: &wgpu::Device,
+    ) -> Fallible<Self> {
+        let size = mem::size_of::<LayoutData>() as wgpu::BufferAddress;
+        let layout_data_buffer =
+            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+                size,
+                usage: wgpu::BufferUsage::all(),
+            })));
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            bindings: &[wgpu::Binding {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer {
+                    buffer: &layout_data_buffer,
+                    range: 0..size,
+                },
+            }],
+        });
+
+        let (render_width, vb, ib, index_count) =
+            Self::build_text_span(text, &glyph_cache, device)?;
         Ok(Self {
             glyph_cache,
 
-            //push_consts: vs::ty::PushConstantData::new(),
             render_width,
             position_x: TextPositionH::Center,
             position_y: TextPositionV::Center,
             anchor_x: TextAnchorH::Left,
             anchor_y: TextAnchorV::Top,
-            //scale: [1f32, 1f32],
             color: [1f32, 0f32, 1f32, 1f32],
 
-            vertex_buffer: vb,
-            index_buffer: ib,
-            position_buffer,
+            vertex_buffer: Arc::new(Box::new(vb)),
+            index_buffer: Arc::new(Box::new(ib)),
+            index_count,
+            layout_data_buffer,
+            bind_group: Arc::new(Box::new(bind_group)),
         })
     }
 
     fn set_span(&mut self, text: &str, device: &wgpu::Device) -> Fallible<()> {
-        let (render_width, vb, ib) = Self::build_text_span(text, &self.glyph_cache, device)?;
+        let (render_width, vb, ib, index_count) =
+            Self::build_text_span(text, &self.glyph_cache, device)?;
         self.render_width = render_width;
-        self.vertex_buffer = vb;
-        self.index_buffer = ib;
+        self.vertex_buffer = Arc::new(Box::new(vb));
+        self.index_buffer = Arc::new(Box::new(ib));
+        self.index_count = index_count;
         Ok(())
     }
 
@@ -323,9 +361,9 @@ impl Layout {
         text: &str,
         glyph_cache: &GlyphCache,
         device: &wgpu::Device,
-    ) -> Fallible<(f32, wgpu::Buffer, wgpu::Buffer)> {
+    ) -> Fallible<(f32, wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
-        let mut indices = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
 
         let mut offset = 0f32;
         let mut prior = None;
@@ -373,7 +411,6 @@ impl Layout {
                 tex_coord: [frame.s1, 1f32],
             });
 
-            // TODO: draw stripped
             indices.push(base);
             indices.push(base + 1u32);
             indices.push(base + 3u32);
@@ -391,7 +428,7 @@ impl Layout {
             .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&indices);
 
-        Ok((offset, vertex_buffer, index_buffer))
+        Ok((offset, vertex_buffer, index_buffer, indices.len() as u32))
     }
 }
 
@@ -443,13 +480,15 @@ pub enum Font {
 pub struct LayoutBuffer {
     glyph_caches: HashMap<Font, Rc<Box<GlyphCache>>>,
     layouts: HashMap<Font, Vec<LayoutHandle>>,
-    bind_group_layout: wgpu::BindGroupLayout,
+    glyph_bind_group_layout: wgpu::BindGroupLayout,
+    layout_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl LayoutBuffer {
     pub fn new(lib: &Library, gpu: &mut GPU) -> Fallible<Arc<RefCell<Self>>> {
         trace!("LayoutBuffer::new");
 
+        let glyph_bind_group_layout = GlyphCache::create_bind_group_layout(gpu.device());
         let mut glyph_caches = HashMap::new();
 
         // Cache all standard fonts on the GPU.
@@ -459,6 +498,7 @@ impl LayoutBuffer {
                     *name,
                     Rc::new(Box::new(GlyphCache::new_transparent_fnt(
                         &Fnt::from_bytes("", "", &data)?,
+                        &glyph_bind_group_layout,
                         gpu,
                     )?)),
                 );
@@ -468,18 +508,48 @@ impl LayoutBuffer {
         // Add fallback font.
         glyph_caches.insert(
             Font::QUANTICO,
-            Rc::new(Box::new(GlyphCache::new_ttf(&QUANTICO_TTF_DATA, gpu)?)),
+            Rc::new(Box::new(GlyphCache::new_ttf(
+                &QUANTICO_TTF_DATA,
+                &glyph_bind_group_layout,
+                gpu,
+            )?)),
         );
+
+        let layout_bind_group_layout =
+            gpu.device()
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    bindings: &[wgpu::BindGroupLayoutBinding {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::VERTEX,
+                        ty: wgpu::BindingType::StorageBuffer {
+                            dynamic: false,
+                            readonly: true,
+                        },
+                    }],
+                });
 
         Ok(Arc::new(RefCell::new(Self {
             glyph_caches,
             layouts: HashMap::new(),
-            bind_group_layout: GlyphCache::bind_group_layout(gpu.device()),
+            glyph_bind_group_layout,
+            layout_bind_group_layout,
         })))
     }
 
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
+    pub fn glyph_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.glyph_bind_group_layout
+    }
+
+    pub fn layout_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.layout_bind_group_layout
+    }
+
+    pub fn layouts(&self) -> &HashMap<Font, Vec<LayoutHandle>> {
+        &self.layouts
+    }
+
+    pub fn glyph_cache(&self, font: Font) -> Rc<Box<GlyphCache>> {
+        self.glyph_caches[&font].clone()
     }
 
     pub fn add_screen_text(
@@ -489,7 +559,12 @@ impl LayoutBuffer {
         device: &wgpu::Device,
     ) -> Fallible<LayoutHandle> {
         let glyph_cache = self.glyph_caches[&font].clone();
-        let layout = LayoutHandle::new(Layout::new(text, glyph_cache, device)?);
+        let layout = LayoutHandle::new(Layout::new(
+            text,
+            glyph_cache,
+            &self.layout_bind_group_layout,
+            device,
+        )?);
         self.layouts
             .entry(font)
             .and_modify(|e| e.push(layout.clone()))

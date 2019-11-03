@@ -26,7 +26,7 @@ use mm::MissionMap;
 use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
-//use screen_text::ScreenTextRenderPass;
+use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -51,21 +51,21 @@ make_frame_graph!(
             atmosphere: AtmosphereBuffer,
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
-            layout: LayoutBuffer,
             stars: StarsBuffer,
-            t2: T2Buffer
+            t2: T2Buffer,
+            text_layout: LayoutBuffer
         };
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
-            //screen_text: ScreenTextRenderPass { layout },
-            terrain: T2TerrainRenderPass { globals, atmosphere, t2 }
+            terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
+            screen_text: ScreenTextRenderPass { text_layout }
         ];
     }
 );
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
+    TermLogger::init(LevelFilter::Warn, Config::default())?;
 
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
@@ -98,9 +98,9 @@ pub fn main() -> Fallible<()> {
         &atmosphere_buffer,
         &fullscreen_buffer,
         &globals_buffer,
-        &layout_buffer,
         &stars_buffer,
         &t2_buffer,
+        &layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
 
@@ -149,6 +149,9 @@ pub fn main() -> Fallible<()> {
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        layout_buffer
+            .borrow()
+            .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers);
 
         let ft = loop_start.elapsed();

@@ -17,11 +17,8 @@
 layout(location = 0) in vec2 position;
 layout(location = 1) in vec2 tex_coord;
 
-// TODO: add to camera parameters?
-layout(set = 1, binding = 0) uniform Projection {
+layout(set = 1, binding = 0) buffer LayoutData {
     mat4 screen_projection;
-};
-layout(set = 1, binding = 1) uniform TextColor {
     vec4 text_color;
 };
 

@@ -18,11 +18,11 @@ use log::trace;
 use text_layout::{LayoutBuffer, LayoutVertex};
 
 pub struct ScreenTextRenderPass {
-    _pipeline: wgpu::RenderPipeline,
+    pipeline: wgpu::RenderPipeline,
 }
 
 impl ScreenTextRenderPass {
-    pub fn new(layout_buffer: LayoutBuffer, gpu: &mut GPU) -> Fallible<Self> {
+    pub fn new(gpu: &mut GPU, layout_buffer: &LayoutBuffer) -> Fallible<Self> {
         trace!("ScreenTextRenderPass::new");
 
         let vert_shader =
@@ -33,7 +33,10 @@ impl ScreenTextRenderPass {
         let pipeline_layout =
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    bind_group_layouts: &[layout_buffer.bind_group_layout()],
+                    bind_group_layouts: &[
+                        layout_buffer.glyph_bind_group_layout(),
+                        layout_buffer.layout_bind_group_layout(),
+                    ],
                 });
 
         let pipeline = gpu
@@ -50,7 +53,7 @@ impl ScreenTextRenderPass {
                 }),
                 rasterization_state: Some(wgpu::RasterizationStateDescriptor {
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: wgpu::CullMode::Back,
+                    cull_mode: wgpu::CullMode::None,
                     depth_bias: 0,
                     depth_bias_slope_scale: 0.0,
                     depth_bias_clamp: 0.0,
@@ -58,46 +61,45 @@ impl ScreenTextRenderPass {
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                 color_states: &[wgpu::ColorStateDescriptor {
                     format: GPU::texture_format(),
-                    color_blend: wgpu::BlendDescriptor::REPLACE,
                     alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                    color_blend: wgpu::BlendDescriptor {
+                        src_factor: wgpu::BlendFactor::SrcAlpha,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
-                depth_stencil_state: None,
-                index_format: wgpu::IndexFormat::Uint16,
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: GPU::DEPTH_FORMAT,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
+                index_format: wgpu::IndexFormat::Uint32,
                 vertex_buffers: &[LayoutVertex::descriptor()],
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
             });
 
-        Ok(Self {
-            _pipeline: pipeline,
-        })
+        Ok(Self { pipeline })
     }
 
-    /*
-    pub fn before_frame(&mut self, window: &GraphicsWindow) -> Fallible<()> {
-        self.set_projection(&window)
-    }
+    pub fn draw(&self, rpass: &mut wgpu::RenderPass, layout_buffer: &LayoutBuffer) {
+        rpass.set_pipeline(&self.pipeline);
+        for (&font, layouts) in layout_buffer.layouts() {
+            let glyph_cache = layout_buffer.glyph_cache(font);
+            rpass.set_bind_group(0, &glyph_cache.bind_group(), &[]);
+            for layout in layouts {
+                rpass.set_bind_group(1, &layout.bind_group(), &[]);
 
-    pub fn render(
-        &self,
-        encoder: &mut wgpu::CommandEncoder
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut render_pass = encoder.
-        let mut cb = cb;
-        for layout in &self.layouts {
-            cb = cb.draw_indexed(
-                self.screen_pipeline.clone(),
-                dynamic_state,
-                vec![layout.vertex_buffer()],
-                layout.index_buffer(),
-                layout.pds(),
-                layout.push_consts()?,
-            )?;
+                rpass.set_index_buffer(&layout.index_buffer(), 0);
+                rpass.set_vertex_buffers(0, &[(&layout.vertex_buffer(), 0)]);
+                rpass.draw_indexed(layout.index_range(), 0, 0..1);
+            }
         }
-
-        Ok(cb)
     }
-    */
 }
