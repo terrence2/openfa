@@ -22,7 +22,7 @@ use memoffset::offset_of;
 use mm::MissionMap;
 use pal::Palette;
 use pic::Pic;
-use std::{collections::HashSet, mem, ops::Range, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, mem, ops::Range, sync::Arc};
 use t2::Terrain;
 use wgpu;
 
@@ -90,10 +90,10 @@ impl T2Buffer {
     pub fn new(
         mm: MissionMap,
         system_palette: &Palette,
-        assets: &Arc<Box<AssetManager>>,
-        lib: &Arc<Box<Library>>,
+        assets: &AssetManager,
+        lib: &Library,
         gpu: &mut GPU,
-    ) -> Fallible<Arc<Box<Self>>> {
+    ) -> Fallible<Arc<RefCell<Self>>> {
         trace!("T2Renderer::new");
 
         let terrain = assets.load_t2(&mm.t2_name)?;
@@ -102,7 +102,7 @@ impl T2Buffer {
         let (vertex_buffer, index_buffer, index_count) =
             Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
 
-        Ok(Arc::new(Box::new(Self {
+        Ok(Arc::new(RefCell::new(Self {
             bind_group_layout,
             bind_group,
             vertex_buffer,
@@ -134,7 +134,7 @@ impl T2Buffer {
     fn load_palette(
         mm: &MissionMap,
         system_palette: &Palette,
-        assets: &Arc<Box<AssetManager>>,
+        assets: &AssetManager,
     ) -> Fallible<Palette> {
         let layer = assets.load_lay(&mm.layer_name)?;
 

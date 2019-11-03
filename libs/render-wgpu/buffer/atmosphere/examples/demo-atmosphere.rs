@@ -46,8 +46,8 @@ fn main() -> Fallible<()> {
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                globals_buffer.bind_group_layout(),
-                atmosphere_buffer.bind_group_layout(),
+                globals_buffer.borrow().bind_group_layout(),
+                atmosphere_buffer.borrow().bind_group_layout(),
             ],
         });
     let pipeline = gpu
@@ -135,8 +135,14 @@ fn main() -> Fallible<()> {
 
         // Prepare new camera parameters.
         let mut upload_buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
-        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut upload_buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+        atmosphere_buffer.borrow().make_upload_buffer(
+            sun_direction,
+            gpu.device(),
+            &mut upload_buffers,
+        )?;
 
         {
             let mut frame = gpu.begin_frame();
@@ -153,9 +159,9 @@ fn main() -> Fallible<()> {
 
                 let mut rpass = frame.begin_render_pass();
                 rpass.set_pipeline(&pipeline);
-                rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
-                rpass.set_bind_group(1, &atmosphere_buffer.bind_group(), &[]);
-                rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);
+                rpass.set_bind_group(0, globals_buffer.borrow().bind_group(), &[]);
+                rpass.set_bind_group(1, &atmosphere_buffer.borrow().bind_group(), &[]);
+                rpass.set_vertex_buffers(0, &[(fullscreen_buffer.borrow().vertex_buffer(), 0)]);
                 rpass.draw(0..4, 0..1);
             }
             frame.finish();

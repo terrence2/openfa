@@ -49,7 +49,7 @@ macro_rules! make_frame_graph {
     ) => {
         pub struct $name {
             $(
-                $buffer_name: ::std::sync::Arc<::std::boxed::Box<$buffer_type>>
+                $buffer_name: ::std::sync::Arc<::std::cell::RefCell<$buffer_type>>
             ),*,
             $(
                 $pass_name: $pass_type
@@ -60,18 +60,18 @@ macro_rules! make_frame_graph {
             pub fn new(
                 gpu: &mut ::gpu::GPU,
                 $(
-                    $buffer_name: ::std::sync::Arc<::std::boxed::Box<$buffer_type>>
+                    $buffer_name: &::std::sync::Arc<::std::cell::RefCell<$buffer_type>>
                 ),*
             ) -> ::failure::Fallible<Self> {
                 Ok(Self {
                     $(
-                        $buffer_name: $buffer_name.clone()
+                        $buffer_name: $buffer_name.to_owned()
                     ),*,
                     $(
                         $pass_name: <$pass_type>::new(
                             gpu,
                             $(
-                                &$input_buffer_name
+                                &$input_buffer_name.borrow()
                             ),*
                         )?
                     ),*
@@ -96,10 +96,10 @@ macro_rules! make_frame_graph {
                         self.$pass_name.draw(
                             &mut rpass,
                             $(
-                                &self.$input_buffer_name
+                                &self.$input_buffer_name.borrow()
                             ),*
                         );
-                    );*
+                    )*
                 }
                 frame.finish();
             }

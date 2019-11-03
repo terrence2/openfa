@@ -16,7 +16,7 @@ use camera::CameraAbstract;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use nalgebra::{Matrix4, Point3};
-use std::{mem, sync::Arc};
+use std::{cell::RefCell, mem, sync::Arc};
 use wgpu;
 
 pub struct GlobalParametersBuffer {
@@ -36,7 +36,7 @@ struct Globals {
 }
 
 impl GlobalParametersBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Arc<Box<Self>>> {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let buffer_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
         let parameters_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: buffer_size,
@@ -65,7 +65,7 @@ impl GlobalParametersBuffer {
             }],
         });
 
-        Ok(Arc::new(Box::new(Self {
+        Ok(Arc::new(RefCell::new(Self {
             bind_group_layout,
             bind_group,
             buffer_size,

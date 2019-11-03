@@ -26,6 +26,7 @@ use mm::MissionMap;
 use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
+//use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -50,18 +51,17 @@ make_frame_graph!(
             atmosphere: AtmosphereBuffer,
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
+            layout: LayoutBuffer,
             stars: StarsBuffer,
             t2: T2Buffer
         };
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
+            //screen_text: ScreenTextRenderPass { layout },
             terrain: T2TerrainRenderPass { globals, atmosphere, t2 }
         ];
     }
 );
-
-// layout: LayoutBuffer,
-// screen_text: ScreenTextRenderPass { layout }
 
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
@@ -95,12 +95,12 @@ pub fn main() -> Fallible<()> {
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
-        atmosphere_buffer.clone(),
-        fullscreen_buffer.clone(),
-        globals_buffer.clone(),
-        //layout_buffer.clone(),
-        stars_buffer.clone(),
-        t2_buffer.clone(),
+        &atmosphere_buffer,
+        &fullscreen_buffer,
+        &globals_buffer,
+        &layout_buffer,
+        &stars_buffer,
+        &t2_buffer,
     )?;
     ///////////////////////////////////////////////////////////
 
@@ -143,8 +143,12 @@ pub fn main() -> Fallible<()> {
         let sun_direction = Vector3::new(0f32, 1f32, 0f32);
 
         let mut buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
-        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
+        atmosphere_buffer
+            .borrow()
+            .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
         frame_graph.run(&mut gpu, buffers);
 
         let ft = loop_start.elapsed();
