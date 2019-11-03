@@ -480,7 +480,7 @@ macro_rules! make_type_struct {
                     } else {
                         $default_value
                     };
-                );*
+                )*
                 ensure!(offset >= rows.len(), "did not read all rows");
 
                 return Ok(Self {

@@ -102,7 +102,7 @@ fn main() -> Fallible<()> {
         .device()
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             bind_group_layouts: &[
-                globals_buffer.bind_group_layout(),
+                globals_buffer.borrow().bind_group_layout(),
                 &empty_layout,
                 &empty_layout,
                 &instance_layout,
@@ -232,7 +232,9 @@ fn main() -> Fallible<()> {
         }
 
         let mut upload_buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
@@ -250,7 +252,7 @@ fn main() -> Fallible<()> {
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.borrow().bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, &empty_bind_group, &[]);
             rpass.set_bind_group(3, &instance_bind_group, &[]);

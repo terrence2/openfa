@@ -38,10 +38,10 @@ fn main() -> Fallible<()> {
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let skybox_renderer = SkyboxRenderPass::new(
         &mut gpu,
-        &globals_buffer,
-        &fullscreen_buffer,
-        &stars_buffer,
-        &atmosphere_buffer,
+        &globals_buffer.borrow(),
+        &fullscreen_buffer.borrow(),
+        &stars_buffer.borrow(),
+        &atmosphere_buffer.borrow(),
     )?;
 
     let poll_start = Instant::now();
@@ -91,8 +91,14 @@ fn main() -> Fallible<()> {
         let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
 
         let mut upload_buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
-        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut upload_buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+        atmosphere_buffer.borrow().make_upload_buffer(
+            sun_direction,
+            gpu.device(),
+            &mut upload_buffers,
+        )?;
 
         {
             let mut frame = gpu.begin_frame();
@@ -110,10 +116,10 @@ fn main() -> Fallible<()> {
                 let mut rpass = frame.begin_render_pass();
                 skybox_renderer.draw(
                     &mut rpass,
-                    &globals_buffer,
-                    &fullscreen_buffer,
-                    &stars_buffer,
-                    &atmosphere_buffer,
+                    &globals_buffer.borrow(),
+                    &fullscreen_buffer.borrow(),
+                    &stars_buffer.borrow(),
+                    &atmosphere_buffer.borrow(),
                 );
             }
             frame.finish();

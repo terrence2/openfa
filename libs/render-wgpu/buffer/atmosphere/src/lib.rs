@@ -30,7 +30,7 @@ use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use log::trace;
 use nalgebra::Vector3;
-use std::{mem, sync::Arc, time::Instant};
+use std::{cell::RefCell, mem, sync::Arc, time::Instant};
 
 const NUM_PRECOMPUTED_WAVELENGTHS: usize = 40;
 const NUM_SCATTERING_ORDER: usize = 4;
@@ -44,7 +44,7 @@ pub struct AtmosphereBuffer {
 }
 
 impl AtmosphereBuffer {
-    pub fn new(gpu: &mut gpu::GPU) -> Fallible<Arc<Box<Self>>> {
+    pub fn new(gpu: &mut gpu::GPU) -> Fallible<Arc<RefCell<Self>>> {
         trace!("AtmosphereBuffer::new");
 
         let precompute_start = Instant::now();
@@ -243,7 +243,7 @@ impl AtmosphereBuffer {
             ],
         });
 
-        Ok(Arc::new(Box::new(Self {
+        Ok(Arc::new(RefCell::new(Self {
             bind_group_layout,
             bind_group,
             camera_and_sun_buffer,

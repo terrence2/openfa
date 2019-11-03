@@ -1,0 +1,23 @@
+[package]
+name = "text_layout-wgpu"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+log = "^ 0.4"
+memoffset = "^ 0.5"
+nalgebra = "^ 0.18"
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+fnt = { path = "../../../fnt" }
+lib = { path = "../../../lib" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+glyph_cache = { package = "glyph_cache-wgpu", path = "../../../render-wgpu/buffer/glyph_cache" }
+
+[dev-dependencies]
+omnilib = { path = "../../../omnilib" }
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }

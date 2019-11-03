@@ -151,7 +151,7 @@ fn main() -> Fallible<()> {
         bindings: &[],
     });
 
-    let pipeline = build_pipeline(&mut gpu, &empty_layout, &globals_buffer, &inst_man)?;
+    let pipeline = build_pipeline(&mut gpu, &empty_layout, &globals_buffer.borrow(), &inst_man)?;
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
     camera.set_distance(1500.0);
@@ -183,7 +183,9 @@ fn main() -> Fallible<()> {
         }
 
         let mut upload_buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
 
         update_dispatcher.dispatch(&world);
         {
@@ -208,7 +210,7 @@ fn main() -> Fallible<()> {
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
+            rpass.set_bind_group(0, globals_buffer.borrow().bind_group(), &[]);
             rpass.set_bind_group(1, &empty_bind_group, &[]);
             rpass.set_bind_group(2, &empty_bind_group, &[]);
             rpass.set_bind_group(4, &empty_bind_group, &[]);

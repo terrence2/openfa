@@ -78,7 +78,7 @@ fn main() -> Fallible<()> {
     inst_buffer.ensure_uploaded(&mut gpu)?;
     gpu.device().poll(true);
 
-    let shape_render_pass = ShapeRenderPass::new(&gpu, &globals_buffer, &inst_buffer)?;
+    let shape_render_pass = ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_buffer)?;
 
     let empty_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &gpu.empty_layout(),
@@ -115,7 +115,9 @@ fn main() -> Fallible<()> {
         }
 
         let mut upload_buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
         update_dispatcher.dispatch(&world);
         {
             DispatcherBuilder::new()
@@ -139,7 +141,7 @@ fn main() -> Fallible<()> {
 
             shape_render_pass.render(
                 &empty_bind_group,
-                &globals_buffer,
+                &globals_buffer.borrow(),
                 &inst_buffer,
                 &mut frame,
             )?;

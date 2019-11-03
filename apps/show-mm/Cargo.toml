@@ -33,6 +33,6 @@ omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 t2 = { path = "../../libs/t2" }
-text = { path = "../../libs/render-vulkano/draw/text" }
+text_layout = { package = "text_layout-wgpu", path = "../../libs/render-wgpu/buffer/text_layout" }
+screen_text = { package = "screen_text-wgpu", path = "../../libs/render-wgpu/render_pass/screen_text" }
 xt = { path = "../../libs/xt" }
-window = { path = "../../libs/render-vulkano/common/window" }

@@ -50,14 +50,28 @@ pub enum GlyphCache {
 }
 
 impl GlyphCache {
-    pub fn new_transparent_fnt(fnt: &Fnt, gpu: &mut GPU) -> Fallible<Self> {
+    pub fn new_transparent_fnt(
+        fnt: &Fnt,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        gpu: &mut GPU,
+    ) -> Fallible<Self> {
         Ok(GlyphCache::FNT(GlyphCacheFNT::new_transparent_fnt(
-            fnt, gpu,
+            fnt,
+            bind_group_layout,
+            gpu,
         )?))
     }
 
-    pub fn new_ttf(bytes: &'static [u8], gpu: &mut GPU) -> Fallible<Self> {
-        Ok(GlyphCache::TTF(GlyphCacheTTF::new_ttf(bytes, gpu)?))
+    pub fn new_ttf(
+        bytes: &'static [u8],
+        bind_group_layout: &wgpu::BindGroupLayout,
+        gpu: &mut GPU,
+    ) -> Fallible<Self> {
+        Ok(GlyphCache::TTF(GlyphCacheTTF::new_ttf(
+            bytes,
+            bind_group_layout,
+            gpu,
+        )?))
     }
 
     pub fn render_height(&self) -> f32 {
@@ -67,11 +81,24 @@ impl GlyphCache {
         }
     }
 
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        match self {
-            GlyphCache::FNT(fnt) => &fnt.bind_group_layout,
-            GlyphCache::TTF(ttf) => &ttf.bind_group_layout,
-        }
+    pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            bindings: &[
+                wgpu::BindGroupLayoutBinding {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::SampledTexture {
+                        multisampled: false,
+                        dimension: wgpu::TextureViewDimension::D2,
+                    },
+                },
+                wgpu::BindGroupLayoutBinding {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler,
+                },
+            ],
+        })
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -134,7 +161,7 @@ impl GlyphCache {
             wgpu::BufferCopyView {
                 buffer: &transfer_buffer,
                 offset: 0,
-                row_pitch: extent.width * 4,
+                row_pitch: extent.width,
                 image_height: extent.height,
             },
             wgpu::TextureCopyView {
@@ -146,6 +173,7 @@ impl GlyphCache {
             extent,
         );
         gpu.queue_mut().submit(&[encoder.finish()]);
+        gpu.device().poll(true);
 
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
             format: wgpu::TextureFormat::R8Unorm,
@@ -177,7 +205,6 @@ impl GlyphCache {
 
 pub struct GlyphCacheFNT {
     // These get composited in software, then uploaded in a single texture.
-    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
 
     // The positions of glyphs within the texture (as needed for layout later)
@@ -189,7 +216,11 @@ pub struct GlyphCacheFNT {
 }
 
 impl GlyphCacheFNT {
-    pub fn new_transparent_fnt(fnt: &Fnt, gpu: &mut GPU) -> Fallible<Self> {
+    pub fn new_transparent_fnt(
+        fnt: &Fnt,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        gpu: &mut GPU,
+    ) -> Fallible<Self> {
         trace!("GlyphCacheFNT::new");
 
         let mut width = 0;
@@ -249,27 +280,8 @@ impl GlyphCacheFNT {
         let texture_view = GlyphCache::upload_texture_luma(gpu, buf)?;
         let sampler = GlyphCache::make_sampler(gpu.device());
 
-        let bind_group_layout =
-            gpu.device()
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    bindings: &[
-                        wgpu::BindGroupLayoutBinding {
-                            binding: 0,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::SampledTexture {
-                                multisampled: true,
-                                dimension: wgpu::TextureViewDimension::D2,
-                            },
-                        },
-                        wgpu::BindGroupLayoutBinding {
-                            binding: 1,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
-                        },
-                    ],
-                });
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &bind_group_layout,
+            layout: bind_group_layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
@@ -283,7 +295,6 @@ impl GlyphCacheFNT {
         });
 
         Ok(Self {
-            bind_group_layout,
             bind_group,
             glyph_frames,
             render_height: fnt.height as f32 / SCREEN_SCALE[1],
@@ -292,7 +303,6 @@ impl GlyphCacheFNT {
 }
 
 pub struct GlyphCacheTTF {
-    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
 
     // Map to positions in the glyph cache.
@@ -308,7 +318,11 @@ pub struct GlyphCacheTTF {
 }
 
 impl GlyphCacheTTF {
-    pub fn new_ttf(bytes: &'static [u8], gpu: &mut GPU) -> Fallible<Self> {
+    pub fn new_ttf(
+        bytes: &'static [u8],
+        bind_group_layout: &wgpu::BindGroupLayout,
+        gpu: &mut GPU,
+    ) -> Fallible<Self> {
         trace!("GlyphCacheTTF::new");
 
         let font = Font::from_bytes(bytes)?;
@@ -366,27 +380,8 @@ impl GlyphCacheTTF {
         let texture_view = GlyphCache::upload_texture_luma(gpu, buf)?;
         let sampler = GlyphCache::make_sampler(gpu.device());
 
-        let bind_group_layout =
-            gpu.device()
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    bindings: &[
-                        wgpu::BindGroupLayoutBinding {
-                            binding: 0,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::SampledTexture {
-                                multisampled: true,
-                                dimension: wgpu::TextureViewDimension::D2,
-                            },
-                        },
-                        wgpu::BindGroupLayoutBinding {
-                            binding: 1,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
-                        },
-                    ],
-                });
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &bind_group_layout,
+            layout: bind_group_layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
@@ -400,7 +395,6 @@ impl GlyphCacheTTF {
         });
 
         Ok(Self {
-            bind_group_layout,
             bind_group,
             glyph_frames,
             font,

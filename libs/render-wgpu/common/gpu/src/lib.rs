@@ -67,6 +67,14 @@ impl GPU {
         self.size.height.floor() / self.size.width.floor()
     }
 
+    pub fn aspect_ratio_f32(&self) -> f32 {
+        (self.size.height.floor() / self.size.width.floor()) as f32
+    }
+
+    pub fn physical_size(&self) -> PhysicalSize {
+        self.size
+    }
+
     pub fn new(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
         input.window().set_title("OpenFA");
         let surface = wgpu::Surface::create(input.window());

@@ -26,6 +26,7 @@ use mm::MissionMap;
 use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
+use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -33,7 +34,7 @@ use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
-// use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -51,20 +52,20 @@ make_frame_graph!(
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
             stars: StarsBuffer,
-            t2: T2Buffer
+            t2: T2Buffer,
+            text_layout: LayoutBuffer
         };
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
-            terrain: T2TerrainRenderPass { globals, atmosphere, t2 }
+            terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
+            screen_text: ScreenTextRenderPass { text_layout }
         ];
     }
 );
 
-// screen_text: ScreenTextRenderPass {}
-
 pub fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
+    TermLogger::init(LevelFilter::Warn, Config::default())?;
 
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
@@ -84,38 +85,38 @@ pub fn main() -> Fallible<()> {
     let contents = lib.load_text(&name)?;
     let mm = MissionMap::from_str(&contents, &types, &lib)?;
 
-    /*
-    let mut text_renderer = TextRenderer::new(&lib, &window)?;
-    let fps_handle = text_renderer
-        .add_screen_text(Font::HUD11, "", &window)?
-        .with_color(&[1f32, 0f32, 0f32, 1f32])
-        .with_horizontal_position(TextPositionH::Left)
-        .with_horizontal_anchor(TextAnchorH::Left)
-        .with_vertical_position(TextPositionV::Bottom)
-        .with_vertical_anchor(TextAnchorV::Bottom);
-    */
-
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
+    let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
-        atmosphere_buffer.clone(),
-        fullscreen_buffer.clone(),
-        globals_buffer.clone(),
-        stars_buffer.clone(),
-        t2_buffer.clone(),
+        &atmosphere_buffer,
+        &fullscreen_buffer,
+        &globals_buffer,
+        &stars_buffer,
+        &t2_buffer,
+        &layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
+
+    let fps_handle = layout_buffer
+        .borrow_mut()
+        .add_screen_text(Font::HUD11, "", gpu.device())?
+        .with_color(&[1f32, 0f32, 0f32, 1f32])
+        .with_horizontal_position(TextPositionH::Left)
+        .with_horizontal_anchor(TextAnchorH::Left)
+        .with_vertical_position(TextPositionV::Bottom)
+        .with_vertical_anchor(TextAnchorV::Bottom);
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
 
     loop {
-        let _loop_start = Instant::now();
+        let loop_start = Instant::now();
 
         for command in input.poll()? {
             match command.name.as_str() {
@@ -142,18 +143,23 @@ pub fn main() -> Fallible<()> {
         let sun_direction = Vector3::new(0f32, 1f32, 0f32);
 
         let mut buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
-        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
+        atmosphere_buffer
+            .borrow()
+            .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        layout_buffer
+            .borrow()
+            .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers);
 
-        /*
         let ft = loop_start.elapsed();
         let ts = format!(
             "{}.{} ms",
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );
-        fps_handle.set_span(&ts, &window)?;
-        */
+        fps_handle.set_span(&ts, gpu.device())?;
     }
 }
