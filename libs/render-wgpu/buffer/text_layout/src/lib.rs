@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
 use fnt::Fnt;
+use frame_graph::CopyBufferDescriptor;
 use glyph_cache::GlyphCache;
 use gpu::GPU;
 use lib::Library;
@@ -68,22 +69,6 @@ impl LayoutVertex {
         tmp
     }
 }
-
-/*
-impl vs::ty::PushConstantData {
-    fn new(m: Matrix4<f32>, c: &[f32; 4]) -> Self {
-        Self {
-            projection: [
-                [m[0], m[1], m[1], m[3]],
-                [m[4], m[5], m[6], m[7]],
-                [m[8], m[9], m[7], m[11]],
-                [m[12], m[13], m[14], m[15]],
-            ],
-            color: *c,
-        }
-    }
-}
-*/
 
 #[derive(Copy, Clone, Debug)]
 pub enum TextAnchorH {
@@ -213,10 +198,6 @@ impl LayoutHandle {
         self.layout.borrow_mut().anchor_y = anchor;
     }
 
-    pub fn set_projection(&self, w: f32, h: f32) {
-        self.layout.borrow_mut().scale = [w, h];
-    }
-
     pub fn set_color(&self, color: &[f32; 4]) {
         self.layout.borrow_mut().color = *color;
     }
@@ -226,18 +207,13 @@ impl LayoutHandle {
         Ok(())
     }
 
-    /*
-    fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.layout.borrow().vertex_buffer
-    }
-
-    fn index_buffer(&self) -> &wgpu::Buffer {
-        &self.layout.borrow().index_buffer
-    }
-    */
-
-    /*
-    fn push_consts(&self) -> Fallible<vs::ty::PushConstantData> {
+    pub fn make_upload_buffer(
+        &self,
+        screen_width: f32,
+        screen_height: f32,
+        device: &wgpu::Device,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) {
         let layout = self.layout.borrow();
 
         let x = layout.position_x.to_vulkan();
@@ -255,20 +231,42 @@ impl LayoutHandle {
             TextAnchorV::Center => -layout.glyph_cache.render_height() / 2f32,
         };
 
-        let scale = layout.scale;
-
         let m = Matrix4::new_translation(&Vector3::new(x + dx, y + dy, 0.0f32))
-            * Matrix4::new_nonuniform_scaling(&Vector3::new(scale[0], scale[1], 1f32));
+            * Matrix4::new_nonuniform_scaling(&Vector3::new(screen_width, screen_height, 1f32));
 
-        Ok(vs::ty::PushConstantData::new(m, &layout.color))
+        // Note: share with global data
+        fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
+            let mut v = [[0f32; 4]; 4];
+            for i in 0..16 {
+                v[i / 4][i % 4] = m[i];
+            }
+            v
+        }
+        let buffer = device
+            .create_buffer_mapped(1, wgpu::BufferUsage::all())
+            .fill_from_slice(&m2v(&m));
+        upload_buffers.push(CopyBufferDescriptor::new(
+            buffer,
+            layout.position_buffer.clone(),
+            mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
+        ));
+    }
 
-        // pcd.set_projection(m);
-        // pcd.set_color(&layout.color);
-        // Ok(pcd)
+    /*
+    fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.layout.borrow().vertex_buffer
+    }
+
+    fn index_buffer(&self) -> &wgpu::Buffer {
+        &self.layout.borrow().index_buffer
     }
     */
 }
 
+// Note that each layout has its own vertex/index buffer and a tiny transform
+// buffer that might get updated every frame. This is costly per layout. However,
+// these are screen text layouts, so there will hopefully never be too many of them
+// if we do end up creating lots, we'll need to do some sort of layout caching.
 pub struct Layout {
     // The font used for rendering this layout.
     glyph_cache: Rc<Box<GlyphCache>>,
@@ -280,16 +278,20 @@ pub struct Layout {
     position_y: TextPositionV,
     anchor_x: TextAnchorH,
     anchor_y: TextAnchorV,
-    scale: [f32; 2],
     color: [f32; 4],
 
     // Gpu resources
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    position_buffer: Arc<Box<wgpu::Buffer>>,
 }
 
 impl Layout {
     fn new(text: &str, glyph_cache: Rc<Box<GlyphCache>>, device: &wgpu::Device) -> Fallible<Self> {
+        let position_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            size: mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsage::all(),
+        })));
         let (render_width, vb, ib) = Self::build_text_span(text, &glyph_cache, device)?;
         Ok(Self {
             glyph_cache,
@@ -300,11 +302,12 @@ impl Layout {
             position_y: TextPositionV::Center,
             anchor_x: TextAnchorH::Left,
             anchor_y: TextAnchorV::Top,
-            scale: [1f32, 1f32],
+            //scale: [1f32, 1f32],
             color: [1f32, 0f32, 1f32, 1f32],
 
             vertex_buffer: vb,
             index_buffer: ib,
+            position_buffer,
         })
     }
 
@@ -328,7 +331,7 @@ impl Layout {
         let mut prior = None;
         for c in text.chars() {
             if c == ' ' {
-                offset += 5f32 / 640f32;
+                offset += SPACE_WIDTH;
                 continue;
             }
 
@@ -440,10 +443,11 @@ pub enum Font {
 pub struct LayoutBuffer {
     glyph_caches: HashMap<Font, Rc<Box<GlyphCache>>>,
     layouts: HashMap<Font, Vec<LayoutHandle>>,
+    bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl LayoutBuffer {
-    pub fn new(lib: &Arc<Box<Library>>, gpu: &mut GPU) -> Fallible<Self> {
+    pub fn new(lib: &Library, gpu: &mut GPU) -> Fallible<Arc<RefCell<Self>>> {
         trace!("LayoutBuffer::new");
 
         let mut glyph_caches = HashMap::new();
@@ -467,10 +471,15 @@ impl LayoutBuffer {
             Rc::new(Box::new(GlyphCache::new_ttf(&QUANTICO_TTF_DATA, gpu)?)),
         );
 
-        Ok(Self {
+        Ok(Arc::new(RefCell::new(Self {
             glyph_caches,
             layouts: HashMap::new(),
-        })
+            bind_group_layout: GlyphCache::bind_group_layout(gpu.device()),
+        })))
+    }
+
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
     }
 
     pub fn add_screen_text(
@@ -488,18 +497,22 @@ impl LayoutBuffer {
         Ok(layout)
     }
 
-    pub fn set_projection(&mut self, gpu: &GPU) -> Fallible<()> {
-        for layouts in self.layouts.values_mut() {
-            for layout in layouts.iter_mut() {
-                let dim = gpu.physical_size();
-                let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
+    pub fn make_upload_buffer(
+        &self,
+        gpu: &GPU,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
+        let dim = gpu.physical_size();
+        let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
+        let (w, h) = if dim.width > dim.height {
+            (aspect, 1f32)
+        } else {
+            (1f32, 1f32 / aspect)
+        };
 
-                let (w, h) = if dim.width > dim.height {
-                    (aspect, 1f32)
-                } else {
-                    (1f32, 1f32 / aspect)
-                };
-                layout.set_projection(w, h);
+        for layouts in self.layouts.values() {
+            for layout in layouts.iter() {
+                layout.make_upload_buffer(w, h, gpu.device(), upload_buffers);
             }
         }
         Ok(())
@@ -507,7 +520,7 @@ impl LayoutBuffer {
 
     /*
     pub fn before_frame(&mut self, window: &GraphicsWindow) -> Fallible<()> {
-        self.set_projection(&window)
+        self.set_projection(gpu.device())
     }
 
     pub fn render(
@@ -535,13 +548,13 @@ impl LayoutBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use input::InputSystem;
     use omnilib::OmniLib;
 
     #[test]
     fn it_can_render_text() -> Fallible<()> {
-        let mut input = InputSystem::new(vec![]);
+        let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        gpu.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
 
         let omni = OmniLib::new_for_test_in_games(&[
             "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
@@ -549,51 +562,59 @@ mod test {
         for (game, lib) in omni.libraries() {
             println!("At: {}", game);
 
-            let mut renderer = LayoutBuffer::new(&lib, &window)?;
+            let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
-            renderer
-                .add_screen_text(Font::HUD11, "Top Left (r)", &window)?
+            println!("1");
+            layout_buffer
+                .borrow_mut()
+                .add_screen_text(Font::HUD11, "Top Left (r)", gpu.device())?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
                 .with_vertical_position(TextPositionV::Top)
                 .with_vertical_anchor(TextAnchorV::Top);
+            println!("2");
 
-            renderer
-                .add_screen_text(Font::HUD11, "Top Right (b)", &window)?
+            layout_buffer
+                .borrow_mut()
+                .add_screen_text(Font::HUD11, "Top Right (b)", gpu.device())?
                 .with_color(&[0f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
                 .with_vertical_position(TextPositionV::Top)
                 .with_vertical_anchor(TextAnchorV::Top);
 
-            renderer
-                .add_screen_text(Font::HUD11, "Bottom Left (w)", &window)?
+            layout_buffer
+                .borrow_mut()
+                .add_screen_text(Font::HUD11, "Bottom Left (w)", gpu.device())?
                 .with_color(&[1f32, 1f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
                 .with_vertical_position(TextPositionV::Bottom)
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
-            renderer
-                .add_screen_text(Font::HUD11, "Bottom Right (m)", &window)?
+            layout_buffer
+                .borrow_mut()
+                .add_screen_text(Font::HUD11, "Bottom Right (m)", gpu.device())?
                 .with_color(&[1f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
                 .with_vertical_position(TextPositionV::Bottom)
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
-            let handle_clr = renderer
-                .add_screen_text(Font::HUD11, "", &window)?
-                .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &window)?
+            let handle_clr = layout_buffer
+                .borrow_mut()
+                .add_screen_text(Font::HUD11, "", gpu.device())?
+                .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", gpu.device())?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
                 .with_vertical_position(TextPositionV::Bottom)
                 .with_vertical_anchor(TextAnchorV::Bottom);
 
-            let handle_fin = renderer
-                .add_screen_text(Font::HUD11, "DONE: 0%", &window)?
+            let handle_fin = layout_buffer
+                .borrow_mut()
+                .add_screen_text(Font::HUD11, "DONE: 0%", gpu.device())?
                 .with_color(&[0f32, 1f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
@@ -612,93 +633,69 @@ mod test {
                     ])
                 };
                 let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-                handle_fin.set_span(&msg, &window)?;
-
-                {
-                    let frame = window.begin_frame()?;
-                    if !frame.is_valid() {
-                        continue;
-                    }
-
-                    renderer.before_frame(&window)?;
-
-                    let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-                        window.device(),
-                        window.queue().family(),
-                    )?;
-
-                    cbb = cbb.begin_render_pass(
-                        frame.framebuffer(&window),
-                        false,
-                        vec![[0f32, 0f32, 0f32, 1f32].into(), 0f32.into()],
-                    )?;
-
-                    cbb = renderer.render(cbb, &window.dynamic_state)?;
-
-                    cbb = cbb.end_render_pass()?;
-
-                    let cb = cbb.build()?;
-
-                    frame.submit(cb, &mut window)?;
-                }
+                handle_fin.set_span(&msg, gpu.device())?;
             }
         }
-        std::mem::drop(window);
         Ok(())
     }
 
     #[test]
     fn it_can_render_without_a_library() -> Fallible<()> {
-        let mut input = InputSystem::new(vec![]);
+        let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        gpu.set_clear_color(&[0f32, 0f32, 0f32, 1f32]);
 
         let lib = Arc::new(Box::new(Library::empty()?));
-        let mut renderer = LayoutBuffer::new(&lib, &window)?;
+        let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
-        renderer
-            .add_screen_text(Font::QUANTICO, "Top Left (r)", &window)?
+        layout_buffer
+            .borrow_mut()
+            .add_screen_text(Font::QUANTICO, "Top Left (r)", gpu.device())?
             .with_color(&[1f32, 0f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Left)
             .with_horizontal_anchor(TextAnchorH::Left)
             .with_vertical_position(TextPositionV::Top)
             .with_vertical_anchor(TextAnchorV::Top);
 
-        renderer
-            .add_screen_text(Font::QUANTICO, "Top Right (b)", &window)?
+        layout_buffer
+            .borrow_mut()
+            .add_screen_text(Font::QUANTICO, "Top Right (b)", gpu.device())?
             .with_color(&[0f32, 0f32, 1f32, 1f32])
             .with_horizontal_position(TextPositionH::Right)
             .with_horizontal_anchor(TextAnchorH::Right)
             .with_vertical_position(TextPositionV::Top)
             .with_vertical_anchor(TextAnchorV::Top);
 
-        renderer
-            .add_screen_text(Font::QUANTICO, "Bottom Left (w)", &window)?
+        layout_buffer
+            .borrow_mut()
+            .add_screen_text(Font::QUANTICO, "Bottom Left (w)", gpu.device())?
             .with_color(&[1f32, 1f32, 1f32, 1f32])
             .with_horizontal_position(TextPositionH::Left)
             .with_horizontal_anchor(TextAnchorH::Left)
             .with_vertical_position(TextPositionV::Bottom)
             .with_vertical_anchor(TextAnchorV::Bottom);
 
-        renderer
-            .add_screen_text(Font::QUANTICO, "Bottom Right (m)", &window)?
+        layout_buffer
+            .borrow_mut()
+            .add_screen_text(Font::QUANTICO, "Bottom Right (m)", gpu.device())?
             .with_color(&[1f32, 0f32, 1f32, 1f32])
             .with_horizontal_position(TextPositionH::Right)
             .with_horizontal_anchor(TextAnchorH::Right)
             .with_vertical_position(TextPositionV::Bottom)
             .with_vertical_anchor(TextAnchorV::Bottom);
 
-        let handle_clr = renderer
-            .add_screen_text(Font::QUANTICO, "", &window)?
-            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &window)?
+        let handle_clr = layout_buffer
+            .borrow_mut()
+            .add_screen_text(Font::QUANTICO, "", gpu.device())?
+            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", gpu.device())?
             .with_color(&[1f32, 0f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Center)
             .with_horizontal_anchor(TextAnchorH::Center)
             .with_vertical_position(TextPositionV::Bottom)
             .with_vertical_anchor(TextAnchorV::Bottom);
 
-        let handle_fin = renderer
-            .add_screen_text(Font::QUANTICO, "DONE: 0%", &window)?
+        let handle_fin = layout_buffer
+            .borrow_mut()
+            .add_screen_text(Font::QUANTICO, "DONE: 0%", gpu.device())?
             .with_color(&[0f32, 1f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Center)
             .with_horizontal_anchor(TextAnchorH::Center)
@@ -717,37 +714,8 @@ mod test {
                 ])
             };
             let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-            handle_fin.set_span(&msg, &window)?;
-
-            {
-                let frame = window.begin_frame()?;
-                if !frame.is_valid() {
-                    continue;
-                }
-
-                renderer.before_frame(&window)?;
-
-                let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-                    window.device(),
-                    window.queue().family(),
-                )?;
-
-                cbb = cbb.begin_render_pass(
-                    frame.framebuffer(&window),
-                    false,
-                    vec![[0f32, 0f32, 0f32, 1f32].into(), 0f32.into()],
-                )?;
-
-                cbb = renderer.render(cbb, &window.dynamic_state)?;
-
-                cbb = cbb.end_render_pass()?;
-
-                let cb = cbb.build()?;
-
-                frame.submit(cb, &mut window)?;
-            }
+            handle_fin.set_span(&msg, gpu.device())?;
         }
-        std::mem::drop(window);
         Ok(())
     }
 }

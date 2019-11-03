@@ -14,6 +14,10 @@ wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-h
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 fnt = { path = "../../../fnt" }
 lib = { path = "../../../lib" }
+frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 glyph_cache = { package = "glyph_cache-wgpu", path = "../../../render-wgpu/buffer/glyph_cache" }
 
+[dev-dependencies]
+omnilib = { path = "../../../omnilib" }
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
