@@ -96,7 +96,7 @@ impl T2Buffer {
     ) -> Fallible<Arc<RefCell<Self>>> {
         trace!("T2Renderer::new");
 
-        let terrain = assets.load_t2(&mm.t2_name)?;
+        let terrain = assets.load_t2(&mm.t2_name())?;
         let palette = Self::load_palette(&mm, system_palette, assets)?;
         let (atlas, bind_group_layout, bind_group) = Self::create_atlas(&mm, &palette, &lib, gpu)?;
         let (vertex_buffer, index_buffer, index_count) =
@@ -136,9 +136,9 @@ impl T2Buffer {
         system_palette: &Palette,
         assets: &AssetManager,
     ) -> Fallible<Palette> {
-        let layer = assets.load_lay(&mm.layer_name)?;
+        let layer = assets.load_lay(&mm.layer_name())?;
 
-        let layer_data = layer.for_index(mm.layer_index + 2)?;
+        let layer_data = layer.for_index(mm.layer_index() + 2)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
@@ -182,7 +182,7 @@ impl T2Buffer {
         {
             let mut loaded = HashSet::new();
             let texture_base_name = mm.get_base_texture_name()?;
-            for tmap in mm.tmaps.values() {
+            for tmap in mm.texture_maps() {
                 if loaded.contains(&tmap.loc) {
                     continue;
                 }
@@ -368,8 +368,7 @@ impl T2Buffer {
 
                 // Upload one patch of vertices, possibly with a texture.
                 let frame_info = mm
-                    .tmaps
-                    .get(&(xi_base, zi_base))
+                    .texture_map(xi_base, zi_base)
                     .map(|tmap| (&atlas.frames[&tmap.loc], &tmap.orientation));
                 for z_off in 0..=4 {
                     for x_off in 0..=4 {
