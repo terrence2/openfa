@@ -81,15 +81,16 @@ pub struct TDic {
 
 #[allow(dead_code)]
 pub struct MissionMap {
-    pub map_name: String,
-    pub t2_name: String,
-    pub layer_name: String,
-    pub layer_index: usize,
-    pub tmaps: HashMap<(u32, u32), TMap>,
-    pub tdics: Vec<TDic>,
-    pub wind: (i16, i16),
-    pub view: (u32, u32, u32),
-    pub time: (u8, u8),
+    map_name: String,
+    t2_name: String,
+    layer_name: String,
+    layer_index: usize,
+    tmaps: HashMap<(u32, u32), TMap>,
+    tdics: Vec<TDic>,
+    wind: (i16, i16),
+    view: (u32, u32, u32),
+    time: (u8, u8),
+    objects: Vec<ObjectInfo>,
 }
 
 impl MissionMap {
@@ -310,9 +311,9 @@ impl MissionMap {
                     let alias = wfor[1].parse::<i32>()?;
                     let mut found = false;
                     for obj in objects.iter_mut() {
-                        if obj.alias == alias {
+                        if obj.alias() == alias {
                             found = true;
-                            obj.waypoints = Some(waypoints);
+                            obj.set_waypoints(waypoints);
                             break;
                         }
                     }
@@ -352,7 +353,28 @@ impl MissionMap {
             time: time.ok_or_else(|| err_msg("mm must have a 'time' key"))?,
             tmaps,
             tdics,
+            objects,
         })
+    }
+
+    pub fn t2_name(&self) -> &str {
+        &self.t2_name
+    }
+
+    pub fn layer_name(&self) -> &str {
+        &self.layer_name
+    }
+
+    pub fn layer_index(&self) -> usize {
+        self.layer_index
+    }
+
+    pub fn texture_maps(&self) -> std::collections::hash_map::Values<'_, (u32, u32), TMap> {
+        self.tmaps.values()
+    }
+
+    pub fn texture_map(&self, xi: u32, zi: u32) -> Option<&TMap> {
+        self.tmaps.get(&(xi, zi))
     }
 
     // These are all of the terrains and map references in the base games.
