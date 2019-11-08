@@ -17,7 +17,7 @@ use lib::Library;
 use packed_struct::packed_struct;
 use pal::Palette;
 use peff::PE;
-use std::{fs, mem, str, sync::Arc};
+use std::{fs, mem, str};
 
 packed_struct!(LayerHeader {
      _0 => unk_ptr_00x100: u32, // Ramp
@@ -233,7 +233,7 @@ mod tests {
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let _lay = Layer::from_bytes(&data, lib.clone())?;
+            let _lay = Layer::from_bytes(&data, &lib)?;
         }
 
         Ok(())

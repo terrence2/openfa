@@ -136,9 +136,9 @@ impl T2Buffer {
         system_palette: &Palette,
         assets: &AssetManager,
     ) -> Fallible<Palette> {
-        let layer = assets.load_lay(&mm.layer_name)?;
-        let layer_index = if mm.layer_index != 0 {
-            mm.layer_index
+        let layer = assets.load_lay(&mm.layer_name())?;
+        let layer_index = if mm.layer_index() != 0 {
+            mm.layer_index()
         } else {
             2
         };
