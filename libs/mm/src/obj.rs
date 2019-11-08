@@ -111,13 +111,13 @@ pub struct ObjectInfo {
     nationality: Nationality,
     flags: u16,
     speed: f32,
-    pub alias: i32,
+    alias: i32,
     // NT only.
     skill: Option<u8>,
     react: Option<(u16, u16, u16)>,
     search_dist: Option<u32>,
     // PT only.
-    pub waypoints: Option<Vec<Waypoint>>,
+    waypoints: Option<Vec<Waypoint>>,
 }
 
 impl ObjectInfo {
@@ -217,5 +217,13 @@ impl ObjectInfo {
             search_dist,
             waypoints: None,
         })
+    }
+
+    pub fn set_waypoints(&mut self, waypoints: Vec<Waypoint>) {
+        self.waypoints = Some(waypoints);
+    }
+
+    pub fn alias(&self) -> i32 {
+        self.alias
     }
 }
