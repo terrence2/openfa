@@ -11,6 +11,7 @@ members = [
         "apps/dump-pic",
         "apps/dump-sh",
         "apps/dump-asm",
+        "apps/dump-lay",
         "apps/dump-lib",
         "apps/dump-vulkan",
         "apps/pack-pic",

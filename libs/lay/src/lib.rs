@@ -17,7 +17,7 @@ use lib::Library;
 use packed_struct::packed_struct;
 use pal::Palette;
 use peff::PE;
-use std::{fs, mem, str, sync::Arc};
+use std::{fs, mem, str};
 
 packed_struct!(LayerHeader {
      _0 => unk_ptr_00x100: u32, // Ramp
@@ -86,13 +86,17 @@ impl Layer {
         Palette::from_bytes(slice)
     }
 
-    pub fn from_bytes(data: &[u8], lib: Arc<Box<Library>>) -> Fallible<Layer> {
+    pub fn num_indices(&self) -> usize {
+        self.frag_offsets.len()
+    }
+
+    pub fn from_bytes(data: &[u8], lib: &Library) -> Fallible<Layer> {
         let mut pe = PE::from_bytes(data)?;
         pe.relocate(0x0000_0000)?;
         Layer::from_pe("inval", &pe, lib)
     }
 
-    fn from_pe(prefix: &str, pe: &peff::PE, lib: Arc<Box<Library>>) -> Fallible<Layer> {
+    fn from_pe(prefix: &str, pe: &peff::PE, lib: &Library) -> Fallible<Layer> {
         assert!(!prefix.is_empty());
 
         let mut frag_offsets = Vec::new();
@@ -229,7 +233,7 @@ mod tests {
             println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
             let data = lib.load(name)?;
-            let _lay = Layer::from_bytes(&data, lib.clone())?;
+            let _lay = Layer::from_bytes(&data, &lib)?;
         }
 
         Ok(())

@@ -137,8 +137,13 @@ impl T2Buffer {
         assets: &AssetManager,
     ) -> Fallible<Palette> {
         let layer = assets.load_lay(&mm.layer_name())?;
+        let layer_index = if mm.layer_index() != 0 {
+            mm.layer_index()
+        } else {
+            2
+        };
 
-        let layer_data = layer.for_index(mm.layer_index() + 2)?;
+        let layer_data = layer.for_index(layer_index)?;
         let r0 = layer_data.slice(0x00, 0x10)?;
         let r1 = layer_data.slice(0x10, 0x20)?;
         let r2 = layer_data.slice(0x20, 0x30)?;
@@ -146,10 +151,12 @@ impl T2Buffer {
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
         let mut palette = system_palette.clone();
-        palette.overlay_at(&r0, 0xE0 - 1)?;
         palette.overlay_at(&r1, 0xF0 - 1)?;
-        palette.overlay_at(&r2, 0xC0)?;
+        palette.overlay_at(&r0, 0xE0 - 1)?;
         palette.overlay_at(&r3, 0xD0)?;
+        palette.overlay_at(&r2, 0xC0)?;
+
+        //palette.override_one(0xFE, [0, 0, 0]);
 
         Ok(palette)
     }
