@@ -86,13 +86,17 @@ impl Layer {
         Palette::from_bytes(slice)
     }
 
-    pub fn from_bytes(data: &[u8], lib: Arc<Box<Library>>) -> Fallible<Layer> {
+    pub fn num_indices(&self) -> usize {
+        self.frag_offsets.len()
+    }
+
+    pub fn from_bytes(data: &[u8], lib: &Library) -> Fallible<Layer> {
         let mut pe = PE::from_bytes(data)?;
         pe.relocate(0x0000_0000)?;
         Layer::from_pe("inval", &pe, lib)
     }
 
-    fn from_pe(prefix: &str, pe: &peff::PE, lib: Arc<Box<Library>>) -> Fallible<Layer> {
+    fn from_pe(prefix: &str, pe: &peff::PE, lib: &Library) -> Fallible<Layer> {
         assert!(!prefix.is_empty());
 
         let mut frag_offsets = Vec::new();
