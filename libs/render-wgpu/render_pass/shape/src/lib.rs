@@ -37,11 +37,9 @@ impl ShapeRenderPass {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
-                        &gpu.empty_layout(),
-                        &gpu.empty_layout(),
-                        inst_man.bind_group_layout(),
-                        &gpu.empty_layout(),
+                        // atmosphere
                         inst_man.chunk_man.bind_group_layout(),
+                        inst_man.bind_group_layout(),
                     ],
                 });
 
@@ -98,18 +96,14 @@ impl ShapeRenderPass {
     ) {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
-        //        rpass.set_bind_group(1, &empty_bind_group, &[]);
-        //        rpass.set_bind_group(2, &empty_bind_group, &[]);
-        //        rpass.set_bind_group(4, &empty_bind_group, &[]);
+        //rpass.set_bind_group(1, atmosphere_buffer.bind_group(), &[]);
 
         for block in shape_instance_buffer.blocks.values() {
             let chunk = shape_instance_buffer.chunk_man.chunk(block.chunk_id());
 
-            //let f18_part = shape_instance_buffer.chunk_man.part_for("F18.SH")?;
-            //let cmd = f18_part.draw_command(0, 1);
-
-            rpass.set_bind_group(3, block.bind_group(), &[]);
-            rpass.set_bind_group(5, chunk.bind_group(), &[]);
+            // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
+            rpass.set_bind_group(1, chunk.bind_group(), &[]);
+            rpass.set_bind_group(2, block.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
             /*
             rpass.draw(
@@ -117,6 +111,7 @@ impl ShapeRenderPass {
                 0..block.len() as u32,
             );
             */
+            rpass.draw_indirect(block.command_buffer(), 0);
         }
     }
 }

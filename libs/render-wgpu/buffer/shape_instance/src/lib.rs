@@ -89,6 +89,7 @@ pub struct InstanceBlock {
     transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
 
+    command_buffer: Arc<Box<wgpu::Buffer>>,
     transform_buffer: Arc<Box<wgpu::Buffer>>,
     flag_buffer: Arc<Box<wgpu::Buffer>>,
 
@@ -132,6 +133,13 @@ impl InstanceBlock {
     ) -> Fallible<Self> {
         // This class contains the fixed-size device local blocks that we will render from.
         println!("InstanceBlock::new({:?})", block_id);
+
+        let command_buffer_size =
+            (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
+        let command_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            size: command_buffer_size,
+            usage: wgpu::BufferUsage::all(),
+        })));
 
         let transform_buffer_size =
             (mem::size_of::<[f32; 6]>() * BLOCK_SIZE) as wgpu::BufferAddress;
@@ -228,6 +236,7 @@ impl InstanceBlock {
             }; BLOCK_SIZE],
             transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
             flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
+            command_buffer,
             transform_buffer,
             flag_buffer,
             bind_group,
@@ -240,6 +249,10 @@ impl InstanceBlock {
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
+    }
+
+    pub fn command_buffer(&self) -> &wgpu::Buffer {
+        &self.command_buffer
     }
 
     fn has_open_slot(&self) -> bool {
@@ -554,7 +567,11 @@ impl ShapeInstanceBuffer {
             block_id
         };
 
-        let draw_cmd = self.chunk_man.part(shape_id).draw_command(0, 1);
+        let draw_cmd = self
+            .chunk_man
+            .part(shape_id)
+            .draw_command(self.blocks[&block_id].len() as u32, 1);
+        println!("Drawing {} with {:?}", name, draw_cmd);
         let slot_id = self
             .blocks
             .get_mut(&block_id)
@@ -586,6 +603,15 @@ impl ShapeInstanceBuffer {
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         for block in self.blocks.values() {
+            let source = device
+                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
+                .fill_from_slice(&block.command_buffer_scratch[..block.len()]);
+            upload_buffers.push(CopyBufferDescriptor::new(
+                source,
+                block.command_buffer.clone(),
+                (mem::size_of::<DrawIndirectCommand>() * block.len()) as wgpu::BufferAddress,
+            ));
+
             let source = device
                 .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
                 .fill_from_slice(&block.transform_buffer_scratch[..block.len()]);

@@ -26,6 +26,7 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
+use shape_instance::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
@@ -92,8 +93,8 @@ pub fn main() -> Fallible<()> {
 
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
+        let mut i = 0f32;
         for info in mm.objects() {
-            println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.xt());
             let (shape_id, slot_id) = shape_instance_buffer
                 .borrow_mut()
                 .upload_and_allocate_slot(
@@ -113,11 +114,14 @@ pub fn main() -> Fallible<()> {
             } else if let Ok(jt) = info.xt().jt() {
                 bail!("did not expect a projectile in MM objects")
             } else {
+                //println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
+                i += 10f32;
                 universe.create_building(
                     slot_id,
                     shape_id,
                     shape_instance_buffer.borrow().part(shape_id),
-                    info.position(),
+                    //info.position(),
+                    nalgebra::Point3::new(i, 0f32, i),
                 )?;
             };
         }
@@ -182,20 +186,41 @@ pub fn main() -> Fallible<()> {
             }
         }
 
+        // 51°30′26″N 0°7′39″W
+        // let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
+        // let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
+
+        let start = Instant::now();
+        let mut shape_buffer_update_dispatcher = DispatcherBuilder::new()
+            .with(TransformUpdateSystem, "transform-update", &[])
+            .with(FlagUpdateSystem::new(&start), "flag-update", &[])
+            .with(XformUpdateSystem::new(&start), "xform-update", &[])
+            .build();
+
+        shape_buffer_update_dispatcher.dispatch(&universe.ecs);
+        {
+            DispatcherBuilder::new()
+                .with(
+                    CoalesceSystem::new(&mut shape_instance_buffer.borrow_mut()),
+                    "coalesce",
+                    &[],
+                )
+                .build()
+                .dispatch(&universe.ecs);
+        }
+
         let sun_direction = Vector3::new(0f32, 1f32, 0f32);
 
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
             .make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
-
-        // 51°30′26″N 0°7′39″W
-        // let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
-        // let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
-
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        shape_instance_buffer
+            .borrow()
+            .make_upload_buffer(gpu.device(), &mut buffers)?;
         text_layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;

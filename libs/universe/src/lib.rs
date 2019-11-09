@@ -32,7 +32,7 @@ use universe_base::component::Transform;
 pub use specs::Entity;
 
 pub struct Universe {
-    ecs: World,
+    pub ecs: World,
 
     // Resources
     lib: Arc<Box<Library>>,
