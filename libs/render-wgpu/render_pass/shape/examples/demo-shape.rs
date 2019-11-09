@@ -22,7 +22,7 @@ use omnilib::OmniLib;
 use pal::Palette;
 use shape_chunk::{DrawSelection, DrawState};
 use shape_instance::{
-    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceManager,
+    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer,
     ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
 };
 use shape_wgpu::ShapeRenderPass;
@@ -50,7 +50,7 @@ fn main() -> Fallible<()> {
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
 
-    let inst_buffer = ShapeInstanceManager::new(&gpu.device())?;
+    let inst_buffer = ShapeInstanceBuffer::new(&gpu.device())?;
     const CNT: i32 = 50;
     for x in -CNT / 2..CNT / 2 {
         for y in -CNT / 2..CNT / 2 {

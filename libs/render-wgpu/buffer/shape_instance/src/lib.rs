@@ -23,7 +23,7 @@ use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
+use shape_chunk::{ChunkId, DrawSelection, ShapeChunkBuffer, ShapeErrata, ShapeId};
 use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
 use wgpu;
 
@@ -425,8 +425,8 @@ impl InstanceBlock {
     */
 }
 
-pub struct ShapeInstanceManager {
-    pub chunk_man: ShapeChunkManager,
+pub struct ShapeInstanceBuffer {
+    pub chunk_man: ShapeChunkBuffer,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
     pub blocks: HashMap<BlockId, InstanceBlock>,
@@ -447,7 +447,7 @@ pub struct ShapeInstanceManager {
     //    xform_buffer_pool: CpuBufferPool<[f32; 6]>, // FIXME: hunt down this max somewhere
 }
 
-impl ShapeInstanceManager {
+impl ShapeInstanceBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[
@@ -471,7 +471,7 @@ impl ShapeInstanceManager {
         });
 
         Ok(Arc::new(RefCell::new(Self {
-            chunk_man: ShapeChunkManager::new(device)?,
+            chunk_man: ShapeChunkBuffer::new(device)?,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
@@ -685,7 +685,7 @@ mod test {
 
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let inst_man = ShapeInstanceManager::new(gpu.device())?;
+        let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
 
         for _ in 0..100 {
             let (_chunk_id, _slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(

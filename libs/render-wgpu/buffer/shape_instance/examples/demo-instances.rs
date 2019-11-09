@@ -22,7 +22,7 @@ use omnilib::OmniLib;
 use pal::Palette;
 use shape_chunk::{DrawSelection, DrawState, Vertex};
 use shape_instance_wgpu::{
-    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceManager,
+    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer,
     ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
 };
 use specs::prelude::*;
@@ -33,7 +33,7 @@ fn build_pipeline(
     gpu: &mut gpu::GPU,
     empty_layout: &wgpu::BindGroupLayout,
     globals_buffer: &GlobalParametersBuffer,
-    inst_man: &ShapeInstanceManager,
+    inst_man: &ShapeInstanceBuffer,
 ) -> Fallible<wgpu::RenderPipeline> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
@@ -106,7 +106,7 @@ fn main() -> Fallible<()> {
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let inst_man = ShapeInstanceManager::new(&gpu.device())?;
+    let inst_man = ShapeInstanceBuffer::new(&gpu.device())?;
 
     let mut world = World::new();
     world.register::<ShapeComponent>();

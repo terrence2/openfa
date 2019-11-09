@@ -16,7 +16,7 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::{Frame, GPU};
 use shape_chunk::Vertex;
-use shape_instance::ShapeInstanceManager;
+use shape_instance::ShapeInstanceBuffer;
 use wgpu;
 
 pub struct ShapeRenderPass {
@@ -27,7 +27,7 @@ impl ShapeRenderPass {
     pub fn new(
         gpu: &GPU,
         globals_buffer: &GlobalParametersBuffer,
-        inst_man: &ShapeInstanceManager,
+        inst_man: &ShapeInstanceBuffer,
     ) -> Fallible<Self> {
         let vert_shader = gpu.create_shader_module(include_bytes!("../target/shape.vert.spirv"))?;
         let frag_shader = gpu.create_shader_module(include_bytes!("../target/shape.frag.spirv"))?;
@@ -94,7 +94,7 @@ impl ShapeRenderPass {
         &self,
         empty_bind_group: &wgpu::BindGroup,
         globals_buffer: &GlobalParametersBuffer,
-        inst_man: &ShapeInstanceManager,
+        inst_man: &ShapeInstanceBuffer,
         frame: &mut Frame,
     ) -> Fallible<()> {
         let mut rpass = frame.begin_render_pass();
@@ -132,7 +132,7 @@ mod tests {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-        let inst_man = ShapeInstanceManager::new(&gpu.device())?;
+        let inst_man = ShapeInstanceBuffer::new(&gpu.device())?;
 
         let _ = ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_man.borrow())?;
 

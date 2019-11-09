@@ -27,7 +27,7 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use screen_text::ScreenTextRenderPass;
-use shape_instance::ShapeInstanceManager;
+use shape_instance::ShapeInstanceBuffer;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -52,7 +52,7 @@ make_frame_graph!(
             atmosphere: AtmosphereBuffer,
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
-            shape_instance_buffer: ShapeInstanceManager,
+            shape_instance_buffer: ShapeInstanceBuffer,
             stars: StarsBuffer,
             t2: T2Buffer,
             text_layout: LayoutBuffer
@@ -94,7 +94,7 @@ pub fn main() -> Fallible<()> {
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
     let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
-    let shape_instance_buffer = ShapeInstanceManager::new(gpu.device())?;
+    let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
