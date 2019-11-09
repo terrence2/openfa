@@ -26,6 +26,7 @@ use nalgebra::Vector3;
 // w_searchDist 0
 // w_preferredTargetId 0
 // w_name ^A^A
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct Waypoint {
     pub index: u8,

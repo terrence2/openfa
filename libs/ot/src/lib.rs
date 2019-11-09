@@ -49,7 +49,7 @@ impl FromRow for TypeTag {
 }
 
 #[derive(Debug)]
-enum ObjectKind {
+pub enum ObjectKind {
     Fighter = 0b1000_0000_0000_0000,
     Bomber = 0b0100_0000_0000_0000,
     Ship = 0b0010_0000_0000_0000,
@@ -92,6 +92,7 @@ impl FromRow for ObjectKind {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ProcKind {
     OBJ,
     PLANE,
@@ -149,10 +150,11 @@ bitflags! {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ObjectNames {
-    short_name: String,
-    long_name: String,
-    file_name: String,
+    pub short_name: String,
+    pub long_name: String,
+    pub file_name: String,
 }
 
 impl FromRow for ObjectNames {

@@ -27,9 +27,10 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use screen_text::ScreenTextRenderPass;
-use shape_instance::ShapeInstanceBuffer;
+use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
+use specs::prelude::*;
 use stars::StarsBuffer;
 use std::{rc::Rc, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -87,14 +88,49 @@ pub fn main() -> Fallible<()> {
     let contents = lib.load_text(&name)?;
     let mm = MissionMap::from_str(&contents, &types, &lib)?;
 
+    let mut world = World::new();
+
+    ShapeInstanceBuffer::register_components(&mut world);
+    let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
+    {
+        for info in mm.objects() {
+            println!("Obj Inst {:?}: {:?}", info.name(), info.xt().ot().shape);
+            let (_shape_id, _slot_id) = shape_instance_buffer
+                .borrow_mut()
+                .upload_and_allocate_slot(
+                    info.xt().ot().shape.as_ref().expect("a shape file"),
+                    DrawSelection::NormalModel,
+                    &system_palette,
+                    &lib,
+                    &mut gpu,
+                )?;
+            /*
+            let _ent = world
+                .create_entity()
+                .with(Transform::new(Point3::new(
+                    f64::from(x) * 100f64,
+                    0f64,
+                    f64::from(y) * 100f64,
+                )))
+                .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
+                .with(ShapeTransformBuffer::new())
+                .with(ShapeFlagBuffer::new(inst_buffer.borrow().errata(shape_id)))
+                //.with(ShapeXformBuffer::new())
+                .build();
+            */
+        }
+    }
+    shape_instance_buffer
+        .borrow_mut()
+        .ensure_uploaded(&mut gpu)?;
+
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
-    let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
-    let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
+    let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
@@ -104,11 +140,11 @@ pub fn main() -> Fallible<()> {
         &shape_instance_buffer,
         &stars_buffer,
         &t2_buffer,
-        &layout_buffer,
+        &text_layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
 
-    let fps_handle = layout_buffer
+    let fps_handle = text_layout_buffer
         .borrow_mut()
         .add_screen_text(Font::HUD11, "", gpu.device())?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
@@ -152,13 +188,13 @@ pub fn main() -> Fallible<()> {
             .make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
 
         // 51°30′26″N 0°7′39″W
-        let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
-        let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
+        // let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
+        // let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
 
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
-        layout_buffer
+        text_layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers);

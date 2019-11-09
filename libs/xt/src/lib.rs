@@ -23,6 +23,7 @@ use pt::PlaneType;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 // A generic type.
+#[derive(Debug)]
 pub enum Type {
     JT(Box<ProjectileType>),
     NT(Box<NpcType>),
@@ -66,7 +67,7 @@ impl Type {
 // Any single type is likely used by multiple game objects at once so we cache
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TypeRef(Rc<Type>);
 
 impl TypeRef {

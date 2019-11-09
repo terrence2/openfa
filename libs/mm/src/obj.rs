@@ -17,6 +17,7 @@ use failure::{bail, err_msg, Fallible};
 use nalgebra::{Point3, Vector3};
 use xt::{TypeManager, TypeRef};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Nationality {
     Unk0 = 0,
     Unk1 = 1,
@@ -102,6 +103,7 @@ impl Nationality {
     }
 }
 
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct ObjectInfo {
     xt: TypeRef,
@@ -225,5 +227,13 @@ impl ObjectInfo {
 
     pub fn alias(&self) -> i32 {
         self.alias
+    }
+
+    pub fn name(&self) -> Option<String> {
+        self.name.clone()
+    }
+
+    pub fn xt(&self) -> TypeRef {
+        self.xt.clone()
     }
 }

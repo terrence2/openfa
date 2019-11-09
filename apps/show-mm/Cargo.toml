@@ -10,6 +10,7 @@ image = "^ 0.21"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
 simplelog = "^ 0.5"
+specs = "^ 0.15"
 structopt = "^ 0.2"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
@@ -22,19 +23,19 @@ fullscreen = { package = "fullscreen-wgpu", path = "../../libs/render-wgpu/buffe
 global_data = { package = "global_data-wgpu", path = "../../libs/render-wgpu/buffer/global_data" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
-shape = { package = "shape-wgpu", path = "../../libs/render-wgpu/render_pass/shape" }
-shape_instance = { package = "shape_instance-wgpu", path = "../../libs/render-wgpu/buffer/shape_instance" }
-skybox = { package = "skybox-wgpu", path = "../../libs/render-wgpu/render_pass/skybox" }
-stars = { package = "stars-wgpu", path = "../../libs/render-wgpu/buffer/stars" }
-t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }
-t2_terrain = { package = "t2_terrain-wgpu", path = "../../libs/render-wgpu/render_pass/t2_terrain" }
 lay = { path = "../../libs/lay" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
-pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-t2 = { path = "../../libs/t2" }
-text_layout = { package = "text_layout-wgpu", path = "../../libs/render-wgpu/buffer/text_layout" }
+pic = { path = "../../libs/pic" }
 screen_text = { package = "screen_text-wgpu", path = "../../libs/render-wgpu/render_pass/screen_text" }
+shape = { package = "shape-wgpu", path = "../../libs/render-wgpu/render_pass/shape" }
+shape_instance = { package = "shape_instance-wgpu", path = "../../libs/render-wgpu/buffer/shape_instance" }
+skybox = { package = "skybox-wgpu", path = "../../libs/render-wgpu/render_pass/skybox" }
+stars = { package = "stars-wgpu", path = "../../libs/render-wgpu/buffer/stars" }
+t2 = { path = "../../libs/t2" }
+t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }
+t2_terrain = { package = "t2_terrain-wgpu", path = "../../libs/render-wgpu/render_pass/t2_terrain" }
+text_layout = { package = "text_layout-wgpu", path = "../../libs/render-wgpu/buffer/text_layout" }
 xt = { path = "../../libs/xt" }
