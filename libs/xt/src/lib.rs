@@ -90,6 +90,18 @@ impl TypeRef {
     pub fn pt(&self) -> Fallible<&PlaneType> {
         self.0.pt()
     }
+
+    pub fn is_pt(&self) -> bool {
+        self.pt().is_ok()
+    }
+
+    pub fn is_nt(&self) -> bool {
+        self.nt().is_ok()
+    }
+
+    pub fn is_jt(&self) -> bool {
+        self.jt().is_ok()
+    }
 }
 
 // Knows how to load a type from a game library. Keeps a cached copy and hands

@@ -18,11 +18,16 @@ pub mod system;
 pub use crate::component::{flight_dynamics::FlightDynamics, wheeled_dynamics::WheeledDynamics};
 use failure::Fallible;
 use lib::Library;
-use nalgebra::Point3;
+use nalgebra::{convert, Point3};
 use pal::Palette;
-//use shape_chunk::{ChunkPart, ShapeId};
+use shape_chunk::{ChunkPart, ShapeId};
+use shape_instance::{
+    ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer, ShapeTransformBuffer, ShapeXformBuffer,
+    SlotId,
+};
 use specs::{Builder, Dispatcher, World, WorldExt};
 use std::sync::Arc;
+use universe_base::component::Transform;
 
 pub use specs::Entity;
 
@@ -39,11 +44,8 @@ impl Universe {
         let mut ecs = World::new();
         ecs.register::<FlightDynamics>();
         ecs.register::<WheeledDynamics>();
-        //        ecs.register::<ShapeMesh>();
-        //        ecs.register::<ShapeMeshTransformBuffer>();
-        //        ecs.register::<ShapeMeshFlagBuffer>();
-        //        ecs.register::<ShapeMeshXformBuffer>();
-        //        ecs.register::<Transform>();
+        ecs.register::<Transform>();
+        ShapeInstanceBuffer::register_components(&mut ecs);
 
         Ok(Self {
             ecs,
@@ -61,13 +63,37 @@ impl Universe {
         &self.lib
     }
 
-    pub fn system_palette(&self) -> &Palette {
+    pub fn library_owned(&self) -> Arc<Box<Library>> {
+        self.lib.clone()
+    }
+
+    pub fn palette(&self) -> &Palette {
         &self.palette
     }
 
-    /*
+    pub fn create_building(
+        &mut self,
+        slot_id: SlotId,
+        shape_id: ShapeId,
+        part: &ChunkPart,
+        position: Point3<f32>,
+    ) -> Fallible<Entity> {
+        let widget_ref = part.widgets();
+        let widgets = widget_ref.read().unwrap();
+        Ok(self
+            .ecs
+            .create_entity()
+            .with(Transform::new(convert(position)))
+            .with(ShapeComponent::new(slot_id, shape_id))
+            .with(ShapeTransformBuffer::new())
+            .with(ShapeFlagBuffer::new(widgets.errata()))
+            .with(ShapeXformBuffer::new(shape_id, part.widgets()))
+            .build())
+    }
+
     pub fn create_ground_mover(
         &mut self,
+        slot_id: SlotId,
         shape_id: ShapeId,
         position: Point3<f64>,
     ) -> Fallible<Entity> {
@@ -76,10 +102,11 @@ impl Universe {
             .create_entity()
             .with(Transform::new(position))
             .with(WheeledDynamics::new())
-            .with(ShapeMesh::new(shape_id))
+            .with(ShapeComponent::new(slot_id, shape_id))
             .build())
     }
 
+    /*
     pub fn create_flyer(
         &mut self,
         shape_id: ShapeId,

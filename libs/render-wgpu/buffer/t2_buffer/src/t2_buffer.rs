@@ -13,9 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
-use asset::AssetManager;
 use failure::Fallible;
 use gpu::GPU;
+use lay::Layer;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
@@ -90,14 +90,13 @@ impl T2Buffer {
     pub fn new(
         mm: MissionMap,
         system_palette: &Palette,
-        assets: &AssetManager,
         lib: &Library,
         gpu: &mut GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
         trace!("T2Renderer::new");
 
-        let terrain = assets.load_t2(&mm.t2_name())?;
-        let palette = Self::load_palette(&mm, system_palette, assets)?;
+        let terrain = Terrain::from_bytes(&lib.load(&mm.t2_name())?)?;
+        let palette = Self::load_palette(&mm, system_palette, lib)?;
         let (atlas, bind_group_layout, bind_group) = Self::create_atlas(&mm, &palette, &lib, gpu)?;
         let (vertex_buffer, index_buffer, index_count) =
             Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
@@ -131,12 +130,8 @@ impl T2Buffer {
         0..self.index_count
     }
 
-    fn load_palette(
-        mm: &MissionMap,
-        system_palette: &Palette,
-        assets: &AssetManager,
-    ) -> Fallible<Palette> {
-        let layer = assets.load_lay(&mm.layer_name())?;
+    fn load_palette(mm: &MissionMap, system_palette: &Palette, lib: &Library) -> Fallible<Palette> {
+        let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &lib)?;
         let layer_index = if mm.layer_index() != 0 {
             mm.layer_index()
         } else {

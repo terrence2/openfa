@@ -236,4 +236,8 @@ impl ObjectInfo {
     pub fn xt(&self) -> TypeRef {
         self.xt.clone()
     }
+
+    pub fn position(&self) -> Point3<f32> {
+        self.pos
+    }
 }

@@ -12,10 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use asset::AssetManager;
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
-use failure::Fallible;
+use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use global_data::GlobalParametersBuffer;
@@ -25,18 +24,19 @@ use log::trace;
 use mm::MissionMap;
 use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
-use pal::Palette;
 use screen_text::ScreenTextRenderPass;
+use shape::ShapeRenderPass;
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use specs::prelude::*;
 use stars::StarsBuffer;
-use std::{rc::Rc, sync::Arc, time::Instant};
+use std::time::Instant;
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
+use universe::Universe;
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -61,6 +61,7 @@ make_frame_graph!(
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
+            shape: ShapeRenderPass { globals, shape_instance_buffer },
             screen_text: ScreenTextRenderPass { text_layout }
         ];
     }
@@ -72,6 +73,7 @@ pub fn main() -> Fallible<()> {
 
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
+    let mut universe = Universe::new(lib)?;
 
     let shape_bindings = InputBindings::new("map")
         .bind("+pan-view", "mouse1")?
@@ -81,43 +83,43 @@ pub fn main() -> Fallible<()> {
     let mut input = InputSystem::new(vec![shape_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let system_palette = Rc::new(Box::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?));
-    let assets = Arc::new(Box::new(AssetManager::new(lib.clone())?));
-    let types = TypeManager::new(lib.clone());
+    let types = TypeManager::new(universe.library_owned());
+    let mm = MissionMap::from_str(
+        &universe.library().load_text(&name)?,
+        &types,
+        universe.library(),
+    )?;
 
-    let contents = lib.load_text(&name)?;
-    let mm = MissionMap::from_str(&contents, &types, &lib)?;
-
-    let mut world = World::new();
-
-    ShapeInstanceBuffer::register_components(&mut world);
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
         for info in mm.objects() {
-            println!("Obj Inst {:?}: {:?}", info.name(), info.xt().ot().shape);
-            let (_shape_id, _slot_id) = shape_instance_buffer
+            println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.xt());
+            let (shape_id, slot_id) = shape_instance_buffer
                 .borrow_mut()
                 .upload_and_allocate_slot(
                     info.xt().ot().shape.as_ref().expect("a shape file"),
                     DrawSelection::NormalModel,
-                    &system_palette,
-                    &lib,
+                    universe.palette(),
+                    universe.library(),
                     &mut gpu,
                 )?;
-            /*
-            let _ent = universe
-                .create_entity()
-                .with(Transform::new(Point3::new(
-                    f64::from(x) * 100f64,
-                    0f64,
-                    f64::from(y) * 100f64,
-                )))
-                .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
-                .with(ShapeTransformBuffer::new())
-                .with(ShapeFlagBuffer::new(inst_buffer.borrow().errata(shape_id)))
-                //.with(ShapeXformBuffer::new())
-                .build();
-            */
+
+            if let Ok(pt) = info.xt().pt() {
+                //universe.create_flyer(pt, shape_id, slot_id)?
+                //unimplemented!()
+            } else if let Ok(nt) = info.xt().nt() {
+                //universe.create_ground_mover(nt)
+                //unimplemented!()
+            } else if let Ok(jt) = info.xt().jt() {
+                bail!("did not expect a projectile in MM objects")
+            } else {
+                universe.create_building(
+                    slot_id,
+                    shape_id,
+                    shape_instance_buffer.borrow().part(shape_id),
+                    info.position(),
+                )?;
+            };
         }
     }
     shape_instance_buffer
@@ -129,8 +131,8 @@ pub fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
-    let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
+    let t2_buffer = T2Buffer::new(mm, universe.palette(), universe.library(), &mut gpu)?;
+    let text_layout_buffer = LayoutBuffer::new(universe.library(), &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,

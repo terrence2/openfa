@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use global_data::GlobalParametersBuffer;
-use gpu::{Frame, GPU};
+use gpu::GPU;
 use shape_chunk::Vertex;
 use shape_instance::ShapeInstanceBuffer;
 use wgpu;
@@ -90,35 +90,34 @@ impl ShapeRenderPass {
         Ok(Self { pipeline })
     }
 
-    pub fn render(
+    pub fn draw(
         &self,
-        empty_bind_group: &wgpu::BindGroup,
+        rpass: &mut wgpu::RenderPass,
         globals_buffer: &GlobalParametersBuffer,
-        inst_man: &ShapeInstanceBuffer,
-        frame: &mut Frame,
-    ) -> Fallible<()> {
-        let mut rpass = frame.begin_render_pass();
+        shape_instance_buffer: &ShapeInstanceBuffer,
+    ) {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
-        rpass.set_bind_group(1, &empty_bind_group, &[]);
-        rpass.set_bind_group(2, &empty_bind_group, &[]);
-        rpass.set_bind_group(4, &empty_bind_group, &[]);
+        //        rpass.set_bind_group(1, &empty_bind_group, &[]);
+        //        rpass.set_bind_group(2, &empty_bind_group, &[]);
+        //        rpass.set_bind_group(4, &empty_bind_group, &[]);
 
-        for block in inst_man.blocks.values() {
-            let chunk = inst_man.chunk_man.chunk(block.chunk_id());
+        for block in shape_instance_buffer.blocks.values() {
+            let chunk = shape_instance_buffer.chunk_man.chunk(block.chunk_id());
 
-            let f18_part = inst_man.chunk_man.part_for("F18.SH")?;
-            let cmd = f18_part.draw_command(0, 1);
+            //let f18_part = shape_instance_buffer.chunk_man.part_for("F18.SH")?;
+            //let cmd = f18_part.draw_command(0, 1);
+
             rpass.set_bind_group(3, block.bind_group(), &[]);
             rpass.set_bind_group(5, chunk.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
+            /*
             rpass.draw(
                 cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
                 0..block.len() as u32,
             );
+            */
         }
-
-        Ok(())
     }
 }
 

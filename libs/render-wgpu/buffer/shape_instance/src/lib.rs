@@ -24,7 +24,7 @@ use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{ChunkId, ShapeChunkBuffer, ShapeErrata, ShapeId};
+use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId};
 use specs::prelude::{World, WorldExt};
 use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
 use wgpu;
@@ -493,6 +493,10 @@ impl ShapeInstanceBuffer {
             //            xform_index_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             //            xform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
         })))
+    }
+
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        self.chunk_man.part(shape_id)
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
