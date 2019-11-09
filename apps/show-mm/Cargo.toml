@@ -22,6 +22,8 @@ fullscreen = { package = "fullscreen-wgpu", path = "../../libs/render-wgpu/buffe
 global_data = { package = "global_data-wgpu", path = "../../libs/render-wgpu/buffer/global_data" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
+shape = { package = "shape-wgpu", path = "../../libs/render-wgpu/render_pass/shape" }
+shape_instance = { package = "shape_instance-wgpu", path = "../../libs/render-wgpu/buffer/shape_instance" }
 skybox = { package = "skybox-wgpu", path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { package = "stars-wgpu", path = "../../libs/render-wgpu/buffer/stars" }
 t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }

@@ -27,6 +27,7 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
 use screen_text::ScreenTextRenderPass;
+use shape_instance::ShapeInstanceManager;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -51,6 +52,7 @@ make_frame_graph!(
             atmosphere: AtmosphereBuffer,
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
+            shape_instance_buffer: ShapeInstanceManager,
             stars: StarsBuffer,
             t2: T2Buffer,
             text_layout: LayoutBuffer
@@ -92,12 +94,14 @@ pub fn main() -> Fallible<()> {
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let t2_buffer = T2Buffer::new(mm, &system_palette, &assets, &lib, &mut gpu)?;
     let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
+    let shape_instance_buffer = ShapeInstanceManager::new(gpu.device())?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
         &atmosphere_buffer,
         &fullscreen_buffer,
         &globals_buffer,
+        &shape_instance_buffer,
         &stars_buffer,
         &t2_buffer,
         &layout_buffer,
@@ -146,6 +150,11 @@ pub fn main() -> Fallible<()> {
         globals_buffer
             .borrow()
             .make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
+
+        // 51°30′26″N 0°7′39″W
+        let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
+        let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
+
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;

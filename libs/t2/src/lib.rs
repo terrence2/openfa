@@ -267,7 +267,7 @@ packed_struct!(BITEHeader1 {
 packed_struct!(BIT2Header {
     _0 => magic: [u8; 4],
 
-    // Actually 80 bytes, but slit up because Debug is not implemented for arrays past 32.
+    // Actually 80 bytes, but split up because Debug is not implemented for arrays past 32.
     _1a => name0: [u8; 32],
     _1b => name1: [u8; 32],
     _1c => name2: [u8; 16],
@@ -563,6 +563,12 @@ impl Terrain {
         0x0000001a => 26
         0x00001a00 => 6656
         0x001a0000 => 1703936
+
+    The cuban map is:
+        Size: 256x256
+        miles:      343 (1.34)
+        meters: 552,005 (2,156)
+        feet: 1,811,040 (7,074)
     */
 
     fn from_bit2(data: &[u8]) -> Fallible<Self> {
@@ -675,6 +681,8 @@ mod test {
     use super::*;
     use omnilib::OmniLib;
 
+    const DUMP: bool = false;
+
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
@@ -683,7 +691,10 @@ mod test {
             let lib = omni.library(game);
             let contents = lib.load(name)?;
             let terrain = Terrain::from_bytes(&contents)?;
-            terrain.make_debug_images(&format!("../../dump/{}_{}", game, name))?;
+            if DUMP {
+                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, name))?;
+            }
+            println!("WIDTH: {}, HEIGHT: {}", terrain.width, terrain.height);
         }
         Ok(())
     }

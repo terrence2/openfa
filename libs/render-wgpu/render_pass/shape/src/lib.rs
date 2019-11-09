@@ -134,7 +134,7 @@ mod tests {
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let inst_man = ShapeInstanceManager::new(&gpu.device())?;
 
-        let _ = ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_man)?;
+        let _ = ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_man.borrow())?;
 
         Ok(())
     }

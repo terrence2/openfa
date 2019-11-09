@@ -694,7 +694,7 @@ impl ShapeUploader {
                 xform_id: 0,
             });
         for v in vert_buf.vertices() {
-            let v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), -f32::from(v[1]));
+            let v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1]));
             vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.

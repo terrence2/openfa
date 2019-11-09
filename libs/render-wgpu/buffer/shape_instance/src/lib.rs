@@ -24,7 +24,7 @@ use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
 use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
 use wgpu;
 
 const BLOCK_SIZE: usize = 1 << 10;
@@ -448,7 +448,7 @@ pub struct ShapeInstanceManager {
 }
 
 impl ShapeInstanceManager {
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[
                 wgpu::BindGroupLayoutBinding {
@@ -470,7 +470,7 @@ impl ShapeInstanceManager {
             ],
         });
 
-        Ok(Self {
+        Ok(Arc::new(RefCell::new(Self {
             chunk_man: ShapeChunkManager::new(device)?,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
@@ -483,7 +483,7 @@ impl ShapeInstanceManager {
             //            flag_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             //            xform_index_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             //            xform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-        })
+        })))
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
@@ -685,10 +685,10 @@ mod test {
 
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let mut inst_man = ShapeInstanceManager::new(gpu.device())?;
+        let inst_man = ShapeInstanceManager::new(gpu.device())?;
 
         for _ in 0..100 {
-            let (_chunk_id, _slot_id) = inst_man.upload_and_allocate_slot(
+            let (_chunk_id, _slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
                 "T80.SH",
                 DrawSelection::NormalModel,
                 &palette,
