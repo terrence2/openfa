@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+/*
 use criterion::{criterion_group, criterion_main, Criterion};
 use failure::Fallible;
 use nalgebra::Point3;
@@ -19,17 +20,17 @@ use omnilib::OmniLib;
 use shape_chunk::{DrawSelection, OpenChunk};
 use specs::prelude::*;
 use std::time::Instant;
-use window::{GraphicsConfigBuilder, GraphicsWindow};
-use world::{
+use universe::{
     system::shape_mesh::{
         FlagCoalesceSystem, FlagUpdateSystem, XformCoalesceSystem, XformUpdateSystem,
     },
-    World,
+    Universe,
 };
+use window::{GraphicsConfigBuilder, GraphicsWindow};
 
-fn set_up_world() -> Fallible<World> {
+fn set_up_world() -> Fallible<Universe> {
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-    let mut world = World::new(omni.library("FA"))?;
+    let mut universe = Universe::new(omni.library("FA"))?;
     let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let mut upload = OpenChunk::new(&window)?;
 
@@ -41,20 +42,20 @@ fn set_up_world() -> Fallible<World> {
     let shape_id = upload.upload_shape(
         "F31.SH",
         DrawSelection::NormalModel,
-        world.system_palette(),
-        world.library(),
+        universe.system_palette(),
+        universe.library(),
         &window,
     )?;
 
     let part = upload.part(shape_id);
     for _ in 0..10_000 {
-        let _ent = world.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
+        let _ent = universe.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
     }
-    Ok(world)
+    Ok(universe)
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    // Set up world
+    // Set up universe
     let start = Instant::now();
     let mut world = set_up_world().unwrap();
 
@@ -83,3 +84,5 @@ fn criterion_benchmark(c: &mut Criterion) {
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
+*/
+fn main() {}

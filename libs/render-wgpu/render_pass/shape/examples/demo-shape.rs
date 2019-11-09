@@ -28,7 +28,7 @@ use shape_instance::{
 use shape_wgpu::ShapeRenderPass;
 use specs::prelude::*;
 use std::time::Instant;
-use world::Transform;
+use universe_base::component::Transform;
 
 fn main() -> Fallible<()> {
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;

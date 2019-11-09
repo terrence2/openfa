@@ -26,6 +26,7 @@ use shape_instance::{
 };
 use specs::prelude::*;
 use std::{sync::Arc, time::Instant};
+use universe_base::component::Transform;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::AutoCommandBufferBuilder,
@@ -38,7 +39,6 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::{GraphicsConfigBuilder, GraphicsWindow};
-use world::Transform;
 
 mod vs {
     use vulkano_shaders::shader;

@@ -28,7 +28,6 @@ use shape_chunk::{ChunkId, ShapeChunkBuffer, ShapeErrata, ShapeId};
 use specs::prelude::{World, WorldExt};
 use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
 use wgpu;
-use world::Transform;
 
 const BLOCK_SIZE: usize = 1 << 10;
 
@@ -456,7 +455,6 @@ impl ShapeInstanceBuffer {
         world.register::<ShapeTransformBuffer>();
         world.register::<ShapeFlagBuffer>();
         world.register::<ShapeXformBuffer>();
-        world.register::<Transform>();
     }
 
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {

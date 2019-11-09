@@ -105,7 +105,7 @@ pub fn main() -> Fallible<()> {
                     &mut gpu,
                 )?;
             /*
-            let _ent = world
+            let _ent = universe
                 .create_entity()
                 .with(Transform::new(Point3::new(
                     f64::from(x) * 100f64,

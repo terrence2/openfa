@@ -20,7 +20,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     time::Instant,
 };
-use world::Transform;
+use universe_base::component::Transform;
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
