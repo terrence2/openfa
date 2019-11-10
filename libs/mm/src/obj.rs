@@ -147,7 +147,13 @@ impl ObjectInfo {
                 "type" => {
                     type_name = Some(parts[1].trim().to_owned());
                 }
-                "name" => name = Some(parts[1].to_owned()),
+                "name" => {
+                    // Start of Header in ascii? :shrug:
+                    assert!(parts[1].starts_with(1 as char));
+                    assert!(parts[1].ends_with(1 as char));
+                    let end = parts[1].len() - 1;
+                    name = Some(parts[1][1..end].to_owned());
+                }
                 "pos" => {
                     let ns = parts[1].split(' ').collect::<Vec<&str>>();
                     pos = Some(Point3::new(

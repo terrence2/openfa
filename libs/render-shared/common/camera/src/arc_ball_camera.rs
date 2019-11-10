@@ -66,6 +66,10 @@ impl ArcBallCamera {
         self.target = Point3::new(x, y, z);
     }
 
+    pub fn set_target_point(&mut self, p: &Point3<f64>) {
+        self.target = *p;
+    }
+
     pub fn set_up(&mut self, up: Vector3<f64>) {
         self.up = up;
     }

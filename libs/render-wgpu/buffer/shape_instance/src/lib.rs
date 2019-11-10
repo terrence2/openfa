@@ -85,7 +85,7 @@ pub struct InstanceBlock {
     //    flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
     //    #[allow(dead_code)]
     //    xform_index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
-    command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
+    pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
     transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
 

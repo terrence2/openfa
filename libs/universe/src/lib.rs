@@ -16,6 +16,9 @@ pub mod component;
 pub mod system;
 
 pub use crate::component::{flight_dynamics::FlightDynamics, wheeled_dynamics::WheeledDynamics};
+pub use specs::Entity;
+pub use universe_base::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M};
+
 use failure::Fallible;
 use lib::Library;
 use nalgebra::{convert, Point3};
@@ -27,9 +30,6 @@ use shape_instance::{
 };
 use specs::{Builder, Dispatcher, World, WorldExt};
 use std::sync::Arc;
-use universe_base::component::Transform;
-
-pub use specs::Entity;
 
 pub struct Universe {
     pub ecs: World,

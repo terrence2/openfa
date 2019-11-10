@@ -32,6 +32,7 @@ use std::{
     mem,
     time::Instant,
 };
+use universe_base::FEET_TO_HM;
 
 bitflags! {
     pub struct VertexFlags: u64 {
@@ -694,7 +695,8 @@ impl ShapeUploader {
                 xform_id: 0,
             });
         for v in vert_buf.vertices() {
-            let v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1]));
+            let mut v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1]));
+            v0 *= FEET_TO_HM * 10f32;
             vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.

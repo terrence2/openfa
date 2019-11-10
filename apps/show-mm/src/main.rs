@@ -37,7 +37,7 @@ use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
-use universe::Universe;
+use universe::{Universe, FEET_TO_HM};
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -77,6 +77,8 @@ pub fn main() -> Fallible<()> {
     let mut universe = Universe::new(lib)?;
 
     let shape_bindings = InputBindings::new("map")
+        .bind("prev-object", "Shift+n")?
+        .bind("next-object", "n")?
         .bind("+pan-view", "mouse1")?
         .bind("+move-view", "mouse3")?
         .bind("exit", "Escape")?
@@ -91,9 +93,11 @@ pub fn main() -> Fallible<()> {
         universe.library(),
     )?;
 
+    let mut position_index = 0;
+    let mut positions = Vec::new();
+    let mut names = Vec::new();
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
-        let mut i = 0f32;
         for info in mm.objects() {
             let (shape_id, slot_id) = shape_instance_buffer
                 .borrow_mut()
@@ -114,14 +118,28 @@ pub fn main() -> Fallible<()> {
             } else if let Ok(jt) = info.xt().jt() {
                 bail!("did not expect a projectile in MM objects")
             } else {
-                //println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
-                i += 10f32;
+                println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
+                let mut p = info.position();
+                p *= FEET_TO_HM;
+                positions.push(p);
+                let sh_name = info
+                    .xt()
+                    .ot()
+                    .shape
+                    .as_ref()
+                    .expect("a shape file")
+                    .to_owned();
+                if let Some(n) = info.name() {
+                    names.push(n + " (" + &sh_name + ")");
+                } else {
+                    names.push(sh_name);
+                }
                 universe.create_building(
                     slot_id,
                     shape_id,
                     shape_instance_buffer.borrow().part(shape_id),
-                    //info.position(),
-                    nalgebra::Point3::new(i, 0f32, i),
+                    p,
+                    //nalgebra::Point3::new(i, i, i),
                 )?;
             };
         }
@@ -166,6 +184,18 @@ pub fn main() -> Fallible<()> {
 
         for command in input.poll()? {
             match command.name.as_str() {
+                "prev-object" => {
+                    if position_index > 0 {
+                        position_index -= 1;
+                    }
+                    camera.set_target_point(&nalgebra::convert(positions[position_index]));
+                }
+                "next-object" => {
+                    if position_index < positions.len() - 1 {
+                        position_index += 1;
+                    }
+                    camera.set_target_point(&nalgebra::convert(positions[position_index]));
+                }
                 "window-resize" => {
                     gpu.note_resize(&input);
                     camera.set_aspect_ratio(gpu.aspect_ratio());
@@ -228,7 +258,9 @@ pub fn main() -> Fallible<()> {
 
         let ft = loop_start.elapsed();
         let ts = format!(
-            "{}.{} ms",
+            "@{} {} - {}.{} ms",
+            position_index,
+            names[position_index],
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );

@@ -24,6 +24,7 @@ use pal::Palette;
 use pic::Pic;
 use std::{cell::RefCell, collections::HashSet, mem, ops::Range, sync::Arc};
 use t2::Terrain;
+use universe_base::FEET_TO_HM;
 use wgpu;
 
 #[derive(Copy, Clone, Default)]
@@ -311,18 +312,21 @@ impl T2Buffer {
             }
         };
 
-        let x = xi as f32 / (terrain.width as f32) - 0.5;
-        let z = 1f32 - (zi as f32 / (terrain.height as f32)) - 0.5;
-        let h = -f32::from(sample.height) / 512f32;
+        let xf = xi as f32 / terrain.width as f32;
+        let zf = zi as f32 / terrain.height as f32;
+        let scale_x = (0x1A0000 as f32);
+        let scale_z = (0x190000 as f32);
+        let x = xf * scale_x * FEET_TO_HM;
+        let z = zf * scale_z * FEET_TO_HM;
+        let h = -f32::from(sample.height) / 512f32 + 0.1f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
         if sample.color == 0xFF {
             color.data[3] = 0;
         }
 
-        let scale = 100f32;
         (
-            [x * scale, h * scale / 8f32, z * scale],
+            [x, h, z],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,

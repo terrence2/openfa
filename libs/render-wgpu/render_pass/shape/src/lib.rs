@@ -105,13 +105,14 @@ impl ShapeRenderPass {
             rpass.set_bind_group(1, chunk.bind_group(), &[]);
             rpass.set_bind_group(2, block.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
-            /*
-            rpass.draw(
-                cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
-                0..block.len() as u32,
-            );
-            */
-            rpass.draw_indirect(block.command_buffer(), 0);
+            for i in 0..block.len() {
+                //rpass.draw_indirect(block.command_buffer(), i as u64);
+                let cmd = block.command_buffer_scratch[i];
+                rpass.draw(
+                    cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
+                    i as u32..i as u32 + 1,
+                );
+            }
         }
     }
 }
