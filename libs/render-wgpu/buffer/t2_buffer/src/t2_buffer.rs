@@ -89,7 +89,7 @@ pub struct T2Buffer {
 
 impl T2Buffer {
     pub fn new(
-        mm: MissionMap,
+        mm: &MissionMap,
         system_palette: &Palette,
         lib: &Library,
         gpu: &mut GPU,
@@ -317,7 +317,7 @@ impl T2Buffer {
         let scale_x = (0x1A0000 as f32);
         let scale_z = (0x190000 as f32);
         let x = xf * scale_x * FEET_TO_HM;
-        let z = zf * scale_z * FEET_TO_HM;
+        let z = (1f32 - zf) * scale_z * FEET_TO_HM;
         let h = -f32::from(sample.height) / 512f32 + 0.1f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();

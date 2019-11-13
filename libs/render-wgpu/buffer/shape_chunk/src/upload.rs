@@ -696,7 +696,8 @@ impl ShapeUploader {
             });
         for v in vert_buf.vertices() {
             let mut v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1]));
-            v0 *= FEET_TO_HM * 10f32;
+            // FIXME: blowing these up so we can see them on the map
+            v0 *= FEET_TO_HM * 20f32;
             vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.

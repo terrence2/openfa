@@ -96,6 +96,7 @@ pub fn main() -> Fallible<()> {
     let mut position_index = 0;
     let mut positions = Vec::new();
     let mut names = Vec::new();
+    let t2_buffer = T2Buffer::new(&mm, universe.palette(), universe.library(), &mut gpu)?;
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
         for info in mm.objects() {
@@ -120,6 +121,7 @@ pub fn main() -> Fallible<()> {
             } else {
                 println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
                 let mut p = info.position();
+                p.coords[2] = (0x190000 as f32) - p.coords[2];
                 p *= FEET_TO_HM;
                 positions.push(p);
                 let sh_name = info
@@ -153,7 +155,6 @@ pub fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let t2_buffer = T2Buffer::new(mm, universe.palette(), universe.library(), &mut gpu)?;
     let text_layout_buffer = LayoutBuffer::new(universe.library(), &mut gpu)?;
 
     let frame_graph = FrameGraph::new(

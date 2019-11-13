@@ -192,6 +192,8 @@ pub struct Terrain {
     pub pic_file: String,
     pub width: u32,
     pub height: u32,
+    width_ft: f32,
+    height_ft: f32,
     pub samples: Vec<Sample>,
     _extra: Vec<u8>,
 }
@@ -274,11 +276,29 @@ packed_struct!(BIT2Header {
 
     _2 => pic_file:  [u8; 15],
 
-    _3 => unk0: u32,
-    _4 => unk1: u32,
-    _5 => unk2: u32,
-    _6 => unk3: u32
+    _3 => unk0: [u32; 6],
+
+    _4 => width_ft: u32,
+    _5 => height_ft: u32,
+
+    _6 => unk_zero: u16,
+    _7 => unk1: u16,
+    _8 => unk_small: u16,
+
+    _12 => width: u32,
+    _13 => height: u32,
+
+    _14 => unk2: u32
+
+    // data
 });
+
+//let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
+// 4 + 80 + 15 + 16 + 21
+// 4 + 18 + 16 +    37
+// let data_start =
+// 4 + 80 + 16 + 49;
+// 4 + 80 + 15 + 24 + 8 + 6 + 8 + 4;
 
 const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
 
@@ -443,6 +463,8 @@ impl Terrain {
         let terrain = Terrain {
             name: "Ukraine".to_owned(),
             pic_file,
+            width_ft: 0f32,
+            height_ft: 0f32,
             width: header.width() as u32,
             height: header.height() as u32,
             samples,
@@ -506,6 +528,8 @@ impl Terrain {
         let terrain = Terrain {
             name,
             pic_file,
+            width_ft: 0f32,
+            height_ft: 0f32,
             width: header.width() as u32,
             height: header.height() as u32,
             samples,
@@ -531,14 +555,17 @@ impl Terrain {
     00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
     *
     00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
-                       XXXXXXXXXXX BBBBBB BBBBB YYYYY DDDDDDDD
+                    VVVVVVVVVVV BBBBBBBBBBBB VVVVVVVVVVV DDDDD
     00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
-              DD EEEEEEEEEEE QQQQQQQQQQQQ FFFFFFFFFFF GGGGGGGG
+              DDDDD EEEEEEEEEEE QQQQQQQQQQQQ FF SSSSSSSSSSS VV
     00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 1a 00 00  |................|
-              GG VVVVVVVVVVV LLLLLLLLLLLL WWWWWWWWWWW HHHHHHHH
+              VVVVVVVV ?? ?? LLLLLLLLL ?? WWWWWWWWWWW HHHHHHHH
     00000080  00 19 00 00 00 15 e8 01  00 d0 00 00 00 c8 00 00  |................|
               HH KKKKKKKKKKK << -- >>  << -- >> << -- >> << --
     00000090  00 95 00 00 00 d3 00 00  d3 00 00 d3 00 00 d3 00  |................|
+
+    SSS - scale x
+    VVV - scale z
 
     The french map is:
         Total (/208):
@@ -572,51 +599,64 @@ impl Terrain {
     */
 
     fn from_bit2(data: &[u8]) -> Fallible<Self> {
-        let magic = &data[0..4];
-        ensure!(magic == MAGIC_BIT2, "missing magic");
+        let header_pointer: &[BIT2Header] = unsafe { mem::transmute(data) };
+        let header = &header_pointer[0];
 
-        // Followed by 80 bytes of name / description.
-        let name = read_name(&data[4..84])?;
+        // 4 byte of magic
+        ensure!(header.magic() == MAGIC_BIT2, "missing magic");
 
-        // Followed by __ bytes containing the pic file.
-        // TODO: I'm not super sure if this is 15 bytes or 16 bytes. If it's 16 bytes then
-        //       the u32 after is 0x20. If it's 15 bytes then it's 0x2000. We need to lose
-        //       one byte between this and the w/h and this might be the right place to do
-        //       it. I cannot yet tell from context.
-        let pic_file = read_name(&data[84..84 + 16])?;
+        // 80 bytes of name / description
+        let name = read_name(&header.name0())?
+            + &read_name(&header.name1())?
+            + &read_name(&header.name2())?;
 
-        // Followed by some numbers... let's skip past those for now.
-        // 0            4            8            12           16          20  21
-        // 20 00 00 00  00 00 00 00  20 00 00 00  00 00 00 00  00 00 00 00 00  08 00 00
-        //
-        // 24  25       28  29       32  33     35         37           41           45
-        // 00  20 00 00 00  20 00 00 00  95 00  03 00  >>  00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
-        let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
-        let width = dwords[0];
-        let height = dwords[1];
-        trace!("terrain size: {}x{}", width, height);
-        let npix = (width * height) as usize;
+        // Followed by 15 bytes containing the pic file.
+        let pic_file = read_name(&header.pic_file())?;
+        trace!("Loaded T2 with name: {}, pic_file: {}", name, pic_file);
+
+        // Followed by a bunch of ints.
+        ensure!(header.unk0()[1] == 0, "expected 0 in unk0[1]");
+        ensure!(header.unk0()[3] == 0, "expected 0 in unk0[3]");
+        ensure!(header.unk0()[4] == 0, "expected 0 in unk0[4]");
+        ensure!(header.unk0()[5] == 524288, "expected 524288 in unk0[5]");
+        if header.unk_small() == 3 {
+            ensure!(header.width() == 256, "if 3, expect 256");
+            ensure!(header.height() == 256, "if 3, expect 256");
+        }
+        println!(
+            "unk: {:?} {:08X} {:08X} {:?}; {}x{}",
+            header.unk0(),
+            header.width_ft(),
+            header.height_ft(),
+            header.unk1(),
+            header.width(),
+            header.height(),
+        );
 
         // Followed by many 3-byte entries.
-        // How many? 4 fewer than 258 * 258 (for the normal size).
-        // Probably not a coincidence.
-        let data_start = 84 + 16 + 49;
+        let npix = (header.width() * header.height()) as usize;
+        let data_start = mem::size_of::<BIT2Header>();
         let data_end = data_start + npix * 3;
         let entries = &data[data_start..data_end];
         let mut samples = Vec::new();
-
         for i in 0..npix {
             let color = entries[i * 3];
             let modifiers = entries[i * 3 + 1];
             let height = entries[i * 3 + 2];
             samples.push(Sample::new(color, modifiers, height))
         }
+
+        // I think the data after the entries is repeat data that allows for wrapping,
+        // or maybe just allows the original software renderer to not overflow?
         let extra = data[data_end..].to_owned();
+
         let terrain = Terrain {
             name,
             pic_file,
-            width,
-            height,
+            width_ft: header.width_ft() as f32,
+            height_ft: header.height_ft() as f32,
+            width: header.width(),
+            height: header.height(),
             samples,
             _extra: extra,
         };
@@ -674,6 +714,14 @@ impl Terrain {
 
         Ok(())
     }
+
+    pub fn width_in_ft(&self) -> f32 {
+        self.width_ft
+    }
+
+    pub fn height_in_ft(&self) -> f32 {
+        self.height_ft
+    }
 }
 
 #[cfg(test)]
@@ -694,7 +742,7 @@ mod test {
             if DUMP {
                 terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, name))?;
             }
-            println!("WIDTH: {}, HEIGHT: {}", terrain.width, terrain.height);
+            //println!("WIDTH: {}, HEIGHT: {}", terrain.width, terrain.height);
         }
         Ok(())
     }
