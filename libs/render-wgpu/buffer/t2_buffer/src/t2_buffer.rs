@@ -85,6 +85,9 @@ pub struct T2Buffer {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+
+    // We need access to the height data for collisions, layout, etc.
+    terrain: Terrain,
 }
 
 impl T2Buffer {
@@ -108,7 +111,12 @@ impl T2Buffer {
             vertex_buffer,
             index_buffer,
             index_count,
+            terrain,
         })))
+    }
+
+    pub fn t2(&self) -> &Terrain {
+        &self.terrain
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -314,8 +322,8 @@ impl T2Buffer {
 
         let xf = xi as f32 / terrain.width as f32;
         let zf = zi as f32 / terrain.height as f32;
-        let scale_x = (0x1A0000 as f32);
-        let scale_z = (0x190000 as f32);
+        let scale_x = terrain.width_in_ft();
+        let scale_z = terrain.height_in_ft();
         let x = xf * scale_x * FEET_TO_HM;
         let z = (1f32 - zf) * scale_z * FEET_TO_HM;
         let h = -f32::from(sample.height) / 512f32 + 0.1f32;

@@ -100,6 +100,12 @@ pub fn main() -> Fallible<()> {
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
         for info in mm.objects() {
+            if info.xt().ot().shape.is_none() {
+                // FIXME: this still needs to add the entity.
+                // I believe these are only for hidden flak guns in TVIET.
+                continue;
+            }
+
             let (shape_id, slot_id) = shape_instance_buffer
                 .borrow_mut()
                 .upload_and_allocate_slot(
@@ -120,8 +126,9 @@ pub fn main() -> Fallible<()> {
                 bail!("did not expect a projectile in MM objects")
             } else {
                 println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
+                let height_ft = t2_buffer.borrow().t2().height_in_ft();
                 let mut p = info.position();
-                p.coords[2] = (0x190000 as f32) - p.coords[2];
+                p.coords[2] = height_ft - p.coords[2];
                 p *= FEET_TO_HM;
                 positions.push(p);
                 let sh_name = info

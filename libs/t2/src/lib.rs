@@ -624,13 +624,14 @@ impl Terrain {
             ensure!(header.height() == 256, "if 3, expect 256");
         }
         println!(
-            "unk: {:?} {:08X} {:08X} {:?}; {}x{}",
+            "unk: {:?} {:08X} {:?}; {}x{} ({:06X}x{:06X}ft)",
             header.unk0(),
-            header.width_ft(),
-            header.height_ft(),
             header.unk1(),
+            header.unk_small(),
             header.width(),
             header.height(),
+            header.width_ft(),
+            header.height_ft(),
         );
 
         // Followed by many 3-byte entries.
