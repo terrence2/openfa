@@ -126,10 +126,11 @@ pub fn main() -> Fallible<()> {
                 bail!("did not expect a projectile in MM objects")
             } else {
                 println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
-                let height_ft = t2_buffer.borrow().t2().height_in_ft();
                 let mut p = info.position();
-                p.coords[2] = height_ft - p.coords[2];
+                let ns_ft = t2_buffer.borrow().t2().extent_north_south_in_ft();
+                p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
                 p *= FEET_TO_HM;
+                p.coords[1] = t2_buffer.borrow().t2().ground_height_at(&p);
                 positions.push(p);
                 let sh_name = info
                     .xt()
@@ -148,7 +149,7 @@ pub fn main() -> Fallible<()> {
                     shape_id,
                     shape_instance_buffer.borrow().part(shape_id),
                     p,
-                    //nalgebra::Point3::new(i, i, i),
+                    info.angle(),
                 )?;
             };
         }

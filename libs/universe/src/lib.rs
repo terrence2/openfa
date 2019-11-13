@@ -21,7 +21,7 @@ pub use universe_base::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_K
 
 use failure::Fallible;
 use lib::Library;
-use nalgebra::{convert, Point3};
+use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
@@ -77,13 +77,14 @@ impl Universe {
         shape_id: ShapeId,
         part: &ChunkPart,
         position: Point3<f32>,
+        rotation: &UnitQuaternion<f32>,
     ) -> Fallible<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
         Ok(self
             .ecs
             .create_entity()
-            .with(Transform::new(convert(position)))
+            .with(Transform::new(position, *rotation))
             .with(ShapeComponent::new(slot_id, shape_id))
             .with(ShapeTransformBuffer::new())
             .with(ShapeFlagBuffer::new(widgets.errata()))
@@ -95,12 +96,12 @@ impl Universe {
         &mut self,
         slot_id: SlotId,
         shape_id: ShapeId,
-        position: Point3<f64>,
+        position: Point3<f32>,
     ) -> Fallible<Entity> {
         Ok(self
             .ecs
             .create_entity()
-            .with(Transform::new(position))
+            .with(Transform::new(position, UnitQuaternion::identity()))
             .with(WheeledDynamics::new())
             .with(ShapeComponent::new(slot_id, shape_id))
             .build())

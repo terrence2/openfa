@@ -50,10 +50,10 @@ mat4 matrix_for_xform(float xform[6]) {
     float r1 = xform[4];
     float r2 = xform[5];
     mat4 trans = mat4(
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-    t0,  t1,  t2, 1.0
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        t0,  t1,  t2, 1.0
     );
     mat4 rot = mat4(from_euler_angles(r0, r1, r2));
     return trans * rot;

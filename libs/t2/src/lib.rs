@@ -129,6 +129,7 @@ Ukraine            {0, 1}
 
 use failure::{bail, ensure, Fallible};
 use log::trace;
+use nalgebra::Point3;
 use packed_struct::packed_struct;
 use std::{mem, str};
 
@@ -292,13 +293,6 @@ packed_struct!(BIT2Header {
 
     // data
 });
-
-//let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
-// 4 + 80 + 15 + 16 + 21
-// 4 + 18 + 16 +    37
-// let data_start =
-// 4 + 80 + 16 + 49;
-// 4 + 80 + 15 + 24 + 8 + 6 + 8 + 4;
 
 const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
 
@@ -716,12 +710,17 @@ impl Terrain {
         Ok(())
     }
 
-    pub fn width_in_ft(&self) -> f32 {
+    pub fn extent_east_west_in_ft(&self) -> f32 {
         self.width_ft
     }
 
-    pub fn height_in_ft(&self) -> f32 {
+    pub fn extent_north_south_in_ft(&self) -> f32 {
         self.height_ft
+    }
+
+    pub fn ground_height_at(&self, p: &Point3<f32>) -> f32 {
+        // FIXME: implement this
+        0f32
     }
 }
 

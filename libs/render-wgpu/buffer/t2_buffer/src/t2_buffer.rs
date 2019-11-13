@@ -322,8 +322,8 @@ impl T2Buffer {
 
         let xf = xi as f32 / terrain.width as f32;
         let zf = zi as f32 / terrain.height as f32;
-        let scale_x = terrain.width_in_ft();
-        let scale_z = terrain.height_in_ft();
+        let scale_x = terrain.extent_east_west_in_ft();
+        let scale_z = terrain.extent_north_south_in_ft();
         let x = xf * scale_x * FEET_TO_HM;
         let z = (1f32 - zf) * scale_z * FEET_TO_HM;
         let h = -f32::from(sample.height) / 512f32 + 0.1f32;
