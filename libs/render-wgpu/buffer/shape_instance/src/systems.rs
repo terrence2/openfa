@@ -12,8 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::components::*;
-use crate::ShapeInstanceManager;
+use crate::{components::*, ShapeInstanceBuffer};
 use shape_chunk::{ShapeId, ShapeWidgets};
 use specs::prelude::*;
 use std::{
@@ -21,7 +20,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     time::Instant,
 };
-use world::Transform;
+use universe_base::component::Transform;
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -119,10 +118,10 @@ impl<'a> System<'a> for TransformUpdateSystem {
 }
 
 pub struct CoalesceSystem<'b> {
-    inst_man: &'b mut ShapeInstanceManager,
+    inst_man: &'b mut ShapeInstanceBuffer,
 }
 impl<'b> CoalesceSystem<'b> {
-    pub fn new(inst_man: &'b mut ShapeInstanceManager) -> Self {
+    pub fn new(inst_man: &'b mut ShapeInstanceBuffer) -> Self {
         Self { inst_man }
     }
 }

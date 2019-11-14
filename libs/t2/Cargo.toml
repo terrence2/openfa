@@ -8,6 +8,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 failure = "^ 0.1.2"
 image = "^ 0.21"
 log = "^ 0.4"
+nalgebra = "^ 0.18"
 packed_struct = { path = "../packed_struct/" }
 reverse = { path = "../reverse/" }
 

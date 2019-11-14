@@ -27,7 +27,8 @@ use std::{
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
     event::{
-        DeviceEvent, DeviceId, ElementState, Event, KeyboardInput, MouseScrollDelta, WindowEvent,
+        DeviceEvent, DeviceId, ElementState, Event, KeyboardInput, MouseScrollDelta, StartCause,
+        WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     platform::desktop::EventLoopExtDesktop,
@@ -314,6 +315,8 @@ impl InputSystem {
         match e {
             Event::WindowEvent { event, .. } => self.handle_window_event(event),
             Event::DeviceEvent { device_id, event } => self.handle_device_event(device_id, event),
+            Event::EventsCleared => smallvec![],
+            Event::NewEvents(StartCause::WaitCancelled { .. }) => smallvec![],
             unhandled => {
                 warn!("don't know how to handle: {:?}", unhandled);
                 smallvec![]

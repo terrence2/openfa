@@ -16,6 +16,7 @@ mod components;
 mod systems;
 
 pub use components::{ShapeComponent, ShapeFlagBuffer, ShapeTransformBuffer, ShapeXformBuffer};
+pub use shape_chunk::DrawSelection;
 pub use systems::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
 
 use failure::Fallible;
@@ -23,8 +24,9 @@ use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
-use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
-use std::{collections::HashMap, mem, sync::Arc};
+use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId};
+use specs::prelude::{World, WorldExt};
+use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
 use wgpu;
 
 const BLOCK_SIZE: usize = 1 << 10;
@@ -83,10 +85,11 @@ pub struct InstanceBlock {
     //    flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
     //    #[allow(dead_code)]
     //    xform_index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
-    command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
+    pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
     transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
 
+    command_buffer: Arc<Box<wgpu::Buffer>>,
     transform_buffer: Arc<Box<wgpu::Buffer>>,
     flag_buffer: Arc<Box<wgpu::Buffer>>,
 
@@ -130,6 +133,13 @@ impl InstanceBlock {
     ) -> Fallible<Self> {
         // This class contains the fixed-size device local blocks that we will render from.
         println!("InstanceBlock::new({:?})", block_id);
+
+        let command_buffer_size =
+            (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
+        let command_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            size: command_buffer_size,
+            usage: wgpu::BufferUsage::all(),
+        })));
 
         let transform_buffer_size =
             (mem::size_of::<[f32; 6]>() * BLOCK_SIZE) as wgpu::BufferAddress;
@@ -226,6 +236,7 @@ impl InstanceBlock {
             }; BLOCK_SIZE],
             transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
             flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
+            command_buffer,
             transform_buffer,
             flag_buffer,
             bind_group,
@@ -238,6 +249,10 @@ impl InstanceBlock {
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
+    }
+
+    pub fn command_buffer(&self) -> &wgpu::Buffer {
+        &self.command_buffer
     }
 
     fn has_open_slot(&self) -> bool {
@@ -425,8 +440,8 @@ impl InstanceBlock {
     */
 }
 
-pub struct ShapeInstanceManager {
-    pub chunk_man: ShapeChunkManager,
+pub struct ShapeInstanceBuffer {
+    pub chunk_man: ShapeChunkBuffer,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
     pub blocks: HashMap<BlockId, InstanceBlock>,
@@ -447,8 +462,15 @@ pub struct ShapeInstanceManager {
     //    xform_buffer_pool: CpuBufferPool<[f32; 6]>, // FIXME: hunt down this max somewhere
 }
 
-impl ShapeInstanceManager {
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+impl ShapeInstanceBuffer {
+    pub fn register_components(world: &mut World) {
+        world.register::<ShapeComponent>();
+        world.register::<ShapeTransformBuffer>();
+        world.register::<ShapeFlagBuffer>();
+        world.register::<ShapeXformBuffer>();
+    }
+
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[
                 wgpu::BindGroupLayoutBinding {
@@ -470,8 +492,8 @@ impl ShapeInstanceManager {
             ],
         });
 
-        Ok(Self {
-            chunk_man: ShapeChunkManager::new(device)?,
+        Ok(Arc::new(RefCell::new(Self {
+            chunk_man: ShapeChunkBuffer::new(device)?,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
@@ -483,7 +505,11 @@ impl ShapeInstanceManager {
             //            flag_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             //            xform_index_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             //            xform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-        })
+        })))
+    }
+
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        self.chunk_man.part(shape_id)
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
@@ -541,7 +567,11 @@ impl ShapeInstanceManager {
             block_id
         };
 
-        let draw_cmd = self.chunk_man.part(shape_id).draw_command(0, 1);
+        // FIXME: this is less useful than I thought it would be.
+        let draw_cmd = self
+            .chunk_man
+            .part(shape_id)
+            .draw_command(self.blocks[&block_id].len() as u32, 1);
         let slot_id = self
             .blocks
             .get_mut(&block_id)
@@ -573,6 +603,15 @@ impl ShapeInstanceManager {
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         for block in self.blocks.values() {
+            let source = device
+                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
+                .fill_from_slice(&block.command_buffer_scratch[..block.len()]);
+            upload_buffers.push(CopyBufferDescriptor::new(
+                source,
+                block.command_buffer.clone(),
+                (mem::size_of::<DrawIndirectCommand>() * block.len()) as wgpu::BufferAddress,
+            ));
+
             let source = device
                 .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
                 .fill_from_slice(&block.transform_buffer_scratch[..block.len()]);
@@ -685,10 +724,10 @@ mod test {
 
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let mut inst_man = ShapeInstanceManager::new(gpu.device())?;
+        let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
 
         for _ in 0..100 {
-            let (_chunk_id, _slot_id) = inst_man.upload_and_allocate_slot(
+            let (_chunk_id, _slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
                 "T80.SH",
                 DrawSelection::NormalModel,
                 &palette,

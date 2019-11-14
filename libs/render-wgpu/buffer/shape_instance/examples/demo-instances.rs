@@ -17,23 +17,23 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use nalgebra::Point3;
+use nalgebra::{Point3, UnitQuaternion};
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{DrawSelection, DrawState, Vertex};
+use shape_chunk::{DrawSelection, Vertex};
 use shape_instance_wgpu::{
-    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceManager,
+    CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer,
     ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
 };
 use specs::prelude::*;
 use std::time::Instant;
-use world::Transform;
+use universe_base::component::Transform;
 
 fn build_pipeline(
     gpu: &mut gpu::GPU,
     empty_layout: &wgpu::BindGroupLayout,
     globals_buffer: &GlobalParametersBuffer,
-    inst_man: &ShapeInstanceManager,
+    inst_man: &ShapeInstanceBuffer,
 ) -> Fallible<wgpu::RenderPipeline> {
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
@@ -106,7 +106,7 @@ fn main() -> Fallible<()> {
     let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let mut inst_man = ShapeInstanceManager::new(&gpu.device())?;
+    let inst_man = ShapeInstanceBuffer::new(&gpu.device())?;
 
     let mut world = World::new();
     world.register::<ShapeComponent>();
@@ -118,7 +118,7 @@ fn main() -> Fallible<()> {
     const CNT: i32 = 50;
     for x in -CNT / 2..CNT / 2 {
         for y in -CNT / 2..CNT / 2 {
-            let (shape_id, slot_id) = inst_man.upload_and_allocate_slot(
+            let (shape_id, slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
                 "F18.SH",
                 DrawSelection::NormalModel,
                 &palette,
@@ -127,20 +127,19 @@ fn main() -> Fallible<()> {
             )?;
             let _ent = world
                 .create_entity()
-                .with(Transform::new(Point3::new(
-                    f64::from(x) * 100f64,
-                    0f64,
-                    f64::from(y) * 100f64,
-                )))
-                .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
+                .with(Transform::new(
+                    Point3::new(x as f32 * 100f32, 0f32, y as f32 * 100f32),
+                    UnitQuaternion::identity(),
+                ))
+                .with(ShapeComponent::new(slot_id, shape_id))
                 .with(ShapeTransformBuffer::new())
-                .with(ShapeFlagBuffer::new(inst_man.errata(shape_id)))
+                .with(ShapeFlagBuffer::new(inst_man.borrow().errata(shape_id)))
                 //.with(ShapeXformBuffer::new())
                 .build();
         }
     }
 
-    inst_man.ensure_uploaded(&mut gpu)?;
+    inst_man.borrow_mut().ensure_uploaded(&mut gpu)?;
     gpu.device().poll(true);
 
     let empty_layout = gpu
@@ -151,7 +150,12 @@ fn main() -> Fallible<()> {
         bindings: &[],
     });
 
-    let pipeline = build_pipeline(&mut gpu, &empty_layout, &globals_buffer.borrow(), &inst_man)?;
+    let pipeline = build_pipeline(
+        &mut gpu,
+        &empty_layout,
+        &globals_buffer.borrow(),
+        &inst_man.borrow(),
+    )?;
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
     camera.set_distance(1500.0);
@@ -190,11 +194,17 @@ fn main() -> Fallible<()> {
         update_dispatcher.dispatch(&world);
         {
             DispatcherBuilder::new()
-                .with(CoalesceSystem::new(&mut inst_man), "coalesce", &[])
+                .with(
+                    CoalesceSystem::new(&mut inst_man.borrow_mut()),
+                    "coalesce",
+                    &[],
+                )
                 .build()
                 .dispatch(&world);
         }
-        inst_man.make_upload_buffer(gpu.device(), &mut upload_buffers)?;
+        inst_man
+            .borrow_mut()
+            .make_upload_buffer(gpu.device(), &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame();
         {
@@ -215,10 +225,11 @@ fn main() -> Fallible<()> {
             rpass.set_bind_group(2, &empty_bind_group, &[]);
             rpass.set_bind_group(4, &empty_bind_group, &[]);
 
-            for block in inst_man.blocks.values() {
-                let chunk = inst_man.chunk_man.chunk(block.chunk_id());
+            for block in inst_man.borrow().blocks.values() {
+                let inst = inst_man.borrow();
+                let chunk = inst.chunk_man.chunk(block.chunk_id());
 
-                let f18_part = inst_man.chunk_man.part_for("F18.SH")?;
+                let f18_part = inst.chunk_man.part_for("F18.SH")?;
                 let cmd = f18_part.draw_command(0, 1);
                 rpass.set_bind_group(3, block.bind_group(), &[]);
                 rpass.set_bind_group(5, chunk.bind_group(), &[]);

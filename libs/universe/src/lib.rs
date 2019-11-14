@@ -15,45 +15,37 @@
 pub mod component;
 pub mod system;
 
-pub use crate::{
-    component::{
-        flight_dynamics::FlightDynamics,
-        shape_mesh::{
-            ShapeMesh, ShapeMeshFlagBuffer, ShapeMeshTransformBuffer, ShapeMeshXformBuffer,
-        },
-        transform::Transform,
-        wheeled_dynamics::WheeledDynamics,
-    },
-    system::shape_mesh::{FlagUpdateSystem, XformUpdateSystem},
-};
+pub use crate::component::{flight_dynamics::FlightDynamics, wheeled_dynamics::WheeledDynamics};
+pub use specs::Entity;
+pub use universe_base::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M};
+
 use failure::Fallible;
 use lib::Library;
-use nalgebra::Point3;
+use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
-use specs::{Builder, Dispatcher, World as SpecsWorld, WorldExt};
+use shape_instance::{
+    ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer, ShapeTransformBuffer, ShapeXformBuffer,
+    SlotId,
+};
+use specs::{Builder, Dispatcher, World, WorldExt};
 use std::sync::Arc;
 
-pub use specs::Entity;
-
-pub struct World {
-    ecs: SpecsWorld,
+pub struct Universe {
+    pub ecs: World,
 
     // Resources
     lib: Arc<Box<Library>>,
     palette: Arc<Palette>,
 }
 
-impl World {
+impl Universe {
     pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
-        let mut ecs = SpecsWorld::new();
+        let mut ecs = World::new();
         ecs.register::<FlightDynamics>();
         ecs.register::<WheeledDynamics>();
-        ecs.register::<ShapeMesh>();
-        ecs.register::<ShapeMeshTransformBuffer>();
-        ecs.register::<ShapeMeshFlagBuffer>();
-        ecs.register::<ShapeMeshXformBuffer>();
         ecs.register::<Transform>();
+        ShapeInstanceBuffer::register_components(&mut ecs);
 
         Ok(Self {
             ecs,
@@ -71,24 +63,51 @@ impl World {
         &self.lib
     }
 
-    pub fn system_palette(&self) -> &Palette {
+    pub fn library_owned(&self) -> Arc<Box<Library>> {
+        self.lib.clone()
+    }
+
+    pub fn palette(&self) -> &Palette {
         &self.palette
+    }
+
+    pub fn create_building(
+        &mut self,
+        slot_id: SlotId,
+        shape_id: ShapeId,
+        part: &ChunkPart,
+        position: Point3<f32>,
+        rotation: &UnitQuaternion<f32>,
+    ) -> Fallible<Entity> {
+        let widget_ref = part.widgets();
+        let widgets = widget_ref.read().unwrap();
+        Ok(self
+            .ecs
+            .create_entity()
+            .with(Transform::new(position, *rotation))
+            .with(ShapeComponent::new(slot_id, shape_id))
+            .with(ShapeTransformBuffer::new())
+            .with(ShapeFlagBuffer::new(widgets.errata()))
+            .with(ShapeXformBuffer::new(shape_id, part.widgets()))
+            .build())
     }
 
     pub fn create_ground_mover(
         &mut self,
+        slot_id: SlotId,
         shape_id: ShapeId,
-        position: Point3<f64>,
+        position: Point3<f32>,
     ) -> Fallible<Entity> {
         Ok(self
             .ecs
             .create_entity()
-            .with(Transform::new(position))
+            .with(Transform::new(position, UnitQuaternion::identity()))
             .with(WheeledDynamics::new())
-            .with(ShapeMesh::new(shape_id))
+            .with(ShapeComponent::new(slot_id, shape_id))
             .build())
     }
 
+    /*
     pub fn create_flyer(
         &mut self,
         shape_id: ShapeId,
@@ -111,6 +130,7 @@ impl World {
             .with(ShapeMeshXformBuffer::new(shape_id, part.widgets()))
             .build())
     }
+    */
 
     pub fn destroy_entity(&mut self, entity: Entity) -> Fallible<()> {
         Ok(self.ecs.delete_entity(entity)?)
@@ -121,24 +141,11 @@ impl World {
 mod test {
     use super::*;
     use omnilib::OmniLib;
-    use shape_chunk::{DrawSelection, OpenChunk};
-    use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn test_it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let mut world = World::new(omni.library("FA"))?;
-        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let mut upload = OpenChunk::new(&window)?;
-        let shape_id = upload.upload_shape(
-            "T80.SH",
-            DrawSelection::NormalModel,
-            world.system_palette(),
-            world.library(),
-            &window,
-        )?;
-        let ent = world.create_ground_mover(shape_id, Point3::new(0f64, 0f64, 0f64))?;
-        world.destroy_entity(ent)?;
+        let _universe = Universe::new(omni.library("FA"))?;
         Ok(())
     }
 }

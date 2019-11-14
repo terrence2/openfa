@@ -12,7 +12,6 @@ memoffset = "^ 0.5"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-asset = { path = "../../../asset" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 lay = { path = "../../../lay" }
 lib = { path = "../../../lib" }
@@ -20,6 +19,7 @@ mm = { path = "../../../mm" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
 t2 = { path = "../../../t2" }
+universe_base = { path = "../../../universe_base" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"

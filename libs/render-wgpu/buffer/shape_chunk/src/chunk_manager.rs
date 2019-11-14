@@ -24,7 +24,7 @@ use pal::Palette;
 use sh::RawShape;
 use std::collections::HashMap;
 
-pub struct ShapeChunkManager {
+pub struct ShapeChunkBuffer {
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 
@@ -35,7 +35,7 @@ pub struct ShapeChunkManager {
     closed_chunks: HashMap<ChunkId, ClosedChunk>,
 }
 
-impl ShapeChunkManager {
+impl ShapeChunkBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Self> {
         Ok(Self {
             layout: MegaAtlas::make_bind_group_layout(device),

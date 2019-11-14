@@ -57,6 +57,7 @@ macro_rules! make_frame_graph {
         }
 
         impl $name {
+            #[allow(clippy::too_many_arguments)]
             pub fn new(
                 gpu: &mut ::gpu::GPU,
                 $(

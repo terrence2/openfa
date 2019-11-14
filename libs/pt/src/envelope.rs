@@ -30,12 +30,14 @@ impl EnvelopeVersion {
     }
 }
 
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct EnvelopeCoord {
     speed: f32,
     altitude: f32,
 }
 
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct EnvelopeShape {
     shape: Vec<EnvelopeCoord>, // max of 20

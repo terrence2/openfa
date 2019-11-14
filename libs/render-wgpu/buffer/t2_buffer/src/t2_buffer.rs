@@ -13,9 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
-use asset::AssetManager;
 use failure::Fallible;
 use gpu::GPU;
+use lay::Layer;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
@@ -24,6 +24,7 @@ use pal::Palette;
 use pic::Pic;
 use std::{cell::RefCell, collections::HashSet, mem, ops::Range, sync::Arc};
 use t2::Terrain;
+use universe_base::FEET_TO_HM;
 use wgpu;
 
 #[derive(Copy, Clone, Default)]
@@ -84,20 +85,22 @@ pub struct T2Buffer {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+
+    // We need access to the height data for collisions, layout, etc.
+    terrain: Terrain,
 }
 
 impl T2Buffer {
     pub fn new(
-        mm: MissionMap,
+        mm: &MissionMap,
         system_palette: &Palette,
-        assets: &AssetManager,
         lib: &Library,
         gpu: &mut GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
         trace!("T2Renderer::new");
 
-        let terrain = assets.load_t2(&mm.t2_name())?;
-        let palette = Self::load_palette(&mm, system_palette, assets)?;
+        let terrain = Terrain::from_bytes(&lib.load(&mm.t2_name())?)?;
+        let palette = Self::load_palette(&mm, system_palette, lib)?;
         let (atlas, bind_group_layout, bind_group) = Self::create_atlas(&mm, &palette, &lib, gpu)?;
         let (vertex_buffer, index_buffer, index_count) =
             Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
@@ -108,7 +111,12 @@ impl T2Buffer {
             vertex_buffer,
             index_buffer,
             index_count,
+            terrain,
         })))
+    }
+
+    pub fn t2(&self) -> &Terrain {
+        &self.terrain
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -131,12 +139,8 @@ impl T2Buffer {
         0..self.index_count
     }
 
-    fn load_palette(
-        mm: &MissionMap,
-        system_palette: &Palette,
-        assets: &AssetManager,
-    ) -> Fallible<Palette> {
-        let layer = assets.load_lay(&mm.layer_name())?;
+    fn load_palette(mm: &MissionMap, system_palette: &Palette, lib: &Library) -> Fallible<Palette> {
+        let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &lib)?;
         let layer_index = if mm.layer_index() != 0 {
             mm.layer_index()
         } else {
@@ -316,18 +320,21 @@ impl T2Buffer {
             }
         };
 
-        let x = xi as f32 / (terrain.width as f32) - 0.5;
-        let z = 1f32 - (zi as f32 / (terrain.height as f32)) - 0.5;
-        let h = -f32::from(sample.height) / 512f32;
+        let xf = xi as f32 / terrain.width as f32;
+        let zf = zi as f32 / terrain.height as f32;
+        let scale_x = terrain.extent_east_west_in_ft();
+        let scale_z = terrain.extent_north_south_in_ft();
+        let x = xf * scale_x * FEET_TO_HM;
+        let z = (1f32 - zf) * scale_z * FEET_TO_HM;
+        let h = -f32::from(sample.height) / 512f32 + 0.1f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
         if sample.color == 0xFF {
             color.data[3] = 0;
         }
 
-        let scale = 100f32;
         (
-            [x * scale, h * scale / 8f32, z * scale],
+            [x, h, z],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,

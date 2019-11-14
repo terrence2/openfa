@@ -13,11 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
+
 #include <common/include/include_global.glsl>
 #include <buffer/shape_chunk/include/include_shape.glsl>
 #include <buffer/global_data/include/library.glsl>
 
-// Vertex data
+// Vertex inputs
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec4 color;
 layout(location = 2) in vec2 tex_coord;
@@ -25,27 +26,27 @@ layout(location = 3) in uint flags0;
 layout(location = 4) in uint flags1;
 layout(location = 5) in uint xform_id;
 
-
-// Per shape input
-const uint MAX_XFORM_ID = 32;
-layout(set = 3, binding = 0) buffer ChunkBaseTransforms {
-    float shape_transforms[];
-};
-layout(set = 3, binding = 1) buffer ChunkFlags {
-    uint shape_flags[];
-};
-
-//layout(set = 3, binding = 2) buffer ChunkXformOffsets {
-//    uint data[];
-//} shape_xform_offsets;
-//        layout(set = 4, binding = 2) buffer ChunkXforms {
-//            float data[];
-//        } shape_xforms;
-
+// Outputs
 layout(location = 0) smooth out vec4 v_color;
 layout(location = 1) smooth out vec2 v_tex_coord;
 layout(location = 2) flat out uint f_flags0;
 layout(location = 3) flat out uint f_flags1;
+
+
+// Per shape input
+const uint MAX_XFORM_ID = 32;
+layout(set = 2, binding = 0) buffer ShapeInstanceBlockTransforms {
+    float shape_transforms[];
+};
+layout(set = 2, binding = 1) buffer ShapeInstanceBlockFlags {
+    uint shape_flags[];
+};
+//layout(set = 2, binding = 2) buffer ShapeInstanceBlockXformOffsets {
+//    uint shape_xform_offsets[];
+//};
+//layout(set = 2, binding = 2) buffer ShapeInstanceBlockXforms {
+//    float shape_xforms[];
+//};
 
 void main() {
     uint base_transform = gl_InstanceIndex * 6;

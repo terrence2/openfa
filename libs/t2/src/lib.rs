@@ -129,6 +129,7 @@ Ukraine            {0, 1}
 
 use failure::{bail, ensure, Fallible};
 use log::trace;
+use nalgebra::Point3;
 use packed_struct::packed_struct;
 use std::{mem, str};
 
@@ -192,6 +193,8 @@ pub struct Terrain {
     pub pic_file: String,
     pub width: u32,
     pub height: u32,
+    width_ft: f32,
+    height_ft: f32,
     pub samples: Vec<Sample>,
     _extra: Vec<u8>,
 }
@@ -267,17 +270,28 @@ packed_struct!(BITEHeader1 {
 packed_struct!(BIT2Header {
     _0 => magic: [u8; 4],
 
-    // Actually 80 bytes, but slit up because Debug is not implemented for arrays past 32.
+    // Actually 80 bytes, but split up because Debug is not implemented for arrays past 32.
     _1a => name0: [u8; 32],
     _1b => name1: [u8; 32],
     _1c => name2: [u8; 16],
 
     _2 => pic_file:  [u8; 15],
 
-    _3 => unk0: u32,
-    _4 => unk1: u32,
-    _5 => unk2: u32,
-    _6 => unk3: u32
+    _3 => unk0: [u32; 6],
+
+    _4 => width_ft: u32,
+    _5 => height_ft: u32,
+
+    _6 => unk_zero: u16,
+    _7 => unk1: u16,
+    _8 => unk_small: u16,
+
+    _12 => width: u32,
+    _13 => height: u32,
+
+    _14 => unk2: u32
+
+    // data
 });
 
 const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
@@ -443,6 +457,8 @@ impl Terrain {
         let terrain = Terrain {
             name: "Ukraine".to_owned(),
             pic_file,
+            width_ft: 0f32,
+            height_ft: 0f32,
             width: header.width() as u32,
             height: header.height() as u32,
             samples,
@@ -506,6 +522,8 @@ impl Terrain {
         let terrain = Terrain {
             name,
             pic_file,
+            width_ft: 0f32,
+            height_ft: 0f32,
             width: header.width() as u32,
             height: header.height() as u32,
             samples,
@@ -531,14 +549,17 @@ impl Terrain {
     00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
     *
     00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
-                       XXXXXXXXXXX BBBBBB BBBBB YYYYY DDDDDDDD
+                    VVVVVVVVVVV BBBBBBBBBBBB VVVVVVVVVVV DDDDD
     00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
-              DD EEEEEEEEEEE QQQQQQQQQQQQ FFFFFFFFFFF GGGGGGGG
+              DDDDD EEEEEEEEEEE QQQQQQQQQQQQ FF SSSSSSSSSSS VV
     00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 1a 00 00  |................|
-              GG VVVVVVVVVVV LLLLLLLLLLLL WWWWWWWWWWW HHHHHHHH
+              VVVVVVVV ?? ?? LLLLLLLLL ?? WWWWWWWWWWW HHHHHHHH
     00000080  00 19 00 00 00 15 e8 01  00 d0 00 00 00 c8 00 00  |................|
               HH KKKKKKKKKKK << -- >>  << -- >> << -- >> << --
     00000090  00 95 00 00 00 d3 00 00  d3 00 00 d3 00 00 d3 00  |................|
+
+    SSS - scale x
+    VVV - scale z
 
     The french map is:
         Total (/208):
@@ -563,54 +584,74 @@ impl Terrain {
         0x0000001a => 26
         0x00001a00 => 6656
         0x001a0000 => 1703936
+
+    The cuban map is:
+        Size: 256x256
+        miles:      343 (1.34)
+        meters: 552,005 (2,156)
+        feet: 1,811,040 (7,074)
     */
 
     fn from_bit2(data: &[u8]) -> Fallible<Self> {
-        let magic = &data[0..4];
-        ensure!(magic == MAGIC_BIT2, "missing magic");
+        let header_pointer: &[BIT2Header] = unsafe { mem::transmute(data) };
+        let header = &header_pointer[0];
 
-        // Followed by 80 bytes of name / description.
-        let name = read_name(&data[4..84])?;
+        // 4 byte of magic
+        ensure!(header.magic() == MAGIC_BIT2, "missing magic");
 
-        // Followed by __ bytes containing the pic file.
-        // TODO: I'm not super sure if this is 15 bytes or 16 bytes. If it's 16 bytes then
-        //       the u32 after is 0x20. If it's 15 bytes then it's 0x2000. We need to lose
-        //       one byte between this and the w/h and this might be the right place to do
-        //       it. I cannot yet tell from context.
-        let pic_file = read_name(&data[84..84 + 16])?;
+        // 80 bytes of name / description
+        let name = read_name(&header.name0())?
+            + &read_name(&header.name1())?
+            + &read_name(&header.name2())?;
 
-        // Followed by some numbers... let's skip past those for now.
-        // 0            4            8            12           16          20  21
-        // 20 00 00 00  00 00 00 00  20 00 00 00  00 00 00 00  00 00 00 00 00  08 00 00
-        //
-        // 24  25       28  29       32  33     35         37           41           45
-        // 00  20 00 00 00  20 00 00 00  95 00  03 00  >>  00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
-        let dwords: &[u32] = unsafe { mem::transmute(&data[84 + 16 + 37..]) };
-        let width = dwords[0];
-        let height = dwords[1];
-        trace!("terrain size: {}x{}", width, height);
-        let npix = (width * height) as usize;
+        // Followed by 15 bytes containing the pic file.
+        let pic_file = read_name(&header.pic_file())?;
+        trace!("Loaded T2 with name: {}, pic_file: {}", name, pic_file);
+
+        // Followed by a bunch of ints.
+        ensure!(header.unk0()[1] == 0, "expected 0 in unk0[1]");
+        ensure!(header.unk0()[3] == 0, "expected 0 in unk0[3]");
+        ensure!(header.unk0()[4] == 0, "expected 0 in unk0[4]");
+        ensure!(header.unk0()[5] == 524_288, "expected 524288 in unk0[5]");
+        if header.unk_small() == 3 {
+            ensure!(header.width() == 256, "if 3, expect 256");
+            ensure!(header.height() == 256, "if 3, expect 256");
+        }
+        println!(
+            "unk: {:?} {:08X} {:?}; {}x{} ({:06X}x{:06X}ft)",
+            header.unk0(),
+            header.unk1(),
+            header.unk_small(),
+            header.width(),
+            header.height(),
+            header.width_ft(),
+            header.height_ft(),
+        );
 
         // Followed by many 3-byte entries.
-        // How many? 4 fewer than 258 * 258 (for the normal size).
-        // Probably not a coincidence.
-        let data_start = 84 + 16 + 49;
+        let npix = (header.width() * header.height()) as usize;
+        let data_start = mem::size_of::<BIT2Header>();
         let data_end = data_start + npix * 3;
         let entries = &data[data_start..data_end];
         let mut samples = Vec::new();
-
         for i in 0..npix {
             let color = entries[i * 3];
             let modifiers = entries[i * 3 + 1];
             let height = entries[i * 3 + 2];
             samples.push(Sample::new(color, modifiers, height))
         }
+
+        // I think the data after the entries is repeat data that allows for wrapping,
+        // or maybe just allows the original software renderer to not overflow?
         let extra = data[data_end..].to_owned();
+
         let terrain = Terrain {
             name,
             pic_file,
-            width,
-            height,
+            width_ft: header.width_ft() as f32,
+            height_ft: header.height_ft() as f32,
+            width: header.width(),
+            height: header.height(),
             samples,
             _extra: extra,
         };
@@ -668,12 +709,27 @@ impl Terrain {
 
         Ok(())
     }
+
+    pub fn extent_east_west_in_ft(&self) -> f32 {
+        self.width_ft
+    }
+
+    pub fn extent_north_south_in_ft(&self) -> f32 {
+        self.height_ft
+    }
+
+    pub fn ground_height_at(&self, _p: &Point3<f32>) -> f32 {
+        // FIXME: implement this
+        0f32
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use omnilib::OmniLib;
+
+    const DUMP: bool = false;
 
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
@@ -683,7 +739,10 @@ mod test {
             let lib = omni.library(game);
             let contents = lib.load(name)?;
             let terrain = Terrain::from_bytes(&contents)?;
-            terrain.make_debug_images(&format!("../../dump/{}_{}", game, name))?;
+            if DUMP {
+                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, name))?;
+            }
+            //println!("WIDTH: {}, HEIGHT: {}", terrain.width, terrain.height);
         }
         Ok(())
     }

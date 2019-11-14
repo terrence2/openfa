@@ -26,11 +26,11 @@ impl Component for ShapeComponent {
     type Storage = VecStorage<Self>;
 }
 impl ShapeComponent {
-    pub fn new(slot_id: SlotId, shape_id: ShapeId, draw_state: DrawState) -> Self {
+    pub fn new(slot_id: SlotId, shape_id: ShapeId) -> Self {
         Self {
             slot_id,
             shape_id,
-            draw_state,
+            draw_state: Default::default(),
         }
     }
 }

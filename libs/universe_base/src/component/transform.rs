@@ -16,10 +16,8 @@ use nalgebra::{Point3, UnitQuaternion};
 use specs::{Component, VecStorage};
 
 pub struct Transform {
-    #[allow(dead_code)]
-    position: Point3<f64>,
-    #[allow(dead_code)]
-    rotation: UnitQuaternion<f64>,
+    position: Point3<f32>,
+    rotation: UnitQuaternion<f32>,
     // scale: Vector3<f64>, // we don't have an upload slot for this currently.
 }
 
@@ -28,22 +26,13 @@ impl Component for Transform {
 }
 
 impl Transform {
-    pub fn new(position: Point3<f64>) -> Self {
-        Self {
-            position,
-            rotation: UnitQuaternion::identity(),
-        }
+    pub fn new(position: Point3<f32>, rotation: UnitQuaternion<f32>) -> Self {
+        Self { position, rotation }
     }
 
     // Convert to dense pack for upload.
     pub fn compact(&self) -> [f32; 6] {
-        [
-            self.position.x as f32,
-            self.position.y as f32,
-            self.position.z as f32,
-            0f32,
-            0f32,
-            0f32,
-        ]
+        let (a, b, c) = self.rotation.euler_angles();
+        [self.position.x, self.position.y, self.position.z, a, b, c]
     }
 }

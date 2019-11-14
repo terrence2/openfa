@@ -16,7 +16,7 @@ use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use global_layout::GlobalSets;
 use input::{InputBindings, InputSystem};
-use nalgebra::{Matrix4, Point3};
+use nalgebra::{Matrix4, Point3, UnitQuaternion};
 use omnilib::OmniLib;
 use pal::Palette;
 use shape_chunk::{DrawSelection, DrawState, Vertex};
@@ -26,6 +26,7 @@ use shape_instance::{
 };
 use specs::prelude::*;
 use std::{sync::Arc, time::Instant};
+use universe_base::component::Transform;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::AutoCommandBufferBuilder,
@@ -38,7 +39,6 @@ use vulkano::{
     sync::GpuFuture,
 };
 use window::{GraphicsConfigBuilder, GraphicsWindow};
-use world::Transform;
 
 mod vs {
     use vulkano_shaders::shader;
@@ -308,11 +308,10 @@ fn main() -> Fallible<()> {
             )?;
             let _ent = world
                 .create_entity()
-                .with(Transform::new(Point3::new(
-                    f64::from(x) * 10f64,
-                    f64::from(y) * 10f64,
-                    0f64,
-                )))
+                .with(Transform::new(
+                    Point3::new(x as f32 * 10f32, y as f32 * 10f32, 0f32),
+                    UnitQuaternion::identity(),
+                ))
                 .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
                 .with(ShapeTransformBuffer::new())
                 .with(ShapeFlagBuffer::new(inst_man.errata(shape_id)))

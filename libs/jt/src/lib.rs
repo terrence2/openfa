@@ -20,11 +20,12 @@ use ot::{
 };
 use std::collections::HashMap;
 
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
-struct ProjectileNames {
-    short_name: String,
-    long_name: String,
-    file_name: Option<String>,
+pub struct ProjectileNames {
+    pub short_name: String,
+    pub long_name: String,
+    pub file_name: Option<String>,
 }
 
 impl FromRow for ProjectileNames {

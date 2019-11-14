@@ -21,7 +21,7 @@ use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk_wgpu::{DrawSelection, DrawState, ShapeChunkManager, Vertex};
+use shape_chunk_wgpu::{DrawSelection, DrawState, ShapeChunkBuffer, Vertex};
 use std::time::Instant;
 
 fn main() -> Fallible<()> {
@@ -37,7 +37,7 @@ fn main() -> Fallible<()> {
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
 
-    let mut chunk_man = ShapeChunkManager::new(gpu.device())?;
+    let mut chunk_man = ShapeChunkBuffer::new(gpu.device())?;
     let (_chunk_id, _shape_id) = chunk_man.upload_shape(
         "F8.SH",
         DrawSelection::NormalModel,

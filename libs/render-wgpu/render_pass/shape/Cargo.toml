@@ -21,7 +21,7 @@ input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 nalgebra = "^ 0.18"
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
-world = { path = "../../../world" }
+universe_base = { path = "../../../universe_base" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

@@ -377,6 +377,10 @@ impl MissionMap {
         self.tmaps.get(&(xi, zi))
     }
 
+    pub fn objects(&self) -> &Vec<ObjectInfo> {
+        &self.objects
+    }
+
     // These are all of the terrains and map references in the base games.
     // FA:
     //     FA_2.LIB:
