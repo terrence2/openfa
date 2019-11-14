@@ -17,10 +17,10 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use nalgebra::Point3;
+use nalgebra::{Point3, UnitQuaternion};
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{DrawSelection, DrawState, Vertex};
+use shape_chunk::{DrawSelection, Vertex};
 use shape_instance_wgpu::{
     CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer,
     ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
@@ -127,12 +127,11 @@ fn main() -> Fallible<()> {
             )?;
             let _ent = world
                 .create_entity()
-                .with(Transform::new(Point3::new(
-                    f64::from(x) * 100f64,
-                    0f64,
-                    f64::from(y) * 100f64,
-                )))
-                .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
+                .with(Transform::new(
+                    Point3::new(x as f32 * 100f32, 0f32, y as f32 * 100f32),
+                    UnitQuaternion::identity(),
+                ))
+                .with(ShapeComponent::new(slot_id, shape_id))
                 .with(ShapeTransformBuffer::new())
                 .with(ShapeFlagBuffer::new(inst_man.borrow().errata(shape_id)))
                 //.with(ShapeXformBuffer::new())

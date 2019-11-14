@@ -116,13 +116,13 @@ pub fn main() -> Fallible<()> {
                     &mut gpu,
                 )?;
 
-            if let Ok(pt) = info.xt().pt() {
+            if let Ok(_pt) = info.xt().pt() {
                 //universe.create_flyer(pt, shape_id, slot_id)?
                 //unimplemented!()
-            } else if let Ok(nt) = info.xt().nt() {
+            } else if let Ok(_nt) = info.xt().nt() {
                 //universe.create_ground_mover(nt)
                 //unimplemented!()
-            } else if let Ok(jt) = info.xt().jt() {
+            } else if info.xt().jt().is_ok() {
                 bail!("did not expect a projectile in MM objects")
             } else {
                 println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());

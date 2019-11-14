@@ -108,6 +108,7 @@ impl ShapeRenderPass {
             for i in 0..block.len() {
                 //rpass.draw_indirect(block.command_buffer(), i as u64);
                 let cmd = block.command_buffer_scratch[i];
+                #[allow(clippy::range_plus_one)]
                 rpass.draw(
                     cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
                     i as u32..i as u32 + 1,

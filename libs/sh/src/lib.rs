@@ -26,7 +26,7 @@ use ansi::{ansi, Color};
 use failure::{bail, ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
 use log::trace;
-use reverse::{bs2s, p2s};
+use reverse::{bs2s, bs_2_i16, p2s};
 use std::{
     cmp,
     collections::{HashMap, HashSet},
@@ -617,7 +617,8 @@ impl TrailerUnknown {
             ansi(),
             self.data.len(),
             ansi().red().bold(),
-            bs2s(&self.data),
+            //bs2s(&self.data),
+            bs_2_i16(&self.data),
             ansi(),
         )
     }
@@ -760,6 +761,7 @@ impl UnknownUnknown {
         s
     }
 }
+
 macro_rules! opaque_instr {
     ($name:ident, $magic_str: expr, $magic:expr, $size:expr) => {
         pub struct $name {
@@ -800,6 +802,32 @@ macro_rules! opaque_instr {
             }
 
             fn show(&self) -> String {
+                if stringify!($name) == "Header" {
+                    let mut s = format!(
+                        "@{:04X} {}{}{}: {}{}{}| ",
+                        self.offset,
+                        ansi().fg(Color::Green).bold(),
+                        stringify!($name),
+                        ansi(),
+                        ansi().fg(Color::Green).bold(),
+                        p2s(self.data, 0, 2).trim(),
+                        ansi(),
+                    );
+                    let b: &[u8] = &unsafe { std::slice::from_raw_parts(self.data, 14) }[2..];
+                    let d: &[i16] = unsafe { mem::transmute(b) };
+                    for i in 0..6 {
+                        s += &format!(
+                            "{}{:02X}{:02X}({}){} ",
+                            ansi().fg(Color::Green),
+                            b[i * 2],
+                            b[i * 2 + 1],
+                            d[i],
+                            ansi(),
+                        );
+                    }
+                    return s;
+                }
+
                 let clr = if stringify!($name) == "Header" {
                     Color::Green
                 } else {

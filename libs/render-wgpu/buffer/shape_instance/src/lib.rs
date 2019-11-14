@@ -567,11 +567,11 @@ impl ShapeInstanceBuffer {
             block_id
         };
 
+        // FIXME: this is less useful than I thought it would be.
         let draw_cmd = self
             .chunk_man
             .part(shape_id)
             .draw_command(self.blocks[&block_id].len() as u32, 1);
-        println!("Drawing {} with {:?}", name, draw_cmd);
         let slot_id = self
             .blocks
             .get_mut(&block_id)

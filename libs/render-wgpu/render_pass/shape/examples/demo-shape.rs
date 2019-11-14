@@ -17,10 +17,10 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use nalgebra::Point3;
+use nalgebra::{Point3, UnitQuaternion};
 use omnilib::OmniLib;
 use pal::Palette;
-use shape_chunk::{DrawSelection, DrawState};
+use shape_chunk::DrawSelection;
 use shape_instance::{
     CoalesceSystem, FlagUpdateSystem, ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer,
     ShapeTransformBuffer, ShapeXformBuffer, TransformUpdateSystem, XformUpdateSystem,
@@ -63,12 +63,11 @@ fn main() -> Fallible<()> {
             )?;
             let _ent = world
                 .create_entity()
-                .with(Transform::new(Point3::new(
-                    f64::from(x) * 100f64,
-                    0f64,
-                    f64::from(y) * 100f64,
-                )))
-                .with(ShapeComponent::new(slot_id, shape_id, DrawState::default()))
+                .with(Transform::new(
+                    Point3::new(x as f32 * 100f32, 0f32, y as f32 * 100f32),
+                    UnitQuaternion::identity(),
+                ))
+                .with(ShapeComponent::new(slot_id, shape_id))
                 .with(ShapeTransformBuffer::new())
                 .with(ShapeFlagBuffer::new(inst_buffer.borrow().errata(shape_id)))
                 //.with(ShapeXformBuffer::new())
@@ -80,11 +79,6 @@ fn main() -> Fallible<()> {
 
     let shape_render_pass =
         ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_buffer.borrow())?;
-
-    let empty_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &gpu.empty_layout(),
-        bindings: &[],
-    });
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
     camera.set_distance(1500.0);
@@ -146,12 +140,8 @@ fn main() -> Fallible<()> {
                 );
             }
 
-            shape_render_pass.render(
-                &empty_bind_group,
-                &globals_buffer.borrow(),
-                &inst_buffer.borrow(),
-                &mut frame,
-            )?;
+            let mut rpass = frame.begin_render_pass();
+            shape_render_pass.draw(&mut rpass, &globals_buffer.borrow(), &inst_buffer.borrow());
         }
         frame.finish();
 

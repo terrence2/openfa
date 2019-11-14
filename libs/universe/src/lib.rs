@@ -141,26 +141,11 @@ impl Universe {
 mod test {
     use super::*;
     use omnilib::OmniLib;
-    //use shape_chunk::{DrawSelection, OpenChunk};
-    use window::{GraphicsConfigBuilder, GraphicsWindow};
 
     #[test]
     fn test_it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let mut world = Universe::new(omni.library("FA"))?;
-        /*
-        let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
-        let mut upload = OpenChunk::new(&window)?;
-        let shape_id = upload.upload_shape(
-            "T80.SH",
-            DrawSelection::NormalModel,
-            world.system_palette(),
-            world.library(),
-            &window,
-        )?;
-        let ent = world.create_ground_mover(shape_id, Point3::new(0f64, 0f64, 0f64))?;
-        world.destroy_entity(ent)?;
-        */
+        let _universe = Universe::new(omni.library("FA"))?;
         Ok(())
     }
 }

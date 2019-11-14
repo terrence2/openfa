@@ -612,7 +612,7 @@ impl Terrain {
         ensure!(header.unk0()[1] == 0, "expected 0 in unk0[1]");
         ensure!(header.unk0()[3] == 0, "expected 0 in unk0[3]");
         ensure!(header.unk0()[4] == 0, "expected 0 in unk0[4]");
-        ensure!(header.unk0()[5] == 524288, "expected 524288 in unk0[5]");
+        ensure!(header.unk0()[5] == 524_288, "expected 524288 in unk0[5]");
         if header.unk_small() == 3 {
             ensure!(header.width() == 256, "if 3, expect 256");
             ensure!(header.height() == 256, "if 3, expect 256");
@@ -718,7 +718,7 @@ impl Terrain {
         self.height_ft
     }
 
-    pub fn ground_height_at(&self, p: &Point3<f32>) -> f32 {
+    pub fn ground_height_at(&self, _p: &Point3<f32>) -> f32 {
         // FIXME: implement this
         0f32
     }

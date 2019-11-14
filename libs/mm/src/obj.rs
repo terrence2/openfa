@@ -180,7 +180,7 @@ impl ObjectInfo {
                     assert_eq!(is[2], 0);
                     angle = UnitQuaternion::from_axis_angle(
                         &Unit::new_unchecked(Vector3::new(0f32, 1f32, 0f32)),
-                        is[0] as f32 * PI / 180f32,
+                        -(is[0] as f32 * PI / 180f32),
                     );
                 }
                 "nationality" => {

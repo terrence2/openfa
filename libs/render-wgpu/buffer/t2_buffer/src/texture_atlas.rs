@@ -200,7 +200,6 @@ impl TextureAtlas {
 #[cfg(test)]
 mod test {
     use super::*;
-    use asset::AssetManager;
     use lay::Layer;
     use mm::MissionMap;
     use omnilib::OmniLib;
@@ -237,12 +236,10 @@ mod test {
                     .unwrap_or_else(|_| "<unknown>".to_owned())
             );
             let lib = omni.library(game);
-            let assets = AssetManager::new(lib.clone())?;
             let types = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &types, &lib)?;
-
-            let layer = assets.load_lay(&mm.layer_name())?;
+            let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &lib)?;
 
             let mut pic_data = HashMap::new();
             let base_name = mm.get_base_texture_name()?;
