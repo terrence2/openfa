@@ -14,7 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod envelope;
 
-use crate::envelope::Envelope;
+pub use crate::envelope::Envelope;
+
 use failure::{bail, ensure, Fallible};
 use nt::NpcType;
 use ot::{
@@ -22,7 +23,7 @@ use ot::{
     parse::{FieldRow, FromRow, FromRows},
     ObjectType,
 };
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, slice::Iter};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum PlaneTypeVersion {
@@ -65,6 +66,12 @@ impl FromRow for Envelopes {
             off += 44;
         }
         Ok(Envelopes { all: envs })
+    }
+}
+
+impl Envelopes {
+    pub fn iter(&self) -> Iter<Envelope> {
+        self.all.iter()
     }
 }
 
