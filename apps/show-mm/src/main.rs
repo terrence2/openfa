@@ -68,7 +68,7 @@ make_frame_graph!(
     }
 );
 
-pub fn main() -> Fallible<()> {
+fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     TermLogger::init(LevelFilter::Warn, Config::default())?;
 

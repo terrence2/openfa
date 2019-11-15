@@ -12,14 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+pub use jt::ProjectileType;
+pub use nt::{HardpointType, NpcType};
+pub use ot::parse;
+pub use ot::ObjectType;
+pub use pt::{Envelope, PlaneType};
+
 use failure::{bail, Fallible};
-use jt::ProjectileType;
 use lib::Library;
 use log::trace;
-use nt::NpcType;
-pub use ot::parse;
-use ot::ObjectType;
-use pt::PlaneType;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 // A generic type.

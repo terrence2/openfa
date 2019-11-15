@@ -491,6 +491,19 @@ macro_rules! make_type_struct {
                     ),*
                 });
             }
+
+            pub fn fields() -> &'static [&'static str] {
+                &[$(stringify!($field_name)),*]
+            }
+
+            pub fn get_field(&self, field: &'static str) -> String {
+                match field {
+                    $(
+                        stringify!($field_name) => format!("{:?}", self.$field_name)
+                    ),*,
+                    _ => String::new()
+                }
+            }
         }
     }
 }
