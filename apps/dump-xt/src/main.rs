@@ -41,7 +41,7 @@ fn main() -> Fallible<()> {
     for field in ObjectType::fields() {
         println!("{:>25}: {}", field, ot.get_field(field));
     }
-    println!("");
+    println!();
 
     if let Ok(nt) = xt.nt() {
         println!("{:>25}", "NPC Type");
@@ -53,14 +53,14 @@ fn main() -> Fallible<()> {
             println!("{:>25}: {}", field, nt.get_field(field));
         }
         for (i, hp) in nt.hards.iter().enumerate() {
-            println!("");
+            println!();
             println!("{:>25}: {:02}", "Hardpoint", i + 1);
             println!("{:>25}====", "=========");
             for field in HardpointType::fields() {
                 println!("{:>25}: {}", field, hp.get_field(field));
             }
         }
-        println!("");
+        println!();
     }
 
     if let Ok(jt) = xt.jt() {
@@ -81,7 +81,7 @@ fn main() -> Fallible<()> {
             println!("{:>25}: {}", field, pt.get_field(field));
         }
         for (i, env) in pt.envelopes.iter().enumerate() {
-            println!("");
+            println!();
             println!("{:>25}: {:02}", "Envelope", i + 1);
             println!("{:>25}====", "========");
             for field in Envelope::fields() {
