@@ -199,6 +199,35 @@ pub struct Terrain {
     _extra: Vec<u8>,
 }
 
+impl Terrain {
+    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
+        let magic = &data[0..4];
+        if magic == MAGIC_BITE {
+            return Self::from_bite(data);
+        }
+        if magic == MAGIC_BIT2 {
+            return Self::from_bit2(data);
+        }
+
+        bail!(
+            "do not know how to parse a T2 with magic header of {:?}",
+            magic
+        )
+    }
+
+    fn from_bite(data: &[u8]) -> Fallible<Self> {
+        // Between USNF and MF, the format of the header changed without changing the
+        // magic BITE, so we need to do a bit of digging to find out which header to use.
+        // The newer format adds a description, so if there is a .PIC after the magic
+        // then it is the older format.
+        let maybe_pic = read_name(&data[4..19])?;
+        if maybe_pic.ends_with(".PIC") {
+            return Self::from_bite0(data);
+        }
+        Self::from_bite1(data)
+    }
+}
+
 fn read_name(n: &[u8]) -> Fallible<String> {
     let end_offset: usize = n.iter().position(|&c| c == 0).unwrap_or(n.len() - 1);
     Ok(str::from_utf8(&n[..end_offset])?.to_owned())
@@ -206,6 +235,38 @@ fn read_name(n: &[u8]) -> Fallible<String> {
 
 const MAGIC_BITE: &[u8] = &[b'B', b'I', b'T', b'E'];
 
+/*
+The earlier BITE format has the pic right after the magic and a big
+string of 0 bytes in the middle of the important bits.
+
+USNF:UKR.T2
+                      PIC@4
+00000000  42 49 54 45 75 6b 72 2e  50 49 43 00 00 00 00 00  |BITEukr.PIC.....|
+00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                                         AAAAAAAAAAA BBBBB
+00000030  00 00 00 00 00 00 00 00  00 00 00 19 00 00 00 00  |................|
+          BBBBB CCCCCCCCCCC DDDDDDDDDDDD 1           2
+00000040  00 00 00 19 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                3           4            5           6
+00000050  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                7           8            9           A
+00000060  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                B           C            D           E
+00000070  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                F           10           11          12
+00000080  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+                13          PA DD  AA AA BB BB CC CC LL LL
+00000090  00 00 00 00 00 00 00 00  08 00 1a 00 1a 00 50 fe  |..............P.|
+          LL LL WW WW HH HH II II  JJ JJ KK KK END@AC
+000000a0  01 00 d0 00 d0 00 10 00  0d 00 0d 00 50 03 00 00  |............P...|
+000000b0  50 06 00 00 50 09 00 00  50 0c 00 00 50 0f 00 00  |P...P...P...P...|
+000000c0  50 12 00 00 50 15 00 00  50 18 00 00 50 1b 00 00  |P...P...P...P...|
+
+After USNF, it looks like the BITE format changed without changing the
+magic word. Now there is a description / name after the magic and the pic
+is moved lower. There is also a big block of zeros removed from the middle.
+*/
 packed_struct!(BITEHeader0 {
     _0 => magic: [u8; 4],
 
@@ -237,200 +298,7 @@ packed_struct!(BITEHeader0 {
     _11 => unk_k: u16 as usize
 });
 
-packed_struct!(BITEHeader1 {
-    _0 => magic: [u8; 4],
-
-    // Note: we have to split this up because Debug is only
-    // implemented up through array sizes of 32.
-    _1a => name0: [u8; 32],
-    _1b => name1: [u8; 32],
-    _1c => name2: [u8; 16],
-
-    _3 => pic_file: [u8; 15],
-    _4 => unk0: u32,
-    _5 => unk1: u32,
-    _6 => unk2: u32,
-    _7 => unk3: u32,
-    _8 => unk4: u32,
-    _9 => unk_pad: u16,
-    _10 => unk_a: u16,
-    _11 => unk_b: u16,
-    _12 => unk_c: u16,
-
-    _13 => last_byte: u32,
-
-    _14 => width: u16 as usize,
-    _15 => height: u16 as usize,
-
-    _16 => unk_i: u16 as usize,
-    _17 => unk_j: u16 as usize,
-    _18 => unk_k: u16 as usize
-});
-
-packed_struct!(BIT2Header {
-    _0 => magic: [u8; 4],
-
-    // Actually 80 bytes, but split up because Debug is not implemented for arrays past 32.
-    _1a => name0: [u8; 32],
-    _1b => name1: [u8; 32],
-    _1c => name2: [u8; 16],
-
-    _2 => pic_file:  [u8; 15],
-
-    _3 => unk0: [u32; 6],
-
-    _4 => width_ft: u32,
-    _5 => height_ft: u32,
-
-    _6 => unk_zero: u16,
-    _7 => unk1: u16,
-    _8 => unk_small: u16,
-
-    _12 => width: u32,
-    _13 => height: u32,
-
-    _14 => unk2: u32
-
-    // data
-});
-
-const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
-
 impl Terrain {
-    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
-        let magic = &data[0..4];
-        if magic == MAGIC_BITE {
-            return Self::from_bite(data);
-        }
-        if magic == MAGIC_BIT2 {
-            return Self::from_bit2(data);
-        }
-
-        bail!(
-            "do not know how to parse a T2 with magic header of {:?}",
-            magic
-        )
-    }
-
-    /*
-    The earlier BITE format has the pic right after the magic and a big
-    string of 0 bytes in the middle of the important bits.
-
-    USNF:UKR.T2
-                          PIC@4
-    00000000  42 49 54 45 75 6b 72 2e  50 49 43 00 00 00 00 00  |BITEukr.PIC.....|
-    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-    00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-                                             AAAAAAAAAAA BBBBB
-    00000030  00 00 00 00 00 00 00 00  00 00 00 19 00 00 00 00  |................|
-              BBBBB CCCCCCCCCCC DDDDDDDDDDDD 1           2
-    00000040  00 00 00 19 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-                    3           4            5           6
-    00000050  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-                    7           8            9           A
-    00000060  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-                    B           C            D           E
-    00000070  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-                    F           10           11          12
-    00000080  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-                    13          PA DD  AA AA BB BB CC CC LL LL
-    00000090  00 00 00 00 00 00 00 00  08 00 1a 00 1a 00 50 fe  |..............P.|
-              LL LL WW WW HH HH II II  JJ JJ KK KK END@AC
-    000000a0  01 00 d0 00 d0 00 10 00  0d 00 0d 00 50 03 00 00  |............P...|
-    000000b0  50 06 00 00 50 09 00 00  50 0c 00 00 50 0f 00 00  |P...P...P...P...|
-    000000c0  50 12 00 00 50 15 00 00  50 18 00 00 50 1b 00 00  |P...P...P...P...|
-
-    After USNF, it looks like the BITE format changed without changing the
-    magic word. Now there is a description / name after the magic and the pic
-    is moved lower. There is also a big block of zeros removed from the middle.
-
-    ATFNATO:BAL.T2
-    BITE
-                          0            4           8
-                          20 00 00 00  00 00 00 00 20 00 00 00  |.... ....... ...|
-              12          16           20 21 AA 23 BB 25 CC
-    00000070  00 00 00 00 00 00 00 00  00 08 00 20 00 20 00 8d  8d,01,03 is the start of the last row
-              29       WW 33 HH HH II  II JJ JJ KK KK oo oo oo
-    00000080  04 03 00 00 01 00 01 10  00 10 00 10 00 8d 04 00  |................|
-              oo
-    00000090  00 8d 07 00 00 8d 0a 00  00 8d 0d 00 00 8d 10 00  |................|
-    ..
-    00000470  00 8d ef 02 00 8d f2 02  00 8d f5 02 00 8d f8 02  |................|
-                                                      << -- >>
-    00000480  00 8d fb 02 00 8d fe 02  00 8d 01 03 00 d2 00 00  |................|
-              << -- >> << -- >> << --  >>
-    00000490  d2 00 00 d2 00 00 d2 00  00 d2 00 00 d2 00 00 d2  |................|
-    ...
-
-    MF:UKR.T2
-    00000000  42 49 54 45 55 6b 72 61  69 6e 65 00 00 00 00 00  |BITEUkraine.....|
-    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-    *
-                          PIC@54
-    00000050  00 00 00 00 75 6b 72 2e  50 49 43 00 00 00 00 00  |....ukr.PIC.....|
-                       HDR@63
-    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
-    00000070  00 00 00 00 00 00 00 00  00 08 00 1a 00 1a 00 31  |...............1|
-                                                      END@8D
-    00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
-    00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
-    000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
-
-    ATF:FRA.T2
-    00000000  42 49 54 45 46 72 61 6e  63 65 00 00 00 00 00 00  |BITEFrance......|
-    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-    *
-    00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
-    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
-                                          AAAAA BBBBB CCCCC LL
-    00000070  00 00 00 00 00 00 00 00  00 08 00 1a 00 1a 00 31  |...............1|
-              LLLLLLLL WWWWW HHHHH IIIIII JJJJJ KKKKK
-    00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
-    00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
-    000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
-
-    10 = stride
-    d = offset?
-
-    The french map is:
-        Total (/208):
-           miles ->      290 (1.4)
-           meters -> 466,710 (2243)
-           feet -> 1,531,000 (7360)
-
-           miles ->      300 (1.44)
-           meters -> 482,803 (2321)
-           feet -> 1,584,000 (7615)
-
-    Possible scales:
-        0x0008 => 8
-        0x0800 => 2048
-
-        0x00000019 => 25
-        0x00001900 => 6400
-        0x00190000 => 1638400
-        0x19000000 => 419,430,400
-
-        0x001a => 26
-        0x1a00 => 6656
-
-        0x000d => 13
-        0x0010 => 16
-
-        //
-    */
-    fn from_bite(data: &[u8]) -> Fallible<Self> {
-        // Between USNF and MF, the format of the header changed without changing the
-        // magic BITE, so we need to do a bit of digging to find out which header to use.
-        // The newer format adds a description, so if there is a .PIC after the magic
-        // then it is the older format.
-        let maybe_pic = read_name(&data[4..19])?;
-        if maybe_pic.ends_with(".PIC") {
-            return Self::from_bite0(data);
-        }
-        Self::from_bite1(data)
-    }
-
     fn from_bite0(data: &[u8]) -> Fallible<Self> {
         let header_ptr: *const BITEHeader0 = data.as_ptr() as *const _;
         let header: &BITEHeader0 = unsafe { &*header_ptr };
@@ -466,7 +334,84 @@ impl Terrain {
         };
         Ok(terrain)
     }
+}
 
+/*
+ATFNATO:BAL.T2
+BITE
+                      0            4           8
+                      20 00 00 00  00 00 00 00 20 00 00 00  |.... ....... ...|
+          12          16           20 21 AA 23 BB 25 CC
+00000070  00 00 00 00 00 00 00 00  00 08 00 20 00 20 00 8d  8d,01,03 is the start of the last row
+          29       WW 33 HH HH II  II JJ JJ KK KK oo oo oo
+00000080  04 03 00 00 01 00 01 10  00 10 00 10 00 8d 04 00  |................|
+          oo
+00000090  00 8d 07 00 00 8d 0a 00  00 8d 0d 00 00 8d 10 00  |................|
+..
+00000470  00 8d ef 02 00 8d f2 02  00 8d f5 02 00 8d f8 02  |................|
+                                                  << -- >>
+00000480  00 8d fb 02 00 8d fe 02  00 8d 01 03 00 d2 00 00  |................|
+          << -- >> << -- >> << --  >>
+00000490  d2 00 00 d2 00 00 d2 00  00 d2 00 00 d2 00 00 d2  |................|
+...
+
+MF:UKR.T2
+00000000  42 49 54 45 55 6b 72 61  69 6e 65 00 00 00 00 00  |BITEUkraine.....|
+00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+                      PIC@54
+00000050  00 00 00 00 75 6b 72 2e  50 49 43 00 00 00 00 00  |....ukr.PIC.....|
+                   HDR@63
+00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
+00000070  00 00 00 00 00 00 00 00  00 08 00 1a 00 1a 00 31  |...............1|
+                                                  END@8D
+00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
+00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
+000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
+
+ATF:FRA.T2
+00000000  42 49 54 45 46 72 61 6e  63 65 00 00 00 00 00 00  |BITEFrance......|
+00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
+00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
+                                      AAAAA BBBBB CCCCC LL
+00000070  00 00 00 00 00 00 00 00  00 08 00 1a 00 1a 00 31  |...............1|
+          LLLLLLLL WWWWW HHHHH IIIIII JJJJJ KKKKK
+00000080  fe 01 00 d0 00 d0 00 10  00 0d 00 0d 00 31 03 00  |.............1..|
+00000090  00 31 06 00 00 31 09 00  00 31 0c 00 00 31 0f 00  |.1...1...1...1..|
+000000a0  00 31 12 00 00 31 15 00  00 31 18 00 00 31 1b 00  |.1...1...1...1..|
+*/
+packed_struct!(BITEHeader1 {
+    _0 => magic: [u8; 4],
+
+    // Note: we have to split this up because Debug is only
+    // implemented up through array sizes of 32.
+    _1a => name0: [u8; 32],
+    _1b => name1: [u8; 32],
+    _1c => name2: [u8; 16],
+
+    _3 => pic_file: [u8; 15],
+
+    _4 => unk0: [u32; 5],
+
+    _9 => unk_pad0: [u8; 1],
+
+    _10 => unk_a: u16,
+    _11 => width_ft: u16,
+    _12 => height_ft: u16,
+
+    _9a => unk_after: [u8; 5],
+
+    _14 => width: u16 as usize,
+    _15 => height: u16 as usize,
+
+    _16 => unk_i: u16 as usize,
+    _17 => block_count_z: u16 as usize,
+    _18 => block_count_x: u16 as usize
+});
+
+impl Terrain {
     fn from_bite1(data: &[u8]) -> Fallible<Self> {
         let header_ptr: *const BITEHeader1 = data.as_ptr() as *const _;
         let header: &BITEHeader1 = unsafe { &*header_ptr };
@@ -477,53 +422,95 @@ impl Terrain {
             + &read_name(&header.name2())?;
         let pic_file = read_name(&header.pic_file())?;
 
+        println!(
+            "{:?} {:?} {:04X} {:?}- {}x{} ({:04X}x{:04X}ft) [{}, {}, {}]",
+            header.unk0(),
+            header.unk_pad0(),
+            header.unk_a(),
+            header.unk_after(),
+            header.width(),
+            header.height(),
+            header.width_ft(),
+            header.height_ft(),
+            header.unk_i(),
+            header.block_count_z(),
+            header.block_count_x(),
+        );
+
         // We can now skip the row offsets block to get to the height entries.
         let offsets_start = mem::size_of::<BITEHeader1>();
         let offsets_size = header.height() * mem::size_of::<u32>();
         let num_pix = header.width() * header.height();
         let data_start = offsets_start + offsets_size;
         let data_end = data_start + num_pix * 3;
-        let entries = &data[data_start..data_end];
+        //let entries = &data[data_start..data_end];
+        let entries = &data[data_start..];
+        println!(
+            "EXPECT: {}, HAVE: {}, DIFF: {}",
+            data_end - data_start,
+            entries.len(),
+            entries.len() - (data_end - data_start)
+        );
 
-        // 10 => block size
-        // d => block count
-
-        let mut off = 0;
+        let blk_size = header.unk_i();
+        ensure!(blk_size == 16, "expect block size of 16");
+        let block_count_z = header.block_count_z();
+        let block_count_x = header.block_count_x();
+        ensure!(block_count_x == block_count_z, "only support square maps");
 
         // For each block in the input.
         let mut samples = vec![Default::default(); num_pix];
-        let blk_size = header.unk_i();
-        for blkx in 0..header.unk_j() {
-            for blky in 0..header.unk_k() {
-                // For each pixel in the block from top to bottom...
-                for i in 0..blk_size {
+
+        if block_count_x == 16 {
+            // This loop works for 16x16 block maps (BAL/KURILE)
+            let mut off = 0;
+            for blkz in 0..block_count_z {
+                for blkx in 0..block_count_x {
+                    // For each pixel in the block from bottom to top...
                     for j in 0..blk_size {
-                        let data = &entries[off..off + 3];
-                        off += 3;
-                        let x_pos = blkx * blk_size + i;
-                        let y_pos = blky * blk_size + j;
-                        let index = y_pos * header.width() as usize + x_pos;
-                        samples[index] = Sample::from_bytes(data);
+                        for i in 0..blk_size {
+                            let data = &entries[off..off + 3];
+                            off += 3;
+                            let x_pos = blkx * blk_size + i;
+                            let z_pos = blkz * blk_size + j;
+                            let index = z_pos * header.width() as usize + x_pos;
+                            samples[index] = Sample::from_bytes(data);
+                        }
+                    }
+                }
+            }
+        } else {
+            // This loop handles 13x13 block maps (NOT BAL/KURILE)
+            ensure!(block_count_x == 13, "can't handle other sizes");
+            let mut off = 12 * 3; // Looks like there's 4 uints?
+            for blkz in 0..block_count_z {
+                for blkx in 0..block_count_x {
+                    // For each pixel in the block from bottom to top...
+                    for j in 0..blk_size {
+                        for i in 0..blk_size {
+                            let data = &entries[off..off + 3];
+                            off += 3;
+                            let mut x_pos = blkx * blk_size + i;
+                            let mut z_pos = blkz * blk_size + (j + 4) % 16;
+                            if j >= 12 {
+                                x_pos = (x_pos + 16) % 208;
+                                if blkx == 12 {
+                                    z_pos = (z_pos + 16) % 208;
+                                }
+                            }
+                            let index = z_pos * header.width() as usize + x_pos;
+                            samples[index] = Sample::from_bytes(data);
+                        }
                     }
                 }
             }
         }
 
-        /*
-        let mut samples = Vec::new();
-        for i in 0..num_pix {
-            let color = entries[i * 3];
-            let modifiers = entries[i * 3 + 1];
-            let height = entries[i * 3 + 2];
-            samples.push(Sample::new(color, modifiers, height))
-        }
-        */
-
         let terrain = Terrain {
             name,
             pic_file,
-            width_ft: 0f32,
-            height_ft: 0f32,
+            width_ft: ((header.width_ft() as u32) << 8) as f32,
+            height_ft: ((header.height_ft() as u32) << 8) as f32,
             width: header.width() as u32,
             height: header.height() as u32,
             samples,
@@ -531,67 +518,38 @@ impl Terrain {
         };
         Ok(terrain)
     }
+}
 
-    /*
-    ATFGOLD:BAL.T2
-    BIT2
-                          0            4           8
-                          20 00 00 00  00 00 00 00 20 00 00 00  |.... ....... ...|
-              12          16           20 21 AA AA AA 25 BB BB
-    00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 20 00 00  |............. ..|
-              BB 29 CC CC CC DD DD EE  EE WW WW WW WW HH HH HH
-    00000080  00 20 00 00 00 95 00 03  00 00 01 00 00 00 01 00  |. ..............|
-              HH ?? ?? ?? ?? << -- >>  << -- >> << -- >>
-    00000090  00 95 00 00 00 d2 00 00  d2 00 00 d2 00 00 d2 00  |................|
+const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
 
+packed_struct!(BIT2Header {
+    _0 => magic: [u8; 4],
 
-    00000000  42 49 54 32 46 72 61 6e  63 65 00 00 00 00 00 00  |BIT2France......|
-    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-    *
-    00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
-                    VVVVVVVVVVV BBBBBBBBBBBB VVVVVVVVVVV DDDDD
-    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
-              DDDDD EEEEEEEEEEE QQQQQQQQQQQQ FF SSSSSSSSSSS VV
-    00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 1a 00 00  |................|
-              VVVVVVVV ?? ?? LLLLLLLLL ?? WWWWWWWWWWW HHHHHHHH
-    00000080  00 19 00 00 00 15 e8 01  00 d0 00 00 00 c8 00 00  |................|
-              HH KKKKKKKKKKK << -- >>  << -- >> << -- >> << --
-    00000090  00 95 00 00 00 d3 00 00  d3 00 00 d3 00 00 d3 00  |................|
+    // Actually 80 bytes, but split up because Debug is not implemented for arrays past 32.
+    _1a => name0: [u8; 32],
+    _1b => name1: [u8; 32],
+    _1c => name2: [u8; 16],
 
-    SSS - scale x
-    VVV - scale z
+    _2 => pic_file:  [u8; 15],
 
-    The french map is:
-        Total (/208):
-           miles ->      290 (1.4)
-           meters -> 466,710 (2243)
-           feet -> 1,531,000 (7360)
+    _3 => unk0: [u32; 6],
 
-           miles ->      300 (1.44)
-           meters -> 482,803 (2321)
-           feet -> 1,584,000 (7615)
+    _4 => width_ft: u32,
+    _5 => height_ft: u32,
 
-    Possible scales:
-        0x00000008 => 8
-        0x00000800 => 2048
-        0x00080000 => 524288
+    _6 => unk_zero: u16,
+    _7 => unk1: u16,
+    _8 => unk_small: u16,
 
-        0x00000019 => 25
-        0x00001900 => 6400
-        0x00190000 => 1638400
-        0x19000000 => 419,430,400
+    _12 => width: u32,
+    _13 => height: u32,
 
-        0x0000001a => 26
-        0x00001a00 => 6656
-        0x001a0000 => 1703936
+    _14 => unk2: u32
 
-    The cuban map is:
-        Size: 256x256
-        miles:      343 (1.34)
-        meters: 552,005 (2,156)
-        feet: 1,811,040 (7,074)
-    */
+    // data
+});
 
+impl Terrain {
     fn from_bit2(data: &[u8]) -> Fallible<Self> {
         let header_pointer: &[BIT2Header] = unsafe { mem::transmute(data) };
         let header = &header_pointer[0];
@@ -657,6 +615,100 @@ impl Terrain {
         };
         Ok(terrain)
     }
+}
+
+impl Terrain {
+    /*
+    10 = stride
+    d = offset?
+
+    The french map is:
+        Total (/208):
+           miles ->      290 (1.4)
+           meters -> 466,710 (2243)
+           feet -> 1,531,000 (7360)
+
+           miles ->      300 (1.44)
+           meters -> 482,803 (2321)
+           feet -> 1,584,000 (7615)
+
+    Possible scales:
+        0x0008 => 8
+        0x0800 => 2048
+
+        0x00000019 => 25
+        0x00001900 => 6400
+        0x00190000 => 1638400
+        0x19000000 => 419,430,400
+
+        0x001a => 26
+        0x1a00 => 6656
+
+        0x000d => 13
+        0x0010 => 16
+
+        //
+    */
+
+    /*
+    ATFGOLD:BAL.T2
+    BIT2
+                          0            4           8
+                          20 00 00 00  00 00 00 00 20 00 00 00  |.... ....... ...|
+              12          16           20 21 AA AA AA 25 BB BB
+    00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 20 00 00  |............. ..|
+              BB 29 CC CC CC DD DD EE  EE WW WW WW WW HH HH HH
+    00000080  00 20 00 00 00 95 00 03  00 00 01 00 00 00 01 00  |. ..............|
+              HH ?? ?? ?? ?? << -- >>  << -- >> << -- >>
+    00000090  00 95 00 00 00 d2 00 00  d2 00 00 d2 00 00 d2 00  |................|
+
+
+    00000000  42 49 54 32 46 72 61 6e  63 65 00 00 00 00 00 00  |BIT2France......|
+    00000010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    *
+    00000050  00 00 00 00 66 72 61 2e  50 49 43 00 00 00 00 00  |....fra.PIC.....|
+                    VVVVVVVVVVV BBBBBBBBBBBB VVVVVVVVVVV DDDDD
+    00000060  00 00 00 00 19 00 00 00  00 00 00 00 19 00 00 00  |................|
+              DDDDD EEEEEEEEEEE QQQQQQQQQQQQ FF SSSSSSSSSSS VV
+    00000070  00 00 00 00 00 00 00 00  00 08 00 00 00 1a 00 00  |................|
+              VVVVVVVV ?? ?? LLLLLLLLL ?? WWWWWWWWWWW HHHHHHHH
+    00000080  00 19 00 00 00 15 e8 01  00 d0 00 00 00 c8 00 00  |................|
+              HH KKKKKKKKKKK << -- >>  << -- >> << -- >> << --
+    00000090  00 95 00 00 00 d3 00 00  d3 00 00 d3 00 00 d3 00  |................|
+
+    SSS - scale x
+    VVV - scale z
+
+    The french map is:
+        Total (/208):
+           miles ->      290 (1.4)
+           meters -> 466,710 (2243)
+           feet -> 1,531,000 (7360)
+
+           miles ->      300 (1.44)
+           meters -> 482,803 (2321)
+           feet -> 1,584,000 (7615)
+
+    Possible scales:
+        0x00000008 => 8
+        0x00000800 => 2048
+        0x00080000 => 524288
+
+        0x00000019 => 25
+        0x00001900 => 6400
+        0x00190000 => 1638400
+        0x19000000 => 419,430,400
+
+        0x0000001a => 26
+        0x00001a00 => 6656
+        0x001a0000 => 1703936
+
+    The cuban map is:
+        Size: 256x256
+        miles:      343 (1.34)
+        meters: 552,005 (2,156)
+        feet: 1,811,040 (7,074)
+    */
 
     #[cfg(test)]
     fn make_debug_images(&self, path: &str) -> Fallible<()> {
@@ -729,11 +781,12 @@ mod test {
     use super::*;
     use omnilib::OmniLib;
 
-    const DUMP: bool = false;
+    const DUMP: bool = true;
 
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
         let omni = OmniLib::new_for_test()?;
+        //let omni = OmniLib::new_for_test_in_games(&["ATFNATO"])?;
         for (game, name) in omni.find_matching("*.T2")?.iter() {
             println!("AT: {}:{} @ {}", game, name, omni.path(game, name)?);
             let lib = omni.library(game);
