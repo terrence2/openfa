@@ -452,92 +452,59 @@ impl Terrain {
             entries.len() - (data_end - data_start)
         );
 
-        // 10 => block size
-        // d => block count
-
-        let mut off = 0;
-
-        let unk_i = header.unk_i();
+        let blk_size = header.unk_i();
+        ensure!(blk_size == 16, "expect block size of 16");
         let block_count_z = header.block_count_z();
         let block_count_x = header.block_count_x();
+        ensure!(block_count_x == block_count_z, "only support square maps");
 
         // For each block in the input.
         let mut samples = vec![Default::default(); num_pix];
-        let blk_size = unk_i;
-        /*
-        for blky in 0..12 {
-            for blkx in 0..13 {
-                // For each pixel in the block from top to bottom...
-                for i in 0..16 {
-                    for j in 0..16 {
-                        let data = &entries[off..off + 3];
-                        off += 3;
-                        let x_pos = blkx * 16 + (j + 8) % 16;
-                        let y_pos = blky * 16 + (i + 0) % 16;
-                        let index = y_pos * header.width() as usize + x_pos;
-                        samples[index] = Sample::from_bytes(data);
+
+        if block_count_x == 16 {
+            // This loop works for 16x16 block maps (BAL/KURILE)
+            let mut off = 0;
+            for blkz in 0..block_count_z {
+                for blkx in 0..block_count_x {
+                    // For each pixel in the block from bottom to top...
+                    for j in 0..blk_size {
+                        for i in 0..blk_size {
+                            let data = &entries[off..off + 3];
+                            off += 3;
+                            let x_pos = blkx * blk_size + i;
+                            let z_pos = blkz * blk_size + j;
+                            let index = z_pos * header.width() as usize + x_pos;
+                            samples[index] = Sample::from_bytes(data);
+                        }
                     }
                 }
             }
-
-            off += 144;
-        }
-        */
-
-        off = 12 * 3;
-        for blkz in 0..block_count_z {
-            for blkx in 0..block_count_x {
-                // For each pixel in the block from top to bottom...
-                for j in 0..blk_size {
-                    for i in 0..blk_size {
-                        let mut data = entries[off..off + 3].to_owned();
-                        off += 3;
-                        let mut x_pos = blkx * blk_size + (i + 0) % 16;
-                        let mut z_pos = blkz * blk_size + (j + 4) % 16;
-                        if j >= 12 {
-                            x_pos = (x_pos + 16) % 208;
-                            if blkx == 12 {
-                                z_pos = (z_pos + 16) % 208;
-                                //data[1] = 16;
+        } else {
+            // This loop handles 13x13 block maps (NOT BAL/KURILE)
+            ensure!(block_count_x == 13, "can't handle other sizes");
+            let mut off = 12 * 3; // Looks like there's 4 uints?
+            for blkz in 0..block_count_z {
+                for blkx in 0..block_count_x {
+                    // For each pixel in the block from bottom to top...
+                    for j in 0..blk_size {
+                        for i in 0..blk_size {
+                            let data = &entries[off..off + 3];
+                            off += 3;
+                            let mut x_pos = blkx * blk_size + i;
+                            let mut z_pos = blkz * blk_size + (j + 4) % 16;
+                            if j >= 12 {
+                                x_pos = (x_pos + 16) % 208;
+                                if blkx == 12 {
+                                    z_pos = (z_pos + 16) % 208;
+                                }
                             }
-                        }
-                        let index = z_pos * header.width() as usize + x_pos;
-                        samples[index] = Sample::from_bytes(&data);
-                    }
-                }
-            }
-        }
-
-        /*
-        for blkz in 0..block_count_z {
-            for blkx in 0..block_count_x {
-                // For each pixel in the block from top to bottom...
-                for j in 0..blk_size {
-                    for i in 0..blk_size {
-                        let data = &entries[off..off + 3];
-                        off += 3;
-                        let x_pos = blkx * blk_size + i;
-                        let z_pos = blkz * blk_size + j;
-                        let index = z_pos * header.width() as usize + x_pos;
-                        samples[index] = Sample::from_bytes(data);
-                        if blkz == 0 && blkx == 0 {
-                            samples[index].modifiers = 16;
+                            let index = z_pos * header.width() as usize + x_pos;
+                            samples[index] = Sample::from_bytes(data);
                         }
                     }
                 }
             }
         }
-        */
-
-        /*
-        let mut samples = Vec::new();
-        for i in 0..num_pix {
-            let color = entries[i * 3];
-            let modifiers = entries[i * 3 + 1];
-            let height = entries[i * 3 + 2];
-            samples.push(Sample::new(color, modifiers, height))
-        }
-        */
 
         let terrain = Terrain {
             name,
@@ -818,13 +785,10 @@ mod test {
 
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
-        //let omni = OmniLib::new_for_test()?;
-        let omni = OmniLib::new_for_test_in_games(&["ATFNATO"])?;
+        let omni = OmniLib::new_for_test()?;
+        //let omni = OmniLib::new_for_test_in_games(&["ATFNATO"])?;
         for (game, name) in omni.find_matching("*.T2")?.iter() {
             println!("AT: {}:{} @ {}", game, name, omni.path(game, name)?);
-            if name == "BAL.T2" {
-                continue;
-            }
             let lib = omni.library(game);
             let contents = lib.load(name)?;
             let terrain = Terrain::from_bytes(&contents)?;
