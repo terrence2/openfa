@@ -485,34 +485,24 @@ impl Terrain {
         */
 
         off = 12 * 3;
-        for blkz in 0..block_count_z - 1 {
+        for blkz in 0..block_count_z {
             for blkx in 0..block_count_x {
                 // For each pixel in the block from top to bottom...
                 for j in 0..blk_size {
                     for i in 0..blk_size {
-                        let mut data = &entries[off..off + 3];
+                        let mut data = entries[off..off + 3].to_owned();
                         off += 3;
                         let mut x_pos = blkx * blk_size + (i + 0) % 16;
-                        let z_pos = blkz * blk_size + (j + 4) % 16;
+                        let mut z_pos = blkz * blk_size + (j + 4) % 16;
                         if j >= 12 {
-                            x_pos = (x_pos + 16);
-                            if x_pos >= 208 {
-                                x_pos = 207;
-                            }
-                            if blkx == 0 {
-                                let base = 12 * 3 + 208 * 208 * 3;
-                                let row = 16 * 3 * (j - 12);
-                                let foo = base + row + i;
-                                data = &entries[foo..foo + 3];
+                            x_pos = (x_pos + 16) % 208;
+                            if blkx == 12 {
+                                z_pos = (z_pos + 16) % 208;
+                                //data[1] = 16;
                             }
                         }
                         let index = z_pos * header.width() as usize + x_pos;
-                        samples[index] = Sample::from_bytes(data);
-                        if blkz == 0 && blkx == 4 {
-                            if j >= 12 {
-                                samples[index].modifiers = 16;
-                            }
-                        }
+                        samples[index] = Sample::from_bytes(&data);
                     }
                 }
             }
