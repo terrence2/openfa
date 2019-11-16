@@ -20,6 +20,7 @@ pub use specs::Entity;
 pub use universe_base::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M};
 
 use failure::Fallible;
+use lazy_static::lazy_static;
 use lib::Library;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
@@ -29,7 +30,22 @@ use shape_instance::{
     SlotId,
 };
 use specs::{Builder, Dispatcher, World, WorldExt};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+
+// Lat/Lon of lower left corner of every map that is shipped with FA.
+// TODO: 3rd party maps will need a way to specify. For now we will use a default.
+lazy_static! {
+    static ref MAP_POSITIONS: HashMap<&'static str, [f32; 2]> = {
+        let mut table = HashMap::new();
+        table.insert("BAL", [53.86, 21.20]);
+        table.insert("EGY", [28.44, 30.5]);
+        table.insert("FRA", [47.35, 0.04]);
+        table.insert("KURIL", [44.30, 146.82]);
+        table.insert("UKR", [42.42, 24.1]);
+        table.insert("WTA", [21.75, 117.6]);
+        table
+    };
+}
 
 pub struct Universe {
     pub ecs: World,

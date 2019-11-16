@@ -225,10 +225,6 @@ fn main() -> Fallible<()> {
             }
         }
 
-        // 51°30′26″N 0°7′39″W
-        // let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
-        // let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
-
         let start = Instant::now();
         let mut shape_buffer_update_dispatcher = DispatcherBuilder::new()
             .with(TransformUpdateSystem, "transform-update", &[])
