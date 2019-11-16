@@ -326,7 +326,7 @@ impl T2Buffer {
         let scale_z = terrain.extent_north_south_in_ft();
         let x = xf * scale_x * FEET_TO_HM;
         let z = (1f32 - zf) * scale_z * FEET_TO_HM;
-        let h = -f32::from(sample.height) / 512f32 + 0.1f32;
+        let h = -f32::from(sample.height) * 2f32; /*/ 512f32 + 0.1f32*/
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
         if sample.color == 0xFF {
