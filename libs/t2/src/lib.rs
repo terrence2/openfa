@@ -15,30 +15,11 @@
 
 // Each T2 file has the following format.
 //
-// magic:      [u8;4]  => "BIT2" in ascii
-// name/descr: [u8;80] => "The Baltics", "North/South Korea", etc.
-// pic_file:   [u8;16] => "bal.PIC"
-//
-// Followed by some numbers. I'm not sure if the pic_file portion is 15 bytes or 16 bytes. If it
-// is actually 15, that would make the next fields (typically) 0x2000, instead of 32. In any case,
-// we have to have an extra pad byte somewhere because the "pixels" are absolutely at 49 bytes
-// offset from a 16 byte pic file size. Weird alignment.
-// 0            4            8            12           16          20  21
-// 20 00 00 00  00 00 00 00  20 00 00 00  00 00 00 00  00 00 00 00 00  08 00 00
-//
-// 24  25       28  29       32  33     35      37           41           45
-// 00  20 00 00 00  20 00 00 00  95 00  03 00   00 01 00 00  00 01 00 00  95 00 00 00   FF 01 00
-//
-// unknown: [u8;41]
-// width: u32
-// height: u32
-// pixels: [[u8;3]; width * (height + 1)]
-//
-// Height "pixels" are stored bottom to top. There is one extra row containing random looking data.
-// I'm not sure if this is some arcane internal detail or vital extra global information. The data
-// stored in the extra row does appear to be mostly the same as the pixel format, so maybe it's just
-// scratch or overflow for the rendering process? Each height pixel contains 3 bytes, each a field
-// of sorts.
+// Height "pixels" are stored top to bottom in BIT2 and in one of two strange block formats in
+// BITE. There is generally some extra random looking data after the row data. I'm not sure if
+// this is some arcane internal detail or vital extra global information. The data stored in the
+// extra row does appear to be mostly the same as the pixel format, so maybe it's just scratch or
+// overflow for the rendering process? Each height pixel contains 3 bytes, each a field of sorts.
 //
 // Pixel format:
 //   color: u8 =>  0xFF (transparent) for water, or 0xDX or 0xCX for land. These are all mapped to
@@ -60,13 +41,13 @@
 Mostly D2. Some maps have D0 -> DA.
 Only Viet has C2->C7.
 
-These appear to be palette indexes into a part of the palette that is not filled
-in in the default palette. These parts of the palette appear to come from LAY files,
-allowing the game to change the color to simulate sunrise, sunset, and nighttime
-effects just by swapping around the palette.
+These are palette indexes into a part of the palette that is not filled in, in the default palette.
+These parts of the palette need to be loaded in from LAY files. Presumably, this is so that the
+game can change teh palette to simulate sunrise, sunset, and nighttime, as well as different fog
+levels and probably other things, just by swapping around the palette.
 
-At a guess the newer maps only have a single color either because they were not complete
-or because they were leaning more heavily on texture mapping.
+At a guess, the newer maps only have a single color either because they were expecting most or all
+users to be able to run with texture mapping by 1998.
 
 Pakistan          D2
 Persian Gulf      D2
@@ -128,10 +109,30 @@ Ukraine            {0, 1}
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use failure::{bail, ensure, Fallible};
+use lazy_static::lazy_static;
 use log::trace;
 use nalgebra::Point3;
 use packed_struct::packed_struct;
-use std::{mem, str};
+use std::{collections::HashMap, mem, str};
+
+// Lat/Lon of lower left corner of every map that is shipped with FA.
+// TODO: 3rd party maps will need a way to specify. For now we will use a default.
+lazy_static! {
+    static ref MAP_POSITIONS: HashMap<&'static str, [f32; 2]> = {
+        let mut table = HashMap::new();
+        table.insert("Panama", [11.77, -82.86]);
+        table.insert("The Baltics", [63.60, 21.20]);
+        table.insert("Cuba", [26.11, -85.43]); // ^^ UL ^^
+        table.insert("Egypt", [33.54, 30.5]);
+        table.insert("France", [53.97, 0.04]);
+        table.insert("Greece", [41.84, 21.04]);
+        table.insert("Iraq", [33.44, 44.75]);
+        table.insert("Kuril Islands", [52.53, 146.82]); // vv LL vv
+        table.insert("Ukraine", [48.50, 24.1]);
+        table.insert("Taiwan", [27.93, 117.6]);
+        table
+    };
+}
 
 #[derive(Copy, Clone)]
 pub struct Sample {
@@ -190,11 +191,13 @@ impl Sample {
 
 pub struct Terrain {
     name: String,
-    pub pic_file: String,
-    pub width: u32,
-    pub height: u32,
+    _pic_file: String,
+    width: u32,
+    height: u32,
     width_ft: f32,
     height_ft: f32,
+    origin_latitude: f32,
+    origin_longitude: f32,
     pub samples: Vec<Sample>,
 }
 
@@ -346,13 +349,18 @@ impl Terrain {
             }
         }
 
+        let name = "Ukraine".to_owned();
+        let [lat_deg, lon_deg] = MAP_POSITIONS.get::<str>(&name).unwrap_or(&[0f32, 0f32]);
+
         let terrain = Terrain {
-            name: "Ukraine".to_owned(),
-            pic_file,
+            name,
+            _pic_file: pic_file,
             width_ft: ((header.width_ft() as u32) << 8) as f32,
             height_ft: ((header.height_ft() as u32) << 8) as f32,
             width: header.width() as u32,
             height: header.height() as u32,
+            origin_latitude: *lat_deg,
+            origin_longitude: *lon_deg,
             samples,
         };
         Ok(terrain)
@@ -397,6 +405,7 @@ impl Terrain {
             + &read_name(&header.name1())?
             + &read_name(&header.name2())?;
         let pic_file = read_name(&header.pic_file())?;
+        let [lat_deg, lon_deg] = MAP_POSITIONS.get::<str>(&name).unwrap_or(&[0f32, 0f32]);
 
         trace!(
             "T2:BITE1: {:?} {:?} {:04X} {:?}- {}x{} ({:04X}x{:04X}ft) [{}, {}, {}]",
@@ -476,11 +485,13 @@ impl Terrain {
 
         let terrain = Terrain {
             name,
-            pic_file,
+            _pic_file: pic_file,
             width_ft: ((header.width_ft() as u32) << 8) as f32,
             height_ft: ((header.height_ft() as u32) << 8) as f32,
             width: header.width() as u32,
             height: header.height() as u32,
+            origin_latitude: *lat_deg,
+            origin_longitude: *lon_deg,
             samples,
         };
         Ok(terrain)
@@ -528,6 +539,7 @@ impl Terrain {
         let name = read_name(&header.name0())?
             + &read_name(&header.name1())?
             + &read_name(&header.name2())?;
+        let [lat_deg, lon_deg] = MAP_POSITIONS.get::<str>(&name).unwrap_or(&[0f32, 0f32]);
 
         // Followed by 15 bytes containing the pic file.
         let pic_file = read_name(&header.pic_file())?;
@@ -568,11 +580,13 @@ impl Terrain {
 
         let terrain = Terrain {
             name,
-            pic_file,
+            _pic_file: pic_file,
             width_ft: header.width_ft() as f32,
             height_ft: header.height_ft() as f32,
             width: header.width(),
             height: header.height(),
+            origin_latitude: *lat_deg,
+            origin_longitude: *lon_deg,
             samples,
         };
         Ok(terrain)
@@ -678,6 +692,22 @@ impl Terrain {
 
     pub fn extent_north_south_in_ft(&self) -> f32 {
         self.height_ft
+    }
+
+    pub fn origin_latitude(&self) -> f32 {
+        self.origin_latitude
+    }
+
+    pub fn origin_longitude(&self) -> f32 {
+        self.origin_longitude
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
     }
 
     pub fn ground_height_at(&self, _p: &Point3<f32>) -> f32 {

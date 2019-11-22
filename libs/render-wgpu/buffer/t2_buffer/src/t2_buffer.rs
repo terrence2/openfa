@@ -307,21 +307,21 @@ impl T2Buffer {
     }
 
     fn sample_at(terrain: &Terrain, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
-        let offset = (zi * terrain.width + xi) as usize;
+        let offset = (zi * terrain.width() + xi) as usize;
         let sample = if offset < terrain.samples.len() {
             terrain.samples[offset]
         } else {
-            let offset = ((zi - 1) * terrain.width + xi) as usize;
+            let offset = ((zi - 1) * terrain.width() + xi) as usize;
             if offset < terrain.samples.len() {
                 terrain.samples[offset]
             } else {
-                let offset = ((zi - 1) * terrain.width + (xi - 1)) as usize;
+                let offset = ((zi - 1) * terrain.width() + (xi - 1)) as usize;
                 terrain.samples[offset]
             }
         };
 
-        let xf = xi as f32 / terrain.width as f32;
-        let zf = zi as f32 / terrain.height as f32;
+        let xf = xi as f32 / terrain.width() as f32;
+        let zf = zi as f32 / terrain.height() as f32;
         let scale_x = terrain.extent_east_west_in_ft();
         let scale_z = terrain.extent_north_south_in_ft();
         let x = xf * scale_x * FEET_TO_HM;
@@ -377,8 +377,8 @@ impl T2Buffer {
             }
         };
 
-        for zi_base in (0..terrain.height).step_by(4) {
-            for xi_base in (0..terrain.width).step_by(4) {
+        for zi_base in (0..terrain.height()).step_by(4) {
+            for xi_base in (0..terrain.width()).step_by(4) {
                 let base = verts.len() as u32;
 
                 // Upload one patch of vertices, possibly with a texture.
