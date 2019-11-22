@@ -18,13 +18,13 @@ use nalgebra::{convert, Isometry3, Matrix4, Perspective3, Point3, Unit, UnitQuat
 use std::f64::consts::PI;
 
 pub struct ArcBallCamera {
-    target: Point3<f64>,
-    distance: f64,
+    pub target: Point3<f64>,
+    pub distance: f64,
     yaw: f64,
     pitch: f64,
-    up: Vector3<f64>,
+    pub up: Vector3<f64>,
     rotation: UnitQuaternion<f64>,
-    projection: Perspective3<f64>,
+    pub projection: Perspective3<f64>,
     fov_y: f64,
     z_near: f64,
     z_far: f64,
@@ -88,7 +88,7 @@ impl ArcBallCamera {
             Perspective3::new(1f64 / aspect_ratio, self.fov_y, self.z_near, self.z_far)
     }
 
-    fn eye(&self) -> Point3<f64> {
+    pub fn eye(&self) -> Point3<f64> {
         let relative = Vector3::new(
             self.distance * self.yaw.cos() * self.pitch.sin(),
             self.distance * self.pitch.cos(),
@@ -100,15 +100,8 @@ impl ArcBallCamera {
         Point3::from_homogeneous(position).unwrap()
     }
 
-    fn view(&self) -> Isometry3<f64> {
-        Isometry3::look_at_rh(&self.eye(), &self.target, &self.up)
-    }
-
-    pub fn projection_for(&self, model: Isometry3<f64>) -> Matrix4<f64> {
-        convert(
-            convert::<Matrix4<f32>, Matrix4<f64>>(self.projection_matrix())
-                * (model * self.view()).to_homogeneous(),
-        )
+    pub fn projection_for(&self, model: Isometry3<f32>) -> Matrix4<f64> {
+        convert(self.projection_matrix() * (model * self.view()).to_homogeneous())
     }
 
     pub fn on_mousemove(&mut self, x: f64, y: f64) {
@@ -156,6 +149,14 @@ impl ArcBallCamera {
 }
 
 impl CameraAbstract for ArcBallCamera {
+    fn view(&self) -> Isometry3<f32> {
+        convert(Isometry3::look_at_rh(&self.eye(), &self.target, &self.up))
+    }
+
+    fn projection(&self) -> Perspective3<f64> {
+        self.projection
+    }
+
     fn view_matrix(&self) -> Matrix4<f32> {
         convert(self.view())
     }

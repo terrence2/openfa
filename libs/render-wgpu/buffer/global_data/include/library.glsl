@@ -19,7 +19,8 @@ mat4 camera_view()               { return globals_camera_view; }
 mat4 camera_projection()         { return globals_camera_projection; }
 mat4 camera_inverse_view()       { return globals_camera_inverse_view; }
 mat4 camera_inverse_projection() { return globals_camera_inverse_projection; }
-vec4 camera_position()           { return globals_camera_position; }
+vec4 camera_position_in_tile()   { return globals_camera_position_tile; }
+vec4 camera_position_earth_km()  { return globals_camera_position_earth_km; }
 
 vec3
 raymarching_view_ray(vec2 position) {

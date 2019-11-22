@@ -14,7 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::CameraAbstract;
 use nalgebra::{
-    Matrix4, Perspective3, Point3, Similarity3, Translation3, Unit, UnitQuaternion, Vector3,
+    Isometry3, Matrix4, Perspective3, Point3, Similarity3, Translation3, Unit, UnitQuaternion,
+    Vector3,
 };
 use std::f64::consts::PI;
 
@@ -198,6 +199,15 @@ impl UfoCamera {
 }
 
 impl CameraAbstract for UfoCamera {
+    fn view(&self) -> Isometry3<f32> {
+        // FIXME:
+        Isometry3::identity()
+    }
+
+    fn projection(&self) -> Perspective3<f64> {
+        self.projection
+    }
+
     fn view_matrix(&self) -> Matrix4<f32> {
         let simi = Similarity3::from_parts(self.position, self.rotation, 1.0);
         nalgebra::convert(simi.inverse().to_homogeneous())

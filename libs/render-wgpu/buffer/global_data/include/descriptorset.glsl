@@ -18,6 +18,7 @@ layout(set = 0, binding = 0) buffer CameraParameters {
     mat4 globals_camera_projection;
     mat4 globals_camera_inverse_view;
     mat4 globals_camera_inverse_projection;
-    vec4 globals_camera_position;
+    vec4 globals_camera_position_tile;
+    vec4 globals_camera_position_earth_km;
 };
 
