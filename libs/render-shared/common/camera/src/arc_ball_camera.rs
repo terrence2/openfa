@@ -19,7 +19,7 @@ use std::f64::consts::PI;
 
 pub struct ArcBallCamera {
     pub target: Point3<f64>,
-    pub distance: f64,
+    distance: f64,
     yaw: f64,
     pitch: f64,
     pub up: Vector3<f64>,
