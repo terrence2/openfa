@@ -225,10 +225,6 @@ fn main() -> Fallible<()> {
             }
         }
 
-        // 51°30′26″N 0°7′39″W
-        // let london_lon = (7.0 / 60.0) + (39.0 / 3600.0);
-        // let london_lat = 51.0 + (30.0 / 60.0) + (26.0 / 3600.0);
-
         let start = Instant::now();
         let mut shape_buffer_update_dispatcher = DispatcherBuilder::new()
             .with(TransformUpdateSystem, "transform-update", &[])
@@ -248,12 +244,17 @@ fn main() -> Fallible<()> {
                 .dispatch(&universe.ecs);
         }
 
-        let sun_direction = Vector3::new(0f32, 1f32, 0f32);
+        let sun_direction = Vector3::new(0f32, 0f32, 1f32);
 
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer(&camera, gpu.device(), &mut buffers)?;
+            .make_upload_buffer_for_arcball_in_tile(
+                t2_buffer.borrow().t2(),
+                &camera,
+                gpu.device(),
+                &mut buffers,
+            )?;
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;

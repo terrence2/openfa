@@ -107,7 +107,7 @@ mod tests {
             for filename in lib.find_matching("*.T2")?.iter() {
                 println!("name: {:?}", filename);
                 let t2 = asset_loader.load_t2(&filename)?;
-                println!("res: {:?}", t2.name);
+                println!("res: {:?}", t2.name());
             }
         }
         Ok(())

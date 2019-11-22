@@ -189,7 +189,7 @@ impl Sample {
 }
 
 pub struct Terrain {
-    pub name: String,
+    name: String,
     pub pic_file: String,
     pub width: u32,
     pub height: u32,
@@ -543,7 +543,7 @@ impl Terrain {
             ensure!(header.height() == 256, "if 3, expect 256");
         }
         trace!(
-            "unk: {:?} {:08X} {:?}; {}x{} ({:06X}x{:06X}ft)",
+            "unk: {:?} {:08X} {:?}; {}x{} (0x{:06X}x{:06X}ft)",
             header.unk0(),
             header.unk1(),
             header.unk_small(),
@@ -666,6 +666,10 @@ impl Terrain {
         img.save(path.to_owned() + ".height.png")?;
 
         Ok(())
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn extent_east_west_in_ft(&self) -> f32 {

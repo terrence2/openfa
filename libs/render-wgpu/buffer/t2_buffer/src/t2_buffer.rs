@@ -329,6 +329,7 @@ impl T2Buffer {
         let h = -f32::from(sample.height) * 2f32; /*/ 512f32 + 0.1f32*/
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
+        // FIXME: re-hide water once we get this positioned right.
         if sample.color == 0xFF {
             color.data[3] = 0;
         }
