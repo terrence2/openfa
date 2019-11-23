@@ -17,7 +17,7 @@ use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
-use galaxy::{Universe, FEET_TO_HM};
+use galaxy::{Galaxy, FEET_TO_HM};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
@@ -74,7 +74,7 @@ fn main() -> Fallible<()> {
 
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
-    let mut galaxy = Universe::new(lib)?;
+    let mut galaxy = Galaxy::new(lib)?;
 
     let shape_bindings = InputBindings::new("map")
         .bind("prev-object", "Shift+n")?

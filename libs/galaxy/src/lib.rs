@@ -31,7 +31,7 @@ use shape_instance::{
 use specs::{Builder, Dispatcher, World, WorldExt};
 use std::sync::Arc;
 
-pub struct Universe {
+pub struct Galaxy {
     pub ecs: World,
 
     // Resources
@@ -39,7 +39,7 @@ pub struct Universe {
     palette: Arc<Palette>,
 }
 
-impl Universe {
+impl Galaxy {
     pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
         let mut ecs = World::new();
         ecs.register::<FlightDynamics>();
@@ -145,7 +145,7 @@ mod test {
     #[test]
     fn test_it_works() -> Fallible<()> {
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let _universe = Universe::new(omni.library("FA"))?;
+        let _universe = Galaxy::new(omni.library("FA"))?;
         Ok(())
     }
 }
