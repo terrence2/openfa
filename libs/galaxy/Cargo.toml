@@ -12,7 +12,7 @@ lib = { path = "../lib" }
 pal = { path = "../pal" }
 shape_chunk = { package = "shape_chunk-wgpu", path = "../render-wgpu/buffer/shape_chunk" }
 shape_instance = { package = "shape_instance-wgpu", path = "../render-wgpu/buffer/shape_instance" }
-universe_base = { path = "../universe_base" }
+universe = { path = "../universe" }
 
 [dev-dependencies]
 criterion = "0.2"

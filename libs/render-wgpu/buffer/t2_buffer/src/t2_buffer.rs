@@ -24,7 +24,7 @@ use pal::Palette;
 use pic::Pic;
 use std::{cell::RefCell, collections::HashSet, mem, ops::Range, sync::Arc};
 use t2::Terrain;
-use universe_base::FEET_TO_HM;
+use universe::FEET_TO_HM;
 use wgpu;
 
 #[derive(Copy, Clone, Default)]

@@ -21,7 +21,7 @@ omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render-vulkano/buffer/shape_chunk" }
 window = { path = "../../../render-vulkano/common/window" }
-universe_base = { path = "../../../universe_base" }
+universe = { path = "../../../universe" }
 
 [dev-dependencies]
 rand = "^ 0.7"

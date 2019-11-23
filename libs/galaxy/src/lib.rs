@@ -17,7 +17,7 @@ pub mod system;
 
 pub use crate::component::{flight_dynamics::FlightDynamics, wheeled_dynamics::WheeledDynamics};
 pub use specs::Entity;
-pub use universe_base::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M};
+pub use universe::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M};
 
 use failure::Fallible;
 use lib::Library;
