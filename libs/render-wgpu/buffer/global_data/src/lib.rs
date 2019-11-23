@@ -15,33 +15,13 @@
 use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
-use lazy_static::lazy_static;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3};
-use std::{cell::RefCell, collections::HashMap, f32::consts::PI, mem, sync::Arc};
+use std::{cell::RefCell, f32::consts::PI, mem, sync::Arc};
 use t2::Terrain;
 use wgpu;
 
 // FIXME: these should probably not live here.
 const HM_TO_KM: f32 = 1f32 / 10f32;
-
-// Lat/Lon of lower left corner of every map that is shipped with FA.
-// TODO: 3rd party maps will need a way to specify. For now we will use a default.
-lazy_static! {
-    static ref MAP_POSITIONS: HashMap<&'static str, [f32; 2]> = {
-        let mut table = HashMap::new();
-        table.insert("Panama", [11.77, -82.86]);
-        table.insert("The Baltics", [63.60, 21.20]);
-        table.insert("Cuba", [26.11, -85.43]); // ^^ UL ^^
-        table.insert("Egypt", [33.54, 30.5]);
-        table.insert("France", [53.97, 0.04]);
-        table.insert("Greece", [41.84, 21.04]);
-        table.insert("Iraq", [33.44, 44.75]);
-        table.insert("Kuril Islands", [52.53, 146.82]); // vv LL vv
-        table.insert("Ukraine", [48.50, 24.1]);
-        table.insert("Taiwan", [27.93, 117.6]);
-        table
-    };
-}
 
 pub struct GlobalParametersBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
@@ -193,9 +173,8 @@ impl GlobalParametersBuffer {
         let tile_width_hm = ft2hm(tile_width_ft);
         let tile_height_hm = ft2hm(tile_height_ft);
 
-        let [lat_deg, lon_deg] = MAP_POSITIONS.get(terrain.name()).unwrap_or(&[0f32, 0f32]);
-        let lat = deg2rad(*lat_deg);
-        let lon = deg2rad(*lon_deg);
+        let lat = deg2rad(terrain.origin_latitude());
+        let lon = deg2rad(terrain.origin_longitude());
 
         /*
         fn rad2deg(rad: f32) -> f32 {
