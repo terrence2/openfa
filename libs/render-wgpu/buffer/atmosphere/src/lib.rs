@@ -265,19 +265,16 @@ impl AtmosphereBuffer {
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let buffer = [
-            [0.0f32; 4],
-            [
-                sun_direction.x as f32,
-                sun_direction.y as f32,
-                sun_direction.z as f32,
-                0.0f32,
-            ],
-        ];
+        let buffer = [[
+            sun_direction.x as f32,
+            sun_direction.y as f32,
+            sun_direction.z as f32,
+            0.0f32,
+        ]];
         upload_buffers.push(CopyBufferDescriptor::new(
             device
                 .create_buffer_mapped::<[f32; 4]>(
-                    2,
+                    1,
                     wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
                 )
                 .fill_from_slice(&buffer),

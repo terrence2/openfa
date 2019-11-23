@@ -22,9 +22,15 @@ use memoffset::offset_of;
 use mm::MissionMap;
 use pal::Palette;
 use pic::Pic;
-use std::{cell::RefCell, collections::HashSet, mem, ops::Range, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    mem,
+    ops::Range,
+    sync::Arc,
+};
 use t2::Terrain;
-use universe_base::FEET_TO_HM;
+use universe_base::{EARTH_RADIUS_KM, FEET_TO_HM, FEET_TO_KM};
 use wgpu;
 
 #[derive(Copy, Clone, Default)]
@@ -306,27 +312,54 @@ impl T2Buffer {
         Ok((atlas, bind_group_layout, bind_group))
     }
 
-    fn sample_at(terrain: &Terrain, palette: &Palette, xi: u32, zi: u32) -> ([f32; 3], [f32; 4]) {
-        let offset = (zi * terrain.width + xi) as usize;
+    // The T2 are flat and square. And cover several degrees of the earth. That means we need to
+    // actually account for curvature in a reasonable way. Flightgear handles this by having tile
+    // coordinates in lat/lon/asl. This (probably) won't work because MM files list shapes to put
+    // on the map in feet off of the origin. If we change the value of up, we need to rotate
+    // all the shapes. Some of the shapes need to line up closely to make sense, like runways.
+    fn sample_at(
+        terrain: &Terrain,
+        palette: &Palette,
+        xi: u32,
+        zi: u32,
+        memo: &mut HashMap<(u32, u32), ([f32; 3], [f32; 4])>,
+    ) -> ([f32; 3], [f32; 4]) {
+        if let Some(v) = memo.get(&(xi, zi)) {
+            return *v;
+        }
+
+        let offset = (zi * terrain.width() + xi) as usize;
         let sample = if offset < terrain.samples.len() {
             terrain.samples[offset]
         } else {
-            let offset = ((zi - 1) * terrain.width + xi) as usize;
+            let offset = ((zi - 1) * terrain.width() + xi) as usize;
             if offset < terrain.samples.len() {
                 terrain.samples[offset]
             } else {
-                let offset = ((zi - 1) * terrain.width + (xi - 1)) as usize;
+                let offset = ((zi - 1) * terrain.width() + (xi - 1)) as usize;
                 terrain.samples[offset]
             }
         };
 
-        let xf = xi as f32 / terrain.width as f32;
-        let zf = zi as f32 / terrain.height as f32;
-        let scale_x = terrain.extent_east_west_in_ft();
-        let scale_z = terrain.extent_north_south_in_ft();
-        let x = xf * scale_x * FEET_TO_HM;
-        let z = (1f32 - zf) * scale_z * FEET_TO_HM;
-        let h = -f32::from(sample.height) * 2f32; /*/ 512f32 + 0.1f32*/
+        let xf = xi as f32 / terrain.width() as f32;
+        let zf = zi as f32 / terrain.height() as f32;
+        let scale_x_ft = terrain.extent_east_west_in_ft();
+        let scale_z_ft = terrain.extent_north_south_in_ft();
+        let x_hm = xf * scale_x_ft * FEET_TO_HM;
+        let z_hm = (1f32 - zf) * scale_z_ft * FEET_TO_HM;
+        let mut h = -f32::from(sample.height) * 2f32; /*/ 512f32 + 0.1f32*/
+
+        // Compute distance from center.
+        let center_x_km = scale_x_ft * FEET_TO_KM / 2f32;
+        let center_z_km = scale_z_ft * FEET_TO_KM / 2f32;
+        let x_km = xf * scale_x_ft * FEET_TO_KM;
+        let z_km = zf * scale_z_ft * FEET_TO_KM;
+        let xc = (center_x_km - x_km).abs();
+        let zc = (center_z_km - z_km).abs();
+        let d_km = (xc * xc + zc * zc).sqrt();
+        let hyp_km = (d_km * d_km + EARTH_RADIUS_KM * EARTH_RADIUS_KM).sqrt();
+        let dev_km = hyp_km - EARTH_RADIUS_KM;
+        h += dev_km * 10f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
         // FIXME: re-hide water once we get this positioned right.
@@ -334,15 +367,17 @@ impl T2Buffer {
             color.data[3] = 0;
         }
 
-        (
-            [x, h, z],
+        let result = (
+            [x_hm, h, z_hm],
             [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,
                 f32::from(color[2]) / 255f32,
                 f32::from(color[3]) / 255f32,
             ],
-        )
+        );
+        memo.insert((xi, zi), result);
+        result
     }
 
     fn upload_terrain_textured_simple(
@@ -377,8 +412,9 @@ impl T2Buffer {
             }
         };
 
-        for zi_base in (0..terrain.height).step_by(4) {
-            for xi_base in (0..terrain.width).step_by(4) {
+        let mut memo = HashMap::new();
+        for zi_base in (0..terrain.height()).step_by(4) {
+            for xi_base in (0..terrain.width()).step_by(4) {
                 let base = verts.len() as u32;
 
                 // Upload one patch of vertices, possibly with a texture.
@@ -389,7 +425,8 @@ impl T2Buffer {
                     for x_off in 0..=4 {
                         let zi = zi_base + z_off;
                         let xi = xi_base + x_off;
-                        let (position, color) = Self::sample_at(terrain, palette, xi, zi);
+                        let (position, color) =
+                            Self::sample_at(terrain, palette, xi, zi, &mut memo);
 
                         verts.push(Vertex {
                             position,
