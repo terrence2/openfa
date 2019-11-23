@@ -12,5 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub mod flight_dynamics;
-pub mod wheeled_dynamics;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scale(f32);
