@@ -377,7 +377,7 @@ impl T2Buffer {
             ],
         );
         memo.insert((xi, zi), result);
-        return result;
+        result
     }
 
     fn upload_terrain_textured_simple(
