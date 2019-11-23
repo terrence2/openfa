@@ -70,8 +70,16 @@ impl T2TerrainRenderPass {
                 primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_states: &[wgpu::ColorStateDescriptor {
                     format: GPU::texture_format(),
-                    color_blend: wgpu::BlendDescriptor::REPLACE,
-                    alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                    color_blend: wgpu::BlendDescriptor {
+                        src_factor: wgpu::BlendFactor::SrcAlpha,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                    alpha_blend: wgpu::BlendDescriptor::REPLACE, /* {
+                                                                     src_factor: wgpu::BlendFactor::SrcAlpha,
+                                                                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                                                     operation: wgpu::BlendOperation::Add,
+                                                                 },*/
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
                 depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {

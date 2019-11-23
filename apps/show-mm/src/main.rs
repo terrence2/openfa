@@ -27,7 +27,7 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
-use shape_instance::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
+//use shape_instance::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
@@ -225,7 +225,7 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let start = Instant::now();
+        /*
         let mut shape_buffer_update_dispatcher = DispatcherBuilder::new()
             .with(TransformUpdateSystem, "transform-update", &[])
             .with(FlagUpdateSystem::new(&start), "flag-update", &[])
@@ -243,6 +243,7 @@ fn main() -> Fallible<()> {
                 .build()
                 .dispatch(&galaxy.ecs);
         }
+        */
 
         let sun_direction = Vector3::new(0f32, 0f32, 1f32);
 

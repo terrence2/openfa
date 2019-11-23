@@ -21,10 +21,10 @@ use std::time::{Duration, Instant};
 const ANIMATION_FRAME_TIME: usize = 166; // ms
 
 const GEAR_ANIMATION_TEMPLATE: LinearAnimationTemplate =
-    LinearAnimationTemplate::new(Duration::from_millis(5000), 8192f32..0f32);
+    LinearAnimationTemplate::new(Duration::from_millis(5000), (8192f32, 0f32));
 
 const BAY_ANIMATION_TEMPLATE: LinearAnimationTemplate =
-    LinearAnimationTemplate::new(Duration::from_millis(5000), 8192f32..0f32);
+    LinearAnimationTemplate::new(Duration::from_millis(5000), (8192f32, 0f32));
 
 bitflags! {
     pub struct DrawStateFlags: u16 {
@@ -43,6 +43,7 @@ bitflags! {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,

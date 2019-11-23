@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
+legion = "^ 0.1"
 nalgebra = "^ 0.18"
 specs = "^ 0.15"
 lib = { path = "../lib" }

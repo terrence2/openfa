@@ -17,7 +17,7 @@ mod systems;
 
 pub use components::{ShapeComponent, ShapeFlagBuffer, ShapeTransformBuffer, ShapeXformBuffer};
 pub use shape_chunk::DrawSelection;
-pub use systems::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
+//pub use systems::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
 
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
@@ -25,7 +25,8 @@ use gpu::{DrawIndirectCommand, GPU};
 use lib::Library;
 use pal::Palette;
 use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId};
-use specs::prelude::{World, WorldExt};
+//use specs::prelude::{World, WorldExt};
+use legion::prelude::*;
 use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
 use wgpu;
 
@@ -464,10 +465,12 @@ pub struct ShapeInstanceBuffer {
 
 impl ShapeInstanceBuffer {
     pub fn register_components(world: &mut World) {
+        /*
         world.register::<ShapeComponent>();
         world.register::<ShapeTransformBuffer>();
         world.register::<ShapeFlagBuffer>();
         world.register::<ShapeXformBuffer>();
+        */
     }
 
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {

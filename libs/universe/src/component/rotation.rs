@@ -12,3 +12,19 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use nalgebra::UnitQuaternion;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rotation(UnitQuaternion<f32>);
+
+impl Rotation {
+    pub fn new(q: UnitQuaternion<f32>) -> Self {
+        Self(q)
+    }
+
+    // Convert to dense pack for upload.
+    pub fn compact(&self) -> [f32; 3] {
+        let (a, b, c) = self.0.euler_angles();
+        [a, b, c]
+    }
+}

@@ -12,14 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub mod component;
-pub mod system;
-
-pub use crate::component::{flight_dynamics::FlightDynamics, wheeled_dynamics::WheeledDynamics};
-pub use specs::Entity;
-pub use universe::{component::Transform, FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M};
+pub use legion::Entity;
+pub use universe::{
+    component::{Rotation, Transform},
+    FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M,
+};
 
 use failure::Fallible;
+use legion::prelude::*;
 use lib::Library;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
@@ -28,11 +28,13 @@ use shape_instance::{
     ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer, ShapeTransformBuffer, ShapeXformBuffer,
     SlotId,
 };
-use specs::{Builder, Dispatcher, World, WorldExt};
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 pub struct Galaxy {
-    pub ecs: World,
+    start: Instant,
+
+    legion_universe: Universe,
+    legion_world: World,
 
     // Resources
     lib: Arc<Box<Library>>,
@@ -41,22 +43,16 @@ pub struct Galaxy {
 
 impl Galaxy {
     pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
-        let mut ecs = World::new();
-        ecs.register::<FlightDynamics>();
-        ecs.register::<WheeledDynamics>();
-        ecs.register::<Transform>();
-        ShapeInstanceBuffer::register_components(&mut ecs);
+        let legion_universe = Universe::new(None);
+        let legion_world = legion_universe.create_world();
 
         Ok(Self {
-            ecs,
+            start: Instant::now(),
+            legion_universe,
+            legion_world,
             palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
             lib,
         })
-    }
-
-    pub fn run(&mut self, dispatcher: &mut Dispatcher) {
-        dispatcher.dispatch(&self.ecs);
-        self.ecs.maintain();
     }
 
     pub fn library(&self) -> &Library {
@@ -71,6 +67,10 @@ impl Galaxy {
         &self.palette
     }
 
+    pub fn start(&self) -> &Instant {
+        &self.start
+    }
+
     pub fn create_building(
         &mut self,
         slot_id: SlotId,
@@ -81,17 +81,22 @@ impl Galaxy {
     ) -> Fallible<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
-        Ok(self
-            .ecs
-            .create_entity()
-            .with(Transform::new(position, *rotation))
-            .with(ShapeComponent::new(slot_id, shape_id))
-            .with(ShapeTransformBuffer::new())
-            .with(ShapeFlagBuffer::new(widgets.errata()))
-            .with(ShapeXformBuffer::new(shape_id, part.widgets()))
-            .build())
+        let entities = self.legion_world.insert_from(
+            (),
+            vec![(Transform::new(position.coords), Rotation::new(*rotation))],
+        );
+        Ok(entities[0])
+        /*
+        .with(Transform::new(position, *rotation))
+        .with(ShapeComponent::new(slot_id, shape_id))
+        .with(ShapeTransformBuffer::new())
+        .with(ShapeFlagBuffer::new(widgets.errata()))
+        .with(ShapeXformBuffer::new(shape_id, part.widgets()))
+        .build())
+        */
     }
 
+    /*
     pub fn create_ground_mover(
         &mut self,
         slot_id: SlotId,
@@ -107,7 +112,6 @@ impl Galaxy {
             .build())
     }
 
-    /*
     pub fn create_flyer(
         &mut self,
         shape_id: ShapeId,
@@ -132,8 +136,8 @@ impl Galaxy {
     }
     */
 
-    pub fn destroy_entity(&mut self, entity: Entity) -> Fallible<()> {
-        Ok(self.ecs.delete_entity(entity)?)
+    pub fn destroy_entity(&mut self, entity: Entity) -> bool {
+        self.legion_world.delete(entity)
     }
 }
 

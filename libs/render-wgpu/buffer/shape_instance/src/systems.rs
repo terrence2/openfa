@@ -13,19 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{components::*, ShapeInstanceBuffer};
+use legion::prelude::*;
 use shape_chunk::{ShapeId, ShapeWidgets};
-use specs::prelude::*;
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     time::Instant,
 };
-use universe::component::Transform;
+use universe::component::{Rotation, Transform};
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
 }
 
+pub fn update_xform_system(world: &World) {
+    let query = <(Read<ShapeComponent>, Write<ShapeXformBuffer>)>::query();
+    //query.par_for_each(&world)
+}
+
+/*
 pub struct XformUpdateSystem {
     start: Instant,
 }
@@ -141,3 +147,4 @@ impl<'a, 'b> System<'a> for CoalesceSystem<'b> {
         }
     }
 }
+*/

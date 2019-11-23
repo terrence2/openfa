@@ -166,8 +166,6 @@ impl T2Buffer {
         palette.overlay_at(&r3, 0xD0)?;
         palette.overlay_at(&r2, 0xC0)?;
 
-        //palette.override_one(0xFE, [0, 0, 0]);
-
         Ok(palette)
     }
 
@@ -362,7 +360,6 @@ impl T2Buffer {
         h += dev_km * 10f32;
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
-        // FIXME: re-hide water once we get this positioned right.
         if sample.color == 0xFF {
             color.data[3] = 0;
         }
