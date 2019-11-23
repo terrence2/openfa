@@ -30,7 +30,7 @@ use std::{
     sync::Arc,
 };
 use t2::Terrain;
-use universe_base::{EARTH_RADIUS_KM, FEET_TO_HM, FEET_TO_KM};
+use universe::{EARTH_RADIUS_KM, FEET_TO_HM, FEET_TO_KM};
 use wgpu;
 
 #[derive(Copy, Clone, Default)]

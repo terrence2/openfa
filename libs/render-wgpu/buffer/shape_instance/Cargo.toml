@@ -18,7 +18,7 @@ lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffer/shape_chunk" }
-universe_base = { path = "../../../universe_base" }
+universe = { path = "../../../universe" }
 
 [dev-dependencies]
 rand = "^ 0.7"

@@ -12,6 +12,5 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod transform;
-
-pub use transform::Transform;
+pub mod flight_dynamics;
+pub mod wheeled_dynamics;

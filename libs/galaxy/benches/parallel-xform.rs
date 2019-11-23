@@ -20,7 +20,7 @@ use omnilib::OmniLib;
 use shape_chunk::{DrawSelection, OpenChunk};
 use specs::prelude::*;
 use std::time::Instant;
-use universe::{
+use galaxy::{
     system::shape_mesh::{
         FlagCoalesceSystem, FlagUpdateSystem, XformCoalesceSystem, XformUpdateSystem,
     },
@@ -30,7 +30,7 @@ use window::{GraphicsConfigBuilder, GraphicsWindow};
 
 fn set_up_world() -> Fallible<Universe> {
     let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-    let mut universe = Universe::new(omni.library("FA"))?;
+    let mut galaxy = Universe::new(omni.library("FA"))?;
     let window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let mut upload = OpenChunk::new(&window)?;
 
@@ -42,20 +42,20 @@ fn set_up_world() -> Fallible<Universe> {
     let shape_id = upload.upload_shape(
         "F31.SH",
         DrawSelection::NormalModel,
-        universe.system_palette(),
-        universe.library(),
+        galaxy.system_palette(),
+        galaxy.library(),
         &window,
     )?;
 
     let part = upload.part(shape_id);
     for _ in 0..10_000 {
-        let _ent = universe.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
+        let _ent = galaxy.create_flyer(shape_id, Point3::new(0f64, 0f64, 0f64), part)?;
     }
-    Ok(universe)
+    Ok(galaxy)
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    // Set up universe
+    // Set up galaxy
     let start = Instant::now();
     let mut world = set_up_world().unwrap();
 

@@ -27,7 +27,7 @@ use shape_instance_wgpu::{
 };
 use specs::prelude::*;
 use std::time::Instant;
-use universe_base::component::Transform;
+use universe::component::Transform;
 
 fn build_pipeline(
     gpu: &mut gpu::GPU,

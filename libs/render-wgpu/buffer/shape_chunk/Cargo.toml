@@ -23,7 +23,7 @@ omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
 sh = { path = "../../../sh" }
-universe_base = { path = "../../../universe_base" }
+universe = { path = "../../../universe" }
 
 [dev-dependencies]
 camera = { path = "../../../render-shared/common/camera" }

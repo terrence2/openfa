@@ -28,6 +28,7 @@ members = [
         "libs/asset",
         "libs/dlg",
         "libs/fnt",
+        "libs/galaxy",
         "libs/i386",
         "libs/jt",
         "libs/lay",
@@ -79,7 +80,6 @@ members = [
         "libs/sh",
         "libs/star_catalog",
         "libs/t2",
-        "libs/universe",
         "libs/xt",
 ]
 

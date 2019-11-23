@@ -1,0 +1,24 @@
+[package]
+name = "galaxy"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+nalgebra = "^ 0.18"
+specs = "^ 0.15"
+lib = { path = "../lib" }
+pal = { path = "../pal" }
+shape_chunk = { package = "shape_chunk-wgpu", path = "../render-wgpu/buffer/shape_chunk" }
+shape_instance = { package = "shape_instance-wgpu", path = "../render-wgpu/buffer/shape_instance" }
+universe = { path = "../universe" }
+
+[dev-dependencies]
+criterion = "0.2"
+omnilib = { path = "../omnilib" }
+window = { path = "../render-vulkano/common/window" }
+
+[[bench]]
+name = "parallel-xform"
+harness = false

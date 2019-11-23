@@ -19,7 +19,7 @@ mm = { path = "../../../mm" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
 t2 = { path = "../../../t2" }
-universe_base = { path = "../../../universe_base" }
+universe = { path = "../../../universe" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"

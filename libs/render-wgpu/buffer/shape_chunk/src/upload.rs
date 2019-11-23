@@ -32,7 +32,7 @@ use std::{
     mem,
     time::Instant,
 };
-use universe_base::FEET_TO_HM;
+use universe::FEET_TO_HM;
 
 bitflags! {
     pub struct VertexFlags: u64 {

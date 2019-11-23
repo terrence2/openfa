@@ -26,7 +26,7 @@ use shape_instance::{
 };
 use specs::prelude::*;
 use std::{sync::Arc, time::Instant};
-use universe_base::component::Transform;
+use universe::component::Transform;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::AutoCommandBufferBuilder,

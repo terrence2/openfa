@@ -17,6 +17,7 @@ use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
+use galaxy::{Galaxy, FEET_TO_HM};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
@@ -37,7 +38,6 @@ use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
-use universe::{Universe, FEET_TO_HM};
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -74,7 +74,7 @@ fn main() -> Fallible<()> {
 
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
-    let mut universe = Universe::new(lib)?;
+    let mut galaxy = Galaxy::new(lib)?;
 
     let shape_bindings = InputBindings::new("map")
         .bind("prev-object", "Shift+n")?
@@ -86,17 +86,17 @@ fn main() -> Fallible<()> {
     let mut input = InputSystem::new(vec![shape_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let types = TypeManager::new(universe.library_owned());
+    let types = TypeManager::new(galaxy.library_owned());
     let mm = MissionMap::from_str(
-        &universe.library().load_text(&name)?,
+        &galaxy.library().load_text(&name)?,
         &types,
-        universe.library(),
+        galaxy.library(),
     )?;
 
     let mut position_index = 0;
     let mut positions = Vec::new();
     let mut names = Vec::new();
-    let t2_buffer = T2Buffer::new(&mm, universe.palette(), universe.library(), &mut gpu)?;
+    let t2_buffer = T2Buffer::new(&mm, galaxy.palette(), galaxy.library(), &mut gpu)?;
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
         for info in mm.objects() {
@@ -111,16 +111,16 @@ fn main() -> Fallible<()> {
                 .upload_and_allocate_slot(
                     info.xt().ot().shape.as_ref().expect("a shape file"),
                     DrawSelection::NormalModel,
-                    universe.palette(),
-                    universe.library(),
+                    galaxy.palette(),
+                    galaxy.library(),
                     &mut gpu,
                 )?;
 
             if let Ok(_pt) = info.xt().pt() {
-                //universe.create_flyer(pt, shape_id, slot_id)?
+                //galaxy.create_flyer(pt, shape_id, slot_id)?
                 //unimplemented!()
             } else if let Ok(_nt) = info.xt().nt() {
-                //universe.create_ground_mover(nt)
+                //galaxy.create_ground_mover(nt)
                 //unimplemented!()
             } else if info.xt().jt().is_ok() {
                 bail!("did not expect a projectile in MM objects")
@@ -144,7 +144,7 @@ fn main() -> Fallible<()> {
                 } else {
                     names.push(sh_name);
                 }
-                universe.create_building(
+                galaxy.create_building(
                     slot_id,
                     shape_id,
                     shape_instance_buffer.borrow().part(shape_id),
@@ -163,7 +163,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let text_layout_buffer = LayoutBuffer::new(universe.library(), &mut gpu)?;
+    let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
@@ -232,7 +232,7 @@ fn main() -> Fallible<()> {
             .with(XformUpdateSystem::new(&start), "xform-update", &[])
             .build();
 
-        shape_buffer_update_dispatcher.dispatch(&universe.ecs);
+        shape_buffer_update_dispatcher.dispatch(&galaxy.ecs);
         {
             DispatcherBuilder::new()
                 .with(
@@ -241,7 +241,7 @@ fn main() -> Fallible<()> {
                     &[],
                 )
                 .build()
-                .dispatch(&universe.ecs);
+                .dispatch(&galaxy.ecs);
         }
 
         let sun_direction = Vector3::new(0f32, 0f32, 1f32);
