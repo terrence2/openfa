@@ -34,7 +34,7 @@ pub struct Galaxy {
     start: Instant,
 
     legion_universe: Universe,
-    legion_world: World,
+    pub legion_world: World,
 
     // Resources
     lib: Arc<Box<Library>>,
@@ -71,6 +71,10 @@ impl Galaxy {
         &self.start
     }
 
+    pub fn start_owned(&self) -> Instant {
+        self.start
+    }
+
     pub fn create_building(
         &mut self,
         slot_id: SlotId,
@@ -83,7 +87,13 @@ impl Galaxy {
         let widgets = widget_ref.read().unwrap();
         let entities = self.legion_world.insert_from(
             (),
-            vec![(Transform::new(position.coords), Rotation::new(*rotation))],
+            vec![(
+                Transform::new(position.coords),
+                Rotation::new(*rotation),
+                ShapeTransformBuffer::new(),
+                ShapeFlagBuffer::new(widgets.errata()),
+                ShapeComponent::new(slot_id, shape_id),
+            )],
         );
         Ok(entities[0])
         /*

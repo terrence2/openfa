@@ -259,9 +259,12 @@ fn main() -> Fallible<()> {
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
-        shape_instance_buffer
-            .borrow()
-            .make_upload_buffer(gpu.device(), &mut buffers)?;
+        shape_instance_buffer.borrow_mut().make_upload_buffer(
+            &galaxy.start_owned(),
+            &mut galaxy.legion_world,
+            gpu.device(),
+            &mut buffers,
+        )?;
         text_layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;

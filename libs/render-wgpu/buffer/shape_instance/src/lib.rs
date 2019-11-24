@@ -22,12 +22,12 @@ pub use shape_chunk::DrawSelection;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
+use legion::prelude::*;
 use lib::Library;
 use pal::Palette;
 use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId};
-//use specs::prelude::{World, WorldExt};
-use legion::prelude::*;
-use std::{cell::RefCell, collections::HashMap, mem, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, mem, sync::Arc, time::Instant};
+use universe::component::{Rotation, Transform};
 use wgpu;
 
 const BLOCK_SIZE: usize = 1 << 10;
@@ -464,15 +464,6 @@ pub struct ShapeInstanceBuffer {
 }
 
 impl ShapeInstanceBuffer {
-    pub fn register_components(world: &mut World) {
-        /*
-        world.register::<ShapeComponent>();
-        world.register::<ShapeTransformBuffer>();
-        world.register::<ShapeFlagBuffer>();
-        world.register::<ShapeXformBuffer>();
-        */
-    }
-
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[
@@ -501,7 +492,6 @@ impl ShapeInstanceBuffer {
             blocks: HashMap::new(),
             next_block_id: 0,
             bind_group_layout,
-            //            pipeline,
             //            base_descriptors,
             //            command_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
             //            transform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
@@ -601,10 +591,35 @@ impl ShapeInstanceBuffer {
     }
 
     pub fn make_upload_buffer(
-        &self,
+        &mut self,
+        start: &Instant,
+        world: &mut World,
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
+        let query = <(Read<Transform>, Read<Rotation>, Write<ShapeTransformBuffer>)>::query();
+        query.par_for_each(world, |(transform, rotation, buffer)| {
+            (&mut buffer.buffer[..3]).copy_from_slice(&transform.compact());
+            (&mut buffer.buffer[3..]).copy_from_slice(&rotation.compact());
+        });
+
+        let query = <(Read<ShapeComponent>, Write<ShapeFlagBuffer>)>::query();
+        query.par_for_each(world, |(shape, flag_buffer)| {
+            shape
+                .draw_state
+                .build_mask_into(&start, flag_buffer.errata, &mut flag_buffer.buffer)
+                .unwrap();
+        });
+
+        let query = <(
+            Read<ShapeComponent>,
+            Read<ShapeTransformBuffer>,
+            Read<ShapeFlagBuffer>,
+        )>::query();
+        for (shape, transform_buffer, flag_buffer) in query.iter(&world) {
+            self.push_values(shape.slot_id, &transform_buffer.buffer, flag_buffer.buffer);
+        }
+
         for block in self.blocks.values() {
             let source = device
                 .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
