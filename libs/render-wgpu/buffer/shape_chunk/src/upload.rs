@@ -245,17 +245,24 @@ pub enum TransformInput {
     SwingWing(u32),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ShapeErrata {
     pub no_upper_aileron: bool,
+    pub has_frame_animation: bool,
+    pub has_xform_animation: bool,
+    pub num_xform_animations: u8,
 }
 
 impl ShapeErrata {
-    fn from_flags(flags: VertexFlags) -> Self {
+    fn from_flags(analysis: &AnalysisResults) -> Self {
+        let flags = analysis.prop_man.seen_flags;
         Self {
             // ERRATA: ATFNATO:F22.SH is missing aileron up meshes.
             no_upper_aileron: !(flags & VertexFlags::AILERONS_DOWN).is_empty()
                 && (flags & VertexFlags::AILERONS_UP).is_empty(),
+            has_frame_animation: analysis.has_frame_animation,
+            has_xform_animation: !analysis.transformers.is_empty(),
+            num_xform_animations: analysis.transformers.len() as u8,
         }
     }
 }
@@ -624,7 +631,7 @@ pub struct ShapeWidgets {
 }
 
 impl ShapeWidgets {
-    pub fn new(name: &str, transformers: Vec<Transformer>, errata: ShapeErrata) -> Self {
+    pub fn new(name: &str, errata: ShapeErrata, transformers: Vec<Transformer>) -> Self {
         Self {
             shape_name: name.to_owned(),
             transformers,
@@ -637,14 +644,12 @@ impl ShapeWidgets {
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
-        buffer: &mut [f32],
+        buffer: &mut [[f32; 6]],
     ) -> Fallible<()> {
-        assert!(buffer.len() >= self.num_transformer_floats());
-        let mut offset = 0;
-        for transformer in self.transformers.iter_mut() {
+        assert!(buffer.len() >= self.num_xforms());
+        for (offset, transformer) in self.transformers.iter_mut().enumerate() {
             let xform = transformer.transform(draw_state, start, now)?;
-            buffer[offset..offset + 6].copy_from_slice(&xform);
-            offset += 6;
+            buffer[offset].copy_from_slice(&xform);
         }
         Ok(())
     }
@@ -1156,8 +1161,8 @@ impl ShapeUploader {
 
         Ok(ShapeWidgets::new(
             name,
+            ShapeErrata::from_flags(&analysis),
             analysis.transformers,
-            ShapeErrata::from_flags(analysis.prop_man.seen_flags),
         ))
     }
 

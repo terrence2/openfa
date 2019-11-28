@@ -12,6 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod rotation;
+mod scale;
 mod transform;
 
+pub use rotation::Rotation;
+pub use scale::Scale;
 pub use transform::Transform;

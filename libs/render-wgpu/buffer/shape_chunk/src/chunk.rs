@@ -83,6 +83,7 @@ impl ChunkFlags {
 pub struct ChunkPart {
     vertex_start: usize,
     vertex_count: usize,
+    xform_count: usize,
     shape_widgets: Arc<RwLock<ShapeWidgets>>,
 }
 
@@ -93,9 +94,11 @@ impl ChunkPart {
         vertex_end: usize,
         shape_widgets: Arc<RwLock<ShapeWidgets>>,
     ) -> Self {
+        let xform_count = shape_widgets.read().unwrap().num_xforms();
         ChunkPart {
             vertex_start,
             vertex_count: vertex_end - vertex_start,
+            xform_count,
             shape_widgets,
         }
     }
@@ -111,6 +114,10 @@ impl ChunkPart {
 
     pub fn widgets(&self) -> Arc<RwLock<ShapeWidgets>> {
         self.shape_widgets.clone()
+    }
+
+    pub fn xform_count(&self) -> usize {
+        self.xform_count
     }
 }
 

@@ -41,16 +41,15 @@ layout(set = 2, binding = 0) buffer ShapeInstanceBlockTransforms {
 layout(set = 2, binding = 1) buffer ShapeInstanceBlockFlags {
     uint shape_flags[];
 };
-//layout(set = 2, binding = 2) buffer ShapeInstanceBlockXformOffsets {
-//    uint shape_xform_offsets[];
-//};
-//layout(set = 2, binding = 2) buffer ShapeInstanceBlockXforms {
-//    float shape_xforms[];
-//};
+layout(set = 2, binding = 2) buffer ShapeInstanceBlockXformOffsets {
+    uint shape_xform_offsets[];
+};
+layout(set = 2, binding = 2) buffer ShapeInstanceBlockXforms {
+    float shape_xforms[];
+};
 
 void main() {
     uint base_transform = gl_InstanceIndex * 6;
-    uint base_flag = gl_InstanceIndex * 2;
     float transform[6] = {
         shape_transforms[base_transform + 0],
         shape_transforms[base_transform + 1],
@@ -59,23 +58,28 @@ void main() {
         shape_transforms[base_transform + 4],
         shape_transforms[base_transform + 5]
     };
+
     float xform[6] = {0, 0, 0, 0, 0, 0};
-//            uint base_xform = shape_xform_offsets.data[gl_InstanceIndex];
-//            if (xform_id < MAX_XFORM_ID) {
-//                xform[0] = shape_xforms.data[base_xform + 6 * xform_id + 0];
-//                xform[1] = shape_xforms.data[base_xform + 6 * xform_id + 1];
-//                xform[2] = shape_xforms.data[base_xform + 6 * xform_id + 2];
-//                xform[3] = shape_xforms.data[base_xform + 6 * xform_id + 3];
-//                xform[4] = shape_xforms.data[base_xform + 6 * xform_id + 4];
-//                xform[5] = shape_xforms.data[base_xform + 6 * xform_id + 5];
-//            }
+    if (xform_id < MAX_XFORM_ID) {
+        uint base_xform = shape_xform_offsets[gl_InstanceIndex];
+        xform[0] = shape_xforms[6 * base_xform + 6 * xform_id + 0];
+        xform[1] = shape_xforms[6 * base_xform + 6 * xform_id + 1];
+        xform[2] = shape_xforms[6 * base_xform + 6 * xform_id + 2];
+        xform[3] = shape_xforms[6 * base_xform + 6 * xform_id + 3];
+        xform[4] = shape_xforms[6 * base_xform + 6 * xform_id + 4];
+        xform[5] = shape_xforms[6 * base_xform + 6 * xform_id + 5];
+    }
+
     gl_Position = camera_projection() *
                   camera_view() *
                   matrix_for_xform(transform) *
                   matrix_for_xform(xform) *
                   vec4(position, 1.0);
+
     v_color = color;
     v_tex_coord = tex_coord;
+
+    uint base_flag = gl_InstanceIndex * 2;
     f_flags0 = flags0 & shape_flags[base_flag + 0];
     f_flags1 = flags1 & shape_flags[base_flag + 1];
 }

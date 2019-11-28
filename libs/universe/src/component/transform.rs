@@ -12,27 +12,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use nalgebra::{Point3, UnitQuaternion};
-use specs::{Component, VecStorage};
+use nalgebra::Vector3;
 
-pub struct Transform {
-    position: Point3<f32>,
-    rotation: UnitQuaternion<f32>,
-    // scale: Vector3<f64>, // we don't have an upload slot for this currently.
-}
-
-impl Component for Transform {
-    type Storage = VecStorage<Self>;
-}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Transform(Vector3<f32>);
 
 impl Transform {
-    pub fn new(position: Point3<f32>, rotation: UnitQuaternion<f32>) -> Self {
-        Self { position, rotation }
+    pub fn new(v: Vector3<f32>) -> Self {
+        Self(v)
     }
 
     // Convert to dense pack for upload.
-    pub fn compact(&self) -> [f32; 6] {
-        let (a, b, c) = self.rotation.euler_angles();
-        [self.position.x, self.position.y, self.position.z, a, b, c]
+    pub fn compact(&self) -> [f32; 3] {
+        [self.0.x, self.0.y, self.0.z]
     }
 }

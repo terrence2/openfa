@@ -27,11 +27,9 @@ use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
-use shape_instance::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
-use specs::prelude::*;
 use stars::StarsBuffer;
 use std::time::Instant;
 use structopt::StructOpt;
@@ -225,25 +223,6 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let start = Instant::now();
-        let mut shape_buffer_update_dispatcher = DispatcherBuilder::new()
-            .with(TransformUpdateSystem, "transform-update", &[])
-            .with(FlagUpdateSystem::new(&start), "flag-update", &[])
-            .with(XformUpdateSystem::new(&start), "xform-update", &[])
-            .build();
-
-        shape_buffer_update_dispatcher.dispatch(&galaxy.ecs);
-        {
-            DispatcherBuilder::new()
-                .with(
-                    CoalesceSystem::new(&mut shape_instance_buffer.borrow_mut()),
-                    "coalesce",
-                    &[],
-                )
-                .build()
-                .dispatch(&galaxy.ecs);
-        }
-
         let sun_direction = Vector3::new(0f32, 0f32, 1f32);
 
         let mut buffers = Vec::new();
@@ -258,9 +237,12 @@ fn main() -> Fallible<()> {
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
-        shape_instance_buffer
-            .borrow()
-            .make_upload_buffer(gpu.device(), &mut buffers)?;
+        shape_instance_buffer.borrow_mut().make_upload_buffer(
+            &galaxy.start_owned(),
+            galaxy.world_mut(),
+            gpu.device(),
+            &mut buffers,
+        )?;
         text_layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;

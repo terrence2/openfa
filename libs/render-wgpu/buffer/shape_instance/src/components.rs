@@ -13,74 +13,64 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::SlotId;
-use shape_chunk::{DrawState, ShapeErrata, ShapeId, ShapeWidgets};
-use specs::{Component, VecStorage};
-use std::sync::{Arc, RwLock};
+use shape_chunk::{DrawState, ShapeErrata, ShapeId};
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShapeRefComp {
+    pub shape_id: ShapeId,
+}
+
+impl ShapeRefComp {
+    pub fn new(shape_id: ShapeId) -> Self {
+        Self { shape_id }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeComponent {
     pub slot_id: SlotId,
-    pub shape_id: ShapeId,
     pub draw_state: DrawState,
 }
-impl Component for ShapeComponent {
-    type Storage = VecStorage<Self>;
-}
 impl ShapeComponent {
-    pub fn new(slot_id: SlotId, shape_id: ShapeId) -> Self {
+    pub fn new(slot_id: SlotId, errata: ShapeErrata) -> Self {
         Self {
             slot_id,
-            shape_id,
-            draw_state: Default::default(),
+            draw_state: DrawState::new(errata),
         }
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeTransformBuffer {
     pub buffer: [f32; 6],
 }
-impl Component for ShapeTransformBuffer {
-    type Storage = VecStorage<Self>;
-}
-impl ShapeTransformBuffer {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+impl Default for ShapeTransformBuffer {
+    fn default() -> Self {
         Self { buffer: [0f32; 6] }
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeFlagBuffer {
     pub buffer: [u32; 2],
-    pub errata: ShapeErrata,
 }
-impl Component for ShapeFlagBuffer {
-    type Storage = VecStorage<Self>;
-}
-impl ShapeFlagBuffer {
-    pub fn new(errata: ShapeErrata) -> Self {
-        Self {
-            buffer: [0u32; 2],
-            errata,
-        }
+impl Default for ShapeFlagBuffer {
+    fn default() -> Self {
+        Self { buffer: [0u32; 2] }
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeXformBuffer {
-    pub shape_id: ShapeId,
-    pub buffer: Vec<f32>,
-    pub widgets: Arc<RwLock<ShapeWidgets>>,
+    pub buffer: [[f32; 6]; 14],
 }
-impl Component for ShapeXformBuffer {
-    type Storage = VecStorage<Self>;
-}
-impl ShapeXformBuffer {
-    pub fn new(shape_id: ShapeId, widgets: Arc<RwLock<ShapeWidgets>>) -> Self {
-        let num_floats = widgets.read().unwrap().num_transformer_floats();
-        let mut buffer = Vec::with_capacity(num_floats);
-        buffer.resize(num_floats, 0f32);
+impl Default for ShapeXformBuffer {
+    fn default() -> Self {
+        //let num_floats = widgets.read().unwrap().num_transformer_floats();
+        //let mut buffer = Vec::with_capacity(num_floats);
+        //buffer.resize(num_floats, 0f32);
         Self {
-            shape_id,
-            buffer,
-            widgets,
+            buffer: [[0f32; 6]; 14],
         }
     }
 }
