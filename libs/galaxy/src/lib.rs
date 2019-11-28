@@ -92,39 +92,22 @@ impl Galaxy {
     ) -> Fallible<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
-        #[allow(clippy::match_bool)]
-        let entities = match widgets.errata().has_xform_animation {
-            true => self.legion_world.insert(
-                (ShapeRefComp::new(shape_id),),
-                vec![(
-                    Transform::new(position.coords),
-                    Rotation::new(*rotation),
-                    ShapeComponent::new(slot_id, widgets.errata()),
-                    ShapeTransformBuffer::default(),
-                    ShapeFlagBuffer::default(),
-                    ShapeXformBuffer::default(),
-                )],
-            ),
-            false => self.legion_world.insert(
-                (ShapeRefComp::new(shape_id),),
-                vec![(
-                    Transform::new(position.coords),
-                    Rotation::new(*rotation),
-                    ShapeComponent::new(slot_id, widgets.errata()),
-                    ShapeTransformBuffer::default(),
-                    ShapeFlagBuffer::default(),
-                )],
-            ),
-        };
-        Ok(entities[0])
-        /*
-        .with(Transform::new(position, *rotation))
-        .with(ShapeComponent::new(slot_id, shape_id))
-        .with(ShapeTransformBuffer::new())
-        .with(ShapeFlagBuffer::new(widgets.errata()))
-        .with(ShapeXformBuffer::new(shape_id, part.widgets()))
-        .build())
-        */
+        let entities = self.legion_world.insert(
+            (ShapeRefComp::new(shape_id),),
+            vec![(
+                Transform::new(position.coords),
+                Rotation::new(*rotation),
+                ShapeComponent::new(slot_id, widgets.errata()),
+                ShapeTransformBuffer::default(),
+                ShapeFlagBuffer::default(),
+            )],
+        );
+        let entity = entities[0];
+        if widgets.errata().has_xform_animation {
+            self.legion_world
+                .add_component(entity, ShapeXformBuffer::default());
+        }
+        Ok(entity)
     }
 
     /*
