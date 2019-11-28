@@ -141,24 +141,15 @@ fn main() -> Fallible<()> {
         slot_id,
         shape_id,
         shape_instance_buffer.borrow().part(shape_id),
-        Point3::new(0f32, 0f32, 1000f32),
+        Point3::new(0f32, 0f32, 0f32),
         &UnitQuaternion::identity(),
     )?;
     shape_instance_buffer
         .borrow_mut()
         .ensure_uploaded(&mut gpu)?;
 
-    /*
-    let mut update = |f: &mut dyn FnMut(&mut DrawState)| {
-        galaxy
-            .world_mut()
-            .get_component_mut::<ShapeComponent>(shape_entity)
-            .map(|mut shape| {
-                let ds: &mut DrawState = &mut shape.draw_state;
-                f(ds);
-            });
-    };
-    */
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
+    camera.set_target(0f64, 0f64, 0f64);
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
@@ -194,9 +185,6 @@ fn main() -> Fallible<()> {
         .with_horizontal_anchor(TextAnchorH::Right)
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
-
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
-    camera.set_target(0f64, 0f64, 1000f64);
 
     loop {
         let loop_start = Instant::now();

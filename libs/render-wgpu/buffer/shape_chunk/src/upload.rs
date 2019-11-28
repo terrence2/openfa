@@ -34,6 +34,8 @@ use std::{
 };
 use universe::FEET_TO_HM;
 
+const MAX_XFORM_ID: u32 = 32;
+
 bitflags! {
     pub struct VertexFlags: u64 {
         const NONE                 = 0x0000_0000_0000_0000;
@@ -697,13 +699,16 @@ impl ShapeUploader {
             .unwrap_or_else(|| BufferProps {
                 context: "Static".to_owned(),
                 flags: VertexFlags::STATIC,
-                xform_id: 0,
+                xform_id: MAX_XFORM_ID,
             });
         for v in vert_buf.vertices() {
             let mut v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1]));
+
             // FIXME: blowing these up so we can see them on the map
             // WTF: if we multiply by 4, everything lines up, otherwise not. Why?!?
-            v0 *= FEET_TO_HM * 4f32;
+            // Note: this has to be done via a scale matrix so that our XForms line up.
+            //v0 *= FEET_TO_HM * 4f32;
+
             vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.
@@ -1192,7 +1197,7 @@ impl ShapeUploader {
                         if let Some(props) = result.prop_man.props.get(&vert_buf.at_offset()) {
                             props.xform_id
                         } else {
-                            0
+                            MAX_XFORM_ID
                         };
                 }
                 _ => {}

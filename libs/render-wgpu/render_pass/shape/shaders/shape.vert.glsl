@@ -32,7 +32,6 @@ layout(location = 1) smooth out vec2 v_tex_coord;
 layout(location = 2) flat out uint f_flags0;
 layout(location = 3) flat out uint f_flags1;
 
-
 // Per shape input
 const uint MAX_XFORM_ID = 32;
 layout(set = 2, binding = 0) buffer ShapeInstanceBlockTransforms {
@@ -44,7 +43,7 @@ layout(set = 2, binding = 1) buffer ShapeInstanceBlockFlags {
 layout(set = 2, binding = 2) buffer ShapeInstanceBlockXformOffsets {
     uint shape_xform_offsets[];
 };
-layout(set = 2, binding = 2) buffer ShapeInstanceBlockXforms {
+layout(set = 2, binding = 3) buffer ShapeInstanceBlockXforms {
     float shape_xforms[];
 };
 
