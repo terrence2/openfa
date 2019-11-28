@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use legion::Entity;
+pub use legion::entity::Entity;
 pub use universe::{
     component::{Rotation, Transform},
     FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M,
@@ -25,16 +25,15 @@ use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
-    ShapeComponent, ShapeFlagBuffer, ShapeInstanceBuffer, ShapeTransformBuffer, ShapeXformBuffer,
-    SlotId,
+    ShapeComponent, ShapeFlagBuffer, ShapeRefComp, ShapeTransformBuffer, ShapeXformBuffer, SlotId,
 };
 use std::{sync::Arc, time::Instant};
 
 pub struct Galaxy {
     start: Instant,
 
-    legion_universe: Universe,
-    pub legion_world: World,
+    _legion_universe: Universe,
+    legion_world: World,
 
     // Resources
     lib: Arc<Box<Library>>,
@@ -43,16 +42,24 @@ pub struct Galaxy {
 
 impl Galaxy {
     pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
-        let legion_universe = Universe::new(None);
+        let legion_universe = Universe::new();
         let legion_world = legion_universe.create_world();
 
         Ok(Self {
             start: Instant::now(),
-            legion_universe,
+            _legion_universe: legion_universe,
             legion_world,
             palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
             lib,
         })
+    }
+
+    pub fn world(&self) -> &World {
+        &self.legion_world
+    }
+
+    pub fn world_mut(&mut self) -> &mut World {
+        &mut self.legion_world
     }
 
     pub fn library(&self) -> &Library {
@@ -85,16 +92,30 @@ impl Galaxy {
     ) -> Fallible<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
-        let entities = self.legion_world.insert_from(
-            (),
-            vec![(
-                Transform::new(position.coords),
-                Rotation::new(*rotation),
-                ShapeTransformBuffer::new(),
-                ShapeFlagBuffer::new(widgets.errata()),
-                ShapeComponent::new(slot_id, shape_id),
-            )],
-        );
+        #[allow(clippy::match_bool)]
+        let entities = match widgets.errata().has_xform_animation {
+            true => self.legion_world.insert(
+                (ShapeRefComp::new(shape_id),),
+                vec![(
+                    Transform::new(position.coords),
+                    Rotation::new(*rotation),
+                    ShapeComponent::new(slot_id, widgets.errata()),
+                    ShapeTransformBuffer::default(),
+                    ShapeFlagBuffer::default(),
+                    ShapeXformBuffer::default(),
+                )],
+            ),
+            false => self.legion_world.insert(
+                (ShapeRefComp::new(shape_id),),
+                vec![(
+                    Transform::new(position.coords),
+                    Rotation::new(*rotation),
+                    ShapeComponent::new(slot_id, widgets.errata()),
+                    ShapeTransformBuffer::default(),
+                    ShapeFlagBuffer::default(),
+                )],
+            ),
+        };
         Ok(entities[0])
         /*
         .with(Transform::new(position, *rotation))

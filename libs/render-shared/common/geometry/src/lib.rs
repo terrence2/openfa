@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-fn main() {
-    build_shaders::build().unwrap()
-}
+
+mod ico_sphere;
+
+pub use ico_sphere::IcoSphere;

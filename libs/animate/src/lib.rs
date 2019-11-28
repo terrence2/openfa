@@ -177,7 +177,18 @@ mod test {
 
     const TEST_LINEAR_TEMPLATE: LinearAnimationTemplate = LinearAnimationTemplate {
         duration: Duration::from_millis(10),
-        range: 0f32..10f32,
+        range: AnimationRange {
+            start: 0f32,
+            end: 10f32,
+        },
+    };
+
+    const TEST_LINEAR_REVERSE_TEMPLATE: LinearAnimationTemplate = LinearAnimationTemplate {
+        duration: Duration::from_millis(10),
+        range: AnimationRange {
+            start: 10f32,
+            end: 0f32,
+        },
     };
 
     #[test]
@@ -198,6 +209,19 @@ mod test {
         }
         assert!(anim.completed_forward());
         assert_relative_eq!(anim.value(), 10f32);
+    }
+
+    #[test]
+    fn run_reverse_animation_to_completion() {
+        let mut anim = Animation::new(&TEST_LINEAR_REVERSE_TEMPLATE);
+        assert!(anim.completed_backward());
+        anim.start(&Instant::now());
+        assert!(!anim.completed_backward());
+        while anim.is_active() {
+            anim.animate(&Instant::now());
+        }
+        assert!(anim.completed_forward());
+        assert_relative_eq!(anim.value(), 0f32);
     }
 
     #[test]

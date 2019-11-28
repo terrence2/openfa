@@ -15,10 +15,10 @@ shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffe
 shape_instance = { package = "shape_instance-wgpu", path = "../../../render-wgpu/buffer/shape_instance" }
 
 [dev-dependencies]
-specs = "^ 0.15"
-camera = { path = "../../../render-shared/common/camera" }
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 nalgebra = "^ 0.18"
+camera = { path = "../../../render-shared/common/camera" }
+galaxy = { path = "../../../galaxy" }
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 universe = { path = "../../../universe" }

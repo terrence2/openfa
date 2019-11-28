@@ -26,9 +26,4 @@ sh = { path = "../../../sh" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-camera = { path = "../../../render-shared/common/camera" }
-global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
-
-[build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

@@ -21,7 +21,26 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     time::Instant,
 };
-use universe::component::Transform;
+// use universe::component::Transform;
+use nalgebra::{Point3, UnitQuaternion};
+
+pub struct Transform {
+    position: Point3<f32>,
+    rotation: UnitQuaternion<f32>,
+    // scale: Vector3<f64>, // we don't have an upload slot for this currently.
+}
+
+impl Component for Transform {
+    type Storage = VecStorage<Self>;
+}
+
+impl Transform {
+    // Convert to dense pack for upload.
+    pub fn compact(&self) -> [f32; 6] {
+        let (a, b, c) = self.rotation.euler_angles();
+        [self.position.x, self.position.y, self.position.z, a, b, c]
+    }
+}
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());

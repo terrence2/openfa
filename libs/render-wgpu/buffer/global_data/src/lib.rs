@@ -128,14 +128,15 @@ impl GlobalParametersBuffer {
         }
     }
 
-    pub fn make_upload_buffer_for_arcball_in_tile(
+    pub fn make_upload_buffer_for_arcball_on_globe(
         &self,
-        terrain: &Terrain,
         camera: &ArcBallCamera,
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let globals = [Self::arcball_camera_to_buffer(terrain, camera)];
+        let globals = [Self::arcball_camera_to_buffer(
+            100f32, 100f32, 0f32, 0f32, camera,
+        )];
         let source = device
             .create_buffer_mapped::<Globals>(
                 1,
@@ -150,7 +151,41 @@ impl GlobalParametersBuffer {
         Ok(())
     }
 
-    fn arcball_camera_to_buffer(terrain: &Terrain, camera: &ArcBallCamera) -> Globals {
+    pub fn make_upload_buffer_for_arcball_in_tile(
+        &self,
+        terrain: &Terrain,
+        camera: &ArcBallCamera,
+        device: &wgpu::Device,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
+        let globals = [Self::arcball_camera_to_buffer(
+            terrain.extent_east_west_in_ft(),
+            terrain.extent_north_south_in_ft(),
+            terrain.origin_latitude(),
+            terrain.origin_longitude(),
+            camera,
+        )];
+        let source = device
+            .create_buffer_mapped::<Globals>(
+                1,
+                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+            )
+            .fill_from_slice(&globals);
+        upload_buffers.push(CopyBufferDescriptor::new(
+            source,
+            self.parameters_buffer.clone(),
+            self.buffer_size,
+        ));
+        Ok(())
+    }
+
+    fn arcball_camera_to_buffer(
+        tile_width_ft: f32,
+        tile_height_ft: f32,
+        tile_origin_lat_deg: f32,
+        tile_origin_lon_deg: f32,
+        camera: &ArcBallCamera,
+    ) -> Globals {
         fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
             let mut v = [[0f32; 4]; 4];
             for i in 0..16 {
@@ -168,13 +203,11 @@ impl GlobalParametersBuffer {
             ft * 0.003_048
         }
 
-        let tile_width_ft = terrain.extent_east_west_in_ft();
-        let tile_height_ft = terrain.extent_north_south_in_ft();
         let tile_width_hm = ft2hm(tile_width_ft);
         let tile_height_hm = ft2hm(tile_height_ft);
 
-        let lat = deg2rad(terrain.origin_latitude());
-        let lon = deg2rad(terrain.origin_longitude());
+        let lat = deg2rad(tile_origin_lat_deg);
+        let lon = deg2rad(tile_origin_lon_deg);
 
         /*
         fn rad2deg(rad: f32) -> f32 {

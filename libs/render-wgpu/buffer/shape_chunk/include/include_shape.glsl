@@ -27,17 +27,17 @@ mat3 from_euler_angles(float roll, float pitch, float yaw)
     float cy = cos(yaw);
 
     return mat3(
-    cy * cp,
-    sy * cp,
-    -sp,
+        cy * cp,
+        sy * cp,
+        -sp,
 
-    cy * sp * sr - sy * cr,
-    sy * sp * sr + cy * cr,
-    cp * sr,
+        cy * sp * sr - sy * cr,
+        sy * sp * sr + cy * cr,
+        cp * sr,
 
-    cy * sp * cr + sy * sr,
-    sy * sp * cr - cy * sr,
-    cp * cr
+        cy * sp * cr + sy * sr,
+        sy * sp * cr - cy * sr,
+        cp * cr
     );
 }
 

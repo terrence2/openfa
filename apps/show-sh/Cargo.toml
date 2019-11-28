@@ -1,5 +1,5 @@
 [package]
-name = "show-mm"
+name = "show-sh"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -23,14 +23,10 @@ global_data = { package = "global_data-wgpu", path = "../../libs/render-wgpu/buf
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
 lib = { path = "../../libs/lib" }
-mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 screen_text = { package = "screen_text-wgpu", path = "../../libs/render-wgpu/render_pass/screen_text" }
 shape = { package = "shape-wgpu", path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { package = "shape_instance-wgpu", path = "../../libs/render-wgpu/buffer/shape_instance" }
 skybox = { package = "skybox-wgpu", path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { package = "stars-wgpu", path = "../../libs/render-wgpu/buffer/stars" }
-t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }
-t2_terrain = { package = "t2_terrain-wgpu", path = "../../libs/render-wgpu/render_pass/t2_terrain" }
 text_layout = { package = "text_layout-wgpu", path = "../../libs/render-wgpu/buffer/text_layout" }
-xt = { path = "../../libs/xt" }
