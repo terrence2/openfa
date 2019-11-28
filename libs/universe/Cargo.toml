@@ -7,4 +7,3 @@ edition = "2018"
 [dependencies]
 legion = { git="https://github.com/TomGillen/legion", rev="23a0b29c0ddefa05dcde39fc0ce73629fa0abf40"}
 nalgebra = "^ 0.18"
-specs = "^ 0.15"
