@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::SlotId;
+use crate::{SlotId, TransformType};
 use shape_chunk::{DrawState, ShapeErrata, ShapeId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -42,11 +42,13 @@ impl ShapeComponent {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeTransformBuffer {
-    pub buffer: [f32; 6],
+    pub buffer: TransformType,
 }
 impl Default for ShapeTransformBuffer {
     fn default() -> Self {
-        Self { buffer: [0f32; 6] }
+        Self {
+            buffer: TransformType::default(),
+        }
     }
 }
 

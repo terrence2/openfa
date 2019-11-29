@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub use legion::entity::Entity;
 pub use universe::{
-    component::{Rotation, Transform},
+    component::{Rotation, Scale, Transform},
     FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M,
 };
 
@@ -26,6 +26,7 @@ use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
     ShapeComponent, ShapeFlagBuffer, ShapeRefComp, ShapeTransformBuffer, ShapeXformBuffer, SlotId,
+    SHAPE_UNIT_TO_FEET,
 };
 use std::{sync::Arc, time::Instant};
 
@@ -97,6 +98,7 @@ impl Galaxy {
             vec![(
                 Transform::new(position.coords),
                 Rotation::new(*rotation),
+                Scale::new(SHAPE_UNIT_TO_FEET * FEET_TO_HM),
                 ShapeComponent::new(slot_id, widgets.errata()),
                 ShapeTransformBuffer::default(),
                 ShapeFlagBuffer::default(),

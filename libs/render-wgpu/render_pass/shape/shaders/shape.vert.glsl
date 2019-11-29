@@ -48,25 +48,25 @@ layout(set = 2, binding = 3) buffer ShapeInstanceBlockXforms {
 };
 
 void main() {
-    uint base_transform = gl_InstanceIndex * 6;
-    float transform[6] = {
+    uint base_transform = gl_InstanceIndex * 8;
+    float transform[8] = {
         shape_transforms[base_transform + 0],
         shape_transforms[base_transform + 1],
         shape_transforms[base_transform + 2],
         shape_transforms[base_transform + 3],
         shape_transforms[base_transform + 4],
-        shape_transforms[base_transform + 5]
+        shape_transforms[base_transform + 5],
+        shape_transforms[base_transform + 6],
+        shape_transforms[base_transform + 7]
     };
 
-    float xform[6] = {0, 0, 0, 0, 0, 0};
+    float xform[8] = {0, 0, 0, 0, 0, 0, 1, 0};
     if (xform_id < MAX_XFORM_ID) {
-        uint base_xform = shape_xform_offsets[gl_InstanceIndex];
-        xform[0] = shape_xforms[6 * base_xform + 6 * xform_id + 0];
-        xform[1] = shape_xforms[6 * base_xform + 6 * xform_id + 1];
-        xform[2] = shape_xforms[6 * base_xform + 6 * xform_id + 2];
-        xform[3] = shape_xforms[6 * base_xform + 6 * xform_id + 3];
-        xform[4] = shape_xforms[6 * base_xform + 6 * xform_id + 4];
-        xform[5] = shape_xforms[6 * base_xform + 6 * xform_id + 5];
+        uint base_shape_xform = shape_xform_offsets[gl_InstanceIndex];
+        uint offset = 6 * base_shape_xform + 6 * xform_id;
+        for (uint i = 0; i < 6; ++i) {
+            xform[i] = shape_xforms[offset + i];
+        }
     }
 
     gl_Position = camera_projection() *

@@ -31,10 +31,14 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use universe::component::{Rotation, Transform};
+use universe::component::{Rotation, Scale, Transform};
 use wgpu;
 
+pub const SHAPE_UNIT_TO_FEET: f32 = 4f32;
+
 const BLOCK_SIZE: usize = 1 << 10;
+
+type TransformType = [f32; 8];
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -93,7 +97,7 @@ pub struct InstanceBlock {
     //    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
     //
     pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
-    transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
+    transform_buffer_scratch: [TransformType; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
     xform_index_buffer_scratch: [u32; BLOCK_SIZE],
     xform_buffer_scratch: [[f32; 6]; 14 * BLOCK_SIZE],
@@ -125,7 +129,7 @@ impl InstanceBlock {
         })));
 
         let transform_buffer_size =
-            (mem::size_of::<[f32; 6]>() * BLOCK_SIZE) as wgpu::BufferAddress;
+            (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::all(),
@@ -200,7 +204,7 @@ impl InstanceBlock {
                 first_vertex: 0,
                 first_instance: 0,
             }; BLOCK_SIZE],
-            transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
+            transform_buffer_scratch: [[0f32; 8]; BLOCK_SIZE],
             flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
             xform_index_buffer_scratch: [0u32; BLOCK_SIZE],
             xform_buffer_scratch: [[0f32; 6]; 14 * BLOCK_SIZE],
@@ -253,7 +257,7 @@ impl InstanceBlock {
     fn push_values(
         &mut self,
         slot_id: SlotId,
-        transform: &[f32; 6],
+        transform: &TransformType,
         flags: [u32; 2],
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
@@ -486,6 +490,10 @@ impl ShapeInstanceBuffer {
         })))
     }
 
+    pub fn block(&self, id: &BlockId) -> &InstanceBlock {
+        &self.blocks[id]
+    }
+
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         self.chunk_man.part(shape_id)
     }
@@ -567,7 +575,7 @@ impl ShapeInstanceBuffer {
     pub fn push_values(
         &mut self,
         slot_id: SlotId,
-        transform: &[f32; 6],
+        transform: &TransformType,
         flags: [u32; 2],
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
@@ -601,13 +609,22 @@ impl ShapeInstanceBuffer {
         <Write<ShapeComponent>>::query()
             .par_for_each(world, |mut shape| shape.draw_state.animate(&now));
 
-        let mut query = <(Read<Transform>, Read<Rotation>, Write<ShapeTransformBuffer>)>::query();
+        let mut query = <(
+            Read<Transform>,
+            Read<Rotation>,
+            Read<Scale>,
+            Write<ShapeTransformBuffer>,
+        )>::query();
         // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
         //    .filter(changed::<Transform>() | changed::<Rotation>());
-        query.par_for_each(world, |(transform, rotation, mut transform_buffer)| {
-            (&mut transform_buffer.buffer[..3]).copy_from_slice(&transform.compact());
-            (&mut transform_buffer.buffer[3..]).copy_from_slice(&rotation.compact());
-        });
+        query.par_for_each(
+            world,
+            |(transform, rotation, scale, mut transform_buffer)| {
+                (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
+                (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
+                (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+            },
+        );
 
         let mut query = <(Read<ShapeComponent>, Write<ShapeFlagBuffer>)>::query();
         query.par_for_each(world, |(shape_slot, mut flag_buffer)| {
@@ -676,7 +693,7 @@ impl ShapeInstanceBuffer {
             upload_buffers.push(CopyBufferDescriptor::new(
                 source,
                 block.transform_buffer.clone(),
-                (mem::size_of::<[f32; 6]>() * block.len()) as wgpu::BufferAddress,
+                (mem::size_of::<TransformType>() * block.len()) as wgpu::BufferAddress,
             ));
 
             let source = device
