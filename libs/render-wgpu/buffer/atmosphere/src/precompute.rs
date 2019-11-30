@@ -1581,8 +1581,6 @@ impl Precompute {
     }
 
     fn update_cache(&self, device: &wgpu::Device, queue: &mut wgpu::Queue) -> Fallible<()> {
-        return Ok(());
-
         let _ = fs::create_dir(".__openfa_cache__");
 
         let transmittance_buf_size =
