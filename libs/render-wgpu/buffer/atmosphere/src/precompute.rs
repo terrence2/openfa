@@ -22,7 +22,7 @@ use failure::Fallible;
 use image::{ImageBuffer, Luma, Rgb};
 use log::trace;
 use memmap::MmapOptions;
-use std::{fs, mem, time::Instant};
+use std::{fs, mem, slice, time::Instant};
 use wgpu;
 
 const DUMP_TRANSMITTANCE: bool = false;
@@ -1477,8 +1477,11 @@ impl Precompute {
             staging_buffer_size as usize,
             move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
                 if let Ok(mapping) = result {
+                    let offset = mapping.data.as_ptr().align_offset(mem::align_of::<f32>());
+                    assert_eq!(offset, 0);
+                    #[allow(clippy::cast_ptr_alignment)]
                     let fp = mapping.data.as_ptr() as *const f32;
-                    let floats = unsafe { std::slice::from_raw_parts(fp, mapping.data.len() / 4) };
+                    let floats = unsafe { slice::from_raw_parts(fp, mapping.data.len() / 4) };
                     Self::show_range(&floats, &prefix);
 
                     let (p0, p1) = Self::split_pixels(&floats, extent);

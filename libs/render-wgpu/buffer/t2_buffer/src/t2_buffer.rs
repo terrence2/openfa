@@ -32,8 +32,10 @@ use std::{
 use t2::Terrain;
 use universe::{EARTH_RADIUS_KM, FEET_TO_HM, FEET_TO_KM};
 use wgpu;
+use zerocopy::{AsBytes, FromBytes};
 
-#[derive(Copy, Clone, Default)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Default)]
 pub struct Vertex {
     position: [f32; 3],
     color: [f32; 4],

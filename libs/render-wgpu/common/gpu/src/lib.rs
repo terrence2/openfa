@@ -17,8 +17,10 @@ use input_wgpu::InputSystem;
 use std::io::Cursor;
 use wgpu;
 use winit::dpi::PhysicalSize;
+use zerocopy::{AsBytes, FromBytes};
 
-#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,

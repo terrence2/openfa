@@ -22,6 +22,7 @@ use log::trace;
 use memoffset::offset_of;
 use nalgebra::{Matrix4, Vector3};
 use std::{cell::RefCell, collections::HashMap, mem, ops::Range, rc::Rc, sync::Arc};
+use zerocopy::{AsBytes, FromBytes};
 
 // Fallback for when we have no libs loaded.
 // https://fonts.google.com/specimen/Quantico?selection.family=Quantico
@@ -29,7 +30,8 @@ const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../../../../../assets/font/quan
 
 const SPACE_WIDTH: f32 = 5f32 / 640f32;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug, Default)]
 pub struct LayoutVertex {
     position: [f32; 2],
     tex_coord: [f32; 2],
@@ -272,7 +274,8 @@ impl LayoutHandle {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 struct LayoutData {
     screen_projection: [[f32; 4]; 4],
     text_color: [f32; 4],
