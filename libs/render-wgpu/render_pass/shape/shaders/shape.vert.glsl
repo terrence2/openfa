@@ -32,7 +32,6 @@ layout(location = 1) smooth out vec2 v_tex_coord;
 layout(location = 2) flat out uint f_flags0;
 layout(location = 3) flat out uint f_flags1;
 
-
 // Per shape input
 const uint MAX_XFORM_ID = 32;
 layout(set = 2, binding = 0) buffer ShapeInstanceBlockTransforms {
@@ -44,30 +43,30 @@ layout(set = 2, binding = 1) buffer ShapeInstanceBlockFlags {
 layout(set = 2, binding = 2) buffer ShapeInstanceBlockXformOffsets {
     uint shape_xform_offsets[];
 };
-layout(set = 2, binding = 2) buffer ShapeInstanceBlockXforms {
+layout(set = 2, binding = 3) buffer ShapeInstanceBlockXforms {
     float shape_xforms[];
 };
 
 void main() {
-    uint base_transform = gl_InstanceIndex * 6;
-    float transform[6] = {
+    uint base_transform = gl_InstanceIndex * 8;
+    float transform[8] = {
         shape_transforms[base_transform + 0],
         shape_transforms[base_transform + 1],
         shape_transforms[base_transform + 2],
         shape_transforms[base_transform + 3],
         shape_transforms[base_transform + 4],
-        shape_transforms[base_transform + 5]
+        shape_transforms[base_transform + 5],
+        shape_transforms[base_transform + 6],
+        shape_transforms[base_transform + 7]
     };
 
-    float xform[6] = {0, 0, 0, 0, 0, 0};
+    float xform[8] = {0, 0, 0, 0, 0, 0, 1, 0};
     if (xform_id < MAX_XFORM_ID) {
-        uint base_xform = shape_xform_offsets[gl_InstanceIndex];
-        xform[0] = shape_xforms[6 * base_xform + 6 * xform_id + 0];
-        xform[1] = shape_xforms[6 * base_xform + 6 * xform_id + 1];
-        xform[2] = shape_xforms[6 * base_xform + 6 * xform_id + 2];
-        xform[3] = shape_xforms[6 * base_xform + 6 * xform_id + 3];
-        xform[4] = shape_xforms[6 * base_xform + 6 * xform_id + 4];
-        xform[5] = shape_xforms[6 * base_xform + 6 * xform_id + 5];
+        uint base_shape_xform = shape_xform_offsets[gl_InstanceIndex];
+        uint offset = 6 * base_shape_xform + 6 * xform_id;
+        for (uint i = 0; i < 6; ++i) {
+            xform[i] = shape_xforms[offset + i];
+        }
     }
 
     gl_Position = camera_projection() *

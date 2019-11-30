@@ -15,3 +15,14 @@
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Scale(f32);
+
+impl Scale {
+    pub fn new(v: f32) -> Self {
+        Self(v)
+    }
+
+    // Convert to dense pack for upload.
+    pub fn compact(self) -> [f32; 1] {
+        [self.0]
+    }
+}

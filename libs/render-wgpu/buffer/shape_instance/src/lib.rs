@@ -22,6 +22,7 @@ use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
 use legion::prelude::*;
 use lib::Library;
+use log::trace;
 use pal::Palette;
 use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets};
 use std::{
@@ -31,10 +32,14 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use universe::component::{Rotation, Transform};
+use universe::component::{Rotation, Scale, Transform};
 use wgpu;
 
+pub const SHAPE_UNIT_TO_FEET: f32 = 4f32;
+
 const BLOCK_SIZE: usize = 1 << 10;
+
+type TransformType = [f32; 8];
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -93,7 +98,7 @@ pub struct InstanceBlock {
     //    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
     //
     pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
-    transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
+    transform_buffer_scratch: [TransformType; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
     xform_index_buffer_scratch: [u32; BLOCK_SIZE],
     xform_buffer_scratch: [[f32; 6]; 14 * BLOCK_SIZE],
@@ -115,7 +120,7 @@ impl InstanceBlock {
         device: &wgpu::Device,
     ) -> Fallible<Self> {
         // This class contains the fixed-size device local blocks that we will render from.
-        println!("InstanceBlock::new({:?})", block_id);
+        trace!("InstanceBlock::new({:?})", block_id);
 
         let command_buffer_size =
             (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
@@ -125,7 +130,7 @@ impl InstanceBlock {
         })));
 
         let transform_buffer_size =
-            (mem::size_of::<[f32; 6]>() * BLOCK_SIZE) as wgpu::BufferAddress;
+            (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::all(),
@@ -200,7 +205,7 @@ impl InstanceBlock {
                 first_vertex: 0,
                 first_instance: 0,
             }; BLOCK_SIZE],
-            transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
+            transform_buffer_scratch: [[0f32; 8]; BLOCK_SIZE],
             flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
             xform_index_buffer_scratch: [0u32; BLOCK_SIZE],
             xform_buffer_scratch: [[0f32; 6]; 14 * BLOCK_SIZE],
@@ -253,7 +258,7 @@ impl InstanceBlock {
     fn push_values(
         &mut self,
         slot_id: SlotId,
-        transform: &[f32; 6],
+        transform: &TransformType,
         flags: [u32; 2],
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
@@ -486,6 +491,10 @@ impl ShapeInstanceBuffer {
         })))
     }
 
+    pub fn block(&self, id: &BlockId) -> &InstanceBlock {
+        &self.blocks[id]
+    }
+
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         self.chunk_man.part(shape_id)
     }
@@ -567,7 +576,7 @@ impl ShapeInstanceBuffer {
     pub fn push_values(
         &mut self,
         slot_id: SlotId,
-        transform: &[f32; 6],
+        transform: &TransformType,
         flags: [u32; 2],
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
@@ -594,47 +603,66 @@ impl ShapeInstanceBuffer {
     ) -> Fallible<()> {
         let now = Instant::now();
 
+        // Reset cursor for our next upload.
         for block in self.blocks.values_mut() {
             block.begin_frame();
         }
 
-        <Write<ShapeComponent>>::query()
-            .par_for_each(world, |mut shape| shape.draw_state.animate(&now));
-
-        let mut query = <(Read<Transform>, Read<Rotation>, Write<ShapeTransformBuffer>)>::query();
-        // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
-        //    .filter(changed::<Transform>() | changed::<Rotation>());
-        query.par_for_each(world, |(transform, rotation, mut transform_buffer)| {
-            (&mut transform_buffer.buffer[..3]).copy_from_slice(&transform.compact());
-            (&mut transform_buffer.buffer[3..]).copy_from_slice(&rotation.compact());
+        // Animate the draw_state. We'll use the updated values below when computing
+        // xform and frame based animation states.
+        <Write<ShapeState>>::query().par_for_each(world, |mut shape_state| {
+            shape_state.draw_state.animate(&now)
         });
 
-        let mut query = <(Read<ShapeComponent>, Write<ShapeFlagBuffer>)>::query();
-        query.par_for_each(world, |(shape_slot, mut flag_buffer)| {
-            shape_slot
+        let mut query = <(
+            Read<Transform>,
+            Read<Rotation>,
+            Read<Scale>,
+            Write<ShapeTransformBuffer>,
+        )>::query();
+        // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
+        //    .filter(changed::<Transform>() | changed::<Rotation>());
+        query.par_for_each(
+            world,
+            |(transform, rotation, scale, mut transform_buffer)| {
+                (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
+                (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
+                (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+            },
+        );
+
+        let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
+        query.par_for_each(world, |(shape_state, mut flag_buffer)| {
+            shape_state
                 .draw_state
                 .build_mask_into(&start, &mut flag_buffer.buffer)
                 .unwrap();
         });
 
-        let mut query = <(
-            Tagged<ShapeRefComp>,
-            Read<ShapeComponent>,
-            Write<ShapeXformBuffer>,
-        )>::query();
-        query.par_for_each(world, |(shape, slot, mut xform_buffer)| {
-            let part = self.chunk_man.part(shape.shape_id);
+        let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
+        query.par_for_each(world, |(shape_ref, shape_state, mut xform_buffer)| {
+            let part = self.chunk_man.part(shape_ref.shape_id);
             WIDGET_CACHE.with(|widget_cache| {
-                match widget_cache.borrow_mut().entry(shape.shape_id) {
+                match widget_cache.borrow_mut().entry(shape_ref.shape_id) {
                     Entry::Occupied(mut e) => {
                         e.get_mut()
-                            .animate_into(&slot.draw_state, &start, &now, &mut xform_buffer.buffer)
+                            .animate_into(
+                                &shape_state.draw_state,
+                                &start,
+                                &now,
+                                &mut xform_buffer.buffer,
+                            )
                             .unwrap();
                     }
                     Entry::Vacant(e) => {
                         let mut widgets = part.widgets().read().unwrap().clone();
                         widgets
-                            .animate_into(&slot.draw_state, &start, &now, &mut xform_buffer.buffer)
+                            .animate_into(
+                                &shape_state.draw_state,
+                                &start,
+                                &now,
+                                &mut xform_buffer.buffer,
+                            )
                             .unwrap();
                         e.insert(widgets);
                     }
@@ -643,14 +671,16 @@ impl ShapeInstanceBuffer {
         });
 
         let mut query = <(
-            Tagged<ShapeRefComp>,
-            Read<ShapeComponent>,
+            Read<ShapeRef>,
+            Read<ShapeSlot>,
             Read<ShapeTransformBuffer>,
             Read<ShapeFlagBuffer>,
             TryRead<ShapeXformBuffer>,
         )>::query();
-        for (shape, shape_slot, transform_buffer, flag_buffer, xform_buffer) in query.iter(world) {
-            let xform_count = self.chunk_man.part(shape.shape_id).xform_count();
+        for (shape_ref, shape_slot, transform_buffer, flag_buffer, xform_buffer) in
+            query.iter(world)
+        {
+            let xform_count = self.chunk_man.part(shape_ref.shape_id).xform_count();
             self.push_values(
                 shape_slot.slot_id,
                 &transform_buffer.buffer,
@@ -676,7 +706,7 @@ impl ShapeInstanceBuffer {
             upload_buffers.push(CopyBufferDescriptor::new(
                 source,
                 block.transform_buffer.clone(),
-                (mem::size_of::<[f32; 6]>() * block.len()) as wgpu::BufferAddress,
+                (mem::size_of::<TransformType>() * block.len()) as wgpu::BufferAddress,
             ));
 
             let source = device

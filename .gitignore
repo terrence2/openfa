@@ -11,3 +11,4 @@ apps/**/test_data/
 dump/
 test_data/
 research/
+.__openfa_cache__

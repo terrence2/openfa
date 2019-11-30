@@ -23,7 +23,6 @@ use lazy_static::lazy_static;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
-use nalgebra::Vector3;
 use pal::Palette;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
@@ -32,7 +31,8 @@ use std::{
     mem,
     time::Instant,
 };
-use universe::FEET_TO_HM;
+
+const MAX_XFORM_ID: u32 = 32;
 
 bitflags! {
     pub struct VertexFlags: u64 {
@@ -697,13 +697,9 @@ impl ShapeUploader {
             .unwrap_or_else(|| BufferProps {
                 context: "Static".to_owned(),
                 flags: VertexFlags::STATIC,
-                xform_id: 0,
+                xform_id: MAX_XFORM_ID,
             });
         for v in vert_buf.vertices() {
-            let mut v0 = Vector3::new(f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1]));
-            // FIXME: blowing these up so we can see them on the map
-            // WTF: if we multiply by 4, everything lines up, otherwise not. Why?!?
-            v0 *= FEET_TO_HM * 4f32;
             vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.
@@ -711,7 +707,7 @@ impl ShapeUploader {
                 tex_coord: [0f32, 0f32],
                 // Base position, flags, and the xform are constant
                 // for this entire buffer, independent of the face.
-                position: [v0[0], v0[1], v0[2]],
+                position: [f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1])],
                 flags0: (props.flags.bits() & 0xFFFF_FFFF) as u32,
                 flags1: (props.flags.bits() >> 32) as u32,
                 xform_id: props.xform_id,
@@ -1192,7 +1188,7 @@ impl ShapeUploader {
                         if let Some(props) = result.prop_man.props.get(&vert_buf.at_offset()) {
                             props.xform_id
                         } else {
-                            0
+                            MAX_XFORM_ID
                         };
                 }
                 _ => {}

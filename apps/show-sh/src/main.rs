@@ -26,7 +26,7 @@ use nalgebra::{Point3, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
-use shape_instance::{DrawSelection, DrawState, ShapeComponent, ShapeInstanceBuffer};
+use shape_instance::{DrawSelection, DrawState, ShapeInstanceBuffer, ShapeState};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -64,7 +64,7 @@ macro_rules! update {
     ($galaxy:ident, $shape_entity:ident, $func:ident) => {{
         $galaxy
             .world_mut()
-            .get_component_mut::<ShapeComponent>($shape_entity)
+            .get_component_mut::<ShapeState>($shape_entity)
             .map(|mut shape| {
                 let ds: &mut DrawState = &mut shape.draw_state;
                 ds.$func();
@@ -74,7 +74,7 @@ macro_rules! update {
     ($galaxy:ident, $shape_entity:ident, $func:ident, $arg:expr) => {{
         $galaxy
             .world_mut()
-            .get_component_mut::<ShapeComponent>($shape_entity)
+            .get_component_mut::<ShapeState>($shape_entity)
             .map(|mut shape| {
                 let ds: &mut DrawState = &mut shape.draw_state;
                 ds.$func($arg);
@@ -96,6 +96,7 @@ fn main() -> Fallible<()> {
 
     let shape_bindings = InputBindings::new("shape")
         .bind("+pan-view", "mouse1")?
+        .bind("+move-sun", "mouse2")?
         .bind("+move-view", "mouse3")?
         .bind("exit", "Escape")?
         .bind("exit", "q")?
@@ -127,6 +128,41 @@ fn main() -> Fallible<()> {
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
+
+    let (fuel_shape_id, fuel_slot_id) = shape_instance_buffer
+        .borrow_mut()
+        .upload_and_allocate_slot(
+            "FUEL.SH",
+            DrawSelection::NormalModel,
+            galaxy.palette(),
+            galaxy.library(),
+            &mut gpu,
+        )?;
+    galaxy.create_building(
+        fuel_slot_id,
+        fuel_shape_id,
+        shape_instance_buffer.borrow().part(fuel_shape_id),
+        Point3::new(0f32, 0f32, 0f32),
+        &UnitQuaternion::identity(),
+    )?;
+
+    let (f18_shape_id, f18_slot_id) = shape_instance_buffer
+        .borrow_mut()
+        .upload_and_allocate_slot(
+            &shape_name,
+            DrawSelection::NormalModel,
+            galaxy.palette(),
+            galaxy.library(),
+            &mut gpu,
+        )?;
+    let ent = galaxy.create_building(
+        f18_slot_id,
+        f18_shape_id,
+        shape_instance_buffer.borrow().part(f18_shape_id),
+        Point3::new(0f32, -10f32, 0f32),
+        &UnitQuaternion::identity(),
+    )?;
+
     let (shape_id, slot_id) = shape_instance_buffer
         .borrow_mut()
         .upload_and_allocate_slot(
@@ -136,29 +172,39 @@ fn main() -> Fallible<()> {
             galaxy.library(),
             &mut gpu,
         )?;
-
-    let ent = galaxy.create_building(
+    galaxy.create_building(
         slot_id,
         shape_id,
         shape_instance_buffer.borrow().part(shape_id),
-        Point3::new(0f32, 0f32, 1000f32),
+        Point3::new(3f32, -10f32, 3f32),
         &UnitQuaternion::identity(),
     )?;
+
+    let (shape_id, slot_id) = shape_instance_buffer
+        .borrow_mut()
+        .upload_and_allocate_slot(
+            &shape_name,
+            DrawSelection::NormalModel,
+            galaxy.palette(),
+            galaxy.library(),
+            &mut gpu,
+        )?;
+    galaxy.create_building(
+        slot_id,
+        shape_id,
+        shape_instance_buffer.borrow().part(shape_id),
+        Point3::new(-3f32, -10f32, 3f32),
+        &UnitQuaternion::identity(),
+    )?;
+
     shape_instance_buffer
         .borrow_mut()
         .ensure_uploaded(&mut gpu)?;
 
-    /*
-    let mut update = |f: &mut dyn FnMut(&mut DrawState)| {
-        galaxy
-            .world_mut()
-            .get_component_mut::<ShapeComponent>(shape_entity)
-            .map(|mut shape| {
-                let ds: &mut DrawState = &mut shape.draw_state;
-                f(ds);
-            });
-    };
-    */
+    let mut sun_angle = 0.0f64;
+    let mut in_sun_move = false;
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
+    camera.set_target(0f64, -10f64, 0f64);
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
@@ -195,9 +241,6 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
-    camera.set_target(0f64, 0f64, 1000f64);
-
     loop {
         let loop_start = Instant::now();
 
@@ -209,7 +252,11 @@ fn main() -> Fallible<()> {
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "mouse-move" => {
-                    camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                    if in_sun_move {
+                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
+                    } else {
+                        camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                    }
                 }
                 "mouse-wheel" => {
                     camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
@@ -218,6 +265,8 @@ fn main() -> Fallible<()> {
                 "-pan-view" => camera.on_mousebutton_up(1),
                 "+move-view" => camera.on_mousebutton_down(3),
                 "-move-view" => camera.on_mousebutton_up(3),
+                "+move-sun" => in_sun_move = true,
+                "-move-sun" => in_sun_move = false,
                 "+rudder-left" => update!(galaxy, ent, move_rudder_left),
                 "-rudder-left" => update!(galaxy, ent, move_rudder_center),
                 "+rudder-right" => update!(galaxy, ent, move_rudder_right),
@@ -256,7 +305,6 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let sun_angle = 0.0f64;
         let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
 
         let mut buffers = Vec::new();
@@ -287,7 +335,7 @@ fn main() -> Fallible<()> {
 
         let ds = galaxy
             .world()
-            .get_component::<ShapeComponent>(ent)
+            .get_component::<ShapeState>(ent)
             .unwrap()
             .draw_state;
         let params = format!(
