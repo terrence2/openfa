@@ -13,7 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-
 #include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec2 position;
