@@ -13,10 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-
-#include <common/include/include_global.glsl>
-#include <buffer/atmosphere/include/global.glsl>
-#include <buffer/atmosphere/include/lut_builder_common.glsl>
+#include <buffer/atmosphere/include/lut_builder_global.glsl>
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 layout(binding = 0) uniform AtmosphereParams { AtmosphereParameters atmosphere; };
