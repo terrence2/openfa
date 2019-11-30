@@ -25,8 +25,8 @@ use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
-    ShapeComponent, ShapeFlagBuffer, ShapeRefComp, ShapeTransformBuffer, ShapeXformBuffer, SlotId,
-    SHAPE_UNIT_TO_FEET,
+    ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,
+    SlotId, SHAPE_UNIT_TO_FEET,
 };
 use std::{sync::Arc, time::Instant};
 
@@ -94,12 +94,14 @@ impl Galaxy {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
         let entities = self.legion_world.insert(
-            (ShapeRefComp::new(shape_id),),
+            (),
             vec![(
                 Transform::new(position.coords),
                 Rotation::new(*rotation),
                 Scale::new(SHAPE_UNIT_TO_FEET * FEET_TO_HM),
-                ShapeComponent::new(slot_id, widgets.errata()),
+                ShapeRef::new(shape_id),
+                ShapeSlot::new(slot_id),
+                ShapeState::new(widgets.errata()),
                 ShapeTransformBuffer::default(),
                 ShapeFlagBuffer::default(),
             )],
@@ -124,7 +126,7 @@ impl Galaxy {
             .create_entity()
             .with(Transform::new(position, UnitQuaternion::identity()))
             .with(WheeledDynamics::new())
-            .with(ShapeComponent::new(slot_id, shape_id))
+            .with(ShapeSlot::new(slot_id, shape_id))
             .build())
     }
 

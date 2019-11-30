@@ -16,25 +16,32 @@ use crate::{SlotId, TransformType};
 use shape_chunk::{DrawState, ShapeErrata, ShapeId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeRefComp {
+pub struct ShapeRef {
     pub shape_id: ShapeId,
 }
-
-impl ShapeRefComp {
+impl ShapeRef {
     pub fn new(shape_id: ShapeId) -> Self {
         Self { shape_id }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeComponent {
+pub struct ShapeSlot {
     pub slot_id: SlotId,
+}
+impl ShapeSlot {
+    pub fn new(slot_id: SlotId) -> Self {
+        Self { slot_id }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShapeState {
     pub draw_state: DrawState,
 }
-impl ShapeComponent {
-    pub fn new(slot_id: SlotId, errata: ShapeErrata) -> Self {
+impl ShapeState {
+    pub fn new(errata: ShapeErrata) -> Self {
         Self {
-            slot_id,
             draw_state: DrawState::new(errata),
         }
     }

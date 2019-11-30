@@ -26,7 +26,7 @@ use nalgebra::{Point3, UnitQuaternion, Vector3};
 use omnilib::{make_opt_struct, OmniLib};
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
-use shape_instance::{DrawSelection, DrawState, ShapeComponent, ShapeInstanceBuffer};
+use shape_instance::{DrawSelection, DrawState, ShapeInstanceBuffer, ShapeState};
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
@@ -64,7 +64,7 @@ macro_rules! update {
     ($galaxy:ident, $shape_entity:ident, $func:ident) => {{
         $galaxy
             .world_mut()
-            .get_component_mut::<ShapeComponent>($shape_entity)
+            .get_component_mut::<ShapeState>($shape_entity)
             .map(|mut shape| {
                 let ds: &mut DrawState = &mut shape.draw_state;
                 ds.$func();
@@ -74,7 +74,7 @@ macro_rules! update {
     ($galaxy:ident, $shape_entity:ident, $func:ident, $arg:expr) => {{
         $galaxy
             .world_mut()
-            .get_component_mut::<ShapeComponent>($shape_entity)
+            .get_component_mut::<ShapeState>($shape_entity)
             .map(|mut shape| {
                 let ds: &mut DrawState = &mut shape.draw_state;
                 ds.$func($arg);
@@ -129,7 +129,7 @@ fn main() -> Fallible<()> {
 
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
 
-    let (shape_id, slot_id) = shape_instance_buffer
+    let (fuel_shape_id, fuel_slot_id) = shape_instance_buffer
         .borrow_mut()
         .upload_and_allocate_slot(
             "FUEL.SH",
@@ -139,14 +139,14 @@ fn main() -> Fallible<()> {
             &mut gpu,
         )?;
     galaxy.create_building(
-        slot_id,
-        shape_id,
-        shape_instance_buffer.borrow().part(shape_id),
+        fuel_slot_id,
+        fuel_shape_id,
+        shape_instance_buffer.borrow().part(fuel_shape_id),
         Point3::new(0f32, 0f32, 0f32),
         &UnitQuaternion::identity(),
     )?;
 
-    let (shape_id, slot_id) = shape_instance_buffer
+    let (f18_shape_id, f18_slot_id) = shape_instance_buffer
         .borrow_mut()
         .upload_and_allocate_slot(
             &shape_name,
@@ -156,14 +156,13 @@ fn main() -> Fallible<()> {
             &mut gpu,
         )?;
     let ent = galaxy.create_building(
-        slot_id,
-        shape_id,
-        shape_instance_buffer.borrow().part(shape_id),
+        f18_slot_id,
+        f18_shape_id,
+        shape_instance_buffer.borrow().part(f18_shape_id),
         Point3::new(0f32, -10f32, 0f32),
         &UnitQuaternion::identity(),
     )?;
 
-    /*
     let (shape_id, slot_id) = shape_instance_buffer
         .borrow_mut()
         .upload_and_allocate_slot(
@@ -173,7 +172,7 @@ fn main() -> Fallible<()> {
             galaxy.library(),
             &mut gpu,
         )?;
-    let ent1 = galaxy.create_building(
+    galaxy.create_building(
         slot_id,
         shape_id,
         shape_instance_buffer.borrow().part(shape_id),
@@ -190,14 +189,13 @@ fn main() -> Fallible<()> {
             galaxy.library(),
             &mut gpu,
         )?;
-    let ent2 = galaxy.create_building(
+    galaxy.create_building(
         slot_id,
         shape_id,
         shape_instance_buffer.borrow().part(shape_id),
         Point3::new(-3f32, -10f32, 3f32),
         &UnitQuaternion::identity(),
     )?;
-    */
 
     shape_instance_buffer
         .borrow_mut()
@@ -337,7 +335,7 @@ fn main() -> Fallible<()> {
 
         let ds = galaxy
             .world()
-            .get_component::<ShapeComponent>(ent)
+            .get_component::<ShapeState>(ent)
             .unwrap()
             .draw_state;
         let params = format!(
