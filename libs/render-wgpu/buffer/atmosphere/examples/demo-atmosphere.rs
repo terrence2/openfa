@@ -20,8 +20,8 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
-use nalgebra::{Unit, UnitQuaternion, Vector3};
-use std::{f64::consts::PI, time::Instant};
+use nalgebra::Vector3;
+use std::time::Instant;
 use wgpu;
 
 fn main() -> Fallible<()> {
@@ -92,15 +92,8 @@ fn main() -> Fallible<()> {
             alpha_to_coverage_enabled: false,
         });
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
-    camera.set_target(6_378.2, 0.0, 0.0);
-    camera.set_angle(PI / 2.0, -PI / 2.0);
-    camera.set_up(-Vector3::x());
-    camera.set_rotation(UnitQuaternion::from_axis_angle(
-        &Unit::new_normalize(Vector3::z()),
-        PI / 2.0,
-    ));
-    camera.set_distance(0.1);
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
+    camera.set_target(0.0, -10.0, 0.0);
     camera.on_mousebutton_down(1);
     let mut sun_angle = 0f64;
     let mut in_sun_move = false;
@@ -137,7 +130,7 @@ fn main() -> Fallible<()> {
         let mut upload_buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
+            .make_upload_buffer_for_arcball_on_globe(&camera, gpu.device(), &mut upload_buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             sun_direction,
             gpu.device(),

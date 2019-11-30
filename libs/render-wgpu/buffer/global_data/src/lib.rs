@@ -88,48 +88,6 @@ impl GlobalParametersBuffer {
         &self.bind_group
     }
 
-    pub fn make_upload_buffer(
-        &self,
-        camera: &ArcBallCamera,
-        device: &wgpu::Device,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
-    ) -> Fallible<()> {
-        let globals = [Self::generic_camera_to_buffer(camera)];
-        let source = device
-            .create_buffer_mapped::<Globals>(
-                1,
-                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            )
-            .fill_from_slice(&globals);
-        upload_buffers.push(CopyBufferDescriptor::new(
-            source,
-            self.parameters_buffer.clone(),
-            self.buffer_size,
-        ));
-        Ok(())
-    }
-
-    fn generic_camera_to_buffer(camera: &dyn CameraAbstract) -> Globals {
-        fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
-            let mut v = [[0f32; 4]; 4];
-            for i in 0..16 {
-                v[i / 4][i % 4] = m[i];
-            }
-            v
-        }
-        fn p2v(p: &Point3<f32>) -> [f32; 4] {
-            [p.x, p.y, p.z, 0f32]
-        }
-        Globals {
-            view: m2v(&camera.view_matrix()),
-            proj: m2v(&camera.projection_matrix()),
-            inv_view: m2v(&camera.inverted_view_matrix()),
-            inv_proj: m2v(&camera.inverted_projection_matrix()),
-            camera_position_tile: p2v(&camera.position()),
-            camera_position_earth_km: p2v(&(camera.position() * HM_TO_KM)),
-        }
-    }
-
     pub fn make_upload_buffer_for_arcball_on_globe(
         &self,
         camera: &ArcBallCamera,
