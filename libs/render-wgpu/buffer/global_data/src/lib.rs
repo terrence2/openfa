@@ -19,6 +19,7 @@ use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector
 use std::{cell::RefCell, f32::consts::PI, mem, sync::Arc};
 use t2::Terrain;
 use wgpu;
+use zerocopy::{AsBytes, FromBytes};
 
 // FIXME: these should probably not live here.
 const HM_TO_KM: f32 = 1f32 / 10f32;
@@ -30,7 +31,8 @@ pub struct GlobalParametersBuffer {
     parameters_buffer: Arc<Box<wgpu::Buffer>>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 struct Globals {
     view: [[f32; 4]; 4],
     proj: [[f32; 4]; 4],

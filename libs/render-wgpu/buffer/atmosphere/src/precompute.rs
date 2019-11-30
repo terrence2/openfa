@@ -1474,18 +1474,20 @@ impl Precompute {
 
         staging_buffer.map_read_async(
             0,
-            staging_buffer_size,
-            move |result: wgpu::BufferMapAsyncResult<&[f32]>| {
+            staging_buffer_size as usize,
+            move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
                 if let Ok(mapping) = result {
-                    Self::show_range(&mapping.data, &prefix);
+                    let fp = mapping.data.as_ptr() as *const f32;
+                    let floats = unsafe { std::slice::from_raw_parts(fp, mapping.data.len() / 4) };
+                    Self::show_range(&floats, &prefix);
 
-                    let (p0, p1) = Self::split_pixels(&mapping.data, extent);
+                    let (p0, p1) = Self::split_pixels(&floats, extent);
                     Self::save_layered(
                         p0,
                         3,
                         extent,
                         &format!(
-                            "dump/{}-{}-{}-{}",
+                            "dump/atmosphere/{}-{}-{}-{}",
                             prefix, lambdas[0] as usize, lambdas[1] as usize, lambdas[2] as usize
                         ),
                     );
@@ -1579,6 +1581,8 @@ impl Precompute {
     }
 
     fn update_cache(&self, device: &wgpu::Device, queue: &mut wgpu::Queue) -> Fallible<()> {
+        return Ok(());
+
         let _ = fs::create_dir(".__openfa_cache__");
 
         let transmittance_buf_size =
@@ -1662,7 +1666,7 @@ impl Precompute {
 
         transmittance_buffer.map_read_async(
             0,
-            transmittance_buf_size,
+            transmittance_buf_size as usize,
             move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
                 if let Ok(mapping) = result {
                     fs::write(
@@ -1675,7 +1679,7 @@ impl Precompute {
         );
         irradiance_buffer.map_read_async(
             0,
-            irradiance_buf_size,
+            irradiance_buf_size as usize,
             move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
                 if let Ok(mapping) = result {
                     fs::write(".__openfa_cache__/solar_irradiance.wgpu.bin", &mapping.data)
@@ -1685,7 +1689,7 @@ impl Precompute {
         );
         scattering_buffer.map_read_async(
             0,
-            scattering_buf_size,
+            scattering_buf_size as usize,
             move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
                 if let Ok(mapping) = result {
                     fs::write(".__openfa_cache__/solar_scattering.wgpu.bin", &mapping.data)
@@ -1695,7 +1699,7 @@ impl Precompute {
         );
         single_mie_scattering_buffer.map_read_async(
             0,
-            scattering_buf_size,
+            scattering_buf_size as usize,
             move |result: wgpu::BufferMapAsyncResult<&[u8]>| {
                 if let Ok(mapping) = result {
                     fs::write(

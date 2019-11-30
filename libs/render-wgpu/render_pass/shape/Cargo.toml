@@ -11,6 +11,7 @@ wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-h
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
+shader_globals = { package = "shader_globals-wgpu", path = "../../../render-wgpu/common/shader_globals" }
 shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffer/shape_chunk" }
 shape_instance = { package = "shape_instance-wgpu", path = "../../../render-wgpu/buffer/shape_instance" }
 
