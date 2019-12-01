@@ -103,8 +103,8 @@ impl ShapeRenderPass {
             let chunk = shape_instance_buffer.chunk_man.chunk(block.chunk_id());
 
             // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
-            rpass.set_bind_group(1, chunk.bind_group(), &[]);
-            rpass.set_bind_group(2, block.bind_group(), &[]);
+            rpass.set_bind_group(Group::ShapeChunk.index(), chunk.bind_group(), &[]);
+            rpass.set_bind_group(Group::ShapeBlock.index(), block.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
             for i in 0..block.len() {
                 //rpass.draw_indirect(block.command_buffer(), i as u64);

@@ -17,12 +17,27 @@
 // Note that these are not unique because we need to stay under 4 and thus re-use heavily.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Group {
-    Globals = 0,
-    Atmosphere = 2,
+    Globals,
+    GlyphCache,
+    Atmosphere,
+    TextLayout,
+    Stars,
+    Terrain,
+    ShapeChunk,
+    ShapeBlock,
 }
 
 impl Group {
     pub fn index(self) -> u32 {
-        self as u32
+        match self {
+            Self::Globals => 0,
+            Self::GlyphCache => 0,
+            Self::TextLayout => 1,
+            Self::Atmosphere => 1,
+            Self::Stars => 2,
+            Self::Terrain => 2,
+            Self::ShapeChunk => 1,
+            Self::ShapeBlock => 2,
+        }
     }
 }

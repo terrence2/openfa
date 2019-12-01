@@ -14,6 +14,7 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92
 atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
 global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
+shader_globals = { package = "shader_globals-wgpu", path = "../../../render-wgpu/common/shader_globals" }
 t2_buffer = { package = "t2_buffer-wgpu", path = "../../../render-wgpu/buffer/t2_buffer" }
 
 [build-dependencies]

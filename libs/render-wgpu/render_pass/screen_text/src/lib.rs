@@ -15,6 +15,7 @@
 use failure::Fallible;
 use gpu::GPU;
 use log::trace;
+use shader_globals::Group;
 use text_layout::{LayoutBuffer, LayoutVertex};
 
 pub struct ScreenTextRenderPass {
@@ -92,9 +93,9 @@ impl ScreenTextRenderPass {
         rpass.set_pipeline(&self.pipeline);
         for (&font, layouts) in layout_buffer.layouts() {
             let glyph_cache = layout_buffer.glyph_cache(font);
-            rpass.set_bind_group(0, &glyph_cache.bind_group(), &[]);
+            rpass.set_bind_group(Group::GlyphCache.index(), &glyph_cache.bind_group(), &[]);
             for layout in layouts {
-                rpass.set_bind_group(1, &layout.bind_group(), &[]);
+                rpass.set_bind_group(Group::TextLayout.index(), &layout.bind_group(), &[]);
 
                 rpass.set_index_buffer(&layout.index_buffer(), 0);
                 rpass.set_vertex_buffers(0, &[(&layout.vertex_buffer(), 0)]);

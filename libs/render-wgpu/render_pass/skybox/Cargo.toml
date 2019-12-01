@@ -15,6 +15,7 @@ atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/
 global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
+shader_globals = { package = "shader_globals-wgpu", path = "../../../render-wgpu/common/shader_globals" }
 stars = { package = "stars-wgpu", path = "../../../render-wgpu/buffer/stars" }
 
 [dev-dependencies]
