@@ -12,14 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#version 450
-#include <buffer/glyph_cache/include/global.glsl>
 
-layout(location = 0) in vec2 v_tex_coord;
-layout(location = 1) in vec4 v_color;
+layout(set = 0, binding = 0) uniform texture2D glyph_cache_glyph_texture;
+layout(set = 0, binding = 1) uniform sampler glyph_cache_glyph_sampler;
 
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(v_color.xyz, glyph_alpha_uv(v_tex_coord));
+float
+glyph_alpha_uv(vec2 tex_coord)
+{
+    return texture(sampler2D(glyph_cache_glyph_texture, glyph_cache_glyph_sampler), tex_coord).r;
 }
