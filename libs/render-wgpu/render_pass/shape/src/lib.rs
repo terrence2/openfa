@@ -15,6 +15,7 @@
 use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
+use shader_globals::Group;
 use shape_chunk::Vertex;
 use shape_instance::ShapeInstanceBuffer;
 use wgpu;
@@ -95,15 +96,15 @@ impl ShapeRenderPass {
         shape_instance_buffer: &ShapeInstanceBuffer,
     ) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
+        rpass.set_bind_group(Group::Globals.index(), globals_buffer.bind_group(), &[]);
         //rpass.set_bind_group(1, atmosphere_buffer.bind_group(), &[]);
 
         for block in shape_instance_buffer.blocks.values() {
             let chunk = shape_instance_buffer.chunk_man.chunk(block.chunk_id());
 
             // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
-            rpass.set_bind_group(1, chunk.bind_group(), &[]);
-            rpass.set_bind_group(2, block.bind_group(), &[]);
+            rpass.set_bind_group(Group::ShapeChunk.index(), chunk.bind_group(), &[]);
+            rpass.set_bind_group(Group::ShapeBlock.index(), block.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
             for i in 0..block.len() {
                 //rpass.draw_indirect(block.command_buffer(), i as u64);

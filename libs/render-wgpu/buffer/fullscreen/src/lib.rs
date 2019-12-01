@@ -15,8 +15,10 @@
 use failure::Fallible;
 use std::{cell::RefCell, mem, sync::Arc};
 use wgpu;
+use zerocopy::{AsBytes, FromBytes};
 
-#[derive(Clone, Copy)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Clone, Copy)]
 pub struct FullscreenVertex {
     _pos: [f32; 2],
 }

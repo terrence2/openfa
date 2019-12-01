@@ -120,7 +120,7 @@ fn main() -> Fallible<()> {
             .borrow()
             .make_upload_buffer_for_arcball_on_globe(&camera, gpu.device(), &mut upload_buffers)?;
 
-        let mut frame = gpu.begin_frame();
+        let mut frame = gpu.begin_frame()?;
         {
             for desc in upload_buffers.drain(..) {
                 frame.copy_buffer_to_buffer(

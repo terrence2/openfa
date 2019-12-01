@@ -246,7 +246,7 @@ fn main() -> Fallible<()> {
         text_layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;
-        frame_graph.run(&mut gpu, buffers);
+        frame_graph.run(&mut gpu, buffers)?;
 
         let ft = loop_start.elapsed();
         let ts = format!(

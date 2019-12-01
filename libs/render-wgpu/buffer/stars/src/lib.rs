@@ -19,12 +19,14 @@ use nalgebra::Vector3;
 use star_catalog::Stars;
 use static_assertions::{assert_eq_align, assert_eq_size};
 use std::{cell::RefCell, collections::HashSet, f32::consts::PI, mem, sync::Arc};
+use zerocopy::{AsBytes, FromBytes};
 
 const TAU: f32 = PI * 2f32;
 const PI_2: f32 = PI / 2f32;
 const RADIUS: f32 = 0.0015f32;
 
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone)]
 struct BandMetadata {
     index: u32,
     bins_per_row: u32,
@@ -34,7 +36,8 @@ struct BandMetadata {
 assert_eq_size!(BandMetadata, [f32; 4]);
 assert_eq_align!(BandMetadata, [f32; 4]);
 
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone)]
 struct BinPosition {
     _index_base: u32,
     _num_indexes: u32,
@@ -42,7 +45,8 @@ struct BinPosition {
 assert_eq_size!(BinPosition, [f32; 2]);
 assert_eq_align!(BinPosition, [f32; 4]);
 
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone)]
 struct StarInst {
     ra: f32,
     dec: f32,

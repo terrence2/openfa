@@ -31,6 +31,7 @@ use std::{
     mem,
     time::Instant,
 };
+use zerocopy::{AsBytes, FromBytes};
 
 const MAX_XFORM_ID: u32 = 32;
 
@@ -121,7 +122,8 @@ impl VertexFlags {
     }
 }
 
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 pub struct Vertex {
     position: [f32; 3],
     color: [f32; 4],

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 
-#include <common/include/include_global.glsl>
+#include <common/shader_globals/include/global.glsl>
 
 #include <buffer/atmosphere/include/global.glsl>
 #include <buffer/atmosphere/include/descriptorset.glsl>

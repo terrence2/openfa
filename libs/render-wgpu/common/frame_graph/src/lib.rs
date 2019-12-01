@@ -79,8 +79,8 @@ macro_rules! make_frame_graph {
                 })
             }
 
-            pub fn run(&self, gpu: &mut ::gpu::GPU, mut upload_buffers: Vec<$crate::CopyBufferDescriptor>) {
-                let mut frame = gpu.begin_frame();
+            pub fn run(&self, gpu: &mut ::gpu::GPU, mut upload_buffers: Vec<$crate::CopyBufferDescriptor>) -> ::failure::Fallible<()> {
+                let mut frame = gpu.begin_frame()?;
                 {
                     for desc in upload_buffers.drain(..) {
                         frame.copy_buffer_to_buffer(
@@ -103,6 +103,8 @@ macro_rules! make_frame_graph {
                     )*
                 }
                 frame.finish();
+
+                Ok(())
             }
         }
     };

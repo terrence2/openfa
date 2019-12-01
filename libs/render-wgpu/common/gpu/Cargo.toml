@@ -9,8 +9,9 @@ failure = "^ 0.1.2"
 raw-window-handle = "0.1"
 #winit = "0.20.0-alpha3"
 winit = { git = "https://github.com/rust-windowing/winit", rev = "6f5e7e170cd7bd9be1bb302dd91ebd906d29cfe1" }
-wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
-#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+zerocopy = "^ 0.2"
 input-wgpu = { path = "../../../render-wgpu/common/input" }

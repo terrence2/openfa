@@ -21,6 +21,7 @@ use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
+use shader_globals::Group;
 use stars::StarsBuffer;
 use wgpu;
 
@@ -107,9 +108,13 @@ impl SkyboxRenderPass {
         atmosphere_buffer: &AtmosphereBuffer,
     ) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, &globals_buffer.bind_group(), &[]);
-        rpass.set_bind_group(1, &atmosphere_buffer.bind_group(), &[]);
-        rpass.set_bind_group(2, &stars_buffer.bind_group(), &[]);
+        rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
+        rpass.set_bind_group(
+            Group::Atmosphere.index(),
+            &atmosphere_buffer.bind_group(),
+            &[],
+        );
+        rpass.set_bind_group(Group::Stars.index(), &stars_buffer.bind_group(), &[]);
         rpass.set_vertex_buffers(0, &[(fullscreen_buffer.vertex_buffer(), 0)]);
         rpass.draw(0..4, 0..1);
     }

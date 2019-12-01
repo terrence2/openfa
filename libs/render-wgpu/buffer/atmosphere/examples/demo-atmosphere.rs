@@ -138,7 +138,7 @@ fn main() -> Fallible<()> {
         )?;
 
         {
-            let mut frame = gpu.begin_frame();
+            let mut frame = gpu.begin_frame()?;
             {
                 for desc in upload_buffers.drain(..) {
                     frame.copy_buffer_to_buffer(

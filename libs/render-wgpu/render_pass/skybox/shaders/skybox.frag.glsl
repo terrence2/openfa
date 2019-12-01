@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-#include <common/include/include_global.glsl>
+#include <common/shader_globals/include/global.glsl>
 #include <buffer/atmosphere/include/global.glsl>
 #include <buffer/stars/include/global.glsl>
 #include <buffer/global_data/include/library.glsl>
