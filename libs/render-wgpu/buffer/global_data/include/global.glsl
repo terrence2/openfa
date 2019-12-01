@@ -12,12 +12,4 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
-layout(set = 1, binding = 0) uniform texture2D glyph_cache_glyph_texture;
-layout(set = 1, binding = 1) uniform sampler glyph_cache_glyph_sampler;
-
-float
-glyph_alpha_uv(vec2 tex_coord)
-{
-    return texture(sampler2D(glyph_cache_glyph_texture, glyph_cache_glyph_sampler), tex_coord).r;
-}
+#include <buffer/global_data/include/library.glsl>

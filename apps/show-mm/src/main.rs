@@ -61,7 +61,7 @@ make_frame_graph!(
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
             shape: ShapeRenderPass { globals, shape_instance_buffer },
-            screen_text: ScreenTextRenderPass { text_layout }
+            screen_text: ScreenTextRenderPass { globals, text_layout }
         ];
     }
 );
@@ -231,7 +231,7 @@ fn main() -> Fallible<()> {
             .make_upload_buffer_for_arcball_in_tile(
                 t2_buffer.borrow().t2(),
                 &camera,
-                gpu.device(),
+                &gpu,
                 &mut buffers,
             )?;
         atmosphere_buffer

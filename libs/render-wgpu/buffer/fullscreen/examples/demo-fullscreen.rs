@@ -104,7 +104,7 @@ fn main() -> Fallible<()> {
         let mut upload_buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_on_globe(&camera, gpu.device(), &mut upload_buffers)?;
+            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut upload_buffers)?;
 
         let mut frame = gpu.begin_frame()?;
         {
