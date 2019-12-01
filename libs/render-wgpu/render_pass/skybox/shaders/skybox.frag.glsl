@@ -16,13 +16,10 @@
 #include <common/shader_globals/include/global.glsl>
 #include <buffer/atmosphere/include/global.glsl>
 #include <buffer/stars/include/global.glsl>
-#include <buffer/global_data/include/library.glsl>
+#include <buffer/global_data/include/global.glsl>
 
 #include <buffer/atmosphere/include/descriptorset.glsl>
-#include <buffer/stars/include/descriptorset.glsl>
-
 #include <buffer/atmosphere/include/library.glsl>
-#include <buffer/stars/include/library.glsl>
 
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;

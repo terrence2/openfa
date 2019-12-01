@@ -15,6 +15,7 @@
 use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
+use gpu::GPU;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3};
 use std::{cell::RefCell, f32::consts::PI, mem, sync::Arc};
 use t2::Terrain;
@@ -23,6 +24,18 @@ use zerocopy::{AsBytes, FromBytes};
 
 // FIXME: these should probably not live here.
 const HM_TO_KM: f32 = 1f32 / 10f32;
+
+pub fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
+    let mut v = [[0f32; 4]; 4];
+    for i in 0..16 {
+        v[i / 4][i % 4] = m[i];
+    }
+    v
+}
+
+pub fn p2v(p: &Point3<f32>) -> [f32; 4] {
+    [p.x, p.y, p.z, 0f32]
+}
 
 pub struct GlobalParametersBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
@@ -34,10 +47,18 @@ pub struct GlobalParametersBuffer {
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 struct Globals {
+    // Overlay screen info
+    screen_projection: [[f32; 4]; 4],
+
+    // Camera parameters in tile space XYZ, 1hm per unit.
     view: [[f32; 4]; 4],
     proj: [[f32; 4]; 4],
+
+    // Inverted camera parameters in ecliptic XYZ, 1km per unit.
     inv_view: [[f32; 4]; 4],
     inv_proj: [[f32; 4]; 4],
+
+    // Camera position in each of the above.
     camera_position_tile: [f32; 4],
     camera_position_earth_km: [f32; 4],
 }
@@ -91,13 +112,14 @@ impl GlobalParametersBuffer {
     pub fn make_upload_buffer_for_arcball_on_globe(
         &self,
         camera: &ArcBallCamera,
-        device: &wgpu::Device,
+        gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         let globals = [Self::arcball_camera_to_buffer(
-            100f32, 100f32, 0f32, 0f32, camera,
+            100f32, 100f32, 0f32, 0f32, camera, gpu,
         )];
-        let source = device
+        let source = gpu
+            .device()
             .create_buffer_mapped::<Globals>(
                 1,
                 wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
@@ -115,7 +137,7 @@ impl GlobalParametersBuffer {
         &self,
         terrain: &Terrain,
         camera: &ArcBallCamera,
-        device: &wgpu::Device,
+        gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         let globals = [Self::arcball_camera_to_buffer(
@@ -124,8 +146,10 @@ impl GlobalParametersBuffer {
             terrain.origin_latitude(),
             terrain.origin_longitude(),
             camera,
+            gpu,
         )];
-        let source = device
+        let source = gpu
+            .device()
             .create_buffer_mapped::<Globals>(
                 1,
                 wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
@@ -145,17 +169,8 @@ impl GlobalParametersBuffer {
         tile_origin_lat_deg: f32,
         tile_origin_lon_deg: f32,
         camera: &ArcBallCamera,
+        gpu: &GPU,
     ) -> Globals {
-        fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
-            let mut v = [[0f32; 4]; 4];
-            for i in 0..16 {
-                v[i / 4][i % 4] = m[i];
-            }
-            v
-        }
-        fn p2v(p: &Point3<f32>) -> [f32; 4] {
-            [p.x, p.y, p.z, 0f32]
-        }
         fn deg2rad(deg: f32) -> f32 {
             deg * PI / 180f32
         }
@@ -215,7 +230,15 @@ impl GlobalParametersBuffer {
         let earth_inv_view: Matrix4<f32> = earth_view.inverse().to_homogeneous();
         let earth_inv_proj: Matrix4<f32> = convert(camera.projection().inverse());
 
+        let dim = gpu.physical_size();
+        let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
+        let (w, h) = if dim.width > dim.height {
+            (aspect, 1f32)
+        } else {
+            (1f32, 1f32 / aspect)
+        };
         Globals {
+            screen_projection: m2v(&Matrix4::new_nonuniform_scaling(&Vector3::new(w, h, 1f32))),
             view: m2v(&camera.view_matrix()),
             proj: m2v(&camera.projection_matrix()),
             inv_view: m2v(&earth_inv_view),

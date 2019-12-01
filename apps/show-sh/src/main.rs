@@ -55,7 +55,7 @@ make_frame_graph!(
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             shape: ShapeRenderPass { globals, shape_instance_buffer },
-            screen_text: ScreenTextRenderPass { text_layout }
+            screen_text: ScreenTextRenderPass { globals, text_layout }
         ];
     }
 );
@@ -310,7 +310,7 @@ fn main() -> Fallible<()> {
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_on_globe(&camera, gpu.device(), &mut buffers)?;
+            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;

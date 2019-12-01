@@ -20,7 +20,6 @@ use gpu::GPU;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
-use nalgebra::{Matrix4, Vector3};
 use std::{cell::RefCell, collections::HashMap, mem, ops::Range, rc::Rc, sync::Arc};
 use zerocopy::{AsBytes, FromBytes};
 
@@ -211,8 +210,6 @@ impl LayoutHandle {
 
     pub fn make_upload_buffer(
         &self,
-        screen_width: f32,
-        screen_height: f32,
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) {
@@ -233,22 +230,11 @@ impl LayoutHandle {
             TextAnchorV::Center => -layout.glyph_cache.render_height() / 2f32,
         };
 
-        let m = Matrix4::new_translation(&Vector3::new(x + dx, y + dy, 0.0f32))
-            * Matrix4::new_nonuniform_scaling(&Vector3::new(screen_width, screen_height, 1f32));
-
-        // Note: share with global data
-        fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
-            let mut v = [[0f32; 4]; 4];
-            for i in 0..16 {
-                v[i / 4][i % 4] = m[i];
-            }
-            v
-        }
         let buffer = device
             .create_buffer_mapped(1, wgpu::BufferUsage::all())
             .fill_from_slice(&[LayoutData {
-                screen_projection: m2v(&m),
-                text_color: layout.color,
+                text_layout_position: [x + dx, y + dy, 0f32, 0f32],
+                text_layout_color: layout.color,
             }]);
         upload_buffers.push(CopyBufferDescriptor::new(
             buffer,
@@ -277,8 +263,8 @@ impl LayoutHandle {
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 struct LayoutData {
-    screen_projection: [[f32; 4]; 4],
-    text_color: [f32; 4],
+    text_layout_position: [f32; 4],
+    text_layout_color: [f32; 4],
 }
 
 // Note that each layout has its own vertex/index buffer and a tiny transform
@@ -580,47 +566,13 @@ impl LayoutBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let dim = gpu.physical_size();
-        let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
-        let (w, h) = if dim.width > dim.height {
-            (aspect, 1f32)
-        } else {
-            (1f32, 1f32 / aspect)
-        };
-
         for layouts in self.layouts.values() {
             for layout in layouts.iter() {
-                layout.make_upload_buffer(w, h, gpu.device(), upload_buffers);
+                layout.make_upload_buffer(gpu.device(), upload_buffers);
             }
         }
         Ok(())
     }
-
-    /*
-    pub fn before_frame(&mut self, window: &GraphicsWindow) -> Fallible<()> {
-        self.set_projection(gpu.device())
-    }
-
-    pub fn render(
-        &self,
-        cb: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        let mut cb = cb;
-        for layout in &self.layouts {
-            cb = cb.draw_indexed(
-                self.screen_pipeline.clone(),
-                dynamic_state,
-                vec![layout.vertex_buffer()],
-                layout.index_buffer(),
-                layout.pds(),
-                layout.push_consts()?,
-            )?;
-        }
-
-        Ok(cb)
-    }
-    */
 }
 
 #[cfg(test)]

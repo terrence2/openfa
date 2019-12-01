@@ -31,9 +31,9 @@ impl Group {
     pub fn index(self) -> u32 {
         match self {
             Self::Globals => 0,
-            Self::GlyphCache => 0,
-            Self::TextLayout => 1,
             Self::Atmosphere => 1,
+            Self::GlyphCache => 1,
+            Self::TextLayout => 2,
             Self::Stars => 2,
             Self::Terrain => 2,
             Self::ShapeChunk => 1,

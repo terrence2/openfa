@@ -13,12 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-layout(set = 0, binding = 0) buffer CameraParameters {
-    mat4 globals_camera_view;
-    mat4 globals_camera_projection;
-    mat4 globals_camera_inverse_view;
-    mat4 globals_camera_inverse_projection;
-    vec4 globals_camera_position_tile;
-    vec4 globals_camera_position_earth_km;
-};
+layout(set = 2, binding = 0) uniform texture2D t2_terrain_atlas_texture;
+layout(set = 2, binding = 1) uniform sampler t2_terrain_atlas_sampler;
 
+vec4
+t2_atlas_color_uv(vec2 tex_coord)
+{
+    return texture(sampler2D(t2_terrain_atlas_texture, t2_terrain_atlas_sampler), tex_coord);
+}

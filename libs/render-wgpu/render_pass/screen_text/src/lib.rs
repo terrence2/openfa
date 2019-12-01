@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
+use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
@@ -23,7 +24,11 @@ pub struct ScreenTextRenderPass {
 }
 
 impl ScreenTextRenderPass {
-    pub fn new(gpu: &mut GPU, layout_buffer: &LayoutBuffer) -> Fallible<Self> {
+    pub fn new(
+        gpu: &mut GPU,
+        global_data: &GlobalParametersBuffer,
+        layout_buffer: &LayoutBuffer,
+    ) -> Fallible<Self> {
         trace!("ScreenTextRenderPass::new");
 
         let vert_shader =
@@ -35,6 +40,7 @@ impl ScreenTextRenderPass {
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
+                        global_data.bind_group_layout(),
                         layout_buffer.glyph_bind_group_layout(),
                         layout_buffer.layout_bind_group_layout(),
                     ],
@@ -89,10 +95,16 @@ impl ScreenTextRenderPass {
         Ok(Self { pipeline })
     }
 
-    pub fn draw(&self, rpass: &mut wgpu::RenderPass, layout_buffer: &LayoutBuffer) {
+    pub fn draw(
+        &self,
+        rpass: &mut wgpu::RenderPass,
+        global_data: &GlobalParametersBuffer,
+        layout_buffer: &LayoutBuffer,
+    ) {
         rpass.set_pipeline(&self.pipeline);
         for (&font, layouts) in layout_buffer.layouts() {
             let glyph_cache = layout_buffer.glyph_cache(font);
+            rpass.set_bind_group(Group::Globals.index(), &global_data.bind_group(), &[]);
             rpass.set_bind_group(Group::GlyphCache.index(), &glyph_cache.bind_group(), &[]);
             for layout in layouts {
                 rpass.set_bind_group(Group::TextLayout.index(), &layout.bind_group(), &[]);

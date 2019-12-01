@@ -13,14 +13,23 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <buffer/global_data/include/descriptorset.glsl>
+layout(set = 0, binding = 0) buffer CameraParameters {
+    mat4 globals_screen_letterbox_projection;
+    mat4 globals_camera_view;
+    mat4 globals_camera_projection;
+    mat4 globals_camera_inverse_view;
+    mat4 globals_camera_inverse_projection;
+    vec4 globals_camera_position_tile;
+    vec4 globals_camera_position_earth_km;
+};
 
-mat4 camera_view()               { return globals_camera_view; }
-mat4 camera_projection()         { return globals_camera_projection; }
-mat4 camera_inverse_view()       { return globals_camera_inverse_view; }
-mat4 camera_inverse_projection() { return globals_camera_inverse_projection; }
-vec4 camera_position_in_tile()   { return globals_camera_position_tile; }
-vec4 camera_position_earth_km()  { return globals_camera_position_earth_km; }
+mat4 screen_letterbox_projection() { return globals_screen_letterbox_projection; }
+mat4 camera_view()                 { return globals_camera_view; }
+mat4 camera_projection()           { return globals_camera_projection; }
+mat4 camera_inverse_view()         { return globals_camera_inverse_view; }
+mat4 camera_inverse_projection()   { return globals_camera_inverse_projection; }
+vec4 camera_position_in_tile()     { return globals_camera_position_tile; }
+vec4 camera_position_earth_km()    { return globals_camera_position_earth_km; }
 
 vec3
 raymarching_view_ray(vec2 position) {

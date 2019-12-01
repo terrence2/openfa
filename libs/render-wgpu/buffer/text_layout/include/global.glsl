@@ -13,15 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-layout(set = 2, binding = 0) buffer DeclinationBands {
-    BandMetadata stars_bands[33];
-};
-layout(set = 2, binding = 1) buffer BinPositions {
-    BinPosition stars_bins[5434];
-};
-layout(set = 2, binding = 2) buffer Indexes {
-    uint stars_indexes[];
-};
-layout(set = 2, binding = 3) buffer StarBlock {
-    StarInst stars_stars[];
+layout(set = 2, binding = 0) buffer LayoutData {
+    vec4 text_layout_position;
+    vec4 text_layout_color;
 };
