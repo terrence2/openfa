@@ -20,19 +20,18 @@ use lib::Library;
 use log::trace;
 use memoffset::offset_of;
 use mm::MissionMap;
-use nalgebra::{convert, Matrix4, Point3, Unit, UnitQuaternion, Vector3};
+use nalgebra::Vector3;
 use pal::Palette;
 use pic::Pic;
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
-    f64::consts::PI,
     mem,
     ops::Range,
     sync::Arc,
 };
 use t2::{Sample, Terrain};
-use universe::{EARTH_RADIUS_KM, FEET_TO_HM, FEET_TO_KM};
+use universe::{EARTH_RADIUS_KM, FEET_TO_HM_32, FEET_TO_KM};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -358,8 +357,8 @@ impl T2Buffer {
         let zf = zi as f32 / terrain.height() as f32;
         let scale_x_ft = terrain.extent_east_west_in_ft();
         let scale_z_ft = terrain.extent_north_south_in_ft();
-        let x_hm = xf * scale_x_ft * FEET_TO_HM;
-        let z_hm = (1f32 - zf) * scale_z_ft * FEET_TO_HM;
+        let x_hm = xf * scale_x_ft * FEET_TO_HM_32;
+        let z_hm = (1f32 - zf) * scale_z_ft * FEET_TO_HM_32;
         let mut h = -f32::from(sample.height) * 3f32; /*/ 512f32 + 0.1f32*/
 
         // Compute distance from center.
@@ -575,14 +574,14 @@ mod test {
 
     #[test]
     fn test_tile_to_earth() -> Fallible<()> {
-        let mut input = InputSystem::new(vec![])?;
+        let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
         let omni = OmniLib::new_for_test_in_games(&["FA"])?;
         let lib = omni.library("FA");
         let types = TypeManager::new(lib.clone());
         let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
         let mm = MissionMap::from_str(&lib.load_text("BAL.MM")?, &types, &lib)?;
-        let t2_buffer = T2Buffer::new(&mm, &palette, &lib, &mut gpu)?;
+        let _t2_buffer = T2Buffer::new(&mm, &palette, &lib, &mut gpu)?;
         Ok(())
     }
 }

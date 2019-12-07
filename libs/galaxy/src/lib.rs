@@ -15,7 +15,7 @@
 pub use legion::entity::Entity;
 pub use universe::{
     component::{Rotation, Scale, Transform},
-    FEET_TO_DAM, FEET_TO_HM, FEET_TO_KM, FEET_TO_M,
+    FEET_TO_DAM, FEET_TO_HM_32, FEET_TO_KM, FEET_TO_M,
 };
 
 use failure::Fallible;
@@ -98,7 +98,7 @@ impl Galaxy {
             vec![(
                 Transform::new(position.coords),
                 Rotation::new(*rotation),
-                Scale::new(SHAPE_UNIT_TO_FEET * FEET_TO_HM),
+                Scale::new(SHAPE_UNIT_TO_FEET * FEET_TO_HM_32),
                 ShapeRef::new(shape_id),
                 ShapeSlot::new(slot_id),
                 ShapeState::new(widgets.errata()),

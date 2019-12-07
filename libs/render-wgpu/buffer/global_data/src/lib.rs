@@ -19,7 +19,7 @@ use gpu::GPU;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3, Vector4};
 use std::{cell::RefCell, f64::consts::PI, mem, sync::Arc};
 use t2::Terrain;
-use universe::{FEET_TO_HM, FEET_TO_KM};
+use universe::{FEET_TO_HM_32, FEET_TO_HM_64};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -189,7 +189,7 @@ impl GlobalParametersBuffer {
             deg * PI / 180.0
         }
         fn ft2hm(ft: f64) -> f64 {
-            ft * 0.003_048
+            ft * FEET_TO_HM_64
         }
 
         let tile_width_hm = ft2hm(tile_width_ft as f64);
@@ -229,7 +229,7 @@ impl GlobalParametersBuffer {
         );
 
         let tile_ul_eye = camera.eye();
-        let tile_ul_tgt = camera.target.clone();
+        let tile_ul_tgt = camera.target;
         let ul_to_c = Vector3::new(tile_width_hm / 2f64, 0f64, tile_height_hm / 2f64);
         let tile_c_eye = tile_ul_eye - ul_to_c;
         let tile_c_tgt = tile_ul_tgt - ul_to_c;
@@ -246,9 +246,9 @@ impl GlobalParametersBuffer {
         let tile_to_earth = trans_m * scale_m * rot_m;
 
         let tile_center_offset = Vector3::new(
-            tile_width_ft * FEET_TO_HM / 2f32,
+            tile_width_ft * FEET_TO_HM_32 / 2.0,
             0f32,
-            tile_height_ft * FEET_TO_HM / 2f32,
+            tile_height_ft * FEET_TO_HM_32 / 2.0,
         );
 
         let earth_eye = tile_to_earth * tile_c_eye.to_homogeneous();

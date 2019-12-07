@@ -17,7 +17,7 @@ use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
-use galaxy::{Galaxy, FEET_TO_HM};
+use galaxy::{Galaxy, FEET_TO_HM_32};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
@@ -129,7 +129,7 @@ fn main() -> Fallible<()> {
                 let mut p = info.position();
                 let ns_ft = t2_buffer.borrow().t2().extent_north_south_in_ft();
                 p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
-                p *= FEET_TO_HM;
+                p *= FEET_TO_HM_32;
                 p.coords[1] = t2_buffer.borrow().t2().ground_height_at(&p);
                 positions.push(p);
                 let sh_name = info
