@@ -99,33 +99,37 @@ impl Vertex {
     }
 }
 
-pub struct T2Buffer {
-    bind_group_layout: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    index_count: u32,
+// Hold our working state.
+struct T2BufferFactory<'a> {
+    mm: &'a MissionMap,
+    system_palette: &'a Palette,
+    lib: &'a Library,
 
-    // We need access to the height data for collisions, layout, etc.
-    terrain: Terrain,
+    memo_normal: HashMap<[(u32, u32); 3], Vector3<f32>>,
+    memo_position: HashMap<(u32, u32), Vector3<f32>>,
+    memo_vert: HashMap<(u32, u32), Vertex>,
 }
 
-impl T2Buffer {
-    pub fn new(
-        mm: &MissionMap,
-        system_palette: &Palette,
-        lib: &Library,
-        gpu: &mut GPU,
-    ) -> Fallible<Arc<RefCell<Self>>> {
-        trace!("T2Renderer::new");
+impl<'a> T2BufferFactory<'a> {
+    fn new(mm: &'a MissionMap, system_palette: &'a Palette, lib: &'a Library) -> Self {
+        Self {
+            mm,
+            system_palette,
+            lib,
+            memo_position: HashMap::new(),
+            memo_normal: HashMap::new(),
+            memo_vert: HashMap::new(),
+        }
+    }
 
-        let terrain = Terrain::from_bytes(&lib.load(&mm.t2_name())?)?;
-        let palette = Self::load_palette(&mm, system_palette, lib)?;
-        let (atlas, bind_group_layout, bind_group) = Self::create_atlas(&mm, &palette, &lib, gpu)?;
+    fn build(&mut self, gpu: &mut GPU) -> Fallible<Arc<RefCell<T2Buffer>>> {
+        let terrain = Terrain::from_bytes(&self.lib.load(&self.mm.t2_name())?)?;
+        let palette = self.load_palette()?;
+        let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
         let (vertex_buffer, index_buffer, index_count) =
-            Self::upload_terrain_textured_simple(&mm, &terrain, &atlas, &palette, gpu.device())?;
+            self.upload_terrain_textured_simple(&terrain, &atlas, &palette, gpu.device())?;
 
-        Ok(Arc::new(RefCell::new(Self {
+        Ok(Arc::new(RefCell::new(T2Buffer {
             bind_group_layout,
             bind_group,
             vertex_buffer,
@@ -135,34 +139,10 @@ impl T2Buffer {
         })))
     }
 
-    pub fn t2(&self) -> &Terrain {
-        &self.terrain
-    }
-
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
-    }
-
-    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.vertex_buffer
-    }
-
-    pub fn index_buffer(&self) -> &wgpu::Buffer {
-        &self.index_buffer
-    }
-
-    pub fn index_range(&self) -> Range<u32> {
-        0..self.index_count
-    }
-
-    fn load_palette(mm: &MissionMap, system_palette: &Palette, lib: &Library) -> Fallible<Palette> {
-        let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &lib)?;
-        let layer_index = if mm.layer_index() != 0 {
-            mm.layer_index()
+    fn load_palette(&self) -> Fallible<Palette> {
+        let layer = Layer::from_bytes(&self.lib.load(&self.mm.layer_name())?, self.lib)?;
+        let layer_index = if self.mm.layer_index() != 0 {
+            self.mm.layer_index()
         } else {
             2
         };
@@ -174,7 +154,7 @@ impl T2Buffer {
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        let mut palette = system_palette.clone();
+        let mut palette = self.system_palette.clone();
         palette.overlay_at(&r1, 0xF0 - 1)?;
         palette.overlay_at(&r0, 0xE0 - 1)?;
         palette.overlay_at(&r3, 0xD0)?;
@@ -201,22 +181,21 @@ impl T2Buffer {
     // VLA: 52
     // WTA: 68
     fn create_atlas(
-        mm: &MissionMap,
+        &self,
         palette: &Palette,
-        lib: &Library,
         gpu: &mut GPU,
     ) -> Fallible<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
         // Load all images with our custom palette.
         let mut pics = Vec::new();
         {
             let mut loaded = HashSet::new();
-            let texture_base_name = mm.get_base_texture_name()?;
-            for tmap in mm.texture_maps() {
+            let texture_base_name = self.mm.get_base_texture_name()?;
+            for tmap in self.mm.texture_maps() {
                 if loaded.contains(&tmap.loc) {
                     continue;
                 }
                 let name = tmap.loc.pic_file(&texture_base_name);
-                let data = lib.load(&name)?;
+                let data = self.lib.load(&name)?;
                 let pic = Pic::decode(palette, &data)?;
                 loaded.insert(tmap.loc.clone());
                 pics.push((tmap.loc.clone(), pic));
@@ -339,13 +318,8 @@ impl T2Buffer {
         }
     }
 
-    fn position_at(
-        terrain: &Terrain,
-        xi: u32,
-        zi: u32,
-        memo_position: &mut HashMap<(u32, u32), Vector3<f32>>,
-    ) -> Vector3<f32> {
-        if let Some(v) = memo_position.get(&(xi, zi)) {
+    fn position_at(&mut self, terrain: &Terrain, xi: u32, zi: u32) -> Vector3<f32> {
+        if let Some(v) = self.memo_position.get(&(xi, zi)) {
             return *v;
         }
 
@@ -372,29 +346,24 @@ impl T2Buffer {
         h += dev_km * 10f32;
 
         let position = Vector3::new(x_hm, h, z_hm);
-        memo_position.insert((xi, zi), position);
+        self.memo_position.insert((xi, zi), position);
         position
     }
 
-    fn normal_for(
-        terrain: &Terrain,
-        coords: [(u32, u32); 3],
-        memo_normal: &mut HashMap<[(u32, u32); 3], Vector3<f32>>,
-        memo_position: &mut HashMap<(u32, u32), Vector3<f32>>,
-    ) -> Vector3<f32> {
-        if let Some(&normal) = memo_normal.get(&coords) {
+    fn normal_for(&mut self, terrain: &Terrain, coords: [(u32, u32); 3]) -> Vector3<f32> {
+        if let Some(&normal) = self.memo_normal.get(&coords) {
             return normal;
         }
         if coords[0] == coords[1] || coords[1] == coords[2] || coords[0] == coords[2] {
             let normal = Vector3::new(0f32, -1f32, 0f32);
-            memo_normal.insert(coords, normal);
+            self.memo_normal.insert(coords, normal);
             return normal;
         }
-        let p0 = Self::position_at(terrain, coords[0].0, coords[0].1, memo_position);
-        let p1 = Self::position_at(terrain, coords[1].0, coords[1].1, memo_position);
-        let p2 = Self::position_at(terrain, coords[2].0, coords[2].1, memo_position);
+        let p0 = self.position_at(terrain, coords[0].0, coords[0].1);
+        let p1 = self.position_at(terrain, coords[1].0, coords[1].1);
+        let p2 = self.position_at(terrain, coords[2].0, coords[2].1);
         let normal = (p2 - p1).cross(&(p0 - p1)).normalize();
-        memo_normal.insert(coords, normal);
+        self.memo_normal.insert(coords, normal);
         normal
     }
 
@@ -407,19 +376,16 @@ impl T2Buffer {
     // We deal with this by draping down in the direction of the tile, rather than towards
     // earth center, and using the result as the lat-lon. e.g. we treat XYZ as primary, but
     //
-    #[allow(clippy::too_many_arguments)]
     fn compute_at(
+        &mut self,
         terrain: &Terrain,
         palette: &Palette,
         xi: u32,
         zi: u32,
         tex_coord: [f32; 2],
-        memo_normal: &mut HashMap<[(u32, u32); 3], Vector3<f32>>,
-        memo_position: &mut HashMap<(u32, u32), Vector3<f32>>,
-        memo_vert: &mut HashMap<(u32, u32), Vertex>,
         verts: &mut Vec<Vertex>,
     ) {
-        if let Some(v) = memo_vert.get(&(xi, zi)) {
+        if let Some(v) = self.memo_vert.get(&(xi, zi)) {
             let mut vert = *v;
             vert.tex_coord = tex_coord;
             verts.push(vert);
@@ -434,18 +400,16 @@ impl T2Buffer {
         let z0 = zi.saturating_sub(1);
         let z1 = zi;
         let z2 = (zi + 1).min(terrain.height() - 1);
-        let p11 = Self::position_at(terrain, x1, z1, memo_position);
-        let mn = memo_normal;
-        let mp = memo_position;
+        let p11 = self.position_at(terrain, x1, z1);
         let normals = [
-            Self::normal_for(terrain, [(x0, z1), (x1, z1), (x0, z0)], mn, mp),
-            Self::normal_for(terrain, [(x0, z0), (x1, z1), (x1, z0)], mn, mp),
-            Self::normal_for(terrain, [(x0, z2), (x1, z2), (x0, z1)], mn, mp),
-            Self::normal_for(terrain, [(x0, z1), (x1, z2), (x1, z1)], mn, mp),
-            Self::normal_for(terrain, [(x1, z1), (x2, z1), (x1, z0)], mn, mp),
-            Self::normal_for(terrain, [(x1, z0), (x2, z1), (x2, z0)], mn, mp),
-            Self::normal_for(terrain, [(x1, z2), (x2, z2), (x1, z1)], mn, mp),
-            Self::normal_for(terrain, [(x1, z1), (x2, z2), (x2, z1)], mn, mp),
+            self.normal_for(terrain, [(x0, z1), (x1, z1), (x0, z0)]),
+            self.normal_for(terrain, [(x0, z0), (x1, z1), (x1, z0)]),
+            self.normal_for(terrain, [(x0, z2), (x1, z2), (x0, z1)]),
+            self.normal_for(terrain, [(x0, z1), (x1, z2), (x1, z1)]),
+            self.normal_for(terrain, [(x1, z1), (x2, z1), (x1, z0)]),
+            self.normal_for(terrain, [(x1, z0), (x2, z1), (x2, z0)]),
+            self.normal_for(terrain, [(x1, z2), (x2, z2), (x1, z1)]),
+            self.normal_for(terrain, [(x1, z1), (x2, z2), (x2, z1)]),
         ];
         let mut normal = Vector3::identity();
         for n in &normals {
@@ -469,12 +433,12 @@ impl T2Buffer {
             ],
             tex_coord,
         };
-        memo_vert.insert((xi, zi), vert);
+        self.memo_vert.insert((xi, zi), vert);
         verts.push(vert);
     }
 
     fn upload_terrain_textured_simple(
-        mm: &MissionMap,
+        &mut self,
         terrain: &Terrain,
         atlas: &TextureAtlas,
         palette: &Palette,
@@ -505,15 +469,13 @@ impl T2Buffer {
             }
         };
 
-        let mut memo_verts = HashMap::new();
-        let mut memo_position = HashMap::new();
-        let mut memo_normal = HashMap::new();
         for zi_base in (0..terrain.height()).step_by(4) {
             for xi_base in (0..terrain.width()).step_by(4) {
                 let base = verts.len() as u32;
 
                 // Upload one patch of vertices, possibly with a texture.
-                let frame_info = mm
+                let frame_info = self
+                    .mm
                     .texture_map(xi_base, zi_base)
                     .map(|tmap| (&atlas.frames[&tmap.loc], &tmap.orientation));
                 for z_off in 0..=4 {
@@ -527,17 +489,7 @@ impl T2Buffer {
                             })
                             .unwrap_or([0f32, 0f32]);
 
-                        Self::compute_at(
-                            terrain,
-                            palette,
-                            xi,
-                            zi,
-                            tex_coord,
-                            &mut memo_normal,
-                            &mut memo_position,
-                            &mut memo_verts,
-                            &mut verts,
-                        );
+                        self.compute_at(terrain, palette, xi, zi, tex_coord, &mut verts);
                     }
                 }
                 push_patch_indices(base, &mut indices);
@@ -561,6 +513,53 @@ impl T2Buffer {
             .fill_from_slice(&indices);
 
         Ok((vertex_buffer, index_buffer, indices.len() as u32))
+    }
+}
+
+pub struct T2Buffer {
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    index_count: u32,
+
+    // We need access to the height data for collisions, layout, etc.
+    terrain: Terrain,
+}
+
+impl T2Buffer {
+    pub fn new(
+        mm: &MissionMap,
+        system_palette: &Palette,
+        lib: &Library,
+        gpu: &mut GPU,
+    ) -> Fallible<Arc<RefCell<Self>>> {
+        trace!("T2Renderer::new");
+        T2BufferFactory::new(mm, system_palette, lib).build(gpu)
+    }
+
+    pub fn t2(&self) -> &Terrain {
+        &self.terrain
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
+
+    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.vertex_buffer
+    }
+
+    pub fn index_buffer(&self) -> &wgpu::Buffer {
+        &self.index_buffer
+    }
+
+    pub fn index_range(&self) -> Range<u32> {
+        0..self.index_count
     }
 }
 
