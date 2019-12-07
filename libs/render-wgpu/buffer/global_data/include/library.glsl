@@ -19,6 +19,11 @@ layout(set = 0, binding = 0) buffer CameraParameters {
     mat4 globals_camera_projection;
     mat4 globals_camera_inverse_view;
     mat4 globals_camera_inverse_projection;
+    mat4 globals_tile_to_earth;
+    mat4 globals_tile_to_earth_rotation;
+    mat4 globals_tile_to_earth_scale;
+    vec4 globals_tile_to_earth_translation;
+    vec4 globals_tile_center_offset;
     vec4 globals_camera_position_tile;
     vec4 globals_camera_position_earth_km;
 };
@@ -30,9 +35,15 @@ mat4 camera_inverse_view()         { return globals_camera_inverse_view; }
 mat4 camera_inverse_projection()   { return globals_camera_inverse_projection; }
 vec4 camera_position_in_tile()     { return globals_camera_position_tile; }
 vec4 camera_position_earth_km()    { return globals_camera_position_earth_km; }
+mat4 tile_to_earth()               { return globals_tile_to_earth; }
+mat4 tile_to_earth_rotation()      { return globals_tile_to_earth_rotation; }
+mat4 tile_to_earth_scale()         { return globals_tile_to_earth_scale; }
+vec4 tile_to_earth_translation()   { return globals_tile_to_earth_translation; }
+vec4 tile_center_offset()          { return globals_tile_center_offset; }
 
 vec3
-raymarching_view_ray(vec2 position) {
+raymarching_view_ray(vec2 position)
+{
     vec4 reverse_vec;
 
     // inverse perspective projection

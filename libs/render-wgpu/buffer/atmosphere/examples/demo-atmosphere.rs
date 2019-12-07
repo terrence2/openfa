@@ -119,6 +119,9 @@ fn main() -> Fallible<()> {
                         )
                     }
                 }
+                "mouse-wheel" => {
+                    camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
+                }
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }

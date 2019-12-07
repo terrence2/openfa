@@ -20,6 +20,7 @@ use lib::Library;
 use log::trace;
 use memoffset::offset_of;
 use mm::MissionMap;
+use nalgebra::Vector3;
 use pal::Palette;
 use pic::Pic;
 use std::{
@@ -29,8 +30,8 @@ use std::{
     ops::Range,
     sync::Arc,
 };
-use t2::Terrain;
-use universe::{EARTH_RADIUS_KM, FEET_TO_HM, FEET_TO_KM};
+use t2::{Sample, Terrain};
+use universe::{EARTH_RADIUS_KM, FEET_TO_HM_32, FEET_TO_KM};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -38,6 +39,7 @@ use zerocopy::{AsBytes, FromBytes};
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
 pub struct Vertex {
     position: [f32; 3],
+    normal: [f32; 3],
     color: [f32; 4],
     tex_coord: [f32; 2],
 }
@@ -55,17 +57,23 @@ impl Vertex {
                     offset: 0,
                     shader_location: 0,
                 },
+                // normal
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float3,
+                    offset: 12,
+                    shader_location: 1,
+                },
                 // color
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float4,
-                    offset: 12,
-                    shader_location: 1,
+                    offset: 24,
+                    shader_location: 2,
                 },
                 // tex_coord
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float2,
-                    offset: 28,
-                    shader_location: 2,
+                    offset: 40,
+                    shader_location: 3,
                 },
             ],
         };
@@ -76,10 +84,14 @@ impl Vertex {
         );
         assert_eq!(
             tmp.attributes[1].offset,
-            offset_of!(Vertex, color) as wgpu::BufferAddress
+            offset_of!(Vertex, normal) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[2].offset,
+            offset_of!(Vertex, color) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[3].offset,
             offset_of!(Vertex, tex_coord) as wgpu::BufferAddress
         );
 
@@ -312,24 +324,9 @@ impl T2Buffer {
         Ok((atlas, bind_group_layout, bind_group))
     }
 
-    // The T2 are flat and square. And cover several degrees of the earth. That means we need to
-    // actually account for curvature in a reasonable way. Flightgear handles this by having tile
-    // coordinates in lat/lon/asl. This (probably) won't work because MM files list shapes to put
-    // on the map in feet off of the origin. If we change the value of up, we need to rotate
-    // all the shapes. Some of the shapes need to line up closely to make sense, like runways.
-    fn sample_at(
-        terrain: &Terrain,
-        palette: &Palette,
-        xi: u32,
-        zi: u32,
-        memo: &mut HashMap<(u32, u32), ([f32; 3], [f32; 4])>,
-    ) -> ([f32; 3], [f32; 4]) {
-        if let Some(v) = memo.get(&(xi, zi)) {
-            return *v;
-        }
-
+    fn sample_at(terrain: &Terrain, xi: u32, zi: u32) -> Sample {
         let offset = (zi * terrain.width() + xi) as usize;
-        let sample = if offset < terrain.samples.len() {
+        if offset < terrain.samples.len() {
             terrain.samples[offset]
         } else {
             let offset = ((zi - 1) * terrain.width() + xi) as usize;
@@ -339,15 +336,28 @@ impl T2Buffer {
                 let offset = ((zi - 1) * terrain.width() + (xi - 1)) as usize;
                 terrain.samples[offset]
             }
-        };
+        }
+    }
+
+    fn position_at(
+        terrain: &Terrain,
+        xi: u32,
+        zi: u32,
+        memo_position: &mut HashMap<(u32, u32), Vector3<f32>>,
+    ) -> Vector3<f32> {
+        if let Some(v) = memo_position.get(&(xi, zi)) {
+            return *v;
+        }
+
+        let sample = Self::sample_at(terrain, xi, zi);
 
         let xf = xi as f32 / terrain.width() as f32;
         let zf = zi as f32 / terrain.height() as f32;
         let scale_x_ft = terrain.extent_east_west_in_ft();
         let scale_z_ft = terrain.extent_north_south_in_ft();
-        let x_hm = xf * scale_x_ft * FEET_TO_HM;
-        let z_hm = (1f32 - zf) * scale_z_ft * FEET_TO_HM;
-        let mut h = -f32::from(sample.height) * 2f32; /*/ 512f32 + 0.1f32*/
+        let x_hm = xf * scale_x_ft * FEET_TO_HM_32;
+        let z_hm = (1f32 - zf) * scale_z_ft * FEET_TO_HM_32;
+        let mut h = -f32::from(sample.height) * 3f32; /*/ 512f32 + 0.1f32*/
 
         // Compute distance from center.
         let center_x_km = scale_x_ft * FEET_TO_KM / 2f32;
@@ -361,22 +371,106 @@ impl T2Buffer {
         let dev_km = hyp_km - EARTH_RADIUS_KM;
         h += dev_km * 10f32;
 
+        let position = Vector3::new(x_hm, h, z_hm);
+        memo_position.insert((xi, zi), position);
+        position
+    }
+
+    fn normal_for(
+        terrain: &Terrain,
+        coords: [(u32, u32); 3],
+        memo_normal: &mut HashMap<[(u32, u32); 3], Vector3<f32>>,
+        memo_position: &mut HashMap<(u32, u32), Vector3<f32>>,
+    ) -> Vector3<f32> {
+        if let Some(&normal) = memo_normal.get(&coords) {
+            return normal;
+        }
+        if coords[0] == coords[1] || coords[1] == coords[2] || coords[0] == coords[2] {
+            let normal = Vector3::new(0f32, -1f32, 0f32);
+            memo_normal.insert(coords, normal);
+            return normal;
+        }
+        let p0 = Self::position_at(terrain, coords[0].0, coords[0].1, memo_position);
+        let p1 = Self::position_at(terrain, coords[1].0, coords[1].1, memo_position);
+        let p2 = Self::position_at(terrain, coords[2].0, coords[2].1, memo_position);
+        let normal = (p2 - p1).cross(&(p0 - p1)).normalize();
+        memo_normal.insert(coords, normal);
+        normal
+    }
+
+    // The T2 are flat and square. And cover several degrees of the earth. That means we need to
+    // actually account for curvature in a reasonable way. Flightgear handles this by having tile
+    // coordinates in lat/lon/asl. This (probably) won't work because MM files list shapes to put
+    // on the map in feet off of the origin. If we change the value of up, we need to rotate
+    // all the shapes. Some of the shapes need to line up closely to make sense, like runways.
+    //
+    // We deal with this by draping down in the direction of the tile, rather than towards
+    // earth center, and using the result as the lat-lon. e.g. we treat XYZ as primary, but
+    //
+    #[allow(clippy::too_many_arguments)]
+    fn compute_at(
+        terrain: &Terrain,
+        palette: &Palette,
+        xi: u32,
+        zi: u32,
+        tex_coord: [f32; 2],
+        memo_normal: &mut HashMap<[(u32, u32); 3], Vector3<f32>>,
+        memo_position: &mut HashMap<(u32, u32), Vector3<f32>>,
+        memo_vert: &mut HashMap<(u32, u32), Vertex>,
+        verts: &mut Vec<Vertex>,
+    ) {
+        if let Some(v) = memo_vert.get(&(xi, zi)) {
+            let mut vert = *v;
+            vert.tex_coord = tex_coord;
+            verts.push(vert);
+            return;
+        }
+
+        let sample = Self::sample_at(terrain, xi, zi);
+
+        let x0 = xi.saturating_sub(1);
+        let x1 = xi;
+        let x2 = (xi + 1).min(terrain.width() - 1);
+        let z0 = zi.saturating_sub(1);
+        let z1 = zi;
+        let z2 = (zi + 1).min(terrain.height() - 1);
+        let p11 = Self::position_at(terrain, x1, z1, memo_position);
+        let mn = memo_normal;
+        let mp = memo_position;
+        let normals = [
+            Self::normal_for(terrain, [(x0, z1), (x1, z1), (x0, z0)], mn, mp),
+            Self::normal_for(terrain, [(x0, z0), (x1, z1), (x1, z0)], mn, mp),
+            Self::normal_for(terrain, [(x0, z2), (x1, z2), (x0, z1)], mn, mp),
+            Self::normal_for(terrain, [(x0, z1), (x1, z2), (x1, z1)], mn, mp),
+            Self::normal_for(terrain, [(x1, z1), (x2, z1), (x1, z0)], mn, mp),
+            Self::normal_for(terrain, [(x1, z0), (x2, z1), (x2, z0)], mn, mp),
+            Self::normal_for(terrain, [(x1, z2), (x2, z2), (x1, z1)], mn, mp),
+            Self::normal_for(terrain, [(x1, z1), (x2, z2), (x2, z1)], mn, mp),
+        ];
+        let mut normal = Vector3::identity();
+        for n in &normals {
+            normal += n;
+        }
+        let normal = normal.normalize();
+
         let mut color = palette.rgba(sample.color as usize).unwrap();
         if sample.color == 0xFF {
             color.data[3] = 0;
         }
 
-        let result = (
-            [x_hm, h, z_hm],
-            [
+        let vert = Vertex {
+            position: [p11[0], p11[1], p11[2]],
+            normal: [normal[0], normal[1], normal[2]],
+            color: [
                 f32::from(color[0]) / 255f32,
                 f32::from(color[1]) / 255f32,
                 f32::from(color[2]) / 255f32,
                 f32::from(color[3]) / 255f32,
             ],
-        );
-        memo.insert((xi, zi), result);
-        result
+            tex_coord,
+        };
+        memo_vert.insert((xi, zi), vert);
+        verts.push(vert);
     }
 
     fn upload_terrain_textured_simple(
@@ -411,7 +505,9 @@ impl T2Buffer {
             }
         };
 
-        let mut memo = HashMap::new();
+        let mut memo_verts = HashMap::new();
+        let mut memo_position = HashMap::new();
+        let mut memo_normal = HashMap::new();
         for zi_base in (0..terrain.height()).step_by(4) {
             for xi_base in (0..terrain.width()).step_by(4) {
                 let base = verts.len() as u32;
@@ -424,22 +520,24 @@ impl T2Buffer {
                     for x_off in 0..=4 {
                         let zi = zi_base + z_off;
                         let xi = xi_base + x_off;
-                        let (position, color) =
-                            Self::sample_at(terrain, palette, xi, zi, &mut memo);
 
-                        verts.push(Vertex {
-                            position,
-                            color,
-                            tex_coord: frame_info
-                                .map(|(frame, orientation)| {
-                                    frame.interp(
-                                        x_off as f32 / 4f32,
-                                        z_off as f32 / 4f32,
-                                        orientation,
-                                    )
-                                })
-                                .unwrap_or([0f32, 0f32]),
-                        });
+                        let tex_coord = frame_info
+                            .map(|(frame, orientation)| {
+                                frame.interp(x_off as f32 / 4f32, z_off as f32 / 4f32, orientation)
+                            })
+                            .unwrap_or([0f32, 0f32]);
+
+                        Self::compute_at(
+                            terrain,
+                            palette,
+                            xi,
+                            zi,
+                            tex_coord,
+                            &mut memo_normal,
+                            &mut memo_position,
+                            &mut memo_verts,
+                            &mut verts,
+                        );
                     }
                 }
                 push_patch_indices(base, &mut indices);
@@ -463,5 +561,26 @@ impl T2Buffer {
             .fill_from_slice(&indices);
 
         Ok((vertex_buffer, index_buffer, indices.len() as u32))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use input::InputSystem;
+    use omnilib::OmniLib;
+    use xt::TypeManager;
+
+    #[test]
+    fn test_tile_to_earth() -> Fallible<()> {
+        let input = InputSystem::new(vec![])?;
+        let mut gpu = GPU::new(&input, Default::default())?;
+        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
+        let lib = omni.library("FA");
+        let types = TypeManager::new(lib.clone());
+        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
+        let mm = MissionMap::from_str(&lib.load_text("BAL.MM")?, &types, &lib)?;
+        let _t2_buffer = T2Buffer::new(&mm, &palette, &lib, &mut gpu)?;
+        Ok(())
     }
 }

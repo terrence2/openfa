@@ -16,14 +16,15 @@ use camera::{ArcBallCamera, CameraAbstract};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
-use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3};
-use std::{cell::RefCell, f32::consts::PI, mem, sync::Arc};
+use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3, Vector4};
+use std::{cell::RefCell, f64::consts::PI, mem, sync::Arc};
 use t2::Terrain;
+use universe::{FEET_TO_HM_32, FEET_TO_HM_64};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 // FIXME: these should probably not live here.
-const HM_TO_KM: f32 = 1f32 / 10f32;
+const HM_TO_KM: f64 = 1.0 / 10.0;
 
 pub fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     let mut v = [[0f32; 4]; 4];
@@ -37,15 +38,21 @@ pub fn p2v(p: &Point3<f32>) -> [f32; 4] {
     [p.x, p.y, p.z, 0f32]
 }
 
+pub fn v2v(v: &Vector4<f32>) -> [f32; 4] {
+    [v[0], v[1], v[2], v[3]]
+}
+
 pub struct GlobalParametersBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     buffer_size: wgpu::BufferAddress,
     parameters_buffer: Arc<Box<wgpu::Buffer>>,
+
+    pub tile_to_earth: Matrix4<f32>,
 }
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug, Default)]
 struct Globals {
     // Overlay screen info
     screen_projection: [[f32; 4]; 4],
@@ -57,6 +64,12 @@ struct Globals {
     // Inverted camera parameters in ecliptic XYZ, 1km per unit.
     inv_view: [[f32; 4]; 4],
     inv_proj: [[f32; 4]; 4],
+
+    tile_to_earth: [[f32; 4]; 4],
+    tile_to_earth_rotation: [[f32; 4]; 4],
+    tile_to_earth_scale: [[f32; 4]; 4],
+    tile_to_earth_translation: [f32; 4],
+    tile_center_offset: [f32; 4],
 
     // Camera position in each of the above.
     camera_position_tile: [f32; 4],
@@ -98,6 +111,7 @@ impl GlobalParametersBuffer {
             bind_group,
             buffer_size,
             parameters_buffer,
+            tile_to_earth: Matrix4::identity(),
         })))
     }
 
@@ -171,18 +185,18 @@ impl GlobalParametersBuffer {
         camera: &ArcBallCamera,
         gpu: &GPU,
     ) -> Globals {
-        fn deg2rad(deg: f32) -> f32 {
-            deg * PI / 180f32
+        fn deg2rad(deg: f64) -> f64 {
+            deg * PI / 180.0
         }
-        fn ft2hm(ft: f32) -> f32 {
-            ft * 0.003_048
+        fn ft2hm(ft: f64) -> f64 {
+            ft * FEET_TO_HM_64
         }
 
-        let tile_width_hm = ft2hm(tile_width_ft);
-        let tile_height_hm = ft2hm(tile_height_ft);
+        let tile_width_hm = ft2hm(tile_width_ft as f64);
+        let tile_height_hm = ft2hm(tile_height_ft as f64);
 
-        let lat = deg2rad(tile_origin_lat_deg);
-        let lon = deg2rad(tile_origin_lon_deg);
+        let lat = deg2rad(tile_origin_lat_deg as f64);
+        let lon = deg2rad(tile_origin_lon_deg as f64);
 
         /*
         fn rad2deg(rad: f32) -> f32 {
@@ -203,31 +217,51 @@ impl GlobalParametersBuffer {
         // y = (N + h) * cos(lat) * sin(lon)
         // z = (( b^2 / a^2 ) * N + h) * sin(lat)
         let base = Point3::new(lat.cos() * lon.sin(), -lat.sin(), lat.cos() * lon.cos());
-        let base_in_km = base * 6360f32;
+        let base_in_km = base * 6360f64;
 
         let r_lon = UnitQuaternion::from_axis_angle(
-            &Unit::new_unchecked(Vector3::new(0f32, -1f32, 0f32)),
+            &Unit::new_unchecked(Vector3::new(0f64, -1f64, 0f64)),
             -lon,
         );
         let r_lat = UnitQuaternion::from_axis_angle(
-            &Unit::new_unchecked(r_lon * Vector3::new(1f32, 0f32, 0f32)),
-            -(PI / 2f32 - lat),
+            &Unit::new_unchecked(r_lon * Vector3::new(1f64, 0f64, 0f64)),
+            -(PI / 2.0 - lat),
         );
 
-        let tile_ul_eye = camera.position();
-        let tile_ul_tgt: Point3<f32> = convert(camera.target);
-        let ul_to_c = Vector3::new(tile_width_hm / 2f32, 0f32, tile_height_hm / 2f32);
+        let tile_ul_eye = camera.eye();
+        let tile_ul_tgt = camera.target;
+        let ul_to_c = Vector3::new(tile_width_hm / 2f64, 0f64, tile_height_hm / 2f64);
         let tile_c_eye = tile_ul_eye - ul_to_c;
         let tile_c_tgt = tile_ul_tgt - ul_to_c;
-        let tile_up: Vector3<f32> = convert(camera.up);
+        let tile_up = camera.up;
 
-        let earth_eye = r_lat * r_lon * (tile_c_eye * HM_TO_KM) + base_in_km.coords;
-        let earth_tgt = r_lat * r_lon * (tile_c_tgt * HM_TO_KM) + base_in_km.coords;
-        let earth_up = r_lat * r_lon * tile_up;
+        // Create a matrix to translate between tile and earth coordinates.
+        let rot_m = Matrix4::from((r_lat * r_lon).to_rotation_matrix());
+        let trans_m = Matrix4::new_translation(&Vector3::new(
+            base_in_km.coords[0],
+            base_in_km.coords[1],
+            base_in_km.coords[2],
+        ));
+        let scale_m = Matrix4::new_scaling(HM_TO_KM);
+        let tile_to_earth = trans_m * scale_m * rot_m;
 
-        let earth_view = Isometry3::look_at_rh(&earth_eye, &earth_tgt, &earth_up);
+        let tile_center_offset = Vector3::new(
+            tile_width_ft * FEET_TO_HM_32 / 2.0,
+            0f32,
+            tile_height_ft * FEET_TO_HM_32 / 2.0,
+        );
 
-        let earth_inv_view: Matrix4<f32> = earth_view.inverse().to_homogeneous();
+        let earth_eye = tile_to_earth * tile_c_eye.to_homogeneous();
+        let earth_tgt = tile_to_earth * tile_c_tgt.to_homogeneous();
+        let earth_up = (tile_to_earth * tile_up.to_homogeneous()).normalize();
+
+        let earth_view = Isometry3::look_at_rh(
+            &Point3::from(earth_eye.xyz()),
+            &Point3::from(earth_tgt.xyz()),
+            &earth_up.xyz(),
+        );
+
+        let earth_inv_view: Matrix4<f32> = convert(earth_view.inverse().to_homogeneous());
         let earth_inv_proj: Matrix4<f32> = convert(camera.projection().inverse());
 
         let dim = gpu.physical_size();
@@ -243,8 +277,13 @@ impl GlobalParametersBuffer {
             proj: m2v(&camera.projection_matrix()),
             inv_view: m2v(&earth_inv_view),
             inv_proj: m2v(&earth_inv_proj),
-            camera_position_tile: p2v(&camera.position()),
-            camera_position_earth_km: p2v(&earth_eye),
+            tile_to_earth: m2v(&convert(tile_to_earth)),
+            tile_to_earth_rotation: m2v(&convert(rot_m)),
+            tile_to_earth_scale: m2v(&convert(scale_m)),
+            tile_to_earth_translation: v2v(&convert(base_in_km.coords.to_homogeneous())),
+            tile_center_offset: v2v(&tile_center_offset.to_homogeneous()),
+            camera_position_tile: p2v(&convert(camera.eye())),
+            camera_position_earth_km: v2v(&convert(earth_eye)),
         }
     }
 }

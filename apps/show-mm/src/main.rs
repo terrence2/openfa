@@ -17,7 +17,7 @@ use camera::ArcBallCamera;
 use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
-use galaxy::{Galaxy, FEET_TO_HM};
+use galaxy::{Galaxy, FEET_TO_HM_32};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
@@ -75,6 +75,7 @@ fn main() -> Fallible<()> {
     let mut galaxy = Galaxy::new(lib)?;
 
     let shape_bindings = InputBindings::new("map")
+        .bind("+move-sun", "mouse2")?
         .bind("prev-object", "Shift+n")?
         .bind("next-object", "n")?
         .bind("+pan-view", "mouse1")?
@@ -95,6 +96,7 @@ fn main() -> Fallible<()> {
     let mut positions = Vec::new();
     let mut names = Vec::new();
     let t2_buffer = T2Buffer::new(&mm, galaxy.palette(), galaxy.library(), &mut gpu)?;
+
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
         for info in mm.objects() {
@@ -127,7 +129,7 @@ fn main() -> Fallible<()> {
                 let mut p = info.position();
                 let ns_ft = t2_buffer.borrow().t2().extent_north_south_in_ft();
                 p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
-                p *= FEET_TO_HM;
+                p *= FEET_TO_HM_32;
                 p.coords[1] = t2_buffer.borrow().t2().ground_height_at(&p);
                 positions.push(p);
                 let sh_name = info
@@ -184,7 +186,10 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
+    let mut sun_angle = 0.0f64;
+    let mut in_sun_move = false;
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
+    camera.set_target_point(&nalgebra::convert(positions[position_index]));
 
     loop {
         let loop_start = Instant::now();
@@ -209,7 +214,11 @@ fn main() -> Fallible<()> {
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "mouse-move" => {
-                    camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                    if in_sun_move {
+                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
+                    } else {
+                        camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                    }
                 }
                 "mouse-wheel" => {
                     camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
@@ -218,12 +227,14 @@ fn main() -> Fallible<()> {
                 "-pan-view" => camera.on_mousebutton_up(1),
                 "+move-view" => camera.on_mousebutton_down(3),
                 "-move-view" => camera.on_mousebutton_up(3),
+                "+move-sun" => in_sun_move = true,
+                "-move-sun" => in_sun_move = false,
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
 
-        let sun_direction = Vector3::new(0f32, 0f32, 1f32);
+        let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
 
         let mut buffers = Vec::new();
         globals_buffer

@@ -9,6 +9,7 @@ failure = "^ 0.1.2"
 image = "^ 0.21"
 log = ">= 0.4"
 memoffset = "^ 0.5"
+nalgebra = "^ 0.18"
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
@@ -26,6 +27,7 @@ universe = { path = "../../../universe" }
 [dev-dependencies]
 simplelog = "^ 0.5"
 omnilib = { path = "../../../omnilib" }
+input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
 xt = { path = "../../../xt" }
 
 [build-dependencies]

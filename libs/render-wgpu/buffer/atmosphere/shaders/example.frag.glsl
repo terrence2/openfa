@@ -48,7 +48,6 @@ void main() {
         v_sun_direction,
         ground_radiance,
         ground_alpha);
-    f_color = vec4(ground_radiance, 1.0);
 
     vec3 sky_radiance = vec3(0);
     compute_sky_radiance(
@@ -67,8 +66,7 @@ void main() {
         sky_radiance
     );
 
-    vec3 radiance = sky_radiance;
-    radiance = mix(radiance, ground_radiance, ground_alpha);
+    vec3 radiance = mix(sky_radiance, ground_radiance, ground_alpha);
 
     vec3 color = pow(
             vec3(1.0) - exp(-radiance / vec3(atmosphere.whitepoint) * EXPOSURE),

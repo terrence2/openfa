@@ -26,7 +26,7 @@ layout(location = 0) out vec4 f_color;
 
 const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 
-// Stars are in J2000 coordinates, so vec3(0, 1, 0) points to polaris, rather than elliptical up. This is nice as
+// Stars are in J2000 coordinates, so vec3(0, -1, 0) points to polaris, rather than elliptical up. This is nice as
 // it means that we don't have to do any work to align the ground / planet we draw to the stars. That said,
 // whatever passes in the sun direction *does* need to account for that relative tilt.
 void main() {

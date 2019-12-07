@@ -188,7 +188,8 @@ void get_sky_radiance_to_point(
     // scattering along the last shadow_length meters of the view ray, which we
     // do by subtracting shadow_length from d (this way scattering_p is equal to
     // the S|x_s=x_0-lv term in Eq. (17) of our paper).
-    d = max(d - 0.0, 0.0);
+    float shadow_length = 0.0;
+    d = max(d - shadow_length, 0.0);
     float r_p = clamp_radius(sqrt(d * d + 2.0 * r * mu * d + r * r), atmosphere.bottom_radius, atmosphere.top_radius);
     float mu_p = (r * mu + d) / r_p;
     float mu_s_p = (r * mu_s + d * nu) / r_p;
