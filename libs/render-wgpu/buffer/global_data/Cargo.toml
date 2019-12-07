@@ -16,6 +16,7 @@ camera = { path = "../../../render-shared/common/camera" }
 frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 t2 = { path = "../../../t2" }
+universe = { path = "../../../universe" }
 
 [dev-dependencies]
 input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }

@@ -81,7 +81,7 @@ impl T2TerrainRenderPass {
                 }],
                 depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
                     format: GPU::DEPTH_FORMAT,
-                    depth_write_enabled: false, // FIXME: for testing
+                    depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::Less,
                     stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
                     stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,

@@ -306,9 +306,9 @@ vec4 get_transmittance(
     // assert(d >= 0.0 * m);
 
     float r_d = clamp_radius(
-    sqrt(d * d + 2.0 * r * mu * d + r * r),
-    bottom_radius,
-    top_radius
+        sqrt(d * d + 2.0 * r * mu * d + r * r),
+        bottom_radius,
+        top_radius
     );
     float mu_d = clamp_cosine((r * mu + d) / r_d);
 
