@@ -35,8 +35,6 @@ use universe::{EARTH_RADIUS_KM, FEET_TO_HM_32, FEET_TO_KM};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
-const HM_TO_KM: f64 = 1.0 / 10.0;
-
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
 pub struct Vertex {
@@ -409,6 +407,7 @@ impl T2Buffer {
     // We deal with this by draping down in the direction of the tile, rather than towards
     // earth center, and using the result as the lat-lon. e.g. we treat XYZ as primary, but
     //
+    #[allow(clippy::too_many_arguments)]
     fn compute_at(
         terrain: &Terrain,
         palette: &Palette,
