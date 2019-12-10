@@ -20,7 +20,7 @@ use lib::Library;
 use log::trace;
 use memoffset::offset_of;
 use mm::MissionMap;
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use pal::Palette;
 use pic::Pic;
 use std::{
@@ -129,12 +129,20 @@ impl<'a> T2BufferFactory<'a> {
         let (vertex_buffer, index_buffer, index_count) =
             self.upload_terrain_textured_simple(&terrain, &atlas, &palette, gpu.device())?;
 
+        let mut positions = HashMap::new();
+        mem::swap(&mut positions, &mut self.memo_position);
+
+        let mut normals = HashMap::new();
+        mem::swap(&mut normals, &mut self.memo_normal);
+
         Ok(Arc::new(RefCell::new(T2Buffer {
             bind_group_layout,
             bind_group,
             vertex_buffer,
             index_buffer,
             index_count,
+            positions,
+            normals,
             terrain,
         })))
     }
@@ -524,6 +532,8 @@ pub struct T2Buffer {
     index_count: u32,
 
     // We need access to the height data for collisions, layout, etc.
+    positions: HashMap<(u32, u32), Vector3<f32>>,
+    normals: HashMap<[(u32, u32); 3], Vector3<f32>>,
     terrain: Terrain,
 }
 
@@ -560,6 +570,70 @@ impl T2Buffer {
 
     pub fn index_range(&self) -> Range<u32> {
         0..self.index_count
+    }
+
+    pub fn ground_height_at_tile(&self, p: &Point3<f32>) -> f32 {
+        let scale_x_hm = self.terrain.extent_east_west_in_ft() * FEET_TO_HM_32;
+        let scale_z_hm = self.terrain.extent_north_south_in_ft() * FEET_TO_HM_32;
+
+        // The terrain is draped, so p.x/z do not need projection.
+        if p.coords[0] < 0.0
+            || p.coords[2] < 0.0
+            || p.coords[0] > scale_x_hm
+            || p.coords[1] > scale_z_hm
+        {
+            return 0f32;
+        }
+
+        let xf = p.coords[0] / scale_x_hm;
+        let zf = 1f32 - (p.coords[2] / scale_z_hm);
+        let x0 = (xf * self.terrain.width() as f32) as u32;
+        let z0 = (zf * self.terrain.height() as f32) as u32;
+        let x1 = x0 + 1;
+        let z1 = z0 + 1;
+        if x1 >= self.terrain.width() || z1 >= self.terrain.height() {
+            return 0f32;
+        }
+
+        let swi = (x0, z1);
+        let sei = (x1, z1);
+        let nwi = (x0, z0);
+        let nei = (x1, z0);
+        let sw = self.positions[&swi];
+        let se = self.positions[&sei];
+        let nw = self.positions[&nwi];
+        let ne = self.positions[&nei];
+        assert!(p.coords[0] >= sw[0]);
+        assert!(p.coords[0] <= ne[0]);
+        assert!(p.coords[0] <= se[0]);
+        assert!(p.coords[0] >= nw[0]);
+        assert!(p.coords[2] >= sw[2]);
+        assert!(p.coords[2] <= ne[2]);
+        assert!(p.coords[2] >= se[2]);
+        assert!(p.coords[2] <= nw[2]);
+
+        // For upper left tris: nw, ne, se
+        let down = Vector3::new(0f32, 1f32, 0f32);
+        let norm = self.normals[&[nwi, sei, nei]];
+        let d = ((nw - p.coords).dot(&norm)) / down.dot(&norm);
+        let p1 = p + down * d;
+
+        // Find out if we actually computed the correct triangle.
+        let w = scale_x_hm / self.terrain.width() as f32;
+        let h = scale_z_hm / self.terrain.height() as f32;
+        let x = p1[0] - ne[0];
+        let y = p1[2] - sw[2];
+        return if w * h > w * y + h * x {
+            let norm = self.normals[&[swi, sei, nwi]];
+            let d = ((sw - p.coords).dot(&norm)) / down.dot(&norm);
+            let p2 = p + down * d;
+            p2[1]
+        } else {
+            p1[1]
+        };
+
+        //w*y+h*x-w*h<0
+        // For lower right tris: nw, se, sw
     }
 }
 

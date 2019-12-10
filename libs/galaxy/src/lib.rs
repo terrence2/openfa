@@ -88,6 +88,7 @@ impl Galaxy {
         slot_id: SlotId,
         shape_id: ShapeId,
         part: &ChunkPart,
+        scale: f32,
         position: Point3<f32>,
         rotation: &UnitQuaternion<f32>,
     ) -> Fallible<Entity> {
@@ -98,7 +99,7 @@ impl Galaxy {
             vec![(
                 Transform::new(position.coords),
                 Rotation::new(*rotation),
-                Scale::new(SHAPE_UNIT_TO_FEET * FEET_TO_HM_32),
+                Scale::new(/*SHAPE_UNIT_TO_FEET */ scale * FEET_TO_HM_32),
                 ShapeRef::new(shape_id),
                 ShapeSlot::new(slot_id),
                 ShapeState::new(widgets.errata()),

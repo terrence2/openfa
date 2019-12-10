@@ -165,17 +165,12 @@ impl OpenChunk {
         lib: &Library,
     ) -> Fallible<ShapeId> {
         let start_vertex = self.vertex_upload_buffer.len();
-        let mut verts = Vec::new();
-        let shape_widgets = Arc::new(RwLock::new(ShapeUploader::draw_model(
-            name,
-            analysis,
+        let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, lib).draw_model(
             sh,
+            analysis,
             selection,
-            palette,
-            lib,
-            &mut verts,
             &mut self.atlas_builder,
-        )?));
+        )?;
         self.vertex_upload_buffer.append(&mut verts);
 
         let part = ChunkPart::new(start_vertex, self.vertex_upload_buffer.len(), shape_widgets);
