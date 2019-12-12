@@ -748,12 +748,12 @@ impl<'a> ShapeUploader<'a> {
             });
         for v in vert_buf.vertices() {
             let position = [f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1])];
-            for i in 0..3 {
-                if position[i] > self.aabb_max[i] {
-                    self.aabb_max[i] = position[i];
+            for (i, &p) in position.iter().enumerate() {
+                if p > self.aabb_max[i] {
+                    self.aabb_max[i] = p;
                 }
-                if position[i] < self.aabb_min[i] {
-                    self.aabb_min[i] = position[i];
+                if p < self.aabb_min[i] {
+                    self.aabb_min[i] = p;
                 }
             }
             self.vert_pool.push(Vertex {

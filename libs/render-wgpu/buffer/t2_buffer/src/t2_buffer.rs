@@ -572,6 +572,7 @@ impl T2Buffer {
         0..self.index_count
     }
 
+    #[allow(clippy::many_single_char_names)]
     pub fn ground_height_at_tile(&self, p: &Point3<f32>) -> f32 {
         let scale_x_hm = self.terrain.extent_east_west_in_ft() * FEET_TO_HM_32;
         let scale_z_hm = self.terrain.extent_north_south_in_ft() * FEET_TO_HM_32;
@@ -623,17 +624,15 @@ impl T2Buffer {
         let h = scale_z_hm / self.terrain.height() as f32;
         let x = p1[0] - ne[0];
         let y = p1[2] - sw[2];
-        return if w * h > w * y + h * x {
+        if w * h > w * y + h * x {
+            // For lower right tris: nw, se, sw
             let norm = self.normals[&[swi, sei, nwi]];
             let d = ((sw - p.coords).dot(&norm)) / down.dot(&norm);
             let p2 = p + down * d;
             p2[1]
         } else {
             p1[1]
-        };
-
-        //w*y+h*x-w*h<0
-        // For lower right tris: nw, se, sw
+        }
     }
 }
 

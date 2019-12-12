@@ -23,7 +23,7 @@ use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use mm::MissionMap;
-use nalgebra::{UnitQuaternion, Vector3};
+use nalgebra::Vector3;
 use omnilib::{make_opt_struct, OmniLib};
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
@@ -133,8 +133,7 @@ fn main() -> Fallible<()> {
                 bail!("did not expect a projectile in MM objects")
             } else {
                 println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
-                let mut scale = 4f32;
-                if info
+                let scale = if info
                     .xt()
                     .ot()
                     .shape
@@ -142,8 +141,10 @@ fn main() -> Fallible<()> {
                     .expect("a shape file")
                     .starts_with("BNK")
                 {
-                    scale = 2f32;
-                }
+                    2f32
+                } else {
+                    4f32
+                };
                 let mut p = info.position();
                 let ns_ft = t2_buffer.borrow().t2().extent_north_south_in_ft();
                 p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan

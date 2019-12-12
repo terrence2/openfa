@@ -26,7 +26,7 @@ use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
     ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,
-    SlotId, SHAPE_UNIT_TO_FEET,
+    SlotId,
 };
 use std::{sync::Arc, time::Instant};
 

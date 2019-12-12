@@ -142,6 +142,7 @@ fn main() -> Fallible<()> {
         fuel_slot_id,
         fuel_shape_id,
         shape_instance_buffer.borrow().part(fuel_shape_id),
+        4f32,
         Point3::new(0f32, 0f32, 0f32),
         &UnitQuaternion::identity(),
     )?;
@@ -159,6 +160,7 @@ fn main() -> Fallible<()> {
         f18_slot_id,
         f18_shape_id,
         shape_instance_buffer.borrow().part(f18_shape_id),
+        4f32,
         Point3::new(0f32, -10f32, 0f32),
         &UnitQuaternion::identity(),
     )?;
@@ -176,6 +178,7 @@ fn main() -> Fallible<()> {
         slot_id,
         shape_id,
         shape_instance_buffer.borrow().part(shape_id),
+        4f32,
         Point3::new(3f32, -10f32, 3f32),
         &UnitQuaternion::identity(),
     )?;
@@ -193,6 +196,7 @@ fn main() -> Fallible<()> {
         slot_id,
         shape_id,
         shape_instance_buffer.borrow().part(shape_id),
+        4f32,
         Point3::new(-3f32, -10f32, 3f32),
         &UnitQuaternion::identity(),
     )?;
