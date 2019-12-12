@@ -28,7 +28,9 @@ use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
     collections::{HashMap, HashSet},
+    f32::{INFINITY, NEG_INFINITY},
     mem,
+    sync::{Arc, RwLock},
     time::Instant,
 };
 use zerocopy::{AsBytes, FromBytes};
@@ -269,6 +271,8 @@ impl ShapeErrata {
     }
 }
 
+// TODO: this should be a sibling of ShapeUploader in such a way that they can share
+// TODO: the core iterate-instructions loop, but keep separate state around that.
 pub(crate) struct AnalysisResults {
     has_frame_animation: bool,
     prop_man: BufferPropsManager,
@@ -461,7 +465,7 @@ impl ProgramCounter {
     }
 
     // Get the current instructions.
-    fn current_instr<'a>(&self, sh: &'a RawShape) -> &'a Instr {
+    fn current_instr<'b>(&self, sh: &'b RawShape) -> &'b Instr {
         &sh.instrs[self.instr_offset]
     }
 
@@ -630,14 +634,23 @@ pub struct ShapeWidgets {
 
     // Draw properties based on what's in the shape file.
     errata: ShapeErrata,
+
+    // Bounding box
+    aabb: [[f32; 3]; 2],
 }
 
 impl ShapeWidgets {
-    pub fn new(name: &str, errata: ShapeErrata, transformers: Vec<Transformer>) -> Self {
+    pub fn new(
+        name: &str,
+        errata: ShapeErrata,
+        transformers: Vec<Transformer>,
+        aabb: [[f32; 3]; 2],
+    ) -> Self {
         Self {
             shape_name: name.to_owned(),
             transformers,
             errata,
+            aabb,
         }
     }
 
@@ -671,28 +684,60 @@ impl ShapeWidgets {
     pub fn num_transformer_floats(&self) -> usize {
         self.transformers.len() * 6
     }
+
+    // In shape units.
+    pub fn height(&self) -> f32 {
+        self.aabb[1][1] - self.aabb[0][1]
+    }
+
+    pub fn aabb(&self) -> &[[f32; 3]; 2] {
+        &self.aabb
+    }
 }
 
-pub struct ShapeUploader;
-impl ShapeUploader {
-    fn align_vertex_pool(vert_pool: &mut Vec<Vertex>, initial_elems: usize) {
-        if initial_elems < vert_pool.len() {
-            vert_pool.truncate(initial_elems);
+pub struct ShapeUploader<'a> {
+    name: &'a str,
+    palette: &'a Palette,
+    lib: &'a Library,
+    aabb_min: [f32; 3],
+    aabb_max: [f32; 3],
+    vert_pool: Vec<Vertex>,
+    vertices: Vec<Vertex>,
+    active_frame: Option<Frame>,
+}
+
+impl<'a> ShapeUploader<'a> {
+    pub fn new(name: &'a str, palette: &'a Palette, lib: &'a Library) -> Self {
+        Self {
+            name,
+            palette,
+            lib,
+            aabb_min: [INFINITY; 3],
+            aabb_max: [NEG_INFINITY; 3],
+            vert_pool: Vec::new(),
+            vertices: Vec::new(),
+            active_frame: None,
+        }
+    }
+
+    fn align_vertex_pool(&mut self, initial_elems: usize) {
+        if initial_elems < self.vert_pool.len() {
+            self.vert_pool.truncate(initial_elems);
             return;
         }
 
-        let pad_count = initial_elems - vert_pool.len();
+        let pad_count = initial_elems - self.vert_pool.len();
         for _ in 0..pad_count {
-            vert_pool.push(Default::default());
+            self.vert_pool.push(Default::default());
         }
     }
 
     fn load_vertex_buffer(
+        &mut self,
         buffer_properties: &HashMap<usize, BufferProps>,
         vert_buf: &VertexBuf,
-        vert_pool: &mut Vec<Vertex>,
     ) -> u32 {
-        Self::align_vertex_pool(vert_pool, vert_buf.buffer_target_offset());
+        self.align_vertex_pool(vert_buf.buffer_target_offset());
         let props = buffer_properties
             .get(&vert_buf.at_offset())
             .cloned()
@@ -702,14 +747,23 @@ impl ShapeUploader {
                 xform_id: MAX_XFORM_ID,
             });
         for v in vert_buf.vertices() {
-            vert_pool.push(Vertex {
+            let position = [f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1])];
+            for (i, &p) in position.iter().enumerate() {
+                if p > self.aabb_max[i] {
+                    self.aabb_max[i] = p;
+                }
+                if p < self.aabb_min[i] {
+                    self.aabb_min[i] = p;
+                }
+            }
+            self.vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.
                 color: [0.75f32, 0.5f32, 0f32, 1f32],
                 tex_coord: [0f32, 0f32],
                 // Base position, flags, and the xform are constant
                 // for this entire buffer, independent of the face.
-                position: [f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1])],
+                position,
                 flags0: (props.flags.bits() & 0xFFFF_FFFF) as u32,
                 flags1: (props.flags.bits() >> 32) as u32,
                 xform_id: props.xform_id,
@@ -723,14 +777,7 @@ impl ShapeUploader {
         props.xform_id
     }
 
-    fn push_facet(
-        facet: &Facet,
-        vert_pool: &[Vertex],
-        palette: &Palette,
-        active_frame: &Option<Frame>,
-        override_flags: Option<VertexFlags>,
-        vertices: &mut Vec<Vertex>,
-    ) -> Fallible<()> {
+    fn push_facet(&mut self, facet: &Facet, override_flags: Option<VertexFlags>) -> Fallible<()> {
         // Load all vertices in this facet into the vertex upload
         // buffer, copying in the color and texture coords for each
         // face. The layout appears to be for triangle fans.
@@ -749,20 +796,20 @@ impl ShapeUploader {
                     [0, 0]
                 };
 
-                if index >= vert_pool.len() {
+                if index >= self.vert_pool.len() {
                     trace!(
                         "skipping out-of-bounds index at {} of {}",
                         index,
-                        vert_pool.len(),
+                        self.vert_pool.len(),
                     );
                     continue;
                 }
-                let mut v = vert_pool[index];
+                let mut v = self.vert_pool[index];
                 if let Some(flags) = override_flags {
                     v.flags0 = (flags.bits() & 0xFFFF_FFFF) as u32;
                     v.flags1 = (flags.bits() >> 32) as u32;
                 }
-                v.color = palette.rgba_f32(facet.color as usize)?;
+                v.color = self.palette.rgba_f32(facet.color as usize)?;
                 if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
                     || facet.flags.contains(FacetFlags::UNK1)
                     || facet.flags.contains(FacetFlags::UNK5)
@@ -770,11 +817,14 @@ impl ShapeUploader {
                     v.flags0 |= (VertexFlags::BLEND_TEXTURE.bits() & 0xFFFF_FFFF) as u32;
                 }
                 if facet.flags.contains(FacetFlags::HAVE_TEXCOORDS) {
-                    assert!(active_frame.is_some());
-                    let frame = active_frame.as_ref().unwrap();
+                    ensure!(
+                        self.active_frame.is_some(),
+                        "no frame active at facet with texcoords defined"
+                    );
+                    let frame = self.active_frame.as_ref().unwrap();
                     v.tex_coord = frame.tex_coord_at(tex_coord);
                 }
-                vertices.push(v);
+                self.vertices.push(v);
             }
         }
         Ok(())
@@ -782,10 +832,10 @@ impl ShapeUploader {
 
     // Scan the code segment for references and cross-reference them with trampolines.
     // Return all references to trampolines in the code segment, by name.
-    fn find_external_references<'a>(
+    fn find_external_references<'b>(
         x86: &X86Code,
-        sh: &'a RawShape,
-    ) -> HashMap<&'a str, &'a X86Trampoline> {
+        sh: &'b RawShape,
+    ) -> HashMap<&'b str, &'b X86Trampoline> {
         let mut out = HashMap::new();
         for instr in &x86.bytecode.instrs {
             for operand in &instr.operands {
@@ -801,10 +851,10 @@ impl ShapeUploader {
         out
     }
 
-    fn find_external_calls<'a>(
+    fn find_external_calls<'b>(
         x86: &X86Code,
-        sh: &'a RawShape,
-    ) -> Fallible<HashMap<&'a str, &'a X86Trampoline>> {
+        sh: &'b RawShape,
+    ) -> Fallible<HashMap<&'b str, &'b X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
         for instr in &x86.bytecode.instrs {
@@ -1093,20 +1143,14 @@ impl ShapeUploader {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw_model(
-        name: &str,
-        analysis: AnalysisResults,
+        &mut self,
         sh: &RawShape,
+        analysis: AnalysisResults,
         selection: &DrawSelection,
-        palette: &Palette,
-        lib: &Library,
-        vertices: &mut Vec<Vertex>,
         atlas: &mut MegaAtlas,
-    ) -> Fallible<ShapeWidgets> {
-        trace!("ShapeUploader::draw_model: {}", name);
-        let mut active_frame = None;
-        let mut vert_pool = Vec::new();
+    ) -> Fallible<(Arc<RwLock<ShapeWidgets>>, Vec<Vertex>)> {
+        trace!("ShapeUploader::draw_model: {}", self.name);
         let mut callback = |_pc: &ProgramCounter, instr: &Instr| {
             match instr {
                 Instr::JumpToFrame(frame) => {
@@ -1125,30 +1169,23 @@ impl ShapeUploader {
                         let index = sh.bytes_to_index(offset)?;
                         let target_instr = &sh.instrs[index];
                         let facet = target_instr.unwrap_facet()?;
-                        Self::push_facet(
-                            facet,
-                            &vert_pool,
-                            palette,
-                            &active_frame,
-                            VertexFlags::from_bits(mask_base << i),
-                            vertices,
-                        )?;
+                        self.push_facet(facet, VertexFlags::from_bits(mask_base << i))?;
                     }
                 }
 
                 Instr::TextureRef(texture) => {
                     let filename = texture.filename.to_uppercase();
-                    let data = lib.load(&filename)?;
+                    let data = self.lib.load(&filename)?;
                     let pic = Pic::from_bytes(&data)?;
-                    active_frame = Some(atlas.push(&filename, &pic, data, palette)?);
+                    self.active_frame = Some(atlas.push(&filename, &pic, data, self.palette)?);
                 }
 
                 Instr::VertexBuf(vert_buf) => {
-                    Self::load_vertex_buffer(&analysis.prop_man.props, vert_buf, &mut vert_pool);
+                    self.load_vertex_buffer(&analysis.prop_man.props, vert_buf);
                 }
 
                 Instr::Facet(facet) => {
-                    Self::push_facet(facet, &vert_pool, palette, &active_frame, None, vertices)?;
+                    self.push_facet(facet, None)?;
                 }
 
                 _ => {}
@@ -1157,10 +1194,17 @@ impl ShapeUploader {
         };
         Self::iterate_instructions(sh, selection, &mut callback)?;
 
-        Ok(ShapeWidgets::new(
-            name,
-            ShapeErrata::from_flags(&analysis),
-            analysis.transformers,
+        let mut verts = Vec::new();
+        mem::swap(&mut verts, &mut self.vertices);
+
+        Ok((
+            Arc::new(RwLock::new(ShapeWidgets::new(
+                self.name,
+                ShapeErrata::from_flags(&analysis),
+                analysis.transformers,
+                [self.aabb_min, self.aabb_max],
+            ))),
+            verts,
         ))
     }
 

@@ -115,6 +115,13 @@ fn main() -> Fallible<()> {
                     galaxy.library(),
                     &mut gpu,
                 )?;
+            let aabb = *shape_instance_buffer
+                .borrow()
+                .part(shape_id)
+                .widgets()
+                .read()
+                .unwrap()
+                .aabb();
 
             if let Ok(_pt) = info.xt().pt() {
                 //galaxy.create_flyer(pt, shape_id, slot_id)?
@@ -126,11 +133,24 @@ fn main() -> Fallible<()> {
                 bail!("did not expect a projectile in MM objects")
             } else {
                 println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
+                let scale = if info
+                    .xt()
+                    .ot()
+                    .shape
+                    .as_ref()
+                    .expect("a shape file")
+                    .starts_with("BNK")
+                {
+                    2f32
+                } else {
+                    4f32
+                };
                 let mut p = info.position();
                 let ns_ft = t2_buffer.borrow().t2().extent_north_south_in_ft();
                 p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
                 p *= FEET_TO_HM_32;
-                p.coords[1] = t2_buffer.borrow().t2().ground_height_at(&p);
+                p.coords[1] = /*t2_buffer.borrow().ground_height_at_tile(&p)*/
+                    -aabb[1][1] * scale * FEET_TO_HM_32;
                 positions.push(p);
                 let sh_name = info
                     .xt()
@@ -148,11 +168,60 @@ fn main() -> Fallible<()> {
                     slot_id,
                     shape_id,
                     shape_instance_buffer.borrow().part(shape_id),
+                    scale,
                     p,
                     info.angle(),
                 )?;
             };
         }
+
+        /*
+        let (shape_id, slot_id) = shape_instance_buffer
+            .borrow_mut()
+            .upload_and_allocate_slot(
+                "TREEA.SH",
+                DrawSelection::NormalModel,
+                galaxy.palette(),
+                galaxy.library(),
+                &mut gpu,
+            )?;
+        let height = shape_instance_buffer
+            .borrow()
+            .part(shape_id)
+            .widgets()
+            .read()
+            .unwrap()
+            .height();
+        use nalgebra::Point3;
+        use rand::distributions::{IndependentSample, Range};
+        let ns_between = Range::new(
+            0f32,
+            t2_buffer.borrow().t2().extent_north_south_in_ft()
+                / t2_buffer.borrow().t2().height() as f32,
+        );
+        let we_between = Range::new(
+            0f32,
+            t2_buffer.borrow().t2().extent_east_west_in_ft()
+                / t2_buffer.borrow().t2().width() as f32,
+        );
+        let mut rng = rand::thread_rng();
+        for i in 0..10000 {
+            let x = we_between.ind_sample(&mut rng);
+            let z = ns_between.ind_sample(&mut rng);
+            let mut p = Point3::new(x, 0f32, z);
+            p *= FEET_TO_HM_32;
+            p.coords[1] = /*t2_buffer.borrow().ground_height_at_tile(&p)*/
+                - height * 4.0 * FEET_TO_HM_32 / 2f32;
+            println!("p: {:?}", p);
+            galaxy.create_building(
+                slot_id,
+                shape_id,
+                shape_instance_buffer.borrow().part(shape_id),
+                p,
+                &UnitQuaternion::identity(),
+            )?;
+        }
+        */
     }
     shape_instance_buffer
         .borrow_mut()

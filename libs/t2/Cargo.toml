@@ -9,7 +9,6 @@ failure = "^ 0.1.2"
 image = "^ 0.21"
 lazy_static = "^ 1.3"
 log = "^ 0.4"
-nalgebra = "^ 0.18"
 packed_struct = { path = "../packed_struct/" }
 reverse = { path = "../reverse/" }
 

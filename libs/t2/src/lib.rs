@@ -111,7 +111,6 @@ Ukraine            {0, 1}
 use failure::{bail, ensure, Fallible};
 use lazy_static::lazy_static;
 use log::trace;
-use nalgebra::Point3;
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
 
@@ -708,11 +707,6 @@ impl Terrain {
 
     pub fn height(&self) -> u32 {
         self.height
-    }
-
-    pub fn ground_height_at(&self, _p: &Point3<f32>) -> f32 {
-        // FIXME: implement this
-        0f32
     }
 }
 
