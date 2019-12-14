@@ -210,6 +210,13 @@ fn main() -> Fallible<()> {
                 }
             }
         } else if opt.custom {
+            let header = match shape.instrs[0] {
+                sh::Instr::Header(hdr) {
+
+                }
+            }
+
+            /*
             let mut offset = 0;
             while offset < shape.instrs.len() {
                 let instr = &shape.instrs[offset];
@@ -227,6 +234,7 @@ fn main() -> Fallible<()> {
                 }
                 offset += 1;
             }
+            */
         }
     }
 

@@ -17,9 +17,10 @@
 #include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec4 color;
-layout(location = 3) in vec2 tex_coord;
+layout(location = 1) in vec3 lat_lon_h;
+layout(location = 2) in vec3 normal;
+layout(location = 3) in vec4 color;
+layout(location = 4) in vec2 tex_coord;
 
 layout(location = 0) out smooth vec4 v_position;
 layout(location = 1) out smooth vec4 v_normal;

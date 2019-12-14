@@ -39,6 +39,7 @@ use zerocopy::{AsBytes, FromBytes};
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
 pub struct Vertex {
     position: [f32; 3],
+    lat_lon_h: [f32; 3],
     normal: [f32; 3],
     color: [f32; 4],
     tex_coord: [f32; 2],
@@ -57,23 +58,29 @@ impl Vertex {
                     offset: 0,
                     shader_location: 0,
                 },
-                // normal
+                // lat_lon_h
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float3,
                     offset: 12,
                     shader_location: 1,
                 },
+                // normal
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float3,
+                    offset: 24,
+                    shader_location: 2,
+                },
                 // color
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float4,
-                    offset: 24,
-                    shader_location: 2,
+                    offset: 36,
+                    shader_location: 3,
                 },
                 // tex_coord
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float2,
-                    offset: 40,
-                    shader_location: 3,
+                    offset: 52,
+                    shader_location: 4,
                 },
             ],
         };
@@ -84,14 +91,18 @@ impl Vertex {
         );
         assert_eq!(
             tmp.attributes[1].offset,
-            offset_of!(Vertex, normal) as wgpu::BufferAddress
+            offset_of!(Vertex, lat_lon_h) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[2].offset,
-            offset_of!(Vertex, color) as wgpu::BufferAddress
+            offset_of!(Vertex, normal) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[3].offset,
+            offset_of!(Vertex, color) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[4].offset,
             offset_of!(Vertex, tex_coord) as wgpu::BufferAddress
         );
 
@@ -432,6 +443,7 @@ impl<'a> T2BufferFactory<'a> {
 
         let vert = Vertex {
             position: [p11[0], p11[1], p11[2]],
+            lat_lon_h: [0f32, 0f32, 0f32],
             normal: [normal[0], normal[1], normal[2]],
             color: [
                 f32::from(color[0]) / 255f32,
