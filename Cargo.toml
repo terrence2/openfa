@@ -17,9 +17,7 @@ members = [
         "apps/dump-xt",
         "apps/pack-pic",
         "apps/show-mm",
-        "apps/show-dlg",
         "apps/show-sh",
-        "apps/show-sh-legacy",
         "apps/show-sh-raw",
         "apps/show-sky",
 

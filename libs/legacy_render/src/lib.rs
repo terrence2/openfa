@@ -15,11 +15,6 @@
 
 /// Renders raw assets into GPU primitives.
 mod dlg;
-mod sh;
-mod utility;
+pub mod utility;
 
-pub use crate::{
-    dlg::dlg_renderer::DialogRenderer,
-    sh::raw_sh_renderer::{DrawMode, RawShRenderer},
-    utility::pal_renderer::PalRenderer,
-};
+pub use crate::{dlg::dlg_renderer::DialogRenderer, utility::pal_renderer::PalRenderer};

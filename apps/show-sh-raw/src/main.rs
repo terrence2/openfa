@@ -12,9 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod raw_sh_renderer;
+mod texture_atlas;
+
+use crate::raw_sh_renderer::{DrawMode, RawShRenderer};
 use camera::ArcBallCamera;
 use failure::Fallible;
-use legacy_render::{DrawMode, RawShRenderer};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;

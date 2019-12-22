@@ -12,11 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{sh::texture_atlas::TextureAtlas, utility::Arrow};
+use crate::texture_atlas::TextureAtlas;
 use camera::CameraAbstract;
 use failure::{bail, ensure, Fallible};
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
+use legacy_render::utility::Arrow;
 use lib::Library;
 use log::trace;
 use nalgebra::{Matrix4, Point3, Vector3, Vector4};
