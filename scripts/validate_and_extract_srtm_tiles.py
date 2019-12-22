@@ -37,19 +37,21 @@ def main():
 
         filename = feature['properties']['dataFile']
         source = os.path.join(args.directory, filename)
-        check_list.append((len(check_list) + 1, source, args.output))
+        check_list.append((len(check_list) + 1, len(data['features']), source, args.output))
 
     print("checking {} tiles".format(len(check_list)))
 
-    check_file(check_list[0])
+    for item in check_list:
+        check_file(item)
 
 #     results = ThreadPool(4).imap_unordered(fetch_url, download_list)
 #     for path in results:
 #         print(f"finished {path}")
 
-def check_url(entry):
-    index, source_zip, output_dir = entry
-    with zipfile.ZipFile(path_to_zip_file, 'r') as zip_ref:
+def check_file(entry):
+    index, count, source_zip, output_dir = entry
+    with zipfile.ZipFile(source_zip, 'r') as zip_ref:
+        print(f"extracting: {index} of {count}: {source_zip}")
         zip_ref.extractall(output_dir)
 
 if __name__ == '__main__':
