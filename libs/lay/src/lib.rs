@@ -145,7 +145,7 @@ impl Layer {
 
             // Seems to be correct for CLOUD and FOG, but really dark for DAY.
             let name = format!("dump/{}/first_data", prefix);
-            Palette::dump_partial(first_pal_data, 4, &(name.clone() + "2"))?;
+            Palette::dump_partial(first_pal_data, 4, &(name + "2"))?;
         }
 
         let mut offset = first_addr as usize + FIRST_SIZE;

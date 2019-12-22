@@ -274,7 +274,7 @@ impl GraphicsWindow {
             device,
             queues,
             events_loop,
-            surface: surface.clone(),
+            surface,
             recreatable,
 
             dynamic_state: DynamicState {
