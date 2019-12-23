@@ -12,9 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod raw_sh_renderer;
+mod text;
+mod texture_atlas;
+mod window;
+
+use crate::raw_sh_renderer::{DrawMode, RawShRenderer};
+use crate::text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use crate::window::{GraphicsConfigBuilder, GraphicsWindow};
 use camera::ArcBallCamera;
 use failure::Fallible;
-use legacy_render::{DrawMode, RawShRenderer};
 use log::trace;
 use omnilib::{make_opt_struct, OmniLib};
 use pal::Palette;
@@ -22,9 +29,7 @@ use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{num::ParseIntError, rc::Rc, time::Instant};
 use structopt::StructOpt;
-use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, MouseMotion},
     ElementState,
@@ -86,7 +91,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let mut sh_renderer = RawShRenderer::new(system_palette.clone(), &window)?;
+    let mut sh_renderer = RawShRenderer::new(system_palette, &window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or_else(|| sh.length());

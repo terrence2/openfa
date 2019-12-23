@@ -1,5 +1,5 @@
 [package]
-name = "shape_instance-wgpu"
+name = "shape_instance"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -14,13 +14,13 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
+frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
-shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffer/shape_chunk" }
+shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+input = { path = "../../../render-wgpu/common/input" }

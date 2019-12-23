@@ -163,8 +163,7 @@ impl OmniLib {
             .ok_or_else(|| err_msg("omnilib: no file name"))?
             .to_str()
             .ok_or_else(|| err_msg("omnilib: file name not utf8"))?
-            .to_uppercase()
-            .to_owned();
+            .to_uppercase();
 
         let mut libraries = HashMap::new();
         if let Ok(libs) = Library::from_dir_search(path) {

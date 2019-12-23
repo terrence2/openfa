@@ -58,6 +58,14 @@ impl UfoCamera {
         self.position = Translation3::new(x, y, z);
     }
 
+    pub fn eye(&self) -> Point3<f64> {
+        self.position.transform_point(&Point3::new(0.0, 0.0, 0.0))
+    }
+
+    pub fn up(&self) -> Vector3<f64> {
+        self.rotation * Vector3::new(0.0, -1.0, 0.0)
+    }
+
     pub fn set_rotation(&mut self, v: &Vector3<f64>, ang: f64) {
         self.rotation = UnitQuaternion::from_axis_angle(&Unit::new_normalize(*v), ang);
     }
@@ -71,6 +79,11 @@ impl UfoCamera {
         self.aspect_ratio = aspect_ratio;
         self.projection =
             Perspective3::new(1f64 / aspect_ratio, self.fov_y, self.z_near, self.z_far)
+    }
+
+    pub fn target(&self) -> Point3<f64> {
+        let forward = self.rotation * Vector3::new(0.0, 0.0, 1.0);
+        self.position.transform_point(&Point3::from(forward))
     }
 
     pub fn zoom_in(&mut self) {

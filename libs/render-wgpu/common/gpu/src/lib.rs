@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
-use input_wgpu::InputSystem;
+use input::InputSystem;
 use std::io::Cursor;
 use wgpu;
 use winit::dpi::PhysicalSize;

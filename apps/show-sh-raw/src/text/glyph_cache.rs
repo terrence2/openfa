@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::window::GraphicsWindow;
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{ensure, Fallible};
 use fnt::Fnt;
@@ -30,7 +31,6 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
 
 lazy_static! {
     static ref CP437_TO_CHAR: HashMap<u8, char> = {
@@ -119,7 +119,7 @@ impl GlyphCache {
         image_buf: ImageBuffer<Luma<u8>, Vec<u8>>,
     ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<dyn GpuFuture>)> {
         let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
+        let image_data = image_buf.into_raw();
 
         let dimensions = Dimensions::Dim2d {
             width: image_dim.0,
@@ -137,7 +137,7 @@ impl GlyphCache {
 
     fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
         let sampler = Sampler::new(
-            device.clone(),
+            device,
             Filter::Nearest,
             Filter::Nearest,
             MipmapMode::Nearest,
@@ -231,8 +231,8 @@ impl GlyphCacheFNT {
         let sampler = GlyphCache::make_sampler(window.device())?;
 
         let pds = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
+            PersistentDescriptorSet::start(pipeline, 0)
+                .add_sampled_image(texture, sampler)?
                 .build()?,
         );
 
@@ -322,8 +322,8 @@ impl GlyphCacheTTF {
         let sampler = GlyphCache::make_sampler(window.device())?;
 
         let pds = Arc::new(
-            PersistentDescriptorSet::start(pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
+            PersistentDescriptorSet::start(pipeline, 0)
+                .add_sampled_image(texture, sampler)?
                 .build()?,
         );
 

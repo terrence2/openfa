@@ -1,5 +1,5 @@
 [package]
-name = "shape-wgpu"
+name = "shape"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -11,16 +11,16 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
-shader_globals = { package = "shader_globals-wgpu", path = "../../../render-wgpu/common/shader_globals" }
-shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffer/shape_chunk" }
-shape_instance = { package = "shape_instance-wgpu", path = "../../../render-wgpu/buffer/shape_instance" }
+global_data = { path = "../../../render-wgpu/buffer/global_data" }
+shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
+shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
+shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
 
 [dev-dependencies]
 nalgebra = "^ 0.18"
 camera = { path = "../../../render-shared/common/camera" }
 galaxy = { path = "../../../galaxy" }
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+input = { path = "../../../render-wgpu/common/input" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 universe = { path = "../../../universe" }

@@ -1,5 +1,5 @@
 [package]
-name = "t2_buffer-wgpu"
+name = "t2_buffer"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -27,7 +27,7 @@ universe = { path = "../../../universe" }
 [dev-dependencies]
 simplelog = "^ 0.5"
 omnilib = { path = "../../../omnilib" }
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+input = { path = "../../../render-wgpu/common/input" }
 xt = { path = "../../../xt" }
 
 [build-dependencies]

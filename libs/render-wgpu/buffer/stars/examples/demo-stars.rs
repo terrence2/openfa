@@ -18,7 +18,7 @@ use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use stars_wgpu::StarsBuffer;
+use stars::StarsBuffer;
 use wgpu;
 
 fn main() -> Fallible<()> {

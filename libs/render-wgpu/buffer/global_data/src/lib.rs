@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::{ArcBallCamera, CameraAbstract};
+use camera::{ArcBallCamera, CameraAbstract, UfoCamera};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
@@ -121,6 +121,30 @@ impl GlobalParametersBuffer {
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
+    }
+
+    pub fn make_upload_buffer_for_ufo_on_globe(
+        &self,
+        camera: &UfoCamera,
+        gpu: &GPU,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
+        let globals = [Self::ufo_camera_to_buffer(
+            100f32, 100f32, 0f32, 0f32, camera, gpu,
+        )];
+        let source = gpu
+            .device()
+            .create_buffer_mapped::<Globals>(
+                1,
+                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+            )
+            .fill_from_slice(&globals);
+        upload_buffers.push(CopyBufferDescriptor::new(
+            source,
+            self.parameters_buffer.clone(),
+            self.buffer_size,
+        ));
+        Ok(())
     }
 
     pub fn make_upload_buffer_for_arcball_on_globe(
@@ -234,6 +258,116 @@ impl GlobalParametersBuffer {
         let tile_c_eye = tile_ul_eye - ul_to_c;
         let tile_c_tgt = tile_ul_tgt - ul_to_c;
         let tile_up = camera.up;
+
+        // Create a matrix to translate between tile and earth coordinates.
+        let rot_m = Matrix4::from((r_lat * r_lon).to_rotation_matrix());
+        let trans_m = Matrix4::new_translation(&Vector3::new(
+            base_in_km.coords[0],
+            base_in_km.coords[1],
+            base_in_km.coords[2],
+        ));
+        let scale_m = Matrix4::new_scaling(HM_TO_KM);
+        let tile_to_earth = trans_m * scale_m * rot_m;
+
+        let tile_center_offset = Vector3::new(
+            tile_width_ft * FEET_TO_HM_32 / 2.0,
+            0f32,
+            tile_height_ft * FEET_TO_HM_32 / 2.0,
+        );
+
+        let earth_eye = tile_to_earth * tile_c_eye.to_homogeneous();
+        let earth_tgt = tile_to_earth * tile_c_tgt.to_homogeneous();
+        let earth_up = (tile_to_earth * tile_up.to_homogeneous()).normalize();
+
+        let earth_view = Isometry3::look_at_rh(
+            &Point3::from(earth_eye.xyz()),
+            &Point3::from(earth_tgt.xyz()),
+            &earth_up.xyz(),
+        );
+
+        let earth_inv_view: Matrix4<f32> = convert(earth_view.inverse().to_homogeneous());
+        let earth_inv_proj: Matrix4<f32> = convert(camera.projection().inverse());
+
+        let dim = gpu.physical_size();
+        let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
+        let (w, h) = if dim.width > dim.height {
+            (aspect, 1f32)
+        } else {
+            (1f32, 1f32 / aspect)
+        };
+        Globals {
+            screen_projection: m2v(&Matrix4::new_nonuniform_scaling(&Vector3::new(w, h, 1f32))),
+            view: m2v(&camera.view_matrix()),
+            proj: m2v(&camera.projection_matrix()),
+            inv_view: m2v(&earth_inv_view),
+            inv_proj: m2v(&earth_inv_proj),
+            tile_to_earth: m2v(&convert(tile_to_earth)),
+            tile_to_earth_rotation: m2v(&convert(rot_m)),
+            tile_to_earth_scale: m2v(&convert(scale_m)),
+            tile_to_earth_translation: v2v(&convert(base_in_km.coords.to_homogeneous())),
+            tile_center_offset: v2v(&tile_center_offset.to_homogeneous()),
+            camera_position_tile: p2v(&convert(camera.eye())),
+            camera_position_earth_km: v2v(&convert(earth_eye)),
+        }
+    }
+
+    fn ufo_camera_to_buffer(
+        tile_width_ft: f32,
+        tile_height_ft: f32,
+        tile_origin_lat_deg: f32,
+        tile_origin_lon_deg: f32,
+        camera: &UfoCamera,
+        gpu: &GPU,
+    ) -> Globals {
+        fn deg2rad(deg: f64) -> f64 {
+            deg * PI / 180.0
+        }
+        fn ft2hm(ft: f64) -> f64 {
+            ft * FEET_TO_HM_64
+        }
+
+        let tile_width_hm = ft2hm(tile_width_ft as f64);
+        let tile_height_hm = ft2hm(tile_height_ft as f64);
+
+        let lat = deg2rad(tile_origin_lat_deg as f64);
+        let lon = deg2rad(tile_origin_lon_deg as f64);
+
+        /*
+        fn rad2deg(rad: f32) -> f32 {
+            rad * 180f32 / PI
+        }
+        let ft_per_degree = lat.cos() * 69.172f32 * 5_280f32;
+        let angular_height = tile_height_ft as f32 / ft_per_degree;
+        println!(
+            "\"{}\": TL coord: {}, {}",
+            terrain.name(),
+            rad2deg(lat + deg2rad(angular_height)),
+            rad2deg(lon)
+        );
+        */
+
+        // Lat/Lon to XYZ in KM.
+        // x = (N + h) * cos(lat) * cos(lon)
+        // y = (N + h) * cos(lat) * sin(lon)
+        // z = (( b^2 / a^2 ) * N + h) * sin(lat)
+        let base = Point3::new(lat.cos() * lon.sin(), -lat.sin(), lat.cos() * lon.cos());
+        let base_in_km = base * 6360f64;
+
+        let r_lon = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(Vector3::new(0f64, -1f64, 0f64)),
+            -lon,
+        );
+        let r_lat = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(r_lon * Vector3::new(1f64, 0f64, 0f64)),
+            -(PI / 2.0 - lat),
+        );
+
+        let tile_ul_eye = camera.eye();
+        let tile_ul_tgt = camera.target();
+        let ul_to_c = Vector3::new(tile_width_hm / 2f64, 0f64, tile_height_hm / 2f64);
+        let tile_c_eye = tile_ul_eye - ul_to_c;
+        let tile_c_tgt = tile_ul_tgt - ul_to_c;
+        let tile_up = camera.up();
 
         // Create a matrix to translate between tile and earth coordinates.
         let rot_m = Matrix4::from((r_lat * r_lon).to_rotation_matrix());

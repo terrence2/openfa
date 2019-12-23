@@ -12,9 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{sh::texture_atlas::TextureAtlas, utility::Arrow};
+use crate::texture_atlas::TextureAtlas;
+use crate::window::GraphicsWindow;
 use camera::CameraAbstract;
 use failure::{bail, ensure, Fallible};
+use geometry::Arrow;
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
 use lib::Library;
@@ -45,7 +47,6 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
 
 #[derive(Copy, Clone, Default)]
 struct Vertex {
@@ -825,7 +826,7 @@ impl RawShRenderer {
 
         let pds = Arc::new(
             PersistentDescriptorSet::start(self.pipeline.clone(), 0)
-                .add_sampled_image(texture.clone(), sampler.clone())?
+                .add_sampled_image(texture, sampler)?
                 .build()?,
         );
 
@@ -846,7 +847,7 @@ impl RawShRenderer {
         image_buf: ImageBuffer<Rgba<u8>, Vec<u8>>,
     ) -> Fallible<(Arc<ImmutableImage<Format>>, Box<dyn GpuFuture>)> {
         let image_dim = image_buf.dimensions();
-        let image_data = image_buf.into_raw().clone();
+        let image_data = image_buf.into_raw();
 
         let dimensions = Dimensions::Dim2d {
             width: image_dim.0,
@@ -863,7 +864,7 @@ impl RawShRenderer {
 
     fn make_sampler(device: Arc<Device>) -> Fallible<Arc<Sampler>> {
         let sampler = Sampler::new(
-            device.clone(),
+            device,
             Filter::Nearest,
             Filter::Nearest,
             MipmapMode::Nearest,

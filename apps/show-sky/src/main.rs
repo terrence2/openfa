@@ -12,26 +12,46 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use atmosphere::AtmosphereBuffer;
 use camera::UfoCamera;
 use failure::Fallible;
+use frame_graph::make_frame_graph;
+use fullscreen::FullscreenBuffer;
+use global_data::GlobalParametersBuffer;
+use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use lib::Library;
 use log::trace;
 use nalgebra::Vector3;
+use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
-use skybox::SkyboxRenderer;
+use skybox::SkyboxRenderPass;
+use stars::StarsBuffer;
 use std::{f64::consts::PI, time::Instant};
-use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use window::{GraphicsConfigBuilder, GraphicsWindow};
+use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
+
+make_frame_graph!(
+    FrameGraph {
+        buffers: {
+            atmosphere: AtmosphereBuffer,
+            fullscreen: FullscreenBuffer,
+            globals: GlobalParametersBuffer,
+            stars: StarsBuffer,
+            text_layout: LayoutBuffer
+        };
+        passes: [
+            skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
+            screen_text: ScreenTextRenderPass { globals, text_layout }
+        ];
+    }
+);
 
 fn main() -> Fallible<()> {
-    TermLogger::init(LevelFilter::Trace, Config::default())?;
+    TermLogger::init(LevelFilter::Warn, Config::default())?;
 
     use std::sync::Arc;
     let lib = Arc::new(Box::new(Library::empty()?));
 
-    let mut window = GraphicsWindow::new(&GraphicsConfigBuilder::new().build())?;
     let shape_bindings = InputBindings::new("shape")
         .bind("+enter-move-sun", "mouse1")?
         .bind("zoom-in", "Equals")?
@@ -46,35 +66,54 @@ fn main() -> Fallible<()> {
         .bind("+move-down", "Control")?
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(vec![shape_bindings]);
+    let mut input = InputSystem::new(vec![shape_bindings])?;
+    let mut gpu = GPU::new(&input, Default::default())?;
 
-    let mut text_renderer = TextRenderer::new(&lib, &window)?;
-    let mut skybox_renderer = SkyboxRenderer::new(&window)?;
+    ///////////////////////////////////////////////////////////
+    let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
+    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let stars_buffer = StarsBuffer::new(gpu.device())?;
+    let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
-    let fps_handle = text_renderer
-        .add_screen_text(Font::QUANTICO, "", &window)?
+    let frame_graph = FrameGraph::new(
+        &mut gpu,
+        &atmosphere_buffer,
+        &fullscreen_buffer,
+        &globals_buffer,
+        &stars_buffer,
+        &text_layout_buffer,
+    )?;
+    ///////////////////////////////////////////////////////////
+
+    let fps_handle = text_layout_buffer
+        .borrow_mut()
+        .add_screen_text(Font::QUANTICO, "", gpu.device())?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
-    let mut camera = UfoCamera::new(f64::from(window.aspect_ratio()?), 0.1f64, 3.4e+38f64);
-    camera.set_position(6_378_001.0, 0.0, 0.0);
+    let mut in_sun_move = false;
+    let mut sun_angle = 0.0;
+
+    let mut camera = UfoCamera::new(gpu.aspect_ratio(), 0.1f64, 3.4e+38f64);
+    camera.set_position(6_378.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
 
-    let mut in_sun_move = false;
-    let mut sun_angle = 0.0;
+    // let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
+    // camera.set_target_point(&nalgebra::convert(positions[position_index]));
 
     loop {
         let loop_start = Instant::now();
 
-        for command in input.poll(&mut window.events_loop) {
+        for command in input.poll()? {
             match command.name.as_str() {
                 "window-resize" => {
-                    window.note_resize();
-                    camera.set_aspect_ratio(f64::from(window.aspect_ratio()?));
+                    gpu.note_resize(&input);
+                    camera.set_aspect_ratio(gpu.aspect_ratio());
                 }
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "+enter-move-sun" => in_sun_move = true,
@@ -116,49 +155,27 @@ fn main() -> Fallible<()> {
             }
         }
 
-        //sh_renderer.animate(&loop_start)?;
         camera.think();
+        let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
 
-        {
-            let frame = window.begin_frame()?;
-            if !frame.is_valid() {
-                continue;
-            }
-
-            let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
-            skybox_renderer.before_frame(&camera, &sun_direction)?;
-            text_renderer.before_frame(&window)?;
-
-            let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-                window.device(),
-                window.queue().family(),
-            )?;
-
-            cbb = cbb.begin_render_pass(
-                frame.framebuffer(&window),
-                false,
-                vec![[0f32, 0f32, 1f32, 1f32].into(), 0f32.into()],
-            )?;
-
-            cbb = skybox_renderer.draw(cbb, &window.dynamic_state)?;
-            cbb = text_renderer.render(cbb, &window.dynamic_state)?;
-
-            cbb = cbb.end_render_pass()?;
-
-            let cb = cbb.build()?;
-
-            frame.submit(cb, &mut window)?;
-        }
+        let mut buffers = Vec::new();
+        globals_buffer
+            .borrow()
+            .make_upload_buffer_for_ufo_on_globe(&camera, &gpu, &mut buffers)?;
+        atmosphere_buffer
+            .borrow()
+            .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        text_layout_buffer
+            .borrow()
+            .make_upload_buffer(&gpu, &mut buffers)?;
+        frame_graph.run(&mut gpu, buffers)?;
 
         let frame_time = loop_start.elapsed();
-        let render_time = frame_time - window.idle_time;
         let ts = format!(
-            "frame: {}.{}ms / render: {}.{}ms",
+            "frame: {}.{}ms",
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
-            render_time.as_secs() * 1000 + u64::from(render_time.subsec_millis()),
-            render_time.subsec_micros(),
         );
-        fps_handle.set_span(&ts, &window)?;
+        fps_handle.set_span(&ts, gpu.device())?;
     }
 }

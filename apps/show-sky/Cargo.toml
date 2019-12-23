@@ -11,14 +11,19 @@ log = "^ 0.4"
 nalgebra = "^ 0.18"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-vulkano = "^ 0.14"
-vulkano-shaders = "^ 0.14"
-vulkano-win = "^ 0.14"
-winit = "^ 0.19"
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 camera = { path = "../../libs/render-shared/common/camera" }
-input = { path = "../../libs/render-vulkano/common/input" }
+frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
+fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
+gpu = { path = "../../libs/render-wgpu/common/gpu" }
+input = { path = "../../libs/render-wgpu/common/input" }
 lib = { path = "../../libs/lib" }
 pal = { path = "../../libs/pal" }
-skybox = { path = "../../libs/render-vulkano/draw/skybox" }
-text = { path = "../../libs/render-vulkano/draw/text" }
-window = { path = "../../libs/render-vulkano/common/window" }
+screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
+skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
+stars = { path = "../../libs/render-wgpu/buffer/stars" }
+text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }
