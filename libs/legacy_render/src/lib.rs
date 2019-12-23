@@ -15,5 +15,3 @@
 
 /// Renders raw assets into GPU primitives.
 pub mod utility;
-
-pub use crate::utility::pal_renderer::PalRenderer;
