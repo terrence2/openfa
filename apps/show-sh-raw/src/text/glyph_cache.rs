@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::window::GraphicsWindow;
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{ensure, Fallible};
 use fnt::Fnt;
@@ -30,7 +31,6 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
 
 lazy_static! {
     static ref CP437_TO_CHAR: HashMap<u8, char> = {

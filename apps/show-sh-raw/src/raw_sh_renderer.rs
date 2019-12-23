@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
+use crate::window::GraphicsWindow;
 use camera::CameraAbstract;
 use failure::{bail, ensure, Fallible};
 use geometry::Arrow;
@@ -46,7 +47,6 @@ use vulkano::{
     sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
     sync::GpuFuture,
 };
-use window::GraphicsWindow;
 
 #[derive(Copy, Clone, Default)]
 struct Vertex {

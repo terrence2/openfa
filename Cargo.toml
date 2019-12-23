@@ -13,13 +13,15 @@ members = [
         "apps/dump-asm",
         "apps/dump-lay",
         "apps/dump-lib",
-        "apps/dump-vulkan",
         "apps/dump-xt",
         "apps/pack-pic",
         "apps/show-mm",
         "apps/show-sh",
-        "apps/show-sh-raw",
         "apps/show-sky",
+
+        # Legacy: avoid pulling in all of vulkano
+        # "apps/dump-vulkan",
+        # "apps/show-sh-raw",
 
         "libs/animate",
         "libs/ansi",
@@ -44,8 +46,6 @@ members = [
         "libs/pt",
         "libs/render-shared/common/camera",
         "libs/render-shared/common/geometry",
-        "libs/render-vulkano/common/input",
-        "libs/render-vulkano/common/window",
         "libs/render-wgpu/buffer/atmosphere",
         "libs/render-wgpu/buffer/fullscreen",
         "libs/render-wgpu/buffer/global_data",

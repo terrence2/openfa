@@ -13,7 +13,9 @@ log = "^ 0.4"
 nalgebra = "^ 0.18"
 rusttype = "^ 0.7"
 simplelog = "^ 0.5"
+smallvec = "^ 0.6"
 structopt = "^ 0.2"
+unicase = "^ 2.4"
 vulkano = "^ 0.14"
 vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
@@ -29,4 +31,7 @@ omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 sh = { path = "../../libs/sh" }
-window = { path = "../../libs/render-vulkano/common/window" }
+
+[dev-dependencies]
+approx = "^ 0.3"
+simplelog = "^ 0.5"

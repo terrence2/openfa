@@ -15,6 +15,7 @@
 mod glyph_cache;
 
 use crate::text::glyph_cache::GlyphCache;
+use crate::window::GraphicsWindow;
 use failure::{ensure, Fallible};
 use fnt::Fnt;
 use lib::Library;
@@ -29,7 +30,6 @@ use vulkano::{
     impl_vertex,
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract},
 };
-use window::GraphicsWindow;
 
 // Fallback for when we have no libs loaded.
 // https://fonts.google.com/specimen/Quantico?selection.family=Quantico

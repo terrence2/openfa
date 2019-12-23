@@ -15,9 +15,11 @@
 mod raw_sh_renderer;
 mod text;
 mod texture_atlas;
+mod window;
 
 use crate::raw_sh_renderer::{DrawMode, RawShRenderer};
 use crate::text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
+use crate::window::{GraphicsConfigBuilder, GraphicsWindow};
 use camera::ArcBallCamera;
 use failure::Fallible;
 use log::trace;
@@ -28,7 +30,6 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use std::{num::ParseIntError, rc::Rc, time::Instant};
 use structopt::StructOpt;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
     DeviceEvent::{Button, MouseMotion},
     ElementState,
