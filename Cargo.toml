@@ -42,7 +42,6 @@ members = [
         "libs/pic",
         "libs/pkware",
         "libs/pt",
-        "libs/legacy_render",
         "libs/render-shared/common/camera",
         "libs/render-shared/common/geometry",
         "libs/render-vulkano/common/input",

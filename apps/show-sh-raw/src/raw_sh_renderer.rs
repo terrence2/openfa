@@ -15,9 +15,9 @@
 use crate::texture_atlas::TextureAtlas;
 use camera::CameraAbstract;
 use failure::{bail, ensure, Fallible};
+use geometry::Arrow;
 use i386::ExitInfo;
 use image::{ImageBuffer, Rgba};
-use legacy_render::utility::Arrow;
 use lib::Library;
 use log::trace;
 use nalgebra::{Matrix4, Point3, Vector3, Vector4};

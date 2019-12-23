@@ -17,13 +17,13 @@ vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/render-shared/common/camera" }
+geometry = { path = "../../libs/render-shared/common/geometry" }
 i386 = { path = "../../libs/i386" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
-legacy_render = { path = "../../libs/legacy_render" }
 sh = { path = "../../libs/sh" }
 text = { path = "../../libs/render-vulkano/draw/text" }
 window = { path = "../../libs/render-vulkano/common/window" }
