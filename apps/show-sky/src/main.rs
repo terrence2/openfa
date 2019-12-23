@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use atmosphere::AtmosphereBuffer;
-use camera::{ArcBallCamera, UfoCamera};
+use camera::UfoCamera;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
@@ -98,7 +98,7 @@ fn main() -> Fallible<()> {
     let mut in_sun_move = false;
     let mut sun_angle = 0.0;
 
-    let mut camera = UfoCamera::new(f64::from(gpu.aspect_ratio()), 0.1f64, 3.4e+38f64);
+    let mut camera = UfoCamera::new(gpu.aspect_ratio(), 0.1f64, 3.4e+38f64);
     camera.set_position(6_378.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);

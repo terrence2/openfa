@@ -454,7 +454,7 @@ impl MissionMap {
         let raw = map_name.to_uppercase();
 
         if lib.file_exists(&raw) {
-            return Ok(raw.to_owned());
+            return Ok(raw);
         }
 
         // ~KURILE.T2 && ~TVIET.T2

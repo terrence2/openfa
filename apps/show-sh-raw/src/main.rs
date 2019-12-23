@@ -89,7 +89,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let mut sh_renderer = RawShRenderer::new(system_palette.clone(), &window)?;
+    let mut sh_renderer = RawShRenderer::new(system_palette, &window)?;
 
     let sh = RawShape::from_bytes(&lib.load(&name)?)?;
     let mut stop_at_offset = opt.stop_at_offset.unwrap_or_else(|| sh.length());

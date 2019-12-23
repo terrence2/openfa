@@ -32,7 +32,7 @@ fn main() -> Fallible<()> {
 
     let (omni, game, name) = opt.find_input(&opt.omni_input)?;
     let lib = omni.library(&game);
-    let types = TypeManager::new(lib.clone());
+    let types = TypeManager::new(lib);
     let xt = types.load(&name)?;
 
     let ot = &xt.ot();
