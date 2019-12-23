@@ -14,7 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 /// Renders raw assets into GPU primitives.
-mod dlg;
 pub mod utility;
 
-pub use crate::{dlg::dlg_renderer::DialogRenderer, utility::pal_renderer::PalRenderer};
+pub use crate::utility::pal_renderer::PalRenderer;
