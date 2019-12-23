@@ -46,7 +46,6 @@ members = [
         "libs/render-shared/common/geometry",
         "libs/render-vulkano/common/input",
         "libs/render-vulkano/common/window",
-        "libs/render-vulkano/draw/text",
         "libs/render-wgpu/buffer/atmosphere",
         "libs/render-wgpu/buffer/fullscreen",
         "libs/render-wgpu/buffer/global_data",

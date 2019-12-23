@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod glyph_cache;
 
-use crate::glyph_cache::GlyphCache;
+use crate::text::glyph_cache::GlyphCache;
 use failure::{ensure, Fallible};
 use fnt::Fnt;
 use lib::Library;
@@ -33,7 +33,7 @@ use window::GraphicsWindow;
 
 // Fallback for when we have no libs loaded.
 // https://fonts.google.com/specimen/Quantico?selection.family=Quantico
-const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../../../../../assets/font/quantico.ttf");
+const QUANTICO_TTF_DATA: &[u8] = include_bytes!("../../../../assets/font/quantico.ttf");
 
 #[derive(Copy, Clone, Default)]
 struct Vertex {
@@ -105,6 +105,7 @@ impl vs::ty::PushConstantData {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TextAnchorH {
     Center,
@@ -112,6 +113,7 @@ pub enum TextAnchorH {
     Right,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TextAnchorV {
     Center,
@@ -121,6 +123,7 @@ pub enum TextAnchorV {
     // Baseline,
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TextPositionH {
     // In vulkan screen space: -1.0 -> 1.0
@@ -148,6 +151,7 @@ impl TextPositionH {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TextPositionV {
     // In vulkan screen space: -1.0 -> 1.0
@@ -187,6 +191,7 @@ impl LayoutHandle {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_span(self, span: &str, window: &GraphicsWindow) -> Fallible<Self> {
         self.set_span(span, window)?;
         Ok(self)

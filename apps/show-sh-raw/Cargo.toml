@@ -5,10 +5,13 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+codepage-437 = "^ 0.1.0"
 failure = "^ 0.1.2"
 image = "^ 0.21"
+lazy_static = ">= 1"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
+rusttype = "^ 0.7"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 vulkano = "^ 0.14"
@@ -17,6 +20,7 @@ vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
 camera = { path = "../../libs/render-shared/common/camera" }
+fnt = { path = "../../libs/fnt" }
 geometry = { path = "../../libs/render-shared/common/geometry" }
 i386 = { path = "../../libs/i386" }
 lib = { path = "../../libs/lib" }
@@ -25,5 +29,4 @@ omnilib = { path = "../../libs/omnilib" }
 pic = { path = "../../libs/pic" }
 pal = { path = "../../libs/pal" }
 sh = { path = "../../libs/sh" }
-text = { path = "../../libs/render-vulkano/draw/text" }
 window = { path = "../../libs/render-vulkano/common/window" }

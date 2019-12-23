@@ -13,9 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod raw_sh_renderer;
+mod text;
 mod texture_atlas;
 
 use crate::raw_sh_renderer::{DrawMode, RawShRenderer};
+use crate::text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use camera::ArcBallCamera;
 use failure::Fallible;
 use log::trace;
@@ -25,7 +27,6 @@ use sh::RawShape;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{num::ParseIntError, rc::Rc, time::Instant};
 use structopt::StructOpt;
-use text::{Font, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV, TextRenderer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use window::{GraphicsConfigBuilder, GraphicsWindow};
 use winit::{
