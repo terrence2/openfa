@@ -14,4 +14,4 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 zerocopy = "^ 0.2"
-input-wgpu = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../render-wgpu/common/input" }

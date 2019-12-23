@@ -1,5 +1,5 @@
 [package]
-name = "stars-wgpu"
+name = "stars"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -22,9 +22,9 @@ star_catalog = { path = "../../../star_catalog" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
-global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
-fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
+global_data = { path = "../../../render-wgpu/buffer/global_data" }
+input = { path = "../../../render-wgpu/common/input" }
+fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

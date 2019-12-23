@@ -1,5 +1,5 @@
 [package]
-name = "global_data-wgpu"
+name = "global_data"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -13,13 +13,13 @@ wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 zerocopy = "^ 0.2"
 camera = { path = "../../../render-shared/common/camera" }
-frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
+frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 t2 = { path = "../../../t2" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+input = { path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

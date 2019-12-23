@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use atmosphere_wgpu::AtmosphereBuffer;
+use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};

@@ -14,19 +14,19 @@ structopt = "^ 0.2"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-atmosphere = { package = "atmosphere-wgpu", path = "../../libs/render-wgpu/buffer/atmosphere" }
+atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 camera = { path = "../../libs/render-shared/common/camera" }
-frame_graph = { package = "frame_graph-wgpu", path = "../../libs/render-wgpu/common/frame_graph" }
-fullscreen = { package = "fullscreen-wgpu", path = "../../libs/render-wgpu/buffer/fullscreen" }
+frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
+fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
 galaxy = { path = "../../libs/galaxy" }
-global_data = { package = "global_data-wgpu", path = "../../libs/render-wgpu/buffer/global_data" }
+global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
-input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
+input = { path = "../../libs/render-wgpu/common/input" }
 lib = { path = "../../libs/lib" }
 omnilib = { path = "../../libs/omnilib" }
-screen_text = { package = "screen_text-wgpu", path = "../../libs/render-wgpu/render_pass/screen_text" }
-shape = { package = "shape-wgpu", path = "../../libs/render-wgpu/render_pass/shape" }
-shape_instance = { package = "shape_instance-wgpu", path = "../../libs/render-wgpu/buffer/shape_instance" }
-skybox = { package = "skybox-wgpu", path = "../../libs/render-wgpu/render_pass/skybox" }
-stars = { package = "stars-wgpu", path = "../../libs/render-wgpu/buffer/stars" }
-text_layout = { package = "text_layout-wgpu", path = "../../libs/render-wgpu/buffer/text_layout" }
+screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
+shape = { path = "../../libs/render-wgpu/render_pass/shape" }
+shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
+skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
+stars = { path = "../../libs/render-wgpu/buffer/stars" }
+text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }

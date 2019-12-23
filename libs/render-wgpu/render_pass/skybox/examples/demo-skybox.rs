@@ -21,7 +21,7 @@ use gpu::GPU;
 use input::{InputBindings, InputSystem};
 use log::trace;
 use nalgebra::Vector3;
-use skybox_wgpu::SkyboxRenderPass;
+use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
 

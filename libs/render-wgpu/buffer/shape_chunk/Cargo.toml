@@ -1,5 +1,5 @@
 [package]
-name = "shape_chunk-wgpu"
+name = "shape_chunk"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -28,4 +28,4 @@ sh = { path = "../../../sh" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+input = { path = "../../../render-wgpu/common/input" }
