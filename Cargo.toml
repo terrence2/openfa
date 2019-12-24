@@ -23,6 +23,7 @@ members = [
         # "apps/dump-vulkan",
         # "apps/show-sh-raw",
 
+        "libs/absolute_unit",
         "libs/animate",
         "libs/ansi",
         "libs/asset",
