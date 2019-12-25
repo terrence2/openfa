@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 log = ">= 0.4"
 nalgebra = "^ 0.18"
+absolute_unit = { path = "../../../absolute_unit" }
 
 [dev-dependencies]
 approx = "^ 0.3"

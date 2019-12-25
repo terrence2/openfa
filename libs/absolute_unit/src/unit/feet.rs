@@ -31,6 +31,6 @@ impl LengthUnit for Feet {
 #[macro_export]
 macro_rules! feet {
     ($num:expr) => {
-        Length::<Feet>::from(&$num)
+        $crate::Length::<$crate::Feet>::from(&$num)
     };
 }

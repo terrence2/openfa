@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::length::LengthUnit;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Meters;
 impl LengthUnit for Meters {
     fn unit_name() -> &'static str {
@@ -31,6 +31,6 @@ impl LengthUnit for Meters {
 #[macro_export]
 macro_rules! meters {
     ($num:expr) => {
-        Length::<Meters>::from(&$num)
+        $crate::Length::<$crate::Meters>::from(&$num)
     };
 }

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::angle::AngleUnit;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Radians;
 impl AngleUnit for Radians {
     fn unit_name() -> &'static str {
@@ -31,6 +31,6 @@ impl AngleUnit for Radians {
 #[macro_export]
 macro_rules! radians {
     ($num:expr) => {
-        Angle::<Radians>::from(&$num)
+        $crate::Angle::<$crate::Radians>::from(&$num)
     };
 }

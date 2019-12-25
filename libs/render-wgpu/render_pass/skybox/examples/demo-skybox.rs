@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::meters;
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use failure::Fallible;
@@ -48,7 +49,7 @@ fn main() -> Fallible<()> {
     gpu.device().poll(true);
     println!("poll time: {:?}", poll_start.elapsed());
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
     camera.set_target(0.0, -10.0, 0.0);
     camera.on_mousebutton_down(1);
     let mut sun_angle = 0f64;

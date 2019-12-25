@@ -13,7 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::impl_unit_for_numerics;
-use std::{fmt, marker::PhantomData};
+use std::{
+    fmt,
+    marker::PhantomData,
+    ops::{Add, Div, DivAssign, Mul, MulAssign, Sub},
+};
 
 pub trait LengthUnit: Copy {
     fn unit_name() -> &'static str;
@@ -21,7 +25,7 @@ pub trait LengthUnit: Copy {
     fn nanometers_in_unit() -> i64;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Length<T: LengthUnit> {
     nm: i64, // in nanometers
     phantom: PhantomData<T>,
@@ -45,6 +49,36 @@ where
     fn from(v: &'a Length<UnitA>) -> Self {
         Self {
             nm: v.nm,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<UnitA, UnitB> Add<Length<UnitA>> for Length<UnitB>
+where
+    UnitA: LengthUnit,
+    UnitB: LengthUnit,
+{
+    type Output = Length<UnitB>;
+
+    fn add(self, other: Length<UnitA>) -> Self {
+        Self {
+            nm: self.nm + other.nm,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<UnitA, UnitB> Sub<Length<UnitA>> for Length<UnitB>
+where
+    UnitA: LengthUnit,
+    UnitB: LengthUnit,
+{
+    type Output = Length<UnitB>;
+
+    fn sub(self, other: Length<UnitA>) -> Self {
+        Self {
+            nm: self.nm - other.nm,
             phantom: PhantomData,
         }
     }
@@ -82,6 +116,52 @@ macro_rules! impl_length_unit_for_numeric_type {
         {
             fn from(v: Length<Unit>) -> $Num {
                 (v.nm as f64 / Unit::nanometers_in_unit() as f64) as $Num
+            }
+        }
+
+        impl<Unit> Mul<$Num> for Length<Unit>
+        where
+            Unit: LengthUnit,
+        {
+            type Output = Length<Unit>;
+
+            fn mul(self, other: $Num) -> Self {
+                Self {
+                    nm: (self.nm as f64 * other as f64) as i64,
+                    phantom: PhantomData,
+                }
+            }
+        }
+
+        impl<Unit> MulAssign<$Num> for Length<Unit>
+        where
+            Unit: LengthUnit,
+        {
+            fn mul_assign(&mut self, other: $Num) {
+                self.nm = (self.nm as f64 * other as f64) as i64;
+            }
+        }
+
+        impl<Unit> Div<$Num> for Length<Unit>
+        where
+            Unit: LengthUnit,
+        {
+            type Output = Length<Unit>;
+
+            fn div(self, other: $Num) -> Self {
+                Self {
+                    nm: (self.nm as f64 / other as f64) as i64,
+                    phantom: PhantomData,
+                }
+            }
+        }
+
+        impl<Unit> DivAssign<$Num> for Length<Unit>
+        where
+            Unit: LengthUnit,
+        {
+            fn div_assign(&mut self, other: $Num) {
+                self.nm = (self.nm as f64 / other as f64) as i64;
             }
         }
     };

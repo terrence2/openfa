@@ -15,7 +15,7 @@
 use crate::angle::AngleUnit;
 use std::f64::consts::PI;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Degrees;
 impl AngleUnit for Degrees {
     fn unit_name() -> &'static str {
@@ -32,6 +32,6 @@ impl AngleUnit for Degrees {
 #[macro_export]
 macro_rules! degrees {
     ($num:expr) => {
-        Angle::<Degrees>::from(&$num)
+        $crate::Angle::<$crate::Degrees>::from(&$num)
     };
 }

@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::meters;
 use camera::ArcBallCamera;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
@@ -93,8 +94,8 @@ fn main() -> Fallible<()> {
             alpha_to_coverage_enabled: false,
         });
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
-    camera.set_distance(40.0);
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    camera.set_distance(meters!(40.0));
     camera.on_mousebutton_down(1);
 
     loop {

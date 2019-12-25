@@ -17,3 +17,9 @@ pub(crate) mod angle;
 pub(crate) mod generic;
 pub(crate) mod length;
 pub(crate) mod unit;
+
+pub use crate::{
+    angle::{Angle, AngleUnit},
+    length::{Length, LengthUnit},
+    unit::{degrees::Degrees, feet::Feet, meters::Meters, radians::Radians},
+};

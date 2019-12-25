@@ -26,6 +26,7 @@ gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
 spirv-reflect = "^ 0.2"
+absolute_unit = { path = "../../../absolute_unit" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
 input = { path = "../../../render-wgpu/common/input" }
 fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }

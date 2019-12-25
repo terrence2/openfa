@@ -13,7 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::impl_unit_for_numerics;
-use std::{fmt, marker::PhantomData};
+use std::{
+    fmt,
+    marker::PhantomData,
+    ops::{Add, AddAssign, Div, Mul, Sub},
+};
 
 pub trait AngleUnit: Copy {
     fn unit_name() -> &'static str;
@@ -21,10 +25,20 @@ pub trait AngleUnit: Copy {
     fn femto_radians_in_unit() -> i64;
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Angle<T: AngleUnit> {
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Angle<Unit: AngleUnit> {
     femto_rad: i64, // femto = 10**-15
-    phantom: PhantomData<T>,
+    phantom: PhantomData<Unit>,
+}
+
+impl<Unit: AngleUnit> Angle<Unit> {
+    pub fn cos(self) -> f64 {
+        f64::from(self).cos()
+    }
+
+    pub fn sin(self) -> f64 {
+        f64::from(self).sin()
+    }
 }
 
 impl<Unit> fmt::Display for Angle<Unit>
@@ -45,6 +59,46 @@ where
     fn from(v: &'a Angle<UnitA>) -> Self {
         Self {
             femto_rad: v.femto_rad,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<UnitA, UnitB> Add<Angle<UnitA>> for Angle<UnitB>
+where
+    UnitA: AngleUnit,
+    UnitB: AngleUnit,
+{
+    type Output = Angle<UnitB>;
+
+    fn add(self, other: Angle<UnitA>) -> Self {
+        Self {
+            femto_rad: self.femto_rad + other.femto_rad,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<UnitA, UnitB> AddAssign<Angle<UnitA>> for Angle<UnitB>
+where
+    UnitA: AngleUnit,
+    UnitB: AngleUnit,
+{
+    fn add_assign(&mut self, other: Angle<UnitA>) {
+        self.femto_rad += other.femto_rad;
+    }
+}
+
+impl<UnitA, UnitB> Sub<Angle<UnitA>> for Angle<UnitB>
+where
+    UnitA: AngleUnit,
+    UnitB: AngleUnit,
+{
+    type Output = Angle<UnitB>;
+
+    fn sub(self, other: Angle<UnitA>) -> Self {
+        Self {
+            femto_rad: self.femto_rad - other.femto_rad,
             phantom: PhantomData,
         }
     }
