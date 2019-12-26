@@ -75,15 +75,17 @@ fn main() -> Fallible<()> {
     let lib = omni.library(&game);
     let mut galaxy = Galaxy::new(lib)?;
 
-    let shape_bindings = InputBindings::new("map")
-        .bind("+move-sun", "mouse2")?
+    let mm_bindings = InputBindings::new("map")
         .bind("prev-object", "Shift+n")?
-        .bind("next-object", "n")?
-        .bind("+pan-view", "mouse1")?
-        .bind("+move-view", "mouse3")?
+        .bind("next-object", "n")?;
+    let system_bindings = InputBindings::new("map")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(vec![shape_bindings])?;
+    let mut input = InputSystem::new(vec![
+        ArcBallCamera::default_bindings()?,
+        mm_bindings,
+        system_bindings,
+    ])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let types = TypeManager::new(galaxy.library_owned());
@@ -256,8 +258,6 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
-    let mut sun_angle = 0.0f64;
-    let mut in_sun_move = false;
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
     camera.set_target_point(&nalgebra::convert(positions[position_index]));
 
@@ -265,7 +265,16 @@ fn main() -> Fallible<()> {
         let loop_start = Instant::now();
 
         for command in input.poll()? {
+            camera.handle_command(&command)?;
             match command.name.as_str() {
+                // system bindings
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
+                "window-resize" => {
+                    gpu.note_resize(&input);
+                    camera.set_aspect_ratio(gpu.aspect_ratio());
+                }
+
+                // mm bindings
                 "prev-object" => {
                     if position_index > 0 {
                         position_index -= 1;
@@ -278,33 +287,16 @@ fn main() -> Fallible<()> {
                     }
                     camera.set_target_point(&nalgebra::convert(positions[position_index]));
                 }
-                "window-resize" => {
-                    gpu.note_resize(&input);
-                    camera.set_aspect_ratio(gpu.aspect_ratio());
-                }
-                "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "mouse-move" => {
-                    if in_sun_move {
-                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                    } else {
-                        camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
-                    }
-                }
-                "mouse-wheel" => {
-                    camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
-                }
-                "+pan-view" => camera.on_mousebutton_down(1),
-                "-pan-view" => camera.on_mousebutton_up(1),
-                "+move-view" => camera.on_mousebutton_down(3),
-                "-move-view" => camera.on_mousebutton_up(3),
-                "+move-sun" => in_sun_move = true,
-                "-move-sun" => in_sun_move = false,
-                "window-cursor-move" => {}
+
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
 
-        let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+        let sun_direction = Vector3::new(
+            camera.sun_angle.sin() as f32,
+            0f32,
+            camera.sun_angle.cos() as f32,
+        );
 
         let mut buffers = Vec::new();
         globals_buffer

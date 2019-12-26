@@ -20,16 +20,15 @@ use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use log::trace;
 use nalgebra::Vector3;
 use std::time::Instant;
 use wgpu;
 
 fn main() -> Fallible<()> {
-    let mut input = InputSystem::new(vec![InputBindings::new("base")
-        .bind("+enter-move-sun", "mouse1")?
+    let system_bindings = InputBindings::new("system")
         .bind("exit", "Escape")?
-        .bind("exit", "q")?])?;
+        .bind("exit", "q")?;
+    let mut input = InputSystem::new(vec![ArcBallCamera::default_bindings()?, system_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
@@ -95,40 +94,27 @@ fn main() -> Fallible<()> {
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001), meters!(3.4e+38));
     camera.set_target(0.0, -10.0, 0.0);
-    camera.on_mousebutton_down(1);
-    let mut sun_angle = 0f64;
-    let mut in_sun_move = false;
 
     loop {
         let frame_start = Instant::now();
         for command in input.poll()? {
+            camera.handle_command(&command)?;
             match command.name.as_str() {
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
                     camera.set_aspect_ratio(gpu.aspect_ratio());
                 }
-                "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "+enter-move-sun" => in_sun_move = true,
-                "-enter-move-sun" => in_sun_move = false,
-                "mouse-move" => {
-                    if in_sun_move {
-                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                    } else {
-                        camera.on_mousemove(
-                            command.displacement()?.0 / 4.0,
-                            command.displacement()?.1 / 4.0,
-                        )
-                    }
-                }
-                "mouse-wheel" => {
-                    camera.on_mousescroll(command.displacement()?.0, command.displacement()?.1)
-                }
                 "window-cursor-move" => {}
-                _ => trace!("unhandled command: {}", command.name),
+                _ => {}
             }
         }
 
-        let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+        let sun_direction = Vector3::new(
+            camera.sun_angle.sin() as f32,
+            0f32,
+            camera.sun_angle.cos() as f32,
+        );
 
         // Prepare new camera parameters.
         let mut upload_buffers = Vec::new();

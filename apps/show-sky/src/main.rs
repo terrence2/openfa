@@ -12,8 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::meters;
 use atmosphere::AtmosphereBuffer;
-use camera::UfoCamera;
+use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
@@ -27,7 +28,7 @@ use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
-use std::{f64::consts::PI, time::Instant};
+use std::time::Instant;
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
 
 make_frame_graph!(
@@ -52,21 +53,10 @@ fn main() -> Fallible<()> {
     use std::sync::Arc;
     let lib = Arc::new(Box::new(Library::empty()?));
 
-    let shape_bindings = InputBindings::new("shape")
-        .bind("+enter-move-sun", "mouse1")?
-        .bind("zoom-in", "Equals")?
-        .bind("zoom-out", "Subtract")?
-        .bind("+rotate-right", "c")?
-        .bind("+rotate-left", "z")?
-        .bind("+move-left", "a")?
-        .bind("+move-right", "d")?
-        .bind("+move-forward", "w")?
-        .bind("+move-backward", "s")?
-        .bind("+move-up", "space")?
-        .bind("+move-down", "Control")?
+    let system_bindings = InputBindings::new("map")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(vec![shape_bindings])?;
+    let mut input = InputSystem::new(vec![ArcBallCamera::default_bindings()?, system_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
     ///////////////////////////////////////////////////////////
@@ -95,73 +85,43 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
-    let mut in_sun_move = false;
-    let mut sun_angle = 0.0;
-
+    /*
     let mut camera = UfoCamera::new(gpu.aspect_ratio(), 0.1f64, 3.4e+38f64);
     camera.set_position(6_378.0, 0.0, 0.0);
     camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
+    */
 
-    // let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.001, 3.4e+38);
-    // camera.set_target_point(&nalgebra::convert(positions[position_index]));
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
 
     loop {
         let loop_start = Instant::now();
 
         for command in input.poll()? {
+            camera.handle_command(&command)?;
             match command.name.as_str() {
+                // system bindings
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
                     camera.set_aspect_ratio(gpu.aspect_ratio());
                 }
-                "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "+enter-move-sun" => in_sun_move = true,
-                "-enter-move-sun" => in_sun_move = false,
-                "mouse-move" => {
-                    if in_sun_move {
-                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                    } else {
-                        camera.on_mousemove(command.displacement()?.0, command.displacement()?.1)
-                    }
-                }
-                "mouse-wheel" => {
-                    if command.displacement()?.1 > 0.0 {
-                        camera.speed *= 0.8;
-                    } else {
-                        camera.speed *= 1.2;
-                    }
-                }
-                "zoom-in" => camera.zoom_in(),
-                "zoom-out" => camera.zoom_out(),
-                "+rotate-right" => camera.plus_rotate_right(),
-                "-rotate-right" => camera.minus_rotate_right(),
-                "+rotate-left" => camera.plus_rotate_left(),
-                "-rotate-left" => camera.minus_rotate_left(),
-                "+move-up" => camera.plus_move_up(),
-                "-move-up" => camera.minus_move_up(),
-                "+move-down" => camera.plus_move_down(),
-                "-move-down" => camera.minus_move_down(),
-                "+move-left" => camera.plus_move_left(),
-                "-move-left" => camera.minus_move_left(),
-                "+move-right" => camera.plus_move_right(),
-                "-move-right" => camera.minus_move_right(),
-                "+move-backward" => camera.plus_move_backward(),
-                "-move-backward" => camera.minus_move_backward(),
-                "+move-forward" => camera.plus_move_forward(),
-                "-move-forward" => camera.minus_move_forward(),
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
 
         camera.think();
-        let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+        let sun_direction = Vector3::new(
+            camera.sun_angle.sin() as f32,
+            0f32,
+            camera.sun_angle.cos() as f32,
+        );
 
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_ufo_on_globe(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer
             .borrow()
             .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;

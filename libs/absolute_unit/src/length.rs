@@ -26,9 +26,9 @@ pub trait LengthUnit: Copy {
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Length<T: LengthUnit> {
+pub struct Length<Unit: LengthUnit> {
     nm: i64, // in nanometers
-    phantom: PhantomData<T>,
+    phantom: PhantomData<Unit>,
 }
 
 impl<Unit> fmt::Display for Length<Unit>
@@ -170,12 +170,7 @@ impl_unit_for_numerics!(impl_length_unit_for_numeric_type);
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        feet, meters,
-        unit::{feet::Feet, meters::Meters},
-    };
-    use std::f64::consts::PI;
+    use crate::{feet, meters};
 
     #[test]
     fn test_meters_to_feet() {

@@ -16,7 +16,7 @@ use crate::impl_unit_for_numerics;
 use std::{
     fmt,
     marker::PhantomData,
-    ops::{Add, AddAssign, Div, Mul, Sub},
+    ops::{Add, AddAssign, Sub},
 };
 
 pub trait AngleUnit: Copy {
@@ -144,11 +144,7 @@ impl_unit_for_numerics!(impl_angle_unit_for_numeric_type);
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        degrees, radians,
-        unit::{degrees::Degrees, radians::Radians},
-    };
+    use crate::{degrees, radians};
     use std::f64::consts::PI;
 
     #[test]
