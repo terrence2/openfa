@@ -12,8 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod arc_ball_camera;
-mod ufo_camera;
 
-pub use arc_ball_camera::ArcBallCamera;
-pub use ufo_camera::UfoCamera;
+#[macro_export]
+macro_rules! impl_unit_for_numerics {
+    ($it:tt) => {
+        $it!(f64);
+        $it!(f32);
+        $it!(i64);
+        $it!(i32);
+        $it!(i16);
+        $it!(i8);
+    };
+}

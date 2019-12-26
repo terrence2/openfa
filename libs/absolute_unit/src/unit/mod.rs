@@ -12,8 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod arc_ball_camera;
-mod ufo_camera;
 
-pub use arc_ball_camera::ArcBallCamera;
-pub use ufo_camera::UfoCamera;
+// Angular
+pub(crate) mod degrees;
+pub(crate) mod radians;
+
+// Distance
+pub(crate) mod feet;
+pub(crate) mod meters;

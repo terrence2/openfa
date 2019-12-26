@@ -20,8 +20,9 @@ stars = { path = "../../../render-wgpu/buffer/stars" }
 
 [dev-dependencies]
 nalgebra = "^ 0.18"
-input = { path = "../../../render-wgpu/common/input" }
+absolute_unit = { path = "../../../absolute_unit" }
 camera = { path = "../../../render-shared/common/camera" }
+input = { path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

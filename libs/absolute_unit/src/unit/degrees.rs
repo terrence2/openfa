@@ -12,8 +12,26 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod arc_ball_camera;
-mod ufo_camera;
+use crate::angle::AngleUnit;
+use std::f64::consts::PI;
 
-pub use arc_ball_camera::ArcBallCamera;
-pub use ufo_camera::UfoCamera;
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Degrees;
+impl AngleUnit for Degrees {
+    fn unit_name() -> &'static str {
+        "degrees"
+    }
+    fn suffix() -> &'static str {
+        "°"
+    }
+    fn femto_radians_in_unit() -> i64 {
+        ((1_000_000_000_000_000f64 * PI) / 180f64) as i64
+    }
+}
+
+#[macro_export]
+macro_rules! degrees {
+    ($num:expr) => {
+        $crate::Angle::<$crate::Degrees>::from(&$num)
+    };
+}

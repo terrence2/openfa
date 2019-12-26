@@ -12,8 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod arc_ball_camera;
-mod ufo_camera;
 
-pub use arc_ball_camera::ArcBallCamera;
-pub use ufo_camera::UfoCamera;
+pub(crate) mod angle;
+pub(crate) mod generic;
+pub(crate) mod length;
+pub(crate) mod unit;
+
+pub use crate::{
+    angle::{Angle, AngleUnit},
+    length::{Length, LengthUnit},
+    unit::{degrees::Degrees, feet::Feet, meters::Meters, radians::Radians},
+};

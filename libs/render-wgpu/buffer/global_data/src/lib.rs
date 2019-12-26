@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use camera::{ArcBallCamera, CameraAbstract, UfoCamera};
+use camera::{ArcBallCamera, UfoCamera};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
@@ -253,7 +253,7 @@ impl GlobalParametersBuffer {
         );
 
         let tile_ul_eye = camera.eye();
-        let tile_ul_tgt = camera.target;
+        let tile_ul_tgt = camera.get_target();
         let ul_to_c = Vector3::new(tile_width_hm / 2f64, 0f64, tile_height_hm / 2f64);
         let tile_c_eye = tile_ul_eye - ul_to_c;
         let tile_c_tgt = tile_ul_tgt - ul_to_c;

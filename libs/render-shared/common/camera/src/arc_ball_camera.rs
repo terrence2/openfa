@@ -12,54 +12,63 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::CameraAbstract;
-use log::trace;
-use nalgebra::{convert, Isometry3, Matrix4, Perspective3, Point3, Unit, UnitQuaternion, Vector3};
+use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters, Radians};
+use failure::Fallible;
+use input::{Command, InputBindings};
+use nalgebra::{convert, Isometry3, Matrix4, Perspective3, Point3, Vector3};
 use std::f64::consts::PI;
 
 pub struct ArcBallCamera {
-    pub target: Point3<f64>,
-    distance: f64,
-    yaw: f64,
-    pitch: f64,
-    pub up: Vector3<f64>,
-    rotation: UnitQuaternion<f64>,
-    pub projection: Perspective3<f64>,
-    fov_y: f64,
-    z_near: f64,
-    z_far: f64,
+    fov_y: Angle<Radians>,
+    z_near: Length<Meters>,
+    z_far: Length<Meters>,
     in_rotate: bool,
     in_move: bool,
+    in_sun_move: bool,
+    pub sun_angle: Angle<Radians>,
+
+    target: Point3<f64>,
+    //target: Position<GeoSurface>,
+    distance: Length<Meters>,
+    yaw: Angle<Radians>,
+    pitch: Angle<Radians>,
+
+    pub up: Vector3<f64>,
+    projection: Perspective3<f64>,
 }
 
 impl ArcBallCamera {
-    pub fn new(aspect_ratio: f64, z_near: f64, z_far: f64) -> Self {
+    pub fn new(aspect_ratio: f64, z_near: Length<Meters>, z_far: Length<Meters>) -> Self {
+        let fov_y = radians!(PI / 2f64);
         Self {
-            target: Point3::new(0f64, 0f64, 0f64),
-            distance: 1f64,
-            yaw: PI / 2f64,
-            pitch: 3f64 * PI / 4f64,
+            //target: Position::<GeoSurface>::new(radians!(0), radians!(0), meters!(0)),
+            target: Point3::new(0.0, 0.0, 0.0),
+            distance: meters!(1),
+            yaw: radians!(PI / 2f64),
+            pitch: radians!(3f64 * PI / 4f64),
             up: Vector3::y(),
-            rotation: UnitQuaternion::from_axis_angle(&Unit::new_normalize(Vector3::z()), 0.0),
-            projection: Perspective3::new(1f64 / aspect_ratio, PI / 2f64, z_near, z_far),
-            fov_y: PI / 2f64,
+            projection: Perspective3::new(
+                1f64 / aspect_ratio,
+                fov_y.into(),
+                z_near.into(),
+                z_far.into(),
+            ),
+            fov_y,
             z_near,
             z_far,
             in_rotate: false,
             in_move: false,
+            in_sun_move: false,
+            sun_angle: radians!(0),
         }
     }
 
-    pub fn get_distance(&self) -> f64 {
+    pub fn get_distance(&self) -> Length<Meters> {
         self.distance
     }
 
-    pub fn set_distance(&mut self, distance: f64) {
-        self.distance = distance;
-    }
-
-    pub fn get_target(&self) -> Point3<f64> {
-        self.target
+    pub fn set_distance<Unit: LengthUnit>(&mut self, distance: Length<Unit>) {
+        self.distance = meters!(distance);
     }
 
     pub fn set_target(&mut self, x: f64, y: f64, z: f64) {
@@ -70,33 +79,42 @@ impl ArcBallCamera {
         self.target = *p;
     }
 
+    pub fn get_target(&self) -> Point3<f64> {
+        self.target
+    }
+
+    //    pub fn get_target(&self) -> Position<GeoSurface> {
+    //        self.target
+    //    }
+
+    /*
     pub fn set_up(&mut self, up: Vector3<f64>) {
         self.up = up;
     }
 
-    pub fn set_rotation(&mut self, rotation: UnitQuaternion<f64>) {
-        self.rotation = rotation;
-    }
-
-    pub fn set_angle(&mut self, pitch: f64, yaw: f64) {
+    pub fn set_angle(&mut self, pitch: Angle<Radians>, yaw: Angle<Radians>) {
         self.pitch = pitch;
         self.yaw = yaw;
     }
+    */
 
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f64) {
-        self.projection =
-            Perspective3::new(1f64 / aspect_ratio, self.fov_y, self.z_near, self.z_far)
+        self.projection = Perspective3::new(
+            1f64 / aspect_ratio,
+            self.fov_y.into(),
+            self.z_near.into(),
+            self.z_far.into(),
+        )
     }
 
+    //pub fn eye_position_relative_to_tile(&self, origin: Position<GeoSurface>) -> Point3<f64> {
     pub fn eye(&self) -> Point3<f64> {
         let relative = Vector3::new(
-            self.distance * self.yaw.cos() * self.pitch.sin(),
-            self.distance * self.pitch.cos(),
-            self.distance * self.yaw.sin() * self.pitch.sin(),
+            f64::from(self.distance * self.yaw.cos() * self.pitch.sin()),
+            f64::from(self.distance * self.pitch.cos()),
+            f64::from(self.distance * self.yaw.sin() * self.pitch.sin()),
         );
-        //        let rotation =
-        //            UnitQuaternion::from_axis_angle(&Unit::new_normalize(Vector3::z()), PI / 2.0);
-        let position = (self.rotation * relative).to_homogeneous() + self.target.to_homogeneous();
+        let position = relative.to_homogeneous() + self.target.to_homogeneous();
         Point3::from_homogeneous(position).unwrap()
     }
 
@@ -104,12 +122,14 @@ impl ArcBallCamera {
         convert(self.projection_matrix() * (model * self.view()).to_homogeneous())
     }
 
-    pub fn on_mousemove(&mut self, x: f64, y: f64) {
-        if self.in_rotate {
-            self.yaw += x * 0.5 * (PI / 180f64);
+    pub fn on_mousemove(&mut self, command: &Command) -> Fallible<()> {
+        let (x, y) = command.displacement()?;
 
-            self.pitch += y * (PI / 180f64);
-            self.pitch = self.pitch.min(PI - 0.001f64).max(0.001f64);
+        if self.in_rotate {
+            self.yaw += degrees!(x * 0.5);
+
+            self.pitch += degrees!(y);
+            self.pitch = self.pitch.min(radians!(PI - 0.001)).max(radians!(0.001));
         }
 
         if self.in_move {
@@ -117,63 +137,79 @@ impl ArcBallCamera {
             let dir = (self.target - eye).normalize();
             let tangent = Vector3::y().cross(&dir).normalize();
             let bitangent = dir.cross(&tangent);
-            let mult = (self.distance / 1000.0).max(0.01);
+            let mult = f64::from(self.distance / 1000f64).max(0.01);
             self.target = self.target + tangent * (x * mult) + bitangent * (-y * mult);
         }
+
+        if self.in_sun_move {
+            self.sun_angle += degrees!(x);
+        }
+
+        Ok(())
     }
 
-    pub fn on_mousescroll(&mut self, _x: f64, y: f64) {
+    pub fn on_mousescroll(&mut self, command: &Command) -> Fallible<()> {
+        let y = command.displacement()?.1;
+
         // up/down is y
         //   Up is negative
         //   Down is positive
         //   Works in steps of 15 for my mouse.
         self.distance *= if y > 0f64 { 1.1f64 } else { 0.9f64 };
-        self.distance = self.distance.max(0.01);
+        self.distance = self.distance.max(meters!(0.01));
+
+        Ok(())
     }
 
-    pub fn on_mousebutton_down(&mut self, id: u32) {
-        match id {
-            1 => self.in_rotate = true,
-            3 => self.in_move = true,
-            _ => trace!("button down: {}", id),
-        }
-    }
-
-    pub fn on_mousebutton_up(&mut self, id: u32) {
-        match id {
-            1 => self.in_rotate = false,
-            3 => self.in_move = false,
-            _ => trace!("button up: {}", id),
-        }
-    }
-}
-
-impl CameraAbstract for ArcBallCamera {
-    fn view(&self) -> Isometry3<f32> {
+    pub fn view(&self) -> Isometry3<f32> {
         convert(Isometry3::look_at_rh(&self.eye(), &self.target, &self.up))
     }
 
-    fn projection(&self) -> Perspective3<f64> {
+    pub fn projection(&self) -> Perspective3<f64> {
         self.projection
     }
 
-    fn view_matrix(&self) -> Matrix4<f32> {
+    pub fn view_matrix(&self) -> Matrix4<f32> {
         convert(self.view())
     }
 
-    fn projection_matrix(&self) -> Matrix4<f32> {
+    pub fn projection_matrix(&self) -> Matrix4<f32> {
         convert(*self.projection.as_matrix())
     }
 
-    fn inverted_projection_matrix(&self) -> Matrix4<f32> {
+    pub fn inverted_projection_matrix(&self) -> Matrix4<f32> {
         convert(self.projection.inverse())
     }
 
-    fn inverted_view_matrix(&self) -> Matrix4<f32> {
+    pub fn inverted_view_matrix(&self) -> Matrix4<f32> {
         convert(self.view().inverse().to_homogeneous())
     }
 
-    fn position(&self) -> Point3<f32> {
+    pub fn position(&self) -> Point3<f32> {
         convert(self.eye())
+    }
+
+    pub fn think(&mut self) {}
+
+    pub fn default_bindings() -> Fallible<InputBindings> {
+        Ok(InputBindings::new("arc_ball_camera")
+            .bind("+move-sun", "mouse2")?
+            .bind("+pan-view", "mouse1")?
+            .bind("+move-view", "mouse3")?)
+    }
+
+    pub fn handle_command(&mut self, command: &Command) -> Fallible<()> {
+        match command.name.as_str() {
+            "+pan-view" => self.in_rotate = true,
+            "-pan-view" => self.in_rotate = false,
+            "+move-view" => self.in_move = true,
+            "-move-view" => self.in_move = false,
+            "+move-sun" => self.in_sun_move = true,
+            "-move-sun" => self.in_sun_move = false,
+            "mouse-move" => self.on_mousemove(command)?,
+            "mouse-wheel" => self.on_mousescroll(command)?,
+            _ => {}
+        }
+        Ok(())
     }
 }

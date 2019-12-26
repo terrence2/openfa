@@ -12,8 +12,25 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod arc_ball_camera;
-mod ufo_camera;
+use crate::length::LengthUnit;
 
-pub use arc_ball_camera::ArcBallCamera;
-pub use ufo_camera::UfoCamera;
+#[derive(Debug, Clone, Copy)]
+pub struct Feet;
+impl LengthUnit for Feet {
+    fn unit_name() -> &'static str {
+        "feet"
+    }
+    fn suffix() -> &'static str {
+        "'"
+    }
+    fn nanometers_in_unit() -> i64 {
+        304_800_000
+    }
+}
+
+#[macro_export]
+macro_rules! feet {
+    ($num:expr) => {
+        $crate::Length::<$crate::Feet>::from(&$num)
+    };
+}

@@ -12,8 +12,25 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod arc_ball_camera;
-mod ufo_camera;
+use crate::angle::AngleUnit;
 
-pub use arc_ball_camera::ArcBallCamera;
-pub use ufo_camera::UfoCamera;
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Radians;
+impl AngleUnit for Radians {
+    fn unit_name() -> &'static str {
+        "radians"
+    }
+    fn suffix() -> &'static str {
+        " ㎭"
+    }
+    fn femto_radians_in_unit() -> i64 {
+        1_000_000_000_000_000 // peta = 10**15
+    }
+}
+
+#[macro_export]
+macro_rules! radians {
+    ($num:expr) => {
+        $crate::Angle::<$crate::Radians>::from(&$num)
+    };
+}

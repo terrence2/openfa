@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::meters;
 use camera::ArcBallCamera;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
@@ -22,9 +23,10 @@ use stars::StarsBuffer;
 use wgpu;
 
 fn main() -> Fallible<()> {
-    let mut input = InputSystem::new(vec![InputBindings::new("base")
+    let system_bindings = InputBindings::new("system")
         .bind("exit", "Escape")?
-        .bind("exit", "q")?])?;
+        .bind("exit", "q")?;
+    let mut input = InputSystem::new(vec![ArcBallCamera::default_bindings()?, system_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
@@ -93,24 +95,20 @@ fn main() -> Fallible<()> {
             alpha_to_coverage_enabled: false,
         });
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
-    camera.set_distance(40.0);
-    camera.on_mousebutton_down(1);
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    camera.set_distance(meters!(40.0));
 
     loop {
         for command in input.poll()? {
+            camera.handle_command(&command)?;
             match command.name.as_str() {
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
                     camera.set_aspect_ratio(gpu.aspect_ratio());
                 }
-                "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "mouse-move" => camera.on_mousemove(
-                    command.displacement()?.0 / 4.0,
-                    command.displacement()?.1 / 4.0,
-                ),
                 "window-cursor-move" => {}
-                _ => println!("unhandled command: {}", command.name),
+                _ => {}
             }
         }
 
