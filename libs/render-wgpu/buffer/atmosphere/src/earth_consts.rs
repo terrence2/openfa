@@ -16,10 +16,12 @@ use crate::colorspace::{cie_color_coefficient_at_wavelength, convert_xyz_to_srgb
 use num_traits::pow::Pow;
 use static_assertions::{assert_eq_align, assert_eq_size};
 use std::{f64::consts::PI as PI64, mem, ops::Range};
+use zerocopy::{AsBytes, FromBytes};
 
 pub const RGB_LAMBDAS: [f64; 4] = [680.0, 550.0, 440.0, 0.0];
 
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Clone, Copy)]
 pub struct DensityProfileLayer {
     // Height of this layer, except for the last layer which always
     // extends to the top of the atmosphere region.
@@ -38,7 +40,8 @@ assert_eq_size!(DensityProfileLayer, [f32; 8]);
 assert_eq_align!(DensityProfileLayer, [f32; 4]);
 
 // From low to high.
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Clone, Copy)]
 pub struct DensityProfile {
     // Note: Arrays are busted in shaderc right now.
     _layer0: DensityProfileLayer,
@@ -47,7 +50,8 @@ pub struct DensityProfile {
 assert_eq_size!(DensityProfile, [f32; 16]);
 assert_eq_align!(DensityProfile, [f32; 4]);
 
-#[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Clone, Copy)]
 pub struct AtmosphereParameters {
     // The density profile of tiny air molecules.
     _rayleigh_density: DensityProfile,

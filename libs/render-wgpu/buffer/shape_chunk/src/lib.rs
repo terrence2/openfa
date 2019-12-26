@@ -19,7 +19,7 @@ mod texture_atlas;
 mod upload;
 
 pub use chunk::{ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
-pub use chunk_manager::ShapeChunkManager;
+pub use chunk_manager::ShapeChunkBuffer;
 pub use draw_state::DrawState;
 pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 
@@ -60,7 +60,7 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let mut chunk_man = ShapeChunkManager::new(gpu.device())?;
+        let mut chunk_man = ShapeChunkBuffer::new(gpu.device())?;
         let mut all_shapes = Vec::new();
         for name in shapes {
             if skipped.contains(&name.as_str()) {

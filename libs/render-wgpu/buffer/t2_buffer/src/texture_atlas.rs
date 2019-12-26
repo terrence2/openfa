@@ -200,7 +200,6 @@ impl TextureAtlas {
 #[cfg(test)]
 mod test {
     use super::*;
-    use asset::AssetManager;
     use lay::Layer;
     use mm::MissionMap;
     use omnilib::OmniLib;
@@ -237,29 +236,21 @@ mod test {
                     .unwrap_or_else(|_| "<unknown>".to_owned())
             );
             let lib = omni.library(game);
-            let assets = AssetManager::new(lib.clone())?;
             let types = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &types, &lib)?;
-
-            let layer = assets.load_lay(&mm.layer_name)?;
+            let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &lib)?;
 
             let mut pic_data = HashMap::new();
             let base_name = mm.get_base_texture_name()?;
-            for tmap in mm.tmaps.values() {
+            for tmap in mm.texture_maps() {
                 if !pic_data.contains_key(&tmap.loc) {
                     let name = tmap.loc.pic_file(&base_name);
                     pic_data.insert(tmap.loc.clone(), lib.load(&name)?.to_vec());
                 }
             }
             let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-            let palette = load_palette(&base_palette, &layer, mm.layer_index)?;
-
-            let all_texture_start_coords = mm.tmaps.keys().cloned().collect::<Vec<(u32, u32)>>();
-            for &(x, y) in &all_texture_start_coords {
-                assert_eq!(x % 4, 0);
-                assert_eq!(y % 4, 0);
-            }
+            let palette = load_palette(&base_palette, &layer, mm.layer_index())?;
 
             // Load all images with our new palette.
             let mut pics = Vec::new();

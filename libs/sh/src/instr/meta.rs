@@ -15,7 +15,7 @@
 use crate::instr::read_name;
 use ansi::ansi;
 use failure::Fallible;
-use reverse::{bs2s, p2s};
+use reverse::{bs2s, p2s, p_2_i16};
 
 #[derive(Debug)]
 pub struct SourceRef {
@@ -140,7 +140,7 @@ impl EndOfObject {
             p2s(self.data, 0, 2).trim(),
             ansi(),
             ansi().green(),
-            p2s(self.data, 2, Self::SIZE),
+            p_2_i16(self.data, 2, Self::SIZE),
             ansi()
         )
     }

@@ -14,7 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod envelope;
 
-use crate::envelope::Envelope;
+pub use crate::envelope::Envelope;
+
 use failure::{bail, ensure, Fallible};
 use nt::NpcType;
 use ot::{
@@ -22,7 +23,7 @@ use ot::{
     parse::{FieldRow, FromRow, FromRows},
     ObjectType,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt, slice::Iter};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum PlaneTypeVersion {
@@ -41,6 +42,7 @@ impl PlaneTypeVersion {
 }
 
 // Wrap Vec<HP> so that we can impl FromRow.
+#[derive(Debug)]
 pub struct Envelopes {
     #[allow(dead_code)]
     all: Vec<Envelope>,
@@ -67,9 +69,28 @@ impl FromRow for Envelopes {
     }
 }
 
+impl Envelopes {
+    pub fn iter(&self) -> Iter<Envelope> {
+        self.all.iter()
+    }
+}
+
+#[derive(Clone)]
 #[allow(dead_code)]
-struct SystemDamage {
+pub struct SystemDamage {
     damage_limit: [u8; 45],
+}
+
+impl fmt::Debug for SystemDamage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = self
+            .damage_limit
+            .iter()
+            .map(|&v| format!("{}", v))
+            .collect::<Vec<String>>()
+            .join(", ");
+        write!(f, "SystemDamage {{ limits: {:?} }}", s)
+    }
 }
 
 impl FromRows for SystemDamage {
@@ -87,8 +108,9 @@ impl FromRows for SystemDamage {
     }
 }
 
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
-struct PhysBounds {
+pub struct PhysBounds {
     min: f32,
     max: f32,
     acc: f32,

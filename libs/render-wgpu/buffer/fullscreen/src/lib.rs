@@ -13,10 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use std::{mem, sync::Arc};
+use std::{cell::RefCell, mem, sync::Arc};
 use wgpu;
+use zerocopy::{AsBytes, FromBytes};
 
-#[derive(Clone, Copy)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Clone, Copy)]
 pub struct FullscreenVertex {
     _pos: [f32; 2],
 }
@@ -58,8 +60,8 @@ pub struct FullscreenBuffer {
 }
 
 impl FullscreenBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Arc<Box<Self>>> {
-        Ok(Arc::new(Box::new(Self {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
+        Ok(Arc::new(RefCell::new(Self {
             vertex_buffer: FullscreenVertex::buffer(device),
         })))
     }

@@ -67,6 +67,15 @@ pub fn bs2s(bs: &[u8]) -> String {
     v.iter().collect::<String>()
 }
 
+pub fn bs_2_i16(bs: &[u8]) -> String {
+    let mut s = String::new();
+    let d: &[i16] = unsafe { mem::transmute(bs) };
+    for i in 0..bs.len() / 2 {
+        s += &format!("{:02X}{:02X}({}) ", bs[i * 2], bs[i * 2 + 1], d[i],);
+    }
+    s
+}
+
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn p2s(bs: *const u8, start: usize, end: usize) -> String {
     let mut v = Vec::new();
@@ -75,6 +84,17 @@ pub fn p2s(bs: *const u8, start: usize, end: usize) -> String {
         v.push(' ');
     }
     v.iter().collect::<String>()
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn p_2_i16(bs: *const u8, start: usize, end: usize) -> String {
+    let mut s = String::new();
+    let b: &[u8] = unsafe { std::slice::from_raw_parts(bs.add(start), end - start) };
+    let d: &[i16] = unsafe { mem::transmute(b) };
+    for i in 0..(end - start) / 2 {
+        s += &format!("{:02X}{:02X}({}) ", b[i * 2], b[i * 2 + 1], d[i],);
+    }
+    s
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

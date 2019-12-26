@@ -13,22 +13,23 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-
-#include <common/include/include_global.glsl>
+#include <common/shader_globals/include/global.glsl>
 #include <buffer/atmosphere/include/global.glsl>
+
+#include <buffer/global_data/include/library.glsl>
+
+#include <buffer/atmosphere/include/descriptorset.glsl>
+#include <buffer/atmosphere/include/library.glsl>
 
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;
 
 const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 
-#include <buffer/atmosphere/include/descriptorset.glsl>
-#include <buffer/atmosphere/include/library.glsl>
-
 void main() {
     vec3 view = normalize(v_ray);
-    vec3 v_camera = camera_and_sun[0].xyz;
-    vec3 v_sun_direction = camera_and_sun[1].xyz;
+    vec3 v_camera = camera_position_earth_km().xyz;
+    vec3 v_sun_direction = camera_and_sun[0].xyz;
 
     vec3 ground_radiance;
     float ground_alpha;
@@ -47,7 +48,6 @@ void main() {
         v_sun_direction,
         ground_radiance,
         ground_alpha);
-    f_color = vec4(ground_radiance, 1.0);
 
     vec3 sky_radiance = vec3(0);
     compute_sky_radiance(
@@ -66,8 +66,7 @@ void main() {
         sky_radiance
     );
 
-    vec3 radiance = sky_radiance;
-    radiance = mix(radiance, ground_radiance, ground_alpha);
+    vec3 radiance = mix(sky_radiance, ground_radiance, ground_alpha);
 
     vec3 color = pow(
             vec3(1.0) - exp(-radiance / vec3(atmosphere.whitepoint) * EXPOSURE),

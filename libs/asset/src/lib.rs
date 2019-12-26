@@ -59,7 +59,7 @@ impl AssetManager {
     pub fn load_lay(&self, filename: &str) -> Fallible<Arc<Box<Layer>>> {
         if !self.cache_layer.borrow().contains_key(filename) {
             let data = self.lib.load(filename)?;
-            let layer = Layer::from_bytes(&data, self.lib.clone())?;
+            let layer = Layer::from_bytes(&data, &self.lib)?;
             self.cache_layer
                 .borrow_mut()
                 .insert(filename.to_owned(), Arc::new(Box::new(layer)));
@@ -107,7 +107,7 @@ mod tests {
             for filename in lib.find_matching("*.T2")?.iter() {
                 println!("name: {:?}", filename);
                 let t2 = asset_loader.load_t2(&filename)?;
-                println!("res: {:?}", t2.name);
+                println!("res: {:?}", t2.name());
             }
         }
         Ok(())

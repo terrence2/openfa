@@ -13,18 +13,23 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-#include <common/include/include_global.glsl>
+#include <common/shader_globals/include/global.glsl>
 #include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 2) in vec2 tex_coord;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec4 color;
+layout(location = 3) in vec2 tex_coord;
 
-layout(location = 0) out vec4 v_color;
-layout(location = 1) out vec2 v_tex_coord;
+layout(location = 0) out smooth vec4 v_position;
+layout(location = 1) out smooth vec4 v_normal;
+layout(location = 2) out smooth vec4 v_color;
+layout(location = 3) out smooth vec2 v_tex_coord;
 
 void main() {
     gl_Position = camera_projection() * camera_view() * vec4(position, 1.0);
+    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
+    v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
     v_color = color;
     v_tex_coord = tex_coord;
 }

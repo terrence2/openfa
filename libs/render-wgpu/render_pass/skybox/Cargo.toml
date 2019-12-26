@@ -1,5 +1,5 @@
 [package]
-name = "skybox-wgpu"
+name = "skybox"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -7,19 +7,22 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 log = "^ 0.4"
-#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
-wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
+#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-atmosphere = { package = "atmosphere-wgpu", path = "../../../render-wgpu/buffer/atmosphere" }
-global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
+atmosphere = { path = "../../../render-wgpu/buffer/atmosphere" }
+global_data = { path = "../../../render-wgpu/buffer/global_data" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
-stars = { package = "stars-wgpu", path = "../../../render-wgpu/buffer/stars" }
+fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
+shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
+stars = { path = "../../../render-wgpu/buffer/stars" }
 
 [dev-dependencies]
 nalgebra = "^ 0.18"
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
+absolute_unit = { path = "../../../absolute_unit" }
 camera = { path = "../../../render-shared/common/camera" }
+input = { path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

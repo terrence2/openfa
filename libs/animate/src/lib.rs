@@ -13,26 +13,38 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use approx::relative_eq;
-use std::{
-    ops::Range,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
-#[derive(Debug)]
-pub struct LinearAnimationTemplate {
-    duration: Duration,
-    range: Range<f32>,
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct AnimationRange {
+    start: f32,
+    end: f32,
 }
 
-impl LinearAnimationTemplate {
-    pub const fn new(duration: Duration, range: Range<f32>) -> Self {
-        Self { duration, range }
+impl AnimationRange {
+    const fn new(start: f32, end: f32) -> Self {
+        Self { start, end }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LinearAnimationTemplate {
+    range: AnimationRange,
+    duration: Duration,
+}
+
+impl LinearAnimationTemplate {
+    pub const fn new(duration: Duration, range: (f32, f32)) -> Self {
+        Self {
+            range: AnimationRange::new(range.0, range.1),
+            duration,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Animation {
-    template: &'static LinearAnimationTemplate,
+    template: LinearAnimationTemplate,
     start: Instant,
     value: f32,
     active: bool,
@@ -40,9 +52,9 @@ pub struct Animation {
 }
 
 impl Animation {
-    pub fn new(template: &'static LinearAnimationTemplate) -> Self {
+    pub fn new(template: &LinearAnimationTemplate) -> Self {
         Self {
-            template,
+            template: *template,
             start: Instant::now(),
             value: template.range.start,
             active: false,
@@ -165,7 +177,18 @@ mod test {
 
     const TEST_LINEAR_TEMPLATE: LinearAnimationTemplate = LinearAnimationTemplate {
         duration: Duration::from_millis(10),
-        range: 0f32..10f32,
+        range: AnimationRange {
+            start: 0f32,
+            end: 10f32,
+        },
+    };
+
+    const TEST_LINEAR_REVERSE_TEMPLATE: LinearAnimationTemplate = LinearAnimationTemplate {
+        duration: Duration::from_millis(10),
+        range: AnimationRange {
+            start: 10f32,
+            end: 0f32,
+        },
     };
 
     #[test]
@@ -186,6 +209,19 @@ mod test {
         }
         assert!(anim.completed_forward());
         assert_relative_eq!(anim.value(), 10f32);
+    }
+
+    #[test]
+    fn run_reverse_animation_to_completion() {
+        let mut anim = Animation::new(&TEST_LINEAR_REVERSE_TEMPLATE);
+        assert!(anim.completed_backward());
+        anim.start(&Instant::now());
+        assert!(!anim.completed_backward());
+        while anim.is_active() {
+            anim.animate(&Instant::now());
+        }
+        assert!(anim.completed_forward());
+        assert_relative_eq!(anim.value(), 0f32);
     }
 
     #[test]

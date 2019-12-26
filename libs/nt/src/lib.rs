@@ -14,14 +14,15 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod hardpoint;
 
-use crate::hardpoint::HardpointType;
+pub use crate::hardpoint::HardpointType;
+
 use failure::{bail, ensure, Fallible};
 use ot::{
     make_type_struct, parse,
     parse::{FieldRow, FromRow},
     ObjectType,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::Iter};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum NpcTypeVersion {
@@ -40,9 +41,16 @@ impl NpcTypeVersion {
 }
 
 // Wrap Vec<HP> so that we can impl FromField.
+#[derive(Debug)]
 pub struct Hardpoints {
     #[allow(dead_code)]
     all: Vec<HardpointType>,
+}
+
+impl Hardpoints {
+    pub fn iter(&self) -> Iter<HardpointType> {
+        self.all.iter()
+    }
 }
 
 impl FromRow for Hardpoints {
@@ -94,6 +102,7 @@ impl NpcType {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct HardPoint {}
 
 #[cfg(test)]

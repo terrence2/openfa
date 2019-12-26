@@ -12,17 +12,19 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+pub use jt::ProjectileType;
+pub use nt::{HardpointType, NpcType};
+pub use ot::parse;
+pub use ot::ObjectType;
+pub use pt::{Envelope, PlaneType};
+
 use failure::{bail, Fallible};
-use jt::ProjectileType;
 use lib::Library;
 use log::trace;
-use nt::NpcType;
-pub use ot::parse;
-use ot::ObjectType;
-use pt::PlaneType;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 // A generic type.
+#[derive(Debug)]
 pub enum Type {
     JT(Box<ProjectileType>),
     NT(Box<NpcType>),
@@ -66,7 +68,7 @@ impl Type {
 // Any single type is likely used by multiple game objects at once so we cache
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TypeRef(Rc<Type>);
 
 impl TypeRef {
@@ -88,6 +90,18 @@ impl TypeRef {
 
     pub fn pt(&self) -> Fallible<&PlaneType> {
         self.0.pt()
+    }
+
+    pub fn is_pt(&self) -> bool {
+        self.pt().is_ok()
+    }
+
+    pub fn is_nt(&self) -> bool {
+        self.nt().is_ok()
+    }
+
+    pub fn is_jt(&self) -> bool {
+        self.jt().is_ok()
     }
 }
 

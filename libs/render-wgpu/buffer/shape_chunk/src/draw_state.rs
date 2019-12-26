@@ -21,10 +21,10 @@ use std::time::{Duration, Instant};
 const ANIMATION_FRAME_TIME: usize = 166; // ms
 
 const GEAR_ANIMATION_TEMPLATE: LinearAnimationTemplate =
-    LinearAnimationTemplate::new(Duration::from_millis(5000), 8192f32..0f32);
+    LinearAnimationTemplate::new(Duration::from_millis(5000), (8192f32, 0f32));
 
 const BAY_ANIMATION_TEMPLATE: LinearAnimationTemplate =
-    LinearAnimationTemplate::new(Duration::from_millis(5000), 8192f32..0f32);
+    LinearAnimationTemplate::new(Duration::from_millis(5000), (8192f32, 0f32));
 
 bitflags! {
     pub struct DrawStateFlags: u16 {
@@ -43,6 +43,7 @@ bitflags! {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,
@@ -54,10 +55,11 @@ pub struct DrawState {
     sam_count: i8,
     eject_state: u8,
     flags: DrawStateFlags,
+    errata: ShapeErrata,
 }
 
-impl Default for DrawState {
-    fn default() -> Self {
+impl DrawState {
+    pub fn new(errata: ShapeErrata) -> Self {
         DrawState {
             gear_animation: Animation::new(&GEAR_ANIMATION_TEMPLATE),
             bay_animation: Animation::new(&BAY_ANIMATION_TEMPLATE),
@@ -71,11 +73,10 @@ impl Default for DrawState {
             flags: DrawStateFlags::AIRBRAKE_EXTENDED
                 | DrawStateFlags::HOOK_EXTENDED
                 | DrawStateFlags::AFTERBURNER_ENABLED,
+            errata,
         }
     }
-}
 
-impl DrawState {
     pub fn gear_retracted(&self) -> bool {
         self.gear_animation.completed_backward()
     }
@@ -300,26 +301,21 @@ impl DrawState {
         self.bay_animation.start_or_reverse(start);
     }
 
-    pub fn animate(&mut self, _start: &Instant, now: &Instant) {
+    pub fn animate(&mut self, now: &Instant) {
         self.gear_animation.animate(now);
         self.bay_animation.animate(now);
         self.thrust_vector_pos += self.thrust_vector_delta;
         self.wing_sweep_pos += self.wing_sweep_delta;
     }
 
-    pub fn build_mask_into(
-        &self,
-        start: &Instant,
-        errata: ShapeErrata,
-        buffer: &mut [u32],
-    ) -> Fallible<()> {
-        let flags = self.build_mask(start, errata)?;
+    pub fn build_mask_into(&self, start: &Instant, buffer: &mut [u32]) -> Fallible<()> {
+        let flags = self.build_mask(start)?;
         buffer[0] = (flags & 0xFFFF_FFFF) as u32;
         buffer[1] = (flags >> 32) as u32;
         Ok(())
     }
 
-    pub fn build_mask(&self, start: &Instant, errata: ShapeErrata) -> Fallible<u64> {
+    pub fn build_mask(&self, start: &Instant) -> Fallible<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         let elapsed = start.elapsed().as_millis() as usize;
@@ -364,7 +360,7 @@ impl DrawState {
         mask |= if self.left_aileron_down() {
             VertexFlags::LEFT_AILERON_DOWN
         } else if self.left_aileron_up() {
-            if errata.no_upper_aileron {
+            if self.errata.no_upper_aileron {
                 VertexFlags::LEFT_AILERON_CENTER
             } else {
                 VertexFlags::LEFT_AILERON_UP
@@ -376,7 +372,7 @@ impl DrawState {
         mask |= if self.right_aileron_down() {
             VertexFlags::RIGHT_AILERON_DOWN
         } else if self.right_aileron_up() {
-            if errata.no_upper_aileron {
+            if self.errata.no_upper_aileron {
                 VertexFlags::RIGHT_AILERON_CENTER
             } else {
                 VertexFlags::RIGHT_AILERON_UP

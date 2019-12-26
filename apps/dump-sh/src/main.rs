@@ -31,6 +31,9 @@ Opt {
     #[structopt(short = "a", long = "all", help = "Show all")]
     show_all => bool,
 
+    #[structopt(short = "e", long = "extents", help = "Show the min and max coordinates")]
+    show_extents => bool,
+
     #[structopt(short = "m", long = "matching", help = "Show matching instructions")]
     show_matching => Option<String>,
 
@@ -82,6 +85,30 @@ fn main() -> Fallible<()> {
             for (i, instr) in shape.instrs.iter().enumerate() {
                 println!("{:3}: {}", i, instr.show());
             }
+        } else if opt.show_extents {
+            let mut min = [std::i16::MAX; 3];
+            let mut max = [std::i16::MIN; 3];
+            for (_, instr) in shape.instrs.iter().enumerate() {
+                if let sh::Instr::VertexBuf(buf) = instr {
+                    for v in &buf.verts {
+                        for i in 0..3 {
+                            if v[i] > max[i] {
+                                max[i] = v[i];
+                            }
+                            if v[i] < min[i] {
+                                min[i] = v[i];
+                            }
+                        }
+                    }
+                }
+            }
+            println!("MIN: {:?}", min);
+            println!("MAX: {:?}", max);
+            let mut span = [0i16; 3];
+            for i in 0..3 {
+                span[i] = max[i] - min[i];
+            }
+            println!("SPAN: {:?}", span);
         } else if let Some(ref target) = opt.show_matching {
             for (i, instr) in shape.instrs.iter().enumerate() {
                 if instr.magic() == target {

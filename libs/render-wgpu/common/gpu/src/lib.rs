@@ -13,12 +13,14 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
-use input_wgpu::InputSystem;
+use input::InputSystem;
 use std::io::Cursor;
 use wgpu;
 use winit::dpi::PhysicalSize;
+use zerocopy::{AsBytes, FromBytes};
 
-#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,
@@ -67,14 +69,24 @@ impl GPU {
         self.size.height.floor() / self.size.width.floor()
     }
 
+    pub fn aspect_ratio_f32(&self) -> f32 {
+        (self.size.height.floor() / self.size.width.floor()) as f32
+    }
+
+    pub fn physical_size(&self) -> PhysicalSize {
+        self.size
+    }
+
     pub fn new(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
         input.window().set_title("OpenFA");
         let surface = wgpu::Surface::create(input.window());
 
-        let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            backends: wgpu::BackendBit::PRIMARY,
-        })
+        let adapter = wgpu::Adapter::request(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+            },
+            wgpu::BackendBit::PRIMARY,
+        )
         .ok_or_else(|| err_msg("no suitable graphics adapter"))?;
 
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
@@ -184,15 +196,19 @@ impl GPU {
         &self.empty_layout
     }
 
-    pub fn begin_frame(&mut self) -> Frame {
-        Frame {
+    pub fn begin_frame(&mut self) -> Fallible<Frame> {
+        let color_attachment = self
+            .swap_chain
+            .get_next_texture()
+            .map_err(|_| err_msg("failed to get next swap chain image"))?;
+        Ok(Frame {
             queue: &mut self.queue,
             encoder: self
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 }),
-            color_attachment: self.swap_chain.get_next_texture(),
+            color_attachment,
             depth_attachment: &self.depth_texture,
-        }
+        })
     }
 }
 

@@ -12,9 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::CameraAbstract;
+use failure::Fallible;
+use input::{Command, InputBindings};
 use nalgebra::{
-    Matrix4, Perspective3, Point3, Similarity3, Translation3, Unit, UnitQuaternion, Vector3,
+    Isometry3, Matrix4, Perspective3, Point3, Similarity3, Translation3, Unit, UnitQuaternion,
+    Vector3,
 };
 use std::f64::consts::PI;
 
@@ -31,6 +33,9 @@ pub struct UfoCamera {
     pub sensitivity: f64,
     move_vector: Vector3<f64>,
     rot_vector: Vector3<f64>,
+
+    in_sun_move: bool,
+    sun_angle: f64,
 }
 
 impl UfoCamera {
@@ -50,11 +55,21 @@ impl UfoCamera {
             sensitivity: 0.2,
             move_vector: nalgebra::zero(),
             rot_vector: nalgebra::zero(),
+            in_sun_move: false,
+            sun_angle: 0f64,
         }
     }
 
     pub fn set_position(&mut self, x: f64, y: f64, z: f64) {
         self.position = Translation3::new(x, y, z);
+    }
+
+    pub fn eye(&self) -> Point3<f64> {
+        self.position.transform_point(&Point3::new(0.0, 0.0, 0.0))
+    }
+
+    pub fn up(&self) -> Vector3<f64> {
+        self.rotation * Vector3::new(0.0, -1.0, 0.0)
     }
 
     pub fn set_rotation(&mut self, v: &Vector3<f64>, ang: f64) {
@@ -70,6 +85,11 @@ impl UfoCamera {
         self.aspect_ratio = aspect_ratio;
         self.projection =
             Perspective3::new(1f64 / aspect_ratio, self.fov_y, self.z_near, self.z_far)
+    }
+
+    pub fn target(&self) -> Point3<f64> {
+        let forward = self.rotation * Vector3::new(0.0, 0.0, 1.0);
+        self.position.transform_point(&Point3::from(forward))
     }
 
     pub fn zoom_in(&mut self) {
@@ -195,30 +215,91 @@ impl UfoCamera {
     pub fn minus_move_backward(&mut self) {
         self.move_vector.z = 0f64;
     }
-}
 
-impl CameraAbstract for UfoCamera {
-    fn view_matrix(&self) -> Matrix4<f32> {
+    pub fn view(&self) -> Isometry3<f32> {
+        // FIXME:
+        Isometry3::identity()
+    }
+
+    pub fn projection(&self) -> Perspective3<f64> {
+        self.projection
+    }
+
+    pub fn view_matrix(&self) -> Matrix4<f32> {
         let simi = Similarity3::from_parts(self.position, self.rotation, 1.0);
         nalgebra::convert(simi.inverse().to_homogeneous())
     }
 
-    fn projection_matrix(&self) -> Matrix4<f32> {
+    pub fn projection_matrix(&self) -> Matrix4<f32> {
         nalgebra::convert(*self.projection.as_matrix())
     }
 
-    fn inverted_projection_matrix(&self) -> Matrix4<f32> {
+    pub fn inverted_projection_matrix(&self) -> Matrix4<f32> {
         nalgebra::convert(self.projection.inverse())
     }
 
-    fn inverted_view_matrix(&self) -> Matrix4<f32> {
+    pub fn inverted_view_matrix(&self) -> Matrix4<f32> {
         let simi = Similarity3::from_parts(self.position, self.rotation, 1.0);
         nalgebra::convert(simi.to_homogeneous())
     }
 
-    fn position(&self) -> Point3<f32> {
+    pub fn position(&self) -> Point3<f32> {
         let down: Translation3<f32> = nalgebra::convert(self.position);
         Point3::new(down.vector[0], down.vector[1], down.vector[2])
+    }
+
+    pub fn default_bindings() -> Fallible<InputBindings> {
+        Ok(InputBindings::new("shape")
+            .bind("+enter-move-sun", "mouse1")?
+            .bind("zoom-in", "Equals")?
+            .bind("zoom-out", "Subtract")?
+            .bind("+rotate-right", "c")?
+            .bind("+rotate-left", "z")?
+            .bind("+move-left", "a")?
+            .bind("+move-right", "d")?
+            .bind("+move-forward", "w")?
+            .bind("+move-backward", "s")?
+            .bind("+move-up", "space")?
+            .bind("+move-down", "Control")?)
+    }
+
+    pub fn handle_command(&mut self, command: &Command) -> Fallible<()> {
+        match command.name.as_str() {
+            "mouse-move" => {
+                if self.in_sun_move {
+                    self.sun_angle += command.displacement()?.0 / (180.0 * 2.0);
+                } else {
+                    self.on_mousemove(command.displacement()?.0, command.displacement()?.1)
+                }
+            }
+            "mouse-wheel" => {
+                if command.displacement()?.1 > 0.0 {
+                    self.speed *= 0.8;
+                } else {
+                    self.speed *= 1.2;
+                }
+            }
+            "zoom-in" => self.zoom_in(),
+            "zoom-out" => self.zoom_out(),
+            "+rotate-right" => self.plus_rotate_right(),
+            "-rotate-right" => self.minus_rotate_right(),
+            "+rotate-left" => self.plus_rotate_left(),
+            "-rotate-left" => self.minus_rotate_left(),
+            "+move-up" => self.plus_move_up(),
+            "-move-up" => self.minus_move_up(),
+            "+move-down" => self.plus_move_down(),
+            "-move-down" => self.minus_move_down(),
+            "+move-left" => self.plus_move_left(),
+            "-move-left" => self.minus_move_left(),
+            "+move-right" => self.plus_move_right(),
+            "-move-right" => self.minus_move_right(),
+            "+move-backward" => self.plus_move_backward(),
+            "-move-backward" => self.minus_move_backward(),
+            "+move-forward" => self.plus_move_forward(),
+            "-move-forward" => self.minus_move_forward(),
+            _ => {}
+        }
+        Ok(())
     }
 }
 

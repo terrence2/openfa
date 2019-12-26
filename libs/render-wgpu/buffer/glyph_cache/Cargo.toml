@@ -1,5 +1,5 @@
 [package]
-name = "glyph_cache-wgpu"
+name = "glyph_cache"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -11,8 +11,9 @@ image = "^ 0.21"
 lazy_static = ">= 1"
 log = ">= 0.4"
 rusttype = "^ 0.7"
-#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
-wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
+#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 fnt = { path = "../../../fnt" }

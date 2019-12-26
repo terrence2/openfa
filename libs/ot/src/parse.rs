@@ -430,12 +430,13 @@ macro_rules! make_type_struct {
     ($structname:ident($parent:ident: $parent_ty:ty, version: $version_ty:ident) {
         $( ($row_type:ident, [ $( $row_format:ident ),* ], $comment:expr, $parse_type:ident, $field_name:ident, $field_type:path, $version_supported:ident, $default_value:expr) ),*
     }) => {
+        #[derive(Debug)]
         #[allow(dead_code)]
         pub struct $structname {
             pub $parent: $parent_ty,
 
             $(
-                $field_name: $crate::make_storage_type!($parse_type, $field_type)
+                pub $field_name: $crate::make_storage_type!($parse_type, $field_type)
             ),*
         }
 
@@ -480,7 +481,7 @@ macro_rules! make_type_struct {
                     } else {
                         $default_value
                     };
-                );*
+                )*
                 ensure!(offset >= rows.len(), "did not read all rows");
 
                 return Ok(Self {
@@ -489,6 +490,19 @@ macro_rules! make_type_struct {
                         $field_name
                     ),*
                 });
+            }
+
+            pub fn fields() -> &'static [&'static str] {
+                &[$(stringify!($field_name)),*]
+            }
+
+            pub fn get_field(&self, field: &'static str) -> String {
+                match field {
+                    $(
+                        stringify!($field_name) => format!("{:?}", self.$field_name)
+                    ),*,
+                    _ => String::new()
+                }
             }
         }
     }

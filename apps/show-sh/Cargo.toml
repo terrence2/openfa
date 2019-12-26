@@ -1,0 +1,33 @@
+[package]
+name = "show-sh"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+image = "^ 0.21"
+log = "^ 0.4"
+nalgebra = "^ 0.18"
+simplelog = "^ 0.5"
+structopt = "^ 0.2"
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
+wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+absolute_unit = { path = "../../libs/absolute_unit" }
+atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
+camera = { path = "../../libs/render-shared/common/camera" }
+frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
+fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+galaxy = { path = "../../libs/galaxy" }
+global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
+gpu = { path = "../../libs/render-wgpu/common/gpu" }
+input = { path = "../../libs/render-wgpu/common/input" }
+lib = { path = "../../libs/lib" }
+omnilib = { path = "../../libs/omnilib" }
+screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
+shape = { path = "../../libs/render-wgpu/render_pass/shape" }
+shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
+skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
+stars = { path = "../../libs/render-wgpu/buffer/stars" }
+text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }

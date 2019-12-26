@@ -1,5 +1,5 @@
 [package]
-name = "stars-wgpu"
+name = "stars"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -12,17 +12,20 @@ lazy_static = ">= 1"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
 static_assertions = "^ 1"
-#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
-wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
+#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+zerocopy = "^ 0.2"
 camera = { path = "../../../render-shared/common/camera" }
 star_catalog = { path = "../../../star_catalog" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
-global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
-fullscreen = { package = "fullscreen-wgpu", path = "../../../render-wgpu/buffer/fullscreen" }
+absolute_unit = { path = "../../../absolute_unit" }
+fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
+global_data = { path = "../../../render-wgpu/buffer/global_data" }
+input = { path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

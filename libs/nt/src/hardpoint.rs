@@ -31,6 +31,7 @@ impl HardpointTypeVersion {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct HardpointDefault {
     #[allow(dead_code)]
     name: Option<String>,

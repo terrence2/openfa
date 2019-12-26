@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-#include <common/include/include_global.glsl>
+#include <common/shader_globals/include/global.glsl>
 
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;

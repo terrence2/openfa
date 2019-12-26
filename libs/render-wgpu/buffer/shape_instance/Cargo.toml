@@ -1,5 +1,5 @@
 [package]
-name = "shape_instance-wgpu"
+name = "shape_instance"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
@@ -7,25 +7,20 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 nalgebra = "^ 0.18"
-rayon = "^ 1.2"
-specs = "^ 0.15"
-#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
-wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#legion = { git="https://github.com/TomGillen/legion", rev="23a0b29c0ddefa05dcde39fc0ce73629fa0abf40"}
+legion = { git="https://github.com/jaynus/legion", branch="fix_tag"}
+log = "^ 0.4"
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
+#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-frame_graph = { package = "frame_graph-wgpu", path = "../../../render-wgpu/common/frame_graph" }
+frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
-shape_chunk = { package = "shape_chunk-wgpu", path = "../../../render-wgpu/buffer/shape_chunk" }
-world = { path = "../../../world" }
+shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
+universe = { path = "../../../universe" }
 
 [dev-dependencies]
-rand = "^ 0.7"
-camera = { path = "../../../render-shared/common/camera" }
-global_data = { package = "global_data-wgpu", path = "../../../render-wgpu/buffer/global_data" }
-pal = { path = "../../../pal" }
-input = { package = "input-wgpu", path = "../../../render-wgpu/common/input" }
-
-[build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
+input = { path = "../../../render-wgpu/common/input" }

@@ -83,6 +83,7 @@ impl ChunkFlags {
 pub struct ChunkPart {
     vertex_start: usize,
     vertex_count: usize,
+    xform_count: usize,
     shape_widgets: Arc<RwLock<ShapeWidgets>>,
 }
 
@@ -93,9 +94,11 @@ impl ChunkPart {
         vertex_end: usize,
         shape_widgets: Arc<RwLock<ShapeWidgets>>,
     ) -> Self {
+        let xform_count = shape_widgets.read().unwrap().num_xforms();
         ChunkPart {
             vertex_start,
             vertex_count: vertex_end - vertex_start,
+            xform_count,
             shape_widgets,
         }
     }
@@ -111,6 +114,10 @@ impl ChunkPart {
 
     pub fn widgets(&self) -> Arc<RwLock<ShapeWidgets>> {
         self.shape_widgets.clone()
+    }
+
+    pub fn xform_count(&self) -> usize {
+        self.xform_count
     }
 }
 
@@ -158,17 +165,12 @@ impl OpenChunk {
         lib: &Library,
     ) -> Fallible<ShapeId> {
         let start_vertex = self.vertex_upload_buffer.len();
-        let mut verts = Vec::new();
-        let shape_widgets = Arc::new(RwLock::new(ShapeUploader::draw_model(
-            name,
-            analysis,
+        let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, lib).draw_model(
             sh,
+            analysis,
             selection,
-            palette,
-            lib,
-            &mut verts,
             &mut self.atlas_builder,
-        )?));
+        )?;
         self.vertex_upload_buffer.append(&mut verts);
 
         let part = ChunkPart::new(start_vertex, self.vertex_upload_buffer.len(), shape_widgets);

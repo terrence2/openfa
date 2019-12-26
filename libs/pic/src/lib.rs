@@ -102,13 +102,13 @@ impl Pic {
     }
 
     /// Render the PIC in `data` into a raster image. The given palette will be used if the image does not contain its own.
-    pub fn decode(system_palette: &Palette, data: &[u8]) -> Fallible<DynamicImage> {
+    pub fn decode(palette: &Palette, data: &[u8]) -> Fallible<DynamicImage> {
         let header = Header::overlay(data)?;
         let format = PicFormat::from_word(header.format())?;
         Ok(match format {
             PicFormat::JPEG => image::load_from_memory(data)?,
             PicFormat::Format0 => {
-                let palette = Self::make_palette(header, data, system_palette)?;
+                let palette = Self::make_palette(header, data, palette)?;
                 Self::decode_format0(
                     header.width(),
                     header.height(),
@@ -117,7 +117,7 @@ impl Pic {
                 )?
             }
             PicFormat::Format1 => {
-                let palette = Self::make_palette(header, data, system_palette)?;
+                let palette = Self::make_palette(header, data, palette)?;
                 Self::decode_format1(
                     header.width(),
                     header.height(),

@@ -13,21 +13,37 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod components;
-mod systems;
 
-pub use components::{ShapeComponent, ShapeFlagBuffer, ShapeTransformBuffer, ShapeXformBuffer};
-pub use systems::{CoalesceSystem, FlagUpdateSystem, TransformUpdateSystem, XformUpdateSystem};
+pub use components::*;
+pub use shape_chunk::{DrawSelection, DrawState};
 
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::{DrawIndirectCommand, GPU};
+use legion::prelude::*;
 use lib::Library;
+use log::trace;
 use pal::Palette;
-use shape_chunk::{ChunkId, DrawSelection, ShapeChunkManager, ShapeErrata, ShapeId};
-use std::{collections::HashMap, mem, sync::Arc};
+use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets};
+use std::{
+    cell::RefCell,
+    collections::{hash_map::Entry, HashMap},
+    mem,
+    sync::Arc,
+    time::Instant,
+};
+use universe::component::{Rotation, Scale, Transform};
 use wgpu;
 
+pub const SHAPE_UNIT_TO_FEET: f32 = 4f32;
+
 const BLOCK_SIZE: usize = 1 << 10;
+
+type TransformType = [f32; 8];
+
+thread_local! {
+    pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BlockId(u32);
@@ -73,52 +89,27 @@ pub struct InstanceBlock {
     // Flag set whenever the slot map changes and we need to re-up the command_buffer.
     slots_dirty: bool,
 
+    // Cursor for insertion into the xforms buffer.
+    xform_cursor: usize,
+
     // Map from the entity to the stored offset and from the offset to the entity.
     //    reservation_offset: usize,       // bump head
     //    mark_buffer: [bool; BLOCK_SIZE], // GC marked set
     //    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
     //
-    //    command_buffer: Arc<DeviceLocalBuffer<[DrawIndirectCommand]>>,
-    //    transform_buffer: Arc<DeviceLocalBuffer<[[f32; 6]]>>,
-    //    flag_buffer: Arc<DeviceLocalBuffer<[[u32; 2]]>>,
-    //    #[allow(dead_code)]
-    //    xform_index_buffer: Arc<DeviceLocalBuffer<[u32]>>,
-    command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
-    transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
+    pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
+    transform_buffer_scratch: [TransformType; BLOCK_SIZE],
     flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
+    xform_index_buffer_scratch: [u32; BLOCK_SIZE],
+    xform_buffer_scratch: [[f32; 6]; 14 * BLOCK_SIZE],
 
+    command_buffer: Arc<Box<wgpu::Buffer>>,
     transform_buffer: Arc<Box<wgpu::Buffer>>,
     flag_buffer: Arc<Box<wgpu::Buffer>>,
+    xform_index_buffer: Arc<Box<wgpu::Buffer>>,
+    xform_buffer: Arc<Box<wgpu::Buffer>>,
 
     bind_group: wgpu::BindGroup,
-    /*
-    // Buffers for all instances stored in this instance set. One command per unique entity.
-    // 16 bytes per entity; index unnecessary for draw
-    command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
-    command_upload_set: Vec<usize>,
-    command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
-
-    // Base position and orientation in xyz+euler angles stored as 6 adjacent floats.
-    // 24 bytes per entity; buffer index inferable from drawing index
-    transform_buffer_scratch: [[f32; 6]; BLOCK_SIZE],
-    transform_buffer_pool: CpuBufferPool<[f32; 6]>,
-
-    // 2 32bit flags words for each entity.
-    // 8 bytes per entity; buffer index inferable from drawing index
-    flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
-    flag_buffer_pool: CpuBufferPool<[u32; 2]>,
-
-    // 4 bytes per entity; can infer position from index
-    xform_index_buffer_scratch: [u32; BLOCK_SIZE],
-    xform_index_buffer_pool: CpuBufferPool<u32>,
-
-    // 0 to 14 position/orientation [f32; 6], depending on the shape.
-    // assume 96 bytes per entity if we're talking about planes
-    // cannot infer position, so needs an index buffer
-    xform_buffer_scratch: [[f32; 6]; 14 * BLOCK_SIZE],
-    xform_buffer_pool: CpuBufferPool<[f32; 6]>,
-    xform_buffer: Arc<DeviceLocalBuffer<[[f32; 6]]>>,
-    */
 }
 
 impl InstanceBlock {
@@ -129,18 +120,41 @@ impl InstanceBlock {
         device: &wgpu::Device,
     ) -> Fallible<Self> {
         // This class contains the fixed-size device local blocks that we will render from.
-        println!("InstanceBlock::new({:?})", block_id);
+        trace!("InstanceBlock::new({:?})", block_id);
+
+        let command_buffer_size =
+            (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
+        let command_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            size: command_buffer_size,
+            usage: wgpu::BufferUsage::all(),
+        })));
 
         let transform_buffer_size =
-            (mem::size_of::<[f32; 6]>() * BLOCK_SIZE) as wgpu::BufferAddress;
+            (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::all(),
         })));
 
+        // TODO: Only allocate flag and xform buffers if the block requires them
+
         let flag_buffer_size = (mem::size_of::<[u32; 2]>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let flag_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             size: flag_buffer_size,
+            usage: wgpu::BufferUsage::all(),
+        })));
+
+        let xform_index_buffer_size = (mem::size_of::<u32>() * BLOCK_SIZE) as wgpu::BufferAddress;
+        let xform_index_buffer =
+            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+                size: xform_index_buffer_size,
+                usage: wgpu::BufferUsage::all(),
+            })));
+
+        let xform_buffer_size =
+            (mem::size_of::<[f32; 6]>() * 14 * BLOCK_SIZE) as wgpu::BufferAddress;
+        let xform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            size: xform_buffer_size,
             usage: wgpu::BufferUsage::all(),
         })));
 
@@ -161,73 +175,45 @@ impl InstanceBlock {
                         range: 0..flag_buffer_size,
                     },
                 },
+                wgpu::Binding {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &xform_index_buffer,
+                        range: 0..xform_index_buffer_size,
+                    },
+                },
+                wgpu::Binding {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &xform_buffer,
+                        range: 0..xform_buffer_size,
+                    },
+                },
             ],
         });
-        //        // Static: except when things change
-        //        let command_buffer = DeviceLocalBuffer::array(
-        //            device.clone(),
-        //            BLOCK_SIZE,
-        //            BufferUsage::all(),
-        //            device.active_queue_families(),
-        //        )?;
-        //
-        //        // Only need to upload for items that change position.
-        //        // TODO: split chunks between buildings and movers and reflect that distinction
-        //        // TODO: down into the block (here) so that we can ignore transform in most blocks.
-        //        let transform_buffer = DeviceLocalBuffer::array(
-        //            device.clone(),
-        //            BLOCK_SIZE,
-        //            BufferUsage::all(),
-        //            device.active_queue_families(),
-        //        )?;
-        //
-        //        // Needs to be updated every frame for planes and for things that have animations.
-        //        // TODO: split out animation flags and make others only required for planes
-        //        let flag_buffer = DeviceLocalBuffer::array(
-        //            device.clone(),
-        //            BLOCK_SIZE,
-        //            BufferUsage::all(),
-        //            device.active_queue_families(),
-        //        )?;
-        //
-        //        // We re-run and rebuild the xforms buffer every frame, so we may need to re-build
-        //        // the xform index buffer every frame too. It's not clear how long positions will hold.
-        //        let xform_index_buffer = DeviceLocalBuffer::array(
-        //            device.clone(),
-        //            BLOCK_SIZE,
-        //            BufferUsage::all(),
-        //            device.active_queue_families(),
-        //        )?;
-        //
-        //        let descriptor_set = Arc::new(
-        //            PersistentDescriptorSet::start(pipeline.clone(), GlobalSets::ShapeBuffers.into())
-        //                .add_buffer(transform_buffer.clone())?
-        //                .add_buffer(flag_buffer.clone())?
-        //                .add_buffer(xform_index_buffer.clone())?
-        //                .build()?,
-        //        );
 
         Ok(Self {
             block_id,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
             slots_dirty: false,
+            xform_cursor: 0,
             chunk_id,
-            //            descriptor_set,
-            //            command_buffer,
-            //            transform_buffer,
-            //            flag_buffer,
-            //            xform_index_buffer,
             command_buffer_scratch: [DrawIndirectCommand {
                 vertex_count: 0,
                 instance_count: 0,
                 first_vertex: 0,
                 first_instance: 0,
             }; BLOCK_SIZE],
-            transform_buffer_scratch: [[0f32; 6]; BLOCK_SIZE],
+            transform_buffer_scratch: [[0f32; 8]; BLOCK_SIZE],
             flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
+            xform_index_buffer_scratch: [0u32; BLOCK_SIZE],
+            xform_buffer_scratch: [[0f32; 6]; 14 * BLOCK_SIZE],
+            command_buffer,
             transform_buffer,
             flag_buffer,
+            xform_index_buffer,
+            xform_buffer,
             bind_group,
         })
     }
@@ -238,6 +224,10 @@ impl InstanceBlock {
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
+    }
+
+    pub fn command_buffer(&self) -> &wgpu::Buffer {
+        &self.command_buffer
     }
 
     fn has_open_slot(&self) -> bool {
@@ -260,10 +250,28 @@ impl InstanceBlock {
     }
 
     #[inline]
-    fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
+    fn begin_frame(&mut self) {
+        self.xform_cursor = 0;
+    }
+
+    #[inline]
+    fn push_values(
+        &mut self,
+        slot_id: SlotId,
+        transform: &TransformType,
+        flags: [u32; 2],
+        xforms: &Option<[[f32; 6]; 14]>,
+        xform_count: usize,
+    ) {
         let offset = self.slot_map[slot_id.index()];
         self.transform_buffer_scratch[offset] = *transform;
         self.flag_buffer_scratch[offset] = flags;
+        if let Some(xf) = xforms {
+            self.xform_index_buffer_scratch[offset] = self.xform_cursor as u32;
+            self.xform_buffer_scratch[self.xform_cursor..self.xform_cursor + xform_count]
+                .copy_from_slice(&xf[0..xform_count]);
+            self.xform_cursor += xform_count;
+        }
     }
 
     pub fn chunk_id(&self) -> ChunkId {
@@ -425,30 +433,18 @@ impl InstanceBlock {
     */
 }
 
-pub struct ShapeInstanceManager {
-    pub chunk_man: ShapeChunkManager,
+pub struct ShapeInstanceBuffer {
+    pub chunk_man: ShapeChunkBuffer,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
     pub blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
 
     bind_group_layout: wgpu::BindGroupLayout,
-    //    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-    //    base_descriptors: [Arc<dyn DescriptorSet + Send + Sync>; 6],
-
-    // Buffer pools are shared by all blocks for maximum re-use.
-    //    command_buffer_pool: CpuBufferPool<DrawIndirectCommand>,
-    //    transform_buffer_pool: CpuBufferPool<[f32; 6]>,
-    //    flag_buffer_pool: CpuBufferPool<[u32; 2]>,
-    //    #[allow(dead_code)]
-    //    xform_index_buffer_pool: CpuBufferPool<u32>,
-    //
-    //    #[allow(dead_code)]
-    //    xform_buffer_pool: CpuBufferPool<[f32; 6]>, // FIXME: hunt down this max somewhere
 }
 
-impl ShapeInstanceManager {
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+impl ShapeInstanceBuffer {
+    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[
                 wgpu::BindGroupLayoutBinding {
@@ -467,23 +463,40 @@ impl ShapeInstanceManager {
                         readonly: true,
                     },
                 },
+                wgpu::BindGroupLayoutBinding {
+                    binding: 2,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        readonly: true,
+                    },
+                },
+                wgpu::BindGroupLayoutBinding {
+                    binding: 3,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::StorageBuffer {
+                        dynamic: false,
+                        readonly: true,
+                    },
+                },
             ],
         });
 
-        Ok(Self {
-            chunk_man: ShapeChunkManager::new(device)?,
+        Ok(Arc::new(RefCell::new(Self {
+            chunk_man: ShapeChunkBuffer::new(device)?,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
             bind_group_layout,
-            //            pipeline,
-            //            base_descriptors,
-            //            command_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-            //            transform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-            //            flag_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-            //            xform_index_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-            //            xform_buffer_pool: CpuBufferPool::new(window.device(), BufferUsage::all()),
-        })
+        })))
+    }
+
+    pub fn block(&self, id: &BlockId) -> &InstanceBlock {
+        &self.blocks[id]
+    }
+
+    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
+        self.chunk_man.part(shape_id)
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
@@ -541,7 +554,11 @@ impl ShapeInstanceManager {
             block_id
         };
 
-        let draw_cmd = self.chunk_man.part(shape_id).draw_command(0, 1);
+        // FIXME: this is less useful than I thought it would be.
+        let draw_cmd = self
+            .chunk_man
+            .part(shape_id)
+            .draw_command(self.blocks[&block_id].len() as u32, 1);
         let slot_id = self
             .blocks
             .get_mut(&block_id)
@@ -556,11 +573,21 @@ impl ShapeInstanceManager {
     }
 
     #[inline]
-    pub fn push_values(&mut self, slot_id: SlotId, transform: &[f32; 6], flags: [u32; 2]) {
-        self.blocks
-            .get_mut(&slot_id.block_id)
-            .unwrap()
-            .push_values(slot_id, transform, flags);
+    pub fn push_values(
+        &mut self,
+        slot_id: SlotId,
+        transform: &TransformType,
+        flags: [u32; 2],
+        xforms: &Option<[[f32; 6]; 14]>,
+        xform_count: usize,
+    ) {
+        self.blocks.get_mut(&slot_id.block_id).unwrap().push_values(
+            slot_id,
+            transform,
+            flags,
+            xforms,
+            xform_count,
+        );
     }
 
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
@@ -568,18 +595,118 @@ impl ShapeInstanceManager {
     }
 
     pub fn make_upload_buffer(
-        &self,
+        &mut self,
+        start: &Instant,
+        world: &mut World,
         device: &wgpu::Device,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
+        let now = Instant::now();
+
+        // Reset cursor for our next upload.
+        for block in self.blocks.values_mut() {
+            block.begin_frame();
+        }
+
+        // Animate the draw_state. We'll use the updated values below when computing
+        // xform and frame based animation states.
+        <Write<ShapeState>>::query().par_for_each(world, |mut shape_state| {
+            shape_state.draw_state.animate(&now)
+        });
+
+        let mut query = <(
+            Read<Transform>,
+            Read<Rotation>,
+            Read<Scale>,
+            Write<ShapeTransformBuffer>,
+        )>::query();
+        // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
+        //    .filter(changed::<Transform>() | changed::<Rotation>());
+        query.par_for_each(
+            world,
+            |(transform, rotation, scale, mut transform_buffer)| {
+                (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
+                (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
+                (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+            },
+        );
+
+        let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
+        query.par_for_each(world, |(shape_state, mut flag_buffer)| {
+            shape_state
+                .draw_state
+                .build_mask_into(&start, &mut flag_buffer.buffer)
+                .unwrap();
+        });
+
+        let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
+        query.par_for_each(world, |(shape_ref, shape_state, mut xform_buffer)| {
+            let part = self.chunk_man.part(shape_ref.shape_id);
+            WIDGET_CACHE.with(|widget_cache| {
+                match widget_cache.borrow_mut().entry(shape_ref.shape_id) {
+                    Entry::Occupied(mut e) => {
+                        e.get_mut()
+                            .animate_into(
+                                &shape_state.draw_state,
+                                &start,
+                                &now,
+                                &mut xform_buffer.buffer,
+                            )
+                            .unwrap();
+                    }
+                    Entry::Vacant(e) => {
+                        let mut widgets = part.widgets().read().unwrap().clone();
+                        widgets
+                            .animate_into(
+                                &shape_state.draw_state,
+                                &start,
+                                &now,
+                                &mut xform_buffer.buffer,
+                            )
+                            .unwrap();
+                        e.insert(widgets);
+                    }
+                }
+            });
+        });
+
+        let mut query = <(
+            Read<ShapeRef>,
+            Read<ShapeSlot>,
+            Read<ShapeTransformBuffer>,
+            Read<ShapeFlagBuffer>,
+            TryRead<ShapeXformBuffer>,
+        )>::query();
+        for (shape_ref, shape_slot, transform_buffer, flag_buffer, xform_buffer) in
+            query.iter(world)
+        {
+            let xform_count = self.chunk_man.part(shape_ref.shape_id).xform_count();
+            self.push_values(
+                shape_slot.slot_id,
+                &transform_buffer.buffer,
+                flag_buffer.buffer,
+                &xform_buffer.map(|b| b.buffer),
+                xform_count,
+            );
+        }
+
         for block in self.blocks.values() {
+            let source = device
+                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
+                .fill_from_slice(&block.command_buffer_scratch[..block.len()]);
+            upload_buffers.push(CopyBufferDescriptor::new(
+                source,
+                block.command_buffer.clone(),
+                (mem::size_of::<DrawIndirectCommand>() * block.len()) as wgpu::BufferAddress,
+            ));
+
             let source = device
                 .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
                 .fill_from_slice(&block.transform_buffer_scratch[..block.len()]);
             upload_buffers.push(CopyBufferDescriptor::new(
                 source,
                 block.transform_buffer.clone(),
-                (mem::size_of::<[f32; 6]>() * block.len()) as wgpu::BufferAddress,
+                (mem::size_of::<TransformType>() * block.len()) as wgpu::BufferAddress,
             ));
 
             let source = device
@@ -590,83 +717,27 @@ impl ShapeInstanceManager {
                 block.flag_buffer.clone(),
                 (mem::size_of::<[u32; 2]>() * block.len()) as wgpu::BufferAddress,
             ));
+
+            let source = device
+                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
+                .fill_from_slice(&block.xform_index_buffer_scratch[..block.len()]);
+            upload_buffers.push(CopyBufferDescriptor::new(
+                source,
+                block.xform_index_buffer.clone(),
+                (mem::size_of::<u32>() * block.len()) as wgpu::BufferAddress,
+            ));
+
+            let source = device
+                .create_buffer_mapped(block.xform_cursor, wgpu::BufferUsage::all())
+                .fill_from_slice(&block.xform_buffer_scratch[..block.xform_cursor]);
+            upload_buffers.push(CopyBufferDescriptor::new(
+                source,
+                block.xform_buffer.clone(),
+                (mem::size_of::<[f32; 6]>() * block.xform_cursor) as wgpu::BufferAddress,
+            ));
         }
         Ok(())
     }
-
-    pub fn upload_from(
-        &self,
-        frame: &mut gpu::Frame,
-        upload_buffers: &[(wgpu::Buffer, &wgpu::Buffer, wgpu::BufferAddress)],
-    ) {
-        for (source, destination, buffer_size) in upload_buffers {
-            frame.copy_buffer_to_buffer(&source, 0, destination, 0, *buffer_size);
-        }
-    }
-
-    /*
-    pub fn upload_buffers(
-        &mut self,
-        mut cbb: AutoCommandBufferBuilder,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        for block in self.blocks.values_mut() {
-            if block.slots_dirty {
-                let src = self
-                    .command_buffer_pool
-                    .chunk(block.command_buffer_scratch[0..block.next_slot as usize].to_vec())?;
-                let dst = BufferSlice::from_typed_buffer_access(block.command_buffer.clone())
-                    .slice(0..block.next_slot as usize)
-                    .unwrap();
-                cbb = cbb.copy_buffer(src, dst)?;
-                block.slots_dirty = false;
-            }
-
-            let src = self
-                .transform_buffer_pool
-                .chunk(block.transform_buffer_scratch[0..block.next_slot as usize].to_vec())?;
-            let dst = BufferSlice::from_typed_buffer_access(block.transform_buffer.clone())
-                .slice(0..block.next_slot as usize)
-                .unwrap();
-            cbb = cbb.copy_buffer(src, dst)?;
-
-            let src = self
-                .flag_buffer_pool
-                .chunk(block.flag_buffer_scratch[0..block.next_slot as usize].to_vec())?;
-            let dst = BufferSlice::from_typed_buffer_access(block.flag_buffer.clone())
-                .slice(0..block.next_slot as usize)
-                .unwrap();
-            cbb = cbb.copy_buffer(src, dst)?;
-        }
-        Ok(cbb)
-    }
-
-    pub fn render<T: Copy>(
-        &self,
-        mut cbb: AutoCommandBufferBuilder,
-        dynamic_state: &DynamicState,
-        push_consts: &T,
-    ) -> Fallible<AutoCommandBufferBuilder> {
-        for block in self.blocks.values() {
-            let chunk = &self.chunk_man.chunk(block.chunk_id);
-            cbb = cbb.draw_indirect(
-                self.pipeline.clone(),
-                dynamic_state,
-                vec![chunk.vertex_buffer().clone()],
-                block.command_buffer.clone(),
-                (
-                    self.base_descriptors[0].clone(),
-                    self.base_descriptors[1].clone(),
-                    self.base_descriptors[2].clone(),
-                    block.descriptor_set.clone(),
-                    self.base_descriptors[2].clone(),
-                    chunk.atlas_descriptor_set_ref(),
-                ),
-                *push_consts,
-            )?;
-        }
-        Ok(cbb)
-    }
-    */
 }
 
 #[cfg(test)]
@@ -685,10 +756,10 @@ mod test {
 
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let mut inst_man = ShapeInstanceManager::new(gpu.device())?;
+        let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
 
         for _ in 0..100 {
-            let (_chunk_id, _slot_id) = inst_man.upload_and_allocate_slot(
+            let (_chunk_id, _slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
                 "T80.SH",
                 DrawSelection::NormalModel,
                 &palette,

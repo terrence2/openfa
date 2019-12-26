@@ -14,9 +14,10 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use global_data::GlobalParametersBuffer;
-use gpu::{Frame, GPU};
+use gpu::GPU;
+use shader_globals::Group;
 use shape_chunk::Vertex;
-use shape_instance::ShapeInstanceManager;
+use shape_instance::ShapeInstanceBuffer;
 use wgpu;
 
 pub struct ShapeRenderPass {
@@ -27,7 +28,7 @@ impl ShapeRenderPass {
     pub fn new(
         gpu: &GPU,
         globals_buffer: &GlobalParametersBuffer,
-        inst_man: &ShapeInstanceManager,
+        inst_man: &ShapeInstanceBuffer,
     ) -> Fallible<Self> {
         let vert_shader = gpu.create_shader_module(include_bytes!("../target/shape.vert.spirv"))?;
         let frag_shader = gpu.create_shader_module(include_bytes!("../target/shape.frag.spirv"))?;
@@ -37,11 +38,9 @@ impl ShapeRenderPass {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
-                        &gpu.empty_layout(),
-                        &gpu.empty_layout(),
-                        inst_man.bind_group_layout(),
-                        &gpu.empty_layout(),
+                        // atmosphere
                         inst_man.chunk_man.bind_group_layout(),
+                        inst_man.bind_group_layout(),
                     ],
                 });
 
@@ -90,35 +89,33 @@ impl ShapeRenderPass {
         Ok(Self { pipeline })
     }
 
-    pub fn render(
+    pub fn draw(
         &self,
-        empty_bind_group: &wgpu::BindGroup,
+        rpass: &mut wgpu::RenderPass,
         globals_buffer: &GlobalParametersBuffer,
-        inst_man: &ShapeInstanceManager,
-        frame: &mut Frame,
-    ) -> Fallible<()> {
-        let mut rpass = frame.begin_render_pass();
+        shape_instance_buffer: &ShapeInstanceBuffer,
+    ) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, globals_buffer.bind_group(), &[]);
-        rpass.set_bind_group(1, &empty_bind_group, &[]);
-        rpass.set_bind_group(2, &empty_bind_group, &[]);
-        rpass.set_bind_group(4, &empty_bind_group, &[]);
+        rpass.set_bind_group(Group::Globals.index(), globals_buffer.bind_group(), &[]);
+        //rpass.set_bind_group(1, atmosphere_buffer.bind_group(), &[]);
 
-        for block in inst_man.blocks.values() {
-            let chunk = inst_man.chunk_man.chunk(block.chunk_id());
+        for block in shape_instance_buffer.blocks.values() {
+            let chunk = shape_instance_buffer.chunk_man.chunk(block.chunk_id());
 
-            let f18_part = inst_man.chunk_man.part_for("F18.SH")?;
-            let cmd = f18_part.draw_command(0, 1);
-            rpass.set_bind_group(3, block.bind_group(), &[]);
-            rpass.set_bind_group(5, chunk.bind_group(), &[]);
+            // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
+            rpass.set_bind_group(Group::ShapeChunk.index(), chunk.bind_group(), &[]);
+            rpass.set_bind_group(Group::ShapeBlock.index(), block.bind_group(), &[]);
             rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
-            rpass.draw(
-                cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
-                0..block.len() as u32,
-            );
+            for i in 0..block.len() {
+                //rpass.draw_indirect(block.command_buffer(), i as u64);
+                let cmd = block.command_buffer_scratch[i];
+                #[allow(clippy::range_plus_one)]
+                rpass.draw(
+                    cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
+                    i as u32..i as u32 + 1,
+                );
+            }
         }
-
-        Ok(())
     }
 }
 
@@ -132,9 +129,9 @@ mod tests {
         let input = InputSystem::new(vec![])?;
         let gpu = GPU::new(&input, Default::default())?;
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-        let inst_man = ShapeInstanceManager::new(&gpu.device())?;
+        let inst_man = ShapeInstanceBuffer::new(&gpu.device())?;
 
-        let _ = ShapeRenderPass::new(&gpu, &globals_buffer, &inst_man)?;
+        let _ = ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_man.borrow())?;
 
         Ok(())
     }

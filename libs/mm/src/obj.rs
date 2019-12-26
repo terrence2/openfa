@@ -14,9 +14,11 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{util::maybe_hex, waypoint::Waypoint};
 use failure::{bail, err_msg, Fallible};
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Point3, Unit, UnitQuaternion, Vector3};
+use std::f32::consts::PI;
 use xt::{TypeManager, TypeRef};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Nationality {
     Unk0 = 0,
     Unk1 = 1,
@@ -102,22 +104,23 @@ impl Nationality {
     }
 }
 
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct ObjectInfo {
     xt: TypeRef,
     name: Option<String>,
     pos: Point3<f32>,
-    angle: Vector3<f32>,
+    angle: UnitQuaternion<f32>,
     nationality: Nationality,
     flags: u16,
     speed: f32,
-    pub alias: i32,
+    alias: i32,
     // NT only.
     skill: Option<u8>,
     react: Option<(u16, u16, u16)>,
     search_dist: Option<u32>,
     // PT only.
-    pub waypoints: Option<Vec<Waypoint>>,
+    waypoints: Option<Vec<Waypoint>>,
 }
 
 impl ObjectInfo {
@@ -129,7 +132,7 @@ impl ObjectInfo {
         let mut type_name = None;
         let mut name = None;
         let mut pos = None;
-        let mut angle = Vector3::new(0f32, 0f32, 0f32);
+        let mut angle = UnitQuaternion::identity();
         let mut nationality = None;
         let mut flags = 0u16;
         let mut speed = 0f32;
@@ -145,7 +148,13 @@ impl ObjectInfo {
                 "type" => {
                     type_name = Some(parts[1].trim().to_owned());
                 }
-                "name" => name = Some(parts[1].to_owned()),
+                "name" => {
+                    // Start of Header in ascii? :shrug:
+                    assert!(parts[1].starts_with(1 as char));
+                    assert!(parts[1].ends_with(1 as char));
+                    let end = parts[1].len() - 1;
+                    name = Some(parts[1][1..end].to_owned());
+                }
                 "pos" => {
                     let ns = parts[1].split(' ').collect::<Vec<&str>>();
                     pos = Some(Point3::new(
@@ -153,13 +162,25 @@ impl ObjectInfo {
                         ns[1].parse::<i32>()? as f32,
                         ns[2].parse::<i32>()? as f32,
                     ));
+                    // All non-plane entities are at height 0 and need to be moved
+                    // to the right elevation at startup.
+                    if !type_name.as_ref().expect("type name").ends_with(".PT") {
+                        assert_eq!(ns[1].parse::<i32>()?, 0);
+                    }
                 }
                 "angle" => {
                     let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    angle = Vector3::new(
-                        ns[0].parse::<i32>()? as f32,
-                        ns[1].parse::<i32>()? as f32,
-                        ns[2].parse::<i32>()? as f32,
+                    let is = [
+                        ns[0].parse::<i32>()?,
+                        ns[1].parse::<i32>()?,
+                        ns[2].parse::<i32>()?,
+                    ];
+                    // No entities are tilted or pitched, only rotated.
+                    assert_eq!(is[1], 0);
+                    assert_eq!(is[2], 0);
+                    angle = UnitQuaternion::from_axis_angle(
+                        &Unit::new_unchecked(Vector3::new(0f32, 1f32, 0f32)),
+                        -(is[0] as f32 * PI / 180f32),
                     );
                 }
                 "nationality" => {
@@ -217,5 +238,29 @@ impl ObjectInfo {
             search_dist,
             waypoints: None,
         })
+    }
+
+    pub fn set_waypoints(&mut self, waypoints: Vec<Waypoint>) {
+        self.waypoints = Some(waypoints);
+    }
+
+    pub fn alias(&self) -> i32 {
+        self.alias
+    }
+
+    pub fn name(&self) -> Option<String> {
+        self.name.clone()
+    }
+
+    pub fn xt(&self) -> TypeRef {
+        self.xt.clone()
+    }
+
+    pub fn position(&self) -> Point3<f32> {
+        self.pos
+    }
+
+    pub fn angle(&self) -> &UnitQuaternion<f32> {
+        &self.angle
     }
 }

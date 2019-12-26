@@ -17,6 +17,7 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
+use shader_globals::Group;
 use t2_buffer::{T2Buffer, T2Vertex};
 use wgpu;
 
@@ -70,7 +71,11 @@ impl T2TerrainRenderPass {
                 primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_states: &[wgpu::ColorStateDescriptor {
                     format: GPU::texture_format(),
-                    color_blend: wgpu::BlendDescriptor::REPLACE,
+                    color_blend: wgpu::BlendDescriptor {
+                        src_factor: wgpu::BlendFactor::SrcAlpha,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
                     alpha_blend: wgpu::BlendDescriptor::REPLACE,
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
@@ -101,9 +106,13 @@ impl T2TerrainRenderPass {
         t2_buffer: &T2Buffer,
     ) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, &globals_buffer.bind_group(), &[]);
-        rpass.set_bind_group(1, &atmosphere_buffer.bind_group(), &[]);
-        rpass.set_bind_group(2, &t2_buffer.bind_group(), &[]);
+        rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
+        rpass.set_bind_group(
+            Group::Atmosphere.index(),
+            &atmosphere_buffer.bind_group(),
+            &[],
+        );
+        rpass.set_bind_group(Group::Terrain.index(), &t2_buffer.bind_group(), &[]);
         rpass.set_index_buffer(t2_buffer.index_buffer(), 0);
         rpass.set_vertex_buffers(0, &[(t2_buffer.vertex_buffer(), 0)]);
         rpass.draw_indexed(t2_buffer.index_range(), 0, 0..1);

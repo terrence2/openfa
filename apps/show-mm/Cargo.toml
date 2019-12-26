@@ -9,30 +9,30 @@ failure = "^ 0.1.2"
 image = "^ 0.21"
 log = "^ 0.4"
 nalgebra = "^ 0.18"
+rand = "^ 0.3"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
 wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
-asset = { path = "../../libs/asset" }
-atmosphere = { package = "atmosphere-wgpu", path = "../../libs/render-wgpu/buffer/atmosphere" }
+absolute_unit = { path = "../../libs/absolute_unit" }
+atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 camera = { path = "../../libs/render-shared/common/camera" }
-frame_graph = { package = "frame_graph-wgpu", path = "../../libs/render-wgpu/common/frame_graph" }
-fullscreen = { package = "fullscreen-wgpu", path = "../../libs/render-wgpu/buffer/fullscreen" }
-global_data = { package = "global_data-wgpu", path = "../../libs/render-wgpu/buffer/global_data" }
+frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
+fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+galaxy = { path = "../../libs/galaxy" }
+global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
-input = { package = "input-wgpu", path = "../../libs/render-wgpu/common/input" }
-skybox = { package = "skybox-wgpu", path = "../../libs/render-wgpu/render_pass/skybox" }
-stars = { package = "stars-wgpu", path = "../../libs/render-wgpu/buffer/stars" }
-t2_buffer = { package = "t2_buffer-wgpu", path = "../../libs/render-wgpu/buffer/t2_buffer" }
-t2_terrain = { package = "t2_terrain-wgpu", path = "../../libs/render-wgpu/render_pass/t2_terrain" }
-lay = { path = "../../libs/lay" }
+input = { path = "../../libs/render-wgpu/common/input" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
-pic = { path = "../../libs/pic" }
-pal = { path = "../../libs/pal" }
-t2 = { path = "../../libs/t2" }
-text = { path = "../../libs/render-vulkano/draw/text" }
+screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
+shape = { path = "../../libs/render-wgpu/render_pass/shape" }
+shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
+skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
+stars = { path = "../../libs/render-wgpu/buffer/stars" }
+t2_buffer = { path = "../../libs/render-wgpu/buffer/t2_buffer" }
+t2_terrain = { path = "../../libs/render-wgpu/render_pass/t2_terrain" }
+text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }
 xt = { path = "../../libs/xt" }
-window = { path = "../../libs/render-vulkano/common/window" }

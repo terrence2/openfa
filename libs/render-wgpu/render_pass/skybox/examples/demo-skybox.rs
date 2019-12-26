@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::meters;
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use failure::Fallible;
@@ -19,17 +20,16 @@ use fullscreen::FullscreenBuffer;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::{InputBindings, InputSystem};
-use log::trace;
-use nalgebra::{Unit, UnitQuaternion, Vector3};
-use skybox_wgpu::SkyboxRenderPass;
+use nalgebra::Vector3;
+use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
-use std::{f64::consts::PI, time::Instant};
+use std::time::Instant;
 
 fn main() -> Fallible<()> {
-    let mut input = InputSystem::new(vec![InputBindings::new("base")
-        .bind("+enter-move-sun", "mouse1")?
+    let system_bindings = InputBindings::new("system")
         .bind("exit", "Escape")?
-        .bind("exit", "q")?])?;
+        .bind("exit", "q")?;
+    let mut input = InputSystem::new(vec![ArcBallCamera::default_bindings()?, system_bindings])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
@@ -38,64 +38,53 @@ fn main() -> Fallible<()> {
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let skybox_renderer = SkyboxRenderPass::new(
         &mut gpu,
-        &globals_buffer,
-        &fullscreen_buffer,
-        &stars_buffer,
-        &atmosphere_buffer,
+        &globals_buffer.borrow(),
+        &fullscreen_buffer.borrow(),
+        &stars_buffer.borrow(),
+        &atmosphere_buffer.borrow(),
     )?;
 
     let poll_start = Instant::now();
     gpu.device().poll(true);
     println!("poll time: {:?}", poll_start.elapsed());
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), 0.1, 3.4e+38);
-    camera.set_target(6_378.2, 0.0, 0.0);
-    camera.set_angle(PI / 2.0, -PI / 2.0);
-    camera.set_up(-Vector3::x());
-    camera.set_rotation(UnitQuaternion::from_axis_angle(
-        &Unit::new_normalize(Vector3::z()),
-        PI / 2.0,
-    ));
-    camera.set_distance(0.1);
-    camera.on_mousebutton_down(1);
-    let mut sun_angle = 0f64;
-    let mut in_sun_move = false;
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    camera.set_target(0.0, -10.0, 0.0);
 
     loop {
         let frame_start = Instant::now();
         for command in input.poll()? {
+            camera.handle_command(&command)?;
             match command.name.as_str() {
+                "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
                     camera.set_aspect_ratio(gpu.aspect_ratio());
                 }
-                "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "+enter-move-sun" => in_sun_move = true,
-                "-enter-move-sun" => in_sun_move = false,
-                "mouse-move" => {
-                    if in_sun_move {
-                        sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                    } else {
-                        camera.on_mousemove(
-                            command.displacement()?.0 / 4.0,
-                            command.displacement()?.1 / 4.0,
-                        )
-                    }
-                }
                 "window-cursor-move" => {}
-                _ => trace!("unhandled command: {}", command.name),
+                _ => {}
             }
         }
 
         // Prepare new camera parameters.
-        let sun_direction = Vector3::new(sun_angle.sin() as f32, 0f32, sun_angle.cos() as f32);
+        let sun_direction = Vector3::new(
+            camera.sun_angle.sin() as f32,
+            0f32,
+            camera.sun_angle.cos() as f32,
+        );
 
         let mut upload_buffers = Vec::new();
-        globals_buffer.make_upload_buffer(&camera, gpu.device(), &mut upload_buffers)?;
-        atmosphere_buffer.make_upload_buffer(sun_direction, gpu.device(), &mut upload_buffers)?;
+        globals_buffer
+            .borrow()
+            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut upload_buffers)?;
+        atmosphere_buffer.borrow().make_upload_buffer(
+            sun_direction,
+            gpu.device(),
+            &mut upload_buffers,
+        )?;
 
         {
-            let mut frame = gpu.begin_frame();
+            let mut frame = gpu.begin_frame()?;
             {
                 for desc in upload_buffers.drain(..) {
                     frame.copy_buffer_to_buffer(
@@ -110,10 +99,10 @@ fn main() -> Fallible<()> {
                 let mut rpass = frame.begin_render_pass();
                 skybox_renderer.draw(
                     &mut rpass,
-                    &globals_buffer,
-                    &fullscreen_buffer,
-                    &stars_buffer,
-                    &atmosphere_buffer,
+                    &globals_buffer.borrow(),
+                    &fullscreen_buffer.borrow(),
+                    &stars_buffer.borrow(),
+                    &atmosphere_buffer.borrow(),
                 );
             }
             frame.finish();
