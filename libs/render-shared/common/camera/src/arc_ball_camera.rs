@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters, Radians};
+use command::{Bindings, Command};
 use failure::Fallible;
-use input::{Command, InputBindings};
 use nalgebra::{convert, Isometry3, Matrix4, Perspective3, Point3, Vector3};
 use std::f64::consts::PI;
 
@@ -24,8 +24,6 @@ pub struct ArcBallCamera {
     z_far: Length<Meters>,
     in_rotate: bool,
     in_move: bool,
-    in_sun_move: bool,
-    pub sun_angle: Angle<Radians>,
 
     target: Point3<f64>,
     //target: Position<GeoSurface>,
@@ -58,8 +56,6 @@ impl ArcBallCamera {
             z_far,
             in_rotate: false,
             in_move: false,
-            in_sun_move: false,
-            sun_angle: radians!(0),
         }
     }
 
@@ -141,10 +137,6 @@ impl ArcBallCamera {
             self.target = self.target + tangent * (x * mult) + bitangent * (-y * mult);
         }
 
-        if self.in_sun_move {
-            self.sun_angle += degrees!(x);
-        }
-
         Ok(())
     }
 
@@ -191,9 +183,8 @@ impl ArcBallCamera {
 
     pub fn think(&mut self) {}
 
-    pub fn default_bindings() -> Fallible<InputBindings> {
-        Ok(InputBindings::new("arc_ball_camera")
-            .bind("+move-sun", "mouse2")?
+    pub fn default_bindings() -> Fallible<Bindings> {
+        Ok(Bindings::new("arc_ball_camera")
             .bind("+pan-view", "mouse1")?
             .bind("+move-view", "mouse3")?)
     }
@@ -204,8 +195,6 @@ impl ArcBallCamera {
             "-pan-view" => self.in_rotate = false,
             "+move-view" => self.in_move = true,
             "-move-view" => self.in_move = false,
-            "+move-sun" => self.in_sun_move = true,
-            "-move-sun" => self.in_sun_move = false,
             "mouse-move" => self.on_mousemove(command)?,
             "mouse-wheel" => self.on_mousescroll(command)?,
             _ => {}

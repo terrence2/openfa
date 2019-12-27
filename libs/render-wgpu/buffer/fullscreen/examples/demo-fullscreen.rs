@@ -14,15 +14,16 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::meters;
 use camera::ArcBallCamera;
+use command::Bindings;
 use failure::Fallible;
 use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
-use input::{InputBindings, InputSystem};
+use input::InputSystem;
 use wgpu;
 
 fn main() -> Fallible<()> {
-    let system_bindings = InputBindings::new("system")
+    let system_bindings = Bindings::new("system")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
     let mut input = InputSystem::new(vec![ArcBallCamera::default_bindings()?, system_bindings])?;

@@ -18,11 +18,5 @@ fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
 shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
 stars = { path = "../../../render-wgpu/buffer/stars" }
 
-[dev-dependencies]
-nalgebra = "^ 0.18"
-absolute_unit = { path = "../../../absolute_unit" }
-camera = { path = "../../../render-shared/common/camera" }
-input = { path = "../../../render-wgpu/common/input" }
-
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

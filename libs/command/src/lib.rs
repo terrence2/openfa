@@ -12,13 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#version 450
-#include <buffer/global_data/include/library.glsl>
 
-layout(location = 0) in vec2 position;
-layout(location = 0) out vec3 v_ray;
+pub(crate) mod bindings;
+pub(crate) mod command;
+pub(crate) mod keyset;
 
-void main() {
-    v_ray = raymarching_view_ray(position);
-    gl_Position = vec4(position, 0.0, 1.0);
-}
+pub use crate::{
+    bindings::Bindings,
+    command::Command,
+    keyset::{Key, KeySet},
+};

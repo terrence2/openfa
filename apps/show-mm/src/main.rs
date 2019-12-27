@@ -15,17 +15,19 @@
 use absolute_unit::meters;
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
+use command::Bindings;
 use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::{Galaxy, FEET_TO_HM_32};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
-use input::{InputBindings, InputSystem};
+use input::InputSystem;
 use log::trace;
 use mm::MissionMap;
-use nalgebra::Vector3;
+use nalgebra::convert;
 use omnilib::{make_opt_struct, OmniLib};
+use orrery::Orrery;
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
@@ -75,13 +77,14 @@ fn main() -> Fallible<()> {
     let lib = omni.library(&game);
     let mut galaxy = Galaxy::new(lib)?;
 
-    let mm_bindings = InputBindings::new("map")
+    let mm_bindings = Bindings::new("map")
         .bind("prev-object", "Shift+n")?
         .bind("next-object", "n")?;
-    let system_bindings = InputBindings::new("map")
+    let system_bindings = Bindings::new("map")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
     let mut input = InputSystem::new(vec![
+        Orrery::debug_bindings()?,
         ArcBallCamera::default_bindings()?,
         mm_bindings,
         system_bindings,
@@ -258,6 +261,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Bottom)
         .with_vertical_anchor(TextAnchorV::Bottom);
 
+    let mut orrery = Orrery::now();
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
     camera.set_target_point(&nalgebra::convert(positions[position_index]));
 
@@ -266,6 +270,7 @@ fn main() -> Fallible<()> {
 
         for command in input.poll()? {
             camera.handle_command(&command)?;
+            orrery.handle_command(&command)?;
             match command.name.as_str() {
                 // system bindings
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
@@ -292,12 +297,6 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let sun_direction = Vector3::new(
-            camera.sun_angle.sin() as f32,
-            0f32,
-            camera.sun_angle.cos() as f32,
-        );
-
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
@@ -307,9 +306,11 @@ fn main() -> Fallible<()> {
                 &gpu,
                 &mut buffers,
             )?;
-        atmosphere_buffer
-            .borrow()
-            .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        atmosphere_buffer.borrow().make_upload_buffer(
+            convert(orrery.sun_direction()),
+            gpu.device(),
+            &mut buffers,
+        )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),

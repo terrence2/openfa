@@ -15,16 +15,18 @@
 use absolute_unit::meters;
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
+use command::Bindings;
 use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
-use input::{InputBindings, InputSystem};
+use input::InputSystem;
 use log::trace;
-use nalgebra::{Point3, UnitQuaternion, Vector3};
+use nalgebra::{convert, Point3, UnitQuaternion};
 use omnilib::{make_opt_struct, OmniLib};
+use orrery::Orrery;
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
 use shape_instance::{DrawSelection, DrawState, ShapeInstanceBuffer, ShapeState};
@@ -95,10 +97,10 @@ fn main() -> Fallible<()> {
     let lib = omni.library(&game);
     let mut galaxy = Galaxy::new(lib)?;
 
-    let system_bindings = InputBindings::new("system")
+    let system_bindings = Bindings::new("system")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let shape_bindings = InputBindings::new("shape")
+    let shape_bindings = Bindings::new("shape")
         .bind("consume-sam", "PageUp")?
         .bind("toggle-gear", "g")?
         .bind("toggle-flaps", "f")?
@@ -124,6 +126,7 @@ fn main() -> Fallible<()> {
         .bind("disable-afterburner", "key2")?
         .bind("disable-afterburner", "key1")?;
     let mut input = InputSystem::new(vec![
+        Orrery::debug_bindings()?,
         ArcBallCamera::default_bindings()?,
         shape_bindings,
         system_bindings,
@@ -208,6 +211,7 @@ fn main() -> Fallible<()> {
         .borrow_mut()
         .ensure_uploaded(&mut gpu)?;
 
+    let mut orrery = Orrery::now();
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001), meters!(3.4e+38));
     camera.set_target(0f64, -10f64, 0f64);
 
@@ -251,6 +255,7 @@ fn main() -> Fallible<()> {
 
         for command in input.poll()? {
             camera.handle_command(&command)?;
+            orrery.handle_command(&command)?;
             match command.name.as_str() {
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
@@ -295,19 +300,15 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let sun_direction = Vector3::new(
-            camera.sun_angle.sin() as f32,
-            0f32,
-            camera.sun_angle.cos() as f32,
-        );
-
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
             .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
-        atmosphere_buffer
-            .borrow()
-            .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        atmosphere_buffer.borrow().make_upload_buffer(
+            convert(orrery.sun_direction()),
+            gpu.device(),
+            &mut buffers,
+        )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),

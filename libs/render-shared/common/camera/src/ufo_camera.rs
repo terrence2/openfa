@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use command::{Bindings, Command};
 use failure::Fallible;
-use input::{Command, InputBindings};
 use nalgebra::{
     Isometry3, Matrix4, Perspective3, Point3, Similarity3, Translation3, Unit, UnitQuaternion,
     Vector3,
@@ -33,9 +33,6 @@ pub struct UfoCamera {
     pub sensitivity: f64,
     move_vector: Vector3<f64>,
     rot_vector: Vector3<f64>,
-
-    in_sun_move: bool,
-    sun_angle: f64,
 }
 
 impl UfoCamera {
@@ -55,8 +52,6 @@ impl UfoCamera {
             sensitivity: 0.2,
             move_vector: nalgebra::zero(),
             rot_vector: nalgebra::zero(),
-            in_sun_move: false,
-            sun_angle: 0f64,
         }
     }
 
@@ -248,9 +243,8 @@ impl UfoCamera {
         Point3::new(down.vector[0], down.vector[1], down.vector[2])
     }
 
-    pub fn default_bindings() -> Fallible<InputBindings> {
-        Ok(InputBindings::new("shape")
-            .bind("+enter-move-sun", "mouse1")?
+    pub fn default_bindings() -> Fallible<Bindings> {
+        Ok(Bindings::new("shape")
             .bind("zoom-in", "Equals")?
             .bind("zoom-out", "Subtract")?
             .bind("+rotate-right", "c")?
@@ -265,13 +259,7 @@ impl UfoCamera {
 
     pub fn handle_command(&mut self, command: &Command) -> Fallible<()> {
         match command.name.as_str() {
-            "mouse-move" => {
-                if self.in_sun_move {
-                    self.sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                } else {
-                    self.on_mousemove(command.displacement()?.0, command.displacement()?.1)
-                }
-            }
+            "mouse-move" => self.on_mousemove(command.displacement()?.0, command.displacement()?.1),
             "mouse-wheel" => {
                 if command.displacement()?.1 > 0.0 {
                     self.speed *= 0.8;

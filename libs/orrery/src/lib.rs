@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use chrono::{prelude::*, Duration};
+use command::{Bindings, Command};
 use failure::Fallible;
 use lazy_static::lazy_static;
 use nalgebra::{Point3, Unit, UnitQuaternion, Vector3, Vector4};
@@ -299,11 +300,13 @@ pub struct Orrery {
 }
 
 impl Orrery {
+    pub fn now() -> Self {
+        Self::new(Utc::now())
+    }
+
     #[rustfmt::skip]
     pub fn new(initial_time: DateTime<Utc>) -> Self {
         Self {
-            now: initial_time,
-
             //EM Bary   1.00000018      0.01673163     -0.00054346      100.46691572    102.93005885     -5.11260389
             //         -0.00000003     -0.00003661     -0.01337178    35999.37306329      0.31795260     -0.24123856
             earth_moon_barycenter: KeplerianElements::new(
@@ -311,7 +314,14 @@ impl Orrery {
                 -0.00000003, -0.00003661, -0.01337178, 35999.37306329,   0.31795260, -0.24123856,
                 0.0, 0.0, 0.0, 0.0,
             ),
+
+            now: initial_time,
+            in_debug_override: false,
         }
+    }
+
+    pub fn get_time(&self) -> DateTime<Utc> {
+        self.now
     }
 
     fn leap_seconds_since(t: DateTime<Utc>) -> Duration {
@@ -339,9 +349,9 @@ impl Orrery {
         // Given leap seconds, we can assume that the earth's rotation is pointing a more or less
         // consistent direction every year at UTC time Jan 1, 12:00 PM. Thus, we want to get the
         // number of days from Jan 1 to now.
-        const MILLIS_PER_YEAR: f64 = 1000f64 * 60f64 * 60f64 * 24f64 * 364.25f64;
+        const MILLIS_PER_DAY: f64 = 1000f64 * 60f64 * 60f64 * 24f64;
         let from_base = self.now - Utc.ymd(self.now.year(), 1, 1).and_hms(12, 0, 0);
-        (from_base.num_milliseconds() as f64) / MILLIS_PER_YEAR
+        (from_base.num_milliseconds() as f64) / MILLIS_PER_DAY
     }
 
     //fn earth_position(&self) -> Point3<f64> {}
@@ -376,8 +386,8 @@ impl Orrery {
             .normalize()
     }
 
-    pub fn debug_bindings() -> Fallible<InputBindings> {
-        Ok(InputBindings::new("orrery").bind("+move-sun", "mouse2")?)
+    pub fn debug_bindings() -> Fallible<Bindings> {
+        Ok(Bindings::new("orrery").bind("+move-sun", "mouse2")?)
     }
 
     pub fn handle_command(&mut self, command: &Command) -> Fallible<()> {
@@ -386,9 +396,9 @@ impl Orrery {
             "-move-sun" => self.in_debug_override = false,
             "mouse-move" => {
                 if self.in_debug_override {
-                    let days = command.displacement()?.0 as i64;
-                    println!("ADDING DAYS: {}", days);
-                    self.now = self.now.checked_add_signed(Duration::days(days)).unwrap();
+                    let hours = command.displacement()?.0 as i64;
+                    //println!("ADDING minutes: {}", minutes);
+                    self.now = self.now.checked_add_signed(Duration::hours(hours)).unwrap();
                 }
             }
             _ => {}

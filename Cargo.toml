@@ -27,6 +27,7 @@ members = [
         "libs/animate",
         "libs/ansi",
         "libs/asset",
+        "libs/command",
         "libs/dlg",
         "libs/fnt",
         "libs/galaxy",

@@ -5,7 +5,6 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-chrono = "^ 0.4"
 failure = "^ 0.1.2"
 image = "^ 0.21"
 log = "^ 0.4"
@@ -18,6 +17,7 @@ wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-h
 absolute_unit = { path = "../../libs/absolute_unit" }
 atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 camera = { path = "../../libs/render-shared/common/camera" }
+command = { path = "../../libs/command" }
 frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
 fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
 global_data = { path = "../../libs/render-wgpu/buffer/global_data" }

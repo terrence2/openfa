@@ -15,16 +15,16 @@
 use absolute_unit::meters;
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
-use chrono::{prelude::*, Duration};
+use command::Bindings;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
-use input::{InputBindings, InputSystem};
+use input::InputSystem;
 use lib::Library;
 use log::trace;
-use nalgebra::{convert, Vector3};
+use nalgebra::convert;
 use orrery::Orrery;
 use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
@@ -55,7 +55,7 @@ fn main() -> Fallible<()> {
     use std::sync::Arc;
     let lib = Arc::new(Box::new(Library::empty()?));
 
-    let system_bindings = InputBindings::new("map")
+    let system_bindings = Bindings::new("map")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
     let mut input = InputSystem::new(vec![
@@ -91,7 +91,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
-    let mut orrery = Orrery::new();
+    let mut orrery = Orrery::now();
 
     /*
     let mut camera = UfoCamera::new(gpu.aspect_ratio(), 0.1f64, 3.4e+38f64);
@@ -100,8 +100,6 @@ fn main() -> Fallible<()> {
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    //    let mut in_sun_move = false;
-    //    let mut sim_time = Utc.ymd(2000, 1, 1).and_hms_milli(12, 0, 0, 0);
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
 
     loop {
@@ -109,6 +107,7 @@ fn main() -> Fallible<()> {
 
         for command in input.poll()? {
             camera.handle_command(&command)?;
+            orrery.handle_command(&command)?;
             match command.name.as_str() {
                 // system bindings
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
@@ -116,37 +115,22 @@ fn main() -> Fallible<()> {
                     gpu.note_resize(&input);
                     camera.set_aspect_ratio(gpu.aspect_ratio());
                 }
-                "+enter-move-sun" => in_sun_move = true,
-                "-enter-move-sun" => in_sun_move = false,
-                "mouse-move" => {
-                    if in_sun_move {
-                        //sun_angle += command.displacement()?.0 / (180.0 * 2.0);
-                        let days = command.displacement()?.0 as i64;
-                        println!("ADDING DAYS: {}", days);
-                        sim_time = sim_time.checked_add_signed(Duration::days(days)).unwrap();
-                    }
-                }
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
 
         camera.think();
-        let sun_direction = orrery.sun_position_at(sim_time).coords.normalize();
-        //println!("SUN DIRECTION: {:?}", sun_direction);
-        let sun_direction = Vector3::new(
-            camera.sun_angle.sin() as f32,
-            0f32,
-            camera.sun_angle.cos() as f32,
-        );
 
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
             .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
-        atmosphere_buffer
-            .borrow()
-            .make_upload_buffer(sun_direction, gpu.device(), &mut buffers)?;
+        atmosphere_buffer.borrow().make_upload_buffer(
+            convert(orrery.sun_direction()),
+            gpu.device(),
+            &mut buffers,
+        )?;
         text_layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;
@@ -155,7 +139,7 @@ fn main() -> Fallible<()> {
         let frame_time = loop_start.elapsed();
         let ts = format!(
             "Date: {:?} || frame: {}.{}ms",
-            sim_time,
+            orrery.get_time(),
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
         );
