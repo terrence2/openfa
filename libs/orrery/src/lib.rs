@@ -97,6 +97,8 @@ pub struct KeplerianElements {
 }
 
 impl KeplerianElements {
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::many_single_char_names)]
     pub fn new(
         a: f64,
         e: f64,
@@ -210,6 +212,7 @@ impl OrbitalParameters {
     // Returns in AU.
     // Method taken from: https://space.stackexchange.com/questions/8911/determining-orbital-position-at-a-future-point-in-time
     #[allow(non_snake_case)]
+    #[allow(clippy::many_single_char_names)]
     pub fn eccliptic_position(&self) -> Point3<f64> {
         let i = self.i;
         let l = self.l;
@@ -304,6 +307,7 @@ impl Orrery {
         Self::new(Utc::now())
     }
 
+    #[allow(clippy::unreadable_literal)]
     #[rustfmt::skip]
     pub fn new(initial_time: DateTime<Utc>) -> Self {
         Self {
@@ -324,9 +328,9 @@ impl Orrery {
         self.now
     }
 
-    fn leap_seconds_since(t: DateTime<Utc>) -> Duration {
+    fn num_leap_seconds(&self) -> Duration {
         for (offset, date) in LEAP_SECONDS.iter().enumerate() {
-            if &t > date {
+            if self.now > *date {
                 return Duration::seconds((LEAP_SECONDS.len() - offset) as i64);
             }
         }
@@ -340,8 +344,7 @@ impl Orrery {
         // offset from January 2000 without leap seconds added.
 
         const MILLIS_PER_CENTURY: f64 = 1000f64 * 60f64 * 60f64 * 24f64 * 364.25f64 * 100f64;
-        let from_j2000 =
-            self.now - Utc.ymd(2000, 1, 1).and_hms(12, 0, 0) + Self::leap_seconds_since(self.now);
+        let from_j2000 = self.now - Utc.ymd(2000, 1, 1).and_hms(12, 0, 0) + self.num_leap_seconds();
         (from_j2000.num_milliseconds() as f64) / MILLIS_PER_CENTURY
     }
 
@@ -420,15 +423,15 @@ mod tests {
     #[test]
     fn test_leap_seconds() {
         assert_eq!(
-            Orrery::leap_seconds_since(Utc.ymd(2020, 1, 1).and_hms(12, 0, 0)),
+            Orrery::new(Utc.ymd(2020, 1, 1).and_hms(12, 0, 0)).num_leap_seconds(),
             Duration::seconds(27)
         );
         assert_eq!(
-            Orrery::leap_seconds_since(Utc.ymd(2010, 1, 1).and_hms(12, 0, 0)),
+            Orrery::new(Utc.ymd(2010, 1, 1).and_hms(12, 0, 0)).num_leap_seconds(),
             Duration::seconds(24)
         );
         assert_eq!(
-            Orrery::leap_seconds_since(Utc.ymd(1969, 1, 1).and_hms(12, 0, 0)),
+            Orrery::new(Utc.ymd(1969, 1, 1).and_hms(12, 0, 0)).num_leap_seconds(),
             Duration::seconds(0)
         );
     }
