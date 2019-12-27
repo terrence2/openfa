@@ -58,7 +58,11 @@ fn main() -> Fallible<()> {
     let system_bindings = InputBindings::new("map")
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
-    let mut input = InputSystem::new(vec![ArcBallCamera::default_bindings()?, system_bindings])?;
+    let mut input = InputSystem::new(vec![
+        Orrery::debug_bindings()?,
+        ArcBallCamera::default_bindings()?,
+        system_bindings,
+    ])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
     ///////////////////////////////////////////////////////////
@@ -96,8 +100,8 @@ fn main() -> Fallible<()> {
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    let mut in_sun_move = false;
-    let mut sim_time = Utc.ymd(2000, 1, 1).and_hms_milli(12, 0, 0, 0);
+    //    let mut in_sun_move = false;
+    //    let mut sim_time = Utc.ymd(2000, 1, 1).and_hms_milli(12, 0, 0, 0);
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
 
     loop {

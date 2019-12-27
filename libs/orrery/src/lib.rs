@@ -12,9 +12,29 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use chrono::prelude::*;
-use nalgebra::Point3;
+use chrono::{prelude::*, Duration};
+use failure::Fallible;
+use lazy_static::lazy_static;
+use nalgebra::{Point3, Unit, UnitQuaternion, Vector3, Vector4};
 use std::f64::consts::PI;
+
+/**
+ * Orbital mechanics works great. Time, however, does not. The time reference for ephimeris is a
+ * position on a spinning thing, whose period drifts human observable amounts over human relevant
+ * timespans. To complicate matters further, that spinning thing is itself tidally locked to a mass
+ * called the moon, which means that the celestially relevant orbital parameters have to be
+ * specified around the "barycenter", rather than about the center of spin. Minor celestial
+ * fluctuations are amplified in this system, resulting in a spin rate on Earth that is not
+ * a constant. Thus, the reference time and direction are not periodic with respect to each other.
+ * To throw a further wrench in the works, we offset the meaning of time occasionally so that
+ * things appear to more or less line up locally, confounding the larger picture. So if one wants
+ * to use J2000 to find the relative position of planets, one needs to subtract leap seconds, but
+ * if one wants the locally relevant spin position of a planet, one must not subtract leap seconds.
+ *
+ * The name orrery was chosen for this module to put people in mind of the tiny and obviously
+ * inaccurate physical solar system models built with gears. Because that is ultimately how this
+ * module works: a hack that gives a flavor of the the real thing without trying too hard.
+ */
 
 /*
 Tables taken from: https://ssd.jpl.nasa.gov/txt/p_elem_t2.txt
@@ -41,8 +61,6 @@ Neptune  30.06952752      0.00895439      1.77005520      304.22289287     46.68
 Pluto    39.48686035      0.24885238     17.14104260      238.96535011    224.09702598    110.30167986
           0.00449751      0.00006016      0.00000501      145.18042903     -0.00968827     -0.00809981
 ------------------------------------------------------------------------------------------------------
-
-
 
 Table 2b.
 
@@ -80,17 +98,17 @@ pub struct KeplerianElements {
 impl KeplerianElements {
     pub fn new(
         a: f64,
-        apc: f64,
         e: f64,
-        epc: f64,
         i: f64,
-        ipc: f64,
         l: f64,
-        lpc: f64,
         omega_bar: f64,
-        omega_bar_pc: f64,
         capital_omega: f64,
+        apc: f64,
+        epc: f64,
+        ipc: f64,
+        lpc: f64,
         long_node_pc: f64,
+        omega_bar_pc: f64,
         b: f64,
         c: f64,
         s: f64,
@@ -233,41 +251,105 @@ impl OrbitalParameters {
     }
 }
 
+lazy_static! {
+    static ref LEAP_SECONDS: Vec<DateTime<Utc>> = {
+        let mut v = Vec::new();
+        v.push(Utc.ymd(1972, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1972, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1973, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1974, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1975, 12, 31).and_hms(23, 59, 59));
+
+        v.push(Utc.ymd(1976, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1977, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1978, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1979, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1981, 6, 30).and_hms(23, 59, 59));
+
+        v.push(Utc.ymd(1982, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1983, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1985, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1987, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1989, 12, 31).and_hms(23, 59, 59));
+
+        v.push(Utc.ymd(1990, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1992, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1993, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1994, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1995, 12, 31).and_hms(23, 59, 59));
+
+        v.push(Utc.ymd(1997, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(1998, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(2005, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(2008, 12, 31).and_hms(23, 59, 59));
+        v.push(Utc.ymd(2012, 6, 30).and_hms(23, 59, 59));
+
+        v.push(Utc.ymd(2015, 6, 30).and_hms(23, 59, 59));
+        v.push(Utc.ymd(2016, 12, 31).and_hms(23, 59, 59));
+        v.reverse();
+        v
+    };
+}
+
 pub struct Orrery {
     earth_moon_barycenter: KeplerianElements,
+
+    now: DateTime<Utc>,
+    in_debug_override: bool,
 }
 
 impl Orrery {
-    pub fn new() -> Self {
+    #[rustfmt::skip]
+    pub fn new(initial_time: DateTime<Utc>) -> Self {
         Self {
+            now: initial_time,
+
             //EM Bary   1.00000018      0.01673163     -0.00054346      100.46691572    102.93005885     -5.11260389
             //         -0.00000003     -0.00003661     -0.01337178    35999.37306329      0.31795260     -0.24123856
             earth_moon_barycenter: KeplerianElements::new(
-                1.00000018,
-                -0.00000003,
-                0.01673163,
-                -0.00003661,
-                -0.00054346,
-                -0.01337178,
-                100.46691572,
-                35999.37306329,
-                102.93005885,
-                0.31795260,
-                -5.11260389,
-                -0.24123856,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
+                 1.00000018,  0.01673163, -0.00054346,   100.46691572, 102.93005885, -5.11260389,
+                -0.00000003, -0.00003661, -0.01337178, 35999.37306329,   0.31795260, -0.24123856,
+                0.0, 0.0, 0.0, 0.0,
             ),
         }
     }
 
-    pub fn sun_position_at(&self, time: DateTime<Utc>) -> Point3<f64> {
-        const MILLIS_PER_CENTURY: f64 = 1000f64 * 60f64 * 60f64 * 24f64 * 364.25f64 * 100f64;
-        let from_j2000 = time - Utc.ymd(2000, 1, 1).and_hms(12, 0, 0);
-        let centuries_from_j2000 = (from_j2000.num_milliseconds() as f64) / MILLIS_PER_CENTURY;
+    fn leap_seconds_since(t: DateTime<Utc>) -> Duration {
+        for (offset, date) in LEAP_SECONDS.iter().enumerate() {
+            if &t > date {
+                return Duration::seconds((LEAP_SECONDS.len() - offset) as i64);
+            }
+        }
+        Duration::seconds(0)
+    }
 
+    fn centuries_from_j2000(&self) -> f64 {
+        // Note that 364.25 days per year is definitional to j2000 ecliptic coordinates. It allows
+        // us to accurately determine the position of the planets relative to the sun in the
+        // ecliptic plane, (given the additional drift parameters), assuming that we have the time
+        // offset from January 2000 without leap seconds added.
+
+        const MILLIS_PER_CENTURY: f64 = 1000f64 * 60f64 * 60f64 * 24f64 * 364.25f64 * 100f64;
+        let from_j2000 =
+            self.now - Utc.ymd(2000, 1, 1).and_hms(12, 0, 0) + Self::leap_seconds_since(self.now);
+        (from_j2000.num_milliseconds() as f64) / MILLIS_PER_CENTURY
+    }
+
+    fn days_from_jan1(&self) -> f64 {
+        // Given leap seconds, we can assume that the earth's rotation is pointing a more or less
+        // consistent direction every year at UTC time Jan 1, 12:00 PM. Thus, we want to get the
+        // number of days from Jan 1 to now.
+        const MILLIS_PER_YEAR: f64 = 1000f64 * 60f64 * 60f64 * 24f64 * 364.25f64;
+        let from_base = self.now - Utc.ymd(self.now.year(), 1, 1).and_hms(12, 0, 0);
+        (from_base.num_milliseconds() as f64) / MILLIS_PER_YEAR
+    }
+
+    //fn earth_position(&self) -> Point3<f64> {}
+
+    pub fn sun_direction(&self) -> Vector3<f64> {
+        let centuries_from_j2000 = self.centuries_from_j2000();
+
+        // Get sun position in ecliptic, earth centric.
         let orbit = self.earth_moon_barycenter.at_century(centuries_from_j2000);
         let sun_position_ecliptic = -orbit.eccliptic_position();
 
@@ -280,9 +362,38 @@ impl Orrery {
         let x_eq = sun_position_ecliptic.x;
         let y_eq = sun_position_ecliptic.y * axial_tilt.cos();
         let z_eq = sun_position_ecliptic.y * axial_tilt.sin();
+        let sun_position_equitorial = Point3::new(x_eq, z_eq, y_eq);
 
-        // Convert to vulkan axes
-        Point3::new(x_eq, z_eq, y_eq)
+        // Rotate once per day, starting at the nearest year boundary, counting on leap seconds
+        // to ensure that the angle at Jan 1 (Utc) is consistent.
+        let rot = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(Vector3::new(0f64, -1f64, 0f64)),
+            self.days_from_jan1() * 2f64 * PI,
+        );
+
+        Vector4::from(rot * sun_position_equitorial)
+            .xyz()
+            .normalize()
+    }
+
+    pub fn debug_bindings() -> Fallible<InputBindings> {
+        Ok(InputBindings::new("orrery").bind("+move-sun", "mouse2")?)
+    }
+
+    pub fn handle_command(&mut self, command: &Command) -> Fallible<()> {
+        match command.name.as_str() {
+            "+move-sun" => self.in_debug_override = true,
+            "-move-sun" => self.in_debug_override = false,
+            "mouse-move" => {
+                if self.in_debug_override {
+                    let days = command.displacement()?.0 as i64;
+                    println!("ADDING DAYS: {}", days);
+                    self.now = self.now.checked_add_signed(Duration::days(days)).unwrap();
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 
@@ -292,7 +403,23 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let orrery = Orrery::new();
-        orrery.position_at(Utc::now())
+        let orrery = Orrery::new(Utc::now());
+        orrery.sun_direction();
+    }
+
+    #[test]
+    fn test_leap_seconds() {
+        assert_eq!(
+            Orrery::leap_seconds_since(Utc.ymd(2020, 1, 1).and_hms(12, 0, 0)),
+            Duration::seconds(27)
+        );
+        assert_eq!(
+            Orrery::leap_seconds_since(Utc.ymd(2010, 1, 1).and_hms(12, 0, 0)),
+            Duration::seconds(24)
+        );
+        assert_eq!(
+            Orrery::leap_seconds_since(Utc.ymd(1969, 1, 1).and_hms(12, 0, 0)),
+            Duration::seconds(0)
+        );
     }
 }
