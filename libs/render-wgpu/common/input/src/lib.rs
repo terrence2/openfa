@@ -12,20 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod keyset;
-
-pub use crate::keyset::{Key, KeySet};
+use command::{Bindings, Command, Key};
 use failure::{bail, Fallible};
 use log::warn;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
+    collections::HashMap,
     sync::mpsc::{channel, Receiver, TryRecvError},
     thread,
 };
 use winit::{
-    dpi::{LogicalPosition, LogicalSize},
     event::{
         DeviceEvent, DeviceId, ElementState, Event, KeyboardInput, MouseScrollDelta, StartCause,
         WindowEvent,
@@ -34,206 +30,6 @@ use winit::{
     platform::desktop::EventLoopExtDesktop,
     window::Window,
 };
-
-// Map from key, buttons, and axes to commands.
-pub struct InputBindings {
-    pub name: String,
-    press_chords: HashMap<Key, Vec<(KeySet, String)>>,
-    release_keys: HashMap<Key, HashSet<String>>,
-}
-
-impl InputBindings {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            press_chords: HashMap::new(),
-            release_keys: HashMap::new(),
-        }
-    }
-
-    pub fn bind(mut self, command: &str, keyset: &str) -> Fallible<Self> {
-        let (activate, deactivate) = if command.starts_with('+') {
-            (command, Some(format!("-{}", &command[1..])))
-        } else {
-            (command, None)
-        };
-        for ks in KeySet::from_virtual(keyset)?.drain(..) {
-            let sets = self
-                .press_chords
-                .entry(ks.activating())
-                .or_insert_with(Vec::new);
-
-            if let Some(ref d) = deactivate {
-                for key in &ks.keys {
-                    let keys = self.release_keys.entry(*key).or_insert_with(HashSet::new);
-                    keys.insert(d.to_owned());
-                }
-            }
-
-            sets.push((ks, activate.to_owned()));
-            sets.sort_by_key(|(set, _)| usize::max_value() - set.keys.len());
-        }
-        Ok(self)
-    }
-
-    fn match_key(
-        &self,
-        key: Key,
-        state: ElementState,
-        key_states: &HashMap<Key, ElementState>,
-    ) -> SmallVec<[Command; 4]> {
-        if state == ElementState::Pressed {
-            if let Some(chords) = self.press_chords.get(&key) {
-                for (chord, activate) in chords {
-                    if Self::chord_is_pressed(&chord.keys, key_states) {
-                        return smallvec![Command::from_string(activate.to_owned())];
-                    }
-                }
-            }
-        } else if let Some(commands) = self.release_keys.get(&key) {
-            return commands
-                .iter()
-                .map(|v| Command::from_string(v.to_owned()))
-                .collect::<SmallVec<_>>();
-        }
-        smallvec![]
-    }
-
-    fn chord_is_pressed(binding_keys: &[Key], key_states: &HashMap<Key, ElementState>) -> bool {
-        for binding_key in binding_keys.iter() {
-            if let Some(current_state) = key_states.get(binding_key) {
-                if *current_state == ElementState::Released {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum CommandArg {
-    None,
-    Boolean(bool),
-    Float(f64),
-    Path(PathBuf),
-    Device(DeviceId),
-    Displacement((f64, f64)),
-}
-
-impl From<DeviceId> for CommandArg {
-    fn from(v: DeviceId) -> Self {
-        CommandArg::Device(v)
-    }
-}
-
-impl From<(f64, f64)> for CommandArg {
-    fn from(v: (f64, f64)) -> Self {
-        CommandArg::Displacement((v.0, v.1))
-    }
-}
-
-impl From<(f32, f32)> for CommandArg {
-    fn from(v: (f32, f32)) -> Self {
-        CommandArg::Displacement((f64::from(v.0), f64::from(v.1)))
-    }
-}
-
-impl From<f64> for CommandArg {
-    fn from(v: f64) -> Self {
-        CommandArg::Float(v)
-    }
-}
-
-impl From<LogicalSize> for CommandArg {
-    fn from(v: LogicalSize) -> Self {
-        CommandArg::Displacement((v.width, v.height))
-    }
-}
-
-impl From<LogicalPosition> for CommandArg {
-    fn from(v: LogicalPosition) -> Self {
-        CommandArg::Displacement((v.x, v.y))
-    }
-}
-
-impl From<PathBuf> for CommandArg {
-    fn from(v: PathBuf) -> Self {
-        CommandArg::Path(v)
-    }
-}
-
-impl From<bool> for CommandArg {
-    fn from(v: bool) -> Self {
-        CommandArg::Boolean(v)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Command {
-    pub name: String,
-    pub arg: CommandArg,
-}
-
-impl Command {
-    pub fn from_string(name: String) -> Self {
-        Self {
-            name,
-            arg: CommandArg::None,
-        }
-    }
-
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            arg: CommandArg::None,
-        }
-    }
-
-    pub fn with_arg(name: &str, arg: CommandArg) -> Self {
-        Self {
-            name: name.to_owned(),
-            arg,
-        }
-    }
-
-    pub fn boolean(&self) -> Fallible<bool> {
-        match self.arg {
-            CommandArg::Boolean(v) => Ok(v),
-            _ => bail!("not a boolean argument"),
-        }
-    }
-
-    pub fn float(&self) -> Fallible<f64> {
-        match self.arg {
-            CommandArg::Float(v) => Ok(v),
-            _ => bail!("not a float argument"),
-        }
-    }
-
-    pub fn path(&self) -> Fallible<PathBuf> {
-        match &self.arg {
-            CommandArg::Path(v) => Ok(v.to_path_buf()),
-            _ => bail!("not a path argument"),
-        }
-    }
-
-    pub fn displacement(&self) -> Fallible<(f64, f64)> {
-        match self.arg {
-            CommandArg::Displacement(v) => Ok(v),
-            _ => bail!("not a displacement argument"),
-        }
-    }
-
-    pub fn device(&self) -> Fallible<DeviceId> {
-        match self.arg {
-            CommandArg::Device(v) => Ok(v),
-            _ => bail!("not a device argument"),
-        }
-    }
-}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MetaEvent {
@@ -244,7 +40,7 @@ pub struct InputSystem {
     // Prioritized list of input binding sets. The last set with a matching
     // input binding "wins" and determines the command that is sent for that
     // input event.
-    bindings: Vec<InputBindings>,
+    bindings: Vec<Bindings>,
 
     // Track key states so that we can match button combos.
     button_state: HashMap<Key, ElementState>,
@@ -257,7 +53,7 @@ pub struct InputSystem {
 }
 
 impl InputSystem {
-    pub fn new(bindings: Vec<InputBindings>) -> Fallible<Self> {
+    pub fn new(bindings: Vec<Bindings>) -> Fallible<Self> {
         let (tx_event, rx_event) = channel();
         let (tx_window, rx_window) = channel();
         let (tx_proxy, rx_proxy) = channel();
@@ -290,11 +86,11 @@ impl InputSystem {
         })
     }
 
-    pub fn push_bindings(&mut self, bindings: InputBindings) {
+    pub fn push_bindings(&mut self, bindings: Bindings) {
         self.bindings.push(bindings);
     }
 
-    pub fn pop_bindings(&mut self) -> Option<InputBindings> {
+    pub fn pop_bindings(&mut self) -> Option<Bindings> {
         self.bindings.pop()
     }
 
@@ -468,7 +264,9 @@ impl Drop for InputSystem {
 mod test {
     use super::*;
     use approx::assert_relative_eq;
+    use std::path::PathBuf;
     use winit::{
+        dpi::LogicalSize,
         event::{ModifiersState, VirtualKeyCode},
         window::WindowId,
     };
@@ -608,11 +406,11 @@ mod test {
 
     #[test]
     fn test_can_handle_nested_events() -> Fallible<()> {
-        let menu = InputBindings::new("fps")
+        let menu = Bindings::new("fps")
             .bind("+enter-menu", "alt")?
             .bind("exit", "shift+e")?
             .bind("click", "mouse0")?;
-        let fps = InputBindings::new("fps")
+        let fps = Bindings::new("fps")
             .bind("+move-forward", "w")?
             .bind("eject", "shift+e")?
             .bind("fire", "mouse0")?;
@@ -678,7 +476,7 @@ mod test {
         assert!(cmd.is_empty());
 
         // Push on a new command set and ensure that it masks.
-        let flight = InputBindings::new("flight").bind("+pickle", "mouse0")?;
+        let flight = Bindings::new("flight").bind("+pickle", "mouse0")?;
         input.push_bindings(flight);
 
         let cmd = input
@@ -705,7 +503,7 @@ mod test {
 
     #[test]
     fn test_poll_events() -> Fallible<()> {
-        let fps = InputBindings::new("fps")
+        let fps = Bindings::new("fps")
             .bind("+moveforward", "w")?
             .bind("eject", "shift+e")?;
         let mut input = InputSystem::new(vec![fps])?;
@@ -718,7 +516,7 @@ mod test {
     fn test_run_forever() -> Fallible<()> {
         use simplelog::{Config, LevelFilter, TermLogger};
         TermLogger::init(LevelFilter::Trace, Config::default())?;
-        let fps = InputBindings::new("fps")
+        let fps = Bindings::new("fps")
             .bind("+moveforward", "w")?
             .bind("eject", "shift+e")?;
         let mut input = InputSystem::new(vec![fps])?;

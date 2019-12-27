@@ -23,6 +23,7 @@ gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
 absolute_unit = { path = "../../../absolute_unit" }
+command = { path = "../../../command" }
 fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
 input = { path = "../../../render-wgpu/common/input" }

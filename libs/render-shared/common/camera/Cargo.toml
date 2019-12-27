@@ -9,7 +9,7 @@ failure = "^ 0.1.2"
 log = ">= 0.4"
 nalgebra = "^ 0.18"
 absolute_unit = { path = "../../../absolute_unit" }
-input = { path = "../../../render-wgpu/common/input" }
+command = { path = "../../../command" }
 
 [dev-dependencies]
 approx = "^ 0.3"
