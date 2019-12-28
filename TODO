@@ -4,6 +4,10 @@ TODO
 An unsorted list of project ideas, in case I run out of things to do. Some of these will
 inevitably be stale or already done.
 
+* How big are shapes?
+Scaling by 4x works for runways, but other shapes appear to want some scaling, but not that much.
+Others seem to want way more.
+
 * Let there be light
 Now that we have our buffers in a way that we can inject them wherever we need, we can access
 the atmosphere parameters from the Terrain and Shape draw calls. We can use this data to light
