@@ -29,4 +29,6 @@ pal = { path = "../../libs/pal" }
 screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { path = "../../libs/render-wgpu/buffer/stars" }
+terrain = { path = "../../libs/render-wgpu/render_pass/terrain" }
+terrain_geo = { path = "../../libs/render-wgpu/buffer/terrain_geo" }
 text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }

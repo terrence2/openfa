@@ -1,0 +1,22 @@
+[package]
+name = "terrain"
+description = "Render terrain_tiles, sampling from terrain_geo."
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "^ 0.1.2"
+log = "^ 0.4"
+wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
+#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
+#wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
+#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
+atmosphere = { path = "../../../render-wgpu/buffer/atmosphere" }
+global_data = { path = "../../../render-wgpu/buffer/global_data" }
+gpu = { path = "../../../render-wgpu/common/gpu" }
+shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
+terrain_geo = { path = "../../../render-wgpu/buffer/terrain_geo" }
+
+[build-dependencies]
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

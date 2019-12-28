@@ -31,6 +31,8 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
+use terrain::TerrainRenderPass;
+use terrain_geo::TerrainGeoBuffer;
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
 
 make_frame_graph!(
@@ -40,10 +42,12 @@ make_frame_graph!(
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
             stars: StarsBuffer,
+            terrain_geo: TerrainGeoBuffer,
             text_layout: LayoutBuffer
         };
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
+            terrain: TerrainRenderPass { globals, atmosphere, terrain_geo },
             screen_text: ScreenTextRenderPass { globals, text_layout }
         ];
     }
@@ -70,6 +74,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
+    let terrain_geo = TerrainGeoBuffer::new(gpu.device())?;
     let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
@@ -78,6 +83,7 @@ fn main() -> Fallible<()> {
         &fullscreen_buffer,
         &globals_buffer,
         &stars_buffer,
+        &terrain_geo,
         &text_layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
