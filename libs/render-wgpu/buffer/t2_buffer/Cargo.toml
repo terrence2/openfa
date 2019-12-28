@@ -29,6 +29,3 @@ simplelog = "^ 0.5"
 omnilib = { path = "../../../omnilib" }
 input = { path = "../../../render-wgpu/common/input" }
 xt = { path = "../../../xt" }
-
-[build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
