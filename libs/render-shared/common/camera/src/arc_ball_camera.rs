@@ -15,6 +15,7 @@
 use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters, Radians};
 use command::{Bindings, Command};
 use failure::Fallible;
+use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
 use nalgebra::{convert, Isometry3, Matrix4, Perspective3, Point3, Vector3};
 use std::f64::consts::PI;
 
@@ -25,12 +26,13 @@ pub struct ArcBallCamera {
     in_rotate: bool,
     in_move: bool,
 
-    target: Point3<f64>,
-    //target: Position<GeoSurface>,
+    target: Graticule<GeoSurface>,
+    eye: Graticule<Target>,
+    /*
     distance: Length<Meters>,
     yaw: Angle<Radians>,
     pitch: Angle<Radians>,
-
+    */
     pub up: Vector3<f64>,
     projection: Perspective3<f64>,
 }
@@ -39,11 +41,16 @@ impl ArcBallCamera {
     pub fn new(aspect_ratio: f64, z_near: Length<Meters>, z_far: Length<Meters>) -> Self {
         let fov_y = radians!(PI / 2f64);
         Self {
-            //target: Position::<GeoSurface>::new(radians!(0), radians!(0), meters!(0)),
-            target: Point3::new(0.0, 0.0, 0.0),
-            distance: meters!(1),
-            yaw: radians!(PI / 2f64),
-            pitch: radians!(3f64 * PI / 4f64),
+            target: Graticule::<GeoSurface>::new(radians!(0), radians!(0), meters!(0)),
+            eye: Graticule::<Target>::new(
+                radians!(PI / 2.0),
+                radians!(3f64 * PI / 4.0),
+                meters!(1),
+            ),
+            //target: Point3::new(0.0, 0.0, 0.0),
+            //distance: meters!(1),
+            //yaw: radians!(PI / 2f64),
+            //pitch: radians!(3f64 * PI / 4f64),
             up: Vector3::y(),
             projection: Perspective3::new(
                 1f64 / aspect_ratio,
@@ -60,13 +67,20 @@ impl ArcBallCamera {
     }
 
     pub fn get_distance(&self) -> Length<Meters> {
-        self.distance
+        self.eye.distance
     }
 
     pub fn set_distance<Unit: LengthUnit>(&mut self, distance: Length<Unit>) {
-        self.distance = meters!(distance);
+        self.eye.distance = meters!(distance);
     }
 
+    pub fn cartesian_eye_position(&self) -> Cartesian<GeoCenter> {
+        let cart_target = Cartesian::<GeoCenter>::from(Graticule::<GeoCenter>::from(self.target));
+        let cart_eye_rel_target = Cartesian::<Target>::from(self.eye);
+        cart_target + cart_eye_rel_target
+    }
+
+    /*
     pub fn set_target(&mut self, x: f64, y: f64, z: f64) {
         self.target = Point3::new(x, y, z);
     }
@@ -78,6 +92,7 @@ impl ArcBallCamera {
     pub fn get_target(&self) -> Point3<f64> {
         self.target
     }
+    */
 
     //    pub fn get_target(&self) -> Position<GeoSurface> {
     //        self.target
@@ -104,6 +119,7 @@ impl ArcBallCamera {
     }
 
     //pub fn eye_position_relative_to_tile(&self, origin: Position<GeoSurface>) -> Point3<f64> {
+    /*
     pub fn eye(&self) -> Point3<f64> {
         let relative = Vector3::new(
             f64::from(self.distance * self.yaw.cos() * self.pitch.sin()),
@@ -113,28 +129,39 @@ impl ArcBallCamera {
         let position = relative.to_homogeneous() + self.target.to_homogeneous();
         Point3::from_homogeneous(position).unwrap()
     }
+    */
 
+    //cartesian_geocentric_eye_position
+
+    /*
     pub fn projection_for(&self, model: Isometry3<f32>) -> Matrix4<f64> {
         convert(self.projection_matrix() * (model * self.view()).to_homogeneous())
     }
+    */
 
     pub fn on_mousemove(&mut self, command: &Command) -> Fallible<()> {
         let (x, y) = command.displacement()?;
 
         if self.in_rotate {
-            self.yaw += degrees!(x * 0.5);
+            self.eye.latitude += degrees!(x * 0.5);
 
-            self.pitch += degrees!(y);
-            self.pitch = self.pitch.min(radians!(PI - 0.001)).max(radians!(0.001));
+            self.eye.longitude += degrees!(y);
+            self.eye.longitude = self
+                .eye
+                .longitude
+                .min(radians!(PI - 0.001))
+                .max(radians!(0.001));
         }
 
         if self.in_move {
+            /*
             let eye = self.eye();
             let dir = (self.target - eye).normalize();
             let tangent = Vector3::y().cross(&dir).normalize();
             let bitangent = dir.cross(&tangent);
             let mult = f64::from(self.distance / 1000f64).max(0.01);
             self.target = self.target + tangent * (x * mult) + bitangent * (-y * mult);
+            */
         }
 
         Ok(())
@@ -147,28 +174,33 @@ impl ArcBallCamera {
         //   Up is negative
         //   Down is positive
         //   Works in steps of 15 for my mouse.
-        self.distance *= if y > 0f64 { 1.1f64 } else { 0.9f64 };
-        self.distance = self.distance.max(meters!(0.01));
+        self.eye.distance *= if y > 0f64 { 1.1f64 } else { 0.9f64 };
+        self.eye.distance = self.eye.distance.max(meters!(0.01));
 
         Ok(())
     }
 
+    /*
     pub fn view(&self) -> Isometry3<f32> {
         convert(Isometry3::look_at_rh(&self.eye(), &self.target, &self.up))
     }
+    */
 
     pub fn projection(&self) -> Perspective3<f64> {
         self.projection
     }
 
+    /*
     pub fn view_matrix(&self) -> Matrix4<f32> {
         convert(self.view())
     }
+    */
 
     pub fn projection_matrix(&self) -> Matrix4<f32> {
         convert(*self.projection.as_matrix())
     }
 
+    /*
     pub fn inverted_projection_matrix(&self) -> Matrix4<f32> {
         convert(self.projection.inverse())
     }
@@ -180,6 +212,7 @@ impl ArcBallCamera {
     pub fn position(&self) -> Point3<f32> {
         convert(self.eye())
     }
+    */
 
     pub fn think(&mut self) {}
 

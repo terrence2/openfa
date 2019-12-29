@@ -21,5 +21,7 @@ pub(crate) mod unit;
 pub use crate::{
     angle::{Angle, AngleUnit},
     length::{Length, LengthUnit},
-    unit::{degrees::Degrees, feet::Feet, meters::Meters, radians::Radians},
+    unit::{
+        degrees::Degrees, feet::Feet, kilometers::KiloMeters, meters::Meters, radians::Radians,
+    },
 };

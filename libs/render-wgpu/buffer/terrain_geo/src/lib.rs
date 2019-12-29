@@ -62,7 +62,7 @@ impl TerrainGeoBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let sphere = IcoSphere::new(2);
 
-        const EARTH_TO_KM: f32 = 700.0;
+        const EARTH_TO_KM: f32 = 6370.0;
 
         let mut verts = Vec::new();
         for pos in &sphere.verts {

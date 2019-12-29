@@ -1,0 +1,9 @@
+[package]
+name = "geodesy"
+description = "Geometric coordinates with units built on absolute_unit."
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+absolute_unit = { path = "../absolute_unit" }

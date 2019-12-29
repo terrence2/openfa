@@ -131,7 +131,8 @@ fn main() -> Fallible<()> {
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer(&camera, &gpu, &mut buffers)?;
+        //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
             gpu.device(),

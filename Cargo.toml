@@ -31,6 +31,7 @@ members = [
         "libs/dlg",
         "libs/fnt",
         "libs/galaxy",
+        "libs/geodesy",
         "libs/i386",
         "libs/jt",
         "libs/lay",

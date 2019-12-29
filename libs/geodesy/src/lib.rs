@@ -12,12 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+pub(crate) mod cartesian;
+pub(crate) mod graticule;
+pub(crate) mod origin;
 
-// Angular
-pub(crate) mod degrees;
-pub(crate) mod radians;
-
-// Distance
-pub(crate) mod feet;
-pub(crate) mod kilometers;
-pub(crate) mod meters;
+pub use crate::{
+    cartesian::Cartesian,
+    graticule::Graticule,
+    origin::{geo_center::GeoCenter, geo_surface::GeoSurface, target::Target},
+};
