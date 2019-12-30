@@ -15,8 +15,8 @@
 use crate::{length::LengthUnit, unit::meters::Meters};
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct KiloMeters;
-impl LengthUnit for KiloMeters {
+pub struct Kilometers;
+impl LengthUnit for Kilometers {
     fn unit_name() -> &'static str {
         "kilometers"
     }
@@ -31,6 +31,6 @@ impl LengthUnit for KiloMeters {
 #[macro_export]
 macro_rules! kilometers {
     ($num:expr) => {
-        $crate::Length::<$crate::KiloMeters>::from(&$num)
+        $crate::Length::<$crate::Kilometers>::from(&$num)
     };
 }

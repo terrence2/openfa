@@ -12,9 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::{kilometers, Kilometers, LengthUnit};
 use camera::{ArcBallCamera, UfoCamera};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
+use geodesy::{Cartesian, GeoCenter};
 use gpu::GPU;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3, Vector4};
 use std::{cell::RefCell, f64::consts::PI, mem, sync::Arc};
@@ -76,6 +78,15 @@ struct Globals {
     camera_position_earth_km: [f32; 4],
 }
 
+fn geocenter_cart_to_v<Unit: LengthUnit>(geocart: Cartesian<GeoCenter, Unit>) -> [f32; 4] {
+    [
+        f32::from(geocart.coords[0]),
+        f32::from(geocart.coords[1]),
+        f32::from(geocart.coords[2]),
+        1f32,
+    ]
+}
+
 impl Globals {
     // Scale from 1:1 being full screen width to 1:1 being a letterbox, either with top-bottom
     // cutouts or left-right cutouts, depending on the aspect. This lets our screen drawing
@@ -102,8 +113,17 @@ impl Globals {
     // It takes a [-1,1] fullscreen quad and turns it into worldspace vectors starting at the
     // the camera position and extending to the fullscreen quad corners, in world space.
     // Interpolation between these vectors automatically fills in one ray for every screen pixel.
-    pub fn with_raymarching(mut self, camera: &ArcBallCamera) -> Self {
-        let camera_position_earth_km = camera.cartesian_eye_position();
+    pub fn with_geocenter_raymarching(mut self, camera: &ArcBallCamera) -> Self {
+        let eye = camera.cartesian_eye_position::<Kilometers>();
+        let view = Isometry3::look_at_rh(
+            &eye.point64(),
+            &(eye + camera.forward::<Kilometers>()).point64(),
+            &camera.up::<Kilometers>().vec64(),
+        );
+        self.inv_view = m2v(&convert(view.inverse().to_homogeneous()));
+        self.inv_proj = m2v(&convert(camera.projection().inverse()));
+        self.camera_position_earth_km =
+            geocenter_cart_to_v(camera.cartesian_eye_position::<Kilometers>());
         self
     }
 }
@@ -172,8 +192,10 @@ impl GlobalParametersBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let mut globals: Globals = Default::default();
-        let globals = globals.with_screen_overlay_projection(gpu);
+        let globals: Globals = Default::default();
+        let globals = globals
+            .with_screen_overlay_projection(gpu)
+            .with_geocenter_raymarching(camera);
         upload_buffers.push(self.make_gpu_buffer(globals, gpu));
         Ok(())
     }

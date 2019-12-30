@@ -16,7 +16,9 @@ use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters,
 use command::{Bindings, Command};
 use failure::Fallible;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
-use nalgebra::{convert, Isometry3, Matrix4, Perspective3, Point3, Vector3};
+use nalgebra::{
+    convert, Isometry3, Matrix4, Perspective3, Point3, Unit as NUnit, UnitQuaternion, Vector3,
+};
 use std::f64::consts::PI;
 
 pub struct ArcBallCamera {
@@ -66,18 +68,80 @@ impl ArcBallCamera {
         }
     }
 
+    pub fn get_eye_relative(&self) -> Graticule<Target> {
+        self.eye
+    }
+
+    pub fn set_target(&mut self, target: Graticule<GeoSurface>) {
+        self.target = target;
+    }
+
+    /*
     pub fn get_distance(&self) -> Length<Meters> {
         self.eye.distance
+    }
+    */
+
+    pub fn set_eye_relative(&mut self, eye: Graticule<Target>) {
+        self.eye = eye;
     }
 
     pub fn set_distance<Unit: LengthUnit>(&mut self, distance: Length<Unit>) {
         self.eye.distance = meters!(distance);
     }
 
-    pub fn cartesian_eye_position(&self) -> Cartesian<GeoCenter> {
-        let cart_target = Cartesian::<GeoCenter>::from(Graticule::<GeoCenter>::from(self.target));
-        let cart_eye_rel_target = Cartesian::<Target>::from(self.eye);
-        cart_target + cart_eye_rel_target
+    pub fn cartesian_target_position<Unit: LengthUnit>(&self) -> Cartesian<GeoCenter, Unit> {
+        Cartesian::<GeoCenter, Unit>::from(Graticule::<GeoCenter>::from(self.target))
+    }
+
+    pub fn cartesian_eye_position<Unit: LengthUnit>(&self) -> Cartesian<GeoCenter, Unit> {
+        let r_lon = UnitQuaternion::from_axis_angle(
+            &NUnit::new_unchecked(Vector3::new(0f64, 1f64, 0f64)),
+            f64::from(self.target.longitude),
+        );
+        let r_lat = UnitQuaternion::from_axis_angle(
+            &NUnit::new_normalize(r_lon * Vector3::new(1f64, 0f64, 0f64)),
+            -(-PI / 2.0 + f64::from(self.target.latitude)),
+        );
+        let cart_target = self.cartesian_target_position::<Unit>();
+        let cart_eye_rel_target_flat = Cartesian::<Target, Unit>::from(self.eye);
+        println!("flat: {}", cart_eye_rel_target_flat);
+        let cart_eye_rel_target_framed =
+            Cartesian::<Target, Unit>::from(r_lon * r_lat * cart_eye_rel_target_flat.vec64());
+        println!("fram: {}", cart_eye_rel_target_framed);
+        /*
+         */
+        cart_target + cart_eye_rel_target_framed
+    }
+
+    pub fn forward<Unit: LengthUnit>(&self) -> Cartesian<Target, Unit> {
+        /*
+        // Note: no need for awkward subtraction here. The forward vector is just the relative
+        // eye position inverted and normalized. Which we can do by setting the length to -1.
+        let mut eye = self.eye;
+        eye.distance = meters!(-1);
+        Cartesian::<Target, Unit>::from(eye)
+        */
+        let dir = self.cartesian_target_position::<Unit>() - self.cartesian_eye_position::<Unit>();
+        dir.vec64().normalize().into()
+    }
+
+    pub fn right<Unit: LengthUnit>(&self) -> Cartesian<Target, Unit> {
+        // Cross eye with forward.
+        self.cartesian_eye_position::<Unit>()
+            .vec64()
+            .cross(&self.forward::<Unit>().vec64())
+            .normalize()
+            .into()
+    }
+
+    pub fn up<Unit: LengthUnit>(&self) -> Cartesian<Target, Unit> {
+        // Cross right and forward
+        self.right::<Unit>()
+            .vec64()
+            .cross(&self.forward::<Unit>().vec64())
+            .normalize()
+            .into()
     }
 
     /*
@@ -143,9 +207,9 @@ impl ArcBallCamera {
         let (x, y) = command.displacement()?;
 
         if self.in_rotate {
-            self.eye.latitude += degrees!(x * 0.5);
+            self.eye.latitude -= degrees!(x * 0.5);
 
-            self.eye.longitude += degrees!(y);
+            self.eye.longitude += degrees!(y * 0.5f64);
             self.eye.longitude = self
                 .eye
                 .longitude
@@ -233,5 +297,47 @@ impl ArcBallCamera {
             _ => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use absolute_unit::{kilometers, Kilometers};
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn it_can_compute_eye_positions() {
+        let mut c = ArcBallCamera::new(1f64, meters!(0.1f64), meters!(1000f64));
+
+        // Verify base target position.
+        let t = c.cartesian_target_position::<Kilometers>();
+        assert_abs_diff_eq!(t.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(t.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(t.coords[2], kilometers!(6378));
+
+        // Longitude 0 maps to south, latitude 90 to up,
+        // when rotated into the surface frame.
+        c.set_eye_relative(Graticule::<Target>::new(
+            degrees!(0),
+            degrees!(0),
+            meters!(1),
+        ));
+        let e = c.cartesian_eye_position::<Kilometers>();
+        println!("e: {}", e);
+        assert_abs_diff_eq!(e.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(e.coords[1], kilometers!(-0.001));
+        assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
+
+        c.set_eye_relative(Graticule::<Target>::new(
+            degrees!(0),
+            degrees!(90),
+            meters!(1),
+        ));
+        let e = c.cartesian_eye_position::<Kilometers>();
+        println!("e: {}", e);
+        assert_abs_diff_eq!(e.coords[0], kilometers!(-0.001));
+        assert_abs_diff_eq!(e.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
     }
 }

@@ -356,17 +356,15 @@ impl Layout {
 
         let mut offset = 0f32;
         let mut prior = None;
-        for c in text.chars() {
+        for mut c in text.chars() {
             if c == ' ' {
                 offset += SPACE_WIDTH;
                 continue;
             }
 
-            ensure!(
-                glyph_cache.can_render_char(c),
-                "attempted to render nonprintable char: {}",
-                c
-            );
+            if !glyph_cache.can_render_char(c) {
+                c = '?';
+            }
 
             let frame = glyph_cache.frame_for(c);
             let kerning = if let Some(p) = prior {

@@ -12,37 +12,62 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, kilometers, meters, Angle, Length, LengthUnit, Meters, Radians};
-use std::{fmt, marker::PhantomData, ops::Add};
+use crate::{GeoCenter, Graticule, Target};
+use absolute_unit::{Length, LengthUnit};
+use nalgebra::{Point3, Vector3};
+use std::{
+    fmt,
+    marker::PhantomData,
+    ops::{Add, Sub},
+};
 
 pub trait CartesianOrigin {
     fn origin_name() -> &'static str;
 }
 
 #[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Cartesian<Origin>
+pub struct Cartesian<Origin, Unit>
 where
     Origin: CartesianOrigin,
+    Unit: LengthUnit,
 {
-    coords: [Length<Meters>; 3],
+    pub coords: [Length<Unit>; 3],
     phantom: PhantomData<Origin>,
 }
 
-impl<Origin> Cartesian<Origin>
+impl<Origin, Unit> Cartesian<Origin, Unit>
 where
     Origin: CartesianOrigin,
+    Unit: LengthUnit,
 {
-    pub fn new<Unit: LengthUnit>(x: Length<Unit>, y: Length<Unit>, z: Length<Unit>) -> Self {
+    pub fn new<UnitB: LengthUnit>(x: Length<UnitB>, y: Length<UnitB>, z: Length<UnitB>) -> Self {
         Self {
-            coords: [meters!(x), meters!(y), meters!(z)],
+            coords: [(&x).into(), (&y).into(), (&z).into()],
             phantom: PhantomData,
         }
     }
+
+    pub fn vec64(&self) -> Vector3<f64> {
+        Vector3::new(
+            f64::from(self.coords[0]),
+            f64::from(self.coords[1]),
+            f64::from(self.coords[2]),
+        )
+    }
+
+    pub fn point64(&self) -> Point3<f64> {
+        Point3::new(
+            f64::from(self.coords[0]),
+            f64::from(self.coords[1]),
+            f64::from(self.coords[2]),
+        )
+    }
 }
 
-impl<Origin> fmt::Display for Cartesian<Origin>
+impl<Origin, Unit> fmt::Display for Cartesian<Origin, Unit>
 where
     Origin: CartesianOrigin,
+    Unit: LengthUnit,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -56,41 +81,71 @@ where
     }
 }
 
-use crate::{GeoCenter, Graticule, Target};
-impl From<Graticule<GeoCenter>> for Cartesian<GeoCenter> {
+impl<Unit: LengthUnit> From<Vector3<f64>> for Cartesian<Target, Unit>
+{
+    fn from(v: Vector3<f64>) -> Self {
+        Self {
+            coords: [
+                Length::<Unit>::from(v[0]),
+                Length::<Unit>::from(v[1]),
+                Length::<Unit>::from(v[2]),
+            ],
+            phantom: PhantomData
+        }
+    }
+}
+
+impl<Unit> From<Graticule<GeoCenter>> for Cartesian<GeoCenter, Unit>
+where
+    Unit: LengthUnit,
+{
     fn from(graticule: Graticule<GeoCenter>) -> Self {
+        /*
+        let relative = Vector3::new(
+            f64::from(self.distance * self.yaw.cos() * self.pitch.sin()),
+            f64::from(self.distance * self.pitch.cos()),
+            f64::from(self.distance * self.yaw.sin() * self.pitch.sin()),
+        );
+        */
         let lat = f64::from(graticule.latitude);
         let lon = f64::from(graticule.longitude);
         Self {
             coords: [
-                graticule.distance * lat.cos() * lon.sin(),
-                graticule.distance * -lat.sin(),
-                graticule.distance * lat.cos() * lon.cos(),
+                (&(graticule.distance * -lon.sin() * lat.cos())).into(),
+                (&(graticule.distance * lat.sin())).into(),
+                (&(graticule.distance * lon.cos() * lat.cos())).into(),
             ],
             phantom: PhantomData,
         }
     }
 }
 
-impl From<Graticule<Target>> for Cartesian<Target> {
+impl<Unit> From<Graticule<Target>> for Cartesian<Target, Unit>
+where
+    Unit: LengthUnit,
+{
     fn from(graticule: Graticule<Target>) -> Self {
         let lat = f64::from(graticule.latitude);
         let lon = f64::from(graticule.longitude);
         Self {
             coords: [
-                graticule.distance * lat.cos() * lon.sin(),
-                graticule.distance * -lat.sin(),
-                graticule.distance * lat.cos() * lon.cos(),
+                (&(graticule.distance * -lon.sin() * lat.cos())).into(),
+                (&(graticule.distance * lat.sin())).into(),
+                (&(graticule.distance * lon.cos() * lat.cos())).into(),
             ],
             phantom: PhantomData,
         }
     }
 }
 
-impl Add<Cartesian<Target>> for Cartesian<GeoCenter> {
-    type Output = Cartesian<GeoCenter>;
+impl<UnitLHS, UnitRHS> Add<Cartesian<Target, UnitRHS>> for Cartesian<GeoCenter, UnitLHS>
+where
+    UnitLHS: LengthUnit,
+    UnitRHS: LengthUnit,
+{
+    type Output = Cartesian<GeoCenter, UnitLHS>;
 
-    fn add(self, other: Cartesian<Target>) -> Self {
+    fn add(self, other: Cartesian<Target, UnitRHS>) -> Self {
         Self {
             coords: [
                 self.coords[0] + other.coords[0],
@@ -102,15 +157,133 @@ impl Add<Cartesian<Target>> for Cartesian<GeoCenter> {
     }
 }
 
+impl<UnitLHS, UnitRHS> Sub<Cartesian<GeoCenter, UnitRHS>> for Cartesian<GeoCenter, UnitLHS>
+where
+    UnitLHS: LengthUnit,
+    UnitRHS: LengthUnit,
+{
+    type Output = Cartesian<Target, UnitLHS>;
+
+    fn sub(self, other: Cartesian<GeoCenter, UnitRHS>) -> Self::Output {
+        Self::Output {
+            coords: [
+                self.coords[0] - other.coords[0],
+                self.coords[1] - other.coords[1],
+                self.coords[2] - other.coords[2],
+            ],
+            phantom: PhantomData,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::GeoCenter;
-    use absolute_unit::{meters, radians};
+    use approx::assert_abs_diff_eq;
+    use crate::{GeoCenter, GeoSurface};
+    use absolute_unit::{Meters, kilometers, Kilometers, meters, degrees};
 
     #[test]
     fn test_position() {
-        let c = Cartesian::<GeoCenter>::new(meters!(0), meters!(0), meters!(0));
+        let c = Cartesian::<GeoCenter, Meters>::new(meters!(0), meters!(0), meters!(0));
         println!("c: {}", c);
+    }
+
+    // Normalized Device Coordinates
+    // X to the right
+    // Y to the top
+    // Z to the front
+    #[test]
+    fn test_longitude() {
+        // Locked at latutude 0, does longitude vary correctly?
+        // Longitude 0 -> point away from screen
+        let g = Graticule::<GeoSurface>::new(degrees!(0), degrees!(0), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(6378));
+
+        // Longitude +90 (east); since up is north and forward is 0, we expect +90
+        // to map to a negative x position.
+        let g = Graticule::<GeoSurface>::new(degrees!(0), degrees!(90), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(-6378));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        // Longitude -90 (west); since up is north and forward is 0, we expect -90
+        // to map to a positive x position.
+        let g = Graticule::<GeoSurface>::new(degrees!(0), degrees!(-90), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(6378));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        // Longitude -180 (west): opposite of 0
+        let g = Graticule::<GeoSurface>::new(degrees!(0), degrees!(-180), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(-6378));
+
+        // Longitude +180 (east): same as -180
+        let g = Graticule::<GeoSurface>::new(degrees!(0), degrees!(-180), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(-6378));
+    }
+
+    #[test]
+    fn test_latitude() {
+        // +90 should be straight up
+        let g = Graticule::<GeoSurface>::new(degrees!(90), degrees!(0), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        let g = Graticule::<GeoSurface>::new(degrees!(90), degrees!(90), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        let g = Graticule::<GeoSurface>::new(degrees!(90), degrees!(-90), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        let g = Graticule::<GeoSurface>::new(degrees!(90), degrees!(-180), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        // -90 should be straight down
+        let g = Graticule::<GeoSurface>::new(degrees!(-90), degrees!(0), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(-6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        let g = Graticule::<GeoSurface>::new(degrees!(-90), degrees!(90), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(-6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        let g = Graticule::<GeoSurface>::new(degrees!(-90), degrees!(-90), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(-6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
+
+        let g = Graticule::<GeoSurface>::new(degrees!(-90), degrees!(-180), meters!(0));
+        let c = Cartesian::<GeoCenter, Kilometers>::from(Graticule::<GeoCenter>::from(g));
+        assert_abs_diff_eq!(c.coords[0], kilometers!(0));
+        assert_abs_diff_eq!(c.coords[1], kilometers!(-6378));
+        assert_abs_diff_eq!(c.coords[2], kilometers!(0));
     }
 }

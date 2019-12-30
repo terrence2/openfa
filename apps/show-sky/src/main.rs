@@ -12,13 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::meters;
+use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
+use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
@@ -107,6 +108,18 @@ fn main() -> Fallible<()> {
     */
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    /*
+    camera.set_target(Graticule::<GeoSurface>::new(
+        degrees!(0),
+        degrees!(90),
+        meters!(10),
+    ));
+    */
+    camera.set_target(Graticule::<GeoSurface>::new(
+        degrees!(0),
+        degrees!(0),
+        meters!(1),
+    ));
 
     loop {
         let loop_start = Instant::now();
@@ -144,8 +157,10 @@ fn main() -> Fallible<()> {
         frame_graph.run(&mut gpu, buffers)?;
 
         let frame_time = loop_start.elapsed();
+        use absolute_unit::Meters;
         let ts = format!(
-            "Date: {:?} || frame: {}.{}ms",
+            "Pos: {} || Date: {:?} || frame: {}.{}ms",
+            camera.get_eye_relative(),
             orrery.get_time(),
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),

@@ -22,6 +22,6 @@ pub use crate::{
     angle::{Angle, AngleUnit},
     length::{Length, LengthUnit},
     unit::{
-        degrees::Degrees, feet::Feet, kilometers::KiloMeters, meters::Meters, radians::Radians,
+        degrees::Degrees, feet::Feet, kilometers::Kilometers, meters::Meters, radians::Radians,
     },
 };

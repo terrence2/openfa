@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, kilometers, meters, Angle, Length, LengthUnit, Meters, Radians};
+use absolute_unit::{radians, AngleUnit, degrees, kilometers, meters, Angle, Length, LengthUnit, Meters, Radians};
 use std::{fmt, marker::PhantomData};
 
 pub trait GraticuleOrigin: Copy {
@@ -34,14 +34,14 @@ impl<Origin> Graticule<Origin>
 where
     Origin: GraticuleOrigin,
 {
-    pub fn new<Unit: LengthUnit>(
-        latitude: Angle<Radians>,
-        longitude: Angle<Radians>,
-        distance: Length<Unit>,
+    pub fn new<UnitAng: AngleUnit, UnitLen: LengthUnit>(
+        latitude: Angle<UnitAng>,
+        longitude: Angle<UnitAng>,
+        distance: Length<UnitLen>,
     ) -> Self {
         Self {
-            latitude,
-            longitude,
+            latitude: radians!(latitude),
+            longitude: radians!(longitude),
             distance: meters!(distance),
             phantom: PhantomData,
         }
