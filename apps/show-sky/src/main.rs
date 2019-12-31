@@ -108,17 +108,10 @@ fn main() -> Fallible<()> {
     */
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
-    /*
     camera.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
-        degrees!(90),
+        degrees!(0),
         meters!(10),
-    ));
-    */
-    camera.set_target(Graticule::<GeoSurface>::new(
-        degrees!(0),
-        degrees!(0),
-        meters!(1),
     ));
 
     loop {

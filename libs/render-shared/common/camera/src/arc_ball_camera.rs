@@ -97,31 +97,20 @@ impl ArcBallCamera {
     pub fn cartesian_eye_position<Unit: LengthUnit>(&self) -> Cartesian<GeoCenter, Unit> {
         let r_lon = UnitQuaternion::from_axis_angle(
             &NUnit::new_unchecked(Vector3::new(0f64, 1f64, 0f64)),
-            f64::from(self.target.longitude),
+            -f64::from(self.target.longitude),
         );
         let r_lat = UnitQuaternion::from_axis_angle(
             &NUnit::new_normalize(r_lon * Vector3::new(1f64, 0f64, 0f64)),
-            -(-PI / 2.0 + f64::from(self.target.latitude)),
+            (PI / 2.0 - f64::from(self.target.latitude)),
         );
         let cart_target = self.cartesian_target_position::<Unit>();
         let cart_eye_rel_target_flat = Cartesian::<Target, Unit>::from(self.eye);
-        println!("flat: {}", cart_eye_rel_target_flat);
         let cart_eye_rel_target_framed =
-            Cartesian::<Target, Unit>::from(r_lon * r_lat * cart_eye_rel_target_flat.vec64());
-        println!("fram: {}", cart_eye_rel_target_framed);
-        /*
-         */
+            Cartesian::<Target, Unit>::from(r_lat * r_lon * cart_eye_rel_target_flat.vec64());
         cart_target + cart_eye_rel_target_framed
     }
 
     pub fn forward<Unit: LengthUnit>(&self) -> Cartesian<Target, Unit> {
-        /*
-        // Note: no need for awkward subtraction here. The forward vector is just the relative
-        // eye position inverted and normalized. Which we can do by setting the length to -1.
-        let mut eye = self.eye;
-        eye.distance = meters!(-1);
-        Cartesian::<Target, Unit>::from(eye)
-        */
         let dir = self.cartesian_target_position::<Unit>() - self.cartesian_eye_position::<Unit>();
         dir.vec64().normalize().into()
     }
@@ -207,14 +196,14 @@ impl ArcBallCamera {
         let (x, y) = command.displacement()?;
 
         if self.in_rotate {
-            self.eye.latitude -= degrees!(x * 0.5);
+            self.eye.longitude -= degrees!(x * 0.5);
 
-            self.eye.longitude += degrees!(y * 0.5f64);
-            self.eye.longitude = self
+            self.eye.latitude += degrees!(y * 0.5f64);
+            self.eye.latitude = self
                 .eye
-                .longitude
-                .min(radians!(PI - 0.001))
-                .max(radians!(0.001));
+                .latitude
+                .min(radians!(PI / 2.0 - 0.001))
+                .max(radians!(-PI / 2.0 + 0.001));
         }
 
         if self.in_move {
@@ -316,28 +305,101 @@ mod tests {
         assert_abs_diff_eq!(t.coords[1], kilometers!(0));
         assert_abs_diff_eq!(t.coords[2], kilometers!(6378));
 
-        // Longitude 0 maps to south, latitude 90 to up,
-        // when rotated into the surface frame.
-        c.set_eye_relative(Graticule::<Target>::new(
-            degrees!(0),
-            degrees!(0),
-            meters!(1),
-        ));
-        let e = c.cartesian_eye_position::<Kilometers>();
-        println!("e: {}", e);
-        assert_abs_diff_eq!(e.coords[0], kilometers!(0));
-        assert_abs_diff_eq!(e.coords[1], kilometers!(-0.001));
-        assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
+        // Target: 0/0; at latitude of 0:
+        {
+            // Longitude 0 maps to south, latitude 90 to up,
+            // when rotated into the surface frame.
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(0),
+                degrees!(0),
+                meters!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(-0.001));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
 
-        c.set_eye_relative(Graticule::<Target>::new(
-            degrees!(0),
-            degrees!(90),
-            meters!(1),
-        ));
-        let e = c.cartesian_eye_position::<Kilometers>();
-        println!("e: {}", e);
-        assert_abs_diff_eq!(e.coords[0], kilometers!(-0.001));
-        assert_abs_diff_eq!(e.coords[1], kilometers!(0));
-        assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(0),
+                degrees!(90),
+                meters!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(-0.001));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
+
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(0),
+                degrees!(-90),
+                meters!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(0.001));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
+
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(0),
+                degrees!(-180),
+                meters!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(0.001));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
+        }
+
+        // Target: 0/0; at latitude of 45
+        {
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(45),
+                degrees!(0),
+                meters!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(-0.000707106781));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(6378.0 + 0.000707106781));
+
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(45),
+                degrees!(90),
+                meters!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(-0.000707106781));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(6378.0 + 0.000707106781));
+        }
+
+        // Target: 0/90; at eye latitude of 0
+        {
+            c.set_target(Graticule::<GeoSurface>::new(
+                degrees!(0),
+                degrees!(90),
+                meters!(0),
+            ));
+
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(0),
+                degrees!(0),
+                kilometers!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(-6378));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(-1));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(0));
+
+            c.set_eye_relative(Graticule::<Target>::new(
+                degrees!(0),
+                degrees!(90),
+                kilometers!(1),
+            ));
+            let e = c.cartesian_eye_position::<Kilometers>();
+            assert_abs_diff_eq!(e.coords[0], kilometers!(-6378));
+            assert_abs_diff_eq!(e.coords[1], kilometers!(0));
+            assert_abs_diff_eq!(e.coords[2], kilometers!(-1));
+        }
     }
 }
