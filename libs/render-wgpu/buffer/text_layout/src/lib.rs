@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use failure::Fallible;
 use fnt::Fnt;
 use frame_graph::CopyBufferDescriptor;
 use glyph_cache::GlyphCache;

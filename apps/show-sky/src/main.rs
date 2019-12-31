@@ -150,7 +150,6 @@ fn main() -> Fallible<()> {
         frame_graph.run(&mut gpu, buffers)?;
 
         let frame_time = loop_start.elapsed();
-        use absolute_unit::Meters;
         let ts = format!(
             "Pos: {} || Date: {:?} || frame: {}.{}ms",
             camera.get_eye_relative(),

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::meters;
+use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
@@ -20,6 +20,7 @@ use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::{Galaxy, FEET_TO_HM_32};
+use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
@@ -263,7 +264,12 @@ fn main() -> Fallible<()> {
 
     let mut orrery = Orrery::now();
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
-    camera.set_target_point(&nalgebra::convert(positions[position_index]));
+    //camera.set_target_point(&nalgebra::convert(positions[position_index]));
+    camera.set_target(Graticule::<GeoSurface>::new(
+        degrees!(0),
+        degrees!(0),
+        meters!(0),
+    ));
 
     loop {
         let loop_start = Instant::now();
@@ -284,13 +290,13 @@ fn main() -> Fallible<()> {
                     if position_index > 0 {
                         position_index -= 1;
                     }
-                    camera.set_target_point(&nalgebra::convert(positions[position_index]));
+                    //camera.set_target_point(&nalgebra::convert(positions[position_index]));
                 }
                 "next-object" => {
                     if position_index < positions.len() - 1 {
                         position_index += 1;
                     }
-                    camera.set_target_point(&nalgebra::convert(positions[position_index]));
+                    //camera.set_target_point(&nalgebra::convert(positions[position_index]));
                 }
 
                 _ => trace!("unhandled command: {}", command.name),

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::meters;
+use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
@@ -20,6 +20,7 @@ use failure::{bail, Fallible};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
+use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
@@ -213,7 +214,11 @@ fn main() -> Fallible<()> {
 
     let mut orrery = Orrery::now();
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001), meters!(3.4e+38));
-    camera.set_target(0f64, -10f64, 0f64);
+    camera.set_target(Graticule::<GeoSurface>::new(
+        degrees!(0),
+        degrees!(0),
+        meters!(10),
+    ));
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
@@ -303,7 +308,8 @@ fn main() -> Fallible<()> {
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer(&camera, &gpu, &mut buffers)?;
+        //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
             gpu.device(),

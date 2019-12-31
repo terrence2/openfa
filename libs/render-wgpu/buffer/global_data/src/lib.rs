@@ -12,21 +12,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{kilometers, Kilometers, LengthUnit};
-use camera::{ArcBallCamera, UfoCamera};
+use absolute_unit::{Kilometers, LengthUnit};
+use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use geodesy::{Cartesian, GeoCenter};
 use gpu::GPU;
-use nalgebra::{convert, Isometry3, Matrix4, Point3, Unit, UnitQuaternion, Vector3, Vector4};
-use std::{cell::RefCell, f64::consts::PI, mem, sync::Arc};
+use nalgebra::{convert, Isometry3, Matrix4, Point3, Vector3, Vector4};
+use std::{cell::RefCell, mem, sync::Arc};
 use t2::Terrain;
-use universe::{FEET_TO_HM_32, FEET_TO_HM_64};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
-
-// FIXME: these should probably not live here.
-const HM_TO_KM: f64 = 1.0 / 10.0;
 
 pub fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     let mut v = [[0f32; 4]; 4];
@@ -202,9 +198,9 @@ impl GlobalParametersBuffer {
 
     pub fn make_upload_buffer_for_arcball_on_globe(
         &self,
-        camera: &ArcBallCamera,
-        gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        _camera: &ArcBallCamera,
+        _gpu: &GPU,
+        _upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         /*
         let globals = Self::arcball_camera_to_buffer(100f32, 100f32, 0f32, 0f32, camera, gpu);
@@ -215,10 +211,10 @@ impl GlobalParametersBuffer {
 
     pub fn make_upload_buffer_for_arcball_in_tile(
         &self,
-        terrain: &Terrain,
-        camera: &ArcBallCamera,
-        gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        _terrain: &Terrain,
+        _camera: &ArcBallCamera,
+        _gpu: &GPU,
+        _upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         /*
         let globals = Self::arcball_camera_to_buffer(
