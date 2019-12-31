@@ -81,8 +81,7 @@ where
     }
 }
 
-impl<Unit: LengthUnit> From<Vector3<f64>> for Cartesian<Target, Unit>
-{
+impl<Unit: LengthUnit> From<Vector3<f64>> for Cartesian<Target, Unit> {
     fn from(v: Vector3<f64>) -> Self {
         Self {
             coords: [
@@ -90,7 +89,7 @@ impl<Unit: LengthUnit> From<Vector3<f64>> for Cartesian<Target, Unit>
                 Length::<Unit>::from(v[1]),
                 Length::<Unit>::from(v[2]),
             ],
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 }
@@ -179,9 +178,9 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use approx::assert_abs_diff_eq;
     use crate::{GeoCenter, GeoSurface};
-    use absolute_unit::{Meters, kilometers, Kilometers, meters, degrees};
+    use absolute_unit::{degrees, kilometers, meters, Kilometers, Meters};
+    use approx::assert_abs_diff_eq;
 
     #[test]
     fn test_position() {

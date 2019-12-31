@@ -12,7 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{radians, AngleUnit, degrees, kilometers, meters, Angle, Length, LengthUnit, Meters, Radians};
+use absolute_unit::{
+    degrees, kilometers, meters, radians, Angle, AngleUnit, Length, LengthUnit, Meters, Radians,
+};
 use std::{fmt, marker::PhantomData};
 
 pub trait GraticuleOrigin: Copy {
