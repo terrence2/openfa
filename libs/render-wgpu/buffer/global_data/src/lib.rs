@@ -60,8 +60,8 @@ struct Globals {
     proj: [[f32; 4]; 4],
 
     // Inverted camera parameters in ecliptic XYZ, 1km per unit.
-    inv_view: [[f32; 4]; 4],
-    inv_proj: [[f32; 4]; 4],
+    geocenter_km_inverse_view: [[f32; 4]; 4],
+    geocenter_km_inverse_proj: [[f32; 4]; 4],
 
     tile_to_earth: [[f32; 4]; 4],
     tile_to_earth_rotation: [[f32; 4]; 4],
@@ -71,7 +71,7 @@ struct Globals {
 
     // Camera position in each of the above.
     camera_position_tile: [f32; 4],
-    camera_position_earth_km: [f32; 4],
+    geocenter_km_camera_position: [f32; 4],
 }
 
 fn geocenter_cart_to_v<Unit: LengthUnit>(geocart: Cartesian<GeoCenter, Unit>) -> [f32; 4] {
@@ -101,10 +101,11 @@ impl Globals {
     }
 
     // Raymarching the skybox uses the following inputs:
-    //   inv_view
-    //   inv_proj
-    //   camera world position in kilometers
+    //   geocenter_km_inverse_view
+    //   geocenter_km_inverse_proj
+    //   geocenter_km_camera_position
     //   sun direction vector (origin does not matter terribly much at 8 light minutes distance).
+    //     this last is currently managed by the atmosphere buffer, and should be moved here.
     //
     // It takes a [-1,1] fullscreen quad and turns it into worldspace vectors starting at the
     // the camera position and extending to the fullscreen quad corners, in world space.
@@ -116,9 +117,9 @@ impl Globals {
             &(eye + camera.forward::<Kilometers>()).point64(),
             &camera.up::<Kilometers>().vec64(),
         );
-        self.inv_view = m2v(&convert(view.inverse().to_homogeneous()));
-        self.inv_proj = m2v(&convert(camera.projection().inverse()));
-        self.camera_position_earth_km =
+        self.geocenter_km_inverse_view = m2v(&convert(view.inverse().to_homogeneous()));
+        self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
+        self.geocenter_km_camera_position =
             geocenter_cart_to_v(camera.cartesian_eye_position::<Kilometers>());
         self
     }

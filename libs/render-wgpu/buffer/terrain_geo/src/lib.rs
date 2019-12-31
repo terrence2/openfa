@@ -60,7 +60,7 @@ pub struct TerrainGeoBuffer {
 
 impl TerrainGeoBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
-        let sphere = IcoSphere::new(2);
+        let sphere = IcoSphere::new(3);
 
         const EARTH_TO_KM: f32 = 6370.0;
 
