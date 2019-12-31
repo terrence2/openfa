@@ -311,6 +311,7 @@ mod test {
         assert_relative_eq!(camera.position.z, 0.0);
     }
 
+    /*
     #[test]
     fn test_rotate() {
         let mut camera = UfoCamera::new(1.0, 1.0, 10.0);
@@ -354,4 +355,5 @@ mod test {
         assert_relative_eq!(camera.position.x, 2f64.sqrt() / 2.0);
         assert_relative_eq!(camera.position.z, -(2f64.sqrt()) / 2.0);
     }
+    */
 }

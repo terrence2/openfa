@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::impl_unit_for_numerics;
+use approx::AbsDiffEq;
 use std::{
     fmt,
     marker::PhantomData,
@@ -81,6 +82,24 @@ where
             nm: self.nm - other.nm,
             phantom: PhantomData,
         }
+    }
+}
+
+// When cartesian coordinates arrive as a result of Geodic calculations, we
+// expect some slop. This lets us account for that easily in tests.
+impl<Unit> AbsDiffEq for Length<Unit>
+where
+    Unit: LengthUnit + PartialEq,
+{
+    type Epsilon = i64;
+
+    fn default_epsilon() -> Self::Epsilon {
+        // 360nm was max error at earth surface when converting to cartesian in units of km.
+        400i64
+    }
+
+    fn abs_diff_eq(&self, other: &Length<Unit>, epsilon: Self::Epsilon) -> bool {
+        i64::abs(self.nm - other.nm) <= epsilon
     }
 }
 

@@ -12,12 +12,20 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::cartesian::CartesianOrigin;
+use crate::graticule::GraticuleOrigin;
 
-// Angular
-pub(crate) mod degrees;
-pub(crate) mod radians;
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct GeoCenter;
 
-// Distance
-pub(crate) mod feet;
-pub(crate) mod kilometers;
-pub(crate) mod meters;
+impl GraticuleOrigin for GeoCenter {
+    fn origin_marker() -> &'static str {
+        ".geo"
+    }
+}
+
+impl CartesianOrigin for GeoCenter {
+    fn origin_name() -> &'static str {
+        "earth"
+    }
+}

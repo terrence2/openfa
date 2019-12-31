@@ -1,27 +1,17 @@
 [package]
-name = "global_data"
+name = "terrain_geo"
+description = "Mesh for sampling terrain properties."
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-nalgebra = "^ 0.18"
+memoffset = "^ 0.5"
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
 #wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 zerocopy = "^ 0.2"
-absolute_unit = { path = "../../../absolute_unit" }
-geodesy = { path = "../../../geodesy" }
-camera = { path = "../../../render-shared/common/camera" }
-frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
+geometry = { path = "../../../render-shared/common/geometry" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-t2 = { path = "../../../t2" }
-universe = { path = "../../../universe" }
-
-[dev-dependencies]
-input = { path = "../../../render-wgpu/common/input" }
-
-[build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

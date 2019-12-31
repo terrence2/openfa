@@ -12,13 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::meters;
+use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
+use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
@@ -31,6 +32,8 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
+use terrain::TerrainRenderPass;
+use terrain_geo::TerrainGeoBuffer;
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
 
 make_frame_graph!(
@@ -40,10 +43,12 @@ make_frame_graph!(
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
             stars: StarsBuffer,
+            terrain_geo: TerrainGeoBuffer,
             text_layout: LayoutBuffer
         };
         passes: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
+            terrain: TerrainRenderPass { globals, atmosphere, terrain_geo },
             screen_text: ScreenTextRenderPass { globals, text_layout }
         ];
     }
@@ -70,6 +75,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
+    let terrain_geo = TerrainGeoBuffer::new(gpu.device())?;
     let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
@@ -78,6 +84,7 @@ fn main() -> Fallible<()> {
         &fullscreen_buffer,
         &globals_buffer,
         &stars_buffer,
+        &terrain_geo,
         &text_layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
@@ -101,6 +108,11 @@ fn main() -> Fallible<()> {
     */
 
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    camera.set_target(Graticule::<GeoSurface>::new(
+        degrees!(0),
+        degrees!(0),
+        meters!(10),
+    ));
 
     loop {
         let loop_start = Instant::now();
@@ -125,7 +137,8 @@ fn main() -> Fallible<()> {
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer(&camera, &gpu, &mut buffers)?;
+        //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
             gpu.device(),
@@ -138,7 +151,8 @@ fn main() -> Fallible<()> {
 
         let frame_time = loop_start.elapsed();
         let ts = format!(
-            "Date: {:?} || frame: {}.{}ms",
+            "Pos: {} || Date: {:?} || frame: {}.{}ms",
+            camera.get_eye_relative(),
             orrery.get_time(),
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),

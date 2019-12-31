@@ -9,6 +9,7 @@ failure = "^ 0.1.2"
 log = ">= 0.4"
 nalgebra = "^ 0.18"
 absolute_unit = { path = "../../../absolute_unit" }
+geodesy = { path = "../../../geodesy" }
 command = { path = "../../../command" }
 
 [dev-dependencies]

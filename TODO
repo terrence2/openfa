@@ -4,6 +4,10 @@ TODO
 An unsorted list of project ideas, in case I run out of things to do. Some of these will
 inevitably be stale or already done.
 
+* Rename render-pass to render-phase.
+So far all we have needed is normal direct rendering, so we can probably simplify this system
+and make the name not a lie anymore.
+
 * How big are shapes?
 Scaling by 4x works for runways, but other shapes appear to want some scaling, but not that much.
 Others seem to want way more.

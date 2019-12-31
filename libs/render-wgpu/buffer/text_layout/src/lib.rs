@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use failure::Fallible;
 use fnt::Fnt;
 use frame_graph::CopyBufferDescriptor;
 use glyph_cache::GlyphCache;
@@ -356,17 +356,15 @@ impl Layout {
 
         let mut offset = 0f32;
         let mut prior = None;
-        for c in text.chars() {
+        for mut c in text.chars() {
             if c == ' ' {
                 offset += SPACE_WIDTH;
                 continue;
             }
 
-            ensure!(
-                glyph_cache.can_render_char(c),
-                "attempted to render nonprintable char: {}",
-                c
-            );
+            if !glyph_cache.can_render_char(c) {
+                c = '?';
+            }
 
             let frame = glyph_cache.frame_for(c);
             let kerning = if let Some(p) = prior {

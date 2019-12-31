@@ -20,6 +20,7 @@ camera = { path = "../../libs/render-shared/common/camera" }
 command = { path = "../../libs/command" }
 frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
 fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+geodesy = { path = "../../libs/geodesy" }
 galaxy = { path = "../../libs/galaxy" }
 global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }

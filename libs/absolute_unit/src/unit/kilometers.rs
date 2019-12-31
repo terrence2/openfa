@@ -12,12 +12,25 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::{length::LengthUnit, unit::meters::Meters};
 
-// Angular
-pub(crate) mod degrees;
-pub(crate) mod radians;
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Kilometers;
+impl LengthUnit for Kilometers {
+    fn unit_name() -> &'static str {
+        "kilometers"
+    }
+    fn suffix() -> &'static str {
+        "km"
+    }
+    fn nanometers_in_unit() -> i64 {
+        Meters::nanometers_in_unit() * 1_000
+    }
+}
 
-// Distance
-pub(crate) mod feet;
-pub(crate) mod kilometers;
-pub(crate) mod meters;
+#[macro_export]
+macro_rules! kilometers {
+    ($num:expr) => {
+        $crate::Length::<$crate::Kilometers>::from(&$num)
+    };
+}

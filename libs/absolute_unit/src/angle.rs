@@ -16,7 +16,7 @@ use crate::impl_unit_for_numerics;
 use std::{
     fmt,
     marker::PhantomData,
-    ops::{Add, AddAssign, Sub},
+    ops::{Add, AddAssign, Sub, SubAssign},
 };
 
 pub trait AngleUnit: Copy {
@@ -101,6 +101,16 @@ where
             femto_rad: self.femto_rad - other.femto_rad,
             phantom: PhantomData,
         }
+    }
+}
+
+impl<UnitA, UnitB> SubAssign<Angle<UnitA>> for Angle<UnitB>
+where
+    UnitA: AngleUnit,
+    UnitB: AngleUnit,
+{
+    fn sub_assign(&mut self, other: Angle<UnitA>) {
+        self.femto_rad -= other.femto_rad;
     }
 }
 

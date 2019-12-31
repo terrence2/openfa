@@ -12,12 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
-// Angular
-pub(crate) mod degrees;
-pub(crate) mod radians;
-
-// Distance
-pub(crate) mod feet;
-pub(crate) mod kilometers;
-pub(crate) mod meters;
+fn main() {
+    build_shaders::build().unwrap()
+}
