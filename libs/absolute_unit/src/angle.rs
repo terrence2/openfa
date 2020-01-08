@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::impl_unit_for_numerics;
+use approx::AbsDiffEq;
 use std::{
     fmt,
     marker::PhantomData,
@@ -111,6 +112,23 @@ where
 {
     fn sub_assign(&mut self, other: Angle<UnitA>) {
         self.femto_rad -= other.femto_rad;
+    }
+}
+
+// When angular coordinates arrive as a result of Geodic calculations, we
+// expect some slop. This lets us account for that easily in tests.
+impl<Unit> AbsDiffEq for Angle<Unit>
+where
+    Unit: AngleUnit + PartialEq,
+{
+    type Epsilon = i64;
+
+    fn default_epsilon() -> Self::Epsilon {
+        550_000i64
+    }
+
+    fn abs_diff_eq(&self, other: &Angle<Unit>, epsilon: Self::Epsilon) -> bool {
+        i64::abs(self.femto_rad - other.femto_rad) <= epsilon
     }
 }
 

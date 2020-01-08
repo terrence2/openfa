@@ -12,11 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{Kilometers, LengthUnit};
+use absolute_unit::{degrees, meters, Kilometers, LengthUnit, Meters};
 use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
-use geodesy::{Cartesian, GeoCenter};
+use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use gpu::GPU;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Vector3, Vector4};
 use std::{cell::RefCell, mem, sync::Arc};
@@ -57,9 +57,11 @@ struct Globals {
 
     // Camera parameters in tile space XYZ, 1hm per unit.
     view: [[f32; 4]; 4],
-    proj: [[f32; 4]; 4],
+    tile_m_proj: [[f32; 4]; 4],
 
     // Inverted camera parameters in ecliptic XYZ, 1km per unit.
+    debug_geocenter_km_view: [[f32; 4]; 4],
+    debug_geocenter_km_proj: [[f32; 4]; 4],
     geocenter_km_inverse_view: [[f32; 4]; 4],
     geocenter_km_inverse_proj: [[f32; 4]; 4],
 
@@ -110,7 +112,7 @@ impl Globals {
     // It takes a [-1,1] fullscreen quad and turns it into worldspace vectors starting at the
     // the camera position and extending to the fullscreen quad corners, in world space.
     // Interpolation between these vectors automatically fills in one ray for every screen pixel.
-    pub fn with_geocenter_raymarching(mut self, camera: &ArcBallCamera) -> Self {
+    pub fn with_geocenter_km_raymarching(mut self, camera: &ArcBallCamera) -> Self {
         let eye = camera.cartesian_eye_position::<Kilometers>();
         let view = Isometry3::look_at_rh(
             &eye.point64(),
@@ -121,6 +123,33 @@ impl Globals {
         self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
         self.geocenter_km_camera_position =
             geocenter_cart_to_v(camera.cartesian_eye_position::<Kilometers>());
+        self
+    }
+
+    pub fn with_tile_m_rasterization(mut self, camera: &ArcBallCamera) -> Self {
+        // Get the "position" however the camera best defines it.
+        let position = camera.tile_graticule();
+
+        // Round to nearest degree.
+        let surface_origin = Graticule::<GeoSurface>::new(
+            degrees!(f64::from(degrees!(position.latitude)).trunc() + 0.5),
+            degrees!(f64::from(degrees!(position.longitude)).trunc() + 0.5),
+            meters!(0),
+        );
+        let cart_origin =
+            Cartesian::<GeoCenter, Meters>::from(Graticule::<GeoCenter>::from(surface_origin));
+
+        // Debug HACK
+        let eye = camera.cartesian_eye_position::<Kilometers>();
+        let view = Isometry3::look_at_rh(
+            &eye.point64(),
+            &(eye + camera.forward::<Kilometers>()).point64(),
+            &camera.up::<Kilometers>().vec64(),
+        );
+        self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
+        self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
+
+        self.tile_m_proj = m2v(&convert(camera.projection().to_homogeneous()));
         self
     }
 }
@@ -192,7 +221,8 @@ impl GlobalParametersBuffer {
         let globals: Globals = Default::default();
         let globals = globals
             .with_screen_overlay_projection(gpu)
-            .with_geocenter_raymarching(camera);
+            .with_geocenter_km_raymarching(camera)
+            .with_tile_m_rasterization(camera);
         upload_buffers.push(self.make_gpu_buffer(globals, gpu));
         Ok(())
     }

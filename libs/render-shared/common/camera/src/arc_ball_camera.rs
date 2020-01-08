@@ -54,6 +54,10 @@ impl ArcBallCamera {
             in_move: false,
         }
     }
+    
+    pub fn tile_graticule(&self) -> Graticule<GeoSurface> {
+        self.target
+    }
 
     pub fn get_eye_relative(&self) -> Graticule<Target> {
         self.eye

@@ -30,7 +30,7 @@ impl TerrainRenderPass {
         gpu: &mut GPU,
         globals_buffer: &GlobalParametersBuffer,
         atmosphere_buffer: &AtmosphereBuffer,
-        _terrain_geo_buffer: &TerrainGeoBuffer,
+        terrain_geo_buffer: &TerrainGeoBuffer,
     ) -> Fallible<Self> {
         trace!("TerrainRenderPass::new");
 
@@ -45,7 +45,7 @@ impl TerrainRenderPass {
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
-                        //terrain_geo_buffer.bind_group_layout(),
+                        terrain_geo_buffer.bind_group_layout(),
                     ],
                 });
 
@@ -113,9 +113,17 @@ impl TerrainRenderPass {
             &atmosphere_buffer.bind_group(),
             &[],
         );
-        //rpass.set_bind_group(Group::Terrain.index(), &terrain_geo_buffer.bind_group(), &[]);
+        rpass.set_bind_group(
+            Group::Terrain.index(),
+            &terrain_geo_buffer.bind_group(),
+            &[],
+        );
         rpass.set_index_buffer(terrain_geo_buffer.index_buffer(), 0);
         rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.vertex_buffer(), 0)]);
-        rpass.draw_indexed(terrain_geo_buffer.index_range(), 0, 0..1);
+        rpass.draw_indexed(
+            terrain_geo_buffer.index_range(),
+            0,
+            terrain_geo_buffer.instance_range(),
+        );
     }
 }

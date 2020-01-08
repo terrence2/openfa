@@ -220,6 +220,10 @@ pub struct Frame<'a> {
 }
 
 impl<'a> Frame<'a> {
+    pub fn begin_compute_pass(&mut self) -> wgpu::ComputePass {
+        self.encoder.begin_compute_pass()
+    }
+
     pub fn begin_render_pass(&mut self) -> wgpu::RenderPass {
         self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {

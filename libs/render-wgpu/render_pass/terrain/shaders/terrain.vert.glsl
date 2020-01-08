@@ -23,8 +23,21 @@ layout(location = 0) in vec4 position;
 //layout(location = 2) out smooth vec4 v_color;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
+layout(set = 2, binding = 0) uniform readonly TileData {
+    vec4 tile_position_and_scale[72];
+};
+
 void main() {
-    gl_Position = camera_projection() * camera_view() * position;
+    vec4 p = vec4(tile_position_and_scale[gl_InstanceIndex].xyz, 0);
+    float s = tile_position_and_scale[gl_InstanceIndex][3];
+    mat4 sm = mat4(
+        s, 0, 0, 0,
+        0, s, 0, 0,
+        0, 0, s, 0,
+        0, 0, 0, 1
+    );
+    gl_Position = geocenter_km_projection() * geocenter_km_view() * sm * (p + position);
+
     //    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
     //    v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
     //    v_color = color;

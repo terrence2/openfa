@@ -19,7 +19,7 @@ use command::Bindings;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
-use geodesy::{GeoSurface, Graticule};
+use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
@@ -111,7 +111,12 @@ fn main() -> Fallible<()> {
     camera.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
-        meters!(10),
+        meters!(0),
+    ));
+    camera.set_eye_relative(Graticule::<Target>::new(
+        degrees!(90),
+        degrees!(0),
+        meters!(4_000_000),
     ));
 
     loop {
