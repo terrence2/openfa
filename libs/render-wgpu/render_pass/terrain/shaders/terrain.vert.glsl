@@ -23,13 +23,17 @@ layout(location = 0) in vec4 position;
 //layout(location = 2) out smooth vec4 v_color;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
-layout(set = 2, binding = 0) uniform readonly TileData {
-    vec4 tile_position_and_scale[72];
+struct TileData {
+    vec4 position_and_scale;
+};
+
+layout(set = 2, binding = 0) uniform readonly TileUpload {
+    TileData tiles[72];
 };
 
 void main() {
-    vec4 p = vec4(tile_position_and_scale[gl_InstanceIndex].xyz, 0);
-    float s = tile_position_and_scale[gl_InstanceIndex][3];
+    vec4 p = vec4(tiles[gl_InstanceIndex].position_and_scale.xyz, 0);
+    float s = tiles[gl_InstanceIndex].position_and_scale[3];
     mat4 sm = mat4(
         s, 0, 0, 0,
         0, s, 0, 0,
