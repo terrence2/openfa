@@ -62,7 +62,7 @@ impl AtmosphereBuffer {
             precompute_time.subsec_micros()
         );
 
-        let camera_and_sun_buffer_size = mem::size_of::<[[f32; 4]; 2]>() as u64;
+        let camera_and_sun_buffer_size = mem::size_of::<[[f32; 4]; 1]>() as u64;
         let camera_and_sun_buffer = Arc::new(Box::new(gpu.device().create_buffer(
             &wgpu::BufferDescriptor {
                 size: camera_and_sun_buffer_size,

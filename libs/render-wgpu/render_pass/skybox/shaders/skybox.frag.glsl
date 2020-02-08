@@ -32,7 +32,7 @@ const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 void main() {
     vec3 view = normalize(v_ray);
     vec3 camera = camera_position_earth_km().xyz;
-    vec3 sun_direction = camera_and_sun[0].xyz;
+    vec3 sun_direction = camera_and_sun.xyz;
 
     vec3 ground_radiance;
     float ground_alpha;

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-layout(set = 1, binding = 0) uniform CameraAndSun { vec4 camera_and_sun[]; };
+layout(set = 1, binding = 0) uniform CameraAndSun { vec4 camera_and_sun; };
 layout(set = 1, binding = 1) uniform AtmosphereParams { AtmosphereParameters atmosphere; };
 layout(set = 1, binding = 2) uniform texture2D transmittance_texture;
 layout(set = 1, binding = 3) uniform sampler transmittance_sampler;

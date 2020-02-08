@@ -18,6 +18,7 @@ pub(crate) mod degrees;
 pub(crate) mod radians;
 
 // Distance
+pub(crate) mod earth_radii;
 pub(crate) mod feet;
 pub(crate) mod kilometers;
 pub(crate) mod meters;

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters};
+use absolute_unit::{degrees, meters, EarthRadii, Kilometers};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
@@ -114,10 +114,10 @@ fn main() -> Fallible<()> {
         meters!(0),
     ));
     camera.set_eye_relative(Graticule::<Target>::new(
-        degrees!(90),
+        degrees!(89),
         degrees!(0),
         meters!(4_000_000),
-    ));
+    ))?;
 
     loop {
         let loop_start = Instant::now();

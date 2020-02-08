@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <common/shader_globals/include/global.glsl>
+#include <common/shader_globals/include/quaternion.glsl>
 #include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec4 position;
@@ -24,26 +25,28 @@ layout(location = 0) in vec4 position;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
 struct TileData {
-    vec4 position_and_scale;
+    vec4 rotation_and_scale;
 };
 
 layout(set = 2, binding = 0) uniform readonly TileUpload {
-    TileData tiles[72];
+    TileData tiles[1024];
 };
 
 void main() {
-    vec4 p = vec4(tiles[gl_InstanceIndex].position_and_scale.xyz, 0);
-    float s = tiles[gl_InstanceIndex].position_and_scale[3];
-    mat4 sm = mat4(
+    vec3 rot = tiles[gl_InstanceIndex].rotation_and_scale.xyz;
+    float s = tiles[gl_InstanceIndex].rotation_and_scale[3];
+
+    vec4 q_lon = quat_from_axis_angle(vec3(0, 1, 0), rot[1]);
+    vec4 q_lat = quat_from_axis_angle(quat_rotate(q_lon, vec4(1, 0, 0, 0)).xyz, rot[0]);
+    vec4 q_facing = quat_from_axis_angle(vec3(0, 0, 1), PI + rot[2]);
+    vec4 pos_geocenter_km = quat_rotate(q_lat, quat_rotate(q_lon, quat_rotate(q_facing, position)));
+
+    mat4 scale = mat4(
         s, 0, 0, 0,
         0, s, 0, 0,
         0, 0, s, 0,
         0, 0, 0, 1
     );
-    gl_Position = geocenter_km_projection() * geocenter_km_view() * sm * (p + position);
 
-    //    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
-    //    v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
-    //    v_color = color;
-    //    v_tex_coord = tex_coord;
+    gl_Position = geocenter_km_projection() * geocenter_km_view() * scale * pos_geocenter_km;
 }

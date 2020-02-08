@@ -12,13 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::Kilometers;
+use absolute_unit::{EarthRadii, Kilometers, Meters};
 use failure::Fallible;
-use geodesy::{Cartesian, GeoCenter, Graticule};
+use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use geometry::IcoSphere;
 use memoffset::offset_of;
-use nalgebra::Vector3;
-use std::{cell::RefCell, mem, ops::Range, sync::Arc};
+use nalgebra::{Unit, UnitQuaternion, Vector3};
+use std::{cell::RefCell, f64::consts::PI, mem, ops::Range, sync::Arc};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -58,18 +58,13 @@ impl Vertex {
 #[repr(C)]
 #[derive(Debug, AsBytes, FromBytes, Copy, Clone, Default)]
 struct TileData {
-    position_and_scale: [f32; 4],
+    rotation_and_scale: [f32; 4],
 }
 
 impl TileData {
-    pub fn new(position: &Vector3<f64>, scale: f64) -> Self {
+    pub fn new(scale: f64) -> Self {
         Self {
-            position_and_scale: [
-                position[0] as f32,
-                position[1] as f32,
-                position[2] as f32,
-                scale as f32,
-            ],
+            rotation_and_scale: [0f32, 0f32, 0f32, scale as f32],
         }
     }
 }
@@ -100,21 +95,36 @@ impl TerrainGeoBuffer {
         v1: &Vector3<f64>,
         v2: &Vector3<f64>,
         device: &wgpu::Device,
-    ) -> Fallible<(Graticule<GeoCenter>, wgpu::Buffer, wgpu::Buffer, u32)> {
+    ) -> Fallible<(f64, wgpu::Buffer, wgpu::Buffer, u32)> {
+        // Orient the tile to (0,0).
         let origin = Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
-            *v0 * EARTH_TO_KM,
+            ((*v0 + *v1 + *v2) / 3f64).normalize() * EARTH_TO_KM,
         ));
+        let q_lon = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(Vector3::new(0f64, 1f64, 0f64)),
+            f64::from(origin.longitude),
+        );
+        let q_lat = UnitQuaternion::from_axis_angle(
+            &Unit::new_unchecked(Vector3::new(1f64, 0f64, 0f64)),
+            f64::from(origin.latitude),
+        );
+        let v0 = q_lat * (q_lon * *v0);
+        let v1 = q_lat * (q_lon * *v1);
+        let v2 = q_lat * (q_lon * *v2);
+        let origin = (v0 + v1 + v2) / 3f64;
+        let d = Vector3::new(v0.x - origin.x, v0.y - origin.y, 0f64).normalize();
+        let facing = d.y.atan2(d.x);
 
-        let a = Self::bisect_edge(v0, v1).normalize();
-        let b = Self::bisect_edge(v1, v2).normalize();
-        let c = Self::bisect_edge(v2, v0).normalize();
+        let a = Self::bisect_edge(&v0, &v1).normalize();
+        let b = Self::bisect_edge(&v1, &v2).normalize();
+        let c = Self::bisect_edge(&v2, &v0).normalize();
         let vertices = vec![
-            vec2a(*v0 - v0),
-            vec2a(*v1 - v0),
-            vec2a(*v2 - v0),
-            vec2a(a - v0),
-            vec2a(b - v0),
-            vec2a(c - v0),
+            vec2a(v0),
+            vec2a(v1),
+            vec2a(v2),
+            vec2a(a),
+            vec2a(b),
+            vec2a(c),
         ];
         let vertex_buffer = device
             .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::all())
@@ -129,51 +139,52 @@ impl TerrainGeoBuffer {
             .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&indices);
 
-        Ok((origin, vertex_buffer, index_buffer, indices.len() as u32))
+        Ok((facing, vertex_buffer, index_buffer, indices.len() as u32))
     }
 
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
-        let sphere = IcoSphere::new(2);
+        let sphere = IcoSphere::new(1);
 
         // l1 buffer
         let face = &sphere.faces[0];
-        let (_origin, vertex_buffer, index_buffer, index_count) = Self::build_vb_for_face(
+        let (base_facing, vertex_buffer, index_buffer, index_count) = Self::build_vb_for_face(
             &sphere.verts[face.i0()],
             &sphere.verts[face.i1()],
             &sphere.verts[face.i2()],
             device,
         )?;
 
-        /*
-        let mut verts = Vec::new();
-        for &pos in &sphere.verts {
-            verts.push(vec2a(pos));
-        }
-        let vertex_buffer = device
-            .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&verts);
-
-        let mut indices: Vec<u32> = Vec::new();
-        for face in &sphere.faces {
-            indices.push(face.i0() as u32);
-            indices.push(face.i1() as u32);
-
-            indices.push(face.i1() as u32);
-            indices.push(face.i2() as u32);
-
-            indices.push(face.i2() as u32);
-            indices.push(face.i0() as u32);
-        }
-        let index_count = indices.len() as u32;
-        let index_buffer = device
-            .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&indices);
-        */
-
         let mut tiles = Vec::new();
         let sphere = IcoSphere::new(1);
-        for vert in sphere.verts {
-            tiles.push(TileData::new(&vert, 6378.0));
+        for face in sphere.faces {
+            let v0 = &sphere.verts[face.i0()];
+            let v1 = &sphere.verts[face.i1()];
+            let v2 = &sphere.verts[face.i2()];
+            let target_direction = ((*v0 + *v1 + *v2) / 3f64).normalize();
+            let target_geocenter = Cartesian::<GeoCenter, Kilometers>::from(target_direction);
+            let target = Graticule::<GeoCenter>::from(target_geocenter);
+            let mut tile = TileData::new(6378.0);
+            tile.rotation_and_scale[0] = f32::from(target.latitude);
+            tile.rotation_and_scale[1] = f32::from(target.longitude);
+
+            let q_lon = UnitQuaternion::from_axis_angle(
+                &Unit::new_unchecked(Vector3::new(0f64, 1f64, 0f64)),
+                f64::from(target.longitude),
+            );
+            let q_lat = UnitQuaternion::from_axis_angle(
+                &Unit::new_unchecked(Vector3::new(1f64, 0f64, 0f64)),
+                f64::from(target.latitude),
+            );
+            let v0 = q_lat * (q_lon * *v0);
+            let v1 = q_lat * (q_lon * *v1);
+            let v2 = q_lat * (q_lon * *v2);
+            let centroid = (v0 + v1 + v2) / 3f64;
+            let d = Vector3::new(v0.x - centroid.x, v0.y - centroid.y, 0f64).normalize();
+            let facing = d.y.atan2(d.x);
+
+            tile.rotation_and_scale[2] = (facing - base_facing) as f32;
+
+            tiles.push(tile);
         }
         let tile_buffer_size = (mem::size_of::<TileData>() * tiles.len()) as wgpu::BufferAddress;
         let tile_count = tiles.len() as u32;

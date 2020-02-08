@@ -12,17 +12,25 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::{length::LengthUnit, unit::kilometers::Kilometers};
 
-pub(crate) mod angle;
-pub(crate) mod generic;
-pub(crate) mod length;
-pub(crate) mod unit;
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct EarthRadii;
+impl LengthUnit for EarthRadii {
+    fn unit_name() -> &'static str {
+        "earth-radii"
+    }
+    fn suffix() -> &'static str {
+        "earths"
+    }
+    fn nanometers_in_unit() -> i64 {
+        Kilometers::nanometers_in_unit() * 3_959
+    }
+}
 
-pub use crate::{
-    angle::{Angle, AngleUnit},
-    length::{Length, LengthUnit},
-    unit::{
-        degrees::Degrees, earth_radii::EarthRadii, feet::Feet, kilometers::Kilometers,
-        meters::Meters, radians::Radians,
-    },
-};
+#[macro_export]
+macro_rules! earth_radii {
+    ($num:expr) => {
+        $crate::Length::<$crate::EarthRadii>::from(&$num)
+    };
+}
