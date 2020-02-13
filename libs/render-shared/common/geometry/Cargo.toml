@@ -5,4 +5,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+approx = "^ 0.3"
 nalgebra = "^ 0.18"

@@ -18,10 +18,11 @@
 #include <buffer/global_data/include/library.glsl>
 
 layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 color;
 
+layout(location = 0) out smooth vec4 v_color;
 //layout(location = 0) out smooth vec4 v_position;
 //layout(location = 1) out smooth vec4 v_normal;
-//layout(location = 2) out smooth vec4 v_color;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
 struct TileData {
@@ -49,4 +50,5 @@ void main() {
     );
 
     gl_Position = geocenter_km_projection() * geocenter_km_view() * scale * pos_geocenter_km;
+    v_color = color;
 }

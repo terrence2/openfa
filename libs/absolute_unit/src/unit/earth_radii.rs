@@ -24,7 +24,7 @@ impl LengthUnit for EarthRadii {
         "earths"
     }
     fn nanometers_in_unit() -> i64 {
-        Kilometers::nanometers_in_unit() * 3_959
+        Kilometers::nanometers_in_unit() * 6_378
     }
 }
 
