@@ -36,7 +36,7 @@ main()
 {
     vec3 intersect = v_position.xyz;
     vec3 normal = v_normal.xyz;
-    vec3 sun_direction = camera_and_sun[0].xyz;
+    vec3 sun_direction = sun_direction.xyz;
 
     vec4 ground_albedo = t2_atlas_color_uv(v_tex_coord);
     if (v_tex_coord.x == 0.0) {
