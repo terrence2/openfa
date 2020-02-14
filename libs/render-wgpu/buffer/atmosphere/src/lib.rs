@@ -39,8 +39,8 @@ pub struct AtmosphereBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
 
-    camera_and_sun_buffer: Arc<Box<wgpu::Buffer>>,
-    camera_and_sun_buffer_size: wgpu::BufferAddress,
+    sun_direction_buffer: Arc<Box<wgpu::Buffer>>,
+    sun_direction_buffer_size: wgpu::BufferAddress,
 }
 
 impl AtmosphereBuffer {
@@ -246,8 +246,8 @@ impl AtmosphereBuffer {
         Ok(Arc::new(RefCell::new(Self {
             bind_group_layout,
             bind_group,
-            camera_and_sun_buffer,
-            camera_and_sun_buffer_size,
+            sun_direction_buffer: camera_and_sun_buffer,
+            sun_direction_buffer_size: camera_and_sun_buffer_size,
         })))
     }
 
@@ -278,8 +278,8 @@ impl AtmosphereBuffer {
                     wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
                 )
                 .fill_from_slice(&buffer),
-            self.camera_and_sun_buffer.clone(),
-            self.camera_and_sun_buffer_size,
+            self.sun_direction_buffer.clone(),
+            self.sun_direction_buffer_size,
         ));
         Ok(())
     }
