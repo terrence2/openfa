@@ -59,9 +59,13 @@ struct Globals {
     view: [[f32; 4]; 4],
     proj: [[f32; 4]; 4],
 
+    // Camera parameters in geocenter km (mostly for debugging).
+    debug_geocenter_km_view: [[f32; 4]; 4],
+    debug_geocenter_km_proj: [[f32; 4]; 4],
+
     // Inverted camera parameters in ecliptic XYZ, 1km per unit.
-    inv_view: [[f32; 4]; 4],
-    inv_proj: [[f32; 4]; 4],
+    geocenter_km_inverse_view: [[f32; 4]; 4],
+    geocenter_km_inverse_proj: [[f32; 4]; 4],
 
     tile_to_earth: [[f32; 4]; 4],
     tile_to_earth_rotation: [[f32; 4]; 4],
@@ -71,7 +75,7 @@ struct Globals {
 
     // Camera position in each of the above.
     camera_position_tile: [f32; 4],
-    camera_position_earth_km: [f32; 4],
+    geocenter_km_camera_position: [f32; 4],
 }
 
 fn geocenter_cart_to_v<Unit: LengthUnit>(geocart: Cartesian<GeoCenter, Unit>) -> [f32; 4] {
@@ -101,25 +105,37 @@ impl Globals {
     }
 
     // Raymarching the skybox uses the following inputs:
-    //   inv_view
-    //   inv_proj
-    //   camera world position in kilometers
+    //   geocenter_km_inverse_view
+    //   geocenter_km_inverse_proj
+    //   geocenter_km_camera_position
     //   sun direction vector (origin does not matter terribly much at 8 light minutes distance).
     //
     // It takes a [-1,1] fullscreen quad and turns it into worldspace vectors starting at the
     // the camera position and extending to the fullscreen quad corners, in world space.
     // Interpolation between these vectors automatically fills in one ray for every screen pixel.
-    pub fn with_geocenter_raymarching(mut self, camera: &ArcBallCamera) -> Self {
+    pub fn with_geocenter_km_raymarching(mut self, camera: &ArcBallCamera) -> Self {
         let eye = camera.cartesian_eye_position::<Kilometers>();
         let view = Isometry3::look_at_rh(
             &eye.point64(),
             &(eye + camera.forward::<Kilometers>()).point64(),
             &camera.up::<Kilometers>().vec64(),
         );
-        self.inv_view = m2v(&convert(view.inverse().to_homogeneous()));
-        self.inv_proj = m2v(&convert(camera.projection().inverse()));
-        self.camera_position_earth_km =
+        self.geocenter_km_inverse_view = m2v(&convert(view.inverse().to_homogeneous()));
+        self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
+        self.geocenter_km_camera_position =
             geocenter_cart_to_v(camera.cartesian_eye_position::<Kilometers>());
+        self
+    }
+
+    pub fn with_debug_geocenter_helpers(mut self, camera: &ArcBallCamera) -> Self {
+        let eye = camera.cartesian_eye_position::<Kilometers>();
+        let view = Isometry3::look_at_rh(
+            &eye.point64(),
+            &(eye + camera.forward::<Kilometers>()).point64(),
+            &camera.up::<Kilometers>().vec64(),
+        );
+        self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
+        self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
         self
     }
 }
@@ -191,7 +207,8 @@ impl GlobalParametersBuffer {
         let globals: Globals = Default::default();
         let globals = globals
             .with_screen_overlay_projection(gpu)
-            .with_geocenter_raymarching(camera);
+            .with_geocenter_km_raymarching(camera)
+            .with_debug_geocenter_helpers(camera);
         upload_buffers.push(self.make_gpu_buffer(globals, gpu));
         Ok(())
     }

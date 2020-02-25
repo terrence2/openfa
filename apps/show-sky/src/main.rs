@@ -15,11 +15,12 @@
 use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
+use chrono::prelude::*;
 use command::Bindings;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
-use geodesy::{GeoSurface, Graticule};
+use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
@@ -98,7 +99,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
-    let mut orrery = Orrery::now();
+    let mut orrery = Orrery::new(Utc.ymd(1964, 2, 24).and_hms(12, 0, 0));
 
     /*
     let mut camera = UfoCamera::new(gpu.aspect_ratio(), 0.1f64, 3.4e+38f64);
@@ -111,8 +112,13 @@ fn main() -> Fallible<()> {
     camera.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
-        meters!(10),
+        meters!(0),
     ));
+    camera.set_eye_relative(Graticule::<Target>::new(
+        degrees!(89),
+        degrees!(0),
+        meters!(4_000_000),
+    ))?;
 
     loop {
         let loop_start = Instant::now();

@@ -24,7 +24,8 @@ layout(location = 0) in vec4 position;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
 void main() {
-    gl_Position = camera_projection() * camera_view() * position;
+    //gl_Position = camera_projection() * camera_view() * position;
+    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * position;
     //    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
     //    v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
     //    v_color = color;

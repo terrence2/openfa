@@ -17,8 +17,10 @@ layout(set = 0, binding = 0) buffer CameraParameters {
     mat4 globals_screen_letterbox_projection;
     mat4 globals_camera_view;
     mat4 globals_camera_projection;
-    mat4 globals_camera_inverse_view;
-    mat4 globals_camera_inverse_projection;
+    mat4 debug_geocenter_km_view;
+    mat4 debug_geocenter_km_projection;
+    mat4 local_geocenter_km_inverse_view;
+    mat4 local_geocenter_km_inverse_projection;
     mat4 globals_tile_to_earth;
     mat4 globals_tile_to_earth_rotation;
     mat4 globals_tile_to_earth_scale;
@@ -31,10 +33,10 @@ layout(set = 0, binding = 0) buffer CameraParameters {
 mat4 screen_letterbox_projection() { return globals_screen_letterbox_projection; }
 mat4 camera_view()                 { return globals_camera_view; }
 mat4 camera_projection()           { return globals_camera_projection; }
-mat4 camera_inverse_view()         { return globals_camera_inverse_view; }
-mat4 camera_inverse_projection()   { return globals_camera_inverse_projection; }
 vec4 camera_position_in_tile()     { return globals_camera_position_tile; }
 vec4 camera_position_earth_km()    { return globals_camera_position_earth_km; }
+mat4 dbg_geocenter_km_view()       { return debug_geocenter_km_view; }
+mat4 dbg_geocenter_km_projection() { return debug_geocenter_km_projection; }
 mat4 tile_to_earth()               { return globals_tile_to_earth; }
 mat4 tile_to_earth_rotation()      { return globals_tile_to_earth_rotation; }
 mat4 tile_to_earth_scale()         { return globals_tile_to_earth_scale; }
@@ -48,11 +50,11 @@ raymarching_view_ray(vec2 position)
 
     // inverse perspective projection
     reverse_vec = vec4(position, 0.0, 1.0);
-    reverse_vec = camera_inverse_projection() * reverse_vec;
+    reverse_vec = local_geocenter_km_inverse_projection * reverse_vec;
 
     // inverse modelview, without translation
     reverse_vec.w = 0.0;
-    reverse_vec = camera_inverse_view() * reverse_vec;
+    reverse_vec = local_geocenter_km_inverse_view * reverse_vec;
 
     return vec3(reverse_vec);
 }

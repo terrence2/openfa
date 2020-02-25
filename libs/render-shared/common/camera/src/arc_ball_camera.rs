@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters, Radians};
 use command::{Bindings, Command};
-use failure::Fallible;
+use failure::{ensure, Fallible};
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
 use nalgebra::{Perspective3, Unit as NUnit, UnitQuaternion, Vector3};
 use std::f64::consts::PI;
@@ -63,8 +63,13 @@ impl ArcBallCamera {
         self.target = target;
     }
 
-    pub fn set_eye_relative(&mut self, eye: Graticule<Target>) {
+    pub fn set_eye_relative(&mut self, eye: Graticule<Target>) -> Fallible<()> {
+        ensure!(
+            eye.latitude < radians!(degrees!(90)),
+            "eye coordinate past limits"
+        );
         self.eye = eye;
+        Ok(())
     }
 
     pub fn set_distance<Unit: LengthUnit>(&mut self, distance: Length<Unit>) {
