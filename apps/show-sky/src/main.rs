@@ -15,6 +15,7 @@
 use absolute_unit::{degrees, meters, EarthRadii, Kilometers};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
+use chrono::prelude::*;
 use command::Bindings;
 use failure::Fallible;
 use frame_graph::make_frame_graph;
@@ -98,7 +99,7 @@ fn main() -> Fallible<()> {
         .with_vertical_position(TextPositionV::Top)
         .with_vertical_anchor(TextAnchorV::Top);
 
-    let mut orrery = Orrery::now();
+    let mut orrery = Orrery::new(Utc.ymd(1964, 2, 24).and_hms(12, 0, 0));
 
     /*
     let mut camera = UfoCamera::new(gpu.aspect_ratio(), 0.1f64, 3.4e+38f64);

@@ -35,8 +35,8 @@ mat4 camera_view()                 { return globals_camera_view; }
 mat4 camera_projection()           { return globals_camera_projection; }
 vec4 camera_position_in_tile()     { return globals_camera_position_tile; }
 vec4 camera_position_earth_km()    { return globals_camera_position_earth_km; }
-mat4 geocenter_km_view()           { return debug_geocenter_km_view; }
-mat4 geocenter_km_projection()     { return debug_geocenter_km_projection; }
+mat4 dbg_geocenter_km_view()       { return debug_geocenter_km_view; }
+mat4 dbg_geocenter_km_projection() { return debug_geocenter_km_projection; }
 mat4 tile_to_earth()               { return globals_tile_to_earth; }
 mat4 tile_to_earth_rotation()      { return globals_tile_to_earth_rotation; }
 mat4 tile_to_earth_scale()         { return globals_tile_to_earth_scale; }

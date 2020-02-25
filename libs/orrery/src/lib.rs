@@ -373,7 +373,7 @@ impl Orrery {
             PI / 180f64 * (AXIAL_TILT_PER_DAY_DEG * 365.242_19 * 100.0);
         let axial_tilt = AXIAL_TILT_AT_J2000 + AXIAL_TILT_PER_CENTURY * centuries_from_j2000;
         let x_eq = sun_position_ecliptic.x;
-        let y_eq = sun_position_ecliptic.y * axial_tilt.cos();
+        let y_eq = -sun_position_ecliptic.y * axial_tilt.cos();
         let z_eq = sun_position_ecliptic.y * axial_tilt.sin();
         let sun_position_equitorial = Point3::new(x_eq, z_eq, y_eq);
 

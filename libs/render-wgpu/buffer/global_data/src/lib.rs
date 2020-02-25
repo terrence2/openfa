@@ -59,9 +59,11 @@ struct Globals {
     view: [[f32; 4]; 4],
     tile_m_proj: [[f32; 4]; 4],
 
-    // Inverted camera parameters in ecliptic XYZ, 1km per unit.
+    // Camera parameters in geocenter km (mostly for debugging).
     debug_geocenter_km_view: [[f32; 4]; 4],
     debug_geocenter_km_proj: [[f32; 4]; 4],
+
+    // Inverted camera parameters in ecliptic XYZ, 1km per unit.
     geocenter_km_inverse_view: [[f32; 4]; 4],
     geocenter_km_inverse_proj: [[f32; 4]; 4],
 
@@ -126,6 +128,18 @@ impl Globals {
         self
     }
 
+    pub fn with_debug_geocenter_helpers(mut self, camera: &ArcBallCamera) -> Self {
+        let eye = camera.cartesian_eye_position::<Kilometers>();
+        let view = Isometry3::look_at_rh(
+            &eye.point64(),
+            &(eye + camera.forward::<Kilometers>()).point64(),
+            &camera.up::<Kilometers>().vec64(),
+        );
+        self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
+        self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
+        self
+    }
+
     pub fn with_tile_m_rasterization(mut self, camera: &ArcBallCamera) -> Self {
         // Get the "position" however the camera best defines it.
         let position = camera.tile_graticule();
@@ -138,16 +152,6 @@ impl Globals {
         );
         let cart_origin =
             Cartesian::<GeoCenter, Meters>::from(Graticule::<GeoCenter>::from(surface_origin));
-
-        // Debug HACK
-        let eye = camera.cartesian_eye_position::<Kilometers>();
-        let view = Isometry3::look_at_rh(
-            &eye.point64(),
-            &(eye + camera.forward::<Kilometers>()).point64(),
-            &camera.up::<Kilometers>().vec64(),
-        );
-        self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
-        self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
 
         self.tile_m_proj = m2v(&convert(camera.projection().to_homogeneous()));
         self
@@ -222,7 +226,8 @@ impl GlobalParametersBuffer {
         let globals = globals
             .with_screen_overlay_projection(gpu)
             .with_geocenter_km_raymarching(camera)
-            .with_tile_m_rasterization(camera);
+            .with_tile_m_rasterization(camera)
+            .with_debug_geocenter_helpers(camera);
         upload_buffers.push(self.make_gpu_buffer(globals, gpu));
         Ok(())
     }

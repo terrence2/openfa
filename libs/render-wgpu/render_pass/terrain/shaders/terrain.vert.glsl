@@ -49,6 +49,6 @@ void main() {
         0, 0, 0, 1
     );
 
-    gl_Position = geocenter_km_projection() * geocenter_km_view() * scale * pos_geocenter_km;
+    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * scale * pos_geocenter_km;
     v_color = color;
 }
