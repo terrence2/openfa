@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters, Radians};
 use command::{Bindings, Command};
-use failure::Fallible;
+use failure::{ensure, Fallible};
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
 use nalgebra::{Perspective3, Unit as NUnit, UnitQuaternion, Vector3};
 use std::f64::consts::PI;
@@ -63,8 +63,13 @@ impl ArcBallCamera {
         self.target = target;
     }
 
-    pub fn set_eye_relative(&mut self, eye: Graticule<Target>) {
+    pub fn set_eye_relative(&mut self, eye: Graticule<Target>) -> Fallible<()> {
+        ensure!(
+            eye.latitude < radians!(degrees!(90)),
+            "eye coordinate past limits"
+        );
         self.eye = eye;
+        Ok(())
     }
 
     pub fn set_distance<Unit: LengthUnit>(&mut self, distance: Length<Unit>) {
@@ -234,7 +239,7 @@ mod tests {
     use approx::assert_abs_diff_eq;
 
     #[test]
-    fn it_can_compute_eye_positions_at_origin() {
+    fn it_can_compute_eye_positions_at_origin() -> Fallible<()> {
         let mut c = ArcBallCamera::new(1f64, meters!(0.1f64), meters!(1000f64));
 
         // Verify base target position.
@@ -251,7 +256,7 @@ mod tests {
                 degrees!(0),
                 degrees!(0),
                 meters!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(0));
             assert_abs_diff_eq!(e.coords[1], kilometers!(-0.001));
@@ -261,7 +266,7 @@ mod tests {
                 degrees!(0),
                 degrees!(90),
                 meters!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(-0.001));
             assert_abs_diff_eq!(e.coords[1], kilometers!(0));
@@ -271,7 +276,7 @@ mod tests {
                 degrees!(0),
                 degrees!(-90),
                 meters!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(0.001));
             assert_abs_diff_eq!(e.coords[1], kilometers!(0));
@@ -281,16 +286,18 @@ mod tests {
                 degrees!(0),
                 degrees!(-180),
                 meters!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(0));
             assert_abs_diff_eq!(e.coords[1], kilometers!(0.001));
             assert_abs_diff_eq!(e.coords[2], kilometers!(6378));
         }
+
+        Ok(())
     }
 
     #[test]
-    fn it_can_compute_eye_positions_with_offset_latitude() {
+    fn it_can_compute_eye_positions_with_offset_latitude() -> Fallible<()> {
         let mut c = ArcBallCamera::new(1f64, meters!(0.1f64), meters!(1000f64));
 
         // Verify base target position.
@@ -305,7 +312,7 @@ mod tests {
                 degrees!(45),
                 degrees!(0),
                 meters!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(0));
             assert_abs_diff_eq!(e.coords[1], kilometers!(-0.000_707_106_781));
@@ -315,16 +322,18 @@ mod tests {
                 degrees!(45),
                 degrees!(90),
                 meters!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(-0.000_707_106_781));
             assert_abs_diff_eq!(e.coords[1], kilometers!(0));
             assert_abs_diff_eq!(e.coords[2], kilometers!(6378.0 + 0.000_707_106_781));
         }
+
+        Ok(())
     }
 
     #[test]
-    fn it_can_compute_eye_positions_with_offset_longitude() {
+    fn it_can_compute_eye_positions_with_offset_longitude() -> Fallible<()> {
         let mut c = ArcBallCamera::new(1f64, meters!(0.1f64), meters!(1000f64));
 
         // Verify base target position.
@@ -344,7 +353,7 @@ mod tests {
                 degrees!(0),
                 degrees!(0),
                 kilometers!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(-6378));
             assert_abs_diff_eq!(e.coords[1], kilometers!(-1));
@@ -354,11 +363,13 @@ mod tests {
                 degrees!(0),
                 degrees!(90),
                 kilometers!(1),
-            ));
+            ))?;
             let e = c.cartesian_eye_position::<Kilometers>();
             assert_abs_diff_eq!(e.coords[0], kilometers!(-6378));
             assert_abs_diff_eq!(e.coords[1], kilometers!(0));
             assert_abs_diff_eq!(e.coords[2], kilometers!(-1));
         }
+
+        Ok(())
     }
 }
