@@ -12,9 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::{Angle, Degrees, Kilometers, Length, Meters};
 use failure::Fallible;
+use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use geometry::IcoSphere;
 use memoffset::offset_of;
+use nalgebra::Vector3;
 use std::{cell::RefCell, mem, ops::Range, sync::Arc};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
@@ -60,33 +63,43 @@ pub struct TerrainGeoBuffer {
 
 impl TerrainGeoBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
-        let sphere = IcoSphere::new(2);
-
+        const SIZE: isize = 20;
         const EARTH_TO_KM: f32 = 6370.0;
 
         let mut verts = Vec::new();
-        for pos in &sphere.verts {
-            verts.push([
-                pos[0] * EARTH_TO_KM,
-                pos[1] * EARTH_TO_KM,
-                pos[2] * EARTH_TO_KM,
-                1.0,
-            ]);
+        for lat in -SIZE..SIZE {
+            for lon in -SIZE..SIZE {
+                verts.push([lat as f32, lon as f32, EARTH_TO_KM, 1f32]);
+            }
         }
         let vertex_buffer = device
             .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&verts);
 
-        let mut indices: Vec<u32> = Vec::new();
-        for face in &sphere.faces {
-            indices.push(face.i0() as u32);
-            indices.push(face.i1() as u32);
+        let mut indices = Vec::new();
+        for i0 in 0..(2 * SIZE - 2) {
+            let i1 = i0 + 1;
+            for j0 in 0..(2 * SIZE - 2) {
+                let j1 = j0 + 1;
+                indices.push((i0 * 2 * SIZE + j0) as u32);
+                indices.push((i1 * 2 * SIZE + j0) as u32);
 
-            indices.push(face.i1() as u32);
-            indices.push(face.i2() as u32);
+                indices.push((i0 * 2 * SIZE + j0) as u32);
+                indices.push((i0 * 2 * SIZE + j1) as u32);
 
-            indices.push(face.i2() as u32);
-            indices.push(face.i0() as u32);
+                indices.push((i0 * 2 * SIZE + j0) as u32);
+                indices.push((i1 * 2 * SIZE + j1) as u32);
+
+                if i1 == (2 * SIZE - 2) {
+                    indices.push((i1 * 2 * SIZE + j0) as u32);
+                    indices.push((i1 * 2 * SIZE + j1) as u32);
+                }
+
+                if j1 == (2 * SIZE - 2) {
+                    indices.push((i0 * 2 * SIZE + j1) as u32);
+                    indices.push((i1 * 2 * SIZE + j1) as u32);
+                }
+            }
         }
         let index_buffer = device
             .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
