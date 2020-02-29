@@ -63,6 +63,10 @@ impl ArcBallCamera {
         self.target = target;
     }
 
+    pub fn get_target(&self) -> Graticule<GeoSurface> {
+        self.target
+    }
+
     pub fn set_eye_relative(&mut self, eye: Graticule<Target>) -> Fallible<()> {
         ensure!(
             eye.latitude < radians!(degrees!(90)),

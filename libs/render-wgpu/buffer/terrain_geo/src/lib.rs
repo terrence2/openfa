@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{Angle, Degrees, Kilometers, Length, Meters};
+use absolute_unit::{degrees, meters, Angle, Degrees, Kilometers, Length, Meters};
 use failure::Fallible;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use geometry::IcoSphere;
@@ -69,7 +69,20 @@ impl TerrainGeoBuffer {
         let mut verts = Vec::new();
         for lat in -SIZE..SIZE {
             for lon in -SIZE..SIZE {
-                verts.push([lat as f32, lon as f32, EARTH_TO_KM, 1f32]);
+                let position = Cartesian::<GeoCenter, Kilometers>::from(
+                    Graticule::<GeoCenter>::from(Graticule::<GeoSurface>::new(
+                        degrees!(lat as f64),
+                        degrees!(lon as f64),
+                        meters!(0),
+                    )),
+                )
+                .vec64();
+                verts.push([
+                    position[0] as f32,
+                    position[1] as f32,
+                    position[2] as f32,
+                    1f32,
+                ]);
             }
         }
         let vertex_buffer = device

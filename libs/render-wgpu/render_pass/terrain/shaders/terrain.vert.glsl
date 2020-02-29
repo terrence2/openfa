@@ -14,11 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <common/shader_globals/include/global.glsl>
+#include <common/shader_globals/include/quaternion.glsl>
 #include <buffer/global_data/include/library.glsl>
 
 #define EARTH_TO_KM 6370.0
 
-layout(location = 0) in vec4 graticule;
+layout(location = 0) in vec4 position;
 
 //layout(location = 0) out smooth vec4 v_position;
 //layout(location = 1) out smooth vec4 v_normal;
@@ -26,6 +27,7 @@ layout(location = 0) in vec4 graticule;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
 void main() {
+    /*
     float lat = graticule[0] * PI / 180.0;
     float lon = graticule[1] * PI / 180.0;
     vec4 pos = vec4(
@@ -34,9 +36,21 @@ void main() {
         EARTH_TO_KM * cos(lon) * cos(lat),
         1.0
     );
+    */
 
-    //gl_Position = camera_projection() * camera_view() * position;
-    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * pos;
+    vec4 cam_grat = camera_graticule_rad_m();
+    //vec4 cam_pos = camera_cartesian_m();
+
+    float lon = radians(floor(degrees(cam_grat[1])));
+    float lat = radians(floor(degrees(cam_grat[0])));
+    vec4 q_lon = quat_from_axis_angle(vec3(0, 1, 0), -lon);
+    vec4 q_lat = quat_from_axis_angle(quat_rotate(q_lon, vec4(1, 0, 0, 0)).xyz, -lat);
+    vec4 pos_geocenter_km = quat_rotate(q_lat, quat_rotate(q_lon, position));
+
+    //gl_Position = camera_projection() * camera_view() * pos;
+    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * pos_geocenter_km;
+
+
     //    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
     //    v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
     //    v_color = color;
