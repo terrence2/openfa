@@ -26,6 +26,10 @@ layout(location = 0) in vec4 position;
 //layout(location = 2) out smooth vec4 v_color;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
+layout(set = 2, binding = 0) buffer BlockInfoBuffer {
+    vec4 block_info_buffers[12];
+};
+
 void main() {
     /*
     float lat = graticule[0] * PI / 180.0;
@@ -41,8 +45,13 @@ void main() {
     vec4 cam_grat = camera_graticule_rad_m();
     //vec4 cam_pos = camera_cartesian_m();
 
-    float lon = radians(floor(degrees(cam_grat[1])));
-    float lat = radians(floor(degrees(cam_grat[0])));
+    uint block_id = gl_InstanceIndex;
+    vec4 block_info = block_info_buffers[block_id];
+    float lat_offset = block_info[0];
+    float lon_offset = block_info[1];
+
+    float lon = radians(floor(degrees(cam_grat[1]))) + radians(lat_offset);
+    float lat = radians(floor(degrees(cam_grat[0]))) + radians(lon_offset);
     vec4 q_lon = quat_from_axis_angle(vec3(0, 1, 0), -lon);
     vec4 q_lat = quat_from_axis_angle(quat_rotate(q_lon, vec4(1, 0, 0, 0)).xyz, -lat);
     vec4 pos_geocenter_km = quat_rotate(q_lat, quat_rotate(q_lon, position));
