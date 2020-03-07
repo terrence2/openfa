@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
+pub mod algorithm;
 mod arrow;
 mod ico_sphere;
 

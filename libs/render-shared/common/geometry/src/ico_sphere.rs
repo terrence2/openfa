@@ -20,11 +20,11 @@ pub struct Face {
     pub index0: u32,
     pub index1: u32,
     pub index2: u32,
-    pub normal: Vector3<f32>,
+    pub normal: Vector3<f64>,
 }
 
 impl Face {
-    pub fn new(i0: u32, i1: u32, i2: u32, verts: &[Vector3<f32>]) -> Self {
+    pub fn new(i0: u32, i1: u32, i2: u32, verts: &[Vector3<f64>]) -> Self {
         let v0 = &verts[i0 as usize];
         let v1 = &verts[i1 as usize];
         let v2 = &verts[i2 as usize];
@@ -51,28 +51,28 @@ impl Face {
 }
 
 pub struct IcoSphere {
-    pub verts: Vec<Vector3<f32>>,
+    pub verts: Vec<Vector3<f64>>,
     pub faces: Vec<Face>,
 }
 
 impl IcoSphere {
     pub fn new(iterations: usize) -> Self {
-        let t = (1f32 + 5f32.sqrt()) / 2f32;
+        let t = (1f64 + 5f64.sqrt()) / 2f64;
 
         // The bones of the d12 are 3 orthogonal quads at the origin.
         let mut verts = vec![
-            Vector3::new(-1f32, t, 0f32).normalize(),
-            Vector3::new(1f32, t, 0f32).normalize(),
-            Vector3::new(-1f32, -t, 0f32).normalize(),
-            Vector3::new(1f32, -t, 0f32).normalize(),
-            Vector3::new(0f32, -1f32, t).normalize(),
-            Vector3::new(0f32, 1f32, t).normalize(),
-            Vector3::new(0f32, -1f32, -t).normalize(),
-            Vector3::new(0f32, 1f32, -t).normalize(),
-            Vector3::new(t, 0f32, -1f32).normalize(),
-            Vector3::new(t, 0f32, 1f32).normalize(),
-            Vector3::new(-t, 0f32, -1f32).normalize(),
-            Vector3::new(-t, 0f32, 1f32).normalize(),
+            Vector3::new(-1f64, t, 0f64).normalize(),
+            Vector3::new(1f64, t, 0f64).normalize(),
+            Vector3::new(-1f64, -t, 0f64).normalize(),
+            Vector3::new(1f64, -t, 0f64).normalize(),
+            Vector3::new(0f64, -1f64, t).normalize(),
+            Vector3::new(0f64, 1f64, t).normalize(),
+            Vector3::new(0f64, -1f64, -t).normalize(),
+            Vector3::new(0f64, 1f64, -t).normalize(),
+            Vector3::new(t, 0f64, -1f64).normalize(),
+            Vector3::new(t, 0f64, 1f64).normalize(),
+            Vector3::new(-t, 0f64, -1f64).normalize(),
+            Vector3::new(-t, 0f64, 1f64).normalize(),
         ];
 
         let mut faces = vec![
@@ -103,7 +103,6 @@ impl IcoSphere {
         ];
 
         // Subdivide repeatedly to get a spherical object.
-        //let bisect_edge = |v0, v1| { v0 + ((v1 - v0) / 2f32) };
         for _ in 0..iterations {
             let mut next_faces = Vec::new();
             for face in &faces {
@@ -129,8 +128,8 @@ impl IcoSphere {
         IcoSphere { verts, faces }
     }
 
-    fn bisect_edge(v0: &Vector3<f32>, v1: &Vector3<f32>) -> Vector3<f32> {
-        v0 + ((v1 - v0) / 2f32)
+    fn bisect_edge(v0: &Vector3<f64>, v1: &Vector3<f64>) -> Vector3<f64> {
+        v0 + ((v1 - v0) / 2f64)
     }
 }
 
