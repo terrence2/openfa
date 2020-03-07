@@ -19,18 +19,22 @@
 
 #define EARTH_TO_KM 6370.0
 
-layout(location = 0) in vec4 position;
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 graticule;
 
 //layout(location = 0) out smooth vec4 v_position;
 //layout(location = 1) out smooth vec4 v_normal;
 //layout(location = 2) out smooth vec4 v_color;
 //layout(location = 3) out smooth vec2 v_tex_coord;
 
-layout(set = 2, binding = 0) buffer BlockInfoBuffer {
-    vec4 block_info_buffers[12];
-};
+//layout(set = 2, binding = 0) buffer BlockInfoBuffer {
+//    vec4 block_info_buffers[12];
+//};
 
 void main() {
+    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * vec4(position, 1);
+
     /*
     float lat = graticule[0] * PI / 180.0;
     float lon = graticule[1] * PI / 180.0;
@@ -42,6 +46,7 @@ void main() {
     );
     */
 
+    /*
     vec4 cam_grat = camera_graticule_rad_m();
     //vec4 cam_pos = camera_cartesian_m();
 
@@ -55,9 +60,9 @@ void main() {
     vec4 q_lon = quat_from_axis_angle(vec3(0, 1, 0), -lon);
     vec4 q_lat = quat_from_axis_angle(quat_rotate(q_lon, vec4(1, 0, 0, 0)).xyz, -lat);
     vec4 pos_geocenter_km = quat_rotate(q_lat, quat_rotate(q_lon, position));
+    */
 
     //gl_Position = camera_projection() * camera_view() * pos;
-    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * pos_geocenter_km;
 
 
     //    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));

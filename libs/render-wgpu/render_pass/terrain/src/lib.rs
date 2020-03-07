@@ -18,10 +18,11 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
-use terrain_geo::{TerrainGeoBuffer, Vertex as TerrainVertex};
+use terrain_geo::{PatchVertex, TerrainGeoBuffer, Vertex as TerrainVertex};
 use wgpu;
 
 pub struct TerrainRenderPass {
+    debug_patch_pipeline: wgpu::RenderPipeline,
     pipeline: wgpu::RenderPipeline,
 }
 
@@ -39,13 +40,59 @@ impl TerrainRenderPass {
         let frag_shader =
             gpu.create_shader_module(include_bytes!("../target/terrain.frag.spirv"))?;
 
+        let debug_patch_pipeline =
+            gpu.device()
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    layout: &gpu
+                        .device()
+                        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                            bind_group_layouts: &[globals_buffer.bind_group_layout()],
+                        }),
+                    vertex_stage: wgpu::ProgrammableStageDescriptor {
+                        module: &vert_shader,
+                        entry_point: "main",
+                    },
+                    fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                        module: &frag_shader,
+                        entry_point: "main",
+                    }),
+                    rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                        front_face: wgpu::FrontFace::Cw,
+                        cull_mode: wgpu::CullMode::None,
+                        depth_bias: 0,
+                        depth_bias_slope_scale: 0.0,
+                        depth_bias_clamp: 0.0,
+                    }),
+                    primitive_topology: wgpu::PrimitiveTopology::LineList,
+                    color_states: &[wgpu::ColorStateDescriptor {
+                        format: GPU::texture_format(),
+                        color_blend: wgpu::BlendDescriptor::REPLACE,
+                        alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                        write_mask: wgpu::ColorWrite::ALL,
+                    }],
+                    depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                        format: GPU::DEPTH_FORMAT,
+                        depth_write_enabled: false,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                        stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                        stencil_read_mask: 0,
+                        stencil_write_mask: 0,
+                    }),
+                    index_format: wgpu::IndexFormat::Uint32,
+                    vertex_buffers: &[PatchVertex::descriptor()],
+                    sample_count: 1,
+                    sample_mask: !0,
+                    alpha_to_coverage_enabled: false,
+                });
+
         let pipeline_layout =
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
-                        terrain_geo_buffer.bind_group_layout(),
+                        // terrain_geo_buffer.bind_group_layout(),
                     ],
                 });
 
@@ -96,7 +143,10 @@ impl TerrainRenderPass {
                 alpha_to_coverage_enabled: false,
             });
 
-        Ok(Self { pipeline })
+        Ok(Self {
+            debug_patch_pipeline,
+            pipeline,
+        })
     }
 
     pub fn draw(
@@ -106,21 +156,24 @@ impl TerrainRenderPass {
         atmosphere_buffer: &AtmosphereBuffer,
         terrain_geo_buffer: &TerrainGeoBuffer,
     ) {
-        rpass.set_pipeline(&self.pipeline);
+        rpass.set_pipeline(&self.debug_patch_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
+        /*
         rpass.set_bind_group(
             Group::Atmosphere.index(),
             &atmosphere_buffer.bind_group(),
             &[],
         );
-
         rpass.set_bind_group(
             Group::Terrain.index(),
             &terrain_geo_buffer.block_bind_group(),
             &[],
         );
-        rpass.set_index_buffer(terrain_geo_buffer.index_buffer(), 0);
-        rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.vertex_buffer(), 0)]);
-        rpass.draw_indexed(terrain_geo_buffer.index_range(), 0, 0..12);
+        */
+        rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0);
+        rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.patch_vertex_buffer(), 0)]);
+        for i in 0..20 {
+            rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), 0, 0..1);
+        }
     }
 }
