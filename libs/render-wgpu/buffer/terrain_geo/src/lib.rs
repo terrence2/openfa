@@ -51,13 +51,13 @@ impl PatchVertex {
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float3,
                     offset: 12,
-                    shader_location: 0,
+                    shader_location: 1,
                 },
                 // graticule
                 wgpu::VertexAttributeDescriptor {
                     format: wgpu::VertexFormat::Float2,
                     offset: 24,
-                    shader_location: 0,
+                    shader_location: 2,
                 },
             ],
         };
@@ -236,9 +236,7 @@ impl TerrainGeoBuffer {
                 normal: [n2[0] as f32, n2[1] as f32, n2[2] as f32],
                 graticule: [0f32, 0f32], // TODO
             });
-            println!("verts[-1]: {:?}", verts[verts.len() - 1].position);
         }
-        println!("verts len: {}", verts.len());
         let vertex_buffer = gpu
             .device()
             .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
