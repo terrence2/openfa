@@ -172,7 +172,7 @@ impl TerrainRenderPass {
         */
         rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0);
         rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.patch_vertex_buffer(), 0)]);
-        for i in 0..20 {
+        for i in 0..terrain_geo_buffer.num_patches() {
             rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
         }
     }

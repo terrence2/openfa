@@ -21,8 +21,15 @@ use geometry::{algorithm::solid_angle, IcoSphere};
 use gpu::GPU;
 use memoffset::offset_of;
 use nalgebra::Vector3;
-use std::io::empty;
-use std::{cell::RefCell, mem, ops::Range, sync::Arc};
+use std::{
+    cell::RefCell,
+    cmp::{Ord, Ordering},
+    collections::BinaryHeap,
+    f64::consts::PI,
+    mem,
+    ops::Range,
+    sync::Arc,
+};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -117,20 +124,51 @@ impl Vertex {
 }
 
 #[derive(Debug, Copy, Clone)]
-enum PatchNode {
-    Root(usize),
-    Verts([[f32; 3]; 3]),
-    Children([usize; 4]),
-    Empty,
+struct PatchInfo {
+    level: usize,
+    solid_angle: f64,
+    vertices: [Vector3<f64>; 3],
 }
 
-impl PatchNode {}
+impl PatchInfo {
+    fn new(
+        level: usize,
+        eye_position: &Vector3<f64>,
+        eye_direction: &Vector3<f64>,
+        vertices: [Vector3<f64>; 3],
+    ) -> Self {
+        let solid_angle = solid_angle(&eye_position, &eye_direction, &vertices);
+        Self {
+            level,
+            solid_angle,
+            vertices,
+        }
+    }
+}
+
+impl Eq for PatchInfo {}
+
+impl PartialEq for PatchInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.solid_angle == other.solid_angle
+    }
+}
+
+impl PartialOrd for PatchInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.solid_angle.partial_cmp(&other.solid_angle)
+    }
+}
+impl Ord for PatchInfo {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap_or(Ordering::Less)
+    }
+}
 
 pub struct TerrainGeoBuffer {
     // bind_group_layout: wgpu::BindGroupLayout,
     // bind_group: wgpu::BindGroup,
     sphere: IcoSphere,
-    patch_tree: Vec<PatchNode>,
 
     num_patches: usize,
     patch_vertex_buffer: Arc<Box<wgpu::Buffer>>,
@@ -169,11 +207,11 @@ impl TerrainGeoBuffer {
         */
 
         let empty_patches = vec![[0f32; 8]; num_patches];
-        let patch_vertex_buffer = Arc::new(Box::new(
-            device
-                .create_buffer_mapped(empty_patches.len(), wgpu::BufferUsage::all())
-                .fill_from_slice(&empty_patches),
-        ));
+        let patch_vertex_buffer =
+            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+                size: (mem::size_of::<PatchVertex>() * 3 * num_patches) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::all(),
+            })));
 
         let mut patch_indices = Vec::new();
         patch_indices.push(0u32);
@@ -186,14 +224,8 @@ impl TerrainGeoBuffer {
             .create_buffer_mapped(patch_indices.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&patch_indices);
 
-        let mut patch_tree = Vec::new();
-        for i in 0..20 {
-            patch_tree.push(PatchNode::Root(i));
-        }
-
         Ok(Arc::new(RefCell::new(Self {
             sphere: IcoSphere::new(0),
-            patch_tree,
 
             num_patches,
             patch_vertex_buffer,
@@ -207,35 +239,89 @@ impl TerrainGeoBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let mut verts = Vec::new();
+        let camera_target = camera.cartesian_target_position::<Kilometers>().vec64();
+        let eye_position = camera.cartesian_eye_position::<Kilometers>().vec64();
+        let eye_direction = camera_target - eye_position;
+
+        let mut patches = BinaryHeap::new();
         for face in &self.sphere.faces {
+            // Cull back-facing
+            let angle = face.normal.dot(&eye_direction);
+            if angle > 0f64 {
+                continue;
+            }
+
+            // TODO: Cull outside the view frustum
             let v0 = &self.sphere.verts[face.i0()] * EARTH_TO_KM;
             let v1 = &self.sphere.verts[face.i1()] * EARTH_TO_KM;
             let v2 = &self.sphere.verts[face.i2()] * EARTH_TO_KM;
-            let sa = solid_angle(
-                &camera.cartesian_target_position::<Kilometers>().vec64(),
-                &face.normal,
-                &[&v0, &v1, &v2],
-            );
-            //println!("SA: {}", sa);
-            let n0 = v0.normalize();
-            let n1 = v1.normalize();
-            let n2 = v2.normalize();
-            verts.push(PatchVertex {
-                position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
-                normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
-                graticule: [0f32, 0f32], // TODO
-            });
-            verts.push(PatchVertex {
-                position: [v1[0] as f32, v1[1] as f32, v1[2] as f32],
-                normal: [n1[0] as f32, n1[1] as f32, n1[2] as f32],
-                graticule: [0f32, 0f32], // TODO
-            });
-            verts.push(PatchVertex {
-                position: [v2[0] as f32, v2[1] as f32, v2[2] as f32],
-                normal: [n2[0] as f32, n2[1] as f32, n2[2] as f32],
-                graticule: [0f32, 0f32], // TODO
-            });
+            patches.push(PatchInfo::new(
+                0,
+                &eye_position,
+                &eye_direction,
+                [v0, v1, v2],
+            ))
+        }
+
+        // FIXME: split the largest patch to see if we can; and if it's largest.
+        //while patches.len() < 300 {
+        for i in 0..1 {
+            let patch = patches.pop().unwrap();
+            let [v0, v1, v2] = patch.vertices;
+            let a = IcoSphere::bisect_edge(&v0, &v1).normalize() * EARTH_TO_KM;
+            let b = IcoSphere::bisect_edge(&v1, &v2).normalize() * EARTH_TO_KM;
+            let c = IcoSphere::bisect_edge(&v2, &v0).normalize() * EARTH_TO_KM;
+
+            patches.push(PatchInfo::new(
+                patch.level + 1,
+                &eye_position,
+                &eye_direction,
+                [v0, a, c],
+            ));
+            patches.push(PatchInfo::new(
+                patch.level + 1,
+                &eye_position,
+                &eye_direction,
+                [v1, b, a],
+            ));
+            patches.push(PatchInfo::new(
+                patch.level + 1,
+                &eye_position,
+                &eye_direction,
+                [v2, c, b],
+            ));
+            patches.push(PatchInfo::new(
+                patch.level + 1,
+                &eye_position,
+                &eye_direction,
+                [a, b, c],
+            ));
+        }
+
+        println!("START:");
+        let mut verts = Vec::new();
+        for patch in &patches {
+            println!("  {}", patch.solid_angle);
+            if let [v0, v1, v2] = patch.vertices {
+                let n0 = v0.normalize();
+                let n1 = v1.normalize();
+                let n2 = v2.normalize();
+                verts.push(PatchVertex {
+                    position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
+                    normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
+                    graticule: [0f32, 0f32], // TODO
+                });
+                verts.push(PatchVertex {
+                    position: [v1[0] as f32, v1[1] as f32, v1[2] as f32],
+                    normal: [n1[0] as f32, n1[1] as f32, n1[2] as f32],
+                    graticule: [0f32, 0f32], // TODO
+                });
+                verts.push(PatchVertex {
+                    position: [v2[0] as f32, v2[1] as f32, v2[2] as f32],
+                    normal: [n2[0] as f32, n2[1] as f32, n2[2] as f32],
+                    graticule: [0f32, 0f32], // TODO
+                });
+            }
         }
         let vertex_buffer = gpu
             .device()
@@ -257,6 +343,10 @@ impl TerrainGeoBuffer {
         &self.block_bind_group
     }
     */
+
+    pub fn num_patches(&self) -> i32 {
+        self.num_patches as i32
+    }
 
     pub fn patch_index_buffer(&self) -> &wgpu::Buffer {
         &self.patch_index_buffer

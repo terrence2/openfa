@@ -19,17 +19,21 @@ pub fn clamp(v: f64, low: f64, high: f64) -> f64 {
     v.max(low).min(high)
 }
 
-pub fn solid_angle(p: &Vector3<f64>, n: &Vector3<f64>, pts: &[&Vector3<f64>]) -> f64 {
+pub fn solid_angle(
+    observer_position: &Vector3<f64>,
+    observer_direction: &Vector3<f64>,
+    vertices: &[Vector3<f64>],
+) -> f64 {
     // compute projected solid area using Stoke's theorem from Improving Radiosity Solutions
     // through the Use of Analytically Determined Form Factors by Baum, Rushmeier, and Winget
     // (Eq. 9 on pg. 6 (or "330"))
 
     // integrate over edges
     let mut projarea = 0f64;
-    for (i, &v) in pts.iter().enumerate() {
-        let j = (i + 1) % pts.len();
-        let v0 = pts[i] - p;
-        let v1 = pts[j] - p;
+    for (i, &v) in vertices.iter().enumerate() {
+        let j = (i + 1) % vertices.len();
+        let v0 = v - observer_position;
+        let v1 = vertices[j] - observer_position;
         let mut tau = v0.cross(&v1);
         let v0 = v0.normalize();
         let v1 = v1.normalize();
@@ -40,7 +44,7 @@ pub fn solid_angle(p: &Vector3<f64>, n: &Vector3<f64>, pts: &[&Vector3<f64>]) ->
 
         tau.normalize();
         tau *= gamma;
-        projarea -= n.dot(&tau);
+        projarea -= observer_direction.dot(&tau);
     }
 
     return projarea / (2f64 * PI);

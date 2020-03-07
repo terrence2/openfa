@@ -128,7 +128,7 @@ impl IcoSphere {
         IcoSphere { verts, faces }
     }
 
-    fn bisect_edge(v0: &Vector3<f64>, v1: &Vector3<f64>) -> Vector3<f64> {
+    pub fn bisect_edge(v0: &Vector3<f64>, v1: &Vector3<f64>) -> Vector3<f64> {
         v0 + ((v1 - v0) / 2f64)
     }
 }
