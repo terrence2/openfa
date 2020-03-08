@@ -12,18 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-/*
-use nalgebra::{Point3, Scalar, Vector3, Vector4};
-use num_traits::Float;
+use nalgebra::{Point3, RealField, Vector3, Vector4};
 
 #[derive(Debug)]
-pub struct Plane<T: Scalar>(Vector4<T>);
+pub struct Plane<T: RealField>(Vector4<T>);
 
-impl<T: Scalar> Plane<T> {
+impl<T: RealField> Plane<T> {
     pub fn from_point_and_normal(p: Point3<T>, n: Vector3<T>) -> Self {
         let d = p.coords.dot(&n);
-        Self(Vector4::new(p, d))
+        Self(Vector4::new(p.coords[0], p.coords[1], p.coords[2], d))
     }
 }
-*/
-pub struct Plane;
