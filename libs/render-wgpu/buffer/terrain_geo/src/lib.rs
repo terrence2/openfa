@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters, Angle, Degrees, Kilometers, Length, Meters};
+use absolute_unit::{degrees, meters, Angle, Degrees, Kilometers, Length, Meters, Radians};
 use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
@@ -25,7 +25,6 @@ use std::{
     cell::RefCell,
     cmp::{Ord, Ordering},
     collections::BinaryHeap,
-    f64::consts::PI,
     mem,
     ops::Range,
     sync::Arc,
@@ -206,7 +205,10 @@ impl TerrainGeoBuffer {
         });
         */
 
-        let empty_patches = vec![[0f32; 8]; num_patches];
+        println!(
+            "patch_vertex_buffer: {:08X}",
+            mem::size_of::<PatchVertex>() * 3 * num_patches
+        );
         let patch_vertex_buffer =
             Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
                 size: (mem::size_of::<PatchVertex>() * 3 * num_patches) as wgpu::BufferAddress,
@@ -246,12 +248,17 @@ impl TerrainGeoBuffer {
         let mut patches = BinaryHeap::new();
         for face in &self.sphere.faces {
             // Cull back-facing
+            /*
             let angle = face.normal.dot(&eye_direction);
             if angle > 0f64 {
                 continue;
             }
+            */
+
+            // TODO: Cull below horizon
 
             // TODO: Cull outside the view frustum
+
             let v0 = &self.sphere.verts[face.i0()] * EARTH_TO_KM;
             let v1 = &self.sphere.verts[face.i1()] * EARTH_TO_KM;
             let v2 = &self.sphere.verts[face.i2()] * EARTH_TO_KM;
@@ -263,9 +270,8 @@ impl TerrainGeoBuffer {
             ))
         }
 
-        // FIXME: split the largest patch to see if we can; and if it's largest.
-        //while patches.len() < 300 {
-        for i in 0..1 {
+        // Split patches until we have an optimal equal-area partitioning.
+        while patches.len() < self.num_patches - 4 {
             let patch = patches.pop().unwrap();
             let [v0, v1, v2] = patch.vertices;
             let a = IcoSphere::bisect_edge(&v0, &v1).normalize() * EARTH_TO_KM;
@@ -298,30 +304,36 @@ impl TerrainGeoBuffer {
             ));
         }
 
-        println!("START:");
         let mut verts = Vec::new();
         for patch in &patches {
-            println!("  {}", patch.solid_angle);
-            if let [v0, v1, v2] = patch.vertices {
-                let n0 = v0.normalize();
-                let n1 = v1.normalize();
-                let n2 = v2.normalize();
-                verts.push(PatchVertex {
-                    position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
-                    normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
-                    graticule: [0f32, 0f32], // TODO
-                });
-                verts.push(PatchVertex {
-                    position: [v1[0] as f32, v1[1] as f32, v1[2] as f32],
-                    normal: [n1[0] as f32, n1[1] as f32, n1[2] as f32],
-                    graticule: [0f32, 0f32], // TODO
-                });
-                verts.push(PatchVertex {
-                    position: [v2[0] as f32, v2[1] as f32, v2[2] as f32],
-                    normal: [n2[0] as f32, n2[1] as f32, n2[2] as f32],
-                    graticule: [0f32, 0f32], // TODO
-                });
-            }
+            let [v0, v1, v2] = patch.vertices;
+            let n0 = v0.normalize();
+            let n1 = v1.normalize();
+            let n2 = v2.normalize();
+            verts.push(PatchVertex {
+                position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
+                normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
+                graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
+                    v0,
+                ))
+                .lat_lon::<Radians, f32>(),
+            });
+            verts.push(PatchVertex {
+                position: [v1[0] as f32, v1[1] as f32, v1[2] as f32],
+                normal: [n1[0] as f32, n1[1] as f32, n1[2] as f32],
+                graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
+                    v1,
+                ))
+                .lat_lon::<Radians, f32>(),
+            });
+            verts.push(PatchVertex {
+                position: [v2[0] as f32, v2[1] as f32, v2[2] as f32],
+                normal: [n2[0] as f32, n2[1] as f32, n2[2] as f32],
+                graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
+                    v2,
+                ))
+                .lat_lon::<Radians, f32>(),
+            });
         }
         let vertex_buffer = gpu
             .device()
