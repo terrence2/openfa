@@ -63,6 +63,10 @@ impl ArcBallCamera {
         self.target = target;
     }
 
+    pub fn get_target(&self) -> Graticule<GeoSurface> {
+        self.target
+    }
+
     pub fn set_eye_relative(&mut self, eye: Graticule<Target>) -> Fallible<()> {
         ensure!(
             eye.latitude < radians!(degrees!(90)),
@@ -160,14 +164,19 @@ impl ArcBallCamera {
         }
 
         if self.in_move {
-            /*
-            let eye = self.eye();
-            let dir = (self.target - eye).normalize();
-            let tangent = Vector3::y().cross(&dir).normalize();
-            let bitangent = dir.cross(&tangent);
-            let mult = f64::from(self.distance / 1000f64).max(0.01);
-            self.target = self.target + tangent * (x * mult) + bitangent * (-y * mult);
-            */
+            let sensitivity: f64 = f64::from(self.get_distance()) / 60_000_000.0;
+
+            let dir = self.eye.longitude;
+            let lat = f64::from(degrees!(self.target.latitude)) + dir.cos() * y * sensitivity;
+            let lon = f64::from(degrees!(self.target.longitude)) + -dir.sin() * y * sensitivity;
+            self.target.latitude = radians!(degrees!(lat));
+            self.target.longitude = radians!(degrees!(lon));
+
+            let dir = self.eye.longitude + degrees!(PI / 2.0);
+            let lat = f64::from(degrees!(self.target.latitude)) + -dir.sin() * x * sensitivity;
+            let lon = f64::from(degrees!(self.target.longitude)) + -dir.cos() * x * sensitivity;
+            self.target.latitude = radians!(degrees!(lat));
+            self.target.longitude = radians!(degrees!(lon));
         }
 
         Ok(())

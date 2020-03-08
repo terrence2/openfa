@@ -56,6 +56,7 @@ struct Globals {
     screen_projection: [[f32; 4]; 4],
 
     // Camera parameters in tile space XYZ, 1hm per unit.
+    camera_graticule_radians_meters: [f32; 4],
     view: [[f32; 4]; 4],
     proj: [[f32; 4]; 4],
 
@@ -127,6 +128,18 @@ impl Globals {
         self
     }
 
+    pub fn with_camera_info(mut self, camera: &ArcBallCamera) -> Self {
+        // FIXME: we're using the target right now so we can see tessellation in action.
+        self.camera_graticule_radians_meters = [
+            f32::from(camera.get_target().latitude),
+            f32::from(camera.get_target().longitude),
+            f32::from(camera.get_target().distance),
+            1f32,
+        ];
+        self
+    }
+
+    // Provide geocenter projections for use when we have nothing else to grab onto.
     pub fn with_debug_geocenter_helpers(mut self, camera: &ArcBallCamera) -> Self {
         let eye = camera.cartesian_eye_position::<Kilometers>();
         let view = Isometry3::look_at_rh(
@@ -208,6 +221,7 @@ impl GlobalParametersBuffer {
         let globals = globals
             .with_screen_overlay_projection(gpu)
             .with_geocenter_km_raymarching(camera)
+            .with_camera_info(camera)
             .with_debug_geocenter_helpers(camera);
         upload_buffers.push(self.make_gpu_buffer(globals, gpu));
         Ok(())

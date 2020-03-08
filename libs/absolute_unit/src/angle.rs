@@ -16,7 +16,7 @@ use crate::impl_unit_for_numerics;
 use std::{
     fmt,
     marker::PhantomData,
-    ops::{Add, AddAssign, Sub, SubAssign},
+    ops::{Add, AddAssign, Mul, Sub, SubAssign},
 };
 
 pub trait AngleUnit: Copy {
@@ -38,6 +38,10 @@ impl<Unit: AngleUnit> Angle<Unit> {
 
     pub fn sin(self) -> f64 {
         f64::from(self).sin()
+    }
+
+    pub fn f32(self) -> f32 {
+        f32::from(self)
     }
 }
 
@@ -146,6 +150,20 @@ macro_rules! impl_angle_unit_for_numeric_type {
         {
             fn from(v: Angle<Unit>) -> $Num {
                 (v.femto_rad as f64 / Unit::femto_radians_in_unit() as f64) as $Num
+            }
+        }
+
+        impl<Unit> Mul<$Num> for Angle<Unit>
+        where
+            Unit: AngleUnit,
+        {
+            type Output = Self;
+
+            fn mul(self, rhs: $Num) -> Self {
+                Self {
+                    femto_rad: (self.femto_rad as f64 * rhs as f64).round() as i64,
+                    phantom: PhantomData,
+                }
             }
         }
     };

@@ -15,6 +15,7 @@
 
 layout(set = 0, binding = 0) buffer CameraParameters {
     mat4 globals_screen_letterbox_projection;
+    vec4 camera_graticule_radians_meters;
     mat4 globals_camera_view;
     mat4 globals_camera_projection;
     mat4 debug_geocenter_km_view;
@@ -31,6 +32,7 @@ layout(set = 0, binding = 0) buffer CameraParameters {
 };
 
 mat4 screen_letterbox_projection() { return globals_screen_letterbox_projection; }
+vec4 camera_graticule_rad_m()      { return camera_graticule_radians_meters; }
 mat4 camera_view()                 { return globals_camera_view; }
 mat4 camera_projection()           { return globals_camera_projection; }
 vec4 camera_position_in_tile()     { return globals_camera_position_tile; }

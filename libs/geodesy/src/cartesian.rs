@@ -81,7 +81,11 @@ where
     }
 }
 
-impl<Unit: LengthUnit> From<Vector3<f64>> for Cartesian<Target, Unit> {
+impl<Origin, Unit> From<Vector3<f64>> for Cartesian<Origin, Unit>
+where
+    Origin: CartesianOrigin,
+    Unit: LengthUnit,
+{
     fn from(v: Vector3<f64>) -> Self {
         Self {
             coords: [
@@ -99,13 +103,6 @@ where
     Unit: LengthUnit,
 {
     fn from(graticule: Graticule<GeoCenter>) -> Self {
-        /*
-        let relative = Vector3::new(
-            f64::from(self.distance * self.yaw.cos() * self.pitch.sin()),
-            f64::from(self.distance * self.pitch.cos()),
-            f64::from(self.distance * self.yaw.sin() * self.pitch.sin()),
-        );
-        */
         let lat = f64::from(graticule.latitude);
         let lon = f64::from(graticule.longitude);
         Self {
