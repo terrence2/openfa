@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 approx = "^ 0.3"
-nalgebra = "^ 0.18"
+nalgebra = "^ 0.20"
 num-traits = "^ 0.2"

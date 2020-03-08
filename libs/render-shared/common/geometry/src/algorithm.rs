@@ -43,7 +43,7 @@ pub fn solid_angle(
         let gamma = dotp.acos();
         assert!(gamma.is_finite(), "triangle gamma is infinite");
 
-        tau.normalize();
+        tau.normalize_mut();
         tau *= gamma;
         projarea -= observer_direction.dot(&tau);
     }
