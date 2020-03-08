@@ -12,12 +12,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+/*
+use nalgebra::{Point3, Scalar, Vector3, Vector4};
+use num_traits::Float;
 
-pub mod algorithm;
-mod arrow;
-mod ico_sphere;
-mod plane;
+#[derive(Debug)]
+pub struct Plane<T: Scalar>(Vector4<T>);
 
-pub use arrow::Arrow;
-pub use ico_sphere::IcoSphere;
-pub use plane::Plane;
+impl<T: Scalar> Plane<T> {
+    pub fn from_point_and_normal(p: Point3<T>, n: Vector3<T>) -> Self {
+        let d = p.coords.dot(&n);
+        Self(Vector4::new(p, d))
+    }
+}
+*/
+pub struct Plane;

@@ -27,6 +27,7 @@ pub fn solid_angle(
     // compute projected solid area using Stoke's theorem from Improving Radiosity Solutions
     // through the Use of Analytically Determined Form Factors by Baum, Rushmeier, and Winget
     // (Eq. 9 on pg. 6 (or "330"))
+    assert!(vertices.len() > 2);
 
     // integrate over edges
     let mut projarea = 0f64;
@@ -47,13 +48,22 @@ pub fn solid_angle(
         projarea -= observer_direction.dot(&tau);
     }
 
-    return projarea / (2f64 * PI);
+    projarea / (2f64 * PI)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn it_works() {
-        assert_eq!(2 + 2, 4);
+        let p = Vector3::new(0f64, 0f64, 0f64);
+        let n = Vector3::new(0f64, 0f64, 1f64);
+        let pts = [
+            Vector3::new(0f64, 0f64, 1f64),
+            Vector3::new(1f64, 0f64, 1f64),
+            Vector3::new(0f64, 1f64, 1f64),
+        ];
+        let _sa = solid_angle(&p, &n, &pts);
     }
 }

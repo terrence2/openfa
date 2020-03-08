@@ -23,6 +23,8 @@ use wgpu;
 
 pub struct TerrainRenderPass {
     debug_patch_pipeline: wgpu::RenderPipeline,
+
+    #[allow(dead_code)]
     pipeline: wgpu::RenderPipeline,
 }
 
@@ -31,7 +33,7 @@ impl TerrainRenderPass {
         gpu: &mut GPU,
         globals_buffer: &GlobalParametersBuffer,
         atmosphere_buffer: &AtmosphereBuffer,
-        terrain_geo_buffer: &TerrainGeoBuffer,
+        _terrain_geo_buffer: &TerrainGeoBuffer,
     ) -> Fallible<Self> {
         trace!("TerrainRenderPass::new");
 
@@ -153,7 +155,7 @@ impl TerrainRenderPass {
         &self,
         rpass: &mut wgpu::RenderPass,
         globals_buffer: &GlobalParametersBuffer,
-        atmosphere_buffer: &AtmosphereBuffer,
+        _atmosphere_buffer: &AtmosphereBuffer,
         terrain_geo_buffer: &TerrainGeoBuffer,
     ) {
         rpass.set_pipeline(&self.debug_patch_pipeline);

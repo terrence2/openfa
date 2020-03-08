@@ -164,7 +164,7 @@ impl ArcBallCamera {
         }
 
         if self.in_move {
-            let sensitivity: f64 = f64::from(self.get_distance()) / 60000000.0;
+            let sensitivity: f64 = f64::from(self.get_distance()) / 60_000_000.0;
 
             let dir = self.eye.longitude;
             let lat = f64::from(degrees!(self.target.latitude)) + dir.cos() * y * sensitivity;

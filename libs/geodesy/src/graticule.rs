@@ -128,9 +128,9 @@ mod test {
         let g1 = Graticule::<GeoCenter>::from(c);
         println!("g0: {:?}", g0);
         println!("g1: {:?}", g1);
-        abs_diff_eq!(g0.latitude, g1.latitude)
-            && abs_diff_eq!(g0.longitude, g1.longitude)
-            && abs_diff_eq!(g0.distance, g1.distance)
+        abs_diff_eq!(f64::from(g0.latitude), f64::from(g1.latitude))
+            && abs_diff_eq!(f64::from(g0.longitude), f64::from(g1.longitude))
+            && abs_diff_eq!(f64::from(g0.distance), f64::from(g1.distance))
     }
 
     #[test]

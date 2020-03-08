@@ -12,11 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters, Angle, Degrees, Kilometers, Length, Meters, Radians};
+use absolute_unit::{Kilometers, Radians};
 use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
-use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
+use geodesy::{Cartesian, GeoCenter, Graticule};
 use geometry::{algorithm::solid_angle, IcoSphere};
 use gpu::GPU;
 use memoffset::offset_of;
@@ -41,7 +41,7 @@ pub struct PatchVertex {
 }
 
 impl PatchVertex {
-    //#[allow(clippy::unneeded_field_pattern)]
+    #[allow(clippy::unneeded_field_pattern)]
     pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
         let tmp = wgpu::VertexBufferDescriptor {
             stride: mem::size_of::<Self>() as wgpu::BufferAddress,
@@ -259,9 +259,9 @@ impl TerrainGeoBuffer {
 
             // TODO: Cull outside the view frustum
 
-            let v0 = &self.sphere.verts[face.i0()] * EARTH_TO_KM;
-            let v1 = &self.sphere.verts[face.i1()] * EARTH_TO_KM;
-            let v2 = &self.sphere.verts[face.i2()] * EARTH_TO_KM;
+            let v0 = self.sphere.verts[face.i0()] * EARTH_TO_KM;
+            let v1 = self.sphere.verts[face.i1()] * EARTH_TO_KM;
+            let v2 = self.sphere.verts[face.i2()] * EARTH_TO_KM;
             patches.push(PatchInfo::new(
                 0,
                 &eye_position,
