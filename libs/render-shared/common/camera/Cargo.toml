@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 log = ">= 0.4"
-nalgebra = "^ 0.18"
+nalgebra = "^ 0.20"
 absolute_unit = { path = "../../../absolute_unit" }
 geodesy = { path = "../../../geodesy" }
 command = { path = "../../../command" }

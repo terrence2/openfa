@@ -9,7 +9,7 @@ chrono = "^ 0.4"
 failure = "^ 0.1.2"
 image = "^ 0.21"
 log = "^ 0.4"
-nalgebra = "^ 0.18"
+nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }

@@ -6,7 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-nalgebra = "^ 0.18"
+nalgebra = "^ 0.20"
 absolute_unit = { path = "../absolute_unit" }
 num-traits = "^ 0.2"
 

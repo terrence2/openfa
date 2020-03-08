@@ -17,7 +17,7 @@ shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
 
 [dev-dependencies]
-nalgebra = "^ 0.18"
+nalgebra = "^ 0.20"
 camera = { path = "../../../render-shared/common/camera" }
 galaxy = { path = "../../../galaxy" }
 input = { path = "../../../render-wgpu/common/input" }

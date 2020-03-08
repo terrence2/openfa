@@ -7,7 +7,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 bitflags = "1.0"
 failure = ">= 0.1.2"
-nalgebra = "^ 0.18"
+nalgebra = "^ 0.20"
 
 [dev-dependencies]
 omnilib = { path = "../omnilib" }
