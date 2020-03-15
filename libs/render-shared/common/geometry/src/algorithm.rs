@@ -12,12 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use nalgebra::{clamp, convert, RealField, Vector3};
+use nalgebra::{clamp, convert, Point3, RealField, Vector3};
 
 pub fn solid_angle<T: RealField>(
-    observer_position: &Vector3<T>,
+    observer_position: &Point3<T>,
     observer_direction: &Vector3<T>,
-    vertices: &[Vector3<T>],
+    vertices: &[Point3<T>],
 ) -> T {
     // compute projected solid area using Stoke's theorem from Improving Radiosity Solutions
     // through the Use of Analytically Determined Form Factors by Baum, Rushmeier, and Winget

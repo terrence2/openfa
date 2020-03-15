@@ -76,7 +76,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let terrain_geo_buffer = TerrainGeoBuffer::new(300, 1, gpu.device())?;
+    let terrain_geo_buffer = TerrainGeoBuffer::new(600, 1, gpu.device())?;
     let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(

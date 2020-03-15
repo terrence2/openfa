@@ -17,10 +17,10 @@ use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use geodesy::{Cartesian, GeoCenter, Graticule};
-use geometry::{algorithm::solid_angle, IcoSphere};
+use geometry::{algorithm::solid_angle, IcoSphere, Plane};
 use gpu::GPU;
 use memoffset::offset_of;
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use std::{
     cell::RefCell,
     cmp::{Ord, Ordering},
@@ -31,6 +31,9 @@ use std::{
 };
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
+
+const EARTH_TO_KM: f64 = 6370.0;
+const EVEREST_TO_KM: f64 = 8.848_039_2;
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
@@ -126,22 +129,103 @@ impl Vertex {
 struct PatchInfo {
     level: usize,
     solid_angle: f64,
-    vertices: [Vector3<f64>; 3],
+    normal: Vector3<f64>,
+    goodness: f64,
+
+    // In geocentric, cartesian kilometers
+    pts: [Point3<f64>; 3],
 }
 
 impl PatchInfo {
     fn new(
         level: usize,
-        eye_position: &Vector3<f64>,
+        eye_position: &Point3<f64>,
         eye_direction: &Vector3<f64>,
-        vertices: [Vector3<f64>; 3],
+        pts: [Point3<f64>; 3],
     ) -> Self {
-        let solid_angle = solid_angle(&eye_position, &eye_direction, &vertices);
+        let solid_angle = solid_angle(&eye_position, &eye_direction, &pts);
+        let normal = (pts[1].coords - pts[0].coords)
+            .cross(&(pts[2].coords - pts[0].coords))
+            .normalize();
         Self {
             level,
             solid_angle,
-            vertices,
+            normal,
+            goodness: solid_angle,
+            pts,
         }
+    }
+
+    fn is_behind_plane(&self, plane: &Plane<f64>) -> bool {
+        // Patch Extent:
+        //   outer: the three planes cutting from geocenter through each pair of points in vertices.
+        //   bottom: radius of the planet
+        //   top: radius of planet from height of everest
+
+        // Two phases:
+        //   1) Convex hull over points
+        //   2) Plane-sphere for convex top area
+
+        // bottom points
+        for p in &self.pts {
+            //println!("    d: {}, {}", plane.distance(&p), plane.d());
+            if plane.distance(&p) >= 0.0 {
+                return false;
+            }
+        }
+        for p in &self.pts {
+            let top_point = p + (p.coords.normalize() * EVEREST_TO_KM);
+            println!("    p: {}", p);
+            println!("   tp: {}", top_point);
+            println!(
+                "    d: {} vs {} / d: {}",
+                plane.distance(&top_point),
+                plane.distance(&p),
+                plane.d()
+            );
+            if plane.distance(&top_point) >= 0.0 {
+                return false;
+            }
+        }
+
+        // bottom sphere -> (0,0,0)xEARTH
+        // top sphere
+
+        return true;
+    }
+
+    fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
+        for p in &self.pts {
+            if (p - eye_position).dot(&self.normal) <= -0.00001f64 {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn keep(
+        &self,
+        horizon_plane: &Plane<f64>,
+        eye_direction: &Vector3<f64>,
+        eye_position: &Point3<f64>,
+    ) -> bool {
+        // Cull back-facing
+        /*
+        if self.is_back_facing(eye_position) {
+            println!("  no - back facing");
+            return false;
+        }
+        */
+
+        // Cull below horizon
+        if self.is_behind_plane(&horizon_plane) {
+            println!("  no - below horizon");
+            return false;
+        }
+
+        // TODO: Cull outside the view frustum
+
+        return true;
     }
 }
 
@@ -149,13 +233,13 @@ impl Eq for PatchInfo {}
 
 impl PartialEq for PatchInfo {
     fn eq(&self, other: &Self) -> bool {
-        self.solid_angle == other.solid_angle
+        self.goodness == other.goodness
     }
 }
 
 impl PartialOrd for PatchInfo {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.solid_angle.partial_cmp(&other.solid_angle)
+        self.goodness.partial_cmp(&other.goodness)
     }
 }
 impl Ord for PatchInfo {
@@ -173,8 +257,6 @@ pub struct TerrainGeoBuffer {
     patch_vertex_buffer: Arc<Box<wgpu::Buffer>>,
     patch_index_buffer: wgpu::Buffer,
 }
-
-const EARTH_TO_KM: f64 = 6370.0;
 
 impl TerrainGeoBuffer {
     pub fn new(
@@ -241,75 +323,84 @@ impl TerrainGeoBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
+        use std::time::Instant;
+        let loop_start = Instant::now();
+
         let camera_target = camera.cartesian_target_position::<Kilometers>().vec64();
-        let eye_position = camera.cartesian_eye_position::<Kilometers>().vec64();
-        let eye_direction = camera_target - eye_position;
+        let eye_position = camera.cartesian_eye_position::<Kilometers>().point64();
+        let eye_direction = camera_target - eye_position.coords;
 
-        let mut patches = BinaryHeap::new();
-        for face in &self.sphere.faces {
-            // Cull back-facing
-            /*
-            let angle = face.normal.dot(&eye_direction);
-            if angle > 0f64 {
-                continue;
+        let horizon_plane = Plane::from_normal_and_distance(
+            eye_position.coords.normalize(),
+            (EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude(),
+        );
+        println!("horizon: {:?}", horizon_plane);
+
+        let loop_start = Instant::now();
+        let mut patches = BinaryHeap::with_capacity(self.num_patches);
+        for (i, face) in self.sphere.faces.iter().enumerate() {
+            let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_TO_KM);
+            let v1 = Point3::from(self.sphere.verts[face.i1()] * EARTH_TO_KM);
+            let v2 = Point3::from(self.sphere.verts[face.i2()] * EARTH_TO_KM);
+            let patch = PatchInfo::new(0, &eye_position, &eye_direction, [v0, v1, v2]);
+
+            println!("Checking {}: ", i);
+            if patch.keep(&horizon_plane, &eye_direction, &eye_position) {
+                patches.push(patch);
             }
-            */
-
-            // TODO: Cull below horizon
-
-            // TODO: Cull outside the view frustum
-
-            let v0 = self.sphere.verts[face.i0()] * EARTH_TO_KM;
-            let v1 = self.sphere.verts[face.i1()] * EARTH_TO_KM;
-            let v2 = self.sphere.verts[face.i2()] * EARTH_TO_KM;
-            patches.push(PatchInfo::new(
-                0,
-                &eye_position,
-                &eye_direction,
-                [v0, v1, v2],
-            ))
         }
+        let elapsed = Instant::now() - loop_start;
+        println!(
+            "lvl0: {:?}, {:?}us per iteration - {} patches",
+            elapsed,
+            elapsed.as_micros() / self.sphere.faces.len() as u128,
+            patches.len(),
+        );
 
         // Split patches until we have an optimal equal-area partitioning.
-        while patches.len() < self.num_patches - 4 {
+        /*
+        let loop_start = Instant::now();
+        while patches.len() > 0 && patches.len() < self.num_patches - 4 {
             let patch = patches.pop().unwrap();
-            let [v0, v1, v2] = patch.vertices;
-            let a = IcoSphere::bisect_edge(&v0, &v1).normalize() * EARTH_TO_KM;
-            let b = IcoSphere::bisect_edge(&v1, &v2).normalize() * EARTH_TO_KM;
-            let c = IcoSphere::bisect_edge(&v2, &v0).normalize() * EARTH_TO_KM;
+            let [v0, v1, v2] = patch.pts;
+            let a = Point3::from(
+                IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_TO_KM,
+            );
+            let b = Point3::from(
+                IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_TO_KM,
+            );
+            let c = Point3::from(
+                IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_TO_KM,
+            );
 
-            patches.push(PatchInfo::new(
-                patch.level + 1,
-                &eye_position,
-                &eye_direction,
-                [v0, a, c],
-            ));
-            patches.push(PatchInfo::new(
-                patch.level + 1,
-                &eye_position,
-                &eye_direction,
-                [v1, b, a],
-            ));
-            patches.push(PatchInfo::new(
-                patch.level + 1,
-                &eye_position,
-                &eye_direction,
-                [v2, c, b],
-            ));
-            patches.push(PatchInfo::new(
-                patch.level + 1,
-                &eye_position,
-                &eye_direction,
-                [a, b, c],
-            ));
+            let patch0 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v0, a, c]);
+            let patch1 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v1, b, a]);
+            let patch2 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v2, c, b]);
+            let patch3 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [a, b, c]);
+
+            if patch0.keep(&horizon_plane, &eye_direction, &eye_position) {
+                patches.push(patch0);
+            }
+            if patch1.keep(&horizon_plane, &eye_direction, &eye_position) {
+                patches.push(patch1);
+            }
+            if patch2.keep(&horizon_plane, &eye_direction, &eye_position) {
+                patches.push(patch2);
+            }
+            if patch3.keep(&horizon_plane, &eye_direction, &eye_position) {
+                patches.push(patch3);
+            }
         }
+        println!("split: {:?}", Instant::now() - loop_start);
+        */
 
-        let mut verts = Vec::new();
+        let loop_start = Instant::now();
+        let mut verts = Vec::with_capacity(3 * self.num_patches);
         for patch in &patches {
-            let [v0, v1, v2] = patch.vertices;
-            let n0 = v0.normalize();
-            let n1 = v1.normalize();
-            let n2 = v2.normalize();
+            let [v0, v1, v2] = patch.pts;
+            let n0 = v0.coords.normalize();
+            let n1 = v1.coords.normalize();
+            let n2 = v2.coords.normalize();
             verts.push(PatchVertex {
                 position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
                 normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
@@ -335,6 +426,16 @@ impl TerrainGeoBuffer {
                 .lat_lon::<Radians, f32>(),
             });
         }
+        println!("verts: {:?}", Instant::now() - loop_start);
+        let loop_start = Instant::now();
+
+        while verts.len() < 3 * self.num_patches {
+            verts.push(PatchVertex {
+                position: [0f32; 3],
+                normal: [0f32; 3],
+                graticule: [0f32; 2],
+            });
+        }
         let vertex_buffer = gpu
             .device()
             .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
@@ -344,6 +445,8 @@ impl TerrainGeoBuffer {
             self.patch_vertex_buffer.clone(),
             (mem::size_of::<PatchVertex>() * verts.len()) as wgpu::BufferAddress,
         ));
+
+        println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())
     }
 

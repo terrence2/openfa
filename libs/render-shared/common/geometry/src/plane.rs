@@ -29,6 +29,10 @@ impl<T: RealField> Plane<T> {
         }
     }
 
+    pub fn from_normal_and_distance(normal: Vector3<T>, d: T) -> Self {
+        Self { normal, d }
+    }
+
     pub fn point_on_plane(&self, p: &Point3<T>) -> bool {
         relative_eq!(self.normal.dot(&p.coords) - self.d, T::zero())
     }
@@ -39,6 +43,10 @@ impl<T: RealField> Plane<T> {
 
     pub fn closest_point_on_plane(&self, p: &Point3<T>) -> Point3<T> {
         p - (self.normal * self.distance(p))
+    }
+
+    pub fn d(&self) -> T {
+        self.d
     }
 }
 
