@@ -15,7 +15,7 @@
 use approx::relative_eq;
 use nalgebra::{Point3, RealField, Vector3};
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Plane<T: RealField> {
     normal: Vector3<T>,
     d: T,
@@ -43,6 +43,10 @@ impl<T: RealField> Plane<T> {
 
     pub fn closest_point_on_plane(&self, p: &Point3<T>) -> Point3<T> {
         p - (self.normal * self.distance(p))
+    }
+
+    pub fn normal(&self) -> &Vector3<T> {
+        &self.normal
     }
 
     pub fn d(&self) -> T {

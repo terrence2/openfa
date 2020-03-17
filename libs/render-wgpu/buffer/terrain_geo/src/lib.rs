@@ -17,7 +17,7 @@ use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use geodesy::{Cartesian, GeoCenter, Graticule};
-use geometry::{algorithm::solid_angle, IcoSphere, Plane};
+use geometry::{algorithm::solid_angle, intersect, IcoSphere, Plane, Sphere};
 use gpu::GPU;
 use memoffset::offset_of;
 use nalgebra::{Point3, Vector3};
@@ -188,8 +188,19 @@ impl PatchInfo {
             }
         }
 
-        // bottom sphere -> (0,0,0)xEARTH
         // top sphere
+        // sphere x plane
+        //   -> above
+        //   -> below
+        //   -> circle
+        let top_sphere = Sphere::from_center_and_radius(
+            &Point3::new(0f64, 0f64, 0f64),
+            EARTH_TO_KM + EVEREST_TO_KM,
+        );
+        let intersection = intersect::sphere_vs_plane(&top_sphere, &plane);
+        if let Some(circle) = intersection.intersection {
+            println!("intersect: {}", intersection.distance);
+        }
 
         return true;
     }

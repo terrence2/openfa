@@ -12,17 +12,20 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::Plane;
+use nalgebra::RealField;
 
-pub mod algorithm;
-mod arrow;
-mod circle;
-mod ico_sphere;
-pub mod intersect;
-mod plane;
-mod sphere;
+#[derive(Debug)]
+pub struct Circle<T: RealField> {
+    plane: Plane<T>,
+    radius: T,
+}
 
-pub use arrow::Arrow;
-pub use circle::Circle;
-pub use ico_sphere::IcoSphere;
-pub use plane::Plane;
-pub use sphere::Sphere;
+impl<T: RealField> Circle<T> {
+    pub fn from_plane_and_radius(plane: &Plane<T>, radius: T) -> Self {
+        Self {
+            plane: *plane,
+            radius,
+        }
+    }
+}

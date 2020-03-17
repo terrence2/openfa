@@ -12,17 +12,27 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use nalgebra::{Point3, RealField};
 
-pub mod algorithm;
-mod arrow;
-mod circle;
-mod ico_sphere;
-pub mod intersect;
-mod plane;
-mod sphere;
+#[derive(Clone, Copy, Debug)]
+pub struct Sphere<T: RealField> {
+    center: Point3<T>,
+    radius: T,
+}
 
-pub use arrow::Arrow;
-pub use circle::Circle;
-pub use ico_sphere::IcoSphere;
-pub use plane::Plane;
-pub use sphere::Sphere;
+impl<T: RealField> Sphere<T> {
+    pub fn from_center_and_radius(center: &Point3<T>, radius: T) -> Self {
+        Self {
+            center: *center,
+            radius,
+        }
+    }
+
+    pub fn center(&self) -> &Point3<T> {
+        &self.center
+    }
+
+    pub fn radius(&self) -> T {
+        self.radius
+    }
+}
