@@ -17,7 +17,12 @@ use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use geodesy::{Cartesian, GeoCenter, Graticule};
-use geometry::{algorithm::solid_angle, intersect, IcoSphere, Plane, Sphere};
+use geometry::{
+    algorithm::solid_angle,
+    intersect,
+    intersect::{PlaneSide, SpherePlaneIntersection},
+    IcoSphere, Plane, Sphere,
+};
 use gpu::GPU;
 use memoffset::offset_of;
 use nalgebra::{Point3, Vector3};
@@ -129,11 +134,20 @@ impl Vertex {
 struct PatchInfo {
     level: usize,
     solid_angle: f64,
-    normal: Vector3<f64>,
     goodness: f64,
+    normal: Vector3<f64>, // at center of patch
 
     // In geocentric, cartesian kilometers
     pts: [Point3<f64>; 3],
+
+    // Planes
+    planes: [Plane<f64>; 3],
+}
+
+fn compute_normal(p0: &Point3<f64>, p1: &Point3<f64>, p2: &Point3<f64>) -> Vector3<f64> {
+    (p1.coords - p0.coords)
+        .cross(&(p2.coords - p0.coords))
+        .normalize()
 }
 
 impl PatchInfo {
@@ -147,12 +161,19 @@ impl PatchInfo {
         let normal = (pts[1].coords - pts[0].coords)
             .cross(&(pts[2].coords - pts[0].coords))
             .normalize();
+        let origin = Point3::new(0f64, 0f64, 0f64);
+        let planes = [
+            Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[0], &origin, &pts[1])),
+            Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[1], &origin, &pts[2])),
+            Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[2], &origin, &pts[0])),
+        ];
         Self {
             level,
             solid_angle,
-            normal,
             goodness: solid_angle,
+            normal,
             pts,
+            planes,
         }
     }
 
@@ -168,38 +189,48 @@ impl PatchInfo {
 
         // bottom points
         for p in &self.pts {
-            //println!("    d: {}, {}", plane.distance(&p), plane.d());
-            if plane.distance(&p) >= 0.0 {
+            if plane.distance_to_point(&p) >= 0.0 {
                 return false;
             }
         }
         for p in &self.pts {
             let top_point = p + (p.coords.normalize() * EVEREST_TO_KM);
-            println!("    p: {}", p);
-            println!("   tp: {}", top_point);
-            println!(
-                "    d: {} vs {} / d: {}",
-                plane.distance(&top_point),
-                plane.distance(&p),
-                plane.d()
-            );
-            if plane.distance(&top_point) >= 0.0 {
+            if plane.distance_to_point(&top_point) >= 0.0 {
                 return false;
             }
         }
 
-        // top sphere
-        // sphere x plane
-        //   -> above
-        //   -> below
-        //   -> circle
+        // plane vs top sphere
         let top_sphere = Sphere::from_center_and_radius(
             &Point3::new(0f64, 0f64, 0f64),
             EARTH_TO_KM + EVEREST_TO_KM,
         );
         let intersection = intersect::sphere_vs_plane(&top_sphere, &plane);
-        if let Some(circle) = intersection.intersection {
-            println!("intersect: {}", intersection.distance);
+        match intersection {
+            SpherePlaneIntersection::NoIntersection { side, .. } => {
+                panic!("NOTE: for horizon test, we are, by definition, slicing the planet");
+                return side == PlaneSide::Below;
+            }
+            SpherePlaneIntersection::Intersection(ref circle) => {
+                // For each plane there are two cases:
+                //   1) if the circle center is outside the plane, then the circle edge can either
+                //      not reach the plane, or reaches an edge. If it reached past an edge, it
+                //      would have a point on top of the intersection plane, which we've proved
+                //      above it does not.
+                //   2) if the circle center is inside the plane, then the circle edge can either
+                //      not reach the plane (intersecting), or reaches past the plane edge, but not
+                //      past the other two sides (intersecting), or reaches past both other sides,
+                //      non-intersecting.
+                //
+                //   We can check both cases by finding the point(s) that the circle intersects the
+                //   side plane and then checking that the intersection is inside the other two
+                //   two planes.
+                //
+                //   We can stop and return false at the first match.
+                let intersect0 = intersect::circle_vs_plane(circle, &self.planes[0]);
+                println!("MORE WORK NEEDED");
+                return false;
+            }
         }
 
         return true;

@@ -12,34 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::Plane;
-use nalgebra::{Point3, RealField};
+mod circle_plane;
+mod sphere_plane;
 
-#[derive(Debug, Copy, Clone)]
-pub struct Circle<T: RealField> {
-    plane: Plane<T>,
-    center: Point3<T>,
-    radius: T,
-}
-
-impl<T: RealField> Circle<T> {
-    pub fn from_plane_center_and_radius(plane: &Plane<T>, center: &Point3<T>, radius: T) -> Self {
-        Self {
-            plane: *plane,
-            center: *center,
-            radius,
-        }
-    }
-
-    pub fn radius(&self) -> T {
-        self.radius
-    }
-
-    pub fn center(&self) -> &Point3<T> {
-        &self.center
-    }
-
-    pub fn plane(&self) -> &Plane<T> {
-        &self.plane
-    }
-}
+pub use circle_plane::{circle_vs_plane, CirclePlaneIntersection};
+pub use sphere_plane::{sphere_vs_plane, PlaneSide, SpherePlaneIntersection};

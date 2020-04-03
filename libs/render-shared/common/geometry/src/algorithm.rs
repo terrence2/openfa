@@ -52,24 +52,24 @@ mod tests {
 
     #[test]
     fn it_works_64() {
-        let p = Vector3::new(0f64, 0f64, 0f64);
+        let p = Point3::new(0f64, 0f64, 0f64);
         let n = Vector3::new(0f64, 0f64, 1f64);
         let pts = [
-            Vector3::new(0f64, 0f64, 1f64),
-            Vector3::new(1f64, 0f64, 1f64),
-            Vector3::new(0f64, 1f64, 1f64),
+            Point3::new(0f64, 0f64, 1f64),
+            Point3::new(1f64, 0f64, 1f64),
+            Point3::new(0f64, 1f64, 1f64),
         ];
         let _sa = solid_angle(&p, &n, &pts);
     }
 
     #[test]
     fn it_works_32() {
-        let p = Vector3::new(0f32, 0f32, 0f32);
+        let p = Point3::new(0f32, 0f32, 0f32);
         let n = Vector3::new(0f32, 0f32, 1f32);
         let pts = [
-            Vector3::new(0f32, 0f32, 1f32),
-            Vector3::new(1f32, 0f32, 1f32),
-            Vector3::new(0f32, 1f32, 1f32),
+            Point3::new(0f32, 0f32, 1f32),
+            Point3::new(1f32, 0f32, 1f32),
+            Point3::new(0f32, 1f32, 1f32),
         ];
         let _sa = solid_angle(&p, &n, &pts);
     }

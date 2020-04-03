@@ -18,39 +18,43 @@ use nalgebra::{Point3, RealField, Vector3};
 #[derive(Clone, Copy, Debug)]
 pub struct Plane<T: RealField> {
     normal: Vector3<T>,
-    d: T,
+    distance: T,
 }
 
 impl<T: RealField> Plane<T> {
     pub fn from_point_and_normal(p: &Point3<T>, n: &Vector3<T>) -> Self {
         Self {
             normal: n.to_owned(),
-            d: p.coords.dot(n),
+            distance: p.coords.dot(n),
         }
     }
 
-    pub fn from_normal_and_distance(normal: Vector3<T>, d: T) -> Self {
-        Self { normal, d }
+    pub fn from_normal_and_distance(normal: Vector3<T>, distance: T) -> Self {
+        Self { normal, distance }
     }
 
     pub fn point_on_plane(&self, p: &Point3<T>) -> bool {
-        relative_eq!(self.normal.dot(&p.coords) - self.d, T::zero())
+        relative_eq!(self.normal.dot(&p.coords) - self.distance, T::zero())
     }
 
-    pub fn distance(&self, p: &Point3<T>) -> T {
-        self.normal.dot(&p.coords) - self.d
+    pub fn distance_to_point(&self, p: &Point3<T>) -> T {
+        self.normal.dot(&p.coords) - self.distance
     }
 
     pub fn closest_point_on_plane(&self, p: &Point3<T>) -> Point3<T> {
-        p - (self.normal * self.distance(p))
+        p - (self.normal * self.distance_to_point(p))
     }
 
     pub fn normal(&self) -> &Vector3<T> {
         &self.normal
     }
 
+    pub fn distance(&self) -> T {
+        self.distance
+    }
+
     pub fn d(&self) -> T {
-        self.d
+        -self.distance
     }
 }
 
@@ -77,8 +81,14 @@ mod tests {
             &Vector3::new(0f64, 0f64, 1f64),
         );
 
-        assert_relative_eq!(-1f64, plane.distance(&Point3::new(1f64, 1f64, -1f64)));
-        assert_relative_eq!(1f64, plane.distance(&Point3::new(-1f64, -1f64, 1f64)));
+        assert_relative_eq!(
+            -1f64,
+            plane.distance_to_point(&Point3::new(1f64, 1f64, -1f64))
+        );
+        assert_relative_eq!(
+            1f64,
+            plane.distance_to_point(&Point3::new(-1f64, -1f64, 1f64))
+        );
     }
 
     #[test]
