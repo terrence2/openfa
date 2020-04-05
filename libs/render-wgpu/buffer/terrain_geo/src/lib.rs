@@ -238,7 +238,7 @@ impl PatchInfo {
         match intersection {
             SpherePlaneIntersection::NoIntersection { side, .. } => side == PlaneSide::Above,
             SpherePlaneIntersection::Intersection(ref circle) => {
-                if let Some(mut verts) = dbg_verts {
+                if let Some(verts) = dbg_verts {
                     for i in 0..DBG_VERT_COUNT {
                         let a = (i as f64 / DBG_VERT_COUNT as f64) * 2f64 * PI;
                         let p = circle.point_at_angle(a);
@@ -336,9 +336,9 @@ impl PatchInfo {
         &self,
         camera: &ArcBallCamera,
         horizon_plane: &Plane<f64>,
-        eye_direction: &Vector3<f64>,
+        _eye_direction: &Vector3<f64>,
         eye_position: &Point3<f64>,
-        verts: Option<&mut Vec<DebugVertex>>,
+        _verts: Option<&mut Vec<DebugVertex>>,
         show_msgs: bool,
     ) -> bool {
         // Cull back-facing
@@ -348,22 +348,17 @@ impl PatchInfo {
         }
 
         // Cull below horizon
-        if self.is_behind_plane(&horizon_plane, verts, show_msgs) {
+        if self.is_behind_plane(&horizon_plane, None, show_msgs) {
             //println!("  no - below horizon");
             return false;
         }
 
-        // TODO: Cull outside the view frustum
-        /*
-        for (i, plane) in camera.world_space_frustum().iter().enumerate() {
-            if self.is_behind_plane(plane, show_msgs) {
-                if show_msgs {
-                    println!("  no - behind frustum plane {}", i);
-                }
+        // Cull outside the view frustum
+        for plane in &camera.world_space_frustum() {
+            if self.is_behind_plane(plane, None, show_msgs) {
                 return false;
             }
         }
-        */
 
         return true;
     }
@@ -445,7 +440,6 @@ impl TerrainGeoBuffer {
             dbg_indices.push(i);
         }
         dbg_indices.push(0);
-        println!("dbg indices: {:?}", dbg_indices);
         let dbg_index_buffer = device
             .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&dbg_indices);
@@ -490,7 +484,6 @@ impl TerrainGeoBuffer {
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         use std::time::Instant;
-        let loop_start = Instant::now();
 
         let camera_target = camera.cartesian_target_position::<Kilometers>().vec64();
         let eye_position = camera.cartesian_eye_position::<Kilometers>().point64();
@@ -536,14 +529,12 @@ impl TerrainGeoBuffer {
             }
         }
         let elapsed = Instant::now() - loop_start;
-        /*
         println!(
             "lvl0: {:?}, {:?}us per iteration - {} patches",
             elapsed,
             elapsed.as_micros() / self.sphere.faces.len() as u128,
             patches.len(),
         );
-        */
 
         // Split patches until we have an optimal equal-area partitioning.
         /*
@@ -614,7 +605,7 @@ impl TerrainGeoBuffer {
                 .lat_lon::<Radians, f32>(),
             });
         }
-        //println!("verts: {:?}", Instant::now() - loop_start);
+        println!("verts: {:?}", Instant::now() - loop_start);
         let loop_start = Instant::now();
 
         while verts.len() < 3 * self.num_patches {
@@ -650,7 +641,7 @@ impl TerrainGeoBuffer {
             (mem::size_of::<DebugVertex>() * dbg_verts.len()) as wgpu::BufferAddress,
         ));
 
-        //println!("dt: {:?}", Instant::now() - loop_start);
+        println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())
     }
 

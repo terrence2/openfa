@@ -152,9 +152,27 @@ impl ArcBallCamera {
 
         let m = self.projection.as_matrix() * view.to_homogeneous();
 
-        let c3 = m.row(3) + m.row(2);
-        let near = Plane::from_normal_and_distance(c3.transpose().xyz(), c3[3]);
-        [near, near, near, near, near]
+        let lp = (m.row(3) + m.row(0)).transpose();
+        let lm = lp.xyz().magnitude();
+        let left = Plane::from_normal_and_distance(lp.xyz() / lm, -lp[3] / lm);
+
+        let rp = (m.row(3) - m.row(0)).transpose();
+        let rm = rp.xyz().magnitude();
+        let right = Plane::from_normal_and_distance(rp.xyz() / rm, -rp[3] / rm);
+
+        let bp = (m.row(3) + m.row(1)).transpose();
+        let bm = bp.xyz().magnitude();
+        let bottom = Plane::from_normal_and_distance(bp.xyz() / bm, -bp[3] / bm);
+
+        let tp = (m.row(3) - m.row(1)).transpose();
+        let tm = tp.xyz().magnitude();
+        let top = Plane::from_normal_and_distance(tp.xyz() / tm, -tp[3] / tm);
+
+        let np = (m.row(3) + m.row(2)).transpose();
+        let nm = np.xyz().magnitude();
+        let near = Plane::from_normal_and_distance(np.xyz() / nm, -np[3] / nm);
+
+        [left, right, bottom, top, near]
     }
 
     //pub fn eye_position_relative_to_tile(&self, origin: Position<GeoSurface>) -> Point3<f64> {
