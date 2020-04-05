@@ -253,7 +253,6 @@ impl PatchInfo {
                         });
                     }
                 }
-
                 for (i, plane) in self.planes.iter().enumerate() {
                     let intersect = intersect::circle_vs_plane(circle, plane, SIDEDNESS_OFFSET);
                     match intersect {
@@ -335,6 +334,7 @@ impl PatchInfo {
 
     fn keep(
         &self,
+        camera: &ArcBallCamera,
         horizon_plane: &Plane<f64>,
         eye_direction: &Vector3<f64>,
         eye_position: &Point3<f64>,
@@ -354,6 +354,16 @@ impl PatchInfo {
         }
 
         // TODO: Cull outside the view frustum
+        /*
+        for (i, plane) in camera.world_space_frustum().iter().enumerate() {
+            if self.is_behind_plane(plane, show_msgs) {
+                if show_msgs {
+                    println!("  no - behind frustum plane {}", i);
+                }
+                return false;
+            }
+        }
+        */
 
         return true;
     }
@@ -488,7 +498,7 @@ impl TerrainGeoBuffer {
 
         let horizon_plane = Plane::from_normal_and_distance(
             eye_position.coords.normalize(),
-            (EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude(),
+            (((EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude()) - 100f64).min(0f64),
         );
 
         let loop_start = Instant::now();
@@ -503,6 +513,7 @@ impl TerrainGeoBuffer {
             //println!("Checking {}: ", i);
             if i == 0 {
                 if patch.keep(
+                    camera,
                     &horizon_plane,
                     &eye_direction,
                     &eye_position,
@@ -512,7 +523,14 @@ impl TerrainGeoBuffer {
                     patches.push(patch);
                 }
             } else {
-                if patch.keep(&horizon_plane, &eye_direction, &eye_position, None, false) {
+                if patch.keep(
+                    camera,
+                    &horizon_plane,
+                    &eye_direction,
+                    &eye_position,
+                    None,
+                    false,
+                ) {
                     patches.push(patch);
                 }
             }
