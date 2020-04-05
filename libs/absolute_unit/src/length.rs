@@ -17,7 +17,7 @@ use approx::AbsDiffEq;
 use std::{
     fmt,
     marker::PhantomData,
-    ops::{Add, Div, DivAssign, Mul, MulAssign, Sub},
+    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign},
 };
 
 pub trait LengthUnit: Copy {
@@ -70,6 +70,16 @@ where
     }
 }
 
+impl<UnitA, UnitB> AddAssign<Length<UnitA>> for Length<UnitB>
+where
+    UnitA: LengthUnit,
+    UnitB: LengthUnit,
+{
+    fn add_assign(&mut self, other: Length<UnitA>) {
+        self.nm += other.nm;
+    }
+}
+
 impl<UnitA, UnitB> Sub<Length<UnitA>> for Length<UnitB>
 where
     UnitA: LengthUnit,
@@ -82,6 +92,16 @@ where
             nm: self.nm - other.nm,
             phantom: PhantomData,
         }
+    }
+}
+
+impl<UnitA, UnitB> SubAssign<Length<UnitA>> for Length<UnitB>
+where
+    UnitA: LengthUnit,
+    UnitB: LengthUnit,
+{
+    fn sub_assign(&mut self, other: Length<UnitA>) {
+        self.nm -= other.nm;
     }
 }
 

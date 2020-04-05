@@ -98,6 +98,23 @@ where
     }
 }
 
+impl<Origin, Unit> From<Point3<f64>> for Cartesian<Origin, Unit>
+where
+    Origin: CartesianOrigin,
+    Unit: LengthUnit,
+{
+    fn from(v: Point3<f64>) -> Self {
+        Self {
+            coords: [
+                Length::<Unit>::from(v[0]),
+                Length::<Unit>::from(v[1]),
+                Length::<Unit>::from(v[2]),
+            ],
+            phantom: PhantomData,
+        }
+    }
+}
+
 impl<Unit> From<Graticule<GeoCenter>> for Cartesian<GeoCenter, Unit>
 where
     Unit: LengthUnit,

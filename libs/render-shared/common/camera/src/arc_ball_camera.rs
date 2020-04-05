@@ -16,6 +16,7 @@ use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters,
 use command::{Bindings, Command};
 use failure::{ensure, Fallible};
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
+use geometry::Plane;
 use nalgebra::{Perspective3, Unit as NUnit, UnitQuaternion, Vector3};
 use std::f64::consts::PI;
 
@@ -134,6 +135,44 @@ impl ArcBallCamera {
             self.z_near.into(),
             self.z_far.into(),
         )
+    }
+
+    pub fn world_space_frustum(&self) -> [Plane<f64>; 5] {
+        // Taken from this paper:
+        //   https://www.gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf
+
+        use absolute_unit::Kilometers;
+        use nalgebra::Isometry3;
+        let eye = self.cartesian_eye_position::<Kilometers>();
+        let view = Isometry3::look_at_rh(
+            &eye.point64(),
+            &(eye + self.forward::<Kilometers>()).point64(),
+            &self.up::<Kilometers>().vec64(),
+        );
+
+        let m = self.projection.as_matrix() * view.to_homogeneous();
+
+        let lp = (m.row(3) + m.row(0)).transpose();
+        let lm = lp.xyz().magnitude();
+        let left = Plane::from_normal_and_distance(lp.xyz() / lm, -lp[3] / lm);
+
+        let rp = (m.row(3) - m.row(0)).transpose();
+        let rm = rp.xyz().magnitude();
+        let right = Plane::from_normal_and_distance(rp.xyz() / rm, -rp[3] / rm);
+
+        let bp = (m.row(3) + m.row(1)).transpose();
+        let bm = bp.xyz().magnitude();
+        let bottom = Plane::from_normal_and_distance(bp.xyz() / bm, -bp[3] / bm);
+
+        let tp = (m.row(3) - m.row(1)).transpose();
+        let tm = tp.xyz().magnitude();
+        let top = Plane::from_normal_and_distance(tp.xyz() / tm, -tp[3] / tm);
+
+        let np = (m.row(3) + m.row(2)).transpose();
+        let nm = np.xyz().magnitude();
+        let near = Plane::from_normal_and_distance(np.xyz() / nm, -np[3] / nm);
+
+        [left, right, bottom, top, near]
     }
 
     //pub fn eye_position_relative_to_tile(&self, origin: Position<GeoSurface>) -> Point3<f64> {

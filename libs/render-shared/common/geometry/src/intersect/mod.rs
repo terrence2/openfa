@@ -12,17 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod circle_plane;
+mod sphere_plane;
 
-pub mod algorithm;
-mod arrow;
-mod circle;
-mod ico_sphere;
-pub mod intersect;
-mod plane;
-mod sphere;
-
-pub use arrow::Arrow;
-pub use circle::Circle;
-pub use ico_sphere::IcoSphere;
-pub use plane::Plane;
-pub use sphere::Sphere;
+pub use circle_plane::{circle_vs_plane, CirclePlaneIntersection};
+pub use sphere_plane::{sphere_vs_plane, PlaneSide, SpherePlaneIntersection};

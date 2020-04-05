@@ -12,17 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#version 450
+#include <common/shader_globals/include/global.glsl>
+#include <buffer/global_data/include/global.glsl>
 
-pub mod algorithm;
-mod arrow;
-mod circle;
-mod ico_sphere;
-pub mod intersect;
-mod plane;
-mod sphere;
+layout(location = 0) in vec4 v_color;
+layout(location = 0) out vec4 f_color;
 
-pub use arrow::Arrow;
-pub use circle::Circle;
-pub use ico_sphere::IcoSphere;
-pub use plane::Plane;
-pub use sphere::Sphere;
+void
+main()
+{
+    f_color = v_color;
+}

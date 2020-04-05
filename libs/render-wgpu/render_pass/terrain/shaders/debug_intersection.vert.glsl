@@ -12,17 +12,19 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#version 450
+#include <common/shader_globals/include/global.glsl>
+#include <common/shader_globals/include/quaternion.glsl>
+#include <buffer/global_data/include/library.glsl>
 
-pub mod algorithm;
-mod arrow;
-mod circle;
-mod ico_sphere;
-pub mod intersect;
-mod plane;
-mod sphere;
+#define EARTH_TO_KM 6370.0
 
-pub use arrow::Arrow;
-pub use circle::Circle;
-pub use ico_sphere::IcoSphere;
-pub use plane::Plane;
-pub use sphere::Sphere;
+layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 color;
+
+layout(location = 0) out smooth vec4 v_color;
+
+void main() {
+    v_color = color;
+    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * position;
+}
