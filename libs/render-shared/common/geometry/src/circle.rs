@@ -49,6 +49,6 @@ impl<T: RealField> Circle<T> {
         let p0 = perpendicular_vector(self.plane.normal());
         let p = p0 * self.radius;
         let q = UnitQuaternion::from_axis_angle(&Unit::new_unchecked(*self.plane.normal()), angle);
-        return self.center + (q * p);
+        self.center + (q * p)
     }
 }

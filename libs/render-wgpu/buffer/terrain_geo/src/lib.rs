@@ -215,20 +215,19 @@ impl PatchInfo {
         //   1) Convex hull over points
         //   2) Plane-sphere for convex top area
 
-        /*
         // bottom points
         for p in &self.pts {
-            if plane.distance_to_point(&p) >= 0.0 {
+            if plane.point_is_in_front_with_offset(&p, SIDEDNESS_OFFSET) {
                 return false;
             }
         }
+        // top points
         for p in &self.pts {
             let top_point = p + (p.coords.normalize() * EVEREST_TO_KM);
-            if plane.distance_to_point(&top_point) >= 0.0 {
+            if plane.point_is_in_front_with_offset(&top_point, SIDEDNESS_OFFSET) {
                 return false;
             }
         }
-        */
 
         // plane vs top sphere
         let top_sphere = Sphere::from_center_and_radius(
@@ -236,31 +235,12 @@ impl PatchInfo {
             EARTH_TO_KM + EVEREST_TO_KM,
         );
         let intersection = intersect::sphere_vs_plane(&top_sphere, &plane);
-        return match intersection {
+        match intersection {
             SpherePlaneIntersection::NoIntersection { side, .. } => {
                 panic!("NOTE: for horizon test, we are, by definition, slicing the planet");
                 side == PlaneSide::Below
             }
             SpherePlaneIntersection::Intersection(ref circle) => {
-                // There are three planes on the sides and one on the bottom -- the top plane
-                // of the convex hull. If any of the circle-plane intersection points are inside
-                // of all 4 planes, then there is an intersection.
-                //
-                // For each plane there are two cases:
-                //   1) if the circle center is outside the planes, then the circle edge can either
-                //      not reach a plane, or reaches an edge. If it reached past an edge, it
-                //      would have a point on top of the intersection plane, which we've proved
-                //      above it does not.
-                //   2) if the circle center is inside the plane, then the circle edge can either
-                //      not reach the plane (intersecting), or reaches past the plane edge, but not
-                //      past the other two sides (intersecting), or reaches past both other sides,
-                //      non-intersecting.
-                //
-                //   We can check both cases by finding the point(s) that the circle intersects the
-                //   side plane and then checking that the intersection is inside the other two
-                //   two planes.
-                //
-                //   We can stop and return false at the first match.
                 if let Some(mut verts) = dbg_verts {
                     for i in 0..DBG_VERT_COUNT {
                         let a = (i as f64 / DBG_VERT_COUNT as f64) * 2f64 * PI;
@@ -335,7 +315,7 @@ impl PatchInfo {
                 // No test was in front of the plane, so we are fully behind it.
                 true
             }
-        };
+        }
     }
 
     fn point_is_in_cone(&self, point: &Point3<f64>) -> bool {
@@ -512,15 +492,9 @@ impl TerrainGeoBuffer {
         let eye_direction = camera_target - eye_position.coords;
 
         let horizon_plane = Plane::from_normal_and_distance(
-            camera_target.normalize(),
-            (EARTH_TO_KM * EARTH_TO_KM) / camera_target.magnitude(),
-        );
-        /*
-        let horizon_plane = Plane::from_normal_and_distance(
             eye_position.coords.normalize(),
             (EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude(),
         );
-        */
 
         let loop_start = Instant::now();
         let mut dbg_verts = Vec::new();
