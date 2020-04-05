@@ -236,10 +236,7 @@ impl PatchInfo {
         );
         let intersection = intersect::sphere_vs_plane(&top_sphere, &plane);
         match intersection {
-            SpherePlaneIntersection::NoIntersection { side, .. } => {
-                panic!("NOTE: for horizon test, we are, by definition, slicing the planet");
-                side == PlaneSide::Below
-            }
+            SpherePlaneIntersection::NoIntersection { side, .. } => side == PlaneSide::Above,
             SpherePlaneIntersection::Intersection(ref circle) => {
                 if let Some(mut verts) = dbg_verts {
                     for i in 0..DBG_VERT_COUNT {
@@ -345,12 +342,10 @@ impl PatchInfo {
         show_msgs: bool,
     ) -> bool {
         // Cull back-facing
-        /*
         if self.is_back_facing(eye_position) {
-            println!("  no - back facing");
+            // println!("  no - back facing");
             return false;
         }
-        */
 
         // Cull below horizon
         if self.is_behind_plane(&horizon_plane, verts, show_msgs) {
