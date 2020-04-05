@@ -20,7 +20,7 @@ use geodesy::{Cartesian, GeoCenter, Graticule};
 use geometry::{
     algorithm::solid_angle,
     intersect,
-    intersect::{PlaneSide, SpherePlaneIntersection},
+    intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
     IcoSphere, Plane, Sphere,
 };
 use gpu::GPU;
@@ -30,6 +30,7 @@ use std::{
     cell::RefCell,
     cmp::{Ord, Ordering},
     collections::BinaryHeap,
+    f64::consts::PI,
     mem,
     ops::Range,
     sync::Arc,
@@ -39,6 +40,8 @@ use zerocopy::{AsBytes, FromBytes};
 
 const EARTH_TO_KM: f64 = 6370.0;
 const EVEREST_TO_KM: f64 = 8.848_039_2;
+
+const DBG_VERT_COUNT: usize = 1024;
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
@@ -99,11 +102,12 @@ impl PatchVertex {
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
-pub struct Vertex {
+pub struct DebugVertex {
     position: [f32; 4],
+    color: [f32; 4],
 }
 
-impl Vertex {
+impl DebugVertex {
     #[allow(clippy::unneeded_field_pattern)]
     pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
         let tmp = wgpu::VertexBufferDescriptor {
@@ -116,15 +120,25 @@ impl Vertex {
                     offset: 0,
                     shader_location: 0,
                 },
+                // color
+                wgpu::VertexAttributeDescriptor {
+                    format: wgpu::VertexFormat::Float4,
+                    offset: 16,
+                    shader_location: 1,
+                },
             ],
         };
 
         assert_eq!(
             tmp.attributes[0].offset,
-            offset_of!(Vertex, position) as wgpu::BufferAddress
+            offset_of!(DebugVertex, position) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[1].offset,
+            offset_of!(DebugVertex, color) as wgpu::BufferAddress
         );
 
-        assert_eq!(mem::size_of::<Vertex>(), 16);
+        assert_eq!(mem::size_of::<DebugVertex>(), 32);
 
         tmp
     }
@@ -150,6 +164,12 @@ fn compute_normal(p0: &Point3<f64>, p1: &Point3<f64>, p2: &Point3<f64>) -> Vecto
         .normalize()
 }
 
+// We introduce a substantial amount of error in our intersection computations below
+// with all the dot products and re-normalizations. This is fine, as long as we use a
+// large enough offset when comparing near zero to get stable results and that pad
+// extends the collisions in the right direction.
+const SIDEDNESS_OFFSET: f64 = -0.01f64;
+
 impl PatchInfo {
     fn new(
         level: usize,
@@ -163,10 +183,13 @@ impl PatchInfo {
             .normalize();
         let origin = Point3::new(0f64, 0f64, 0f64);
         let planes = [
-            Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[0], &origin, &pts[1])),
-            Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[1], &origin, &pts[2])),
-            Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[2], &origin, &pts[0])),
+            Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
+            Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
+            Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
         ];
+        assert!(planes[0].point_is_in_front(&pts[2]));
+        assert!(planes[1].point_is_in_front(&pts[0]));
+        assert!(planes[2].point_is_in_front(&pts[1]));
         Self {
             level,
             solid_angle,
@@ -177,7 +200,12 @@ impl PatchInfo {
         }
     }
 
-    fn is_behind_plane(&self, plane: &Plane<f64>) -> bool {
+    fn is_behind_plane(
+        &self,
+        plane: &Plane<f64>,
+        dbg_verts: Option<&mut Vec<DebugVertex>>,
+        show_msgs: bool,
+    ) -> bool {
         // Patch Extent:
         //   outer: the three planes cutting from geocenter through each pair of points in vertices.
         //   bottom: radius of the planet
@@ -187,6 +215,7 @@ impl PatchInfo {
         //   1) Convex hull over points
         //   2) Plane-sphere for convex top area
 
+        /*
         // bottom points
         for p in &self.pts {
             if plane.distance_to_point(&p) >= 0.0 {
@@ -199,6 +228,7 @@ impl PatchInfo {
                 return false;
             }
         }
+        */
 
         // plane vs top sphere
         let top_sphere = Sphere::from_center_and_radius(
@@ -206,15 +236,19 @@ impl PatchInfo {
             EARTH_TO_KM + EVEREST_TO_KM,
         );
         let intersection = intersect::sphere_vs_plane(&top_sphere, &plane);
-        match intersection {
+        return match intersection {
             SpherePlaneIntersection::NoIntersection { side, .. } => {
                 panic!("NOTE: for horizon test, we are, by definition, slicing the planet");
-                return side == PlaneSide::Below;
+                side == PlaneSide::Below
             }
             SpherePlaneIntersection::Intersection(ref circle) => {
+                // There are three planes on the sides and one on the bottom -- the top plane
+                // of the convex hull. If any of the circle-plane intersection points are inside
+                // of all 4 planes, then there is an intersection.
+                //
                 // For each plane there are two cases:
-                //   1) if the circle center is outside the plane, then the circle edge can either
-                //      not reach the plane, or reaches an edge. If it reached past an edge, it
+                //   1) if the circle center is outside the planes, then the circle edge can either
+                //      not reach a plane, or reaches an edge. If it reached past an edge, it
                 //      would have a point on top of the intersection plane, which we've proved
                 //      above it does not.
                 //   2) if the circle center is inside the plane, then the circle edge can either
@@ -227,12 +261,89 @@ impl PatchInfo {
                 //   two planes.
                 //
                 //   We can stop and return false at the first match.
-                let intersect0 = intersect::circle_vs_plane(circle, &self.planes[0]);
-                println!("MORE WORK NEEDED");
+                if let Some(mut verts) = dbg_verts {
+                    for i in 0..DBG_VERT_COUNT {
+                        let a = (i as f64 / DBG_VERT_COUNT as f64) * 2f64 * PI;
+                        let p = circle.point_at_angle(a);
+                        let color = if self.point_is_in_cone(&p) {
+                            [0f32, 1f32, 0f32, 1f32]
+                        } else {
+                            [1f32, 0f32, 0f32, 1f32]
+                        };
+                        verts.push(DebugVertex {
+                            position: [p[0] as f32, p[1] as f32, p[2] as f32, 1f32],
+                            color,
+                        });
+                    }
+                }
+
+                for (i, plane) in self.planes.iter().enumerate() {
+                    let intersect = intersect::circle_vs_plane(circle, plane, SIDEDNESS_OFFSET);
+                    match intersect {
+                        CirclePlaneIntersection::Parallel => {
+                            if show_msgs {
+                                println!("  parallel {}", i);
+                            }
+                        }
+                        CirclePlaneIntersection::BehindPlane => {
+                            if show_msgs {
+                                println!("  outside {}", i);
+                            }
+                        }
+                        CirclePlaneIntersection::Tangent(ref p) => {
+                            if self.point_is_in_cone(p) {
+                                if show_msgs {
+                                    println!("  tangent {} in cone: {}", i, p);
+                                }
+                                return false;
+                            } else {
+                                if show_msgs {
+                                    println!("  tangent {} NOT in cone: {}", i, p);
+                                }
+                            }
+                        }
+                        CirclePlaneIntersection::Intersection(ref p0, ref p1) => {
+                            if self.point_is_in_cone(p0) || self.point_is_in_cone(p1) {
+                                if show_msgs {
+                                    println!("  intersection {} in cone: {}, {}", i, p0, p1);
+                                }
+                                return false;
+                            } else {
+                                if show_msgs {
+                                    println!("  intersection {} NOT in cone: {}, {}", i, p0, p1);
+                                }
+                            }
+                        }
+                        CirclePlaneIntersection::InFrontOfPlane => {
+                            if self.point_is_in_cone(circle.center()) {
+                                if show_msgs {
+                                    println!("  circle {} in cone: {}", i, circle.center());
+                                }
+                                return false;
+                            } else {
+                                if show_msgs {
+                                    println!("  circle {} NOT in cone: {}", i, circle.center());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if show_msgs {
+                    println!("  fell out of all planes");
+                }
+                // No test was in front of the plane, so we are fully behind it.
+                true
+            }
+        };
+    }
+
+    fn point_is_in_cone(&self, point: &Point3<f64>) -> bool {
+        for plane in &self.planes {
+            if !plane.point_is_in_front_with_offset(point, SIDEDNESS_OFFSET) {
                 return false;
             }
         }
-
         return true;
     }
 
@@ -250,6 +361,8 @@ impl PatchInfo {
         horizon_plane: &Plane<f64>,
         eye_direction: &Vector3<f64>,
         eye_position: &Point3<f64>,
+        verts: Option<&mut Vec<DebugVertex>>,
+        show_msgs: bool,
     ) -> bool {
         // Cull back-facing
         /*
@@ -260,8 +373,8 @@ impl PatchInfo {
         */
 
         // Cull below horizon
-        if self.is_behind_plane(&horizon_plane) {
-            println!("  no - below horizon");
+        if self.is_behind_plane(&horizon_plane, verts, show_msgs) {
+            //println!("  no - below horizon");
             return false;
         }
 
@@ -298,6 +411,9 @@ pub struct TerrainGeoBuffer {
     num_patches: usize,
     patch_vertex_buffer: Arc<Box<wgpu::Buffer>>,
     patch_index_buffer: wgpu::Buffer,
+
+    dbg_vertex_buffer: Arc<Box<wgpu::Buffer>>,
+    dbg_index_buffer: wgpu::Buffer,
 }
 
 impl TerrainGeoBuffer {
@@ -330,6 +446,26 @@ impl TerrainGeoBuffer {
         */
 
         println!(
+            "dbg_vertex_buffer: {:08X}",
+            mem::size_of::<DebugVertex>() * DBG_VERT_COUNT
+        );
+        let dbg_vertex_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            size: (mem::size_of::<DebugVertex>() * DBG_VERT_COUNT) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsage::all(),
+        })));
+        let mut dbg_indices: Vec<u32> = Vec::new();
+        dbg_indices.push(0);
+        for i in 1u32..DBG_VERT_COUNT as u32 {
+            dbg_indices.push(i);
+            dbg_indices.push(i);
+        }
+        dbg_indices.push(0);
+        println!("dbg indices: {:?}", dbg_indices);
+        let dbg_index_buffer = device
+            .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
+            .fill_from_slice(&dbg_indices);
+
+        println!(
             "patch_vertex_buffer: {:08X}",
             mem::size_of::<PatchVertex>() * 3 * num_patches
         );
@@ -356,6 +492,9 @@ impl TerrainGeoBuffer {
             num_patches,
             patch_vertex_buffer,
             patch_index_buffer,
+
+            dbg_vertex_buffer,
+            dbg_index_buffer,
         })))
     }
 
@@ -373,12 +512,18 @@ impl TerrainGeoBuffer {
         let eye_direction = camera_target - eye_position.coords;
 
         let horizon_plane = Plane::from_normal_and_distance(
+            camera_target.normalize(),
+            (EARTH_TO_KM * EARTH_TO_KM) / camera_target.magnitude(),
+        );
+        /*
+        let horizon_plane = Plane::from_normal_and_distance(
             eye_position.coords.normalize(),
             (EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude(),
         );
-        println!("horizon: {:?}", horizon_plane);
+        */
 
         let loop_start = Instant::now();
+        let mut dbg_verts = Vec::new();
         let mut patches = BinaryHeap::with_capacity(self.num_patches);
         for (i, face) in self.sphere.faces.iter().enumerate() {
             let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_TO_KM);
@@ -386,18 +531,32 @@ impl TerrainGeoBuffer {
             let v2 = Point3::from(self.sphere.verts[face.i2()] * EARTH_TO_KM);
             let patch = PatchInfo::new(0, &eye_position, &eye_direction, [v0, v1, v2]);
 
-            println!("Checking {}: ", i);
-            if patch.keep(&horizon_plane, &eye_direction, &eye_position) {
-                patches.push(patch);
+            //println!("Checking {}: ", i);
+            if i == 0 {
+                if patch.keep(
+                    &horizon_plane,
+                    &eye_direction,
+                    &eye_position,
+                    Some(&mut dbg_verts),
+                    true,
+                ) {
+                    patches.push(patch);
+                }
+            } else {
+                if patch.keep(&horizon_plane, &eye_direction, &eye_position, None, false) {
+                    patches.push(patch);
+                }
             }
         }
         let elapsed = Instant::now() - loop_start;
+        /*
         println!(
             "lvl0: {:?}, {:?}us per iteration - {} patches",
             elapsed,
             elapsed.as_micros() / self.sphere.faces.len() as u128,
             patches.len(),
         );
+        */
 
         // Split patches until we have an optimal equal-area partitioning.
         /*
@@ -468,7 +627,7 @@ impl TerrainGeoBuffer {
                 .lat_lon::<Radians, f32>(),
             });
         }
-        println!("verts: {:?}", Instant::now() - loop_start);
+        //println!("verts: {:?}", Instant::now() - loop_start);
         let loop_start = Instant::now();
 
         while verts.len() < 3 * self.num_patches {
@@ -478,17 +637,33 @@ impl TerrainGeoBuffer {
                 graticule: [0f32; 2],
             });
         }
-        let vertex_buffer = gpu
+        let patch_vertex_buffer = gpu
             .device()
             .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&verts);
         upload_buffers.push(CopyBufferDescriptor::new(
-            vertex_buffer,
+            patch_vertex_buffer,
             self.patch_vertex_buffer.clone(),
             (mem::size_of::<PatchVertex>() * verts.len()) as wgpu::BufferAddress,
         ));
 
-        println!("dt: {:?}", Instant::now() - loop_start);
+        while dbg_verts.len() < DBG_VERT_COUNT {
+            dbg_verts.push(DebugVertex {
+                position: [0f32, 0f32, 0f32, 0f32],
+                color: [0f32, 0f32, 1f32, 1f32],
+            });
+        }
+        let debug_vertex_buffer = gpu
+            .device()
+            .create_buffer_mapped(dbg_verts.len(), wgpu::BufferUsage::all())
+            .fill_from_slice(&dbg_verts);
+        upload_buffers.push(CopyBufferDescriptor::new(
+            debug_vertex_buffer,
+            self.dbg_vertex_buffer.clone(),
+            (mem::size_of::<DebugVertex>() * dbg_verts.len()) as wgpu::BufferAddress,
+        ));
+
+        //println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())
     }
 
@@ -515,5 +690,17 @@ impl TerrainGeoBuffer {
 
     pub fn patch_index_range(&self) -> Range<u32> {
         0..6
+    }
+
+    pub fn debug_index_buffer(&self) -> &wgpu::Buffer {
+        &self.dbg_index_buffer
+    }
+
+    pub fn debug_vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.dbg_vertex_buffer
+    }
+
+    pub fn debug_index_range(&self) -> Range<u32> {
+        0..(DBG_VERT_COUNT as u32 * 2u32)
     }
 }

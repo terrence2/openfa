@@ -15,63 +15,68 @@
 use crate::{Circle, Plane};
 use approx::relative_eq;
 use nalgebra::{Point3, RealField};
+use smallvec::{smallvec, SmallVec};
 
 // CIRCLE VS PLANE
+/*
 #[derive(Debug, Clone, Copy)]
 pub struct CirclePlaneIntersection<T: RealField> {
     points: Option<[Point3<T>; 2]>,
 }
+*/
 
-impl<T: RealField> CirclePlaneIntersection<T> {
-    pub fn points(&self) -> &Option<[Point3<T>; 2]> {
-        &self.points
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum CirclePlaneIntersection<T: RealField> {
+    Parallel,
+    InFrontOfPlane,
+    BehindPlane,
+    Intersection(Point3<T>, Point3<T>),
+    Tangent(Point3<T>),
 }
 
 pub fn circle_vs_plane<T: RealField>(
     circle: &Circle<T>,
     plane: &Plane<T>,
+    sidedness_offset: T,
 ) -> CirclePlaneIntersection<T> {
     // We can get the direction by crossing normals.
     let d = circle.plane().normal().cross(&plane.normal());
 
     // Detect and reject the parallel case: e.g. direction is ~0.
-    let det = d.dot(&d);
-    if relative_eq!(det, T::zero()) {
-        return CirclePlaneIntersection { points: None };
+    if relative_eq!(d.dot(&d), T::zero()) {
+        return CirclePlaneIntersection::<T>::Parallel;
     }
     let d = d.normalize();
 
     // Find the line: the line is orthogonal to both normals and has direction d.
     // Taken from the clever code here:
     //   https://stackoverflow.com/questions/6408670/line-of-intersection-between-two-planes
-    let p = ((d.cross(plane.normal()) * circle.plane().d())
-        + (circle.plane().normal().cross(&d) * plane.d()));
+    let p = (d.cross(plane.normal()) * circle.plane().d())
+        + (circle.plane().normal().cross(&d) * plane.d());
 
     // Project circle center onto new line.
     let t = (circle.center() - p).coords.dot(&d);
     let p_closest = Point3::from(p + d * t);
     let closest_distance = (circle.center() - p_closest).magnitude();
     if closest_distance > circle.radius() {
-        return CirclePlaneIntersection { points: None };
+        return if plane.point_is_in_front_with_offset(circle.center(), sidedness_offset) {
+            CirclePlaneIntersection::InFrontOfPlane
+        } else {
+            CirclePlaneIntersection::BehindPlane
+        };
     }
     if relative_eq!(closest_distance, circle.radius()) {
-        return CirclePlaneIntersection {
-            points: Some([p_closest, p_closest]),
-        };
+        return CirclePlaneIntersection::Tangent(p_closest);
     }
 
     // Apply pythagoras to get the distance from p_closest to our two roots.
     let t1 = (circle.radius() * circle.radius() - closest_distance * closest_distance).sqrt();
-    return CirclePlaneIntersection {
-        points: Some([p_closest + d * t1, p_closest - d * t1]),
-    };
+    CirclePlaneIntersection::Intersection(p_closest + d * t1, p_closest - d * t1)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use approx::assert_relative_eq;
     use nalgebra::{Point3, Vector3};
 
     #[test]
@@ -101,13 +106,13 @@ mod test {
         // sqrt(0.75) = ??
         // = 0.866
 
-        let i = circle_vs_plane(&c, &p);
+        let i = circle_vs_plane(&c, &p, 0);
         println!("i: {:?}", i);
         assert_eq!(
             i.points,
             Some([
                 Point3::new(-0.5f64, 0f64, 0.75f64.sqrt()),
-                Point3::new(-0.5f64, 0f64, -0.75f64.sqrt())
+                Point3::new(-0.5f64, 0f64, -(0.75f64.sqrt()))
             ])
         );
     }

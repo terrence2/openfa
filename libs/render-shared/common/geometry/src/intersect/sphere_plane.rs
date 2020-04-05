@@ -59,18 +59,20 @@ pub fn sphere_vs_plane<T: RealField>(
     let dist = plane.distance_to_point(sphere.center());
 
     if dist.abs() < sphere.radius() {
-        let to_sphere = (sphere.radius() - dist.abs()) * -dist.signum();
+        let to_sphere = sphere.radius() - ((sphere.radius() - dist.abs()) * -dist.signum());
+        //let to_sphere = (sphere.radius() - dist.abs()) * -dist.signum();
         let center = sphere.center() + plane.normal() * to_sphere;
+        //println!("to_sphere: {}, center: {}", to_sphere, center);
         return SpherePlaneIntersection::Intersection(Circle::from_plane_center_and_radius(
             &Plane::from_point_and_normal(&center, plane.normal()),
             &center,
             (sphere.radius() * sphere.radius() - dist * dist).sqrt(),
         ));
     }
-    return SpherePlaneIntersection::NoIntersection {
+    SpherePlaneIntersection::NoIntersection {
         distance: dist.abs() - sphere.radius(),
         side: PlaneSide::from_distance(dist),
-    };
+    }
 }
 
 #[cfg(test)]

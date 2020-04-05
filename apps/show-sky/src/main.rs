@@ -62,6 +62,8 @@ fn main() -> Fallible<()> {
     let lib = Arc::new(Box::new(Library::empty()?));
 
     let system_bindings = Bindings::new("map")
+        .bind("+target_up", "Up")?
+        .bind("+target_down", "Down")?
         .bind("exit", "Escape")?
         .bind("exit", "q")?;
     let mut input = InputSystem::new(vec![
@@ -120,6 +122,7 @@ fn main() -> Fallible<()> {
         meters!(4_000_000),
     ))?;
 
+    let mut target_vec = meters!(0f64);
     loop {
         let loop_start = Instant::now();
 
@@ -127,6 +130,10 @@ fn main() -> Fallible<()> {
             camera.handle_command(&command)?;
             orrery.handle_command(&command)?;
             match command.name.as_str() {
+                "+target_up" => target_vec = meters!(1000f64),
+                "-target_up" => target_vec = meters!(0f64),
+                "+target_down" => target_vec = meters!(-1000f64),
+                "-target_down" => target_vec = meters!(0f64),
                 // system bindings
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
@@ -137,6 +144,12 @@ fn main() -> Fallible<()> {
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
+        let mut g = camera.get_target();
+        g.distance += target_vec;
+        if g.distance < meters!(0f64) {
+            g.distance = meters!(0f64);
+        }
+        camera.set_target(g);
 
         camera.think();
 

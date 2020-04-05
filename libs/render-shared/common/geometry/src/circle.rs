@@ -12,8 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::algorithm::perpendicular_vector;
 use crate::Plane;
-use nalgebra::{Point3, RealField};
+use nalgebra::{Point3, RealField, Unit, UnitQuaternion};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Circle<T: RealField> {
@@ -41,5 +42,13 @@ impl<T: RealField> Circle<T> {
 
     pub fn plane(&self) -> &Plane<T> {
         &self.plane
+    }
+
+    pub fn point_at_angle(&self, angle: T) -> Point3<T> {
+        // Find a vector at 90 degrees to the plane normal.
+        let p0 = perpendicular_vector(self.plane.normal());
+        let p = p0 * self.radius;
+        let q = UnitQuaternion::from_axis_angle(&Unit::new_unchecked(*self.plane.normal()), angle);
+        return self.center + (q * p);
     }
 }

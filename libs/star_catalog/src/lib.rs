@@ -136,7 +136,7 @@ impl SAOEntry {
     // Fine tune the radius based on the magnitude to give a tiny bump to our
     // brightest stars.
     pub fn radius_scale(&self) -> f32 {
-        (1f32 - self.magnitude() / 28f32)
+        1f32 - self.magnitude() / 28f32
     }
 }
 

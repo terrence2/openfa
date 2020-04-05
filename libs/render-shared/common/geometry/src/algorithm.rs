@@ -46,6 +46,17 @@ pub fn solid_angle<T: RealField>(
     projarea / T::two_pi()
 }
 
+pub fn perpendicular_vector<T: RealField>(v: &Vector3<T>) -> Vector3<T> {
+    let n = v.normalize();
+    if n[2].abs() > T::from_f64(0.5).unwrap() {
+        n.cross(&Vector3::new(T::zero(), T::one(), T::zero()))
+            .normalize()
+    } else {
+        n.cross(&Vector3::new(T::zero(), T::zero(), T::one()))
+            .normalize()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
