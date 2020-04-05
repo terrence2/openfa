@@ -60,9 +60,7 @@ pub fn sphere_vs_plane<T: RealField>(
 
     if dist.abs() < sphere.radius() {
         let to_sphere = sphere.radius() - ((sphere.radius() - dist.abs()) * -dist.signum());
-        //let to_sphere = (sphere.radius() - dist.abs()) * -dist.signum();
         let center = sphere.center() + plane.normal() * to_sphere;
-        //println!("to_sphere: {}, center: {}", to_sphere, center);
         return SpherePlaneIntersection::Intersection(Circle::from_plane_center_and_radius(
             &Plane::from_point_and_normal(&center, plane.normal()),
             &center,

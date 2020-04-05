@@ -15,17 +15,8 @@
 use crate::{Circle, Plane};
 use approx::relative_eq;
 use nalgebra::{Point3, RealField};
-use smallvec::{smallvec, SmallVec};
 
-// CIRCLE VS PLANE
-/*
-#[derive(Debug, Clone, Copy)]
-pub struct CirclePlaneIntersection<T: RealField> {
-    points: Option<[Point3<T>; 2]>,
-}
-*/
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CirclePlaneIntersection<T: RealField> {
     Parallel,
     InFrontOfPlane,
@@ -106,14 +97,14 @@ mod test {
         // sqrt(0.75) = ??
         // = 0.866
 
-        let i = circle_vs_plane(&c, &p, 0);
+        let i = circle_vs_plane(&c, &p, 0f64);
         println!("i: {:?}", i);
         assert_eq!(
-            i.points,
-            Some([
+            i,
+            CirclePlaneIntersection::Intersection(
                 Point3::new(-0.5f64, 0f64, 0.75f64.sqrt()),
                 Point3::new(-0.5f64, 0f64, -(0.75f64.sqrt()))
-            ])
+            )
         );
     }
 
@@ -132,10 +123,10 @@ mod test {
             &Vector3::new(-1f64, 0f64, 0f64),
         );
 
-        let i = circle_vs_plane(&c, &p);
+        let i = circle_vs_plane(&c, &p, 0f64);
         assert_eq!(
-            i.points,
-            Some([Point3::new(1f64, 0f64, 0f64), Point3::new(1f64, 0f64, 0f64)])
+            i,
+            CirclePlaneIntersection::Tangent(Point3::new(1f64, 0f64, 0f64))
         );
     }
 
@@ -153,9 +144,15 @@ mod test {
             &Point3::new(10f64, 0f64, 0f64),
             &Vector3::new(1f64, 0f64, 0f64).normalize(),
         );
+        let i = circle_vs_plane(&c, &p, 0f64);
+        assert_eq!(i, CirclePlaneIntersection::BehindPlane);
 
-        let i = circle_vs_plane(&c, &p);
-        assert!(i.points.is_none());
+        let p = Plane::from_point_and_normal(
+            &Point3::new(10f64, 0f64, 0f64),
+            &Vector3::new(-1f64, 0f64, 0f64).normalize(),
+        );
+        let i = circle_vs_plane(&c, &p, 0f64);
+        assert_eq!(i, CirclePlaneIntersection::InFrontOfPlane);
     }
 
     #[test]
@@ -174,7 +171,7 @@ mod test {
         );
         // Point is a 1 up, why is d -1?
 
-        let i = circle_vs_plane(&c, &p);
-        assert!(i.points.is_none());
+        let i = circle_vs_plane(&c, &p, 0f64);
+        assert_eq!(i, CirclePlaneIntersection::Parallel);
     }
 }

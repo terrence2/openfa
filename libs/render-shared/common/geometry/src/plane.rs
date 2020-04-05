@@ -46,11 +46,11 @@ impl<T: RealField> Plane<T> {
     }
 
     pub fn point_is_in_front(&self, p: &Point3<T>) -> bool {
-        self.normal.dot(&p.coords) >= T::zero()
+        self.normal.dot(&p.coords) - self.distance >= T::zero()
     }
 
     pub fn point_is_in_front_with_offset(&self, p: &Point3<T>, offset: T) -> bool {
-        self.normal.dot(&p.coords) >= offset
+        self.normal.dot(&p.coords) - self.distance >= offset
     }
 
     pub fn normal(&self) -> &Vector3<T> {
