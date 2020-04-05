@@ -272,10 +272,9 @@ impl PatchInfo {
                                     println!("  tangent {} in cone: {}", i, p);
                                 }
                                 return false;
-                            } else {
-                                if show_msgs {
-                                    println!("  tangent {} NOT in cone: {}", i, p);
-                                }
+                            }
+                            if show_msgs {
+                                println!("  tangent {} NOT in cone: {}", i, p);
                             }
                         }
                         CirclePlaneIntersection::Intersection(ref p0, ref p1) => {
@@ -284,10 +283,9 @@ impl PatchInfo {
                                     println!("  intersection {} in cone: {}, {}", i, p0, p1);
                                 }
                                 return false;
-                            } else {
-                                if show_msgs {
-                                    println!("  intersection {} NOT in cone: {}, {}", i, p0, p1);
-                                }
+                            }
+                            if show_msgs {
+                                println!("  intersection {} NOT in cone: {}, {}", i, p0, p1);
                             }
                         }
                         CirclePlaneIntersection::InFrontOfPlane => {
@@ -296,10 +294,9 @@ impl PatchInfo {
                                     println!("  circle {} in cone: {}", i, circle.center());
                                 }
                                 return false;
-                            } else {
-                                if show_msgs {
-                                    println!("  circle {} NOT in cone: {}", i, circle.center());
-                                }
+                            }
+                            if show_msgs {
+                                println!("  circle {} NOT in cone: {}", i, circle.center());
                             }
                         }
                     }
@@ -320,7 +317,7 @@ impl PatchInfo {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
@@ -329,7 +326,7 @@ impl PatchInfo {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     fn keep(
@@ -360,7 +357,7 @@ impl PatchInfo {
             }
         }
 
-        return true;
+        true
     }
 }
 
@@ -515,17 +512,15 @@ impl TerrainGeoBuffer {
                 ) {
                     patches.push(patch);
                 }
-            } else {
-                if patch.keep(
-                    camera,
-                    &horizon_plane,
-                    &eye_direction,
-                    &eye_position,
-                    None,
-                    false,
-                ) {
-                    patches.push(patch);
-                }
+            } else if patch.keep(
+                camera,
+                &horizon_plane,
+                &eye_direction,
+                &eye_position,
+                None,
+                false,
+            ) {
+                patches.push(patch);
             }
         }
         let elapsed = Instant::now() - loop_start;
