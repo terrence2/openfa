@@ -18,7 +18,7 @@ use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use geodesy::{Cartesian, GeoCenter, Graticule};
 use geometry::{
-    algorithm::solid_angle,
+    algorithm::{compute_normal, solid_angle},
     intersect,
     intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
     IcoSphere, Plane, Sphere,
@@ -144,6 +144,12 @@ impl DebugVertex {
     }
 }
 
+// We introduce a substantial amount of error in our intersection computations below
+// with all the dot products and re-normalizations. This is fine, as long as we use a
+// large enough offset when comparing near zero to get stable results and that pad
+// extends the collisions in the right direction.
+const SIDEDNESS_OFFSET: f64 = -1f64;
+
 #[derive(Debug, Copy, Clone)]
 struct PatchInfo {
     level: usize,
@@ -157,18 +163,6 @@ struct PatchInfo {
     // Planes
     planes: [Plane<f64>; 3],
 }
-
-fn compute_normal(p0: &Point3<f64>, p1: &Point3<f64>, p2: &Point3<f64>) -> Vector3<f64> {
-    (p1.coords - p0.coords)
-        .cross(&(p2.coords - p0.coords))
-        .normalize()
-}
-
-// We introduce a substantial amount of error in our intersection computations below
-// with all the dot products and re-normalizations. This is fine, as long as we use a
-// large enough offset when comparing near zero to get stable results and that pad
-// extends the collisions in the right direction.
-const SIDEDNESS_OFFSET: f64 = -0.01f64;
 
 impl PatchInfo {
     fn new(
@@ -335,8 +329,6 @@ impl PatchInfo {
         horizon_plane: &Plane<f64>,
         _eye_direction: &Vector3<f64>,
         eye_position: &Point3<f64>,
-        _verts: Option<&mut Vec<DebugVertex>>,
-        show_msgs: bool,
     ) -> bool {
         // Cull back-facing
         if self.is_back_facing(eye_position) {
@@ -345,14 +337,14 @@ impl PatchInfo {
         }
 
         // Cull below horizon
-        if self.is_behind_plane(&horizon_plane, None, show_msgs) {
+        if self.is_behind_plane(&horizon_plane, None, false) {
             //println!("  no - below horizon");
             return false;
         }
 
         // Cull outside the view frustum
         for plane in &camera.world_space_frustum() {
-            if self.is_behind_plane(plane, None, show_msgs) {
+            if self.is_behind_plane(plane, None, false) {
                 return false;
             }
         }
@@ -494,32 +486,14 @@ impl TerrainGeoBuffer {
         let loop_start = Instant::now();
         let mut dbg_verts = Vec::new();
         let mut patches = BinaryHeap::with_capacity(self.num_patches);
-        for (i, face) in self.sphere.faces.iter().enumerate() {
+        for face in &self.sphere.faces {
             let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_TO_KM);
             let v1 = Point3::from(self.sphere.verts[face.i1()] * EARTH_TO_KM);
             let v2 = Point3::from(self.sphere.verts[face.i2()] * EARTH_TO_KM);
             let patch = PatchInfo::new(0, &eye_position, &eye_direction, [v0, v1, v2]);
 
             //println!("Checking {}: ", i);
-            if i == 0 {
-                if patch.keep(
-                    camera,
-                    &horizon_plane,
-                    &eye_direction,
-                    &eye_position,
-                    Some(&mut dbg_verts),
-                    true,
-                ) {
-                    patches.push(patch);
-                }
-            } else if patch.keep(
-                camera,
-                &horizon_plane,
-                &eye_direction,
-                &eye_position,
-                None,
-                false,
-            ) {
+            if patch.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
                 patches.push(patch);
             }
         }
@@ -532,7 +506,6 @@ impl TerrainGeoBuffer {
         );
 
         // Split patches until we have an optimal equal-area partitioning.
-        /*
         let loop_start = Instant::now();
         while patches.len() > 0 && patches.len() < self.num_patches - 4 {
             let patch = patches.pop().unwrap();
@@ -552,21 +525,22 @@ impl TerrainGeoBuffer {
             let patch2 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v2, c, b]);
             let patch3 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [a, b, c]);
 
-            if patch0.keep(&horizon_plane, &eye_direction, &eye_position) {
+            if patch0.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
                 patches.push(patch0);
             }
-            if patch1.keep(&horizon_plane, &eye_direction, &eye_position) {
+            if patch1.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
                 patches.push(patch1);
             }
-            if patch2.keep(&horizon_plane, &eye_direction, &eye_position) {
+            if patch2.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
                 patches.push(patch2);
             }
-            if patch3.keep(&horizon_plane, &eye_direction, &eye_position) {
+            if patch3.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
                 patches.push(patch3);
             }
         }
         println!("split: {:?}", Instant::now() - loop_start);
-        */
+        /*
+         */
 
         let loop_start = Instant::now();
         let mut verts = Vec::with_capacity(3 * self.num_patches);

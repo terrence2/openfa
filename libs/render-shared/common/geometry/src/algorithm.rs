@@ -57,6 +57,12 @@ pub fn perpendicular_vector<T: RealField>(v: &Vector3<T>) -> Vector3<T> {
     }
 }
 
+pub fn compute_normal<T: RealField>(p0: &Point3<T>, p1: &Point3<T>, p2: &Point3<T>) -> Vector3<T> {
+    (p1.coords - p0.coords)
+        .cross(&(p2.coords - p0.coords))
+        .normalize()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
