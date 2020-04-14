@@ -31,7 +31,7 @@ use std::{
     cmp::{Ord, Ordering},
     collections::BinaryHeap,
     f64::consts::PI,
-    mem,
+    fmt, mem,
     ops::Range,
     sync::Arc,
 };
@@ -151,10 +151,8 @@ impl DebugVertex {
 const SIDEDNESS_OFFSET: f64 = -1f64;
 
 #[derive(Debug, Copy, Clone)]
-struct PatchInfo {
-    level: usize,
+pub(crate) struct PatchInfo {
     solid_angle: f64,
-    goodness: f64,
     normal: Vector3<f64>, // at center of patch
 
     // In geocentric, cartesian kilometers
@@ -162,36 +160,91 @@ struct PatchInfo {
 
     // Planes
     planes: [Plane<f64>; 3],
+
+    level: u16,
+    tombstone: bool,
 }
 
 impl PatchInfo {
-    fn new(
-        level: usize,
-        eye_position: &Point3<f64>,
-        eye_direction: &Vector3<f64>,
-        pts: [Point3<f64>; 3],
-    ) -> Self {
-        let solid_angle = solid_angle(&eye_position, &eye_direction, &pts);
-        let normal = (pts[1].coords - pts[0].coords)
-            .cross(&(pts[2].coords - pts[0].coords))
-            .normalize();
+    pub(crate) fn new() -> Self {
+        Self {
+            level: 0,
+            tombstone: true,
+            solid_angle: 0f64,
+            normal: Vector3::new(0f64, 1f64, 0f64),
+            pts: [
+                Point3::new(0f64, 0f64, 0f64),
+                Point3::new(0f64, 0f64, 0f64),
+                Point3::new(0f64, 0f64, 0f64),
+            ],
+            planes: [Plane::xy(), Plane::xy(), Plane::xy()],
+        }
+    }
+
+    pub(crate) fn change_target(&mut self, level: u16, pts: [Point3<f64>; 3]) {
+        self.tombstone = false;
+        self.level = level;
+        self.pts = pts;
+        self.normal = compute_normal(&pts[0], &pts[1], &pts[2]);
         let origin = Point3::new(0f64, 0f64, 0f64);
-        let planes = [
+        self.planes = [
             Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
             Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
             Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
         ];
-        assert!(planes[0].point_is_in_front(&pts[2]));
-        assert!(planes[1].point_is_in_front(&pts[0]));
-        assert!(planes[2].point_is_in_front(&pts[1]));
-        Self {
-            level,
-            solid_angle,
-            goodness: solid_angle,
-            normal,
-            pts,
-            planes,
+        assert!(self.planes[0].point_is_in_front(&pts[2]));
+        assert!(self.planes[1].point_is_in_front(&pts[0]));
+        assert!(self.planes[2].point_is_in_front(&pts[1]));
+        self.solid_angle = 0f64;
+    }
+
+    pub(crate) fn is_alive(&self) -> bool {
+        !self.tombstone
+    }
+
+    pub(crate) fn erect_tombstone(&mut self) {
+        self.tombstone = true;
+        self.solid_angle = -1f64;
+    }
+
+    pub(crate) fn recompute_solid_angle(
+        &mut self,
+        eye_position: &Point3<f64>,
+        eye_direction: &Vector3<f64>,
+    ) {
+        self.solid_angle = solid_angle(&eye_position, &eye_direction, &self.pts);
+    }
+
+    pub(crate) fn level(&self) -> usize {
+        self.level as usize
+    }
+
+    fn goodness(&self) -> f64 {
+        self.solid_angle
+    }
+
+    fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
+        let mut minimum = 99999999f64;
+
+        // bottom points
+        for p in &self.pts {
+            let v = p - point;
+            let d = v.dot(&v);
+            if d < minimum {
+                minimum = d;
+            }
         }
+        // top points
+        for p in &self.pts {
+            let top_point = p + (p.coords.normalize() * EVEREST_TO_KM);
+            let v = top_point - point;
+            let d = v.dot(&v);
+            if d < minimum {
+                minimum = d;
+            }
+        }
+
+        return minimum;
     }
 
     fn is_behind_plane(
@@ -323,11 +376,10 @@ impl PatchInfo {
         true
     }
 
-    fn keep(
+    pub(crate) fn keep(
         &self,
         camera: &ArcBallCamera,
         horizon_plane: &Plane<f64>,
-        _eye_direction: &Vector3<f64>,
         eye_position: &Point3<f64>,
     ) -> bool {
         // Cull back-facing
@@ -357,13 +409,13 @@ impl Eq for PatchInfo {}
 
 impl PartialEq for PatchInfo {
     fn eq(&self, other: &Self) -> bool {
-        self.goodness == other.goodness
+        self.goodness() == other.goodness()
     }
 }
 
 impl PartialOrd for PatchInfo {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.goodness.partial_cmp(&other.goodness)
+        self.goodness().partial_cmp(&other.goodness())
     }
 }
 impl Ord for PatchInfo {
@@ -372,10 +424,39 @@ impl Ord for PatchInfo {
     }
 }
 
+// Index into the tree vec.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct TreeIndex(usize);
+
+// Index into the patch vec.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct PatchIndex(usize);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum PatchTree {
+    Root { children: [TreeIndex; 20] },
+    Node { children: [TreeIndex; 4] },
+    Leaf { offset: PatchIndex },
+}
+
+impl PatchTree {
+    // Panic if this is not a leaf.
+    fn leaf_offset(&self) -> PatchIndex {
+        match self {
+            Self::Leaf { offset } => return *offset,
+            _ => panic!("Not a leaf!"),
+        }
+    }
+}
+
 pub struct TerrainGeoBuffer {
     // bind_group_layout: wgpu::BindGroupLayout,
     // bind_group: wgpu::BindGroup,
     sphere: IcoSphere,
+    depth_levels: Vec<f64>,
+    patches: Vec<PatchInfo>,
+    patch_order: Vec<usize>,
+    patch_tree: Vec<PatchTree>,
 
     num_patches: usize,
     patch_vertex_buffer: Arc<Box<wgpu::Buffer>>,
@@ -413,6 +494,16 @@ impl TerrainGeoBuffer {
             }],
         });
         */
+
+        const LEVEL_COUNT: usize = 40;
+        let mut depth_levels = Vec::new();
+        for i in 0..LEVEL_COUNT {
+            depth_levels.push(EARTH_TO_KM * 2f64.powf(-(i as f64)));
+        }
+        for lvl in depth_levels.iter_mut() {
+            *lvl = *lvl * *lvl;
+        }
+        println!("depths: {:?}", depth_levels);
 
         println!(
             "dbg_vertex_buffer: {:08X}",
@@ -454,8 +545,54 @@ impl TerrainGeoBuffer {
             .create_buffer_mapped(patch_indices.len(), wgpu::BufferUsage::all())
             .fill_from_slice(&patch_indices);
 
+        let sphere = IcoSphere::new(0);
+        let mut patches = Vec::with_capacity(num_patches);
+        patches.resize(num_patches, PatchInfo::new());
+        let mut patch_order = Vec::with_capacity(num_patches);
+        for i in 0..num_patches {
+            patch_order.push(i);
+        }
+        let mut patch_tree = Vec::new();
+        patch_tree.push(PatchTree::Root {
+            children: [
+                TreeIndex(1),
+                TreeIndex(2),
+                TreeIndex(3),
+                TreeIndex(4),
+                TreeIndex(5),
+                TreeIndex(6),
+                TreeIndex(7),
+                TreeIndex(8),
+                TreeIndex(9),
+                TreeIndex(10),
+                TreeIndex(11),
+                TreeIndex(12),
+                TreeIndex(13),
+                TreeIndex(14),
+                TreeIndex(15),
+                TreeIndex(16),
+                TreeIndex(17),
+                TreeIndex(18),
+                TreeIndex(19),
+                TreeIndex(20),
+            ],
+        });
+        for (i, face) in sphere.faces.iter().enumerate() {
+            let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_TO_KM);
+            let v1 = Point3::from(&sphere.verts[face.i1()] * EARTH_TO_KM);
+            let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_TO_KM);
+            patches[i].change_target(0, [v0, v1, v2]);
+            patch_tree.push(PatchTree::Leaf {
+                offset: PatchIndex(i),
+            });
+        }
+
         Ok(Arc::new(RefCell::new(Self {
-            sphere: IcoSphere::new(0),
+            sphere,
+            depth_levels,
+            patches,
+            patch_order,
+            patch_tree,
 
             num_patches,
             patch_vertex_buffer,
@@ -466,8 +603,56 @@ impl TerrainGeoBuffer {
         })))
     }
 
+    fn get_patch(&self, index: PatchIndex) -> &PatchInfo {
+        &self.patches[index.0]
+    }
+
+    fn get_patch_mut(&mut self, index: PatchIndex) -> &mut PatchInfo {
+        &mut self.patches[index.0]
+    }
+
+    fn tree_root(&self) -> PatchTree {
+        self.patch_tree[0]
+    }
+
+    fn tree_node(&self, index: TreeIndex) -> PatchTree {
+        self.patch_tree[index.0]
+    }
+
+    fn set_tree_node(&mut self, index: TreeIndex, node: PatchTree) {
+        self.patch_tree[index.0] = node;
+    }
+
+    fn format_tree_display(&self) -> String {
+        self.format_tree_display_inner(0, self.tree_root())
+    }
+
+    fn format_tree_display_inner(&self, lvl: usize, node: PatchTree) -> String {
+        let mut out = String::new();
+        match node {
+            PatchTree::Root { children } => {
+                out += "Root\n";
+                for child in &children {
+                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
+                }
+            }
+            PatchTree::Node { children } => {
+                let pad = "  ".repeat(lvl);
+                out += &format!("{}Node: {:?}\n", pad, children);
+                for child in &children {
+                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
+                }
+            }
+            PatchTree::Leaf { offset } => {
+                let pad = "  ".repeat(lvl);
+                out += &format!("{}Leaf @{}, lvl: {}\n", pad, offset.0, lvl);
+            }
+        }
+        return out;
+    }
+
     pub fn make_upload_buffer(
-        &self,
+        &mut self,
         camera: &ArcBallCamera,
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
@@ -483,8 +668,8 @@ impl TerrainGeoBuffer {
             (((EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude()) - 100f64).min(0f64),
         );
 
+        /*
         let loop_start = Instant::now();
-        let mut dbg_verts = Vec::new();
         let mut patches = BinaryHeap::with_capacity(self.num_patches);
         for face in &self.sphere.faces {
             let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_TO_KM);
@@ -504,8 +689,10 @@ impl TerrainGeoBuffer {
             elapsed.as_micros() / self.sphere.faces.len() as u128,
             patches.len(),
         );
+        */
 
         // Split patches until we have an optimal equal-area partitioning.
+        /*
         let loop_start = Instant::now();
         while patches.len() > 0 && patches.len() < self.num_patches - 4 {
             let patch = patches.pop().unwrap();
@@ -539,12 +726,65 @@ impl TerrainGeoBuffer {
             }
         }
         println!("split: {:?}", Instant::now() - loop_start);
+        */
+
         /*
-         */
+        // Recompute solid angles for all patches.
+        let recompute_sa_start = Instant::now();
+        for patch in self.patches.iter_mut() {
+            if patch.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
+                patch.recompute_solid_angle(&eye_position, &eye_direction);
+            } else {
+                patch.erect_tombstone();
+            }
+        }
+        let recompute_sa_end = Instant::now();
+        println!("solid ang: {:?}", recompute_sa_end - recompute_sa_start);
+
+        // Sort by solid angle, using an indirection buffer so we can avoid a bunch of copying.
+        let sort_sa_start = Instant::now();
+        // Note, we still have to do this extra copy, because rust. The borrow of
+        // self would be safe, but we lose that info across the closure.
+        let mut order = self.patch_order.clone();
+        order.sort_unstable_by(|patch_a_index, patch_b_index| {
+            let a = self.patches[*patch_a_index].solid_angle;
+            let b = self.patches[*patch_b_index].solid_angle;
+            if a < b {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        });
+        // Note: no point writing back -- we're not using stable sort or something.
+        let sort_sa_end = Instant::now();
+        println!("sort solid ang: {:?}", sort_sa_end - sort_sa_start);
+        */
+
+        let rejoin_start = Instant::now();
+        self.rejoin_tree_to_depth(&camera, &horizon_plane, &eye_position, TreeIndex(0));
+        let rejoin_end = Instant::now();
+        println!("rejoin: {:?}", rejoin_end - rejoin_start);
+
+        let subdivide_start = Instant::now();
+        self.subdivide_tree_to_depth(&eye_position, &eye_direction, self.patch_tree[0]);
+        let subdivide_end = Instant::now();
+        println!("subdivide: {:?}", subdivide_end - subdivide_start);
 
         let loop_start = Instant::now();
         let mut verts = Vec::with_capacity(3 * self.num_patches);
-        for patch in &patches {
+        let mut cnt = 0;
+        for patch in &self.patches {
+            if !patch.is_alive() {
+                for i in 0..3 {
+                    verts.push(PatchVertex {
+                        position: [0f32; 3],
+                        normal: [0f32; 3],
+                        graticule: [0f32; 2],
+                    });
+                }
+                continue;
+            }
+            cnt += 1;
             let [v0, v1, v2] = patch.pts;
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
@@ -574,7 +814,7 @@ impl TerrainGeoBuffer {
                 .lat_lon::<Radians, f32>(),
             });
         }
-        println!("verts: {:?}", Instant::now() - loop_start);
+        println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
         let loop_start = Instant::now();
 
         while verts.len() < 3 * self.num_patches {
@@ -594,6 +834,7 @@ impl TerrainGeoBuffer {
             (mem::size_of::<PatchVertex>() * verts.len()) as wgpu::BufferAddress,
         ));
 
+        let mut dbg_verts = Vec::new();
         while dbg_verts.len() < DBG_VERT_COUNT {
             dbg_verts.push(DebugVertex {
                 position: [0f32, 0f32, 0f32, 0f32],
@@ -612,6 +853,206 @@ impl TerrainGeoBuffer {
 
         println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())
+    }
+
+    fn rejoin_tree_to_depth(
+        &mut self,
+        camera: &ArcBallCamera,
+        horizon_plane: &Plane<f64>,
+        eye_position: &Point3<f64>,
+        node_index: TreeIndex,
+    ) {
+        match self.tree_node(node_index) {
+            PatchTree::Root { ref children } => {
+                for i in children {
+                    self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
+                }
+            }
+            PatchTree::Node { ref children } => {
+                for i in children {
+                    self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
+                }
+                if children.iter().all(|child| {
+                    self.leaf_can_be_rejoined(
+                        camera,
+                        horizon_plane,
+                        eye_position,
+                        self.tree_node(*child),
+                    )
+                }) {
+                    let new_child = self.rejoin_patch(children);
+                    self.set_tree_node(node_index, new_child);
+                }
+            }
+            PatchTree::Leaf { offset } => {}
+        }
+    }
+
+    fn rejoin_patch(&mut self, children: &[TreeIndex; 4]) -> PatchTree {
+        let i0 = self.tree_node(children[0]).leaf_offset();
+        let i1 = self.tree_node(children[1]).leaf_offset();
+        let i2 = self.tree_node(children[2]).leaf_offset();
+        let i3 = self.tree_node(children[3]).leaf_offset();
+        let lvl = self.get_patch(i0).level - 1;
+        let v0 = self.get_patch(i0).pts[0];
+        let v1 = self.get_patch(i1).pts[0];
+        let v2 = self.get_patch(i2).pts[0];
+        self.get_patch_mut(i0).change_target(lvl, [v0, v1, v2]);
+        self.get_patch_mut(i1).erect_tombstone();
+        self.get_patch_mut(i2).erect_tombstone();
+        self.get_patch_mut(i3).erect_tombstone();
+        PatchTree::Leaf { offset: i0 }
+    }
+
+    fn leaf_can_be_rejoined(
+        &mut self,
+        camera: &ArcBallCamera,
+        horizon_plane: &Plane<f64>,
+        eye_position: &Point3<f64>,
+        node: PatchTree,
+    ) -> bool {
+        match node {
+            PatchTree::Root { .. } => false,
+            PatchTree::Node { .. } => false,
+            PatchTree::Leaf { offset } => {
+                let patch = self.get_patch(offset);
+                let d2 = patch.distance_squared_to(eye_position);
+                assert!(patch.level() > 0);
+                d2 > self.depth_levels[patch.level() - 1]
+                    || !patch.keep(camera, horizon_plane, eye_position)
+            }
+        }
+    }
+
+    fn subdivide_tree_to_depth(
+        &mut self,
+        eye_position: &Point3<f64>,
+        eye_direction: &Vector3<f64>,
+        node: PatchTree,
+    ) -> PatchTree {
+        match node {
+            PatchTree::Root { ref children } => {
+                //println!("Root");
+                let mut new_children = children.to_owned();
+                for i in children {
+                    if let Some(new_child) = self.maybe_subdivide_patch(
+                        eye_position,
+                        eye_direction,
+                        self.tree_node(*i),
+                        false,
+                    ) {
+                        self.set_tree_node(*i, new_child);
+                    }
+                }
+                for i in children {
+                    self.subdivide_tree_to_depth(eye_position, eye_direction, self.tree_node(*i));
+                }
+                PatchTree::Root {
+                    children: new_children,
+                }
+            }
+            PatchTree::Node { ref children } => {
+                //println!("  Node");
+                let mut new_children = children.to_owned();
+                for i in children {
+                    if let Some(new_child) = self.maybe_subdivide_patch(
+                        eye_position,
+                        eye_direction,
+                        self.tree_node(*i),
+                        false,
+                    ) {
+                        self.set_tree_node(*i, new_child);
+                    }
+                }
+                for i in children {
+                    self.subdivide_tree_to_depth(eye_position, &eye_direction, self.tree_node(*i));
+                }
+                PatchTree::Node {
+                    children: new_children,
+                }
+            }
+            PatchTree::Leaf { offset } => PatchTree::Leaf { offset },
+        }
+    }
+
+    fn maybe_subdivide_patch(
+        &mut self,
+        eye_position: &Point3<f64>,
+        eye_direction: &Vector3<f64>,
+        node: PatchTree,
+        force: bool,
+    ) -> Option<PatchTree> {
+        match node {
+            PatchTree::Root { .. } => None,
+            PatchTree::Node { .. } => None,
+            PatchTree::Leaf { offset } => {
+                let (maybe_offsets, patch_pts, patch_level) = {
+                    let patch = self.get_patch(offset);
+                    let d2 = patch.distance_squared_to(eye_position);
+                    if d2 > self.depth_levels[patch.level()] && !force {
+                        return None;
+                    }
+
+                    let maybe_offsets = self.find_empty_patch_slots();
+                    if maybe_offsets.is_none() {
+                        // No room for new patches, so skip it.
+                        println!("    OUT OF ROOM IN PATCHES");
+                        return None;
+                    }
+
+                    (maybe_offsets, patch.pts.clone(), patch.level)
+                };
+
+                let [v0, v1, v2] = patch_pts;
+                let a = Point3::from(
+                    IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_TO_KM,
+                );
+                let b = Point3::from(
+                    IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_TO_KM,
+                );
+                let c = Point3::from(
+                    IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_TO_KM,
+                );
+                let [p0off, p1off, p2off, p3off] = maybe_offsets.unwrap();
+                self.get_patch_mut(p0off)
+                    .change_target(patch_level + 1, [v0, a, c]);
+                self.get_patch_mut(p1off)
+                    .change_target(patch_level + 1, [v1, b, a]);
+                self.get_patch_mut(p2off)
+                    .change_target(patch_level + 1, [v2, c, b]);
+                self.get_patch_mut(p3off)
+                    .change_target(patch_level + 1, [a, b, c]);
+                self.get_patch_mut(offset).erect_tombstone();
+
+                let pt0off = TreeIndex(self.patch_tree.len());
+                self.patch_tree.push(PatchTree::Leaf { offset: p0off });
+                let pt1off = TreeIndex(self.patch_tree.len());
+                self.patch_tree.push(PatchTree::Leaf { offset: p1off });
+                let pt2off = TreeIndex(self.patch_tree.len());
+                self.patch_tree.push(PatchTree::Leaf { offset: p2off });
+                let pt3off = TreeIndex(self.patch_tree.len());
+                self.patch_tree.push(PatchTree::Leaf { offset: p3off });
+
+                return Some(PatchTree::Node {
+                    children: [pt0off, pt1off, pt2off, pt3off],
+                });
+            }
+        }
+    }
+
+    fn find_empty_patch_slots(&self) -> Option<[PatchIndex; 4]> {
+        let mut out = [PatchIndex(0); 4];
+        let mut offset = 0;
+        for (i, p) in self.patches.iter().enumerate() {
+            if !p.is_alive() {
+                out[offset] = PatchIndex(i);
+                offset += 1;
+                if offset > 3 {
+                    return Some(out);
+                }
+            }
+        }
+        None
     }
 
     /*
@@ -650,4 +1091,12 @@ impl TerrainGeoBuffer {
     pub fn debug_index_range(&self) -> Range<u32> {
         0..(DBG_VERT_COUNT as u32 * 2u32)
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_levels() {}
 }

@@ -164,7 +164,7 @@ fn main() -> Fallible<()> {
             &mut buffers,
         )?;
         terrain_geo_buffer
-            .borrow()
+            .borrow_mut()
             .make_upload_buffer(&camera, &gpu, &mut buffers)?;
         text_layout_buffer
             .borrow()
