@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use nalgebra::{clamp, convert, Point3, RealField, Vector3};
 
+// Note: this expects left-handed (e.g. clockwise winding).
 pub fn solid_angle<T: RealField>(
     observer_position: &Point3<T>,
     observer_direction: &Vector3<T>,
@@ -68,15 +69,75 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works_64() {
+    fn solid_angle_produces_proper_signs_per_winding_and_normal() {
         let p = Point3::new(0f64, 0f64, 0f64);
         let n = Vector3::new(0f64, 0f64, 1f64);
+        let pts = [
+            Point3::new(0f64, 1f64, 1f64),
+            Point3::new(1f64, 0f64, 1f64),
+            Point3::new(0f64, 0f64, 1f64),
+        ];
+        let sa = solid_angle(&p, &n, &pts);
+        assert!(sa > 0f64);
+
+        // Flipping the vector means we're pointing away from the face, so the SA should be negative.
+        let n = Vector3::new(0f64, 0f64, -1f64);
+        let sa = solid_angle(&p, &n, &pts);
+        assert!(sa < 0f64);
+
+        // Similarly, flipping the winding will also flip the sign, back to positive, event
+        // though we're still facing away.
         let pts = [
             Point3::new(0f64, 0f64, 1f64),
             Point3::new(1f64, 0f64, 1f64),
             Point3::new(0f64, 1f64, 1f64),
         ];
-        let _sa = solid_angle(&p, &n, &pts);
+        let sa = solid_angle(&p, &n, &pts);
+        assert!(sa > 0f64);
+
+        // But if we're actually pointing towards the face again, it is negative, as the face
+        // is pointing away.
+        let n = Vector3::new(0f64, 0f64, 1f64);
+        let sa = solid_angle(&p, &n, &pts);
+        assert!(sa < 0f64);
+    }
+
+    #[test]
+    fn solid_angle_reduces_with_distance() {
+        let p = Point3::new(0f64, 0f64, 0f64);
+        let n = Vector3::new(0f64, 0f64, 1f64);
+        let pts = [
+            Point3::new(0f64, 1f64, 1f64),
+            Point3::new(1f64, 0f64, 1f64),
+            Point3::new(0f64, 0f64, 1f64),
+        ];
+        let sa0 = solid_angle(&p, &n, &pts);
+
+        let p = Point3::new(0f64, 0f64, 0.5f64);
+        let sa1 = solid_angle(&p, &n, &pts);
+
+        assert!(sa0 < sa1);
+    }
+
+    #[test]
+    fn solid_angle_scales_with_triangle_area_given_fixed_observer() {
+        let p = Point3::new(0f64, 0f64, 0f64);
+        let n = Vector3::new(0f64, 0f64, 1f64);
+        let pts = [
+            Point3::new(0f64, 1f64, 1f64),
+            Point3::new(1f64, 0f64, 1f64),
+            Point3::new(0f64, 0f64, 1f64),
+        ];
+        let sa0 = solid_angle(&p, &n, &pts);
+
+        let pts = [
+            Point3::new(0f64, 2f64, 1f64),
+            Point3::new(2f64, 0f64, 1f64),
+            Point3::new(0f64, 0f64, 1f64),
+        ];
+        let sa1 = solid_angle(&p, &n, &pts);
+
+        assert!(sa0 < sa1);
     }
 
     #[test]
