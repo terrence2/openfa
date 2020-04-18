@@ -12,6 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod patch_vertex;
+
+pub use crate::patch_vertex::PatchVertex;
+
 use absolute_unit::{Kilometers, Radians};
 use camera::ArcBallCamera;
 use failure::Fallible;
@@ -42,63 +46,6 @@ const EARTH_TO_KM: f64 = 6370.0;
 const EVEREST_TO_KM: f64 = 8.848_039_2;
 
 const DBG_VERT_COUNT: usize = 1024;
-
-#[repr(C)]
-#[derive(AsBytes, FromBytes, Copy, Clone, Default)]
-pub struct PatchVertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    graticule: [f32; 2],
-}
-
-impl PatchVertex {
-    #[allow(clippy::unneeded_field_pattern)]
-    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
-        let tmp = wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                // position
-                wgpu::VertexAttributeDescriptor {
-                    format: wgpu::VertexFormat::Float3,
-                    offset: 0,
-                    shader_location: 0,
-                },
-                // normal
-                wgpu::VertexAttributeDescriptor {
-                    format: wgpu::VertexFormat::Float3,
-                    offset: 12,
-                    shader_location: 1,
-                },
-                // graticule
-                wgpu::VertexAttributeDescriptor {
-                    format: wgpu::VertexFormat::Float2,
-                    offset: 24,
-                    shader_location: 2,
-                },
-            ],
-        };
-
-        assert_eq!(
-            tmp.attributes[0].offset,
-            offset_of!(PatchVertex, position) as wgpu::BufferAddress
-        );
-
-        assert_eq!(
-            tmp.attributes[1].offset,
-            offset_of!(PatchVertex, normal) as wgpu::BufferAddress
-        );
-
-        assert_eq!(
-            tmp.attributes[2].offset,
-            offset_of!(PatchVertex, graticule) as wgpu::BufferAddress
-        );
-
-        assert_eq!(mem::size_of::<PatchVertex>(), 32);
-
-        tmp
-    }
-}
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
@@ -526,11 +473,11 @@ impl TerrainGeoBuffer {
 
         println!(
             "patch_vertex_buffer: {:08X}",
-            mem::size_of::<PatchVertex>() * 3 * num_patches
+            PatchVertex::mem_size() * 3 * num_patches
         );
         let patch_vertex_buffer =
             Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-                size: (mem::size_of::<PatchVertex>() * 3 * num_patches) as wgpu::BufferAddress,
+                size: (PatchVertex::mem_size() * 3 * num_patches) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::all(),
             })));
 
@@ -776,11 +723,7 @@ impl TerrainGeoBuffer {
         for patch in &self.patches {
             if !patch.is_alive() {
                 for i in 0..3 {
-                    verts.push(PatchVertex {
-                        position: [0f32; 3],
-                        normal: [0f32; 3],
-                        graticule: [0f32; 2],
-                    });
+                    verts.push(PatchVertex::empty());
                 }
                 continue;
             }
@@ -789,40 +732,15 @@ impl TerrainGeoBuffer {
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
             let n2 = v2.coords.normalize();
-            verts.push(PatchVertex {
-                position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
-                normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
-                graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
-                    v0,
-                ))
-                .lat_lon::<Radians, f32>(),
-            });
-            verts.push(PatchVertex {
-                position: [v1[0] as f32, v1[1] as f32, v1[2] as f32],
-                normal: [n1[0] as f32, n1[1] as f32, n1[2] as f32],
-                graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
-                    v1,
-                ))
-                .lat_lon::<Radians, f32>(),
-            });
-            verts.push(PatchVertex {
-                position: [v2[0] as f32, v2[1] as f32, v2[2] as f32],
-                normal: [n2[0] as f32, n2[1] as f32, n2[2] as f32],
-                graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
-                    v2,
-                ))
-                .lat_lon::<Radians, f32>(),
-            });
+            verts.push(PatchVertex::new(&v0, &n0));
+            verts.push(PatchVertex::new(&v1, &n1));
+            verts.push(PatchVertex::new(&v2, &n2));
         }
         println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
         let loop_start = Instant::now();
 
         while verts.len() < 3 * self.num_patches {
-            verts.push(PatchVertex {
-                position: [0f32; 3],
-                normal: [0f32; 3],
-                graticule: [0f32; 2],
-            });
+            verts.push(PatchVertex::empty());
         }
         let patch_vertex_buffer = gpu
             .device()
