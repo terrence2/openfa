@@ -12,9 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod debug_vertex;
+mod patch;
 mod patch_vertex;
 
-pub use crate::patch_vertex::PatchVertex;
+use crate::patch::Patch;
+pub use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
 
 use absolute_unit::{Kilometers, Radians};
 use camera::ArcBallCamera;
@@ -47,330 +50,6 @@ const EVEREST_TO_KM: f64 = 8.848_039_2;
 
 const DBG_VERT_COUNT: usize = 1024;
 
-#[repr(C)]
-#[derive(AsBytes, FromBytes, Copy, Clone, Default)]
-pub struct DebugVertex {
-    position: [f32; 4],
-    color: [f32; 4],
-}
-
-impl DebugVertex {
-    #[allow(clippy::unneeded_field_pattern)]
-    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
-        let tmp = wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                // position
-                wgpu::VertexAttributeDescriptor {
-                    format: wgpu::VertexFormat::Float4,
-                    offset: 0,
-                    shader_location: 0,
-                },
-                // color
-                wgpu::VertexAttributeDescriptor {
-                    format: wgpu::VertexFormat::Float4,
-                    offset: 16,
-                    shader_location: 1,
-                },
-            ],
-        };
-
-        assert_eq!(
-            tmp.attributes[0].offset,
-            offset_of!(DebugVertex, position) as wgpu::BufferAddress
-        );
-        assert_eq!(
-            tmp.attributes[1].offset,
-            offset_of!(DebugVertex, color) as wgpu::BufferAddress
-        );
-
-        assert_eq!(mem::size_of::<DebugVertex>(), 32);
-
-        tmp
-    }
-}
-
-// We introduce a substantial amount of error in our intersection computations below
-// with all the dot products and re-normalizations. This is fine, as long as we use a
-// large enough offset when comparing near zero to get stable results and that pad
-// extends the collisions in the right direction.
-const SIDEDNESS_OFFSET: f64 = -1f64;
-
-#[derive(Debug, Copy, Clone)]
-pub(crate) struct PatchInfo {
-    solid_angle: f64,
-    normal: Vector3<f64>, // at center of patch
-
-    // In geocentric, cartesian kilometers
-    pts: [Point3<f64>; 3],
-
-    // Planes
-    planes: [Plane<f64>; 3],
-
-    level: u16,
-    tombstone: bool,
-}
-
-impl PatchInfo {
-    pub(crate) fn new() -> Self {
-        Self {
-            level: 0,
-            tombstone: true,
-            solid_angle: 0f64,
-            normal: Vector3::new(0f64, 1f64, 0f64),
-            pts: [
-                Point3::new(0f64, 0f64, 0f64),
-                Point3::new(0f64, 0f64, 0f64),
-                Point3::new(0f64, 0f64, 0f64),
-            ],
-            planes: [Plane::xy(), Plane::xy(), Plane::xy()],
-        }
-    }
-
-    pub(crate) fn change_target(&mut self, level: u16, pts: [Point3<f64>; 3]) {
-        self.tombstone = false;
-        self.level = level;
-        self.pts = pts;
-        self.normal = compute_normal(&pts[0], &pts[1], &pts[2]);
-        let origin = Point3::new(0f64, 0f64, 0f64);
-        self.planes = [
-            Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
-            Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
-            Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
-        ];
-        assert!(self.planes[0].point_is_in_front(&pts[2]));
-        assert!(self.planes[1].point_is_in_front(&pts[0]));
-        assert!(self.planes[2].point_is_in_front(&pts[1]));
-        self.solid_angle = 0f64;
-    }
-
-    pub(crate) fn is_alive(&self) -> bool {
-        !self.tombstone
-    }
-
-    pub(crate) fn erect_tombstone(&mut self) {
-        self.tombstone = true;
-        self.solid_angle = -1f64;
-    }
-
-    pub(crate) fn recompute_solid_angle(
-        &mut self,
-        eye_position: &Point3<f64>,
-        eye_direction: &Vector3<f64>,
-    ) {
-        self.solid_angle = solid_angle(&eye_position, &eye_direction, &self.pts);
-    }
-
-    pub(crate) fn level(&self) -> usize {
-        self.level as usize
-    }
-
-    fn goodness(&self) -> f64 {
-        self.solid_angle
-    }
-
-    fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
-        let mut minimum = 99999999f64;
-
-        // bottom points
-        for p in &self.pts {
-            let v = p - point;
-            let d = v.dot(&v);
-            if d < minimum {
-                minimum = d;
-            }
-        }
-        // top points
-        for p in &self.pts {
-            let top_point = p + (p.coords.normalize() * EVEREST_TO_KM);
-            let v = top_point - point;
-            let d = v.dot(&v);
-            if d < minimum {
-                minimum = d;
-            }
-        }
-
-        return minimum;
-    }
-
-    fn is_behind_plane(
-        &self,
-        plane: &Plane<f64>,
-        dbg_verts: Option<&mut Vec<DebugVertex>>,
-        show_msgs: bool,
-    ) -> bool {
-        // Patch Extent:
-        //   outer: the three planes cutting from geocenter through each pair of points in vertices.
-        //   bottom: radius of the planet
-        //   top: radius of planet from height of everest
-
-        // Two phases:
-        //   1) Convex hull over points
-        //   2) Plane-sphere for convex top area
-
-        // bottom points
-        for p in &self.pts {
-            if plane.point_is_in_front_with_offset(&p, SIDEDNESS_OFFSET) {
-                return false;
-            }
-        }
-        // top points
-        for p in &self.pts {
-            let top_point = p + (p.coords.normalize() * EVEREST_TO_KM);
-            if plane.point_is_in_front_with_offset(&top_point, SIDEDNESS_OFFSET) {
-                return false;
-            }
-        }
-
-        // plane vs top sphere
-        let top_sphere = Sphere::from_center_and_radius(
-            &Point3::new(0f64, 0f64, 0f64),
-            EARTH_TO_KM + EVEREST_TO_KM,
-        );
-        let intersection = intersect::sphere_vs_plane(&top_sphere, &plane);
-        match intersection {
-            SpherePlaneIntersection::NoIntersection { side, .. } => side == PlaneSide::Above,
-            SpherePlaneIntersection::Intersection(ref circle) => {
-                if let Some(verts) = dbg_verts {
-                    for i in 0..DBG_VERT_COUNT {
-                        let a = (i as f64 / DBG_VERT_COUNT as f64) * 2f64 * PI;
-                        let p = circle.point_at_angle(a);
-                        let color = if self.point_is_in_cone(&p) {
-                            [0f32, 1f32, 0f32, 1f32]
-                        } else {
-                            [1f32, 0f32, 0f32, 1f32]
-                        };
-                        verts.push(DebugVertex {
-                            position: [p[0] as f32, p[1] as f32, p[2] as f32, 1f32],
-                            color,
-                        });
-                    }
-                }
-                for (i, plane) in self.planes.iter().enumerate() {
-                    let intersect = intersect::circle_vs_plane(circle, plane, SIDEDNESS_OFFSET);
-                    match intersect {
-                        CirclePlaneIntersection::Parallel => {
-                            if show_msgs {
-                                println!("  parallel {}", i);
-                            }
-                        }
-                        CirclePlaneIntersection::BehindPlane => {
-                            if show_msgs {
-                                println!("  outside {}", i);
-                            }
-                        }
-                        CirclePlaneIntersection::Tangent(ref p) => {
-                            if self.point_is_in_cone(p) {
-                                if show_msgs {
-                                    println!("  tangent {} in cone: {}", i, p);
-                                }
-                                return false;
-                            }
-                            if show_msgs {
-                                println!("  tangent {} NOT in cone: {}", i, p);
-                            }
-                        }
-                        CirclePlaneIntersection::Intersection(ref p0, ref p1) => {
-                            if self.point_is_in_cone(p0) || self.point_is_in_cone(p1) {
-                                if show_msgs {
-                                    println!("  intersection {} in cone: {}, {}", i, p0, p1);
-                                }
-                                return false;
-                            }
-                            if show_msgs {
-                                println!("  intersection {} NOT in cone: {}, {}", i, p0, p1);
-                            }
-                        }
-                        CirclePlaneIntersection::InFrontOfPlane => {
-                            if self.point_is_in_cone(circle.center()) {
-                                if show_msgs {
-                                    println!("  circle {} in cone: {}", i, circle.center());
-                                }
-                                return false;
-                            }
-                            if show_msgs {
-                                println!("  circle {} NOT in cone: {}", i, circle.center());
-                            }
-                        }
-                    }
-                }
-
-                if show_msgs {
-                    println!("  fell out of all planes");
-                }
-                // No test was in front of the plane, so we are fully behind it.
-                true
-            }
-        }
-    }
-
-    fn point_is_in_cone(&self, point: &Point3<f64>) -> bool {
-        for plane in &self.planes {
-            if !plane.point_is_in_front_with_offset(point, SIDEDNESS_OFFSET) {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
-        for p in &self.pts {
-            if (p - eye_position).dot(&self.normal) <= -0.00001f64 {
-                return false;
-            }
-        }
-        true
-    }
-
-    pub(crate) fn keep(
-        &self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-    ) -> bool {
-        // Cull back-facing
-        if self.is_back_facing(eye_position) {
-            // println!("  no - back facing");
-            return false;
-        }
-
-        // Cull below horizon
-        if self.is_behind_plane(&horizon_plane, None, false) {
-            //println!("  no - below horizon");
-            return false;
-        }
-
-        // Cull outside the view frustum
-        for plane in &camera.world_space_frustum() {
-            if self.is_behind_plane(plane, None, false) {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-impl Eq for PatchInfo {}
-
-impl PartialEq for PatchInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.goodness() == other.goodness()
-    }
-}
-
-impl PartialOrd for PatchInfo {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.goodness().partial_cmp(&other.goodness())
-    }
-}
-impl Ord for PatchInfo {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap_or(Ordering::Less)
-    }
-}
-
 // Index into the tree vec.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct TreeIndex(usize);
@@ -401,7 +80,7 @@ pub struct TerrainGeoBuffer {
     // bind_group: wgpu::BindGroup,
     sphere: IcoSphere,
     depth_levels: Vec<f64>,
-    patches: Vec<PatchInfo>,
+    patches: Vec<Patch>,
     patch_order: Vec<usize>,
     patch_tree: Vec<PatchTree>,
 
@@ -494,7 +173,7 @@ impl TerrainGeoBuffer {
 
         let sphere = IcoSphere::new(0);
         let mut patches = Vec::with_capacity(num_patches);
-        patches.resize(num_patches, PatchInfo::new());
+        patches.resize(num_patches, Patch::new());
         let mut patch_order = Vec::with_capacity(num_patches);
         for i in 0..num_patches {
             patch_order.push(i);
@@ -550,11 +229,11 @@ impl TerrainGeoBuffer {
         })))
     }
 
-    fn get_patch(&self, index: PatchIndex) -> &PatchInfo {
+    fn get_patch(&self, index: PatchIndex) -> &Patch {
         &self.patches[index.0]
     }
 
-    fn get_patch_mut(&mut self, index: PatchIndex) -> &mut PatchInfo {
+    fn get_patch_mut(&mut self, index: PatchIndex) -> &mut Patch {
         &mut self.patches[index.0]
     }
 
@@ -728,7 +407,7 @@ impl TerrainGeoBuffer {
                 continue;
             }
             cnt += 1;
-            let [v0, v1, v2] = patch.pts;
+            let [v0, v1, v2] = patch.points();
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
             let n2 = v2.coords.normalize();
@@ -811,10 +490,10 @@ impl TerrainGeoBuffer {
         let i1 = self.tree_node(children[1]).leaf_offset();
         let i2 = self.tree_node(children[2]).leaf_offset();
         let i3 = self.tree_node(children[3]).leaf_offset();
-        let lvl = self.get_patch(i0).level - 1;
-        let v0 = self.get_patch(i0).pts[0];
-        let v1 = self.get_patch(i1).pts[0];
-        let v2 = self.get_patch(i2).pts[0];
+        let lvl = self.get_patch(i0).level() as u16 - 1;
+        let v0 = *self.get_patch(i0).point(0);
+        let v1 = *self.get_patch(i1).point(0);
+        let v2 = *self.get_patch(i2).point(0);
         self.get_patch_mut(i0).change_target(lvl, [v0, v1, v2]);
         self.get_patch_mut(i1).erect_tombstone();
         self.get_patch_mut(i2).erect_tombstone();
@@ -918,7 +597,11 @@ impl TerrainGeoBuffer {
                         return None;
                     }
 
-                    (maybe_offsets, patch.pts.clone(), patch.level)
+                    (
+                        maybe_offsets,
+                        patch.points().to_owned(),
+                        patch.level() as u16,
+                    )
                 };
 
                 let [v0, v1, v2] = patch_pts;
