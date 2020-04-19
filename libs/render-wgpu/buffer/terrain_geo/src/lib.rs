@@ -42,11 +42,9 @@ use std::{
     ops::Range,
     sync::Arc,
 };
+use universe::EARTH_RADIUS_KM;
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
-
-const EARTH_TO_KM: f64 = 6370.0;
-const EVEREST_TO_KM: f64 = 8.848_039_2;
 
 const DBG_VERT_COUNT: usize = 1024;
 
@@ -63,6 +61,7 @@ enum PatchTree {
     Root { children: [TreeIndex; 20] },
     Node { children: [TreeIndex; 4] },
     Leaf { offset: PatchIndex },
+    Empty,
 }
 
 impl PatchTree {
@@ -71,6 +70,13 @@ impl PatchTree {
         match self {
             Self::Leaf { offset } => return *offset,
             _ => panic!("Not a leaf!"),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Empty => true,
+            _ => false,
         }
     }
 }
@@ -124,7 +130,7 @@ impl TerrainGeoBuffer {
         const LEVEL_COUNT: usize = 40;
         let mut depth_levels = Vec::new();
         for i in 0..LEVEL_COUNT {
-            depth_levels.push(EARTH_TO_KM * 2f64.powf(-(i as f64)));
+            depth_levels.push(EARTH_RADIUS_KM * 2f64.powf(-(i as f64)));
         }
         for lvl in depth_levels.iter_mut() {
             *lvl = *lvl * *lvl;
@@ -204,9 +210,9 @@ impl TerrainGeoBuffer {
             ],
         });
         for (i, face) in sphere.faces.iter().enumerate() {
-            let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_TO_KM);
-            let v1 = Point3::from(&sphere.verts[face.i1()] * EARTH_TO_KM);
-            let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_TO_KM);
+            let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_RADIUS_KM);
+            let v1 = Point3::from(&sphere.verts[face.i1()] * EARTH_RADIUS_KM);
+            let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             patches[i].change_target(0, [v0, v1, v2]);
             patch_tree.push(PatchTree::Leaf {
                 offset: PatchIndex(i),
@@ -249,6 +255,10 @@ impl TerrainGeoBuffer {
         self.patch_tree[index.0] = node;
     }
 
+    fn clear_tree_node(&mut self, index: TreeIndex) {
+        self.patch_tree[index.0] = PatchTree::Empty;
+    }
+
     fn format_tree_display(&self) -> String {
         self.format_tree_display_inner(0, self.tree_root())
     }
@@ -273,6 +283,7 @@ impl TerrainGeoBuffer {
                 let pad = "  ".repeat(lvl);
                 out += &format!("{}Leaf @{}, lvl: {}\n", pad, offset.0, lvl);
             }
+            PatchTree::Empty => panic!("empty node in patch tree"),
         }
         return out;
     }
@@ -291,16 +302,17 @@ impl TerrainGeoBuffer {
 
         let horizon_plane = Plane::from_normal_and_distance(
             eye_position.coords.normalize(),
-            (((EARTH_TO_KM * EARTH_TO_KM) / eye_position.coords.magnitude()) - 100f64).min(0f64),
+            (((EARTH_RADIUS_KM * EARTH_RADIUS_KM) / eye_position.coords.magnitude()) - 100f64)
+                .min(0f64),
         );
 
         /*
         let loop_start = Instant::now();
         let mut patches = BinaryHeap::with_capacity(self.num_patches);
         for face in &self.sphere.faces {
-            let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_TO_KM);
-            let v1 = Point3::from(self.sphere.verts[face.i1()] * EARTH_TO_KM);
-            let v2 = Point3::from(self.sphere.verts[face.i2()] * EARTH_TO_KM);
+            let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_RADIUS_KM);
+            let v1 = Point3::from(self.sphere.verts[face.i1()] * EARTH_RADIUS_KM);
+            let v2 = Point3::from(self.sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let patch = PatchInfo::new(0, &eye_position, &eye_direction, [v0, v1, v2]);
 
             //println!("Checking {}: ", i);
@@ -324,13 +336,13 @@ impl TerrainGeoBuffer {
             let patch = patches.pop().unwrap();
             let [v0, v1, v2] = patch.pts;
             let a = Point3::from(
-                IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_TO_KM,
+                IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
             );
             let b = Point3::from(
-                IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_TO_KM,
+                IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
             );
             let c = Point3::from(
-                IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_TO_KM,
+                IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
             );
 
             let patch0 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v0, a, c]);
@@ -392,7 +404,13 @@ impl TerrainGeoBuffer {
         println!("rejoin: {:?}", rejoin_end - rejoin_start);
 
         let subdivide_start = Instant::now();
-        self.subdivide_tree_to_depth(&eye_position, &eye_direction, self.patch_tree[0]);
+        self.subdivide_tree_to_depth(
+            &camera,
+            &horizon_plane,
+            &eye_position,
+            &eye_direction,
+            self.tree_root(),
+        );
         let subdivide_end = Instant::now();
         println!("subdivide: {:?}", subdivide_end - subdivide_start);
 
@@ -415,7 +433,12 @@ impl TerrainGeoBuffer {
             verts.push(PatchVertex::new(&v1, &n1));
             verts.push(PatchVertex::new(&v2, &n2));
         }
-        println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
+        println!(
+            "verts: {}: {}: {:?}",
+            cnt,
+            self.patch_tree.len(),
+            Instant::now() - loop_start
+        );
         let loop_start = Instant::now();
 
         while verts.len() < 3 * self.num_patches {
@@ -482,6 +505,7 @@ impl TerrainGeoBuffer {
                 }
             }
             PatchTree::Leaf { offset } => {}
+            PatchTree::Empty => panic!("empty node in patch tree"),
         }
     }
 
@@ -498,6 +522,9 @@ impl TerrainGeoBuffer {
         self.get_patch_mut(i1).erect_tombstone();
         self.get_patch_mut(i2).erect_tombstone();
         self.get_patch_mut(i3).erect_tombstone();
+        self.clear_tree_node(children[1]);
+        self.clear_tree_node(children[2]);
+        self.clear_tree_node(children[3]);
         PatchTree::Leaf { offset: i0 }
     }
 
@@ -518,62 +545,76 @@ impl TerrainGeoBuffer {
                 d2 > self.depth_levels[patch.level() - 1]
                     || !patch.keep(camera, horizon_plane, eye_position)
             }
+            PatchTree::Empty => panic!("empty node in patch tree"),
         }
     }
 
     fn subdivide_tree_to_depth(
         &mut self,
+        camera: &ArcBallCamera,
+        horizon_plane: &Plane<f64>,
         eye_position: &Point3<f64>,
         eye_direction: &Vector3<f64>,
         node: PatchTree,
-    ) -> PatchTree {
+    ) {
         match node {
             PatchTree::Root { ref children } => {
-                //println!("Root");
-                let mut new_children = children.to_owned();
                 for i in children {
                     if let Some(new_child) = self.maybe_subdivide_patch(
+                        camera,
+                        horizon_plane,
                         eye_position,
                         eye_direction,
                         self.tree_node(*i),
                         false,
                     ) {
+                        println!("SUBDIVIDE ROOT: {:?}", *i);
                         self.set_tree_node(*i, new_child);
                     }
                 }
                 for i in children {
-                    self.subdivide_tree_to_depth(eye_position, eye_direction, self.tree_node(*i));
-                }
-                PatchTree::Root {
-                    children: new_children,
+                    self.subdivide_tree_to_depth(
+                        camera,
+                        horizon_plane,
+                        eye_position,
+                        eye_direction,
+                        self.tree_node(*i),
+                    );
                 }
             }
             PatchTree::Node { ref children } => {
-                //println!("  Node");
-                let mut new_children = children.to_owned();
                 for i in children {
                     if let Some(new_child) = self.maybe_subdivide_patch(
+                        camera,
+                        horizon_plane,
                         eye_position,
                         eye_direction,
                         self.tree_node(*i),
                         false,
                     ) {
+                        println!("SUBDIVIDE NODE");
                         self.set_tree_node(*i, new_child);
                     }
                 }
                 for i in children {
-                    self.subdivide_tree_to_depth(eye_position, &eye_direction, self.tree_node(*i));
-                }
-                PatchTree::Node {
-                    children: new_children,
+                    self.subdivide_tree_to_depth(
+                        camera,
+                        horizon_plane,
+                        eye_position,
+                        &eye_direction,
+                        self.tree_node(*i),
+                    );
                 }
             }
-            PatchTree::Leaf { offset } => PatchTree::Leaf { offset },
+            PatchTree::Leaf { offset } => {}
+            PatchTree::Empty => panic!("empty node in patch tree"),
         }
     }
 
     fn maybe_subdivide_patch(
         &mut self,
+        camera: &ArcBallCamera,
+        horizon_plane: &Plane<f64>,
         eye_position: &Point3<f64>,
         eye_direction: &Vector3<f64>,
         node: PatchTree,
@@ -586,7 +627,10 @@ impl TerrainGeoBuffer {
                 let (maybe_offsets, patch_pts, patch_level) = {
                     let patch = self.get_patch(offset);
                     let d2 = patch.distance_squared_to(eye_position);
-                    if d2 > self.depth_levels[patch.level()] && !force {
+                    if (d2 > self.depth_levels[patch.level()]
+                        || !patch.keep(camera, horizon_plane, eye_position))
+                        && !force
+                    {
                         return None;
                     }
 
@@ -606,13 +650,13 @@ impl TerrainGeoBuffer {
 
                 let [v0, v1, v2] = patch_pts;
                 let a = Point3::from(
-                    IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_TO_KM,
+                    IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
                 );
                 let b = Point3::from(
-                    IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_TO_KM,
+                    IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
                 );
                 let c = Point3::from(
-                    IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_TO_KM,
+                    IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
                 );
                 let [p0off, p1off, p2off, p3off] = maybe_offsets.unwrap();
                 self.get_patch_mut(p0off)
@@ -625,19 +669,17 @@ impl TerrainGeoBuffer {
                     .change_target(patch_level + 1, [a, b, c]);
                 self.get_patch_mut(offset).erect_tombstone();
 
-                let pt0off = TreeIndex(self.patch_tree.len());
-                self.patch_tree.push(PatchTree::Leaf { offset: p0off });
-                let pt1off = TreeIndex(self.patch_tree.len());
-                self.patch_tree.push(PatchTree::Leaf { offset: p1off });
-                let pt2off = TreeIndex(self.patch_tree.len());
-                self.patch_tree.push(PatchTree::Leaf { offset: p2off });
-                let pt3off = TreeIndex(self.patch_tree.len());
-                self.patch_tree.push(PatchTree::Leaf { offset: p3off });
+                let [pt0off, pt1off, pt2off, pt3off] = self.find_empty_tree_slots();
+                self.set_tree_node(pt0off, PatchTree::Leaf { offset: p0off });
+                self.set_tree_node(pt1off, PatchTree::Leaf { offset: p1off });
+                self.set_tree_node(pt2off, PatchTree::Leaf { offset: p2off });
+                self.set_tree_node(pt3off, PatchTree::Leaf { offset: p3off });
 
                 return Some(PatchTree::Node {
                     children: [pt0off, pt1off, pt2off, pt3off],
                 });
             }
+            PatchTree::Empty => panic!("empty node in patch tree"),
         }
     }
 
@@ -654,6 +696,26 @@ impl TerrainGeoBuffer {
             }
         }
         None
+    }
+
+    fn find_empty_tree_slots(&mut self) -> [TreeIndex; 4] {
+        let mut out = [TreeIndex(0); 4];
+        let mut offset = 0;
+        for (i, p) in self.patch_tree.iter().enumerate() {
+            if p.is_empty() {
+                out[offset] = TreeIndex(i);
+                offset += 1;
+                if offset > 3 {
+                    return out;
+                }
+            }
+        }
+        while offset < 4 {
+            out[offset] = TreeIndex(self.patch_tree.len());
+            offset += 1;
+            self.patch_tree.push(PatchTree::Empty);
+        }
+        out
     }
 
     /*
