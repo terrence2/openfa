@@ -47,7 +47,7 @@ struct Leaf {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum TreeNode {
-    Root(Root),
+    Root,
     Node(Node),
     Leaf(Leaf),
     Empty,
@@ -77,6 +77,7 @@ pub(crate) struct PatchTree {
     patches: Vec<Patch>,
     patch_order: Vec<usize>,
     patch_tree: Vec<TreeNode>,
+    root: Root,
     root_patches: [Patch; 20],
 }
 
@@ -100,7 +101,7 @@ impl PatchTree {
             patch_order.push(i);
         }
         let mut patch_tree = Vec::new();
-        patch_tree.push(TreeNode::Root(Root {
+        let root = Root {
             children: [
                 TreeIndex(1),
                 TreeIndex(2),
@@ -123,7 +124,8 @@ impl PatchTree {
                 TreeIndex(19),
                 TreeIndex(20),
             ],
-        }));
+        };
+        patch_tree.push(TreeNode::Root);
         let mut root_patches = [Patch::new(); 20];
         for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_RADIUS_KM);
@@ -143,6 +145,7 @@ impl PatchTree {
             patches,
             patch_order,
             patch_tree,
+            root,
             root_patches,
         }
     }
@@ -178,9 +181,9 @@ impl PatchTree {
     fn format_tree_display_inner(&self, lvl: usize, node: TreeNode) -> String {
         let mut out = String::new();
         match node {
-            TreeNode::Root(ref root) => {
+            TreeNode::Root => {
                 out += "Root\n";
-                for child in &root.children {
+                for child in &self.root.children {
                     out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
                 }
             }
@@ -328,14 +331,15 @@ impl PatchTree {
         node_index: TreeIndex,
     ) {
         match self.tree_node(node_index) {
-            TreeNode::Root(ref root) => {
+            TreeNode::Root => {
                 /*
                 for i in 0..20 {
                     if children[i].is_none() && self.root_patches[i].keep(camera, horizon_plane, eye_position) {
                     }
                 }
                 */
-                for i in &root.children {
+                let children = self.root.children;
+                for i in &children {
                     self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
                 }
             }
@@ -387,7 +391,7 @@ impl PatchTree {
         node: TreeNode,
     ) -> bool {
         match node {
-            TreeNode::Root(_) => false,
+            TreeNode::Root => false,
             TreeNode::Node(_) => false,
             TreeNode::Leaf(leaf) => {
                 let patch = self.get_patch(leaf.offset);
@@ -409,8 +413,9 @@ impl PatchTree {
         node: TreeNode,
     ) {
         match node {
-            TreeNode::Root(ref root) => {
-                for i in &root.children {
+            TreeNode::Root => {
+                let children = self.root.children;
+                for i in &children {
                     if let Some(new_child) = self.maybe_subdivide_patch(
                         camera,
                         horizon_plane,
@@ -423,7 +428,7 @@ impl PatchTree {
                         self.set_tree_node(*i, new_child);
                     }
                 }
-                for i in &root.children {
+                for i in &children {
                     self.subdivide_tree_to_depth(
                         camera,
                         horizon_plane,
@@ -472,7 +477,7 @@ impl PatchTree {
         force: bool,
     ) -> Option<TreeNode> {
         match node {
-            TreeNode::Root(_) => None,
+            TreeNode::Root => None,
             TreeNode::Node(_) => None,
             TreeNode::Leaf(leaf) => {
                 let (maybe_offsets, patch_pts, patch_level) = {
