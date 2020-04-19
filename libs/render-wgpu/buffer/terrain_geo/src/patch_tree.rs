@@ -31,10 +31,25 @@ struct TreeIndex(usize);
 pub(crate) struct PatchIndex(pub(crate) usize);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct Root {
+    children: [TreeIndex; 20],
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct Node {
+    children: [TreeIndex; 4],
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct Leaf {
+    offset: PatchIndex,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum TreeNode {
-    Root { children: [TreeIndex; 20] },
-    Node { children: [TreeIndex; 4] },
-    Leaf { offset: PatchIndex },
+    Root(Root),
+    Node(Node),
+    Leaf(Leaf),
     Empty,
 }
 
@@ -42,7 +57,7 @@ impl TreeNode {
     // Panic if this is not a leaf.
     fn leaf_offset(&self) -> PatchIndex {
         match self {
-            Self::Leaf { offset } => return *offset,
+            Self::Leaf(leaf) => return leaf.offset,
             _ => panic!("Not a leaf!"),
         }
     }
@@ -56,12 +71,13 @@ impl TreeNode {
 }
 
 pub(crate) struct PatchTree {
+    num_patches: usize,
     sphere: IcoSphere,
     depth_levels: Vec<f64>,
     patches: Vec<Patch>,
     patch_order: Vec<usize>,
     patch_tree: Vec<TreeNode>,
-    num_patches: usize,
+    root_patches: [Patch; 20],
 }
 
 impl PatchTree {
@@ -84,7 +100,7 @@ impl PatchTree {
             patch_order.push(i);
         }
         let mut patch_tree = Vec::new();
-        patch_tree.push(TreeNode::Root {
+        patch_tree.push(TreeNode::Root(Root {
             children: [
                 TreeIndex(1),
                 TreeIndex(2),
@@ -107,24 +123,27 @@ impl PatchTree {
                 TreeIndex(19),
                 TreeIndex(20),
             ],
-        });
+        }));
+        let mut root_patches = [Patch::new(); 20];
         for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(&sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_RADIUS_KM);
-            patches[i].change_target(0, [v0, v1, v2]);
-            patch_tree.push(TreeNode::Leaf {
+            patches[i].change_target(0, [v0.clone(), v1.clone(), v2.clone()]);
+            root_patches[i].change_target(0, [v0, v1, v2]);
+            patch_tree.push(TreeNode::Leaf(Leaf {
                 offset: PatchIndex(i),
-            });
+            }));
         }
 
         Self {
+            num_patches,
             sphere,
             depth_levels,
             patches,
             patch_order,
             patch_tree,
-            num_patches,
+            root_patches,
         }
     }
 
@@ -159,22 +178,22 @@ impl PatchTree {
     fn format_tree_display_inner(&self, lvl: usize, node: TreeNode) -> String {
         let mut out = String::new();
         match node {
-            TreeNode::Root { children } => {
+            TreeNode::Root(ref root) => {
                 out += "Root\n";
-                for child in &children {
+                for child in &root.children {
                     out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
                 }
             }
-            TreeNode::Node { children } => {
+            TreeNode::Node(ref node) => {
                 let pad = "  ".repeat(lvl);
-                out += &format!("{}Node: {:?}\n", pad, children);
-                for child in &children {
+                out += &format!("{}Node: {:?}\n", pad, node.children);
+                for child in &node.children {
                     out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
                 }
             }
-            TreeNode::Leaf { offset } => {
+            TreeNode::Leaf(ref leaf) => {
                 let pad = "  ".repeat(lvl);
-                out += &format!("{}Leaf @{}, lvl: {}\n", pad, offset.0, lvl);
+                out += &format!("{}Leaf @{}, lvl: {}\n", pad, leaf.offset.0, lvl);
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
@@ -309,16 +328,22 @@ impl PatchTree {
         node_index: TreeIndex,
     ) {
         match self.tree_node(node_index) {
-            TreeNode::Root { ref children } => {
-                for i in children {
+            TreeNode::Root(ref root) => {
+                /*
+                for i in 0..20 {
+                    if children[i].is_none() && self.root_patches[i].keep(camera, horizon_plane, eye_position) {
+                    }
+                }
+                */
+                for i in &root.children {
                     self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
                 }
             }
-            TreeNode::Node { ref children } => {
-                for i in children {
+            TreeNode::Node(ref node) => {
+                for i in &node.children {
                     self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
                 }
-                if children.iter().all(|child| {
+                if node.children.iter().all(|child| {
                     self.leaf_can_be_rejoined(
                         camera,
                         horizon_plane,
@@ -326,11 +351,11 @@ impl PatchTree {
                         self.tree_node(*child),
                     )
                 }) {
-                    let new_child = self.rejoin_patch(children);
+                    let new_child = self.rejoin_patch(&node.children);
                     self.set_tree_node(node_index, new_child);
                 }
             }
-            TreeNode::Leaf { offset } => {}
+            TreeNode::Leaf(_) => {}
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
     }
@@ -351,7 +376,7 @@ impl PatchTree {
         self.clear_tree_node(children[1]);
         self.clear_tree_node(children[2]);
         self.clear_tree_node(children[3]);
-        TreeNode::Leaf { offset: i0 }
+        TreeNode::Leaf(Leaf { offset: i0 })
     }
 
     fn leaf_can_be_rejoined(
@@ -362,10 +387,10 @@ impl PatchTree {
         node: TreeNode,
     ) -> bool {
         match node {
-            TreeNode::Root { .. } => false,
-            TreeNode::Node { .. } => false,
-            TreeNode::Leaf { offset } => {
-                let patch = self.get_patch(offset);
+            TreeNode::Root(_) => false,
+            TreeNode::Node(_) => false,
+            TreeNode::Leaf(leaf) => {
+                let patch = self.get_patch(leaf.offset);
                 let d2 = patch.distance_squared_to(eye_position);
                 assert!(patch.level() > 0);
                 d2 > self.depth_levels[patch.level() - 1]
@@ -384,8 +409,8 @@ impl PatchTree {
         node: TreeNode,
     ) {
         match node {
-            TreeNode::Root { ref children } => {
-                for i in children {
+            TreeNode::Root(ref root) => {
+                for i in &root.children {
                     if let Some(new_child) = self.maybe_subdivide_patch(
                         camera,
                         horizon_plane,
@@ -398,7 +423,7 @@ impl PatchTree {
                         self.set_tree_node(*i, new_child);
                     }
                 }
-                for i in children {
+                for i in &root.children {
                     self.subdivide_tree_to_depth(
                         camera,
                         horizon_plane,
@@ -408,8 +433,8 @@ impl PatchTree {
                     );
                 }
             }
-            TreeNode::Node { ref children } => {
-                for i in children {
+            TreeNode::Node(ref node) => {
+                for i in &node.children {
                     if let Some(new_child) = self.maybe_subdivide_patch(
                         camera,
                         horizon_plane,
@@ -422,7 +447,7 @@ impl PatchTree {
                         self.set_tree_node(*i, new_child);
                     }
                 }
-                for i in children {
+                for i in &node.children {
                     self.subdivide_tree_to_depth(
                         camera,
                         horizon_plane,
@@ -432,7 +457,7 @@ impl PatchTree {
                     );
                 }
             }
-            TreeNode::Leaf { offset } => {}
+            TreeNode::Leaf(_) => {}
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
     }
@@ -447,11 +472,11 @@ impl PatchTree {
         force: bool,
     ) -> Option<TreeNode> {
         match node {
-            TreeNode::Root { .. } => None,
-            TreeNode::Node { .. } => None,
-            TreeNode::Leaf { offset } => {
+            TreeNode::Root(_) => None,
+            TreeNode::Node(_) => None,
+            TreeNode::Leaf(leaf) => {
                 let (maybe_offsets, patch_pts, patch_level) = {
-                    let patch = self.get_patch(offset);
+                    let patch = self.get_patch(leaf.offset);
                     let d2 = patch.distance_squared_to(eye_position);
                     if (d2 > self.depth_levels[patch.level()]
                         || !patch.keep(camera, horizon_plane, eye_position))
@@ -493,17 +518,17 @@ impl PatchTree {
                     .change_target(patch_level + 1, [v2, c, b]);
                 self.get_patch_mut(p3off)
                     .change_target(patch_level + 1, [a, b, c]);
-                self.get_patch_mut(offset).erect_tombstone();
+                self.get_patch_mut(leaf.offset).erect_tombstone();
 
                 let [pt0off, pt1off, pt2off, pt3off] = self.find_empty_tree_slots();
-                self.set_tree_node(pt0off, TreeNode::Leaf { offset: p0off });
-                self.set_tree_node(pt1off, TreeNode::Leaf { offset: p1off });
-                self.set_tree_node(pt2off, TreeNode::Leaf { offset: p2off });
-                self.set_tree_node(pt3off, TreeNode::Leaf { offset: p3off });
+                self.set_tree_node(pt0off, TreeNode::Leaf(Leaf { offset: p0off }));
+                self.set_tree_node(pt1off, TreeNode::Leaf(Leaf { offset: p1off }));
+                self.set_tree_node(pt2off, TreeNode::Leaf(Leaf { offset: p2off }));
+                self.set_tree_node(pt3off, TreeNode::Leaf(Leaf { offset: p3off }));
 
-                return Some(TreeNode::Node {
+                return Some(TreeNode::Node(Node {
                     children: [pt0off, pt1off, pt2off, pt3off],
-                });
+                }));
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
