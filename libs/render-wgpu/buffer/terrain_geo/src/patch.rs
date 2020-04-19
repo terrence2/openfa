@@ -12,30 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
-use absolute_unit::{Kilometers, Radians};
 use camera::ArcBallCamera;
-use geodesy::{Cartesian, GeoCenter, Graticule};
 use geometry::{
     algorithm::{compute_normal, solid_angle},
     intersect,
     intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
-    IcoSphere, Plane, Sphere,
+    Plane, Sphere,
 };
-use memoffset::offset_of;
 use nalgebra::{Point3, Vector3};
-use std::{
-    cell::RefCell,
-    cmp::{Ord, Ordering},
-    collections::BinaryHeap,
-    f64::consts::PI,
-    fmt, mem,
-    ops::Range,
-    sync::Arc,
-};
+use std::cmp::{Ord, Ordering};
 use universe::{EARTH_RADIUS_KM, EVEREST_HEIGHT_KM};
-use wgpu;
-use zerocopy::{AsBytes, FromBytes};
 
 // We introduce a substantial amount of error in our intersection computations below
 // with all the dot products and re-normalizations. This is fine, as long as we use a

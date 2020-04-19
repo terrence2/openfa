@@ -19,5 +19,7 @@ pub const FEET_TO_DAM: f32 = 0.030_48;
 pub const FEET_TO_HM_32: f32 = 0.003_048;
 pub const FEET_TO_HM_64: f64 = 0.003_048;
 pub const FEET_TO_KM: f32 = 0.000_304_8;
+
 pub const EARTH_RADIUS_KM: f64 = 6360.0;
+pub const EARTH_RADIUS_KM_32: f32 = EARTH_RADIUS_KM as f32;
 pub const EVEREST_HEIGHT_KM: f64 = 8.848_039_2;
