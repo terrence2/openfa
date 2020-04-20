@@ -214,6 +214,20 @@ impl PatchTree {
                 .min(0f64),
         );
 
+        let max_levels = 10;
+        for lvl in 0..max_levels {
+            let mut nodes_at_level = Vec::with_capacity(self.num_patches * 2);
+            self.collect_at_level(
+                &camera,
+                &horizon_plane,
+                &eye_position,
+                0,
+                lvl,
+                TreeIndex(0),
+                &mut nodes_at_level,
+            );
+        }
+
         /*
         let loop_start = Instant::now();
         let mut patches = BinaryHeap::with_capacity(self.num_patches);
@@ -321,6 +335,78 @@ impl PatchTree {
         );
         let subdivide_end = Instant::now();
         println!("subdivide: {:?}", subdivide_end - subdivide_start);
+    }
+
+    fn collect_at_level(
+        &mut self,
+        camera: &ArcBallCamera,
+        horizon_plane: &Plane<f64>,
+        eye_position: &Point3<f64>,
+        current_level: usize,
+        target_level: usize,
+        node_index: TreeIndex,
+        output: &mut Vec<TreeIndex>,
+    ) {
+        if current_level == target_level {
+            self.visit_collect_at_level(
+                camera,
+                horizon_plane,
+                eye_position,
+                current_level + 1,
+                target_level,
+                node_index,
+                output,
+            );
+            return;
+        }
+
+        // Recurse to proper level. Note that we visit from top down, so
+        // we will have split to depth before reaching this point.
+        if current_level < target_level {
+            match self.tree_node(node_index) {
+                TreeNode::Root => {
+                    let children = self.root.children;
+                    for i in &children {
+                        self.collect_at_level(
+                            camera,
+                            horizon_plane,
+                            eye_position,
+                            current_level + 1,
+                            target_level,
+                            *i,
+                            output,
+                        );
+                    }
+                }
+                TreeNode::Node(ref node) => {
+                    for i in &node.children {
+                        self.collect_at_level(
+                            camera,
+                            horizon_plane,
+                            eye_position,
+                            current_level + 1,
+                            target_level,
+                            *i,
+                            output,
+                        );
+                    }
+                }
+                TreeNode::Leaf(_) => {}
+                TreeNode::Empty => panic!("empty node in patch tree"),
+            }
+        }
+    }
+
+    fn visit_collect_at_level(
+        &mut self,
+        camera: &ArcBallCamera,
+        horizon_plane: &Plane<f64>,
+        eye_position: &Point3<f64>,
+        current_level: usize,
+        target_level: usize,
+        node_index: TreeIndex,
+        output: &mut Vec<TreeIndex>,
+    ) {
     }
 
     fn rejoin_tree_to_depth(
