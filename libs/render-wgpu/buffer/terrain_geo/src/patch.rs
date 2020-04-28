@@ -12,6 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::{debug_vertex::DebugVertex, patch_tree::TreeIndex};
+
 use camera::ArcBallCamera;
 use geometry::{
     algorithm::{compute_normal, solid_angle},
@@ -31,8 +33,15 @@ const SIDEDNESS_OFFSET: f64 = -1f64;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Patch {
+    // The solid angle to the polygon defined by pts plus an impostor billboard representing
+    // the possibility of terrain, so that we do not de-emphasize visible edges on the horizon.
     solid_angle: f64,
-    normal: Vector3<f64>, // at center of patch
+    impostor_height: f64,       // KM
+    imposter_base: Point3<f64>, // centroid
+    imposter_baseline: f64,     // KM
+
+    // Normal at center of patch.
+    normal: Vector3<f64>,
 
     // In geocentric, cartesian kilometers
     pts: [Point3<f64>; 3],
@@ -40,16 +49,22 @@ pub(crate) struct Patch {
     // Planes
     planes: [Plane<f64>; 3],
 
+    // Subdivision depth of this patch. Maybe move to tree?
     level: u16,
-    tombstone: bool,
+
+    // The leaf node that owns this patch, or None if a tombstone.
+    owner: Option<TreeIndex>,
 }
 
 impl Patch {
     pub(crate) fn new() -> Self {
         Self {
             level: 0,
-            tombstone: true,
+            owner: None,
             solid_angle: 0f64,
+            impostor_height: 0f64,
+            imposter_base: Point3::new(0f64, 0f64, 0f64),
+            imposter_baseline: 0f64,
             normal: Vector3::new(0f64, 1f64, 0f64),
             pts: [
                 Point3::new(0f64, 0f64, 0f64),
@@ -60,12 +75,30 @@ impl Patch {
         }
     }
 
-    pub(crate) fn change_target(&mut self, level: u16, pts: [Point3<f64>; 3]) {
-        self.tombstone = false;
-        self.level = level;
+    pub(crate) fn change_target(
+        &mut self,
+        owner: TreeIndex,
+        level: usize,
+        pts: [Point3<f64>; 3],
+        eye_position: &Point3<f64>,
+        eye_direction: &Vector3<f64>,
+    ) {
+        self.owner = Some(owner);
+        self.level = level as u16;
         self.pts = pts;
         self.normal = compute_normal(&pts[0], &pts[1], &pts[2]);
+        for i in 0..3 {
+            if self.normal[i].is_nan() {
+                println!("pts: {:?}", pts);
+            }
+            assert!(!self.normal[i].is_nan());
+        }
         let origin = Point3::new(0f64, 0f64, 0f64);
+        self.imposter_baseline = (&pts[1] - &pts[0]).magnitude() / 2f64;
+        self.imposter_base = Point3::from(&pts[0].coords + &pts[1].coords + &pts[2].coords) / 3f64;
+        self.impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
+            - self.imposter_base.coords.magnitude())
+        .min(self.imposter_baseline / 2.);
         self.planes = [
             Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
             Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
@@ -74,16 +107,25 @@ impl Patch {
         assert!(self.planes[0].point_is_in_front(&pts[2]));
         assert!(self.planes[1].point_is_in_front(&pts[0]));
         assert!(self.planes[2].point_is_in_front(&pts[1]));
-        self.solid_angle = 0f64;
+        self.recompute_solid_angle(eye_position, eye_direction);
     }
 
     pub(crate) fn is_alive(&self) -> bool {
-        !self.tombstone
+        self.owner.is_some()
+    }
+
+    pub(crate) fn is_tombstone(&self) -> bool {
+        self.owner.is_none()
     }
 
     pub(crate) fn erect_tombstone(&mut self) {
-        self.tombstone = true;
+        self.owner = None;
         self.solid_angle = -1f64;
+    }
+
+    pub(crate) fn owner(&self) -> TreeIndex {
+        assert!(self.owner.is_some());
+        self.owner.unwrap()
     }
 
     pub(crate) fn recompute_solid_angle(
@@ -91,7 +133,23 @@ impl Patch {
         eye_position: &Point3<f64>,
         eye_direction: &Vector3<f64>,
     ) {
-        self.solid_angle = solid_angle(&eye_position, &eye_direction, &self.pts);
+        assert!(self.is_alive());
+
+        // Cross north and eye_direction to get a right vector for the polygon.
+        let right = eye_direction.cross(&self.normal).normalize();
+        let imposter = [
+            &self.imposter_base + ((-right) * self.imposter_baseline),
+            &self.imposter_base + (&right * self.imposter_baseline),
+            &self.imposter_base + (self.normal * self.impostor_height),
+        ];
+        let sa_base = solid_angle(&eye_position, &eye_direction, &self.pts);
+        let sa_imp = solid_angle(&eye_position, &eye_direction, &imposter);
+        self.solid_angle = sa_base + sa_imp;
+        assert!(!self.solid_angle.is_nan());
+    }
+
+    pub(crate) fn solid_angle(&self) -> f64 {
+        self.solid_angle
     }
 
     pub(crate) fn level(&self) -> usize {
@@ -234,6 +292,7 @@ impl Patch {
         true
     }
 
+    // FIXME: Fuzz offset needs to be the extent of the possible normals of the patch.
     fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
         for p in &self.pts {
             if (p - eye_position).dot(&self.normal) <= -0.00001f64 {
@@ -249,11 +308,13 @@ impl Patch {
         horizon_plane: &Plane<f64>,
         eye_position: &Point3<f64>,
     ) -> bool {
+        /*
         // Cull back-facing
         if self.is_back_facing(eye_position) {
             // println!("  no - back facing");
             return false;
         }
+        */
 
         // Cull below horizon
         if self.is_behind_plane(&horizon_plane, false) {

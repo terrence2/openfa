@@ -27,7 +27,7 @@ use gpu::GPU;
 use std::{cell::RefCell, mem, ops::Range, sync::Arc, time::Instant};
 use wgpu;
 
-const DBG_VERT_COUNT: usize = 1024;
+const DBG_VERT_COUNT: usize = 4096;
 
 pub struct TerrainGeoBuffer {
     patches: PatchTree,
@@ -38,7 +38,8 @@ pub struct TerrainGeoBuffer {
     patch_index_buffer: wgpu::Buffer,
 
     dbg_vertex_buffer: Arc<Box<wgpu::Buffer>>,
-    dbg_index_buffer: wgpu::Buffer,
+    dbg_index_buffer: Arc<Box<wgpu::Buffer>>,
+    dbg_vertex_count: u32,
 }
 
 impl TerrainGeoBuffer {
@@ -80,16 +81,19 @@ impl TerrainGeoBuffer {
             size: (mem::size_of::<DebugVertex>() * DBG_VERT_COUNT) as wgpu::BufferAddress,
             usage: wgpu::BufferUsage::all(),
         })));
-        let mut dbg_indices: Vec<u32> = Vec::new();
+        let mut dbg_indices = Vec::new();
         dbg_indices.push(0);
         for i in 1u32..DBG_VERT_COUNT as u32 {
             dbg_indices.push(i);
             dbg_indices.push(i);
+            dbg_indices.push(i);
         }
         dbg_indices.push(0);
-        let dbg_index_buffer = device
-            .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&dbg_indices);
+        let dbg_index_buffer = Arc::new(Box::new(
+            device
+                .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
+                .fill_from_slice(&dbg_indices),
+        ));
 
         println!(
             "patch_vertex_buffer: {:08X}",
@@ -120,7 +124,19 @@ impl TerrainGeoBuffer {
 
             dbg_vertex_buffer,
             dbg_index_buffer,
+            dbg_vertex_count: 0,
         })))
+    }
+
+    fn interp_solid_angle_color(f: f64) -> [f32; 3] {
+        fn lerp(v: f64, lo: f64, hi: f64) -> f32 {
+            (lo + ((hi - lo) * v)) as f32
+        }
+        if f < 0.5 {
+            [1f32, lerp(2.0 * f, 0f64, 1f64), 0f32]
+        } else {
+            [lerp(2. * (f - 0.5), 1f64, 0f64), 1f32, 0f32]
+        }
     }
 
     pub fn make_upload_buffer(
@@ -129,19 +145,30 @@ impl TerrainGeoBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        self.patches.optimize_for_view(camera);
+        let mut dbg_verts = Vec::with_capacity(3 * self.patches.num_patches());
+        self.patches.optimize_for_view(camera, &mut dbg_verts);
+
+        let mut lo = 9999999999f64;
+        let mut hi = -9999999999f64;
+        for i in 0..self.patches.num_patches() {
+            let patch = self.patches.get_patch(PatchIndex(i));
+            if patch.solid_angle() < lo {
+                lo = patch.solid_angle();
+            }
+            if patch.solid_angle() > hi {
+                hi = patch.solid_angle();
+            }
+        }
+        let sa_range = hi - lo;
+        let sa_start = lo;
 
         let loop_start = Instant::now();
         let mut verts = Vec::with_capacity(3 * self.patches.num_patches());
+        let mut dbg_indices = Vec::with_capacity(3 * self.patches.num_patches());
         let mut cnt = 0;
         for i in 0..self.patches.num_patches() {
             let patch = self.patches.get_patch(PatchIndex(i));
-            if !patch.is_alive() {
-                for _ in 0..3 {
-                    verts.push(PatchVertex::empty());
-                }
-                continue;
-            }
+            assert!(patch.is_alive());
             cnt += 1;
             let [v0, v1, v2] = patch.points();
             let n0 = v0.coords.normalize();
@@ -150,8 +177,18 @@ impl TerrainGeoBuffer {
             verts.push(PatchVertex::new(&v0, &n0));
             verts.push(PatchVertex::new(&v1, &n1));
             verts.push(PatchVertex::new(&v2, &n2));
+
+            dbg_indices.push(dbg_verts.len() as u32);
+            dbg_indices.push(dbg_verts.len() as u32 + 1);
+            dbg_indices.push(dbg_verts.len() as u32 + 2);
+            let f = (patch.solid_angle() - sa_start) / sa_range;
+            let clr = Self::interp_solid_angle_color(f);
+            dbg_verts.push(DebugVertex::new(&v0, &n0, &clr));
+            dbg_verts.push(DebugVertex::new(&v1, &n1, &clr));
+            dbg_verts.push(DebugVertex::new(&v2, &n2, &clr));
         }
-        println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
+        self.dbg_vertex_count = dbg_verts.len() as u32;
+        //println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
         let loop_start = Instant::now();
 
         while verts.len() < 3 * self.patches.num_patches() {
@@ -167,7 +204,6 @@ impl TerrainGeoBuffer {
             (mem::size_of::<PatchVertex>() * verts.len()) as wgpu::BufferAddress,
         ));
 
-        let mut dbg_verts = Vec::new();
         while dbg_verts.len() < DBG_VERT_COUNT {
             dbg_verts.push(DebugVertex {
                 position: [0f32, 0f32, 0f32, 0f32],
@@ -183,8 +219,17 @@ impl TerrainGeoBuffer {
             self.dbg_vertex_buffer.clone(),
             (mem::size_of::<DebugVertex>() * dbg_verts.len()) as wgpu::BufferAddress,
         ));
+        let debug_index_buffer = gpu
+            .device()
+            .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
+            .fill_from_slice(&dbg_indices);
+        upload_buffers.push(CopyBufferDescriptor::new(
+            debug_index_buffer,
+            self.dbg_index_buffer.clone(),
+            (mem::size_of::<u32>() * dbg_indices.len()) as wgpu::BufferAddress,
+        ));
 
-        println!("dt: {:?}", Instant::now() - loop_start);
+        //println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())
     }
 
@@ -222,7 +267,8 @@ impl TerrainGeoBuffer {
     }
 
     pub fn debug_index_range(&self) -> Range<u32> {
-        0..(DBG_VERT_COUNT as u32 * 2u32)
+        0..self.dbg_vertex_count
+        //0..(DBG_VERT_COUNT as u32 * 2u32)
     }
 }
 

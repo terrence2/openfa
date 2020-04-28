@@ -13,15 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use memoffset::offset_of;
+use nalgebra::{Point3, Vector3};
 use std::mem;
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, Copy, Clone, Default)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Default, Debug)]
 pub struct DebugVertex {
     pub position: [f32; 4],
     pub color: [f32; 4],
+}
+
+impl DebugVertex {
+    pub fn new(p: &Point3<f64>, _normal: &Vector3<f64>, color: &[f32; 3]) -> Self {
+        Self {
+            position: [p[0] as f32, p[1] as f32, p[2] as f32, 1f32],
+            color: [color[0], color[1], color[2], 1f32],
+        }
+    }
 }
 
 impl DebugVertex {

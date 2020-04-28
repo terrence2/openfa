@@ -97,7 +97,7 @@ impl TerrainRenderPass {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
-                        atmosphere_buffer.bind_group_layout(),
+                        // atmosphere_buffer.bind_group_layout(),
                         // terrain_geo_buffer.bind_group_layout(),
                     ],
                 });
@@ -116,12 +116,12 @@ impl TerrainRenderPass {
                     }),
                     rasterization_state: Some(wgpu::RasterizationStateDescriptor {
                         front_face: wgpu::FrontFace::Cw,
-                        cull_mode: wgpu::CullMode::None,
+                        cull_mode: wgpu::CullMode::Back,
                         depth_bias: 0,
                         depth_bias_slope_scale: 0.0,
                         depth_bias_clamp: 0.0,
                     }),
-                    primitive_topology: wgpu::PrimitiveTopology::LineList,
+                    primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                     color_states: &[wgpu::ColorStateDescriptor {
                         format: GPU::texture_format(),
                         //                    color_blend: wgpu::BlendDescriptor {
@@ -135,7 +135,7 @@ impl TerrainRenderPass {
                     }],
                     depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
                         format: GPU::DEPTH_FORMAT,
-                        depth_write_enabled: false,
+                        depth_write_enabled: true,
                         depth_compare: wgpu::CompareFunction::Less,
                         stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
                         stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
@@ -162,6 +162,13 @@ impl TerrainRenderPass {
         _atmosphere_buffer: &AtmosphereBuffer,
         terrain_geo_buffer: &TerrainGeoBuffer,
     ) {
+        rpass.set_pipeline(&self.debug_intersect_pipeline);
+        rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
+        rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0);
+        rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.debug_vertex_buffer(), 0)]);
+        //rpass.draw_indexed(terrain_geo_buffer.debug_index_range(), 0, 0..1);
+        rpass.draw(terrain_geo_buffer.debug_index_range(), 0..1);
+
         rpass.set_pipeline(&self.debug_patch_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
         /*
@@ -181,11 +188,5 @@ impl TerrainRenderPass {
         for i in 0..terrain_geo_buffer.num_patches() {
             rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
         }
-
-        rpass.set_pipeline(&self.debug_intersect_pipeline);
-        rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0);
-        rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.debug_vertex_buffer(), 0)]);
-        rpass.draw_indexed(terrain_geo_buffer.debug_index_range(), 0, 0..1);
     }
 }
