@@ -49,9 +49,6 @@ pub(crate) struct Patch {
     // Planes
     planes: [Plane<f64>; 3],
 
-    // Subdivision depth of this patch. Maybe move to tree?
-    level: u16,
-
     // The leaf node that owns this patch, or None if a tombstone.
     owner: Option<TreeIndex>,
 }
@@ -59,7 +56,6 @@ pub(crate) struct Patch {
 impl Patch {
     pub(crate) fn new() -> Self {
         Self {
-            level: 0,
             owner: None,
             solid_angle: 0f64,
             impostor_height: 0f64,
@@ -78,13 +74,11 @@ impl Patch {
     pub(crate) fn change_target(
         &mut self,
         owner: TreeIndex,
-        level: usize,
         pts: [Point3<f64>; 3],
         eye_position: &Point3<f64>,
         eye_direction: &Vector3<f64>,
     ) {
         self.owner = Some(owner);
-        self.level = level as u16;
         self.pts = pts;
         self.normal = compute_normal(&pts[0], &pts[1], &pts[2]);
         for i in 0..3 {
@@ -150,10 +144,6 @@ impl Patch {
 
     pub(crate) fn solid_angle(&self) -> f64 {
         self.solid_angle
-    }
-
-    pub(crate) fn level(&self) -> usize {
-        self.level as usize
     }
 
     pub(crate) fn points(&self) -> &[Point3<f64>; 3] {

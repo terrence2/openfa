@@ -37,14 +37,16 @@ struct Root {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Node {
-    parent: TreeIndex,
     children: [TreeIndex; 4],
+    parent: TreeIndex,
+    level: usize,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Leaf {
-    parent: TreeIndex,
     patch_index: PatchIndex,
+    parent: TreeIndex,
+    level: usize,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -96,6 +98,14 @@ impl TreeNode {
             Self::Leaf(leaf) => leaf.parent,
             Self::Node(node) => node.parent,
             _ => panic!("Node type does not have a parent!"),
+        }
+    }
+
+    fn level(&self) -> usize {
+        match self {
+            Self::Leaf(leaf) => leaf.level,
+            Self::Node(node) => node.level,
+            _ => panic!("Node type does not have a level!"),
         }
     }
 
@@ -159,7 +169,6 @@ impl PatchTree {
             let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             root_patches[i].change_target(
                 TreeIndex(0),
-                0,
                 [v0, v1, v2],
                 &cached_eye_position,
                 &cached_eye_direction,
@@ -236,7 +245,6 @@ impl PatchTree {
         let eye_direction = self.current_eye_direction();
         self.get_patch_mut(patch_index).change_target(
             tree_index,
-            level,
             pts,
             &eye_position,
             &eye_direction,
@@ -245,6 +253,7 @@ impl PatchTree {
             tree_index,
             TreeNode::Leaf(Leaf {
                 parent,
+                level,
                 patch_index,
             }),
         );
@@ -428,7 +437,8 @@ impl PatchTree {
             self.order_patches();
         }
 
-        // Split everything that's large compared to the sd.
+        // Split everything that's large compared to the SD.
+        // Limit ourself to a handful of splits.
         let (mut mean, mut sd) = self.compute_standard_deviation();
         while self.patches.first().is_some()
             && self.patches.first().unwrap().solid_angle() > mean + 2.0 * sd
@@ -583,7 +593,8 @@ impl PatchTree {
         let i1 = self.tree_node(children[1]).leaf_patch();
         let i2 = self.tree_node(children[2]).leaf_patch();
         let i3 = self.tree_node(children[3]).leaf_patch();
-        let lvl = self.get_patch(i0).level() - 1;
+        let prior_level = self.tree_node(self.get_patch(i0).owner()).level();
+        let level = prior_level - 1;
         let v0 = *self.get_patch(i0).point(0);
         let v1 = *self.get_patch(i1).point(0);
         let v2 = *self.get_patch(i2).point(0);
@@ -591,7 +602,6 @@ impl PatchTree {
         let eye_direction = self.current_eye_direction();
         self.get_patch_mut(i0).change_target(
             tree_index,
-            lvl,
             [v0, v1, v2],
             &eye_position,
             &eye_direction,
@@ -602,15 +612,17 @@ impl PatchTree {
         self.set_tree_node(
             tree_index,
             TreeNode::Leaf(Leaf {
-                parent: parent_index,
                 patch_index: i0,
+                parent: parent_index,
+                level,
             }),
         );
     }
 
     fn subdivide_patch(&mut self, patch_index: PatchIndex) {
         self.count_subdivide += 1;
-        let level = self.get_patch(patch_index).level() + 1;
+        let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
+        let level = current_level + 1;
         assert!(level < 15);
         let owner = self.get_patch(patch_index).owner();
         let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
@@ -642,7 +654,14 @@ impl PatchTree {
         }
 
         // Transform our leaf/patch into a node and clobber the old patch.
-        self.set_tree_node(owner, TreeNode::Node(Node { parent, children }));
+        self.set_tree_node(
+            owner,
+            TreeNode::Node(Node {
+                children,
+                parent,
+                level: current_level,
+            }),
+        );
         self.free_patch(patch_index);
     }
 
