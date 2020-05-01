@@ -137,10 +137,6 @@ pub(crate) struct PatchTree {
 
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
-
-    count_visit: usize,
-    count_rejoin: usize,
-    count_subdivide: usize,
 }
 
 impl PatchTree {
@@ -187,9 +183,6 @@ impl PatchTree {
             root_patches,
             cached_eye_position,
             cached_eye_direction,
-            count_visit: 0,
-            count_rejoin: 0,
-            count_subdivide: 0,
         }
     }
 
@@ -509,22 +502,6 @@ impl PatchTree {
         */
 
         //println!("sort solid ang: {:?}", sort_sa_end - sort_sa_start);
-
-        self.count_visit = 0;
-        self.count_rejoin = 0;
-        self.count_subdivide = 0;
-
-        /*
-        println!(
-            "optimize: visited {} nodes; {} rejoins in {:?}; {} subdivide in {:?} (nodes: {})",
-            self.count_visit,
-            self.count_rejoin,
-            rejoin_time,
-            self.count_subdivide,
-            divide_time,
-            self.patch_tree.len(),
-        );
-        */
     }
 
     fn ensure_root_visibility(&mut self, camera: &ArcBallCamera, horizon_plane: &Plane<f64>) {
@@ -588,7 +565,6 @@ impl PatchTree {
         tree_index: TreeIndex,
         children: &[TreeIndex; 4],
     ) {
-        self.count_rejoin += 1;
         let i0 = self.tree_node(children[0]).leaf_patch();
         let i1 = self.tree_node(children[1]).leaf_patch();
         let i2 = self.tree_node(children[2]).leaf_patch();
@@ -620,7 +596,6 @@ impl PatchTree {
     }
 
     fn subdivide_patch(&mut self, patch_index: PatchIndex) {
-        self.count_subdivide += 1;
         let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
         let level = current_level + 1;
         assert!(level < 15);
