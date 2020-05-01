@@ -135,6 +135,7 @@ pub(crate) struct PatchTree {
     root: Root,
     root_patches: [Patch; 20],
 
+    cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
 }
@@ -158,6 +159,8 @@ impl PatchTree {
         tree.push(TreeNode::Root);
         let cached_eye_position = Point3::new(0f64, 0f64, 0f64);
         let cached_eye_direction = Vector3::new(1f64, 0f64, 0f64);
+        let cached_viewable_region =
+            [Plane::from_normal_and_distance(Vector3::new(1f64, 0f64, 0f64), 0f64); 6];
         let mut root_patches = [Patch::new(); 20];
         for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_RADIUS_KM);
@@ -181,6 +184,7 @@ impl PatchTree {
             tree_empty_set: Vec::new(),
             root,
             root_patches,
+            cached_viewable_region,
             cached_eye_position,
             cached_eye_direction,
         }
@@ -397,7 +401,10 @@ impl PatchTree {
         self.cached_eye_position = eye_position;
         self.cached_eye_direction = eye_direction;
 
-        let horizon_plane = Plane::from_normal_and_distance(
+        for (i, f) in camera.world_space_frustum().iter().enumerate() {
+            self.cached_viewable_region[i] = *f;
+        }
+        self.cached_viewable_region[5] = Plane::from_normal_and_distance(
             self.current_eye_position().coords.normalize(),
             (((EARTH_RADIUS_KM * EARTH_RADIUS_KM) / eye_position.coords.magnitude()) - 100f64)
                 .min(0f64),
@@ -405,7 +412,7 @@ impl PatchTree {
 
         // Make sure we have the right root set.
         let root_vis_start = Instant::now();
-        self.ensure_root_visibility(&camera, &horizon_plane);
+        self.ensure_root_visibility();
         self.compact_patches();
         let root_vis_time = Instant::now() - root_vis_start;
 
@@ -504,9 +511,10 @@ impl PatchTree {
         //println!("sort solid ang: {:?}", sort_sa_end - sort_sa_start);
     }
 
-    fn ensure_root_visibility(&mut self, camera: &ArcBallCamera, horizon_plane: &Plane<f64>) {
+    fn ensure_root_visibility(&mut self) {
         for i in 0..20 {
-            if self.root_patches[i].keep(camera, horizon_plane, &self.current_eye_position()) {
+            if self.root_patches[i].keep(&self.cached_viewable_region, &self.current_eye_position())
+            {
                 if self.root.children[i].is_none() {
                     let pts = self.root_patches[i].points().to_owned();
                     let leaf_index = self.allocate_leaf(TreeIndex(0), 1, pts);

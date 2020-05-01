@@ -14,7 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{debug_vertex::DebugVertex, patch_tree::TreeIndex};
 
-use camera::ArcBallCamera;
 use geometry::{
     algorithm::{compute_normal, solid_angle},
     intersect,
@@ -292,12 +291,7 @@ impl Patch {
         true
     }
 
-    pub(crate) fn keep(
-        &self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-    ) -> bool {
+    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6], eye_position: &Point3<f64>) -> bool {
         /*
         // Cull back-facing
         if self.is_back_facing(eye_position) {
@@ -306,14 +300,7 @@ impl Patch {
         }
         */
 
-        // Cull below horizon
-        if self.is_behind_plane(&horizon_plane, false) {
-            //println!("  no - below horizon");
-            return false;
-        }
-
-        // Cull outside the view frustum
-        for plane in &camera.world_space_frustum() {
+        for plane in viewable_area {
             if self.is_behind_plane(plane, false) {
                 return false;
             }
