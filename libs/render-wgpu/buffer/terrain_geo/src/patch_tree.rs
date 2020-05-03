@@ -110,7 +110,7 @@ impl TreeNode {
     }
 
     // Panic if this is not a leaf.
-    fn leaf_patch(&self) -> PatchIndex {
+    fn patch_index(&self) -> PatchIndex {
         match self {
             Self::Leaf(leaf) => return leaf.patch_index,
             _ => panic!("Not a leaf!"),
@@ -148,7 +148,6 @@ impl PatchTree {
             let d = 2f64 * EARTH_RADIUS_KM * 2f64.powf(-(i as f64));
             depth_levels.push(d * d);
         }
-        println!("depths: {:?}", depth_levels);
 
         let sphere = IcoSphere::new(0);
         let mut patches = Vec::with_capacity(num_patches);
@@ -238,8 +237,8 @@ impl PatchTree {
     ) -> TreeIndex {
         let patch_index = self.allocate_patch();
         let tree_index = self.allocate_tree_node();
-        let eye_position = self.current_eye_position();
-        let eye_direction = self.current_eye_direction();
+        let eye_position = self.cached_eye_position;
+        let eye_direction = self.cached_eye_direction;
         self.get_patch_mut(patch_index).change_target(
             tree_index,
             pts,
@@ -259,7 +258,7 @@ impl PatchTree {
 
     fn free_leaf(&mut self, leaf_index: TreeIndex) {
         assert!(self.tree_node(leaf_index).is_leaf(), "trying to remove root patch that is not a leaf! How did we get over the horizon while still being close enough to be subdivided?");
-        self.free_patch(self.tree_node(leaf_index).leaf_patch());
+        self.free_patch(self.tree_node(leaf_index).patch_index());
         self.free_tree_node(leaf_index);
     }
 
@@ -330,26 +329,6 @@ impl PatchTree {
         self.patches[0].solid_angle()
     }
 
-    fn current_eye_position(&self) -> Point3<f64> {
-        self.cached_eye_position
-    }
-
-    fn current_eye_direction(&self) -> Vector3<f64> {
-        self.cached_eye_direction
-    }
-
-    fn should_be_refined(&self) -> bool {
-        println!(
-            "sbr: {}/{} => {} > {}",
-            self.max_solid_angle(),
-            self.min_solid_angle().max(0f64),
-            self.max_solid_angle() - self.min_solid_angle().max(0f64),
-            2f64 * self.max_solid_angle()
-        );
-        let range = self.max_solid_angle() - self.min_solid_angle().max(0f64);
-        range > 1.5 * self.max_solid_angle()
-    }
-
     fn compute_standard_deviation(&self) -> (f64, f64) {
         // Compute mean.
         let mut sum = 0.0;
@@ -385,7 +364,7 @@ impl PatchTree {
         }
         let sd_wol = (dev_sum_wol / cnt_wol).sqrt();
 
-        println!("a/sd: {}/{} -> {}/{}", mean, sd, mean_wol, sd_wol);
+        //println!("a/sd: {}/{} -> {}/{}", mean, sd, mean_wol, sd_wol);
 
         (mean_wol, sd_wol)
     }
@@ -405,7 +384,7 @@ impl PatchTree {
             self.cached_viewable_region[i] = *f;
         }
         self.cached_viewable_region[5] = Plane::from_normal_and_distance(
-            self.current_eye_position().coords.normalize(),
+            eye_position.coords.normalize(),
             (((EARTH_RADIUS_KM * EARTH_RADIUS_KM) / eye_position.coords.magnitude()) - 100f64)
                 .min(0f64),
         );
@@ -425,6 +404,24 @@ impl PatchTree {
         let recompute_sa_time = Instant::now() - recompute_sa_start;
         //println!("solid ang: {:?}", recompute_sa_end - recompute_sa_start);
 
+        // Compact leaf patches that are fully hidden in the new view.
+        let mut hidden_rejoins = 0;
+        for i in 0..self.tree.len() {
+            let tn = self.tree[i];
+            if tn.is_node() && self.is_leaf_patch(tn.as_node()) {
+                let n = tn.as_node();
+                if n.children
+                    .iter()
+                    .all(|c| self.patches[self.tree[c.0].patch_index().0].is_alive())
+                {
+                    self.rejoin_leaf_patch_into(n.parent, TreeIndex(i), &n.children);
+                    self.compact_patches();
+                    self.order_patches();
+                    hidden_rejoins += 1;
+                }
+            }
+        }
+
         // Sort by solid angle.
         let sort_sa_start = Instant::now();
         self.order_patches();
@@ -437,11 +434,14 @@ impl PatchTree {
             self.order_patches();
         }
 
+        // Rejoin all invisible.
+
+        /*
         // Split everything that's large compared to the SD.
         // Limit ourself to a handful of splits.
         let (mut mean, mut sd) = self.compute_standard_deviation();
         while self.patches.first().is_some()
-            && self.patches.first().unwrap().solid_angle() > mean + 2.0 * sd
+            && self.patches.first().unwrap().solid_angle() > mean + 3.0 * sd
         {
             // Split up to the fill line.
             self.subdivide_patch(PatchIndex(0));
@@ -456,6 +456,17 @@ impl PatchTree {
             self.compact_patches();
             self.order_patches();
         }
+
+         */
+
+        let mut hidden = 0;
+        for p in &self.patches {
+            if !p.keep(&self.cached_viewable_region, &self.cached_eye_position) {
+                hidden += 1;
+            }
+        }
+
+        println!("hidden: {} | {}", hidden, hidden_rejoins);
 
         /*
         println!("  {}", self.patch_count());
@@ -479,27 +490,6 @@ impl PatchTree {
         */
 
         /*
-        // Rebalance until we have a more even keel
-        while self.should_be_refined() {
-            println!("{} | {}", self.max_solid_angle(), self.min_solid_angle());
-
-            // Split up to the fill line.
-            while self.patch_count() < self.num_patches {
-                self.subdivide_patch(PatchIndex(0));
-                self.compact_patches();
-                self.order_patches();
-            }
-
-            println!("  {}", self.patch_count());
-            let smallest_node = self.find_smallest_rejoinable_node();
-            self.collapse_node_to_leaf(smallest_node);
-            self.compact_patches();
-            self.order_patches();
-            println!("  {}", self.patch_count());
-        }
-        */
-
-        /*
         // Compact patches.
         let smallest_node = self.find_smallest_rejoinable_node();
         self.collapse_node_to_leaf(smallest_node);
@@ -513,8 +503,7 @@ impl PatchTree {
 
     fn ensure_root_visibility(&mut self) {
         for i in 0..20 {
-            if self.root_patches[i].keep(&self.cached_viewable_region, &self.current_eye_position())
-            {
+            if self.root_patches[i].keep(&self.cached_viewable_region, &self.cached_eye_position) {
                 if self.root.children[i].is_none() {
                     let pts = self.root_patches[i].points().to_owned();
                     let leaf_index = self.allocate_leaf(TreeIndex(0), 1, pts);
@@ -573,17 +562,17 @@ impl PatchTree {
         tree_index: TreeIndex,
         children: &[TreeIndex; 4],
     ) {
-        let i0 = self.tree_node(children[0]).leaf_patch();
-        let i1 = self.tree_node(children[1]).leaf_patch();
-        let i2 = self.tree_node(children[2]).leaf_patch();
-        let i3 = self.tree_node(children[3]).leaf_patch();
+        let i0 = self.tree_node(children[0]).patch_index();
+        let i1 = self.tree_node(children[1]).patch_index();
+        let i2 = self.tree_node(children[2]).patch_index();
+        let i3 = self.tree_node(children[3]).patch_index();
         let prior_level = self.tree_node(self.get_patch(i0).owner()).level();
         let level = prior_level - 1;
         let v0 = *self.get_patch(i0).point(0);
         let v1 = *self.get_patch(i1).point(0);
         let v2 = *self.get_patch(i2).point(0);
-        let eye_position = self.current_eye_position();
-        let eye_direction = self.current_eye_direction();
+        let eye_position = self.cached_eye_position;
+        let eye_direction = self.cached_eye_direction;
         self.get_patch_mut(i0).change_target(
             tree_index,
             [v0, v1, v2],
@@ -629,10 +618,10 @@ impl PatchTree {
             self.allocate_leaf(owner, level, [v2, c, b]),
             self.allocate_leaf(owner, level, [a, b, c]),
         ];
-        let eye_position = self.current_eye_position();
-        let eye_direction = self.current_eye_direction();
+        let eye_position = self.cached_eye_position;
+        let eye_direction = self.cached_eye_direction;
         for child in &children {
-            self.get_patch_mut(self.tree_node(*child).leaf_patch())
+            self.get_patch_mut(self.tree_node(*child).patch_index())
                 .recompute_solid_angle(&eye_position, &eye_direction);
         }
 
