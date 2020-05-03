@@ -128,17 +128,6 @@ impl TerrainGeoBuffer {
         })))
     }
 
-    fn interp_solid_angle_color(f: f64) -> [f32; 3] {
-        fn lerp(v: f64, lo: f64, hi: f64) -> f32 {
-            (lo + ((hi - lo) * v)) as f32
-        }
-        if f < 0.5 {
-            [1f32, lerp(2.0 * f, 0f64, 1f64), 0f32]
-        } else {
-            [lerp(2. * (f - 0.5), 1f64, 0f64), 1f32, 0f32]
-        }
-    }
-
     pub fn make_upload_buffer(
         &mut self,
         camera: &ArcBallCamera,
@@ -148,27 +137,16 @@ impl TerrainGeoBuffer {
         let mut dbg_verts = Vec::with_capacity(3 * self.patches.num_patches());
         self.patches.optimize_for_view(camera, &mut dbg_verts);
 
-        let mut lo = 9999999999f64;
-        let mut hi = -9999999999f64;
-        for i in 0..self.patches.num_patches() {
-            let patch = self.patches.get_patch(PatchIndex(i));
-            if patch.solid_angle() < lo {
-                lo = patch.solid_angle();
-            }
-            if patch.solid_angle() > hi {
-                hi = patch.solid_angle();
-            }
-        }
-        let sa_range = hi - lo;
-        let sa_start = lo;
-
         let loop_start = Instant::now();
         let mut verts = Vec::with_capacity(3 * self.patches.num_patches());
         let mut dbg_indices = Vec::with_capacity(3 * self.patches.num_patches());
         let mut cnt = 0;
         for i in 0..self.patches.num_patches() {
             let patch = self.patches.get_patch(PatchIndex(i));
-            assert!(patch.is_alive());
+            //assert!(patch.is_alive());
+            if !patch.is_alive() || cnt >= 300 {
+                continue;
+            }
             cnt += 1;
             let [v0, v1, v2] = patch.points();
             let n0 = v0.coords.normalize();
@@ -181,8 +159,8 @@ impl TerrainGeoBuffer {
             dbg_indices.push(dbg_verts.len() as u32);
             dbg_indices.push(dbg_verts.len() as u32 + 1);
             dbg_indices.push(dbg_verts.len() as u32 + 2);
-            let f = (patch.solid_angle() - sa_start) / sa_range;
-            let clr = Self::interp_solid_angle_color(f);
+            //let clr = Self::interp_solid_angle_color(f);
+            let clr = [0.5, 0.5, 0.5];
             dbg_verts.push(DebugVertex::new(&v0, &n0, &clr));
             dbg_verts.push(DebugVertex::new(&v1, &n1, &clr));
             dbg_verts.push(DebugVertex::new(&v2, &n2, &clr));
