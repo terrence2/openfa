@@ -22,6 +22,7 @@ use memoffset::offset_of;
 use mm::MissionMap;
 use nalgebra::{Point3, Vector3};
 use pal::Palette;
+use physical_constants::{EARTH_RADIUS_KM_32, FEET_TO_HM_32, FEET_TO_KM};
 use pic::Pic;
 use std::{
     cell::RefCell,
@@ -31,7 +32,6 @@ use std::{
     sync::Arc,
 };
 use t2::{Sample, Terrain};
-use universe::{EARTH_RADIUS_KM_32, FEET_TO_HM_32, FEET_TO_KM};
 use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 

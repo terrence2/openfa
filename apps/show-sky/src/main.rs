@@ -110,11 +110,11 @@ fn main() -> Fallible<()> {
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.0005), meters!(3.4e+38));
     camera.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
-        meters!(0),
+        meters!(2),
     ));
     camera.set_eye_relative(Graticule::<Target>::new(
         degrees!(89),
@@ -123,6 +123,7 @@ fn main() -> Fallible<()> {
     ))?;
 
     let mut target_vec = meters!(0f64);
+    let mut fov_vec = degrees!(1);
     loop {
         let loop_start = Instant::now();
 
@@ -130,10 +131,10 @@ fn main() -> Fallible<()> {
             camera.handle_command(&command)?;
             orrery.handle_command(&command)?;
             match command.name.as_str() {
-                "+target_up" => target_vec = meters!(1000f64),
-                "-target_up" => target_vec = meters!(0f64),
-                "+target_down" => target_vec = meters!(-1000f64),
-                "-target_down" => target_vec = meters!(0f64),
+                "+target_up" => target_vec = meters!(1),
+                "-target_up" => target_vec = meters!(0),
+                "+target_down" => target_vec = meters!(-1),
+                "-target_down" => target_vec = meters!(0),
                 // system bindings
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
@@ -173,8 +174,10 @@ fn main() -> Fallible<()> {
 
         let frame_time = loop_start.elapsed();
         let ts = format!(
-            "Pos: {} || Date: {:?} || frame: {}.{}ms",
+            "eye_rel: {} | asl: {}, fov: {} || Date: {:?} || frame: {}.{}ms",
             camera.get_eye_relative(),
+            g.distance,
+            degrees!(camera.get_fov()),
             orrery.get_time(),
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),

@@ -21,8 +21,8 @@ use geometry::{
     Plane, Sphere,
 };
 use nalgebra::{Point3, Vector3};
+use physical_constants::{EARTH_RADIUS_KM, EVEREST_HEIGHT_KM};
 use std::cmp::{Ord, Ordering};
-use universe::{EARTH_RADIUS_KM, EVEREST_HEIGHT_KM};
 
 // We introduce a substantial amount of error in our intersection computations below
 // with all the dot products and re-normalizations. This is fine, as long as we use a
@@ -104,7 +104,11 @@ impl Patch {
 
     pub(crate) fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
         if self.point_is_in_cone(point) {
-            return 0.0;
+            let m = point.coords.magnitude();
+            if m < EARTH_RADIUS_KM + EVEREST_HEIGHT_KM {
+                return 0.0;
+            }
+            return m - (EARTH_RADIUS_KM + EVEREST_HEIGHT_KM);
         }
 
         let mut minimum = 99999999f64;

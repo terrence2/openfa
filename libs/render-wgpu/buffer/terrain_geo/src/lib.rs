@@ -135,16 +135,17 @@ impl TerrainGeoBuffer {
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         let mut dbg_verts = Vec::with_capacity(3 * self.patches.num_patches());
-        self.patches.optimize_for_view(camera, &mut dbg_verts);
-
-        let loop_start = Instant::now();
         let mut verts = Vec::with_capacity(3 * self.patches.num_patches());
         let mut dbg_indices = Vec::with_capacity(3 * self.patches.num_patches());
+        let mut live_patches = Vec::with_capacity(self.patches.num_patches());
+        self.patches.optimize_for_view(camera, &mut live_patches);
+
+        let loop_start = Instant::now();
         let mut cnt = 0;
-        for i in 0..self.patches.num_patches() {
-            let patch = self.patches.get_patch(PatchIndex(i));
-            //assert!(patch.is_alive());
-            if !patch.is_alive() || cnt >= 300 {
+        for i in &live_patches {
+            let patch = self.patches.get_patch(*i);
+            assert!(patch.is_alive());
+            if cnt >= 300 {
                 continue;
             }
             cnt += 1;
@@ -159,11 +160,13 @@ impl TerrainGeoBuffer {
             dbg_indices.push(dbg_verts.len() as u32);
             dbg_indices.push(dbg_verts.len() as u32 + 1);
             dbg_indices.push(dbg_verts.len() as u32 + 2);
+            /*
             //let clr = Self::interp_solid_angle_color(f);
             let clr = [0.5, 0.5, 0.5];
             dbg_verts.push(DebugVertex::new(&v0, &n0, &clr));
             dbg_verts.push(DebugVertex::new(&v1, &n1, &clr));
             dbg_verts.push(DebugVertex::new(&v2, &n2, &clr));
+             */
         }
         self.dbg_vertex_count = dbg_verts.len() as u32;
         //println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);

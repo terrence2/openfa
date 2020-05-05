@@ -20,4 +20,5 @@ frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
 geodesy = { path = "../../../geodesy" }
 geometry = { path = "../../../render-shared/common/geometry" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
+physical_constants = { path = "../../../physical_constants" }
 universe = { path = "../../../universe" }

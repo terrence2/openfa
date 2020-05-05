@@ -11,6 +11,7 @@ legion = { git="https://github.com/jaynus/legion", branch="fix_tag"}
 nalgebra = "^ 0.20"
 lib = { path = "../lib" }
 pal = { path = "../pal" }
+physical_constants = { path = "../physical_constants" }
 shape_chunk = { path = "../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../render-wgpu/buffer/shape_instance" }
 universe = { path = "../universe" }

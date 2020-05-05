@@ -17,10 +17,15 @@ use crate::{debug_vertex::DebugVertex, patch::Patch};
 use absolute_unit::Kilometers;
 use camera::ArcBallCamera;
 use failure::Fallible;
+use failure::_core::fmt::Binary;
 use geometry::{IcoSphere, Plane};
 use nalgebra::{Point3, Vector3};
-use std::{cmp::Ordering, collections::HashSet, time::Instant};
-use universe::EARTH_RADIUS_KM;
+use physical_constants::EARTH_RADIUS_KM;
+use std::{
+    cmp::{Ordering, Reverse},
+    collections::{BinaryHeap, HashSet},
+    time::Instant,
+};
 
 // Index into the tree vec.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -39,6 +44,7 @@ struct Root {
 struct Node {
     children: [TreeIndex; 4],
     parent: TreeIndex,
+    patch_index: PatchIndex,
     level: usize,
 }
 
@@ -112,20 +118,23 @@ impl TreeNode {
     // Panic if this is not a leaf.
     fn patch_index(&self) -> PatchIndex {
         match self {
-            Self::Leaf(leaf) => return leaf.patch_index,
+            Self::Leaf(ref leaf) => return leaf.patch_index,
+            Self::Node(ref node) => return node.patch_index,
             _ => panic!("Not a leaf!"),
         }
     }
 }
+
+const MAX_LEVEL: usize = 14;
 
 pub(crate) struct PatchTree {
     num_patches: usize,
     sphere: IcoSphere,
     depth_levels: Vec<f64>,
     patches: Vec<Patch>,
-    patch_empty_set: Vec<PatchIndex>,
+    patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
     tree: Vec<TreeNode>,
-    tree_empty_set: Vec<TreeIndex>,
+    tree_empty_set: BinaryHeap<Reverse<TreeIndex>>,
     root: Root,
     root_patches: [Patch; 20],
 
@@ -170,9 +179,9 @@ impl PatchTree {
             sphere,
             depth_levels,
             patches,
-            patch_empty_set: Vec::new(),
+            patch_empty_set: BinaryHeap::new(),
             tree,
-            tree_empty_set: Vec::new(),
+            tree_empty_set: BinaryHeap::new(),
             root,
             root_patches,
             subdivide_count: 0,
@@ -192,7 +201,7 @@ impl PatchTree {
     }
 
     fn allocate_patch(&mut self) -> PatchIndex {
-        if let Some(patch_index) = self.patch_empty_set.pop() {
+        if let Some(Reverse(patch_index)) = self.patch_empty_set.pop() {
             return patch_index;
         }
         let patch_index = PatchIndex(self.patches.len());
@@ -202,7 +211,7 @@ impl PatchTree {
 
     fn free_patch(&mut self, patch_index: PatchIndex) {
         self.get_patch_mut(patch_index).erect_tombstone();
-        self.patch_empty_set.push(patch_index);
+        self.patch_empty_set.push(Reverse(patch_index));
     }
 
     fn patch_count(&self) -> usize {
@@ -210,7 +219,7 @@ impl PatchTree {
     }
 
     fn allocate_tree_node(&mut self) -> TreeIndex {
-        if let Some(tree_index) = self.tree_empty_set.pop() {
+        if let Some(Reverse(tree_index)) = self.tree_empty_set.pop() {
             return tree_index;
         }
         let tree_index = TreeIndex(self.tree.len());
@@ -220,7 +229,7 @@ impl PatchTree {
 
     fn free_tree_node(&mut self, tree_index: TreeIndex) {
         self.set_tree_node(tree_index, TreeNode::Empty);
-        self.tree_empty_set.push(tree_index);
+        self.tree_empty_set.push(Reverse(tree_index));
     }
 
     fn allocate_leaf(
@@ -250,6 +259,7 @@ impl PatchTree {
         self.free_tree_node(leaf_index);
     }
 
+    /*
     // Ensure that patches are linear by doing tail-swap removals from the empty patch list.
     fn compact_patches(&mut self) {
         while let Some(empty_index) = self.patch_empty_set.pop() {
@@ -272,7 +282,6 @@ impl PatchTree {
     }
 
     fn order_patches(&mut self) {
-        /*
         self.patches.sort_by(|a, b| {
             assert!(a.is_alive());
             assert!(b.is_alive());
@@ -286,8 +295,8 @@ impl PatchTree {
         for (i, patch) in self.patches.iter().enumerate() {
             self.tree[patch.owner().0].as_leaf_mut().patch_index = PatchIndex(i);
         }
-         */
     }
+     */
 
     fn tree_root(&self) -> TreeNode {
         self.tree[0]
@@ -304,7 +313,7 @@ impl PatchTree {
     pub(crate) fn optimize_for_view(
         &mut self,
         camera: &ArcBallCamera,
-        debug_verts: &mut Vec<DebugVertex>,
+        live_patches: &mut Vec<PatchIndex>,
     ) {
         self.subdivide_count = 0;
         self.rejoin_count = 0;
@@ -331,34 +340,36 @@ impl PatchTree {
         let root_vis_time = Instant::now() - root_vis_start;
 
         // Build a view-direction independent tesselation based on the current camera position.
+        let reshape_start = Instant::now();
         self.apply_distance_function(&eye_position);
+        let reshape_time = Instant::now() - reshape_start;
+
+        let liveness_start = Instant::now();
+        live_patches.clear();
+        for (i, patch) in self.patches.iter().enumerate() {
+            if patch.is_alive()
+                && self.tree_node(patch.owner()).is_leaf()
+                && patch.keep(&self.cached_viewable_region, &eye_position)
+            {
+                live_patches.push(PatchIndex(i));
+            }
+        }
+        let liveness_time = Instant::now() - liveness_start;
 
         // Select patches based on visibility.
         println!(
-            "patches [free]: {} [{}] | nodes [free]: {} [{}] | -/+: {}/{}\n{}\nEMPTY: {:?}\nNODES:",
+            "patches: {} of {} [-{}] | nodes: {} [-{}] | -/+: {}/{} | {:?} + {:?} + {:?}",
+            live_patches.len(),
             self.patches.len(),
             self.patch_empty_set.len(),
             self.tree.len(),
             self.tree_empty_set.len(),
             self.rejoin_count,
             self.subdivide_count,
-            self.format_tree_display(),
-            self.tree_empty_set,
+            root_vis_time,
+            reshape_time,
+            liveness_time,
         );
-        for node in &self.tree {
-            println!("  {:?}", node);
-        }
-
-        /*
-        let mut hidden = 0;
-        for p in &self.patches {
-            if !p.keep(&self.cached_viewable_region, &self.cached_eye_position) {
-                hidden += 1;
-            }
-        }
-
-        println!("hidden: {} | {}", hidden, hidden_rejoins);
-         */
     }
 
     fn ensure_root_visibility(&mut self) {
@@ -411,32 +422,33 @@ impl PatchTree {
     ) {
         self.rejoin_count += 1;
 
-        // We enter with 5 nodes and 4 patches.
+        // We enter with 5 nodes and 5 patches.
         // We want to leave with 1 node and 1 patch.
 
         // Note: we do not re-use any of the vertices from the inner patch.
-        let i0 = self.tree_node(children[0]).patch_index();
-        let i1 = self.tree_node(children[1]).patch_index();
-        let i2 = self.tree_node(children[2]).patch_index();
-        let v0 = *self.get_patch(i0).point(0);
-        let v1 = *self.get_patch(i1).point(0);
-        let v2 = *self.get_patch(i2).point(0);
+        // let i0 = self.tree_node(children[0]).patch_index();
+        // let i1 = self.tree_node(children[1]).patch_index();
+        // let i2 = self.tree_node(children[2]).patch_index();
+        // let v0 = *self.get_patch(i0).point(0);
+        // let v1 = *self.get_patch(i1).point(0);
+        // let v2 = *self.get_patch(i2).point(0);
 
         // Re-use the patch at i0 so we don't have to flex to allocate a new one.
-        self.get_patch_mut(i0)
-            .change_target(tree_index, [v0, v1, v2]);
+        // self.get_patch_mut(i0)
+        //     .change_target(tree_index, [v0, v1, v2]);
 
         // Free the other 3 node/leaf pairs.
+        self.free_leaf(children[0]);
         self.free_leaf(children[1]);
         self.free_leaf(children[2]);
         self.free_leaf(children[3]);
 
         // Replace the current node patch as a leaf patch and free the prior leaf node.
-        self.free_tree_node(children[0]);
+        //self.free_tree_node(children[0]);
         self.set_tree_node(
             tree_index,
             TreeNode::Leaf(Leaf {
-                patch_index: i0,
+                patch_index: self.tree_node(tree_index).patch_index(),
                 parent: parent_index,
                 level,
             }),
@@ -444,6 +456,9 @@ impl PatchTree {
     }
 
     fn subdivide_patch(&mut self, patch_index: PatchIndex) {
+        assert!(self
+            .tree_node(self.get_patch(patch_index).owner())
+            .is_leaf());
         self.subdivide_count += 1;
         let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
         let level = current_level + 1;
@@ -477,10 +492,11 @@ impl PatchTree {
             TreeNode::Node(Node {
                 children,
                 parent,
+                patch_index,
                 level: current_level,
             }),
         );
-        self.free_patch(patch_index);
+        // self.free_patch(patch_index);
     }
 
     pub fn num_patches(&self) -> usize {
@@ -497,8 +513,7 @@ impl PatchTree {
         level: usize,
         tree_index: TreeIndex,
     ) {
-        // Note: select max level based on height?
-        const MAX_LEVEL: usize = 4;
+        // TODO: select max level based on height?
 
         match self.tree_node(tree_index) {
             TreeNode::Root => {
@@ -530,6 +545,18 @@ impl PatchTree {
                 }
             }
             TreeNode::Leaf(ref leaf) => {
+                /*
+                println!(
+                    "lvl: {}; len: {}",
+                    level,
+                    (self.patches[leaf.patch_index.0].point(1)
+                        - self.patches[leaf.patch_index.0].point(0))
+                    .magnitude()
+                        * 1000f64
+                        / 5f64
+                );
+                */
+
                 // Don't split leaves past max level.
                 if level >= MAX_LEVEL {
                     return;
