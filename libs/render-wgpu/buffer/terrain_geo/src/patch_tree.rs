@@ -125,7 +125,7 @@ impl TreeNode {
     }
 }
 
-const MAX_LEVEL: usize = 14;
+const MAX_LEVEL: usize = 15;
 
 pub(crate) struct PatchTree {
     num_patches: usize,
@@ -140,6 +140,7 @@ pub(crate) struct PatchTree {
 
     subdivide_count: usize,
     rejoin_count: usize,
+    visit_count: usize,
 
     cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
@@ -148,16 +149,15 @@ pub(crate) struct PatchTree {
 
 impl PatchTree {
     pub(crate) fn new(num_patches: usize) -> Self {
-        const LEVEL_COUNT: usize = 40;
         let mut depth_levels = Vec::new();
-        for i in 0..LEVEL_COUNT {
-            let d = 2f64 * EARTH_RADIUS_KM * 2f64.powf(-(i as f64));
+        for i in 0..=MAX_LEVEL {
+            let d = 1f64 * EARTH_RADIUS_KM * 2f64.powf(-(i as f64 * 0.8));
             depth_levels.push(d * d);
         }
 
         let sphere = IcoSphere::new(0);
         let mut patches = Vec::with_capacity(num_patches);
-        let mut tree = Vec::new();
+        let mut tree = Vec::with_capacity(num_patches);
         let root = Root {
             children: [None; 20],
         };
@@ -186,6 +186,7 @@ impl PatchTree {
             root_patches,
             subdivide_count: 0,
             rejoin_count: 0,
+            visit_count: 0,
             cached_viewable_region,
             cached_eye_position,
             cached_eye_direction,
@@ -198,6 +199,10 @@ impl PatchTree {
 
     fn get_patch_mut(&mut self, index: PatchIndex) -> &mut Patch {
         &mut self.patches[index.0]
+    }
+
+    pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
+        self.tree_node(self.get_patch(patch_index).owner()).level()
     }
 
     fn allocate_patch(&mut self) -> PatchIndex {
@@ -317,6 +322,7 @@ impl PatchTree {
     ) {
         self.subdivide_count = 0;
         self.rejoin_count = 0;
+        self.visit_count = 0;
 
         let camera_target = camera.cartesian_target_position::<Kilometers>().vec64();
         let eye_position = camera.cartesian_eye_position::<Kilometers>().point64();
@@ -341,24 +347,12 @@ impl PatchTree {
 
         // Build a view-direction independent tesselation based on the current camera position.
         let reshape_start = Instant::now();
-        self.apply_distance_function(&eye_position);
+        self.apply_distance_function(&eye_position, live_patches);
         let reshape_time = Instant::now() - reshape_start;
-
-        let liveness_start = Instant::now();
-        live_patches.clear();
-        for (i, patch) in self.patches.iter().enumerate() {
-            if patch.is_alive()
-                && self.tree_node(patch.owner()).is_leaf()
-                && patch.keep(&self.cached_viewable_region, &eye_position)
-            {
-                live_patches.push(PatchIndex(i));
-            }
-        }
-        let liveness_time = Instant::now() - liveness_start;
 
         // Select patches based on visibility.
         println!(
-            "patches: {} of {} [-{}] | nodes: {} [-{}] | -/+: {}/{} | {:?} + {:?} + {:?}",
+            "patches: {} of {} [-{}] | nodes: {} [-{}] | -/+: {}/{}/{} | {:?} + {:?}",
             live_patches.len(),
             self.patches.len(),
             self.patch_empty_set.len(),
@@ -366,9 +360,9 @@ impl PatchTree {
             self.tree_empty_set.len(),
             self.rejoin_count,
             self.subdivide_count,
+            self.visit_count,
             root_vis_time,
             reshape_time,
-            liveness_time,
         );
     }
 
@@ -422,21 +416,6 @@ impl PatchTree {
     ) {
         self.rejoin_count += 1;
 
-        // We enter with 5 nodes and 5 patches.
-        // We want to leave with 1 node and 1 patch.
-
-        // Note: we do not re-use any of the vertices from the inner patch.
-        // let i0 = self.tree_node(children[0]).patch_index();
-        // let i1 = self.tree_node(children[1]).patch_index();
-        // let i2 = self.tree_node(children[2]).patch_index();
-        // let v0 = *self.get_patch(i0).point(0);
-        // let v1 = *self.get_patch(i1).point(0);
-        // let v2 = *self.get_patch(i2).point(0);
-
-        // Re-use the patch at i0 so we don't have to flex to allocate a new one.
-        // self.get_patch_mut(i0)
-        //     .change_target(tree_index, [v0, v1, v2]);
-
         // Free the other 3 node/leaf pairs.
         self.free_leaf(children[0]);
         self.free_leaf(children[1]);
@@ -444,7 +423,6 @@ impl PatchTree {
         self.free_leaf(children[3]);
 
         // Replace the current node patch as a leaf patch and free the prior leaf node.
-        //self.free_tree_node(children[0]);
         self.set_tree_node(
             tree_index,
             TreeNode::Leaf(Leaf {
@@ -455,14 +433,15 @@ impl PatchTree {
         );
     }
 
-    fn subdivide_patch(&mut self, patch_index: PatchIndex) {
+    fn subdivide_patch(&mut self, patch_index: PatchIndex, live_patches: &mut Vec<PatchIndex>) {
+        println!("subdivide: {:?}", self.get_patch(patch_index).owner());
         assert!(self
             .tree_node(self.get_patch(patch_index).owner())
             .is_leaf());
         self.subdivide_count += 1;
         let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
-        let level = current_level + 1;
-        assert!(level < 15);
+        let next_level = current_level + 1;
+        assert!(next_level <= MAX_LEVEL);
         let owner = self.get_patch(patch_index).owner();
         let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
         let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
@@ -480,11 +459,15 @@ impl PatchTree {
 
         // Allocate geometry to new patches.
         let children = [
-            self.allocate_leaf(owner, level, [v0, a, c]),
-            self.allocate_leaf(owner, level, [v1, b, a]),
-            self.allocate_leaf(owner, level, [v2, c, b]),
-            self.allocate_leaf(owner, level, [a, b, c]),
+            self.allocate_leaf(owner, next_level, [v0, a, c]),
+            self.allocate_leaf(owner, next_level, [v1, b, a]),
+            self.allocate_leaf(owner, next_level, [v2, c, b]),
+            self.allocate_leaf(owner, next_level, [a, b, c]),
         ];
+
+        for i in &children {
+            live_patches.push(self.tree_node(*i).patch_index());
+        }
 
         // Transform our leaf/patch into a node and clobber the old patch.
         self.set_tree_node(
@@ -496,15 +479,18 @@ impl PatchTree {
                 level: current_level,
             }),
         );
-        // self.free_patch(patch_index);
     }
 
     pub fn num_patches(&self) -> usize {
         self.patches.len()
     }
 
-    fn apply_distance_function(&mut self, eye_position: &Point3<f64>) {
-        self.apply_distance_function_inner(eye_position, 0, TreeIndex(0));
+    fn apply_distance_function(
+        &mut self,
+        eye_position: &Point3<f64>,
+        live_patches: &mut Vec<PatchIndex>,
+    ) {
+        self.apply_distance_function_inner(eye_position, 0, TreeIndex(0), live_patches);
     }
 
     fn apply_distance_function_inner(
@@ -512,7 +498,9 @@ impl PatchTree {
         eye_position: &Point3<f64>,
         level: usize,
         tree_index: TreeIndex,
+        live_patches: &mut Vec<PatchIndex>,
     ) {
+        self.visit_count += 1;
         // TODO: select max level based on height?
 
         match self.tree_node(tree_index) {
@@ -522,15 +510,23 @@ impl PatchTree {
                 let children = self.root.children; // Clone to avoid dual-borrow.
                 for maybe_index in &children {
                     if let Some(i) = maybe_index {
-                        self.apply_distance_function_inner(eye_position, level + 1, *i);
+                        self.apply_distance_function_inner(
+                            eye_position,
+                            level + 1,
+                            *i,
+                            live_patches,
+                        );
                     }
                 }
             }
             TreeNode::Node(ref node) => {
-                // Recurse first so that patches that get rejoined are available to re-allocate later.
-                for i in &node.children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i);
+                if !self
+                    .get_patch(node.patch_index)
+                    .keep(&self.cached_viewable_region, eye_position)
+                {
+                    return;
                 }
+
                 if node
                     .children
                     .iter()
@@ -542,6 +538,14 @@ impl PatchTree {
                         tree_index,
                         &node.children,
                     );
+
+                    live_patches.push(self.tree_node(tree_index).patch_index());
+
+                    return;
+                }
+
+                for i in &node.children {
+                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
                 }
             }
             TreeNode::Leaf(ref leaf) => {
@@ -555,15 +559,29 @@ impl PatchTree {
                         * 1000f64
                         / 5f64
                 );
-                */
+                 */
 
                 // Don't split leaves past max level.
-                if level >= MAX_LEVEL {
+                assert!(level <= MAX_LEVEL);
+
+                if level < MAX_LEVEL
+                    && self.leaf_is_inside_distance_function(eye_position, level, leaf.patch_index)
+                {
+                    self.subdivide_patch(leaf.patch_index, live_patches);
+                    self.apply_distance_function_inner(
+                        eye_position,
+                        level,
+                        tree_index,
+                        live_patches,
+                    );
                     return;
                 }
 
-                if self.leaf_is_inside_distance_function(eye_position, level, leaf.patch_index) {
-                    self.subdivide_patch(leaf.patch_index)
+                if self
+                    .get_patch(leaf.patch_index)
+                    .keep(&self.cached_viewable_region, eye_position)
+                {
+                    live_patches.push(leaf.patch_index)
                 }
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
@@ -598,223 +616,6 @@ impl PatchTree {
         d2 < self.depth_levels[level]
     }
 
-    /*
-    fn rejoin_tree_to_depth(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        node_index: TreeIndex,
-    ) {
-        match self.tree_node(node_index) {
-            TreeNode::Root => {
-                /*
-                for i in 0..20 {
-                    if children[i].is_none() && self.root_patches[i].keep(camera, horizon_plane, eye_position) {
-                    }
-                }
-                */
-                let children = self.root.children;
-                for i in &children {
-                    self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
-                }
-            }
-            TreeNode::Node(ref node) => {
-                for i in &node.children {
-                    self.rejoin_tree_to_depth(camera, horizon_plane, eye_position, *i);
-                }
-                if node.children.iter().all(|child| {
-                    self.leaf_can_be_rejoined(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        self.tree_node(*child),
-                    )
-                }) {
-                    let new_child = self.rejoin_patch(&node.children);
-                    self.set_tree_node(node_index, new_child);
-                }
-            }
-            TreeNode::Leaf(_) => {}
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn rejoin_patch(&mut self, children: &[TreeIndex; 4]) -> TreeNode {
-        let i0 = self.tree_node(children[0]).leaf_offset();
-        let i1 = self.tree_node(children[1]).leaf_offset();
-        let i2 = self.tree_node(children[2]).leaf_offset();
-        let i3 = self.tree_node(children[3]).leaf_offset();
-        let lvl = self.get_patch(i0).level() as u16 - 1;
-        let v0 = *self.get_patch(i0).point(0);
-        let v1 = *self.get_patch(i1).point(0);
-        let v2 = *self.get_patch(i2).point(0);
-        self.get_patch_mut(i0).change_target(lvl, [v0, v1, v2]);
-        self.get_patch_mut(i1).erect_tombstone();
-        self.get_patch_mut(i2).erect_tombstone();
-        self.get_patch_mut(i3).erect_tombstone();
-        self.clear_tree_node(children[1]);
-        self.clear_tree_node(children[2]);
-        self.clear_tree_node(children[3]);
-        TreeNode::Leaf(Leaf { offset: i0 })
-    }
-
-    fn leaf_can_be_rejoined(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        node: TreeNode,
-    ) -> bool {
-        match node {
-            TreeNode::Root => false,
-            TreeNode::Node(_) => false,
-            TreeNode::Leaf(leaf) => {
-                let patch = self.get_patch(leaf.offset);
-                let d2 = patch.distance_squared_to(eye_position);
-                assert!(patch.level() > 0);
-                d2 > self.depth_levels[patch.level() - 1]
-                    || !patch.keep(camera, horizon_plane, eye_position)
-            }
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn subdivide_tree_to_depth(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        eye_direction: &Vector3<f64>,
-        node: TreeNode,
-    ) {
-        match node {
-            TreeNode::Root => {
-                let children = self.root.children;
-                for i in &children {
-                    if let Some(new_child) = self.maybe_subdivide_patch(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        eye_direction,
-                        self.tree_node(*i),
-                        false,
-                    ) {
-                        println!("SUBDIVIDE ROOT: {:?}", *i);
-                        self.set_tree_node(*i, new_child);
-                    }
-                }
-                for i in &children {
-                    self.subdivide_tree_to_depth(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        eye_direction,
-                        self.tree_node(*i),
-                    );
-                }
-            }
-            TreeNode::Node(ref node) => {
-                for i in &node.children {
-                    if let Some(new_child) = self.maybe_subdivide_patch(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        eye_direction,
-                        self.tree_node(*i),
-                        false,
-                    ) {
-                        println!("SUBDIVIDE NODE");
-                        self.set_tree_node(*i, new_child);
-                    }
-                }
-                for i in &node.children {
-                    self.subdivide_tree_to_depth(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        &eye_direction,
-                        self.tree_node(*i),
-                    );
-                }
-            }
-            TreeNode::Leaf(_) => {}
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn maybe_subdivide_patch(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        eye_direction: &Vector3<f64>,
-        node: TreeNode,
-        force: bool,
-    ) -> Option<TreeNode> {
-        match node {
-            TreeNode::Root => None,
-            TreeNode::Node(_) => None,
-            TreeNode::Leaf(leaf) => {
-                let (maybe_offsets, patch_pts, patch_level) = {
-                    let patch = self.get_patch(leaf.offset);
-                    let d2 = patch.distance_squared_to(eye_position);
-                    if (d2 > self.depth_levels[patch.level()]
-                        || !patch.keep(camera, horizon_plane, eye_position))
-                        && !force
-                    {
-                        return None;
-                    }
-
-                    let maybe_offsets = self.find_empty_patch_slots();
-                    if maybe_offsets.is_none() {
-                        // No room for new patches, so skip it.
-                        println!("    OUT OF ROOM IN PATCHES");
-                        return None;
-                    }
-
-                    (
-                        maybe_offsets,
-                        patch.points().to_owned(),
-                        patch.level() as u16,
-                    )
-                };
-
-                let [v0, v1, v2] = patch_pts;
-                let a = Point3::from(
-                    IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
-                );
-                let b = Point3::from(
-                    IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
-                );
-                let c = Point3::from(
-                    IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
-                );
-                let [p0off, p1off, p2off, p3off] = maybe_offsets.unwrap();
-                self.get_patch_mut(p0off)
-                    .change_target(patch_level + 1, [v0, a, c]);
-                self.get_patch_mut(p1off)
-                    .change_target(patch_level + 1, [v1, b, a]);
-                self.get_patch_mut(p2off)
-                    .change_target(patch_level + 1, [v2, c, b]);
-                self.get_patch_mut(p3off)
-                    .change_target(patch_level + 1, [a, b, c]);
-                self.get_patch_mut(leaf.offset).erect_tombstone();
-
-                let [pt0off, pt1off, pt2off, pt3off] = self.find_empty_tree_slots();
-                self.set_tree_node(pt0off, TreeNode::Leaf(Leaf { offset: p0off }));
-                self.set_tree_node(pt1off, TreeNode::Leaf(Leaf { offset: p1off }));
-                self.set_tree_node(pt2off, TreeNode::Leaf(Leaf { offset: p2off }));
-                self.set_tree_node(pt3off, TreeNode::Leaf(Leaf { offset: p3off }));
-
-                return Some(TreeNode::Node(Node {
-                    children: [pt0off, pt1off, pt2off, pt3off],
-                }));
-            }
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-    */
     fn format_tree_display(&self) -> String {
         self.format_tree_display_inner(0, self.tree_root())
     }
@@ -845,412 +646,6 @@ impl PatchTree {
         }
         return out;
     }
-
-    /*
-     fn previous_optimize() {
-        let rejoin_start = Instant::now();
-        let max_levels = 10;
-        for lvl in 1..=max_levels {
-            self.visit_at_level(
-                &camera,
-                &horizon_plane,
-                &eye_position,
-                0,
-                max_levels - lvl,
-                TreeIndex(0),
-                Goal::Rejoin,
-            );
-        }
-        let rejoin_time = Instant::now() - rejoin_start;
-
-        let divide_start = Instant::now();
-        for lvl in 0..max_levels {
-            self.visit_at_level(
-                &camera,
-                &horizon_plane,
-                &eye_position,
-                0,
-                lvl,
-                TreeIndex(0),
-                Goal::Subdivide,
-            );
-        }
-        let divide_time = Instant::now() - divide_start;
-
-        let max_levels = 10;
-        for lvl in 0..max_levels {
-            let mut nodes_at_level = Vec::with_capacity(self.num_patches * 2);
-            self.collect_at_level(
-                &camera,
-                &horizon_plane,
-                &eye_position,
-                0,
-                lvl,
-                TreeIndex(0),
-                &mut nodes_at_level,
-            );
-        }
-
-        let loop_start = Instant::now();
-        let mut patches = BinaryHeap::with_capacity(self.num_patches);
-        for face in &self.sphere.faces {
-            let v0 = Point3::from(self.sphere.verts[face.i0()] * EARTH_RADIUS_KM);
-            let v1 = Point3::from(self.sphere.verts[face.i1()] * EARTH_RADIUS_KM);
-            let v2 = Point3::from(self.sphere.verts[face.i2()] * EARTH_RADIUS_KM);
-            let patch = PatchInfo::new(0, &eye_position, &eye_direction, [v0, v1, v2]);
-
-            //println!("Checking {}: ", i);
-            if patch.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
-                patches.push(patch);
-            }
-        }
-        let elapsed = Instant::now() - loop_start;
-        println!(
-            "lvl0: {:?}, {:?}us per iteration - {} patches",
-            elapsed,
-            elapsed.as_micros() / self.sphere.faces.len() as u128,
-            patches.len(),
-        );
-
-        // Split patches until we have an optimal equal-area partitioning.
-        let loop_start = Instant::now();
-        while patches.len() > 0 && patches.len() < self.num_patches - 4 {
-            let patch = patches.pop().unwrap();
-            let [v0, v1, v2] = patch.pts;
-            let a = Point3::from(
-                IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
-            );
-            let b = Point3::from(
-                IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
-            );
-            let c = Point3::from(
-                IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
-            );
-
-            let patch0 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v0, a, c]);
-            let patch1 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v1, b, a]);
-            let patch2 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [v2, c, b]);
-            let patch3 = PatchInfo::new(patch.level + 1, &eye_position, &eye_direction, [a, b, c]);
-
-            if patch0.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
-                patches.push(patch0);
-            }
-            if patch1.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
-                patches.push(patch1);
-            }
-            if patch2.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
-                patches.push(patch2);
-            }
-            if patch3.keep(camera, &horizon_plane, &eye_direction, &eye_position) {
-                patches.push(patch3);
-            }
-        }
-        println!("split: {:?}", Instant::now() - loop_start);
-
-        let rejoin_start = Instant::now();
-        self.rejoin_tree_to_depth(&camera, &horizon_plane, &eye_position, TreeIndex(0));
-        let rejoin_end = Instant::now();
-        println!("rejoin: {:?}", rejoin_end - rejoin_start);
-
-        let subdivide_start = Instant::now();
-        self.subdivide_tree_to_depth(
-            &camera,
-            &horizon_plane,
-            &eye_position,
-            &eye_direction,
-            self.tree_root(),
-        );
-        let subdivide_end = Instant::now();
-        println!("subdivide: {:?}", subdivide_end - subdivide_start);
-    }
-    */
-
-    /*
-    fn visit_at_level(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        current_level: usize,
-        target_level: usize,
-        node_index: TreeIndex,
-        goal: Goal,
-    ) {
-        if current_level == target_level {
-            self.count_visit += 1;
-            match goal {
-                Goal::Subdivide => self.visit_subdivide_at_level(
-                    camera,
-                    horizon_plane,
-                    eye_position,
-                    current_level,
-                    target_level,
-                    node_index,
-                ),
-                Goal::Rejoin => self.visit_rejoin_at_level(
-                    camera,
-                    horizon_plane,
-                    eye_position,
-                    current_level,
-                    target_level,
-                    node_index,
-                ),
-            }
-            return;
-        }
-
-        // Recurse to proper level. Note that we visit from top down, so
-        // we will have split to depth before reaching this point.
-        assert!(current_level < target_level);
-        match self.tree_node(node_index) {
-            TreeNode::Root => {
-                let children = self.root.children;
-                for maybe_child in &children {
-                    if let Some(child) = maybe_child {
-                        self.visit_at_level(
-                            camera,
-                            horizon_plane,
-                            eye_position,
-                            current_level + 1,
-                            target_level,
-                            *child,
-                            goal,
-                        );
-                    }
-                }
-            }
-            TreeNode::Node(ref node) => {
-                for i in &node.children {
-                    //assert!(self.tree_node(*i).parent);
-                    self.visit_at_level(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        current_level + 1,
-                        target_level,
-                        *i,
-                        goal,
-                    );
-                }
-            }
-            TreeNode::Leaf(_) => {}
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn visit_subdivide_at_level(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        current_level: usize,
-        target_level: usize,
-        node_index: TreeIndex,
-    ) {
-        assert_eq!(current_level, target_level);
-        match self.tree_node(node_index) {
-            TreeNode::Root => {
-                for i in 0..20 {
-                    if self.root_patches[i].keep(camera, horizon_plane, eye_position) {
-                        if self.root.children[i].is_none() {
-                            // Add newly visible root patch to patch tree.
-                            // FIXME: reclaim by rejoining.
-                            let patch_index = self.find_empty_patch_slot().unwrap();
-                            let tree_index = self.find_or_create_empty_tree_slot();
-                            *self.get_patch_mut(patch_index) = self.root_patches[i];
-                            self.set_tree_node(
-                                tree_index,
-                                TreeNode::Leaf(Leaf {
-                                    parent: TreeIndex(0),
-                                    patch_index: patch_index,
-                                }),
-                            );
-                            self.root.children[i] = Some(tree_index);
-                        }
-                    } else {
-                        if let Some(tree_index) = self.root.children[i] {
-                            // Remove newly invisible root patch from patch tree.
-                            self.collapse_node_to_leaf(tree_index);
-                            assert!(self.tree_node(tree_index).is_leaf(), "trying to remove root patch that is not a leaf! How did we get over the horizon while still being close enough to be subdivided?");
-                            let patch_index = self.tree_node(tree_index).leaf_patch();
-                            self.get_patch_mut(patch_index).erect_tombstone();
-                            self.set_tree_node(tree_index, TreeNode::Empty);
-                            self.root.children[i] = None;
-                        }
-                    }
-                }
-            }
-            TreeNode::Node(_) => {}
-            TreeNode::Leaf(ref leaf) => {
-                // First constraint: subdivide at least as far as level.
-                if self.leaf_can_be_subdivided(eye_position, leaf) {
-                    if let Some(new_node) = self.subdivide_patch_1(node_index, leaf) {
-                        self.set_tree_node(node_index, new_node);
-                    } else {
-                        //panic!("would de-divide");
-                    }
-                }
-            }
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn leaf_can_be_subdivided(&self, eye_position: &Point3<f64>, leaf: &Leaf) -> bool {
-        let patch = self.get_patch(leaf.patch_index);
-        let d2 = patch.distance_squared_to(eye_position);
-        return d2 <= self.depth_levels[patch.level()];
-    }
-
-    fn leaf_can_be_rejoined(
-        &self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        node: TreeNode,
-    ) -> bool {
-        match node {
-            TreeNode::Root => false,
-            TreeNode::Node(_) => false,
-            TreeNode::Leaf(ref leaf) => {
-                let patch = self.get_patch(leaf.patch_index);
-                let d2 = patch.distance_squared_to(eye_position);
-                assert!(patch.level() > 0);
-                d2 > self.depth_levels[patch.level().max(2) - 2]
-                    || !patch.keep(camera, horizon_plane, eye_position)
-            }
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn visit_rejoin_at_level(
-        &mut self,
-        camera: &ArcBallCamera,
-        horizon_plane: &Plane<f64>,
-        eye_position: &Point3<f64>,
-        current_level: usize,
-        target_level: usize,
-        node_index: TreeIndex,
-    ) {
-        assert_eq!(current_level, target_level);
-        match self.tree_node(node_index) {
-            TreeNode::Root => {}
-            TreeNode::Node(node) => {
-                if node.children.iter().all(|child| {
-                    self.leaf_can_be_rejoined(
-                        camera,
-                        horizon_plane,
-                        eye_position,
-                        self.tree_node(*child),
-                    )
-                }) {
-                    self.rejoin_leaf_patch_into(node.parent, node_index, &node.children);
-                }
-            }
-            TreeNode::Leaf(_) => {}
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-    */
-    /*
-    fn subdivide_patch_1(&mut self, leaf_index: TreeIndex, leaf: &Leaf) -> Option<TreeNode> {
-        self.count_subdivide += 1;
-
-        let patch_index = leaf.patch_index;
-        let patch_level = self.get_patch(patch_index).level();
-
-        let maybe_offsets = self.find_empty_patch_slots();
-        if maybe_offsets.is_none() {
-            if let Some(tree_index) = self.find_node_to_collapse(patch_level) {
-                println!("collapsing patch");
-                if let TreeNode::Node(ref node) = self.tree_node(tree_index) {
-                    self.rejoin_leaf_patch_into(node.parent, tree_index, &node.children);
-                    return self.subdivide_patch_1(leaf_index, leaf);
-                }
-            }
-            println!("no patches to collapse");
-            return None;
-        }
-        let offsets = maybe_offsets.unwrap();
-
-        let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
-        let a = Point3::from(
-            IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let b = Point3::from(
-            IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let c = Point3::from(
-            IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let [p0off, p1off, p2off, p3off] = offsets;
-        let [pt0off, pt1off, pt2off, pt3off] = self.find_empty_tree_slots();
-        self.get_patch_mut(p0off)
-            .change_target(pt0off, patch_level + 1, [v0, a, c]);
-        self.set_tree_node(
-            pt0off,
-            TreeNode::Leaf(Leaf {
-                parent: leaf_index,
-                patch_index: p0off,
-            }),
-        );
-
-        self.get_patch_mut(p1off)
-            .change_target(pt1off, patch_level + 1, [v1, b, a]);
-        self.set_tree_node(
-            pt1off,
-            TreeNode::Leaf(Leaf {
-                parent: leaf_index,
-                patch_index: p1off,
-            }),
-        );
-
-        self.get_patch_mut(p2off)
-            .change_target(pt2off, patch_level + 1, [v2, c, b]);
-        self.set_tree_node(
-            pt2off,
-            TreeNode::Leaf(Leaf {
-                parent: leaf_index,
-                patch_index: p2off,
-            }),
-        );
-
-        self.get_patch_mut(p3off)
-            .change_target(pt3off, patch_level + 1, [a, b, c]);
-        self.set_tree_node(
-            pt3off,
-            TreeNode::Leaf(Leaf {
-                parent: leaf_index,
-                patch_index: p3off,
-            }),
-        );
-
-        self.get_patch_mut(leaf.patch_index).erect_tombstone();
-
-        return Some(TreeNode::Node(Node {
-            parent: leaf.parent,
-            children: [pt0off, pt1off, pt2off, pt3off],
-        }));
-    }
-
-    fn find_node_to_collapse(&self, lower_than_level: usize) -> Option<TreeIndex> {
-        for (i, patch) in self.patches.iter().enumerate() {
-            if patch.is_alive() && patch.level() > lower_than_level {
-                let tree_leaf_index = patch.owner();
-                let leaf_node = self.tree_node(tree_leaf_index);
-                assert!(leaf_node.is_leaf());
-                let parent_node = self.tree_node(leaf_node.parent());
-                if parent_node.is_node() && self.is_leaf_patch(parent_node.as_node()) {
-                    return Some(leaf_node.parent());
-                } else {
-                    println!("  not a leaf patch");
-                }
-            } else {
-                println!("  not less than level");
-            }
-        }
-        None
-    }
-    */
 }
 
 #[cfg(test)]

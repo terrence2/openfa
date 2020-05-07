@@ -29,6 +29,28 @@ use wgpu;
 
 const DBG_VERT_COUNT: usize = 4096;
 
+const DBG_COLORS_BY_LEVEL: [[f32; 3]; 19] = [
+    [0.75, 0.25, 0.25],
+    [0.25, 0.7499999999999996, 0.75],
+    [0.75, 0.41666666666666663, 0.25],
+    [0.25, 0.5833333333333328, 0.75],
+    [0.75, 0.5833333333333333, 0.25],
+    [0.25, 0.4166666666666661, 0.75],
+    [0.7499999999999999, 0.75, 0.25],
+    [0.25000000000000067, 0.25, 0.75],
+    [0.5833333333333331, 0.75, 0.25],
+    [0.4166666666666674, 0.25, 0.75],
+    [0.5833333333333341, 0.25, 0.75],
+    [0.4166666666666664, 0.75, 0.25],
+    [0.25, 0.75, 0.25000000000000017],
+    [0.75, 0.25, 0.7499999999999992],
+    [0.25, 0.75, 0.4166666666666669],
+    [0.75, 0.25, 0.5833333333333325],
+    [0.25, 0.75, 0.5833333333333337],
+    [0.75, 0.25, 0.41666666666666574],
+    [0.10, 0.8, 0.71666666666666574],
+];
+
 pub struct TerrainGeoBuffer {
     patches: PatchTree,
 
@@ -88,7 +110,6 @@ impl TerrainGeoBuffer {
             dbg_indices.push(i);
             dbg_indices.push(i);
         }
-        dbg_indices.push(0);
         let dbg_index_buffer = Arc::new(Box::new(
             device
                 .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
@@ -141,14 +162,12 @@ impl TerrainGeoBuffer {
         self.patches.optimize_for_view(camera, &mut live_patches);
 
         let loop_start = Instant::now();
-        let mut cnt = 0;
-        for i in &live_patches {
+        for (offset, i) in live_patches.iter().enumerate() {
             let patch = self.patches.get_patch(*i);
-            assert!(patch.is_alive());
-            if cnt >= 300 {
+            if offset >= 512 {
                 continue;
             }
-            cnt += 1;
+            assert!(patch.is_alive());
             let [v0, v1, v2] = patch.points();
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
@@ -160,13 +179,11 @@ impl TerrainGeoBuffer {
             dbg_indices.push(dbg_verts.len() as u32);
             dbg_indices.push(dbg_verts.len() as u32 + 1);
             dbg_indices.push(dbg_verts.len() as u32 + 2);
-            /*
-            //let clr = Self::interp_solid_angle_color(f);
-            let clr = [0.5, 0.5, 0.5];
+            let level = self.patches.level_of_patch(*i);
+            let clr = DBG_COLORS_BY_LEVEL[level];
             dbg_verts.push(DebugVertex::new(&v0, &n0, &clr));
             dbg_verts.push(DebugVertex::new(&v1, &n1, &clr));
             dbg_verts.push(DebugVertex::new(&v2, &n2, &clr));
-             */
         }
         self.dbg_vertex_count = dbg_verts.len() as u32;
         //println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
