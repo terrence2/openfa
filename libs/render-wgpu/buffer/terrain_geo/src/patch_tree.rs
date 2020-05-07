@@ -37,7 +37,7 @@ pub(crate) struct PatchIndex(pub(crate) usize);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Root {
-    children: [Option<TreeIndex>; 20],
+    children: [TreeIndex; 20],
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -125,10 +125,8 @@ impl TreeNode {
     }
 }
 
-const MAX_LEVEL: usize = 15;
-
 pub(crate) struct PatchTree {
-    num_patches: usize,
+    max_level: usize,
     sphere: IcoSphere,
     depth_levels: Vec<f64>,
     patches: Vec<Patch>,
@@ -148,34 +146,46 @@ pub(crate) struct PatchTree {
 }
 
 impl PatchTree {
-    pub(crate) fn new(num_patches: usize) -> Self {
+    pub(crate) fn new(max_level: usize, falloff_coefficient: f64) -> Self {
         let mut depth_levels = Vec::new();
-        for i in 0..=MAX_LEVEL {
-            let d = 1f64 * EARTH_RADIUS_KM * 2f64.powf(-(i as f64 * 0.8));
+        for i in 0..=max_level {
+            let d = 1f64 * EARTH_RADIUS_KM * 2f64.powf(-(i as f64 * falloff_coefficient));
             depth_levels.push(d * d);
         }
 
         let sphere = IcoSphere::new(0);
-        let mut patches = Vec::with_capacity(num_patches);
-        let mut tree = Vec::with_capacity(num_patches);
-        let root = Root {
-            children: [None; 20],
-        };
-        tree.push(TreeNode::Root);
         let cached_eye_position = Point3::new(0f64, 0f64, 0f64);
         let cached_eye_direction = Vector3::new(1f64, 0f64, 0f64);
         let cached_viewable_region =
             [Plane::from_normal_and_distance(Vector3::new(1f64, 0f64, 0f64), 0f64); 6];
+
+        let mut patches = Vec::new();
+        let mut tree = Vec::new();
+        let mut root = Root {
+            children: [TreeIndex(0); 20],
+        };
+        tree.push(TreeNode::Root);
+        for i in 0..20 {
+            tree.push(TreeNode::Leaf(Leaf {
+                level: 1,
+                parent: TreeIndex(0),
+                patch_index: PatchIndex(i),
+            }));
+            root.children[i] = TreeIndex(i + 1);
+        }
         let mut root_patches = [Patch::new(); 20];
         for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(&sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             root_patches[i].change_target(TreeIndex(0), [v0, v1, v2]);
+            let mut p = Patch::new();
+            p.change_target(TreeIndex(i + 1), [v0, v1, v2]);
+            patches.push(p)
         }
 
         Self {
-            num_patches,
+            max_level,
             sphere,
             depth_levels,
             patches,
@@ -339,12 +349,6 @@ impl PatchTree {
                 .min(0f64),
         );
 
-        // Make sure we have the right root set.
-        let root_vis_start = Instant::now();
-        self.ensure_root_visibility();
-        //self.compact_patches();
-        let root_vis_time = Instant::now() - root_vis_start;
-
         // Build a view-direction independent tesselation based on the current camera position.
         let reshape_start = Instant::now();
         self.apply_distance_function(&eye_position, live_patches);
@@ -352,7 +356,7 @@ impl PatchTree {
 
         // Select patches based on visibility.
         println!(
-            "patches: {} of {} [-{}] | nodes: {} [-{}] | -/+: {}/{}/{} | {:?} + {:?}",
+            "patches: {} of {} [-{}] | nodes: {} [-{}] | -/+: {}/{}/{} | {:?}",
             live_patches.len(),
             self.patches.len(),
             self.patch_empty_set.len(),
@@ -361,50 +365,8 @@ impl PatchTree {
             self.rejoin_count,
             self.subdivide_count,
             self.visit_count,
-            root_vis_time,
             reshape_time,
         );
-    }
-
-    fn ensure_root_visibility(&mut self) {
-        for i in 0..20 {
-            if self.root_patches[i].keep(&self.cached_viewable_region, &self.cached_eye_position) {
-                if self.root.children[i].is_none() {
-                    let pts = self.root_patches[i].points().to_owned();
-                    let leaf_index = self.allocate_leaf(TreeIndex(0), 1, pts);
-                    self.root.children[i] = Some(leaf_index);
-                }
-            } else {
-                if let Some(tree_index) = self.root.children[i] {
-                    // Remove newly invisible root patch from patch tree.
-                    self.collapse_node_to_leaf(tree_index);
-                    self.free_leaf(tree_index);
-                    self.root.children[i] = None;
-                }
-            }
-        }
-    }
-
-    fn collapse_node_to_leaf(&mut self, tree_index: TreeIndex) {
-        //println!("collapsing: {:?}", self.tree_node(tree_index));
-        match self.tree_node(tree_index) {
-            TreeNode::Node(ref node) => {
-                for i in &node.children {
-                    self.collapse_node_to_leaf(*i);
-                }
-                assert!(self.is_leaf_patch(node));
-                self.rejoin_leaf_patch_into(node.parent, node.level, tree_index, &node.children);
-            }
-            TreeNode::Root => {}
-            TreeNode::Leaf(_) => {}
-            TreeNode::Empty => panic!("empty node in patch tree"),
-        }
-    }
-
-    fn is_leaf_patch(&self, node: &Node) -> bool {
-        node.children
-            .iter()
-            .all(|child| self.tree_node(*child).is_leaf())
     }
 
     fn rejoin_leaf_patch_into(
@@ -441,7 +403,7 @@ impl PatchTree {
         self.subdivide_count += 1;
         let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
         let next_level = current_level + 1;
-        assert!(next_level <= MAX_LEVEL);
+        assert!(next_level <= self.max_level);
         let owner = self.get_patch(patch_index).owner();
         let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
         let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
@@ -481,10 +443,6 @@ impl PatchTree {
         );
     }
 
-    pub fn num_patches(&self) -> usize {
-        self.patches.len()
-    }
-
     fn apply_distance_function(
         &mut self,
         eye_position: &Point3<f64>,
@@ -508,15 +466,8 @@ impl PatchTree {
                 // We have already applied visibility at this level, so we just need to recurse.
                 assert_eq!(level, 0);
                 let children = self.root.children; // Clone to avoid dual-borrow.
-                for maybe_index in &children {
-                    if let Some(i) = maybe_index {
-                        self.apply_distance_function_inner(
-                            eye_position,
-                            level + 1,
-                            *i,
-                            live_patches,
-                        );
-                    }
+                for i in &children {
+                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
                 }
             }
             TreeNode::Node(ref node) => {
@@ -562,9 +513,9 @@ impl PatchTree {
                  */
 
                 // Don't split leaves past max level.
-                assert!(level <= MAX_LEVEL);
+                assert!(level <= self.max_level);
 
-                if level < MAX_LEVEL
+                if level < self.max_level
                     && self.leaf_is_inside_distance_function(eye_position, level, leaf.patch_index)
                 {
                     self.subdivide_patch(leaf.patch_index, live_patches);
@@ -625,10 +576,8 @@ impl PatchTree {
         match node {
             TreeNode::Root => {
                 out += "Root\n";
-                for maybe_child in &self.root.children {
-                    if let Some(child) = maybe_child {
-                        out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
-                    }
+                for child in &self.root.children {
+                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
                 }
             }
             TreeNode::Node(ref node) => {

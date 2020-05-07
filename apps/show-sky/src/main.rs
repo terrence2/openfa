@@ -34,7 +34,7 @@ use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
 use terrain::TerrainRenderPass;
-use terrain_geo::TerrainGeoBuffer;
+use terrain_geo::{CpuDetailLevel, TerrainGeoBuffer};
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
 
 make_frame_graph!(
@@ -78,7 +78,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let terrain_geo_buffer = TerrainGeoBuffer::new(512, 1, gpu.device())?;
+    let terrain_geo_buffer = TerrainGeoBuffer::new(CpuDetailLevel::Medium, 1, gpu.device())?;
     let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(

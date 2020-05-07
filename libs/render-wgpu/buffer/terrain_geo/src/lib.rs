@@ -51,7 +51,23 @@ const DBG_COLORS_BY_LEVEL: [[f32; 3]; 19] = [
     [0.10, 0.8, 0.71666666666666574],
 ];
 
+pub enum CpuDetailLevel {
+    Medium,
+}
+
+impl CpuDetailLevel {
+    // max-level, buffer-size, falloff-coefficient
+    fn parameters(&self) -> (usize, f64, usize) {
+        match self {
+            Self::Medium => (14, 0.8, 768),
+        }
+    }
+}
+
 pub struct TerrainGeoBuffer {
+    // Maximum number of patches for the patch buffer.
+    patch_buffer_size: usize,
+
     patches: PatchTree,
 
     // bind_group_layout: wgpu::BindGroupLayout,
@@ -66,10 +82,11 @@ pub struct TerrainGeoBuffer {
 
 impl TerrainGeoBuffer {
     pub fn new(
-        num_patches: usize,
+        cpu_detail_level: CpuDetailLevel,
         _gen_subdivisions: usize,
         device: &wgpu::Device,
     ) -> Fallible<Arc<RefCell<Self>>> {
+        let (max_level, falloff_coefficient, patch_buffer_size) = cpu_detail_level.parameters();
         /*
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[wgpu::BindGroupLayoutBinding {
@@ -93,7 +110,7 @@ impl TerrainGeoBuffer {
         });
         */
 
-        let patches = PatchTree::new(num_patches);
+        let patches = PatchTree::new(max_level, falloff_coefficient);
 
         println!(
             "dbg_vertex_buffer: {:08X}",
@@ -118,11 +135,11 @@ impl TerrainGeoBuffer {
 
         println!(
             "patch_vertex_buffer: {:08X}",
-            PatchVertex::mem_size() * 3 * num_patches
+            PatchVertex::mem_size() * 3 * patch_buffer_size
         );
         let patch_vertex_buffer =
             Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-                size: (PatchVertex::mem_size() * 3 * num_patches) as wgpu::BufferAddress,
+                size: (PatchVertex::mem_size() * 3 * patch_buffer_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::all(),
             })));
 
@@ -138,6 +155,7 @@ impl TerrainGeoBuffer {
             .fill_from_slice(&patch_indices);
 
         Ok(Arc::new(RefCell::new(Self {
+            patch_buffer_size,
             patches,
 
             patch_vertex_buffer,
@@ -155,16 +173,17 @@ impl TerrainGeoBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        let mut dbg_verts = Vec::with_capacity(3 * self.patches.num_patches());
-        let mut verts = Vec::with_capacity(3 * self.patches.num_patches());
-        let mut dbg_indices = Vec::with_capacity(3 * self.patches.num_patches());
-        let mut live_patches = Vec::with_capacity(self.patches.num_patches());
+        let mut dbg_verts = Vec::with_capacity(3 * self.patch_buffer_size);
+        let mut verts = Vec::with_capacity(3 * self.patch_buffer_size);
+        let mut dbg_indices = Vec::with_capacity(3 * self.patch_buffer_size);
+        let mut live_patches = Vec::with_capacity(self.patch_buffer_size);
         self.patches.optimize_for_view(camera, &mut live_patches);
+        assert!(live_patches.len() < self.patch_buffer_size);
 
         let loop_start = Instant::now();
         for (offset, i) in live_patches.iter().enumerate() {
             let patch = self.patches.get_patch(*i);
-            if offset >= 512 {
+            if offset >= self.patch_buffer_size {
                 continue;
             }
             assert!(patch.is_alive());
@@ -189,7 +208,7 @@ impl TerrainGeoBuffer {
         //println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
         let loop_start = Instant::now();
 
-        while verts.len() < 3 * self.patches.num_patches() {
+        while verts.len() < 3 * self.patch_buffer_size {
             verts.push(PatchVertex::empty());
         }
         let patch_vertex_buffer = gpu
@@ -241,7 +260,7 @@ impl TerrainGeoBuffer {
     */
 
     pub fn num_patches(&self) -> i32 {
-        self.patches.num_patches() as i32
+        self.patch_buffer_size as i32
     }
 
     pub fn patch_index_buffer(&self) -> &wgpu::Buffer {
