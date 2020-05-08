@@ -25,7 +25,6 @@ use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
 use std::{cell::RefCell, mem, ops::Range, sync::Arc};
-use wgpu;
 
 const DBG_VERT_COUNT: usize = 4096;
 

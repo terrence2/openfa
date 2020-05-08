@@ -19,7 +19,6 @@ use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
 use terrain_geo::{DebugVertex, PatchVertex, TerrainGeoBuffer};
-use wgpu;
 
 pub struct TerrainRenderPass {
     debug_patch_pipeline: wgpu::RenderPipeline,

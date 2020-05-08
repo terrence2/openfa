@@ -17,7 +17,6 @@ use geodesy::{Cartesian, GeoCenter, Graticule};
 use memoffset::offset_of;
 use nalgebra::{Point3, Vector3};
 use std::mem;
-use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]

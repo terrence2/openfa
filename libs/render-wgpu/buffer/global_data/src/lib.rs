@@ -21,7 +21,6 @@ use gpu::GPU;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Vector3, Vector4};
 use std::{cell::RefCell, mem, sync::Arc};
 use t2::Terrain;
-use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 pub fn m2v(m: &Matrix4<f32>) -> [[f32; 4]; 4] {

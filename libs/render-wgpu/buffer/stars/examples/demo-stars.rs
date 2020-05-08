@@ -21,7 +21,6 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
 use stars::StarsBuffer;
-use wgpu;
 
 fn main() -> Fallible<()> {
     let system_bindings = Bindings::new("system")

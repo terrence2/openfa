@@ -18,7 +18,6 @@ use log::trace;
 use pal::Palette;
 use pic::Pic;
 use std::{borrow::Cow, collections::HashMap};
-use wgpu;
 
 const DUMP_ATLAS: bool = false;
 

@@ -16,9 +16,6 @@ use bitflags::bitflags;
 use std::fmt;
 
 #[cfg(target_family = "unix")]
-use libc;
-
-#[cfg(target_family = "unix")]
 use std::mem;
 
 #[cfg(target_family = "unix")]

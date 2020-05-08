@@ -18,7 +18,6 @@ use gpu::GPU;
 use shader_globals::Group;
 use shape_chunk::Vertex;
 use shape_instance::ShapeInstanceBuffer;
-use wgpu;
 
 pub struct ShapeRenderPass {
     pipeline: wgpu::RenderPipeline,

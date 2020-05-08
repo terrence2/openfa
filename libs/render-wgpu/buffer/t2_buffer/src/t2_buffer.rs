@@ -32,7 +32,6 @@ use std::{
     sync::Arc,
 };
 use t2::{Sample, Terrain};
-use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]

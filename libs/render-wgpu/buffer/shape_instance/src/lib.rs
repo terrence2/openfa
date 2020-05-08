@@ -33,7 +33,6 @@ use std::{
     time::Instant,
 };
 use universe::component::{Rotation, Scale, Transform};
-use wgpu;
 
 pub const SHAPE_UNIT_TO_FEET: f32 = 4f32;
 

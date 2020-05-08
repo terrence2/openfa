@@ -15,7 +15,6 @@
 use failure::{err_msg, Fallible};
 use input::InputSystem;
 use std::io::Cursor;
-use wgpu;
 use winit::dpi::PhysicalSize;
 use zerocopy::{AsBytes, FromBytes};
 

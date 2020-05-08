@@ -19,7 +19,6 @@ use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
 use t2_buffer::{T2Buffer, T2Vertex};
-use wgpu;
 
 pub struct T2TerrainRenderPass {
     pipeline: wgpu::RenderPipeline,
