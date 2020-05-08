@@ -6,11 +6,11 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-#legion = { git="https://github.com/TomGillen/legion", rev="23a0b29c0ddefa05dcde39fc0ce73629fa0abf40"}
-legion = { git="https://github.com/jaynus/legion", branch="fix_tag"}
+legion = "^ 0.2"
 nalgebra = "^ 0.20"
 lib = { path = "../lib" }
 pal = { path = "../pal" }
+physical_constants = { path = "../physical_constants" }
 shape_chunk = { path = "../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../render-wgpu/buffer/shape_instance" }
 universe = { path = "../universe" }

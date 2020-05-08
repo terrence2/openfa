@@ -30,6 +30,7 @@ lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 omnilib = { path = "../../libs/omnilib" }
 orrery = { path = "../../libs/orrery" }
+physical_constants = { path = "../../libs/physical_constants" }
 screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }

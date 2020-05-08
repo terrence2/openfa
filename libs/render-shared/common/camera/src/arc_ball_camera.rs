@@ -12,7 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters, radians, Angle, Length, LengthUnit, Meters, Radians};
+use absolute_unit::{
+    degrees, meters, radians, Angle, AngleUnit, Degrees, Length, LengthUnit, Meters, Radians,
+};
 use command::{Bindings, Command};
 use failure::{ensure, Fallible};
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
@@ -26,6 +28,8 @@ pub struct ArcBallCamera {
     z_far: Length<Meters>,
     in_rotate: bool,
     in_move: bool,
+    aspect_ratio: f64,
+    fov_delta: Angle<Degrees>,
 
     target: Graticule<GeoSurface>,
     eye: Graticule<Target>,
@@ -49,11 +53,27 @@ impl ArcBallCamera {
                 z_far.into(),
             ),
             fov_y,
+            fov_delta: degrees!(0),
             z_near,
             z_far,
+            aspect_ratio,
             in_rotate: false,
             in_move: false,
         }
+    }
+
+    pub fn get_fov(&self) -> Angle<Radians> {
+        self.fov_y
+    }
+
+    pub fn set_fov<T: AngleUnit>(&mut self, fov: Angle<T>) {
+        self.fov_y = radians!(fov);
+        self.projection = Perspective3::new(
+            1f64 / self.aspect_ratio,
+            self.fov_y.into(),
+            self.z_near.into(),
+            self.z_far.into(),
+        );
     }
 
     pub fn get_eye_relative(&self) -> Graticule<Target> {
@@ -129,6 +149,7 @@ impl ArcBallCamera {
     }
 
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f64) {
+        self.aspect_ratio = aspect_ratio;
         self.projection = Perspective3::new(
             1f64 / aspect_ratio,
             self.fov_y.into(),
@@ -258,12 +279,19 @@ impl ArcBallCamera {
     }
     */
 
-    pub fn think(&mut self) {}
+    pub fn think(&mut self) {
+        let mut fov = degrees!(self.get_fov());
+        fov += self.fov_delta;
+        fov = fov.min(degrees!(90)).max(degrees!(1));
+        self.set_fov(fov);
+    }
 
     pub fn default_bindings() -> Fallible<Bindings> {
         Ok(Bindings::new("arc_ball_camera")
             .bind("+pan-view", "mouse1")?
-            .bind("+move-view", "mouse3")?)
+            .bind("+move-view", "mouse3")?
+            .bind("+fov_up", "PageUp")?
+            .bind("+fov_down", "PageDown")?)
     }
 
     pub fn handle_command(&mut self, command: &Command) -> Fallible<()> {
@@ -272,6 +300,10 @@ impl ArcBallCamera {
             "-pan-view" => self.in_rotate = false,
             "+move-view" => self.in_move = true,
             "-move-view" => self.in_move = false,
+            "+fov_up" => self.fov_delta = degrees!(1),
+            "-fov_up" => self.fov_delta = degrees!(0),
+            "+fov_down" => self.fov_delta = degrees!(-1),
+            "-fov_down" => self.fov_delta = degrees!(0),
             "mouse-move" => self.on_mousemove(command)?,
             "mouse-wheel" => self.on_mousescroll(command)?,
             _ => {}

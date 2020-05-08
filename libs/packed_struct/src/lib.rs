@@ -26,7 +26,7 @@ macro_rules! _make_packed_struct_accessor {
         fn $field_name(&self) -> $field_ty {
             self.$field as $field_ty
         }
-    }
+    };
 }
 
 #[macro_export]

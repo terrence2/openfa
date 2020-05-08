@@ -13,16 +13,14 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 pub use legion::entity::Entity;
-pub use universe::{
-    component::{Rotation, Scale, Transform},
-    FEET_TO_DAM, FEET_TO_HM_32, FEET_TO_KM, FEET_TO_M,
-};
+pub use universe::component::{Rotation, Scale, Transform};
 
 use failure::Fallible;
 use legion::prelude::*;
 use lib::Library;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
+use physical_constants::FEET_TO_HM_32;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
     ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,

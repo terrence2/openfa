@@ -17,6 +17,7 @@ use absolute_unit::{
     degrees, kilometers, meters, radians, Angle, AngleUnit, Length, LengthUnit, Meters, Radians,
 };
 use num_traits::Float;
+use physical_constants::EARTH_RADIUS_KM;
 use std::{convert::From, fmt, marker::PhantomData};
 
 pub trait GraticuleOrigin: Copy {
@@ -80,7 +81,7 @@ impl From<Graticule<GeoSurface>> for Graticule<GeoCenter> {
         Self::new(
             surface.latitude,
             surface.longitude,
-            surface.distance + kilometers!(6378),
+            surface.distance + kilometers!(EARTH_RADIUS_KM),
         )
     }
 }

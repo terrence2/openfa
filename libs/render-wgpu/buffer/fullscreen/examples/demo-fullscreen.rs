@@ -20,7 +20,6 @@ use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
-use wgpu;
 
 fn main() -> Fallible<()> {
     let system_bindings = Bindings::new("system")

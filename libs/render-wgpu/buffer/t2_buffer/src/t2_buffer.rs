@@ -22,6 +22,7 @@ use memoffset::offset_of;
 use mm::MissionMap;
 use nalgebra::{Point3, Vector3};
 use pal::Palette;
+use physical_constants::{EARTH_RADIUS_KM_32, FEET_TO_HM_32, FEET_TO_KM};
 use pic::Pic;
 use std::{
     cell::RefCell,
@@ -31,8 +32,6 @@ use std::{
     sync::Arc,
 };
 use t2::{Sample, Terrain};
-use universe::{EARTH_RADIUS_KM, FEET_TO_HM_32, FEET_TO_KM};
-use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
@@ -349,8 +348,8 @@ impl<'a> T2BufferFactory<'a> {
         let xc = (center_x_km - x_km).abs();
         let zc = (center_z_km - z_km).abs();
         let d_km = (xc * xc + zc * zc).sqrt();
-        let hyp_km = (d_km * d_km + EARTH_RADIUS_KM * EARTH_RADIUS_KM).sqrt();
-        let dev_km = hyp_km - EARTH_RADIUS_KM;
+        let hyp_km = (d_km * d_km + EARTH_RADIUS_KM_32 * EARTH_RADIUS_KM_32).sqrt();
+        let dev_km = hyp_km - EARTH_RADIUS_KM_32;
         h += dev_km * 10f32;
 
         let position = Vector3::new(x_hm, h, z_hm);

@@ -6,10 +6,9 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-nalgebra = "^ 0.20"
-#legion = { git="https://github.com/TomGillen/legion", rev="23a0b29c0ddefa05dcde39fc0ce73629fa0abf40"}
-legion = { git="https://github.com/jaynus/legion", branch="fix_tag"}
+legion = "^ 0.2"
 log = "^ 0.4"
+nalgebra = "^ 0.20"
 wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="a18b43bfa823644a73b92678a36d53fcdb232f57" }
 #wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="ccc958e741a3cb9a5264a392dd58226909a53bb5" }
 #wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }

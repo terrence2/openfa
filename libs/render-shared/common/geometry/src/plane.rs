@@ -22,6 +22,27 @@ pub struct Plane<T: RealField> {
 }
 
 impl<T: RealField> Plane<T> {
+    pub fn xy() -> Self {
+        Self {
+            normal: Vector3::new(T::zero(), T::zero(), T::one()),
+            distance: T::zero(),
+        }
+    }
+
+    pub fn yz() -> Self {
+        Self {
+            normal: Vector3::new(T::one(), T::zero(), T::zero()),
+            distance: T::zero(),
+        }
+    }
+
+    pub fn xz() -> Self {
+        Self {
+            normal: Vector3::new(T::zero(), T::one(), T::zero()),
+            distance: T::zero(),
+        }
+    }
+
     pub fn from_point_and_normal(p: &Point3<T>, n: &Vector3<T>) -> Self {
         Self {
             normal: n.to_owned(),

@@ -23,7 +23,6 @@ use image::{ImageBuffer, Luma, Rgb};
 use log::trace;
 use memmap::MmapOptions;
 use std::{fs, mem, slice, time::Instant};
-use wgpu;
 
 const DUMP_TRANSMITTANCE: bool = false;
 const DUMP_DIRECT_IRRADIANCE: bool = false;

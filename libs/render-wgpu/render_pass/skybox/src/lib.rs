@@ -23,7 +23,6 @@ use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
 use stars::StarsBuffer;
-use wgpu;
 
 pub struct SkyboxRenderPass {
     pipeline: wgpu::RenderPipeline,

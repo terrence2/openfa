@@ -14,7 +14,6 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use std::{cell::RefCell, mem, sync::Arc};
-use wgpu;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]

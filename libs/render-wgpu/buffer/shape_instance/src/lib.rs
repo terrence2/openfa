@@ -33,7 +33,6 @@ use std::{
     time::Instant,
 };
 use universe::component::{Rotation, Scale, Transform};
-use wgpu;
 
 pub const SHAPE_UNIT_TO_FEET: f32 = 4f32;
 
@@ -614,7 +613,7 @@ impl ShapeInstanceBuffer {
             shape_state.draw_state.animate(&now)
         });
 
-        let mut query = <(
+        let query = <(
             Read<Transform>,
             Read<Rotation>,
             Read<Scale>,
@@ -631,7 +630,7 @@ impl ShapeInstanceBuffer {
             },
         );
 
-        let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
+        let query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
         query.par_for_each(world, |(shape_state, mut flag_buffer)| {
             shape_state
                 .draw_state
@@ -639,7 +638,7 @@ impl ShapeInstanceBuffer {
                 .unwrap();
         });
 
-        let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
+        let query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
         query.par_for_each(world, |(shape_ref, shape_state, mut xform_buffer)| {
             let part = self.chunk_man.part(shape_ref.shape_id);
             WIDGET_CACHE.with(|widget_cache| {
@@ -670,7 +669,7 @@ impl ShapeInstanceBuffer {
             });
         });
 
-        let mut query = <(
+        let query = <(
             Read<ShapeRef>,
             Read<ShapeSlot>,
             Read<ShapeTransformBuffer>,

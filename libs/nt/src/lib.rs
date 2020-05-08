@@ -83,7 +83,7 @@ NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
     (Word,  [Dec],        "retargetT", Unsigned, retarget_t,        u16, V1, 32767),    // word 32767 ; retargetT
     (Num,   [Dec],         "zoneDist", Unsigned, zone_dist,         u16, V0, panic!()), // word 0     ; zoneDist
     (Byte,  [Dec],         "numHards", Unsigned, num_hards,          u8, V0, panic!()), // byte 3     ; numHards
-	(Ptr,   [Sym],            "hards",   Custom, hards,      Hardpoints, V0, panic!())  // ptr hards
+    (Ptr,   [Sym],            "hards",   Custom, hards,      Hardpoints, V0, panic!())  // ptr hards
 }];
 
 impl NpcType {
