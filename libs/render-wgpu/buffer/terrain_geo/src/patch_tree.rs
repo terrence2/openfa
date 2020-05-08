@@ -27,13 +27,53 @@ use std::{
     time::Instant,
 };
 
-// Index into the tree vec.
+// Index into the tree vec. Note, debug builds do not handle the struct indirection well,
+// so ironically release has better protections against misuse.
+
+#[cfg(not(debug_assertions))]
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TreeIndex(usize);
 
+#[cfg(not(debug_assertions))]
+fn toff(ti: TreeIndex) -> usize {
+    ti.0
+}
+
+#[cfg(debug_assertions)]
+pub(crate) type TreeIndex = usize;
+
+#[cfg(debug_assertions)]
+fn TreeIndex(i: usize) -> usize {
+    i
+}
+
+#[cfg(debug_assertions)]
+fn toff(ti: TreeIndex) -> usize {
+    ti
+}
+
 // Index into the patch vec.
+#[cfg(not(debug_assertions))]
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct PatchIndex(pub(crate) usize);
+
+#[cfg(not(debug_assertions))]
+fn poff(pi: PatchIndex) -> usize {
+    pi.0
+}
+
+#[cfg(debug_assertions)]
+pub(crate) type PatchIndex = usize;
+
+#[cfg(debug_assertions)]
+fn PatchIndex(i: usize) -> usize {
+    i
+}
+
+#[cfg(debug_assertions)]
+fn poff(pi: TreeIndex) -> usize {
+    pi
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Root {
@@ -204,11 +244,11 @@ impl PatchTree {
     }
 
     pub(crate) fn get_patch(&self, index: PatchIndex) -> &Patch {
-        &self.patches[index.0]
+        &self.patches[poff(index)]
     }
 
     fn get_patch_mut(&mut self, index: PatchIndex) -> &mut Patch {
-        &mut self.patches[index.0]
+        &mut self.patches[poff(index)]
     }
 
     pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
@@ -318,11 +358,11 @@ impl PatchTree {
     }
 
     fn tree_node(&self, index: TreeIndex) -> TreeNode {
-        self.tree[index.0]
+        self.tree[toff(index)]
     }
 
     fn set_tree_node(&mut self, index: TreeIndex, node: TreeNode) {
-        self.tree[index.0] = node;
+        self.tree[toff(index)] = node;
     }
 
     pub(crate) fn optimize_for_view(
@@ -589,7 +629,7 @@ impl PatchTree {
             }
             TreeNode::Leaf(ref leaf) => {
                 let pad = "  ".repeat(lvl);
-                out += &format!("{}Leaf @{}, lvl: {}\n", pad, leaf.patch_index.0, lvl);
+                out += &format!("{}Leaf @{}, lvl: {}\n", pad, poff(leaf.patch_index), lvl);
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
