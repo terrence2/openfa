@@ -12,17 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{debug_vertex::DebugVertex, patch_tree::TreeIndex};
+use crate::patch_tree::TreeIndex;
 
 use geometry::{
-    algorithm::{compute_normal, solid_angle},
+    algorithm::compute_normal,
     intersect,
     intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
     Plane, Sphere,
 };
 use nalgebra::{Point3, Vector3};
 use physical_constants::{EARTH_RADIUS_KM, EVEREST_HEIGHT_KM};
-use std::cmp::{Ord, Ordering};
 
 // We introduce a substantial amount of error in our intersection computations below
 // with all the dot products and re-normalizations. This is fine, as long as we use a
@@ -81,10 +80,6 @@ impl Patch {
         self.owner.is_some()
     }
 
-    pub(crate) fn is_tombstone(&self) -> bool {
-        self.owner.is_none()
-    }
-
     pub(crate) fn erect_tombstone(&mut self) {
         self.owner = None;
     }
@@ -98,10 +93,6 @@ impl Patch {
         &self.pts
     }
 
-    pub(crate) fn point(&self, offset: usize) -> &Point3<f64> {
-        &self.pts[offset]
-    }
-
     pub(crate) fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
         if self.point_is_in_cone(point) {
             let m = point.coords.magnitude();
@@ -111,7 +102,7 @@ impl Patch {
             return m - (EARTH_RADIUS_KM + EVEREST_HEIGHT_KM);
         }
 
-        let mut minimum = 99999999f64;
+        let mut minimum = 999_999_999f64;
 
         // bottom points
         for p in &self.pts {
@@ -131,7 +122,7 @@ impl Patch {
             }
         }
 
-        return minimum;
+        minimum
     }
 
     fn is_behind_plane(&self, plane: &Plane<f64>, show_msgs: bool) -> bool {
@@ -246,7 +237,11 @@ impl Patch {
     }
      */
 
-    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6], eye_position: &Point3<f64>) -> bool {
+    pub(crate) fn keep(
+        &self,
+        viewable_area: &[Plane<f64>; 6],
+        _eye_position: &Point3<f64>,
+    ) -> bool {
         /*
         // Cull back-facing
         if self.is_back_facing(eye_position) {

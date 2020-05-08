@@ -20,7 +20,7 @@ use legion::prelude::*;
 use lib::Library;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
-use physical_constants::{FEET_TO_DAM, FEET_TO_HM_32, FEET_TO_KM, FEET_TO_M};
+use physical_constants::FEET_TO_HM_32;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
     ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,

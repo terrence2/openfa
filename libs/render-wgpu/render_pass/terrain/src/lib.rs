@@ -31,7 +31,7 @@ impl TerrainRenderPass {
     pub fn new(
         gpu: &mut GPU,
         globals_buffer: &GlobalParametersBuffer,
-        atmosphere_buffer: &AtmosphereBuffer,
+        _atmosphere_buffer: &AtmosphereBuffer,
         _terrain_geo_buffer: &TerrainGeoBuffer,
     ) -> Fallible<Self> {
         trace!("TerrainRenderPass::new");

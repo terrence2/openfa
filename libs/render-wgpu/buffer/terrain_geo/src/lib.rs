@@ -17,38 +17,38 @@ mod patch;
 mod patch_tree;
 mod patch_vertex;
 
-use crate::patch_tree::{PatchIndex, PatchTree};
+use crate::patch_tree::PatchTree;
 pub use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
 
 use camera::ArcBallCamera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
-use std::{cell::RefCell, mem, ops::Range, sync::Arc, time::Instant};
+use std::{cell::RefCell, mem, ops::Range, sync::Arc};
 use wgpu;
 
 const DBG_VERT_COUNT: usize = 4096;
 
 const DBG_COLORS_BY_LEVEL: [[f32; 3]; 19] = [
     [0.75, 0.25, 0.25],
-    [0.25, 0.7499999999999996, 0.75],
-    [0.75, 0.41666666666666663, 0.25],
-    [0.25, 0.5833333333333328, 0.75],
-    [0.75, 0.5833333333333333, 0.25],
-    [0.25, 0.4166666666666661, 0.75],
-    [0.7499999999999999, 0.75, 0.25],
-    [0.25000000000000067, 0.25, 0.75],
-    [0.5833333333333331, 0.75, 0.25],
-    [0.4166666666666674, 0.25, 0.75],
-    [0.5833333333333341, 0.25, 0.75],
-    [0.4166666666666664, 0.75, 0.25],
-    [0.25, 0.75, 0.25000000000000017],
-    [0.75, 0.25, 0.7499999999999992],
-    [0.25, 0.75, 0.4166666666666669],
-    [0.75, 0.25, 0.5833333333333325],
-    [0.25, 0.75, 0.5833333333333337],
-    [0.75, 0.25, 0.41666666666666574],
-    [0.10, 0.8, 0.71666666666666574],
+    [0.25, 0.75, 0.75],
+    [0.75, 0.42, 0.25],
+    [0.25, 0.58, 0.75],
+    [0.75, 0.58, 0.25],
+    [0.25, 0.42, 0.75],
+    [0.75, 0.75, 0.25],
+    [0.25, 0.25, 0.75],
+    [0.58, 0.75, 0.25],
+    [0.42, 0.25, 0.75],
+    [0.58, 0.25, 0.75],
+    [0.42, 0.75, 0.25],
+    [0.25, 0.75, 0.25],
+    [0.75, 0.25, 0.75],
+    [0.25, 0.75, 0.42],
+    [0.75, 0.25, 0.58],
+    [0.25, 0.75, 0.58],
+    [0.75, 0.25, 0.42],
+    [0.10, 0.75, 0.72],
 ];
 
 pub enum CpuDetailLevel {
@@ -180,7 +180,6 @@ impl TerrainGeoBuffer {
         self.patches.optimize_for_view(camera, &mut live_patches);
         assert!(live_patches.len() < self.patch_buffer_size);
 
-        let loop_start = Instant::now();
         for (offset, i) in live_patches.iter().enumerate() {
             let patch = self.patches.get_patch(*i);
             if offset >= self.patch_buffer_size {
@@ -206,7 +205,6 @@ impl TerrainGeoBuffer {
         }
         self.dbg_vertex_count = dbg_verts.len() as u32;
         //println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);
-        let loop_start = Instant::now();
 
         while verts.len() < 3 * self.patch_buffer_size {
             verts.push(PatchVertex::empty());
@@ -287,12 +285,4 @@ impl TerrainGeoBuffer {
         0..self.dbg_vertex_count
         //0..(DBG_VERT_COUNT as u32 * 2u32)
     }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_levels() {}
 }

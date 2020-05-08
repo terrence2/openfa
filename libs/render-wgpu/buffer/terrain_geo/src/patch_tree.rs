@@ -12,20 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{debug_vertex::DebugVertex, patch::Patch};
+use crate::patch::Patch;
 
 use absolute_unit::Kilometers;
 use camera::ArcBallCamera;
-use failure::Fallible;
-use failure::_core::fmt::Binary;
 use geometry::{IcoSphere, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
-use std::{
-    cmp::{Ordering, Reverse},
-    collections::{BinaryHeap, HashSet},
-    time::Instant,
-};
+use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
 
 // Index into the tree vec. Note, debug builds do not handle the struct indirection well,
 // so ironically release has better protections against misuse.
@@ -43,6 +37,7 @@ fn toff(ti: TreeIndex) -> usize {
 pub(crate) type TreeIndex = usize;
 
 #[cfg(debug_assertions)]
+#[allow(non_snake_case)]
 fn TreeIndex(i: usize) -> usize {
     i
 }
@@ -66,6 +61,7 @@ fn poff(pi: PatchIndex) -> usize {
 pub(crate) type PatchIndex = usize;
 
 #[cfg(debug_assertions)]
+#[allow(non_snake_case)]
 fn PatchIndex(i: usize) -> usize {
     i
 }
@@ -104,38 +100,10 @@ enum TreeNode {
 }
 
 impl TreeNode {
-    fn is_empty(&self) -> bool {
-        match self {
-            Self::Empty => true,
-            _ => false,
-        }
-    }
-
     fn is_leaf(&self) -> bool {
         match self {
             Self::Leaf(_) => true,
             _ => false,
-        }
-    }
-
-    fn is_node(&self) -> bool {
-        match self {
-            Self::Node(_) => true,
-            _ => false,
-        }
-    }
-
-    fn as_leaf_mut(&mut self) -> &mut Leaf {
-        match self {
-            Self::Leaf(leaf) => leaf,
-            _ => panic!("Not a leaf tree node!"),
-        }
-    }
-
-    fn as_node(&self) -> &Node {
-        match self {
-            Self::Node(ref node) => node,
-            _ => panic!("Not a node tree node!"),
         }
     }
 
@@ -155,11 +123,11 @@ impl TreeNode {
         }
     }
 
-    // Panic if this is not a leaf.
+    // Panic if this is not a leaf or node.
     fn patch_index(&self) -> PatchIndex {
         match self {
-            Self::Leaf(ref leaf) => return leaf.patch_index,
-            Self::Node(ref node) => return node.patch_index,
+            Self::Leaf(ref leaf) => leaf.patch_index,
+            Self::Node(ref node) => node.patch_index,
             _ => panic!("Not a leaf!"),
         }
     }
@@ -167,14 +135,12 @@ impl TreeNode {
 
 pub(crate) struct PatchTree {
     max_level: usize,
-    sphere: IcoSphere,
     depth_levels: Vec<f64>,
     patches: Vec<Patch>,
     patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
     tree: Vec<TreeNode>,
     tree_empty_set: BinaryHeap<Reverse<TreeIndex>>,
     root: Root,
-    root_patches: [Patch; 20],
 
     subdivide_count: usize,
     rejoin_count: usize,
@@ -213,12 +179,10 @@ impl PatchTree {
             }));
             root.children[i] = TreeIndex(i + 1);
         }
-        let mut root_patches = [Patch::new(); 20];
         for (i, face) in sphere.faces.iter().enumerate() {
-            let v0 = Point3::from(&sphere.verts[face.i0()] * EARTH_RADIUS_KM);
-            let v1 = Point3::from(&sphere.verts[face.i1()] * EARTH_RADIUS_KM);
-            let v2 = Point3::from(&sphere.verts[face.i2()] * EARTH_RADIUS_KM);
-            root_patches[i].change_target(TreeIndex(0), [v0, v1, v2]);
+            let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
+            let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
+            let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let mut p = Patch::new();
             p.change_target(TreeIndex(i + 1), [v0, v1, v2]);
             patches.push(p)
@@ -226,14 +190,12 @@ impl PatchTree {
 
         Self {
             max_level,
-            sphere,
             depth_levels,
             patches,
             patch_empty_set: BinaryHeap::new(),
             tree,
             tree_empty_set: BinaryHeap::new(),
             root,
-            root_patches,
             subdivide_count: 0,
             rejoin_count: 0,
             visit_count: 0,
@@ -261,16 +223,12 @@ impl PatchTree {
         }
         let patch_index = PatchIndex(self.patches.len());
         self.patches.push(Patch::new());
-        return patch_index;
+        patch_index
     }
 
     fn free_patch(&mut self, patch_index: PatchIndex) {
         self.get_patch_mut(patch_index).erect_tombstone();
         self.patch_empty_set.push(Reverse(patch_index));
-    }
-
-    fn patch_count(&self) -> usize {
-        self.patches.len() - self.patch_empty_set.len()
     }
 
     fn allocate_tree_node(&mut self) -> TreeIndex {
@@ -279,7 +237,7 @@ impl PatchTree {
         }
         let tree_index = TreeIndex(self.tree.len());
         self.tree.push(TreeNode::Empty);
-        return tree_index;
+        tree_index
     }
 
     fn free_tree_node(&mut self, tree_index: TreeIndex) {
@@ -305,7 +263,7 @@ impl PatchTree {
                 patch_index,
             }),
         );
-        return tree_index;
+        tree_index
     }
 
     fn free_leaf(&mut self, leaf_index: TreeIndex) {
@@ -607,10 +565,12 @@ impl PatchTree {
         d2 < self.depth_levels[level]
     }
 
+    #[allow(unused)]
     fn format_tree_display(&self) -> String {
         self.format_tree_display_inner(0, self.tree_root())
     }
 
+    #[allow(unused)]
     fn format_tree_display_inner(&self, lvl: usize, node: TreeNode) -> String {
         let mut out = String::new();
         match node {
@@ -633,14 +593,20 @@ impl PatchTree {
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
-        return out;
+        out
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use absolute_unit::meters;
 
     #[test]
-    fn test_levels() {}
+    fn test_basic() {
+        let mut tree = PatchTree::new(15, 0.8);
+        let mut live_patches = Vec::new();
+        let camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
+        tree.optimize_for_view(&camera, &mut live_patches);
+    }
 }

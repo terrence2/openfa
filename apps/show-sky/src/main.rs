@@ -123,7 +123,6 @@ fn main() -> Fallible<()> {
     ))?;
 
     let mut target_vec = meters!(0f64);
-    let mut fov_vec = degrees!(1);
     loop {
         let loop_start = Instant::now();
 
