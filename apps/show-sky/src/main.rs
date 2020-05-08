@@ -73,12 +73,18 @@ fn main() -> Fallible<()> {
     ])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
+    let detail = if cfg!(debug_assertions) {
+        CpuDetailLevel::Low
+    } else {
+        CpuDetailLevel::Medium
+    };
+
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
     let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let terrain_geo_buffer = TerrainGeoBuffer::new(CpuDetailLevel::Medium, 1, gpu.device())?;
+    let terrain_geo_buffer = TerrainGeoBuffer::new(detail, 1, gpu.device())?;
     let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
