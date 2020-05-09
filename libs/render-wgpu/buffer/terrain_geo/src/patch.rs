@@ -225,37 +225,12 @@ impl Patch {
         true
     }
 
-    // FIXME: Fuzz offset needs to be the extent of the possible normals of the patch.
-    /*
-    fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
-        for p in &self.pts {
-            if (p - eye_position).dot(&self.normal) <= -0.00001f64 {
-                return false;
-            }
-        }
-        true
-    }
-     */
-
-    pub(crate) fn keep(
-        &self,
-        viewable_area: &[Plane<f64>; 6],
-        _eye_position: &Point3<f64>,
-    ) -> bool {
-        /*
-        // Cull back-facing
-        if self.is_back_facing(eye_position) {
-            // println!("  no - back facing");
-            return false;
-        }
-        */
-
+    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
         for plane in viewable_area {
             if self.is_behind_plane(plane, false) {
                 return false;
             }
         }
-
         true
     }
 }

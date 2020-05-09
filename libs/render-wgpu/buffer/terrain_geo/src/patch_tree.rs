@@ -349,7 +349,7 @@ impl PatchTree {
 
         // Build a view-direction independent tesselation based on the current camera position.
         let reshape_start = Instant::now();
-        self.apply_distance_function(&eye_position, live_patches);
+        self.apply_distance_function(live_patches);
         let reshape_time = Instant::now() - reshape_start;
 
         // Select patches based on visibility.
@@ -435,23 +435,17 @@ impl PatchTree {
         );
     }
 
-    fn apply_distance_function(
-        &mut self,
-        eye_position: &Point3<f64>,
-        live_patches: &mut Vec<PatchIndex>,
-    ) {
-        self.apply_distance_function_inner(eye_position, 0, TreeIndex(0), live_patches);
+    fn apply_distance_function(&mut self, live_patches: &mut Vec<PatchIndex>) {
+        self.apply_distance_function_inner(0, TreeIndex(0), live_patches);
     }
 
     fn apply_distance_function_inner(
         &mut self,
-        eye_position: &Point3<f64>,
         level: usize,
         tree_index: TreeIndex,
         live_patches: &mut Vec<PatchIndex>,
     ) {
         self.visit_count += 1;
-        // TODO: select max level based on height?
 
         match self.tree_node(tree_index) {
             TreeNode::Root => {
@@ -459,13 +453,13 @@ impl PatchTree {
                 assert_eq!(level, 0);
                 let children = self.root.children; // Clone to avoid dual-borrow.
                 for i in &children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
+                    self.apply_distance_function_inner(level + 1, *i, live_patches);
                 }
             }
             TreeNode::Node(ref node) => {
                 if !self
                     .get_patch(node.patch_index)
-                    .keep(&self.cached_viewable_region, eye_position)
+                    .keep(&self.cached_viewable_region)
                 {
                     return;
                 }
@@ -473,7 +467,7 @@ impl PatchTree {
                 if node
                     .children
                     .iter()
-                    .all(|i| self.leaf_is_outside_distance_function(eye_position, level + 1, *i))
+                    .all(|i| self.leaf_is_outside_distance_function(level + 1, *i))
                 {
                     self.rejoin_leaf_patch_into(
                         node.parent,
@@ -488,7 +482,7 @@ impl PatchTree {
                 }
 
                 for i in &node.children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
+                    self.apply_distance_function_inner(level + 1, *i, live_patches);
                 }
             }
             TreeNode::Leaf(ref leaf) => {
@@ -508,21 +502,16 @@ impl PatchTree {
                 assert!(level <= self.max_level);
 
                 if level < self.max_level
-                    && self.leaf_is_inside_distance_function(eye_position, level, leaf.patch_index)
+                    && self.leaf_is_inside_distance_function(level, leaf.patch_index)
                 {
                     self.subdivide_patch(leaf.patch_index, live_patches);
-                    self.apply_distance_function_inner(
-                        eye_position,
-                        level,
-                        tree_index,
-                        live_patches,
-                    );
+                    self.apply_distance_function_inner(level, tree_index, live_patches);
                     return;
                 }
 
                 if self
                     .get_patch(leaf.patch_index)
-                    .keep(&self.cached_viewable_region, eye_position)
+                    .keep(&self.cached_viewable_region)
                 {
                     live_patches.push(leaf.patch_index)
                 }
@@ -531,31 +520,21 @@ impl PatchTree {
         }
     }
 
-    fn leaf_is_outside_distance_function(
-        &self,
-        eye_position: &Point3<f64>,
-        level: usize,
-        tree_index: TreeIndex,
-    ) -> bool {
+    fn leaf_is_outside_distance_function(&self, level: usize, tree_index: TreeIndex) -> bool {
         assert!(level > 0);
         let node = self.tree_node(tree_index);
         if !node.is_leaf() {
             return false;
         }
         let patch = self.get_patch(node.patch_index());
-        let d2 = patch.distance_squared_to(eye_position);
+        let d2 = patch.distance_squared_to(&self.cached_eye_position);
         d2 > self.depth_levels[level - 1]
     }
 
-    fn leaf_is_inside_distance_function(
-        &self,
-        eye_position: &Point3<f64>,
-        level: usize,
-        patch_index: PatchIndex,
-    ) -> bool {
+    fn leaf_is_inside_distance_function(&self, level: usize, patch_index: PatchIndex) -> bool {
         assert!(level > 0);
         let patch = self.get_patch(patch_index);
-        let d2 = patch.distance_squared_to(eye_position);
+        let d2 = patch.distance_squared_to(&self.cached_eye_position);
         d2 < self.depth_levels[level]
     }
 
