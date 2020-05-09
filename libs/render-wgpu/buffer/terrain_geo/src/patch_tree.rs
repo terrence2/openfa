@@ -12,11 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::patch::Patch;
+use crate::{icosahedron::Icosahedron, patch::Patch};
 
 use absolute_unit::Kilometers;
 use camera::ArcBallCamera;
-use geometry::{IcoSphere, Plane};
+use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
 use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
@@ -159,7 +159,7 @@ impl PatchTree {
             depth_levels.push(d * d);
         }
 
-        let sphere = IcoSphere::new(0);
+        let sphere = Icosahedron::new();
         let cached_eye_position = Point3::new(0f64, 0f64, 0f64);
         let cached_eye_direction = Vector3::new(1f64, 0f64, 0f64);
         let cached_viewable_region =
@@ -407,15 +407,9 @@ impl PatchTree {
         let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
 
         // Get new points.
-        let a = Point3::from(
-            IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let b = Point3::from(
-            IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let c = Point3::from(
-            IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
-        );
+        let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
+        let b = Point3::from(bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM);
+        let c = Point3::from(bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM);
 
         // Allocate geometry to new patches.
         let children = [
