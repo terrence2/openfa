@@ -436,7 +436,10 @@ impl PatchTree {
     }
 
     fn apply_distance_function(&mut self, live_patches: &mut Vec<PatchIndex>) {
-        self.apply_distance_function_inner(0, TreeIndex(0), live_patches);
+        let children = self.root.children; // Clone to avoid dual-borrow.
+        for i in &children {
+            self.apply_distance_function_inner(1, *i, live_patches);
+        }
     }
 
     fn apply_distance_function_inner(
@@ -448,14 +451,6 @@ impl PatchTree {
         self.visit_count += 1;
 
         match self.tree_node(tree_index) {
-            TreeNode::Root => {
-                // We have already applied visibility at this level, so we just need to recurse.
-                assert_eq!(level, 0);
-                let children = self.root.children; // Clone to avoid dual-borrow.
-                for i in &children {
-                    self.apply_distance_function_inner(level + 1, *i, live_patches);
-                }
-            }
             TreeNode::Node(ref node) => {
                 if !self
                     .get_patch(node.patch_index)
@@ -517,6 +512,7 @@ impl PatchTree {
                 }
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
+            TreeNode::Root => panic!("root node below top level of patch tree"),
         }
     }
 
