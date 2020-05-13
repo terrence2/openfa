@@ -72,6 +72,58 @@ fn poff(pi: TreeIndex) -> usize {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum TreeSibling {
+    Peer(TreeIndex),
+    Higher(TreeIndex),
+    Lower(TreeIndex, TreeIndex),
+    Uninitialized,
+}
+
+impl TreeSibling {
+    fn is_higher(&self) -> bool {
+        match self {
+            Self::Higher(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_peer(&self) -> bool {
+        match self {
+            Self::Peer(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_lower(&self) -> bool {
+        match self {
+            Self::Lower(_, _) => true,
+            _ => false,
+        }
+    }
+
+    fn higher_node(&self) -> TreeIndex {
+        match self {
+            Self::Higher(ti) => *ti,
+            _ => panic!("not a higher-level sibling"),
+        }
+    }
+
+    fn peer_node(&self) -> TreeIndex {
+        match self {
+            Self::Peer(ti) => *ti,
+            _ => panic!("not a peer-level sibling"),
+        }
+    }
+
+    fn lower_nodes(&self) -> (TreeIndex, TreeIndex) {
+        match self {
+            Self::Lower(a, b) => (*a, *b),
+            _ => panic!("not a lower-level sibling"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Root {
     children: [TreeIndex; 20],
 }
@@ -89,6 +141,69 @@ struct Leaf {
     patch_index: PatchIndex,
     parent: TreeIndex,
     level: usize,
+    siblings: [TreeSibling; 3],
+}
+
+impl Leaf {
+    fn find_peer_sibling(&self, target: TreeIndex) -> &TreeSibling {
+        for sibling in self.siblings.iter() {
+            if sibling.is_peer() && sibling.peer_node() == target {
+                return sibling;
+            }
+        }
+        panic!("no peer sibling matches")
+    }
+
+    fn find_peer_sibling_mut(&mut self, target: TreeIndex) -> &mut TreeSibling {
+        for sibling in self.siblings.iter_mut() {
+            if sibling.is_peer() && sibling.peer_node() == target {
+                return sibling;
+            }
+        }
+        panic!("no peer sibling matches")
+    }
+
+    fn find_higher_sibling(&self, target: TreeIndex) -> &TreeSibling {
+        for sibling in self.siblings.iter() {
+            if sibling.is_higher() && sibling.higher_node() == target {
+                return sibling;
+            }
+        }
+        panic!("no higher sibling matches")
+    }
+
+    fn find_higher_sibling_mut(&mut self, target: TreeIndex) -> &mut TreeSibling {
+        for sibling in self.siblings.iter_mut() {
+            if sibling.is_higher() && sibling.higher_node() == target {
+                return sibling;
+            }
+        }
+        panic!("no higher sibling matches")
+    }
+
+    fn find_lower_sibling(&self, target: TreeIndex) -> &TreeSibling {
+        for sibling in self.siblings.iter() {
+            if sibling.is_lower() {
+                let (a, b) = sibling.lower_nodes();
+                if a == target || b == target {
+                    return sibling;
+                }
+            }
+        }
+        panic!("no lower sibling matches")
+    }
+
+    fn find_lower_sibling_mut(&mut self, target: TreeIndex) -> &mut TreeSibling {
+        for sibling in self.siblings.iter_mut() {
+            if sibling.is_lower() {
+                let (a, b) = sibling.lower_nodes();
+                if a == target || b == target {
+                    return sibling;
+                }
+            }
+        }
+        panic!("no lower sibling matches")
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -104,6 +219,20 @@ impl TreeNode {
         match self {
             Self::Leaf(_) => true,
             _ => false,
+        }
+    }
+
+    fn as_leaf(&self) -> &Leaf {
+        match self {
+            Self::Leaf(ref leaf) => leaf,
+            _ => panic!("not a leaf node"),
+        }
+    }
+
+    fn as_leaf_mut(&mut self) -> &mut Leaf {
+        match self {
+            Self::Leaf(ref mut leaf) => leaf,
+            _ => panic!("not a leaf node"),
         }
     }
 
@@ -171,21 +300,24 @@ impl PatchTree {
             children: [TreeIndex(0); 20],
         };
         tree.push(TreeNode::Root);
-        for i in 0..20 {
-            tree.push(TreeNode::Leaf(Leaf {
-                level: 1,
-                parent: TreeIndex(0),
-                patch_index: PatchIndex(i),
-            }));
-            root.children[i] = TreeIndex(i + 1);
-        }
         for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let mut p = Patch::new();
             p.change_target(TreeIndex(i + 1), [v0, v1, v2]);
-            patches.push(p)
+            patches.push(p);
+            tree.push(TreeNode::Leaf(Leaf {
+                level: 1,
+                parent: TreeIndex(0),
+                patch_index: PatchIndex(i),
+                siblings: [
+                    TreeSibling::Peer(TreeIndex(face.siblings[0] + 1)),
+                    TreeSibling::Peer(TreeIndex(face.siblings[1] + 1)),
+                    TreeSibling::Peer(TreeIndex(face.siblings[2] + 1)),
+                ],
+            }));
+            root.children[i] = TreeIndex(i + 1);
         }
 
         Self {
@@ -261,6 +393,11 @@ impl PatchTree {
                 parent,
                 level,
                 patch_index,
+                siblings: [
+                    TreeSibling::Uninitialized,
+                    TreeSibling::Uninitialized,
+                    TreeSibling::Uninitialized,
+                ],
             }),
         );
         tree_index
@@ -319,6 +456,10 @@ impl PatchTree {
         self.tree[toff(index)]
     }
 
+    fn tree_node_mut(&mut self, index: TreeIndex) -> &mut TreeNode {
+        &mut self.tree[toff(index)]
+    }
+
     fn set_tree_node(&mut self, index: TreeIndex, node: TreeNode) {
         self.tree[toff(index)] = node;
     }
@@ -367,74 +508,6 @@ impl PatchTree {
         );
     }
 
-    fn rejoin_leaf_patch_into(
-        &mut self,
-        parent_index: TreeIndex,
-        level: usize,
-        tree_index: TreeIndex,
-        children: &[TreeIndex; 4],
-    ) {
-        self.rejoin_count += 1;
-
-        // Free the other 3 node/leaf pairs.
-        self.free_leaf(children[0]);
-        self.free_leaf(children[1]);
-        self.free_leaf(children[2]);
-        self.free_leaf(children[3]);
-
-        // Replace the current node patch as a leaf patch and free the prior leaf node.
-        self.set_tree_node(
-            tree_index,
-            TreeNode::Leaf(Leaf {
-                patch_index: self.tree_node(tree_index).patch_index(),
-                parent: parent_index,
-                level,
-            }),
-        );
-    }
-
-    fn subdivide_patch(&mut self, patch_index: PatchIndex, live_patches: &mut Vec<PatchIndex>) {
-        println!("subdivide: {:?}", self.get_patch(patch_index).owner());
-        assert!(self
-            .tree_node(self.get_patch(patch_index).owner())
-            .is_leaf());
-        self.subdivide_count += 1;
-        let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
-        let next_level = current_level + 1;
-        assert!(next_level <= self.max_level);
-        let owner = self.get_patch(patch_index).owner();
-        let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
-        let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
-
-        // Get new points.
-        let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
-        let b = Point3::from(bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM);
-        let c = Point3::from(bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM);
-
-        // Allocate geometry to new patches.
-        let children = [
-            self.allocate_leaf(owner, next_level, [v0, a, c]),
-            self.allocate_leaf(owner, next_level, [v1, b, a]),
-            self.allocate_leaf(owner, next_level, [v2, c, b]),
-            self.allocate_leaf(owner, next_level, [a, b, c]),
-        ];
-
-        for i in &children {
-            live_patches.push(self.tree_node(*i).patch_index());
-        }
-
-        // Transform our leaf/patch into a node and clobber the old patch.
-        self.set_tree_node(
-            owner,
-            TreeNode::Node(Node {
-                children,
-                parent,
-                patch_index,
-                level: current_level,
-            }),
-        );
-    }
-
     fn apply_distance_function(&mut self, live_patches: &mut Vec<PatchIndex>) {
         let children = self.root.children; // Clone to avoid dual-borrow.
         for i in &children {
@@ -448,6 +521,8 @@ impl PatchTree {
         tree_index: TreeIndex,
         live_patches: &mut Vec<PatchIndex>,
     ) {
+        //println!("{}", self.format_tree_display());
+        self.assert_subjective_integrity();
         self.visit_count += 1;
 
         match self.tree_node(tree_index) {
@@ -516,11 +591,359 @@ impl PatchTree {
         }
     }
 
+    fn rejoin_leaf_patch_into(
+        &mut self,
+        parent_index: TreeIndex,
+        level: usize,
+        tree_index: TreeIndex,
+        children: &[TreeIndex; 4],
+    ) {
+        self.rejoin_count += 1;
+
+        // Handle siblings...
+        let mut siblings = [TreeSibling::Uninitialized; 3];
+        let siblings_0 = self.tree_node(children[0]).as_leaf().siblings;
+        let siblings_1 = self.tree_node(children[1]).as_leaf().siblings;
+        let siblings_2 = self.tree_node(children[2]).as_leaf().siblings;
+        assert!(!siblings_0[0].is_lower());
+        assert!(!siblings_0[2].is_lower());
+        assert!(!siblings_1[0].is_lower());
+        assert!(!siblings_1[1].is_lower());
+        assert!(!siblings_2[1].is_lower());
+        assert!(!siblings_2[2].is_lower());
+        if siblings_0[0].is_peer() {
+            assert!(siblings_1[0].is_peer());
+            siblings[0] = TreeSibling::Lower(siblings_0[0].peer_node(), siblings_1[0].peer_node());
+            {
+                let other_0 = self
+                    .tree_node_mut(siblings_0[0].peer_node())
+                    .as_leaf_mut()
+                    .find_peer_sibling_mut(children[0]);
+                *other_0 = TreeSibling::Higher(tree_index);
+            }
+            {
+                let other_1 = self
+                    .tree_node_mut(siblings_1[0].peer_node())
+                    .as_leaf_mut()
+                    .find_peer_sibling_mut(children[1]);
+                *other_1 = TreeSibling::Higher(tree_index);
+            }
+        } else if siblings_0[0].is_higher() {
+            assert!(siblings_1[0].is_higher());
+            assert_eq!(siblings_1[0].higher_node(), siblings_0[0].higher_node());
+            siblings[0] = TreeSibling::Peer(siblings_0[0].higher_node());
+            {
+                println!("In node: {:?} w/ sib00: {:?}", tree_index, siblings_0[0]);
+                let other = self
+                    .tree_node_mut(siblings_0[0].higher_node())
+                    .as_leaf_mut()
+                    .find_lower_sibling_mut(children[0]);
+                *other = TreeSibling::Peer(tree_index);
+            }
+        }
+        if siblings_1[1].is_peer() {
+            assert!(siblings_2[1].is_peer());
+            siblings[1] = TreeSibling::Lower(siblings_1[1].peer_node(), siblings_2[1].peer_node());
+            {
+                let other_1 = self
+                    .tree_node_mut(siblings_1[1].peer_node())
+                    .as_leaf_mut()
+                    .find_peer_sibling_mut(children[1]);
+                *other_1 = TreeSibling::Higher(tree_index);
+            }
+            {
+                let other_2 = self
+                    .tree_node_mut(siblings_2[1].peer_node())
+                    .as_leaf_mut()
+                    .find_peer_sibling_mut(children[2]);
+                *other_2 = TreeSibling::Higher(tree_index);
+            }
+        } else if siblings_1[1].is_higher() {
+            assert!(siblings_2[1].is_higher());
+            assert_eq!(siblings_2[1].higher_node(), siblings_1[1].higher_node());
+            siblings[1] = TreeSibling::Peer(siblings_1[1].higher_node());
+            {
+                let other = self
+                    .tree_node_mut(siblings_1[1].higher_node())
+                    .as_leaf_mut()
+                    .find_lower_sibling_mut(children[1]);
+                *other = TreeSibling::Peer(tree_index);
+            }
+        }
+        if siblings_2[2].is_peer() {
+            assert!(siblings_0[2].is_peer());
+            siblings[2] = TreeSibling::Lower(siblings_2[2].peer_node(), siblings_0[2].peer_node());
+            {
+                let other_2 = self
+                    .tree_node_mut(siblings_2[2].peer_node())
+                    .as_leaf_mut()
+                    .find_peer_sibling_mut(children[2]);
+                *other_2 = TreeSibling::Higher(tree_index);
+            }
+            {
+                let other_0 = self
+                    .tree_node_mut(siblings_0[2].peer_node())
+                    .as_leaf_mut()
+                    .find_peer_sibling_mut(children[0]);
+                *other_0 = TreeSibling::Higher(tree_index);
+            }
+        } else if siblings_2[2].is_higher() {
+            assert!(siblings_0[2].is_higher());
+            assert_eq!(siblings_0[2].higher_node(), siblings_2[2].higher_node());
+            siblings[2] = TreeSibling::Peer(siblings_2[2].higher_node());
+            {
+                let other = self
+                    .tree_node_mut(siblings_2[2].higher_node())
+                    .as_leaf_mut()
+                    .find_lower_sibling_mut(children[2]);
+                *other = TreeSibling::Peer(tree_index);
+            }
+        }
+
+        // Free the other 3 node/leaf pairs.
+        self.free_leaf(children[0]);
+        self.free_leaf(children[1]);
+        self.free_leaf(children[2]);
+        self.free_leaf(children[3]);
+
+        // Replace the current node patch as a leaf patch and free the prior leaf node.
+        self.set_tree_node(
+            tree_index,
+            TreeNode::Leaf(Leaf {
+                patch_index: self.tree_node(tree_index).patch_index(),
+                parent: parent_index,
+                level,
+                siblings,
+            }),
+        );
+    }
+
+    fn subdivide_patch(&mut self, patch_index: PatchIndex, live_patches: &mut Vec<PatchIndex>) {
+        let owner = self.get_patch(patch_index).owner();
+        let parent = self.tree_node(owner).parent();
+        assert!(self.tree_node(owner).is_leaf());
+
+        let node = self.tree_node(owner);
+        for sibling in &node.as_leaf().siblings {
+            // do recursive split
+            if sibling.is_higher() {
+                self.subdivide_patch(
+                    self.tree_node(sibling.higher_node()).patch_index(),
+                    live_patches,
+                );
+            }
+        }
+        let node = self.tree_node(owner);
+        for sibling in &node.as_leaf().siblings {
+            assert!(!sibling.is_higher());
+        }
+
+        println!("subdivide: {:?}", self.get_patch(patch_index).owner());
+        self.subdivide_count += 1;
+        let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
+        let next_level = current_level + 1;
+        assert!(next_level <= self.max_level);
+        let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
+
+        // Get new points.
+        let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
+        let b = Point3::from(bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM);
+        let c = Point3::from(bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM);
+
+        // Allocate geometry to new patches.
+        let children = [
+            self.allocate_leaf(owner, next_level, [v0, a, c]),
+            self.allocate_leaf(owner, next_level, [v1, b, a]),
+            self.allocate_leaf(owner, next_level, [v2, c, b]),
+            self.allocate_leaf(owner, next_level, [c, a, b]),
+        ];
+
+        // Fill in internal sibling edges.
+        {
+            let child_0 = self.tree_node_mut(children[0]).as_leaf_mut();
+            child_0.siblings[1] = TreeSibling::Peer(children[3]);
+        }
+        {
+            let child_1 = self.tree_node_mut(children[1]).as_leaf_mut();
+            child_1.siblings[2] = TreeSibling::Peer(children[3]);
+        }
+        {
+            let child_2 = self.tree_node_mut(children[2]).as_leaf_mut();
+            child_2.siblings[0] = TreeSibling::Peer(children[3]);
+        }
+        {
+            let child_3 = self.tree_node_mut(children[3]).as_leaf_mut();
+            child_3.siblings[0] = TreeSibling::Peer(children[0]);
+            child_3.siblings[1] = TreeSibling::Peer(children[1]);
+            child_3.siblings[2] = TreeSibling::Peer(children[2]);
+        }
+
+        // Fill in external edges
+        let siblings = self.tree_node(owner).as_leaf().siblings;
+        // For edge01
+        if siblings[0].is_peer() {
+            // peer -> higher/lower
+            {
+                let child_0 = self.tree_node_mut(children[0]).as_leaf_mut();
+                child_0.siblings[0] = TreeSibling::Higher(siblings[0].peer_node());
+            }
+            {
+                let child_1 = self.tree_node_mut(children[1]).as_leaf_mut();
+                child_1.siblings[0] = TreeSibling::Higher(siblings[0].peer_node());
+            }
+            println!(
+                "PEER: {:?} => {:?}",
+                siblings[0].peer_node(),
+                self.tree_node(siblings[0].peer_node())
+            );
+            let other = self
+                .tree_node_mut(siblings[0].peer_node())
+                .as_leaf_mut()
+                .find_peer_sibling_mut(owner);
+            *other = TreeSibling::Lower(children[0], children[1]);
+        } else if siblings[0].is_lower() {
+            let (a, b) = siblings[0].lower_nodes();
+            // higher/lower -> peer
+            {
+                let child_0 = self.tree_node_mut(children[0]).as_leaf_mut();
+                child_0.siblings[0] = TreeSibling::Peer(a);
+            }
+            {
+                let child_1 = self.tree_node_mut(children[1]).as_leaf_mut();
+                child_1.siblings[0] = TreeSibling::Peer(b);
+            }
+            {
+                let other_a = self
+                    .tree_node_mut(a)
+                    .as_leaf_mut()
+                    .find_higher_sibling_mut(owner);
+                *other_a = TreeSibling::Peer(children[0]);
+            }
+            let other_b = self
+                .tree_node_mut(b)
+                .as_leaf_mut()
+                .find_higher_sibling_mut(owner);
+            *other_b = TreeSibling::Peer(children[1]);
+        }
+
+        // For edge12
+        if siblings[1].is_peer() {
+            // peer -> higher/lower
+            {
+                let child_1 = self.tree_node_mut(children[1]).as_leaf_mut();
+                child_1.siblings[1] = TreeSibling::Higher(siblings[1].peer_node());
+            }
+            {
+                let child_2 = self.tree_node_mut(children[2]).as_leaf_mut();
+                child_2.siblings[1] = TreeSibling::Higher(siblings[1].peer_node());
+            }
+            println!(
+                "PEER: {:?} => {:?}",
+                siblings[1].peer_node(),
+                self.tree_node(siblings[1].peer_node())
+            );
+            let other = self
+                .tree_node_mut(siblings[1].peer_node())
+                .as_leaf_mut()
+                .find_peer_sibling_mut(owner);
+            *other = TreeSibling::Lower(children[1], children[2]);
+        } else if siblings[1].is_lower() {
+            let (a, b) = siblings[1].lower_nodes();
+            // higher/lower -> peer
+            {
+                let child_1 = self.tree_node_mut(children[1]).as_leaf_mut();
+                child_1.siblings[1] = TreeSibling::Peer(a);
+            }
+            {
+                let child_2 = self.tree_node_mut(children[2]).as_leaf_mut();
+                child_2.siblings[1] = TreeSibling::Peer(b);
+            }
+            {
+                let other_a = self
+                    .tree_node_mut(a)
+                    .as_leaf_mut()
+                    .find_higher_sibling_mut(owner);
+                *other_a = TreeSibling::Peer(children[1]);
+            }
+            let other_b = self
+                .tree_node_mut(b)
+                .as_leaf_mut()
+                .find_higher_sibling_mut(owner);
+            *other_b = TreeSibling::Peer(children[2]);
+        }
+
+        // For edge20
+        if siblings[2].is_peer() {
+            // peer -> higher/lower
+            {
+                let child_2 = self.tree_node_mut(children[2]).as_leaf_mut();
+                child_2.siblings[2] = TreeSibling::Higher(siblings[2].peer_node());
+            }
+            {
+                let child_0 = self.tree_node_mut(children[0]).as_leaf_mut();
+                child_0.siblings[2] = TreeSibling::Higher(siblings[2].peer_node());
+            }
+            println!(
+                "PEER: {:?} => {:?}",
+                siblings[2].peer_node(),
+                self.tree_node(siblings[2].peer_node())
+            );
+            let other = self
+                .tree_node_mut(siblings[2].peer_node())
+                .as_leaf_mut()
+                .find_peer_sibling_mut(owner);
+            *other = TreeSibling::Lower(children[2], children[0]);
+        } else if siblings[2].is_lower() {
+            let (a, b) = siblings[2].lower_nodes();
+            // higher/lower -> peer
+            {
+                let child_2 = self.tree_node_mut(children[2]).as_leaf_mut();
+                child_2.siblings[2] = TreeSibling::Peer(a);
+            }
+            {
+                let child_0 = self.tree_node_mut(children[0]).as_leaf_mut();
+                child_0.siblings[2] = TreeSibling::Peer(b);
+            }
+            {
+                let other_a = self
+                    .tree_node_mut(a)
+                    .as_leaf_mut()
+                    .find_higher_sibling_mut(owner);
+                *other_a = TreeSibling::Peer(children[2]);
+            }
+            let other_b = self
+                .tree_node_mut(b)
+                .as_leaf_mut()
+                .find_higher_sibling_mut(owner);
+            *other_b = TreeSibling::Peer(children[0]);
+        }
+
+        for i in &children {
+            live_patches.push(self.tree_node(*i).patch_index());
+        }
+
+        // Transform our leaf/patch into a node and clobber the old patch.
+        self.set_tree_node(
+            owner,
+            TreeNode::Node(Node {
+                children,
+                parent,
+                patch_index,
+                level: current_level,
+            }),
+        );
+    }
+
     fn leaf_is_outside_distance_function(&self, level: usize, tree_index: TreeIndex) -> bool {
         assert!(level > 0);
         let node = self.tree_node(tree_index);
         if !node.is_leaf() {
             return false;
+        }
+        for sibling in &node.as_leaf().siblings {
+            if sibling.is_lower() {
+                return false;
+            }
         }
         let patch = self.get_patch(node.patch_index());
         let d2 = patch.distance_squared_to(&self.cached_eye_position);
@@ -534,31 +957,106 @@ impl PatchTree {
         d2 < self.depth_levels[level]
     }
 
-    #[allow(unused)]
-    fn format_tree_display(&self) -> String {
-        self.format_tree_display_inner(0, self.tree_root())
+    fn assert_subjective_integrity(&self) {
+        let mut path = Vec::new();
+        self.assert_subjective_integrity_inner(0, TreeIndex(0), &mut path);
+    }
+
+    fn assert_subjective_integrity_inner(
+        &self,
+        level: usize,
+        tree_index: TreeIndex,
+        path: &mut Vec<TreeIndex>,
+    ) {
+        path.push(tree_index);
+        match self.tree_node(tree_index) {
+            TreeNode::Root => {
+                assert_eq!(level, 0);
+                for child in &self.root.children {
+                    self.assert_subjective_integrity_inner(level + 1, *child, path);
+                }
+            }
+            TreeNode::Node(ref node) => {
+                assert_eq!(node.level, level);
+                assert_eq!(self.get_patch(node.patch_index).owner(), tree_index);
+                for child in &node.children {
+                    self.assert_subjective_integrity_inner(level + 1, *child, path);
+                }
+            }
+            TreeNode::Leaf(ref leaf) => {
+                assert_eq!(leaf.level, level);
+                assert_eq!(self.get_patch(leaf.patch_index).owner(), tree_index);
+                for &sibling in &leaf.siblings {
+                    match sibling {
+                        TreeSibling::Peer(peer_index) => {
+                            assert_eq!(self.tree_node(peer_index).level(), level);
+                            assert!(self.tree_node(peer_index).is_leaf());
+                            assert_eq!(
+                                self.tree_node(peer_index)
+                                    .as_leaf()
+                                    .find_peer_sibling(tree_index)
+                                    .peer_node(),
+                                tree_index
+                            );
+                        }
+                        TreeSibling::Higher(higher_index) => {
+                            assert_eq!(self.tree_node(higher_index).level(), level - 1);
+                            assert!(self.tree_node(higher_index).is_leaf());
+                            let (a, b) = self
+                                .tree_node(higher_index)
+                                .as_leaf()
+                                .find_lower_sibling(tree_index)
+                                .lower_nodes();
+                            assert!(tree_index == a || tree_index == b);
+                        }
+                        TreeSibling::Lower(lower_a, lower_b) => {
+                            assert_eq!(self.tree_node(lower_a).level(), level + 1);
+                            assert_eq!(self.tree_node(lower_b).level(), level + 1);
+                            assert!(self.tree_node(lower_a).is_leaf());
+                            assert!(self.tree_node(lower_b).is_leaf());
+                        }
+                        TreeSibling::Uninitialized => panic!("uninitialized sibling at {:?}", path),
+                    }
+                }
+            }
+            TreeNode::Empty => panic!("empty node in patch tree"),
+        }
+        path.pop();
     }
 
     #[allow(unused)]
-    fn format_tree_display_inner(&self, lvl: usize, node: TreeNode) -> String {
+    fn format_tree_display(&self) -> String {
+        self.format_tree_display_inner(0, TreeIndex(0))
+    }
+
+    #[allow(unused)]
+    fn format_tree_display_inner(&self, lvl: usize, tree_index: TreeIndex) -> String {
         let mut out = String::new();
+        let node = self.tree_node(tree_index);
         match node {
             TreeNode::Root => {
-                out += "Root\n";
+                out += "Root @0\n";
                 for child in &self.root.children {
-                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
+                    out += &self.format_tree_display_inner(lvl + 1, *child);
                 }
             }
             TreeNode::Node(ref node) => {
                 let pad = "  ".repeat(lvl);
-                out += &format!("{}Node: {:?}\n", pad, node.children);
+                out += &format!("{}Node @{:?}: {:?}\n", pad, tree_index, node.children);
                 for child in &node.children {
-                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
+                    out += &self.format_tree_display_inner(lvl + 1, *child);
                 }
             }
             TreeNode::Leaf(ref leaf) => {
                 let pad = "  ".repeat(lvl);
-                out += &format!("{}Leaf @{}, lvl: {}\n", pad, poff(leaf.patch_index), lvl);
+                out += &format!(
+                    "{}Leaf @{:?}, lvl: {}, p: {}, sib: {:?}\n",
+                    pad,
+                    tree_index,
+                    lvl,
+                    poff(leaf.patch_index),
+                    leaf.siblings
+                );
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
         }

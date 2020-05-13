@@ -52,6 +52,7 @@ const DBG_COLORS_BY_LEVEL: [[f32; 3]; 19] = [
 ];
 
 pub enum CpuDetailLevel {
+    Lowest,
     Low,
     Medium,
 }
@@ -60,7 +61,8 @@ impl CpuDetailLevel {
     // max-level, buffer-size, falloff-coefficient
     fn parameters(&self) -> (usize, f64, usize) {
         match self {
-            Self::Low => (8, 0.8, 256),
+            Self::Lowest => (5, 0.8, 512),
+            Self::Low => (8, 0.8, 512),
             Self::Medium => (14, 0.8, 768),
         }
     }
