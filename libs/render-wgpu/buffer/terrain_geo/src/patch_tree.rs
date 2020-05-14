@@ -12,15 +12,234 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::patch::Patch;
+use crate::{icosahedron::Icosahedron, patch::Patch};
 
 use absolute_unit::Kilometers;
 use camera::ArcBallCamera;
 use geometry::{IcoSphere, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
-use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
+    time::Instant,
+};
+use wgpu::BindingType::UniformBuffer;
 
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub(crate) struct PatchIndex(pub(crate) u32);
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub(crate) struct TreeIndex(pub(crate) u32);
+
+impl From<usize> for TreeIndex {
+    fn from(other: usize) -> Self {
+        Self(other as u32)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub(crate) struct VertexIndex(pub(crate) u32);
+
+impl From<u32> for VertexIndex {
+    fn from(other: u32) -> Self {
+        Self(other)
+    }
+}
+
+struct Tree {
+    parent: TreeIndex, // owns the corners
+    corners: [VertexIndex; 3],
+    children: Option<[TreeIndex; 4]>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct Edge {
+    vertices: [VertexIndex; 2],
+}
+
+impl Edge {
+    fn new(vertex0: VertexIndex, vertex1: VertexIndex) -> Self {
+        assert_ne!(vertex0.0, vertex1.0);
+        if vertex0.0 < vertex1.0 {
+            Self {
+                vertices: [vertex0, vertex1],
+            }
+        } else {
+            Self {
+                vertices: [vertex1, vertex0],
+            }
+        }
+    }
+}
+
+const UNINIT_MARKER: u32 = u32::MAX;
+
+struct EdgePair {
+    sides: [TreeIndex; 2],
+}
+
+impl EdgePair {
+    fn new(side0: TreeIndex, side1: TreeIndex) -> Self {
+        assert_ne!(side0.0, side1.0);
+        if side0.0 < side1.0 {
+            Self {
+                sides: [side0, side1],
+            }
+        } else {
+            Self {
+                sides: [side1, side0],
+            }
+        }
+    }
+
+    fn new_partial(side: TreeIndex) -> Self {
+        Self {
+            sides: [side, TreeIndex(UNINIT_MARKER)],
+        }
+    }
+
+    fn is_incomplete(&self) -> bool {
+        self.sides[1].0 == UNINIT_MARKER
+    }
+
+    fn complete(&mut self, other_side: TreeIndex) {
+        assert!(self.is_incomplete());
+        if self.sides[0].0 < other_side.0 {
+            self.sides[1] = other_side;
+        } else {
+            self.sides[1] = self.sides[0];
+            self.sides[0] = other_side;
+        }
+    }
+}
+
+pub(crate) struct PatchTree {
+    vertices: Vec<Vector3<f64>>,
+    edges: HashMap<Edge, EdgePair>,
+    tree: Vec<Tree>,
+}
+
+impl PatchTree {
+    pub(crate) fn new(max_level: usize, falloff_coefficient: f64) -> Self {
+        let sphere = Icosahedron::new();
+        let mut vertices = sphere.verts.clone();
+        let mut edges = HashMap::new();
+        let mut tree = Vec::new();
+        for (i, face) in sphere.faces.iter().enumerate() {
+            let face_edges = [
+                Edge::new(face.index0.into(), face.index1.into()),
+                Edge::new(face.index1.into(), face.index2.into()),
+                Edge::new(face.index2.into(), face.index0.into()),
+            ];
+            for (j, edge) in face_edges.iter().enumerate() {
+                edges
+                    .entry(*edge)
+                    .or_insert(EdgePair::new(i.into(), face.siblings[j].into()));
+            }
+            tree.push(Tree {
+                parent: TreeIndex(UNINIT_MARKER),
+                kind: NodeKind::Leaf([face.index0.into(), face.index1.into(), face.index2.into()]),
+            })
+        }
+        Self {
+            vertices,
+            edges,
+            tree: Vec::new(),
+        }
+    }
+
+    pub(crate) fn optimize_for_view(
+        &mut self,
+        camera: &ArcBallCamera,
+        live_patches: &mut Vec<PatchIndex>,
+    ) {
+        self.subdivide_to_depth();
+    }
+
+    fn subdivide_to_depth(&mut self) {
+        for i in 0..20 {
+            subdivide_to_depth_inner(&self.tree[i]);
+        }
+    }
+
+    fn subdivide_to_depth_inner(&mut self, node: &Tree) {
+        match node.kind {
+            NodeKind::Node(ref children) => {
+                /*
+                if !self
+                    .get_patch(node.patch_index)
+                    .keep(&self.cached_viewable_region, eye_position)
+                {
+                    return;
+                }
+
+                if node
+                    .children
+                    .iter()
+                    .all(|i| self.leaf_is_outside_distance_function(eye_position, level + 1, *i))
+                {
+                    self.rejoin_leaf_patch_into(
+                        node.parent,
+                        node.level,
+                        tree_index,
+                        &node.children,
+                    );
+
+                    live_patches.push(self.tree_node(tree_index).patch_index());
+
+                    return;
+                }
+
+                for i in &node.children {
+                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
+                }
+                 */
+            }
+            NodeKind::Leaf(ref leaf_vertices) => {}
+        }
+    }
+
+    /*
+    fn leaf_is_outside_distance_function(
+        &self,
+        eye_position: &Point3<f64>,
+        level: usize,
+        tree_index: TreeIndex,
+    ) -> bool {
+        assert!(level > 0);
+        let node = self.tree_node(tree_index);
+        if !node.is_leaf() {
+            return false;
+        }
+        let patch = self.get_patch(node.patch_index());
+        let d2 = patch.distance_squared_to(eye_position);
+        d2 > self.depth_levels[level - 1]
+    }
+
+    fn leaf_is_inside_distance_function(
+        &self,
+        eye_position: &Point3<f64>,
+        level: usize,
+        patch_index: PatchIndex,
+    ) -> bool {
+        assert!(level > 0);
+        let patch = self.get_patch(patch_index);
+        let d2 = patch.distance_squared_to(eye_position);
+        d2 < self.depth_levels[level]
+    }
+    */
+
+    pub(crate) fn get_patch(&self, index: PatchIndex) -> &Patch {
+        unimplemented!()
+    }
+
+    pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
+        unimplemented!()
+    }
+}
+
+/*
 // Index into the tree vec. Note, debug builds do not handle the struct indirection well,
 // so ironically release has better protections against misuse.
 
@@ -610,3 +829,4 @@ mod test {
         tree.optimize_for_view(&camera, &mut live_patches);
     }
 }
+*/
