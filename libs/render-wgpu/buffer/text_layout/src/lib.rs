@@ -153,9 +153,9 @@ impl LayoutHandle {
         }
     }
 
-    pub fn with_span(self, span: &str, gpu: &GPU) -> Fallible<Self> {
-        self.set_span(span, gpu)?;
-        Ok(self)
+    pub fn with_span(self, span: &str) -> Self {
+        self.set_span(span);
+        self
     }
 
     pub fn with_color(self, clr: &[f32; 4]) -> Self {
@@ -203,12 +203,21 @@ impl LayoutHandle {
         self.layout.borrow_mut().color = *color;
     }
 
-    pub fn set_span(&self, span: &str, gpu: &GPU) -> Fallible<()> {
-        self.layout.borrow_mut().set_span(span, gpu)?;
-        Ok(())
+    pub fn set_span(&self, span: &str) {
+        self.layout.borrow_mut().set_span(span);
     }
 
-    pub fn make_upload_buffer(&self, gpu: &GPU, upload_buffers: &mut Vec<CopyBufferDescriptor>) {
+    pub fn make_upload_buffer(
+        &self,
+        glyph_cache: &GlyphCache,
+        gpu: &GPU,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
+        if self.layout.borrow().text_render_context.is_none() {
+            let text_render_context =
+                Layout::build_text_span(&self.layout.borrow().content, &glyph_cache, gpu)?;
+            self.layout.borrow_mut().text_render_context = Some(text_render_context);
+        }
         let layout = self.layout.borrow();
 
         let x = layout.position_x.to_vulkan();
@@ -216,14 +225,16 @@ impl LayoutHandle {
 
         let dx = match layout.anchor_x {
             TextAnchorH::Left => 0f32,
-            TextAnchorH::Right => -layout.render_width,
-            TextAnchorH::Center => -layout.render_width / 2f32,
+            TextAnchorH::Right => -layout.text_render_context.as_ref().unwrap().render_width,
+            TextAnchorH::Center => {
+                -layout.text_render_context.as_ref().unwrap().render_width / 2f32
+            }
         };
 
         let dy = match layout.anchor_y {
             TextAnchorV::Top => 0f32,
-            TextAnchorV::Bottom => -layout.glyph_cache.render_height(),
-            TextAnchorV::Center => -layout.glyph_cache.render_height() / 2f32,
+            TextAnchorV::Bottom => -glyph_cache.render_height(),
+            TextAnchorV::Center => -glyph_cache.render_height() / 2f32,
         };
 
         let buffer = gpu.push_slice(
@@ -239,23 +250,52 @@ impl LayoutHandle {
             layout.layout_data_buffer.clone(),
             mem::size_of::<LayoutData>() as wgpu::BufferAddress,
         ));
+
+        Ok(())
     }
 
     pub fn vertex_buffer(&self) -> Arc<Box<wgpu::Buffer>> {
-        self.layout.borrow().vertex_buffer.clone()
+        self.layout
+            .borrow()
+            .text_render_context
+            .as_ref()
+            .unwrap()
+            .vertex_buffer
+            .clone()
     }
 
     pub fn index_buffer(&self) -> Arc<Box<wgpu::Buffer>> {
-        self.layout.borrow().index_buffer.clone()
+        self.layout
+            .borrow()
+            .text_render_context
+            .as_ref()
+            .unwrap()
+            .index_buffer
+            .clone()
     }
 
     pub fn index_range(&self) -> Range<u32> {
-        0u32..self.layout.borrow().index_count
+        0u32..self
+            .layout
+            .borrow()
+            .text_render_context
+            .as_ref()
+            .unwrap()
+            .index_count
     }
 
     pub fn bind_group(&self) -> Arc<Box<wgpu::BindGroup>> {
         self.layout.borrow().bind_group.clone()
     }
+}
+
+// Context required for rendering a specific text span (as opposed to the layout in general).
+// e.g. the vertex and index buffers.
+struct LayoutTextRenderContext {
+    render_width: f32,
+    vertex_buffer: Arc<Box<wgpu::Buffer>>,
+    index_buffer: Arc<Box<wgpu::Buffer>>,
+    index_count: u32,
 }
 
 #[repr(C)]
@@ -271,10 +311,9 @@ struct LayoutData {
 // if we do end up creating lots, we'll need to do some sort of layout caching.
 pub struct Layout {
     // The font used for rendering this layout.
-    glyph_cache: Rc<Box<GlyphCache>>,
+    content: String,
 
     // Cached per-frame render state.
-    render_width: f32,
     position_x: TextPositionH,
     position_y: TextPositionV,
     anchor_x: TextAnchorH,
@@ -282,9 +321,7 @@ pub struct Layout {
     color: [f32; 4],
 
     // Gpu resources
-    vertex_buffer: Arc<Box<wgpu::Buffer>>,
-    index_buffer: Arc<Box<wgpu::Buffer>>,
-    index_count: u32,
+    text_render_context: Option<LayoutTextRenderContext>,
     layout_data_buffer: Arc<Box<wgpu::Buffer>>,
     bind_group: Arc<Box<wgpu::BindGroup>>,
 }
@@ -292,7 +329,7 @@ pub struct Layout {
 impl Layout {
     fn new(
         text: &str,
-        glyph_cache: Rc<Box<GlyphCache>>,
+        glyph_cache: &GlyphCache,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &GPU,
     ) -> Fallible<Self> {
@@ -317,40 +354,32 @@ impl Layout {
             }],
         });
 
-        let (render_width, vb, ib, index_count) = Self::build_text_span(text, &glyph_cache, gpu)?;
+        let text_render_context = Self::build_text_span(text, &glyph_cache, gpu)?;
         Ok(Self {
-            glyph_cache,
+            content: text.to_owned(),
 
-            render_width,
             position_x: TextPositionH::Center,
             position_y: TextPositionV::Center,
             anchor_x: TextAnchorH::Left,
             anchor_y: TextAnchorV::Top,
             color: [1f32, 0f32, 1f32, 1f32],
 
-            vertex_buffer: Arc::new(Box::new(vb)),
-            index_buffer: Arc::new(Box::new(ib)),
-            index_count,
+            text_render_context: Some(text_render_context),
             layout_data_buffer,
             bind_group: Arc::new(Box::new(bind_group)),
         })
     }
 
-    fn set_span(&mut self, text: &str, gpu: &GPU) -> Fallible<()> {
-        let (render_width, vb, ib, index_count) =
-            Self::build_text_span(text, &self.glyph_cache, gpu)?;
-        self.render_width = render_width;
-        self.vertex_buffer = Arc::new(Box::new(vb));
-        self.index_buffer = Arc::new(Box::new(ib));
-        self.index_count = index_count;
-        Ok(())
+    fn set_span(&mut self, text: &str) {
+        self.text_render_context = None;
+        self.content = text.to_owned();
     }
 
     fn build_text_span(
         text: &str,
         glyph_cache: &GlyphCache,
         gpu: &GPU,
-    ) -> Fallible<(f32, wgpu::Buffer, wgpu::Buffer, u32)> {
+    ) -> Fallible<LayoutTextRenderContext> {
         let mut verts = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
 
@@ -431,7 +460,12 @@ impl Layout {
             wgpu::BufferUsage::all(),
         );
 
-        Ok((offset, vertex_buffer, index_buffer, indices.len() as u32))
+        Ok(LayoutTextRenderContext {
+            render_width: offset,
+            vertex_buffer: Arc::new(Box::new(vertex_buffer)),
+            index_buffer: Arc::new(Box::new(index_buffer)),
+            index_count: indices.len() as u32,
+        })
     }
 }
 
@@ -480,8 +514,11 @@ pub enum Font {
     QUANTICO,
 }
 
+type GlyphCacheIndex = usize;
+
 pub struct LayoutBuffer {
-    glyph_caches: HashMap<Font, Rc<Box<GlyphCache>>>,
+    glyph_cache_map: HashMap<Font, GlyphCacheIndex>,
+    glyph_caches: Vec<GlyphCache>,
     layouts: HashMap<Font, Vec<LayoutHandle>>,
     glyph_bind_group_layout: wgpu::BindGroupLayout,
     layout_bind_group_layout: wgpu::BindGroupLayout,
@@ -492,31 +529,28 @@ impl LayoutBuffer {
         trace!("LayoutBuffer::new");
 
         let glyph_bind_group_layout = GlyphCache::create_bind_group_layout(gpu.device());
-        let mut glyph_caches = HashMap::new();
+        let mut glyph_caches = Vec::new();
+        let mut glyph_cache_map = HashMap::new();
 
         // Cache all standard fonts on the GPU.
         for (name, filename) in &[(Font::HUD11, "HUD11.FNT")] {
             if let Ok(data) = lib.load(filename) {
-                glyph_caches.insert(
-                    *name,
-                    Rc::new(Box::new(GlyphCache::new_transparent_fnt(
-                        &Fnt::from_bytes("", "", &data)?,
-                        &glyph_bind_group_layout,
-                        gpu,
-                    )?)),
-                );
+                glyph_cache_map.insert(*name, glyph_caches.len());
+                glyph_caches.push(GlyphCache::new_transparent_fnt(
+                    &Fnt::from_bytes("", "", &data)?,
+                    &glyph_bind_group_layout,
+                    gpu,
+                )?);
             }
         }
 
         // Add fallback font.
-        glyph_caches.insert(
-            Font::QUANTICO,
-            Rc::new(Box::new(GlyphCache::new_ttf(
-                &QUANTICO_TTF_DATA,
-                &glyph_bind_group_layout,
-                gpu,
-            )?)),
-        );
+        glyph_cache_map.insert(Font::QUANTICO, glyph_caches.len());
+        glyph_caches.push(GlyphCache::new_ttf(
+            &QUANTICO_TTF_DATA,
+            &glyph_bind_group_layout,
+            gpu,
+        )?);
 
         let layout_bind_group_layout =
             gpu.device()
@@ -533,6 +567,7 @@ impl LayoutBuffer {
                 });
 
         Ok(Arc::new(RefCell::new(Self {
+            glyph_cache_map,
             glyph_caches,
             layouts: HashMap::new(),
             glyph_bind_group_layout,
@@ -552,12 +587,15 @@ impl LayoutBuffer {
         &self.layouts
     }
 
-    pub fn glyph_cache(&self, font: Font) -> Rc<Box<GlyphCache>> {
-        self.glyph_caches[&font].clone()
+    pub fn glyph_cache(&self, font: Font) -> &GlyphCache {
+        let index = self.glyph_cache_map[&font];
+        &self.glyph_caches[index]
     }
 
+    // pub fn layout_mut(&mut self, handle: LayoutHandle) -> &mut Layout {}
+
     pub fn add_screen_text(&mut self, font: Font, text: &str, gpu: &GPU) -> Fallible<LayoutHandle> {
-        let glyph_cache = self.glyph_caches[&font].clone();
+        let glyph_cache = self.glyph_cache(font);
         let layout = LayoutHandle::new(Layout::new(
             text,
             glyph_cache,
@@ -576,9 +614,10 @@ impl LayoutBuffer {
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        for layouts in self.layouts.values() {
+        for (&font, layouts) in self.layouts.iter() {
+            let glyph_cache = self.glyph_cache(font);
             for layout in layouts.iter() {
-                layout.make_upload_buffer(gpu, upload_buffers);
+                layout.make_upload_buffer(&glyph_cache, gpu, upload_buffers)?;
             }
         }
         Ok(())
@@ -604,8 +643,7 @@ mod test {
 
             let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
-            println!("1");
-            layout_buffer
+            let span = layout_buffer
                 .borrow_mut()
                 .add_screen_text(Font::HUD11, "Top Left (r)", &gpu)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
@@ -613,7 +651,22 @@ mod test {
                 .with_horizontal_anchor(TextAnchorH::Left)
                 .with_vertical_position(TextPositionV::Top)
                 .with_vertical_anchor(TextAnchorV::Top);
-            println!("2");
+
+            /*
+            layout_buffer
+                .borrow_mut()
+                .borrow_layout(span)
+                .set_span("new_text");
+            layout_buffer
+                .borrow_mut()
+                .borrow_layout(span)
+                .with_span("even more text")
+                .with_color(&[1f32, 0f32, 1f32, 1f32]);
+             */
+            span.grab(&layout_buffer).set_span("new text");
+            span.grab(&layout_buffer)
+                .with_span("some text")
+                .with_color(&[1f32, 0f32, 1f32, 1f32]);
 
             layout_buffer
                 .borrow_mut()
@@ -673,7 +726,7 @@ mod test {
                     ])
                 };
                 let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-                handle_fin.set_span(&msg, &gpu)?;
+                handle_fin.set_span(&msg);
             }
         }
         Ok(())
@@ -754,7 +807,7 @@ mod test {
                 ])
             };
             let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-            handle_fin.set_span(&msg, &gpu)?;
+            handle_fin.set_span(&msg);
         }
         Ok(())
     }

@@ -85,7 +85,7 @@ fn main() -> Fallible<()> {
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(gpu.device())?;
     let terrain_geo_buffer = TerrainGeoBuffer::new(detail, 1, gpu.device())?;
-    let text_layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
+    let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
         &mut gpu,
@@ -94,11 +94,11 @@ fn main() -> Fallible<()> {
         &globals_buffer,
         &stars_buffer,
         &terrain_geo_buffer,
-        &text_layout_buffer,
+        &layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
 
-    let fps_handle = text_layout_buffer
+    let fps_handle = layout_buffer
         .borrow_mut()
         .add_screen_text(Font::QUANTICO, "", gpu.device())?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
@@ -172,7 +172,7 @@ fn main() -> Fallible<()> {
         terrain_geo_buffer
             .borrow_mut()
             .make_upload_buffer(&camera, &gpu, &mut buffers)?;
-        text_layout_buffer
+        layout_buffer
             .borrow()
             .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers)?;
@@ -188,5 +188,10 @@ fn main() -> Fallible<()> {
             frame_time.subsec_micros(),
         );
         fps_handle.set_span(&ts, gpu.device())?;
+        // layout_buffer
+        //     .borrow_mut()
+        //     .get_span(fps_handle)
+        //     .set_span(&ts);
+        fps_handle.grab(&layout_buffer).set_span(&ts);
     }
 }

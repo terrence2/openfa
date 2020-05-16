@@ -105,8 +105,8 @@ impl ScreenTextRenderPass {
     ) {
         rpass.set_pipeline(&self.pipeline);
         for (&font, layouts) in layout_buffer.layouts() {
-            let glyph_cache = layout_buffer.glyph_cache(font);
             rpass.set_bind_group(Group::Globals.index(), &global_data.bind_group(), &[]);
+            let glyph_cache = layout_buffer.glyph_cache(font);
             rpass.set_bind_group(Group::GlyphCache.index(), &glyph_cache.bind_group(), &[]);
             for layout in layouts {
                 rpass.set_bind_group(Group::TextLayout.index(), &layout.bind_group(), &[]);
