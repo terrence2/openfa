@@ -101,11 +101,11 @@ impl T2TerrainRenderPass {
 
     pub fn draw<'a>(
         &'a self,
-        rpass: &'a mut wgpu::RenderPass<'a>,
+        mut rpass: wgpu::RenderPass<'a>,
         globals_buffer: &'a GlobalParametersBuffer,
         atmosphere_buffer: &'a AtmosphereBuffer,
         t2_buffer: &'a T2Buffer,
-    ) {
+    ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
         rpass.set_bind_group(
@@ -117,5 +117,6 @@ impl T2TerrainRenderPass {
         rpass.set_index_buffer(t2_buffer.index_buffer(), 0, 0);
         rpass.set_vertex_buffer(0, &t2_buffer.vertex_buffer(), 0, 0);
         rpass.draw_indexed(t2_buffer.index_range(), 0, 0..1);
+        rpass
     }
 }

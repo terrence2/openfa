@@ -33,6 +33,19 @@ lazy_static! {
 
 const SCREEN_SCALE: [f32; 2] = [320f32, 240f32];
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct GlyphCacheIndex(usize);
+
+impl GlyphCacheIndex {
+    pub fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub fn index(&self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct GlyphFrame {
     // Left and right texture coordinates.
@@ -52,11 +65,13 @@ pub enum GlyphCache {
 impl GlyphCache {
     pub fn new_transparent_fnt(
         fnt: &Fnt,
+        index: GlyphCacheIndex,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
         Ok(GlyphCache::FNT(GlyphCacheFNT::new_transparent_fnt(
             fnt,
+            index,
             bind_group_layout,
             gpu,
         )?))
@@ -64,11 +79,13 @@ impl GlyphCache {
 
     pub fn new_ttf(
         bytes: &'static [u8],
+        index: GlyphCacheIndex,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
         Ok(GlyphCache::TTF(GlyphCacheTTF::new_ttf(
             bytes,
+            index,
             bind_group_layout,
             gpu,
         )?))
@@ -101,6 +118,13 @@ impl GlyphCache {
                 },
             ],
         })
+    }
+
+    pub fn index(&self) -> GlyphCacheIndex {
+        match self {
+            GlyphCache::FNT(fnt) => fnt.index,
+            GlyphCache::TTF(ttf) => ttf.index,
+        }
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -210,6 +234,8 @@ impl GlyphCache {
 }
 
 pub struct GlyphCacheFNT {
+    index: GlyphCacheIndex,
+
     // These get composited in software, then uploaded in a single texture.
     bind_group: wgpu::BindGroup,
 
@@ -224,6 +250,7 @@ pub struct GlyphCacheFNT {
 impl GlyphCacheFNT {
     pub fn new_transparent_fnt(
         fnt: &Fnt,
+        index: GlyphCacheIndex,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
@@ -302,6 +329,7 @@ impl GlyphCacheFNT {
         });
 
         Ok(Self {
+            index,
             bind_group,
             glyph_frames,
             render_height: fnt.height as f32 / SCREEN_SCALE[1],
@@ -310,6 +338,8 @@ impl GlyphCacheFNT {
 }
 
 pub struct GlyphCacheTTF {
+    index: GlyphCacheIndex,
+
     bind_group: wgpu::BindGroup,
 
     // Map to positions in the glyph cache.
@@ -327,6 +357,7 @@ pub struct GlyphCacheTTF {
 impl GlyphCacheTTF {
     pub fn new_ttf(
         bytes: &'static [u8],
+        index: GlyphCacheIndex,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
@@ -403,6 +434,7 @@ impl GlyphCacheTTF {
         });
 
         Ok(Self {
+            index,
             bind_group,
             glyph_frames,
             font,

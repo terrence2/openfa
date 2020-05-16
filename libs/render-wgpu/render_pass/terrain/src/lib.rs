@@ -160,11 +160,11 @@ impl TerrainRenderPass {
 
     pub fn draw<'a>(
         &'a self,
-        rpass: &'a mut wgpu::RenderPass<'a>,
+        mut rpass: wgpu::RenderPass<'a>,
         globals_buffer: &'a GlobalParametersBuffer,
         _atmosphere_buffer: &'a AtmosphereBuffer,
         terrain_geo_buffer: &'a TerrainGeoBuffer,
-    ) {
+    ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.debug_intersect_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
         rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0, 0);
@@ -191,5 +191,6 @@ impl TerrainRenderPass {
         for i in 0..terrain_geo_buffer.num_patches() {
             rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
         }
+        rpass
     }
 }

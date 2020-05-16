@@ -56,7 +56,7 @@ make_frame_graph!(
             stars: StarsBuffer,
             text_layout: LayoutBuffer
         };
-        passes: [
+        renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             shape: ShapeRenderPass { globals, shape_instance_buffer },
             screen_text: ScreenTextRenderPass { globals, text_layout }
@@ -222,9 +222,9 @@ fn main() -> Fallible<()> {
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
-    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&mut gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let stars_buffer = StarsBuffer::new(gpu.device())?;
+    let stars_buffer = StarsBuffer::new(&mut gpu)?;
     let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
@@ -240,20 +240,22 @@ fn main() -> Fallible<()> {
 
     let fps_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", gpu.device())?
+        .add_screen_text(Font::HUD11, "", &mut gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Top)
-        .with_vertical_anchor(TextAnchorV::Top);
+        .with_vertical_anchor(TextAnchorV::Top)
+        .handle();
     let state_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", gpu.device())?
+        .add_screen_text(Font::HUD11, "", &mut gpu)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
         .with_horizontal_anchor(TextAnchorH::Right)
         .with_vertical_position(TextPositionV::Bottom)
-        .with_vertical_anchor(TextAnchorV::Bottom);
+        .with_vertical_anchor(TextAnchorV::Bottom)
+        .handle();
 
     loop {
         let loop_start = Instant::now();
@@ -312,17 +314,17 @@ fn main() -> Fallible<()> {
         //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
-            gpu.device(),
+            &mut gpu,
             &mut buffers,
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),
-            gpu.device(),
+            &mut gpu,
             &mut buffers,
         )?;
         text_layout_buffer
-            .borrow()
+            .borrow_mut()
             .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers)?;
 
@@ -332,7 +334,9 @@ fn main() -> Fallible<()> {
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros()
         );
-        fps_handle.set_span(&time_str, gpu.device())?;
+        fps_handle
+            .grab(&mut text_layout_buffer.borrow_mut())
+            .set_span(&time_str);
 
         let ds = galaxy
             .world()
@@ -352,6 +356,8 @@ fn main() -> Fallible<()> {
             ds.afterburner_enabled(),
             ds.wing_sweep_angle(),
         );
-        state_handle.set_span(&params, gpu.device())?;
+        state_handle
+            .grab(&mut text_layout_buffer.borrow_mut())
+            .set_span(&params);
     }
 }

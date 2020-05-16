@@ -80,6 +80,9 @@ macro_rules! make_frame_graph {
             }
 
             pub fn run(&self, gpu: &mut ::gpu::GPU, mut upload_buffers: Vec<$crate::CopyBufferDescriptor>) -> ::failure::Fallible<()> {
+                $(
+                    let $buffer_name = self.$buffer_name.borrow();
+                )*
                 let mut frame = gpu.begin_frame()?;
                 {
                     for desc in upload_buffers.drain(..) {
@@ -92,12 +95,12 @@ macro_rules! make_frame_graph {
                         );
                     }
 
-                    let mut rpass = frame.begin_render_pass();
+                    let rpass = frame.begin_render_pass();
                     $(
-                        self.$renderer_name.draw(
-                            &mut rpass,
+                        let rpass = self.$renderer_name.draw(
+                            rpass,
                             $(
-                                &self.$input_buffer_name.borrow()
+                                &$input_buffer_name
                             ),*
                         );
                     )*

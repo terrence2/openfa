@@ -15,12 +15,12 @@
 use failure::Fallible;
 use fnt::Fnt;
 use frame_graph::CopyBufferDescriptor;
-use glyph_cache::GlyphCache;
+use glyph_cache::{GlyphCache, GlyphCacheIndex};
 use gpu::GPU;
 use lib::Library;
 use log::trace;
 use memoffset::offset_of;
-use std::{cell::RefCell, collections::HashMap, mem, ops::Range, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, mem, ops::Range, sync::Arc};
 use zerocopy::{AsBytes, FromBytes};
 
 // Fallback for when we have no libs loaded.
@@ -141,151 +141,12 @@ impl TextPositionV {
     }
 }
 
-#[derive(Clone)]
-pub struct LayoutHandle {
-    layout: Rc<RefCell<Layout>>,
-}
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct LayoutHandle(usize);
 
 impl LayoutHandle {
-    pub fn new(layout: Layout) -> Self {
-        Self {
-            layout: Rc::new(RefCell::new(layout)),
-        }
-    }
-
-    pub fn with_span(self, span: &str) -> Self {
-        self.set_span(span);
-        self
-    }
-
-    pub fn with_color(self, clr: &[f32; 4]) -> Self {
-        self.set_color(clr);
-        self
-    }
-
-    pub fn with_horizontal_position(self, pos: TextPositionH) -> Self {
-        self.set_horizontal_position(pos);
-        self
-    }
-
-    pub fn with_vertical_position(self, pos: TextPositionV) -> Self {
-        self.set_vertical_position(pos);
-        self
-    }
-
-    pub fn with_horizontal_anchor(self, anchor: TextAnchorH) -> Self {
-        self.set_horizontal_anchor(anchor);
-        self
-    }
-
-    pub fn with_vertical_anchor(self, anchor: TextAnchorV) -> Self {
-        self.set_vertical_anchor(anchor);
-        self
-    }
-
-    pub fn set_horizontal_position(&self, pos: TextPositionH) {
-        self.layout.borrow_mut().position_x = pos;
-    }
-
-    pub fn set_vertical_position(&self, pos: TextPositionV) {
-        self.layout.borrow_mut().position_y = pos;
-    }
-
-    pub fn set_horizontal_anchor(&self, anchor: TextAnchorH) {
-        self.layout.borrow_mut().anchor_x = anchor;
-    }
-
-    pub fn set_vertical_anchor(&self, anchor: TextAnchorV) {
-        self.layout.borrow_mut().anchor_y = anchor;
-    }
-
-    pub fn set_color(&self, color: &[f32; 4]) {
-        self.layout.borrow_mut().color = *color;
-    }
-
-    pub fn set_span(&self, span: &str) {
-        self.layout.borrow_mut().set_span(span);
-    }
-
-    pub fn make_upload_buffer(
-        &self,
-        glyph_cache: &GlyphCache,
-        gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
-    ) -> Fallible<()> {
-        if self.layout.borrow().text_render_context.is_none() {
-            let text_render_context =
-                Layout::build_text_span(&self.layout.borrow().content, &glyph_cache, gpu)?;
-            self.layout.borrow_mut().text_render_context = Some(text_render_context);
-        }
-        let layout = self.layout.borrow();
-
-        let x = layout.position_x.to_vulkan();
-        let y = layout.position_y.to_vulkan();
-
-        let dx = match layout.anchor_x {
-            TextAnchorH::Left => 0f32,
-            TextAnchorH::Right => -layout.text_render_context.as_ref().unwrap().render_width,
-            TextAnchorH::Center => {
-                -layout.text_render_context.as_ref().unwrap().render_width / 2f32
-            }
-        };
-
-        let dy = match layout.anchor_y {
-            TextAnchorV::Top => 0f32,
-            TextAnchorV::Bottom => -glyph_cache.render_height(),
-            TextAnchorV::Center => -glyph_cache.render_height() / 2f32,
-        };
-
-        let buffer = gpu.push_slice(
-            "text-layout-upload-buffer",
-            &[LayoutData {
-                text_layout_position: [x + dx, y + dy, 0f32, 0f32],
-                text_layout_color: layout.color,
-            }],
-            wgpu::BufferUsage::all(),
-        );
-        upload_buffers.push(CopyBufferDescriptor::new(
-            buffer,
-            layout.layout_data_buffer.clone(),
-            mem::size_of::<LayoutData>() as wgpu::BufferAddress,
-        ));
-
-        Ok(())
-    }
-
-    pub fn vertex_buffer(&self) -> Arc<Box<wgpu::Buffer>> {
-        self.layout
-            .borrow()
-            .text_render_context
-            .as_ref()
-            .unwrap()
-            .vertex_buffer
-            .clone()
-    }
-
-    pub fn index_buffer(&self) -> Arc<Box<wgpu::Buffer>> {
-        self.layout
-            .borrow()
-            .text_render_context
-            .as_ref()
-            .unwrap()
-            .index_buffer
-            .clone()
-    }
-
-    pub fn index_range(&self) -> Range<u32> {
-        0u32..self
-            .layout
-            .borrow()
-            .text_render_context
-            .as_ref()
-            .unwrap()
-            .index_count
-    }
-
-    pub fn bind_group(&self) -> Arc<Box<wgpu::BindGroup>> {
-        self.layout.borrow().bind_group.clone()
+    pub fn grab<'a>(&self, buffer: &'a mut LayoutBuffer) -> &'a mut Layout {
+        buffer.layout_mut(*self)
     }
 }
 
@@ -310,10 +171,14 @@ struct LayoutData {
 // these are screen text layouts, so there will hopefully never be too many of them
 // if we do end up creating lots, we'll need to do some sort of layout caching.
 pub struct Layout {
+    // The externally exposed handle, for ease of use.
+    layout_handle: LayoutHandle,
+
     // The font used for rendering this layout.
-    content: String,
+    glyph_cache_index: GlyphCacheIndex,
 
     // Cached per-frame render state.
+    content: String,
     position_x: TextPositionH,
     position_y: TextPositionV,
     anchor_x: TextAnchorH,
@@ -328,6 +193,7 @@ pub struct Layout {
 
 impl Layout {
     fn new(
+        layout_handle: LayoutHandle,
         text: &str,
         glyph_cache: &GlyphCache,
         bind_group_layout: &wgpu::BindGroupLayout,
@@ -356,8 +222,10 @@ impl Layout {
 
         let text_render_context = Self::build_text_span(text, &glyph_cache, gpu)?;
         Ok(Self {
-            content: text.to_owned(),
+            layout_handle,
+            glyph_cache_index: glyph_cache.index(),
 
+            content: text.to_owned(),
             position_x: TextPositionH::Center,
             position_y: TextPositionV::Center,
             anchor_x: TextAnchorH::Left,
@@ -370,9 +238,63 @@ impl Layout {
         })
     }
 
-    fn set_span(&mut self, text: &str) {
+    pub fn with_span(&mut self, span: &str) -> &mut Self {
+        self.set_span(span);
+        self
+    }
+
+    pub fn with_color(&mut self, clr: &[f32; 4]) -> &mut Self {
+        self.set_color(clr);
+        self
+    }
+
+    pub fn with_horizontal_position(&mut self, pos: TextPositionH) -> &mut Self {
+        self.set_horizontal_position(pos);
+        self
+    }
+
+    pub fn with_vertical_position(&mut self, pos: TextPositionV) -> &mut Self {
+        self.set_vertical_position(pos);
+        self
+    }
+
+    pub fn with_horizontal_anchor(&mut self, anchor: TextAnchorH) -> &mut Self {
+        self.set_horizontal_anchor(anchor);
+        self
+    }
+
+    pub fn with_vertical_anchor(&mut self, anchor: TextAnchorV) -> &mut Self {
+        self.set_vertical_anchor(anchor);
+        self
+    }
+
+    pub fn set_horizontal_position(&mut self, pos: TextPositionH) {
+        self.position_x = pos;
+    }
+
+    pub fn set_vertical_position(&mut self, pos: TextPositionV) {
+        self.position_y = pos;
+    }
+
+    pub fn set_horizontal_anchor(&mut self, anchor: TextAnchorH) {
+        self.anchor_x = anchor;
+    }
+
+    pub fn set_vertical_anchor(&mut self, anchor: TextAnchorV) {
+        self.anchor_y = anchor;
+    }
+
+    pub fn set_color(&mut self, color: &[f32; 4]) {
+        self.color = *color;
+    }
+
+    pub fn set_span(&mut self, text: &str) {
         self.text_render_context = None;
         self.content = text.to_owned();
+    }
+
+    pub fn handle(&self) -> LayoutHandle {
+        self.layout_handle
     }
 
     fn build_text_span(
@@ -467,6 +389,65 @@ impl Layout {
             index_count: indices.len() as u32,
         })
     }
+
+    fn make_upload_buffer(
+        &mut self,
+        glyph_cache: &GlyphCache,
+        gpu: &GPU,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) -> Fallible<()> {
+        if self.text_render_context.is_none() {
+            self.text_render_context =
+                Some(Layout::build_text_span(&self.content, &glyph_cache, gpu)?);
+        }
+
+        let x = self.position_x.to_vulkan();
+        let y = self.position_y.to_vulkan();
+
+        let dx = match self.anchor_x {
+            TextAnchorH::Left => 0f32,
+            TextAnchorH::Right => -self.text_render_context.as_ref().unwrap().render_width,
+            TextAnchorH::Center => -self.text_render_context.as_ref().unwrap().render_width / 2f32,
+        };
+
+        let dy = match self.anchor_y {
+            TextAnchorV::Top => 0f32,
+            TextAnchorV::Bottom => -glyph_cache.render_height(),
+            TextAnchorV::Center => -glyph_cache.render_height() / 2f32,
+        };
+
+        let buffer = gpu.push_slice(
+            "text-layout-upload-buffer",
+            &[LayoutData {
+                text_layout_position: [x + dx, y + dy, 0f32, 0f32],
+                text_layout_color: self.color,
+            }],
+            wgpu::BufferUsage::all(),
+        );
+        upload_buffers.push(CopyBufferDescriptor::new(
+            buffer,
+            self.layout_data_buffer.clone(),
+            mem::size_of::<LayoutData>() as wgpu::BufferAddress,
+        ));
+
+        Ok(())
+    }
+
+    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.text_render_context.as_ref().unwrap().vertex_buffer
+    }
+
+    pub fn index_buffer(&self) -> &wgpu::Buffer {
+        &self.text_render_context.as_ref().unwrap().index_buffer
+    }
+
+    pub fn index_range(&self) -> Range<u32> {
+        0u32..self.text_render_context.as_ref().unwrap().index_count
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
 }
 
 const _FONT_FILES: [&str; 12] = [
@@ -514,12 +495,11 @@ pub enum Font {
     QUANTICO,
 }
 
-type GlyphCacheIndex = usize;
-
 pub struct LayoutBuffer {
     glyph_cache_map: HashMap<Font, GlyphCacheIndex>,
     glyph_caches: Vec<GlyphCache>,
-    layouts: HashMap<Font, Vec<LayoutHandle>>,
+    layout_map: HashMap<Font, Vec<LayoutHandle>>,
+    layouts: Vec<Layout>,
     glyph_bind_group_layout: wgpu::BindGroupLayout,
     layout_bind_group_layout: wgpu::BindGroupLayout,
 }
@@ -535,9 +515,11 @@ impl LayoutBuffer {
         // Cache all standard fonts on the GPU.
         for (name, filename) in &[(Font::HUD11, "HUD11.FNT")] {
             if let Ok(data) = lib.load(filename) {
-                glyph_cache_map.insert(*name, glyph_caches.len());
+                let index = GlyphCacheIndex::new(glyph_caches.len());
+                glyph_cache_map.insert(*name, index);
                 glyph_caches.push(GlyphCache::new_transparent_fnt(
                     &Fnt::from_bytes("", "", &data)?,
+                    index,
                     &glyph_bind_group_layout,
                     gpu,
                 )?);
@@ -545,9 +527,11 @@ impl LayoutBuffer {
         }
 
         // Add fallback font.
-        glyph_cache_map.insert(Font::QUANTICO, glyph_caches.len());
+        let index = GlyphCacheIndex::new(glyph_caches.len());
+        glyph_cache_map.insert(Font::QUANTICO, index);
         glyph_caches.push(GlyphCache::new_ttf(
             &QUANTICO_TTF_DATA,
+            index,
             &glyph_bind_group_layout,
             gpu,
         )?);
@@ -569,7 +553,8 @@ impl LayoutBuffer {
         Ok(Arc::new(RefCell::new(Self {
             glyph_cache_map,
             glyph_caches,
-            layouts: HashMap::new(),
+            layout_map: HashMap::new(),
+            layouts: Vec::new(),
             glyph_bind_group_layout,
             layout_bind_group_layout,
         })))
@@ -583,42 +568,57 @@ impl LayoutBuffer {
         &self.layout_bind_group_layout
     }
 
-    pub fn layouts(&self) -> &HashMap<Font, Vec<LayoutHandle>> {
+    pub fn layouts(&self) -> &Vec<Layout> {
         &self.layouts
     }
 
+    pub fn layouts_by_font(&self) -> &HashMap<Font, Vec<LayoutHandle>> {
+        &self.layout_map
+    }
+
+    pub fn layout(&self, handle: LayoutHandle) -> &Layout {
+        &self.layouts[handle.0]
+    }
+
+    pub fn layout_mut(&mut self, handle: LayoutHandle) -> &mut Layout {
+        &mut self.layouts[handle.0]
+    }
+
     pub fn glyph_cache(&self, font: Font) -> &GlyphCache {
-        let index = self.glyph_cache_map[&font];
-        &self.glyph_caches[index]
+        &self.glyph_caches[self.glyph_cache_map[&font].index()]
     }
 
     // pub fn layout_mut(&mut self, handle: LayoutHandle) -> &mut Layout {}
 
-    pub fn add_screen_text(&mut self, font: Font, text: &str, gpu: &GPU) -> Fallible<LayoutHandle> {
+    pub fn add_screen_text(&mut self, font: Font, text: &str, gpu: &GPU) -> Fallible<&mut Layout> {
         let glyph_cache = self.glyph_cache(font);
-        let layout = LayoutHandle::new(Layout::new(
+        let handle = LayoutHandle(self.layouts.len());
+        let layout = Layout::new(
+            handle,
             text,
             glyph_cache,
             &self.layout_bind_group_layout,
             gpu,
-        )?);
-        self.layouts
+        )?;
+        self.layouts.push(layout);
+        self.layout_map
             .entry(font)
-            .and_modify(|e| e.push(layout.clone()))
-            .or_insert_with(|| vec![layout.clone()]);
-        Ok(layout)
+            .and_modify(|e| e.push(handle))
+            .or_insert_with(|| vec![handle]);
+        Ok(self.layout_mut(handle))
     }
 
     pub fn make_upload_buffer(
-        &self,
+        &mut self,
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
-        for (&font, layouts) in self.layouts.iter() {
-            let glyph_cache = self.glyph_cache(font);
-            for layout in layouts.iter() {
-                layout.make_upload_buffer(&glyph_cache, gpu, upload_buffers)?;
-            }
+        for layout in self.layouts.iter_mut() {
+            layout.make_upload_buffer(
+                &self.glyph_caches[layout.glyph_cache_index.index()],
+                gpu,
+                upload_buffers,
+            )?;
         }
         Ok(())
     }
@@ -643,30 +643,15 @@ mod test {
 
             let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
-            let span = layout_buffer
+            layout_buffer
                 .borrow_mut()
                 .add_screen_text(Font::HUD11, "Top Left (r)", &gpu)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
                 .with_vertical_position(TextPositionV::Top)
-                .with_vertical_anchor(TextAnchorV::Top);
-
-            /*
-            layout_buffer
-                .borrow_mut()
-                .borrow_layout(span)
-                .set_span("new_text");
-            layout_buffer
-                .borrow_mut()
-                .borrow_layout(span)
-                .with_span("even more text")
-                .with_color(&[1f32, 0f32, 1f32, 1f32]);
-             */
-            span.grab(&layout_buffer).set_span("new text");
-            span.grab(&layout_buffer)
-                .with_span("some text")
-                .with_color(&[1f32, 0f32, 1f32, 1f32]);
+                .with_vertical_anchor(TextAnchorV::Top)
+                .handle();
 
             layout_buffer
                 .borrow_mut()
@@ -698,12 +683,13 @@ mod test {
             let handle_clr = layout_buffer
                 .borrow_mut()
                 .add_screen_text(Font::HUD11, "", &gpu)?
-                .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &gpu)?
+                .with_span("THR: AFT  1.0G   2462   LCOS   740 M61")
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
                 .with_vertical_position(TextPositionV::Bottom)
-                .with_vertical_anchor(TextAnchorV::Bottom);
+                .with_vertical_anchor(TextAnchorV::Bottom)
+                .handle();
 
             let handle_fin = layout_buffer
                 .borrow_mut()
@@ -712,21 +698,28 @@ mod test {
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
                 .with_vertical_position(TextPositionV::Center)
-                .with_vertical_anchor(TextAnchorV::Center);
+                .with_vertical_anchor(TextAnchorV::Center)
+                .handle();
 
             for i in 0..32 {
                 if i < 16 {
-                    handle_clr.set_color(&[0f32, i as f32 / 16f32, 0f32, 1f32])
+                    handle_clr
+                        .grab(&mut layout_buffer.borrow_mut())
+                        .set_color(&[0f32, i as f32 / 16f32, 0f32, 1f32]);
                 } else {
-                    handle_clr.set_color(&[
-                        (i as f32 - 16f32) / 16f32,
-                        1f32,
-                        (i as f32 - 16f32) / 16f32,
-                        1f32,
-                    ])
+                    handle_clr
+                        .grab(&mut layout_buffer.borrow_mut())
+                        .set_color(&[
+                            (i as f32 - 16f32) / 16f32,
+                            1f32,
+                            (i as f32 - 16f32) / 16f32,
+                            1f32,
+                        ])
                 };
                 let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-                handle_fin.set_span(&msg);
+                handle_fin
+                    .grab(&mut layout_buffer.borrow_mut())
+                    .set_span(&msg);
             }
         }
         Ok(())
@@ -779,12 +772,13 @@ mod test {
         let handle_clr = layout_buffer
             .borrow_mut()
             .add_screen_text(Font::QUANTICO, "", &gpu)?
-            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &gpu)?
+            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61")
             .with_color(&[1f32, 0f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Center)
             .with_horizontal_anchor(TextAnchorH::Center)
             .with_vertical_position(TextPositionV::Bottom)
-            .with_vertical_anchor(TextAnchorV::Bottom);
+            .with_vertical_anchor(TextAnchorV::Bottom)
+            .handle();
 
         let handle_fin = layout_buffer
             .borrow_mut()
@@ -793,21 +787,28 @@ mod test {
             .with_horizontal_position(TextPositionH::Center)
             .with_horizontal_anchor(TextAnchorH::Center)
             .with_vertical_position(TextPositionV::Center)
-            .with_vertical_anchor(TextAnchorV::Center);
+            .with_vertical_anchor(TextAnchorV::Center)
+            .handle();
 
         for i in 0..32 {
             if i < 16 {
-                handle_clr.set_color(&[0f32, i as f32 / 16f32, 0f32, 1f32])
+                handle_clr
+                    .grab(&mut layout_buffer.borrow_mut())
+                    .set_color(&[0f32, i as f32 / 16f32, 0f32, 1f32])
             } else {
-                handle_clr.set_color(&[
-                    (i as f32 - 16f32) / 16f32,
-                    1f32,
-                    (i as f32 - 16f32) / 16f32,
-                    1f32,
-                ])
+                handle_clr
+                    .grab(&mut layout_buffer.borrow_mut())
+                    .set_color(&[
+                        (i as f32 - 16f32) / 16f32,
+                        1f32,
+                        (i as f32 - 16f32) / 16f32,
+                        1f32,
+                    ])
             };
             let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-            handle_fin.set_span(&msg);
+            handle_fin
+                .grab(&mut layout_buffer.borrow_mut())
+                .set_span(&msg);
         }
         Ok(())
     }

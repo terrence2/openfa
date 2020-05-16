@@ -14,4 +14,4 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod glyph_cache;
 
-pub use crate::glyph_cache::GlyphCache;
+pub use crate::glyph_cache::{GlyphCache, GlyphCacheIndex};

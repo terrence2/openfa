@@ -25,7 +25,7 @@ use shader_globals::Group;
 use stars::StarsBuffer;
 
 pub struct SkyboxRenderPass {
-    pipeline: wgpu::RenderPipeline,
+    pub pipeline: wgpu::RenderPipeline,
 }
 
 impl SkyboxRenderPass {
@@ -102,12 +102,12 @@ impl SkyboxRenderPass {
 
     pub fn draw<'a>(
         &'a self,
-        rpass: &'a mut wgpu::RenderPass<'a>,
+        mut rpass: wgpu::RenderPass<'a>,
         globals_buffer: &'a GlobalParametersBuffer,
         fullscreen_buffer: &'a FullscreenBuffer,
         stars_buffer: &'a StarsBuffer,
         atmosphere_buffer: &'a AtmosphereBuffer,
-    ) {
+    ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
         rpass.set_bind_group(
@@ -118,5 +118,6 @@ impl SkyboxRenderPass {
         rpass.set_bind_group(Group::Stars.index(), &stars_buffer.bind_group(), &[]);
         rpass.set_vertex_buffer(0, &fullscreen_buffer.vertex_buffer(), 0, 0);
         rpass.draw(0..4, 0..1);
+        rpass
     }
 }

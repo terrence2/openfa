@@ -47,7 +47,7 @@ make_frame_graph!(
             terrain_geo: TerrainGeoBuffer,
             text_layout: LayoutBuffer
         };
-        passes: [
+        renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             terrain: TerrainRenderPass { globals, atmosphere, terrain_geo },
             screen_text: ScreenTextRenderPass { globals, text_layout }
@@ -81,10 +81,10 @@ fn main() -> Fallible<()> {
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
-    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&mut gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let stars_buffer = StarsBuffer::new(gpu.device())?;
-    let terrain_geo_buffer = TerrainGeoBuffer::new(detail, 1, gpu.device())?;
+    let stars_buffer = StarsBuffer::new(&mut gpu)?;
+    let terrain_geo_buffer = TerrainGeoBuffer::new(detail, 1, &mut gpu)?;
     let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
@@ -100,12 +100,13 @@ fn main() -> Fallible<()> {
 
     let fps_handle = layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::QUANTICO, "", gpu.device())?
+        .add_screen_text(Font::QUANTICO, "", &mut gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Top)
-        .with_vertical_anchor(TextAnchorV::Top);
+        .with_vertical_anchor(TextAnchorV::Top)
+        .handle();
 
     let mut orrery = Orrery::new(Utc.ymd(1964, 2, 24).and_hms(12, 0, 0));
 
@@ -166,14 +167,14 @@ fn main() -> Fallible<()> {
         //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
-            gpu.device(),
+            &mut gpu,
             &mut buffers,
         )?;
         terrain_geo_buffer
             .borrow_mut()
             .make_upload_buffer(&camera, &gpu, &mut buffers)?;
         layout_buffer
-            .borrow()
+            .borrow_mut()
             .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers)?;
 
@@ -187,11 +188,8 @@ fn main() -> Fallible<()> {
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
         );
-        fps_handle.set_span(&ts, gpu.device())?;
-        // layout_buffer
-        //     .borrow_mut()
-        //     .get_span(fps_handle)
-        //     .set_span(&ts);
-        fps_handle.grab(&layout_buffer).set_span(&ts);
+        fps_handle
+            .grab(&mut layout_buffer.borrow_mut())
+            .set_span(&ts);
     }
 }

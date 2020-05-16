@@ -99,16 +99,17 @@ impl ScreenTextRenderPass {
 
     pub fn draw<'a>(
         &'a self,
-        rpass: &'a mut wgpu::RenderPass<'a>,
+        mut rpass: wgpu::RenderPass<'a>,
         global_data: &'a GlobalParametersBuffer,
         layout_buffer: &'a LayoutBuffer,
-    ) {
+    ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.pipeline);
-        for (&font, layouts) in layout_buffer.layouts() {
-            rpass.set_bind_group(Group::Globals.index(), &global_data.bind_group(), &[]);
+        rpass.set_bind_group(Group::Globals.index(), &global_data.bind_group(), &[]);
+        for (&font, layout_handles) in layout_buffer.layouts_by_font() {
             let glyph_cache = layout_buffer.glyph_cache(font);
             rpass.set_bind_group(Group::GlyphCache.index(), &glyph_cache.bind_group(), &[]);
-            for layout in layouts {
+            for &layout_handle in layout_handles {
+                let layout = layout_buffer.layout(layout_handle);
                 rpass.set_bind_group(Group::TextLayout.index(), &layout.bind_group(), &[]);
 
                 rpass.set_index_buffer(&layout.index_buffer(), 0, 0);
@@ -116,5 +117,6 @@ impl ScreenTextRenderPass {
                 rpass.draw_indexed(layout.index_range(), 0, 0..1);
             }
         }
+        rpass
     }
 }
