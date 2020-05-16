@@ -42,8 +42,8 @@ macro_rules! make_frame_graph {
     (
         $name:ident {
             buffers: { $($buffer_name:ident: $buffer_type:ty),* };
-            passes: [
-                $( $pass_name:ident: $pass_type:ty { $($input_buffer_name:ident),* } ),*
+            renderers: [
+                $( $renderer_name:ident: $renderer_type:ty { $($input_buffer_name:ident),* } ),*
             ];
         }
     ) => {
@@ -52,7 +52,7 @@ macro_rules! make_frame_graph {
                 $buffer_name: ::std::sync::Arc<::std::cell::RefCell<$buffer_type>>
             ),*,
             $(
-                $pass_name: $pass_type
+                $renderer_name: $renderer_type
             ),*
         }
 
@@ -69,7 +69,7 @@ macro_rules! make_frame_graph {
                         $buffer_name: $buffer_name.to_owned()
                     ),*,
                     $(
-                        $pass_name: <$pass_type>::new(
+                        $renderer_name: <$renderer_type>::new(
                             gpu,
                             $(
                                 &$input_buffer_name.borrow()
@@ -94,7 +94,7 @@ macro_rules! make_frame_graph {
 
                     let mut rpass = frame.begin_render_pass();
                     $(
-                        self.$pass_name.draw(
+                        self.$renderer_name.draw(
                             &mut rpass,
                             $(
                                 &self.$input_buffer_name.borrow()

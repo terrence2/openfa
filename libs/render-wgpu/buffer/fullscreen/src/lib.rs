@@ -13,11 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
+use gpu::GPU;
 use std::{cell::RefCell, mem, sync::Arc};
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, Clone, Copy)]
+#[derive(AsBytes, FromBytes, Clone, Copy, Debug)]
 pub struct FullscreenVertex {
     _pos: [f32; 2],
 }
@@ -29,16 +30,18 @@ impl FullscreenVertex {
         }
     }
 
-    pub fn buffer(device: &wgpu::Device) -> wgpu::Buffer {
+    pub fn buffer(gpu: &GPU) -> wgpu::Buffer {
         let vertices = vec![
             Self::new([-1, -1]),
             Self::new([-1, 1]),
             Self::new([1, -1]),
             Self::new([1, 1]),
         ];
-        device
-            .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
-            .fill_from_slice(&vertices)
+        gpu.push_slice(
+            "fullscreen-corner-vertices",
+            &vertices,
+            wgpu::BufferUsage::VERTEX,
+        )
     }
 
     pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
@@ -59,9 +62,9 @@ pub struct FullscreenBuffer {
 }
 
 impl FullscreenBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
+    pub fn new(gpu: &GPU) -> Fallible<Arc<RefCell<Self>>> {
         Ok(Arc::new(RefCell::new(Self {
-            vertex_buffer: FullscreenVertex::buffer(device),
+            vertex_buffer: FullscreenVertex::buffer(gpu),
         })))
     }
 

@@ -153,8 +153,8 @@ impl LayoutHandle {
         }
     }
 
-    pub fn with_span(self, span: &str, device: &wgpu::Device) -> Fallible<Self> {
-        self.set_span(span, device)?;
+    pub fn with_span(self, span: &str, gpu: &GPU) -> Fallible<Self> {
+        self.set_span(span, gpu)?;
         Ok(self)
     }
 
@@ -203,16 +203,12 @@ impl LayoutHandle {
         self.layout.borrow_mut().color = *color;
     }
 
-    pub fn set_span(&self, span: &str, device: &wgpu::Device) -> Fallible<()> {
-        self.layout.borrow_mut().set_span(span, device)?;
+    pub fn set_span(&self, span: &str, gpu: &GPU) -> Fallible<()> {
+        self.layout.borrow_mut().set_span(span, gpu)?;
         Ok(())
     }
 
-    pub fn make_upload_buffer(
-        &self,
-        device: &wgpu::Device,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
-    ) {
+    pub fn make_upload_buffer(&self, gpu: &GPU, upload_buffers: &mut Vec<CopyBufferDescriptor>) {
         let layout = self.layout.borrow();
 
         let x = layout.position_x.to_vulkan();
@@ -230,12 +226,14 @@ impl LayoutHandle {
             TextAnchorV::Center => -layout.glyph_cache.render_height() / 2f32,
         };
 
-        let buffer = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::all())
-            .fill_from_slice(&[LayoutData {
+        let buffer = gpu.push_slice(
+            "text-layout-upload-buffer",
+            &[LayoutData {
                 text_layout_position: [x + dx, y + dy, 0f32, 0f32],
                 text_layout_color: layout.color,
-            }]);
+            }],
+            wgpu::BufferUsage::all(),
+        );
         upload_buffers.push(CopyBufferDescriptor::new(
             buffer,
             layout.layout_data_buffer.clone(),
@@ -296,16 +294,19 @@ impl Layout {
         text: &str,
         glyph_cache: Rc<Box<GlyphCache>>,
         bind_group_layout: &wgpu::BindGroupLayout,
-        device: &wgpu::Device,
+        gpu: &GPU,
     ) -> Fallible<Self> {
         let size = mem::size_of::<LayoutData>() as wgpu::BufferAddress;
-        let layout_data_buffer =
-            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+        let layout_data_buffer = Arc::new(Box::new(gpu.device().create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("text-layout-data-buffer"),
                 size,
                 usage: wgpu::BufferUsage::all(),
-            })));
+            },
+        )));
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("text-layout-bind-group"),
             layout: &bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -316,8 +317,7 @@ impl Layout {
             }],
         });
 
-        let (render_width, vb, ib, index_count) =
-            Self::build_text_span(text, &glyph_cache, device)?;
+        let (render_width, vb, ib, index_count) = Self::build_text_span(text, &glyph_cache, gpu)?;
         Ok(Self {
             glyph_cache,
 
@@ -336,9 +336,9 @@ impl Layout {
         })
     }
 
-    fn set_span(&mut self, text: &str, device: &wgpu::Device) -> Fallible<()> {
+    fn set_span(&mut self, text: &str, gpu: &GPU) -> Fallible<()> {
         let (render_width, vb, ib, index_count) =
-            Self::build_text_span(text, &self.glyph_cache, device)?;
+            Self::build_text_span(text, &self.glyph_cache, gpu)?;
         self.render_width = render_width;
         self.vertex_buffer = Arc::new(Box::new(vb));
         self.index_buffer = Arc::new(Box::new(ib));
@@ -349,7 +349,7 @@ impl Layout {
     fn build_text_span(
         text: &str,
         glyph_cache: &GlyphCache,
-        device: &wgpu::Device,
+        gpu: &GPU,
     ) -> Fallible<(f32, wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
@@ -408,12 +408,28 @@ impl Layout {
             offset += frame.advance_width;
         }
 
-        let vertex_buffer = device
-            .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&verts);
-        let index_buffer = device
-            .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&indices);
+        // Create a degenerate triangle if there was nothing to render, because we cannot
+        // push an empty buffer, but still want something to hold here.
+        if verts.is_empty() {
+            for i in 0..3 {
+                verts.push(LayoutVertex {
+                    position: [0f32, 0f32],
+                    tex_coord: [0f32, 0f32],
+                });
+                indices.push(i);
+            }
+        }
+
+        let vertex_buffer = gpu.push_slice(
+            "text-layout-vertex-buffer",
+            &verts,
+            wgpu::BufferUsage::all(),
+        );
+        let index_buffer = gpu.push_slice(
+            "text-layout-index-buffer",
+            &indices,
+            wgpu::BufferUsage::all(),
+        );
 
         Ok((offset, vertex_buffer, index_buffer, indices.len() as u32))
     }
@@ -505,7 +521,8 @@ impl LayoutBuffer {
         let layout_bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    bindings: &[wgpu::BindGroupLayoutBinding {
+                    label: Some("text-layout-bind-group-layout"),
+                    bindings: &[wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::VERTEX,
                         ty: wgpu::BindingType::StorageBuffer {
@@ -539,18 +556,13 @@ impl LayoutBuffer {
         self.glyph_caches[&font].clone()
     }
 
-    pub fn add_screen_text(
-        &mut self,
-        font: Font,
-        text: &str,
-        device: &wgpu::Device,
-    ) -> Fallible<LayoutHandle> {
+    pub fn add_screen_text(&mut self, font: Font, text: &str, gpu: &GPU) -> Fallible<LayoutHandle> {
         let glyph_cache = self.glyph_caches[&font].clone();
         let layout = LayoutHandle::new(Layout::new(
             text,
             glyph_cache,
             &self.layout_bind_group_layout,
-            device,
+            gpu,
         )?);
         self.layouts
             .entry(font)
@@ -566,7 +578,7 @@ impl LayoutBuffer {
     ) -> Fallible<()> {
         for layouts in self.layouts.values() {
             for layout in layouts.iter() {
-                layout.make_upload_buffer(gpu.device(), upload_buffers);
+                layout.make_upload_buffer(gpu, upload_buffers);
             }
         }
         Ok(())
@@ -595,7 +607,7 @@ mod test {
             println!("1");
             layout_buffer
                 .borrow_mut()
-                .add_screen_text(Font::HUD11, "Top Left (r)", gpu.device())?
+                .add_screen_text(Font::HUD11, "Top Left (r)", &gpu)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
@@ -605,7 +617,7 @@ mod test {
 
             layout_buffer
                 .borrow_mut()
-                .add_screen_text(Font::HUD11, "Top Right (b)", gpu.device())?
+                .add_screen_text(Font::HUD11, "Top Right (b)", &gpu)?
                 .with_color(&[0f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
@@ -614,7 +626,7 @@ mod test {
 
             layout_buffer
                 .borrow_mut()
-                .add_screen_text(Font::HUD11, "Bottom Left (w)", gpu.device())?
+                .add_screen_text(Font::HUD11, "Bottom Left (w)", &gpu)?
                 .with_color(&[1f32, 1f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Left)
                 .with_horizontal_anchor(TextAnchorH::Left)
@@ -623,7 +635,7 @@ mod test {
 
             layout_buffer
                 .borrow_mut()
-                .add_screen_text(Font::HUD11, "Bottom Right (m)", gpu.device())?
+                .add_screen_text(Font::HUD11, "Bottom Right (m)", &gpu)?
                 .with_color(&[1f32, 0f32, 1f32, 1f32])
                 .with_horizontal_position(TextPositionH::Right)
                 .with_horizontal_anchor(TextAnchorH::Right)
@@ -632,8 +644,8 @@ mod test {
 
             let handle_clr = layout_buffer
                 .borrow_mut()
-                .add_screen_text(Font::HUD11, "", gpu.device())?
-                .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", gpu.device())?
+                .add_screen_text(Font::HUD11, "", &gpu)?
+                .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &gpu)?
                 .with_color(&[1f32, 0f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
@@ -642,7 +654,7 @@ mod test {
 
             let handle_fin = layout_buffer
                 .borrow_mut()
-                .add_screen_text(Font::HUD11, "DONE: 0%", gpu.device())?
+                .add_screen_text(Font::HUD11, "DONE: 0%", &gpu)?
                 .with_color(&[0f32, 1f32, 0f32, 1f32])
                 .with_horizontal_position(TextPositionH::Center)
                 .with_horizontal_anchor(TextAnchorH::Center)
@@ -661,7 +673,7 @@ mod test {
                     ])
                 };
                 let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-                handle_fin.set_span(&msg, gpu.device())?;
+                handle_fin.set_span(&msg, &gpu)?;
             }
         }
         Ok(())
@@ -677,7 +689,7 @@ mod test {
 
         layout_buffer
             .borrow_mut()
-            .add_screen_text(Font::QUANTICO, "Top Left (r)", gpu.device())?
+            .add_screen_text(Font::QUANTICO, "Top Left (r)", &gpu)?
             .with_color(&[1f32, 0f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Left)
             .with_horizontal_anchor(TextAnchorH::Left)
@@ -686,7 +698,7 @@ mod test {
 
         layout_buffer
             .borrow_mut()
-            .add_screen_text(Font::QUANTICO, "Top Right (b)", gpu.device())?
+            .add_screen_text(Font::QUANTICO, "Top Right (b)", &gpu)?
             .with_color(&[0f32, 0f32, 1f32, 1f32])
             .with_horizontal_position(TextPositionH::Right)
             .with_horizontal_anchor(TextAnchorH::Right)
@@ -695,7 +707,7 @@ mod test {
 
         layout_buffer
             .borrow_mut()
-            .add_screen_text(Font::QUANTICO, "Bottom Left (w)", gpu.device())?
+            .add_screen_text(Font::QUANTICO, "Bottom Left (w)", &gpu)?
             .with_color(&[1f32, 1f32, 1f32, 1f32])
             .with_horizontal_position(TextPositionH::Left)
             .with_horizontal_anchor(TextAnchorH::Left)
@@ -704,7 +716,7 @@ mod test {
 
         layout_buffer
             .borrow_mut()
-            .add_screen_text(Font::QUANTICO, "Bottom Right (m)", gpu.device())?
+            .add_screen_text(Font::QUANTICO, "Bottom Right (m)", &gpu)?
             .with_color(&[1f32, 0f32, 1f32, 1f32])
             .with_horizontal_position(TextPositionH::Right)
             .with_horizontal_anchor(TextAnchorH::Right)
@@ -713,8 +725,8 @@ mod test {
 
         let handle_clr = layout_buffer
             .borrow_mut()
-            .add_screen_text(Font::QUANTICO, "", gpu.device())?
-            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", gpu.device())?
+            .add_screen_text(Font::QUANTICO, "", &gpu)?
+            .with_span("THR: AFT  1.0G   2462   LCOS   740 M61", &gpu)?
             .with_color(&[1f32, 0f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Center)
             .with_horizontal_anchor(TextAnchorH::Center)
@@ -723,7 +735,7 @@ mod test {
 
         let handle_fin = layout_buffer
             .borrow_mut()
-            .add_screen_text(Font::QUANTICO, "DONE: 0%", gpu.device())?
+            .add_screen_text(Font::QUANTICO, "DONE: 0%", &gpu)?
             .with_color(&[0f32, 1f32, 0f32, 1f32])
             .with_horizontal_position(TextPositionH::Center)
             .with_horizontal_anchor(TextAnchorH::Center)
@@ -742,7 +754,7 @@ mod test {
                 ])
             };
             let msg = format!("DONE: {}%", ((i as f32 / 32f32) * 100f32) as u32);
-            handle_fin.set_span(&msg, gpu.device())?;
+            handle_fin.set_span(&msg, &gpu)?;
         }
         Ok(())
     }

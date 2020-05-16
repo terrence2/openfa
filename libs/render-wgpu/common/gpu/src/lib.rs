@@ -13,8 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
+use futures::executor::block_on;
 use input::InputSystem;
-use std::io::Cursor;
+use log::trace;
+use std::{io::Cursor, mem};
 use winit::dpi::PhysicalSize;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -37,7 +39,7 @@ impl Default for GPUConfig {
         Self {
             anisotropic_filtering: false,
             max_bind_groups: 6,
-            preset_mode: wgpu::PresentMode::Vsync,
+            preset_mode: wgpu::PresentMode::Mailbox,
         }
     }
 }
@@ -77,25 +79,33 @@ impl GPU {
     }
 
     pub fn new(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
+        block_on(Self::new_async(input, config))
+    }
+
+    pub async fn new_async(input: &InputSystem, config: GPUConfig) -> Fallible<Self> {
         input.window().set_title("OpenFA");
         let surface = wgpu::Surface::create(input.window());
 
         let adapter = wgpu::Adapter::request(
             &wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
             },
             wgpu::BackendBit::PRIMARY,
         )
+        .await
         .ok_or_else(|| err_msg("no suitable graphics adapter"))?;
 
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            extensions: wgpu::Extensions {
-                anisotropic_filtering: config.anisotropic_filtering,
-            },
-            limits: wgpu::Limits {
-                max_bind_groups: config.max_bind_groups,
-            },
-        });
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                extensions: wgpu::Extensions {
+                    anisotropic_filtering: config.anisotropic_filtering,
+                },
+                limits: wgpu::Limits {
+                    max_bind_groups: config.max_bind_groups,
+                },
+            })
+            .await;
 
         let size = input
             .window()
@@ -110,6 +120,7 @@ impl GPU {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth-texture"),
             size: wgpu::Extent3d {
                 width: sc_desc.width,
                 height: sc_desc.height,
@@ -123,8 +134,10 @@ impl GPU {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
         });
 
-        let empty_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { bindings: &[] });
+        let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("empty-layout"),
+            bindings: &[],
+        });
 
         Ok(Self {
             surface,
@@ -155,6 +168,7 @@ impl GPU {
         self.depth_texture = self
             .device
             .create_texture(&wgpu::TextureDescriptor {
+                label: Some("depth-texture"),
                 size: wgpu::Extent3d {
                     width: sc_desc.width,
                     height: sc_desc.height,
@@ -168,6 +182,57 @@ impl GPU {
                 usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
             })
             .create_default_view();
+    }
+
+    pub fn push_buffer(
+        &self,
+        label: &'static str,
+        data: &[u8],
+        usage: wgpu::BufferUsage,
+    ) -> wgpu::Buffer {
+        let size = data.len() as wgpu::BufferAddress;
+        trace!("uploading {} with {} bytes", label, size);
+        let cpu_buffer = self.device.create_buffer_mapped(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage,
+        });
+        cpu_buffer.data.copy_from_slice(data);
+        cpu_buffer.finish()
+    }
+
+    pub fn push_slice<T: AsBytes>(
+        &self,
+        label: &'static str,
+        data: &[T],
+        usage: wgpu::BufferUsage,
+    ) -> wgpu::Buffer {
+        let size = (mem::size_of::<T>() * data.len()) as wgpu::BufferAddress;
+        trace!("uploading {} with {} bytes", label, size);
+        let cpu_buffer = self.device.create_buffer_mapped(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage,
+        });
+        cpu_buffer.data.copy_from_slice(data.as_bytes());
+        cpu_buffer.finish()
+    }
+
+    pub fn push_data<T: AsBytes>(
+        &self,
+        label: &'static str,
+        data: &T,
+        usage: wgpu::BufferUsage,
+    ) -> wgpu::Buffer {
+        let size = mem::size_of::<T>() as wgpu::BufferAddress;
+        trace!("uploading {} with {} bytes", label, size);
+        let cpu_buffer = self.device.create_buffer_mapped(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage,
+        });
+        cpu_buffer.data.copy_from_slice(data.as_bytes());
+        cpu_buffer.finish()
     }
 
     pub fn create_shader_module(&self, spirv: &[u8]) -> Fallible<wgpu::ShaderModule> {
@@ -204,7 +269,9 @@ impl GPU {
             queue: &mut self.queue,
             encoder: self
                 .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 }),
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("frame-encoder"),
+                }),
             color_attachment,
             depth_attachment: &self.depth_texture,
         })
@@ -214,7 +281,7 @@ impl GPU {
 pub struct Frame<'a> {
     queue: &'a mut wgpu::Queue,
     encoder: wgpu::CommandEncoder,
-    color_attachment: wgpu::SwapChainOutput<'a>,
+    color_attachment: wgpu::SwapChainOutput,
     depth_attachment: &'a wgpu::TextureView,
 }
 

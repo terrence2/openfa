@@ -83,19 +83,21 @@ impl GlyphCache {
 
     pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glyph-cache-bind-group-layout"),
             bindings: &[
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
-                        multisampled: false,
                         dimension: wgpu::TextureViewDimension::D2,
+                        component_type: wgpu::TextureComponentType::Uint,
+                        multisampled: false,
                     },
                 },
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler,
+                    ty: wgpu::BindingType::Sampler { comparison: false },
                 },
             ],
         })
@@ -141,11 +143,13 @@ impl GlyphCache {
         };
         let image_data = image_buf.into_raw();
 
-        let transfer_buffer = gpu
-            .device()
-            .create_buffer_mapped(image_data.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&image_data);
+        let transfer_buffer = gpu.push_buffer(
+            "glyph-cache-transfer-buffer",
+            &image_data,
+            wgpu::BufferUsage::all(),
+        );
         let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("glyph-cache-texture"),
             size: extent,
             array_layer_count: 1,
             mip_level_count: 1,
@@ -156,13 +160,15 @@ impl GlyphCache {
         });
         let mut encoder = gpu
             .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("glyph-cache-command-encoder"),
+            });
         encoder.copy_buffer_to_texture(
             wgpu::BufferCopyView {
                 buffer: &transfer_buffer,
                 offset: 0,
-                row_pitch: extent.width,
-                image_height: extent.height,
+                bytes_per_row: extent.width,
+                rows_per_image: extent.height,
             },
             wgpu::TextureCopyView {
                 texture: &texture,
@@ -173,7 +179,7 @@ impl GlyphCache {
             extent,
         );
         gpu.queue_mut().submit(&[encoder.finish()]);
-        gpu.device().poll(true);
+        gpu.device().poll(wgpu::Maintain::Wait);
 
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
             format: wgpu::TextureFormat::R8Unorm,
@@ -198,7 +204,7 @@ impl GlyphCache {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare_function: wgpu::CompareFunction::Never,
+            compare: wgpu::CompareFunction::Never,
         })
     }
 }
@@ -281,6 +287,7 @@ impl GlyphCacheFNT {
         let sampler = GlyphCache::make_sampler(gpu.device());
 
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("glyph-cache-FNT-bind-group"),
             layout: bind_group_layout,
             bindings: &[
                 wgpu::Binding {
@@ -381,6 +388,7 @@ impl GlyphCacheTTF {
         let sampler = GlyphCache::make_sampler(gpu.device());
 
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("glyph-cache-TTF-bind-group"),
             layout: bind_group_layout,
             bindings: &[
                 wgpu::Binding {

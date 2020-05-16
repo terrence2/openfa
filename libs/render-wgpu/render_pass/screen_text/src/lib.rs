@@ -85,8 +85,10 @@ impl ScreenTextRenderPass {
                     stencil_read_mask: 0,
                     stencil_write_mask: 0,
                 }),
-                index_format: wgpu::IndexFormat::Uint32,
-                vertex_buffers: &[LayoutVertex::descriptor()],
+                vertex_state: wgpu::VertexStateDescriptor {
+                    index_format: wgpu::IndexFormat::Uint32,
+                    vertex_buffers: &[LayoutVertex::descriptor()],
+                },
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
@@ -95,11 +97,11 @@ impl ScreenTextRenderPass {
         Ok(Self { pipeline })
     }
 
-    pub fn draw(
-        &self,
-        rpass: &mut wgpu::RenderPass,
-        global_data: &GlobalParametersBuffer,
-        layout_buffer: &LayoutBuffer,
+    pub fn draw<'a>(
+        &'a self,
+        rpass: &'a mut wgpu::RenderPass<'a>,
+        global_data: &'a GlobalParametersBuffer,
+        layout_buffer: &'a LayoutBuffer,
     ) {
         rpass.set_pipeline(&self.pipeline);
         for (&font, layouts) in layout_buffer.layouts() {
@@ -109,8 +111,8 @@ impl ScreenTextRenderPass {
             for layout in layouts {
                 rpass.set_bind_group(Group::TextLayout.index(), &layout.bind_group(), &[]);
 
-                rpass.set_index_buffer(&layout.index_buffer(), 0);
-                rpass.set_vertex_buffers(0, &[(&layout.vertex_buffer(), 0)]);
+                rpass.set_index_buffer(&layout.index_buffer(), 0, 0);
+                rpass.set_vertex_buffer(0, &layout.vertex_buffer(), 0, 0);
                 rpass.draw_indexed(layout.index_range(), 0, 0..1);
             }
         }

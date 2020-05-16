@@ -156,12 +156,14 @@ impl GlobalParametersBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let buffer_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
         let parameters_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("globals-buffer"),
             size: buffer_size,
             usage: wgpu::BufferUsage::STORAGE_READ | wgpu::BufferUsage::COPY_DST,
         })));
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            bindings: &[wgpu::BindGroupLayoutBinding {
+            label: Some("globals-bind-group-layout"),
+            bindings: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStage::all(),
                 ty: wgpu::BindingType::StorageBuffer {
@@ -172,6 +174,7 @@ impl GlobalParametersBuffer {
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("globals-bind-group"),
             layout: &bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -200,13 +203,13 @@ impl GlobalParametersBuffer {
     }
 
     fn make_gpu_buffer(&self, globals: Globals, gpu: &GPU) -> CopyBufferDescriptor {
-        let source = gpu
-            .device()
-            .create_buffer_mapped::<Globals>(
-                1,
-                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            )
-            .fill_from_slice(&[globals]);
+        let source_map = gpu.device().create_buffer_mapped(&wgpu::BufferDescriptor {
+            label: Some("global-buffer"),
+            size: self.buffer_size,
+            usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+        });
+        source_map.data.copy_from_slice(globals.as_bytes());
+        let source = source_map.finish();
         CopyBufferDescriptor::new(source, self.parameters_buffer.clone(), self.buffer_size)
     }
 

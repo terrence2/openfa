@@ -78,8 +78,10 @@ impl ShapeRenderPass {
                     stencil_read_mask: 0,
                     stencil_write_mask: 0,
                 }),
-                index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[Vertex::descriptor()],
+                vertex_state: wgpu::VertexStateDescriptor {
+                    index_format: wgpu::IndexFormat::Uint16,
+                    vertex_buffers: &[Vertex::descriptor()],
+                },
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
@@ -88,11 +90,11 @@ impl ShapeRenderPass {
         Ok(Self { pipeline })
     }
 
-    pub fn draw(
-        &self,
-        rpass: &mut wgpu::RenderPass,
-        globals_buffer: &GlobalParametersBuffer,
-        shape_instance_buffer: &ShapeInstanceBuffer,
+    pub fn draw<'a>(
+        &'a self,
+        rpass: &'a mut wgpu::RenderPass<'a>,
+        globals_buffer: &'a GlobalParametersBuffer,
+        shape_instance_buffer: &'a ShapeInstanceBuffer,
     ) {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), globals_buffer.bind_group(), &[]);
@@ -104,7 +106,7 @@ impl ShapeRenderPass {
             // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
             rpass.set_bind_group(Group::ShapeChunk.index(), chunk.bind_group(), &[]);
             rpass.set_bind_group(Group::ShapeBlock.index(), block.bind_group(), &[]);
-            rpass.set_vertex_buffers(0, &[(chunk.vertex_buffer(), 0)]);
+            rpass.set_vertex_buffer(0, &chunk.vertex_buffer(), 0, 0);
             for i in 0..block.len() {
                 //rpass.draw_indirect(block.command_buffer(), i as u64);
                 let cmd = block.command_buffer_scratch[i];
