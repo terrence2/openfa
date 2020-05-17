@@ -87,8 +87,10 @@ impl T2TerrainRenderPass {
                     stencil_read_mask: 0,
                     stencil_write_mask: 0,
                 }),
-                index_format: wgpu::IndexFormat::Uint32,
-                vertex_buffers: &[T2Vertex::descriptor()],
+                vertex_state: wgpu::VertexStateDescriptor {
+                    index_format: wgpu::IndexFormat::Uint32,
+                    vertex_buffers: &[T2Vertex::descriptor()],
+                },
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
@@ -97,13 +99,13 @@ impl T2TerrainRenderPass {
         Ok(Self { pipeline })
     }
 
-    pub fn draw(
-        &self,
-        rpass: &mut wgpu::RenderPass,
-        globals_buffer: &GlobalParametersBuffer,
-        atmosphere_buffer: &AtmosphereBuffer,
-        t2_buffer: &T2Buffer,
-    ) {
+    pub fn draw<'a>(
+        &'a self,
+        mut rpass: wgpu::RenderPass<'a>,
+        globals_buffer: &'a GlobalParametersBuffer,
+        atmosphere_buffer: &'a AtmosphereBuffer,
+        t2_buffer: &'a T2Buffer,
+    ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
         rpass.set_bind_group(
@@ -112,8 +114,9 @@ impl T2TerrainRenderPass {
             &[],
         );
         rpass.set_bind_group(Group::Terrain.index(), &t2_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(t2_buffer.index_buffer(), 0);
-        rpass.set_vertex_buffers(0, &[(t2_buffer.vertex_buffer(), 0)]);
+        rpass.set_index_buffer(t2_buffer.index_buffer(), 0, 0);
+        rpass.set_vertex_buffer(0, &t2_buffer.vertex_buffer(), 0, 0);
         rpass.draw_indexed(t2_buffer.index_range(), 0, 0..1);
+        rpass
     }
 }

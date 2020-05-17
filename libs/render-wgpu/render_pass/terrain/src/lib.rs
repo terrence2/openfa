@@ -84,8 +84,10 @@ impl TerrainRenderPass {
                         stencil_read_mask: 0,
                         stencil_write_mask: 0,
                     }),
-                    index_format: wgpu::IndexFormat::Uint32,
-                    vertex_buffers: &[PatchVertex::descriptor()],
+                    vertex_state: wgpu::VertexStateDescriptor {
+                        index_format: wgpu::IndexFormat::Uint32,
+                        vertex_buffers: &[PatchVertex::descriptor()],
+                    },
                     sample_count: 1,
                     sample_mask: !0,
                     alpha_to_coverage_enabled: false,
@@ -114,7 +116,7 @@ impl TerrainRenderPass {
                         entry_point: "main",
                     }),
                     rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                        front_face: wgpu::FrontFace::Cw,
+                        front_face: wgpu::FrontFace::Ccw,
                         cull_mode: wgpu::CullMode::Back,
                         depth_bias: 0,
                         depth_bias_slope_scale: 0.0,
@@ -141,8 +143,10 @@ impl TerrainRenderPass {
                         stencil_read_mask: 0,
                         stencil_write_mask: 0,
                     }),
-                    index_format: wgpu::IndexFormat::Uint32,
-                    vertex_buffers: &[DebugVertex::descriptor()],
+                    vertex_state: wgpu::VertexStateDescriptor {
+                        index_format: wgpu::IndexFormat::Uint32,
+                        vertex_buffers: &[DebugVertex::descriptor()],
+                    },
                     sample_count: 1,
                     sample_mask: !0,
                     alpha_to_coverage_enabled: false,
@@ -154,17 +158,17 @@ impl TerrainRenderPass {
         })
     }
 
-    pub fn draw(
-        &self,
-        rpass: &mut wgpu::RenderPass,
-        globals_buffer: &GlobalParametersBuffer,
-        _atmosphere_buffer: &AtmosphereBuffer,
-        terrain_geo_buffer: &TerrainGeoBuffer,
-    ) {
+    pub fn draw<'a>(
+        &'a self,
+        mut rpass: wgpu::RenderPass<'a>,
+        globals_buffer: &'a GlobalParametersBuffer,
+        _atmosphere_buffer: &'a AtmosphereBuffer,
+        terrain_geo_buffer: &'a TerrainGeoBuffer,
+    ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.debug_intersect_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0);
-        rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.debug_vertex_buffer(), 0)]);
+        rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0, 0);
+        rpass.set_vertex_buffer(0, &terrain_geo_buffer.debug_vertex_buffer(), 0, 0);
         //rpass.draw_indexed(terrain_geo_buffer.debug_index_range(), 0, 0..1);
         rpass.draw(terrain_geo_buffer.debug_index_range(), 0..1);
 
@@ -182,10 +186,11 @@ impl TerrainRenderPass {
             &[],
         );
         */
-        rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0);
-        rpass.set_vertex_buffers(0, &[(terrain_geo_buffer.patch_vertex_buffer(), 0)]);
+        rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0, 0);
+        rpass.set_vertex_buffer(0, &terrain_geo_buffer.patch_vertex_buffer(), 0, 0);
         for i in 0..terrain_geo_buffer.num_patches() {
             rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
         }
+        rpass
     }
 }

@@ -29,7 +29,7 @@ fn main() -> Fallible<()> {
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
 
     let vert_shader = gpu.create_shader_module(include_bytes!("../target/example.vert.spirv"))?;
     let frag_shader = gpu.create_shader_module(include_bytes!("../target/example.frag.spirv"))?;
@@ -52,7 +52,7 @@ fn main() -> Fallible<()> {
                 entry_point: "main",
             }),
             rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                front_face: wgpu::FrontFace::Ccw,
+                front_face: wgpu::FrontFace::Cw,
                 cull_mode: wgpu::CullMode::Back,
                 depth_bias: 0,
                 depth_bias_slope_scale: 0.0,
@@ -67,15 +67,17 @@ fn main() -> Fallible<()> {
             }],
             depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
                 format: GPU::DEPTH_FORMAT,
-                depth_write_enabled: true,
+                depth_write_enabled: false,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
                 stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
                 stencil_read_mask: 0,
                 stencil_write_mask: 0,
             }),
-            index_format: wgpu::IndexFormat::Uint16,
-            vertex_buffers: &[FullscreenVertex::descriptor()],
+            vertex_state: wgpu::VertexStateDescriptor {
+                index_format: wgpu::IndexFormat::Uint16,
+                vertex_buffers: &[FullscreenVertex::descriptor()],
+            },
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
@@ -102,8 +104,10 @@ fn main() -> Fallible<()> {
         let mut upload_buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut upload_buffers)?;
+            .make_upload_buffer(&camera, &gpu, &mut upload_buffers)?;
 
+        let gb_borrow = globals_buffer.borrow();
+        let fs_borrow = fullscreen_buffer.borrow();
         let mut frame = gpu.begin_frame()?;
         {
             for desc in upload_buffers.drain(..) {
@@ -118,8 +122,8 @@ fn main() -> Fallible<()> {
 
             let mut rpass = frame.begin_render_pass();
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, globals_buffer.borrow().bind_group(), &[]);
-            rpass.set_vertex_buffers(0, &[(fullscreen_buffer.borrow().vertex_buffer(), 0)]);
+            rpass.set_bind_group(0, gb_borrow.bind_group(), &[]);
+            rpass.set_vertex_buffer(0, fs_borrow.vertex_buffer(), 0, 0);
             rpass.draw(0..4, 0..1);
         }
         frame.finish();

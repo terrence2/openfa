@@ -85,7 +85,7 @@ impl TerrainGeoBuffer {
     pub fn new(
         cpu_detail_level: CpuDetailLevel,
         _gen_subdivisions: usize,
-        device: &wgpu::Device,
+        gpu: &GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
         let (max_level, falloff_coefficient, patch_buffer_size) = cpu_detail_level.parameters();
         /*
@@ -117,10 +117,13 @@ impl TerrainGeoBuffer {
             "dbg_vertex_buffer: {:08X}",
             mem::size_of::<DebugVertex>() * DBG_VERT_COUNT
         );
-        let dbg_vertex_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-            size: (mem::size_of::<DebugVertex>() * DBG_VERT_COUNT) as wgpu::BufferAddress,
-            usage: wgpu::BufferUsage::all(),
-        })));
+        let dbg_vertex_buffer = Arc::new(Box::new(gpu.device().create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("terrain-geo-debug-vertices"),
+                size: (mem::size_of::<DebugVertex>() * DBG_VERT_COUNT) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsage::all(),
+            },
+        )));
         let mut dbg_indices = Vec::new();
         dbg_indices.push(0);
         for i in 1u32..DBG_VERT_COUNT as u32 {
@@ -128,21 +131,23 @@ impl TerrainGeoBuffer {
             dbg_indices.push(i);
             dbg_indices.push(i);
         }
-        let dbg_index_buffer = Arc::new(Box::new(
-            device
-                .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
-                .fill_from_slice(&dbg_indices),
-        ));
+        let dbg_index_buffer = Arc::new(Box::new(gpu.push_slice(
+            "terrain-geo-debug-indices",
+            &dbg_indices,
+            wgpu::BufferUsage::all(),
+        )));
 
         println!(
             "patch_vertex_buffer: {:08X}",
             PatchVertex::mem_size() * 3 * patch_buffer_size
         );
-        let patch_vertex_buffer =
-            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+        let patch_vertex_buffer = Arc::new(Box::new(gpu.device().create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("terrain-geo-patch-vertex-buffer"),
                 size: (PatchVertex::mem_size() * 3 * patch_buffer_size) as wgpu::BufferAddress,
                 usage: wgpu::BufferUsage::all(),
-            })));
+            },
+        )));
 
         let mut patch_indices = Vec::new();
         patch_indices.push(0u32);
@@ -151,9 +156,11 @@ impl TerrainGeoBuffer {
         patch_indices.push(2u32);
         patch_indices.push(2u32);
         patch_indices.push(0u32);
-        let patch_index_buffer = device
-            .create_buffer_mapped(patch_indices.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&patch_indices);
+        let patch_index_buffer = gpu.push_slice(
+            "terrain-geo-patch-indices",
+            &patch_indices,
+            wgpu::BufferUsage::all(),
+        );
 
         Ok(Arc::new(RefCell::new(Self {
             patch_buffer_size,
@@ -210,15 +217,13 @@ impl TerrainGeoBuffer {
         while verts.len() < 3 * self.patch_buffer_size {
             verts.push(PatchVertex::empty());
         }
-        let patch_vertex_buffer = gpu
-            .device()
-            .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&verts);
-        upload_buffers.push(CopyBufferDescriptor::new(
-            patch_vertex_buffer,
+        gpu.upload_slice_to(
+            "terrain-geo-patch-vertex-upload-buffer",
+            &verts,
             self.patch_vertex_buffer.clone(),
-            (mem::size_of::<PatchVertex>() * verts.len()) as wgpu::BufferAddress,
-        ));
+            wgpu::BufferUsage::all(),
+            upload_buffers,
+        );
 
         while dbg_verts.len() < DBG_VERT_COUNT {
             dbg_verts.push(DebugVertex {
@@ -226,24 +231,20 @@ impl TerrainGeoBuffer {
                 color: [0f32, 0f32, 1f32, 1f32],
             });
         }
-        let debug_vertex_buffer = gpu
-            .device()
-            .create_buffer_mapped(dbg_verts.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&dbg_verts);
-        upload_buffers.push(CopyBufferDescriptor::new(
-            debug_vertex_buffer,
+        gpu.upload_slice_to(
+            "terrain-geo-debug-vertices-upload-buffer",
+            &dbg_verts,
             self.dbg_vertex_buffer.clone(),
-            (mem::size_of::<DebugVertex>() * dbg_verts.len()) as wgpu::BufferAddress,
-        ));
-        let debug_index_buffer = gpu
-            .device()
-            .create_buffer_mapped(dbg_indices.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&dbg_indices);
-        upload_buffers.push(CopyBufferDescriptor::new(
-            debug_index_buffer,
+            wgpu::BufferUsage::all(),
+            upload_buffers,
+        );
+        gpu.upload_slice_to(
+            "terrain-geo-debug-indices-upload-buffer",
+            &dbg_indices,
             self.dbg_index_buffer.clone(),
-            (mem::size_of::<u32>() * dbg_indices.len()) as wgpu::BufferAddress,
-        ));
+            wgpu::BufferUsage::all(),
+            upload_buffers,
+        );
 
         //println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())

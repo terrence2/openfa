@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-//use global_layout::GlobalSets;
+use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
 use star_catalog::Stars;
@@ -190,7 +190,7 @@ impl StarsBuffer {
         band.base_index as usize + rai
     }
 
-    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
+    pub fn new(gpu: &GPU) -> Fallible<Arc<RefCell<Self>>> {
         trace!("StarsBuffer::new");
 
         let mut offset = 0;
@@ -255,80 +255,73 @@ impl StarsBuffer {
         }
 
         let band_buffer_size = (mem::size_of::<BandMetadata>() * DEC_BANDS.len()) as u64;
-        trace!(
-            "uploading declination bands buffer with {} bytes",
-            band_buffer_size
+        let band_buffer = gpu.push_slice(
+            "stars-band-buffer",
+            &DEC_BANDS,
+            wgpu::BufferUsage::STORAGE_READ,
         );
-        let band_buffer = device
-            .create_buffer_mapped::<BandMetadata>(DEC_BANDS.len(), wgpu::BufferUsage::STORAGE_READ)
-            .fill_from_slice(&DEC_BANDS);
 
         let bin_positions_buffer_size =
             (mem::size_of::<BinPosition>() * bin_positions.len()) as u64;
-        trace!(
-            "uploading bin position buffer with {} bytes",
-            bin_positions_buffer_size
+        let bin_positions_buffer = gpu.push_slice(
+            "stars-bin-positions-buffer",
+            &bin_positions,
+            wgpu::BufferUsage::STORAGE_READ,
         );
-        let bin_positions_buffer = device
-            .create_buffer_mapped::<BinPosition>(
-                bin_positions.len(),
-                wgpu::BufferUsage::STORAGE_READ,
-            )
-            .fill_from_slice(&bin_positions);
 
         let star_indices_buffer_size = (mem::size_of::<u32>() * indices.len()) as u64;
-        trace!(
-            "uploading star index buffer with {} bytes",
-            star_indices_buffer_size
+        let star_indices_buffer = gpu.push_slice(
+            "stars-indices-buffer",
+            &indices,
+            wgpu::BufferUsage::STORAGE_READ,
         );
-        let star_indices_buffer = device
-            .create_buffer_mapped::<u32>(indices.len(), wgpu::BufferUsage::STORAGE_READ)
-            .fill_from_slice(&indices);
 
         let star_buffer_size = (mem::size_of::<StarInst>() * star_buf.len()) as u64;
-        trace!("uploading star buffer with {} bytes", star_buffer_size);
-        let star_buffer = device
-            .create_buffer_mapped::<StarInst>(star_buf.len(), wgpu::BufferUsage::STORAGE_READ)
-            .fill_from_slice(&star_buf);
+        let star_buffer =
+            gpu.push_slice("stars-buffer", &star_buf, wgpu::BufferUsage::STORAGE_READ);
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            bindings: &[
-                wgpu::BindGroupLayoutBinding {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
-                    },
-                },
-                wgpu::BindGroupLayoutBinding {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
-                    },
-                },
-                wgpu::BindGroupLayoutBinding {
-                    binding: 2,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
-                    },
-                },
-                wgpu::BindGroupLayoutBinding {
-                    binding: 3,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
-                    },
-                },
-            ],
-        });
+        let bind_group_layout =
+            gpu.device()
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("stars-bind-group-layout"),
+                    bindings: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: true,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: true,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: true,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: true,
+                            },
+                        },
+                    ],
+                });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("stars-bind-group"),
             layout: &bind_group_layout,
             bindings: &[
                 wgpu::Binding {

@@ -28,6 +28,7 @@ mod precompute;
 use crate::{earth_consts::ATMOSPHERE_PARAMETERS_BUFFER_SIZE, precompute::Precompute};
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
+use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
 use std::{cell::RefCell, mem, sync::Arc, time::Instant};
@@ -40,11 +41,10 @@ pub struct AtmosphereBuffer {
     bind_group: wgpu::BindGroup,
 
     sun_direction_buffer: Arc<Box<wgpu::Buffer>>,
-    sun_direction_buffer_size: wgpu::BufferAddress,
 }
 
 impl AtmosphereBuffer {
-    pub fn new(gpu: &mut gpu::GPU) -> Fallible<Arc<RefCell<Self>>> {
+    pub fn new(gpu: &mut GPU) -> Fallible<Arc<RefCell<Self>>> {
         trace!("AtmosphereBuffer::new");
 
         let precompute_start = Instant::now();
@@ -65,6 +65,7 @@ impl AtmosphereBuffer {
         let camera_and_sun_buffer_size = mem::size_of::<[[f32; 4]; 1]>() as u64;
         let camera_and_sun_buffer = Arc::new(Box::new(gpu.device().create_buffer(
             &wgpu::BufferDescriptor {
+                label: Some("atmosphere-sun-buffer"),
                 size: camera_and_sun_buffer_size,
                 usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
             },
@@ -73,74 +74,79 @@ impl AtmosphereBuffer {
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("atmosphere-bind-group-layout"),
                     bindings: &[
                         // camera and sun
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                         },
                         // atmosphere params
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                         },
                         // transmittance texture
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 2,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
+                                component_type: wgpu::TextureComponentType::Float,
                                 dimension: wgpu::TextureViewDimension::D2,
                             },
                         },
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 3,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
+                            ty: wgpu::BindingType::Sampler { comparison: false },
                         },
                         // irradiance texture
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 4,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
+                                component_type: wgpu::TextureComponentType::Float,
                                 dimension: wgpu::TextureViewDimension::D2,
                             },
                         },
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 5,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
+                            ty: wgpu::BindingType::Sampler { comparison: false },
                         },
                         // scattering texture
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 6,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
+                                component_type: wgpu::TextureComponentType::Float,
                                 dimension: wgpu::TextureViewDimension::D3,
                             },
                         },
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 7,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
+                            ty: wgpu::BindingType::Sampler { comparison: false },
                         },
                         // single mie scattering texture
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 8,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
+                                component_type: wgpu::TextureComponentType::Float,
                                 dimension: wgpu::TextureViewDimension::D3,
                             },
                         },
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 9,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
+                            ty: wgpu::BindingType::Sampler { comparison: false },
                         },
                     ],
                 });
@@ -154,7 +160,7 @@ impl AtmosphereBuffer {
             mipmap_filter: wgpu::FilterMode::Linear,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare_function: wgpu::CompareFunction::Never,
+            compare: wgpu::CompareFunction::Never,
         });
 
         let t2descriptor = wgpu::TextureViewDescriptor {
@@ -178,6 +184,7 @@ impl AtmosphereBuffer {
         };
 
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("atmosphere-bind-group"),
             layout: &bind_group_layout,
             bindings: &[
                 // camera and sun
@@ -247,7 +254,6 @@ impl AtmosphereBuffer {
             bind_group_layout,
             bind_group,
             sun_direction_buffer: camera_and_sun_buffer,
-            sun_direction_buffer_size: camera_and_sun_buffer_size,
         })))
     }
 
@@ -262,7 +268,7 @@ impl AtmosphereBuffer {
     pub fn make_upload_buffer(
         &self,
         sun_direction: Vector3<f32>,
-        device: &wgpu::Device,
+        gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         let buffer = [[
@@ -271,16 +277,13 @@ impl AtmosphereBuffer {
             sun_direction.z as f32,
             0.0f32,
         ]];
-        upload_buffers.push(CopyBufferDescriptor::new(
-            device
-                .create_buffer_mapped::<[f32; 4]>(
-                    1,
-                    wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-                )
-                .fill_from_slice(&buffer),
+        gpu.upload_slice_to(
+            "atmosphere-sun-upload-buffer",
+            &buffer,
             self.sun_direction_buffer.clone(),
-            self.sun_direction_buffer_size,
-        ));
+            wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+            upload_buffers,
+        );
         Ok(())
     }
 }

@@ -124,6 +124,7 @@ impl InstanceBlock {
         let command_buffer_size =
             (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let command_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("shape-instance-command-buffer"),
             size: command_buffer_size,
             usage: wgpu::BufferUsage::all(),
         })));
@@ -131,6 +132,7 @@ impl InstanceBlock {
         let transform_buffer_size =
             (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("shape-instance-xform-buffer"),
             size: transform_buffer_size,
             usage: wgpu::BufferUsage::all(),
         })));
@@ -139,6 +141,7 @@ impl InstanceBlock {
 
         let flag_buffer_size = (mem::size_of::<[u32; 2]>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let flag_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("shape-instance-flag-buffer"),
             size: flag_buffer_size,
             usage: wgpu::BufferUsage::all(),
         })));
@@ -146,6 +149,7 @@ impl InstanceBlock {
         let xform_index_buffer_size = (mem::size_of::<u32>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let xform_index_buffer =
             Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("shape-instance-xform-index-buffer"),
                 size: xform_index_buffer_size,
                 usage: wgpu::BufferUsage::all(),
             })));
@@ -153,11 +157,13 @@ impl InstanceBlock {
         let xform_buffer_size =
             (mem::size_of::<[f32; 6]>() * 14 * BLOCK_SIZE) as wgpu::BufferAddress;
         let xform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("shape-instance-xform-buffer"),
             size: xform_buffer_size,
             usage: wgpu::BufferUsage::all(),
         })));
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("shape-instance-bind-group"),
             layout: &layout,
             bindings: &[
                 wgpu::Binding {
@@ -445,8 +451,9 @@ pub struct ShapeInstanceBuffer {
 impl ShapeInstanceBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("shape-instance-bind-group-layout"),
             bindings: &[
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::StorageBuffer {
@@ -454,7 +461,7 @@ impl ShapeInstanceBuffer {
                         readonly: true,
                     },
                 },
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::StorageBuffer {
@@ -462,7 +469,7 @@ impl ShapeInstanceBuffer {
                         readonly: true,
                     },
                 },
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::StorageBuffer {
@@ -470,7 +477,7 @@ impl ShapeInstanceBuffer {
                         readonly: true,
                     },
                 },
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::StorageBuffer {
@@ -597,7 +604,7 @@ impl ShapeInstanceBuffer {
         &mut self,
         start: &Instant,
         world: &mut World,
-        device: &wgpu::Device,
+        gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
         let now = Instant::now();
@@ -690,50 +697,45 @@ impl ShapeInstanceBuffer {
         }
 
         for block in self.blocks.values() {
-            let source = device
-                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
-                .fill_from_slice(&block.command_buffer_scratch[..block.len()]);
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
+            gpu.upload_slice_to(
+                "shape-instance-command-buffer-scratch",
+                &block.command_buffer_scratch[..block.len()],
                 block.command_buffer.clone(),
-                (mem::size_of::<DrawIndirectCommand>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = device
-                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
-                .fill_from_slice(&block.transform_buffer_scratch[..block.len()]);
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
+            gpu.upload_slice_to(
+                "shape-instance-transform-buffer-scratch",
+                &block.transform_buffer_scratch[..block.len()],
                 block.transform_buffer.clone(),
-                (mem::size_of::<TransformType>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = device
-                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
-                .fill_from_slice(&block.flag_buffer_scratch[..block.len()]);
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
+            gpu.upload_slice_to(
+                "shape-instance-flag-buffer-scratch",
+                &block.flag_buffer_scratch[..block.len()],
                 block.flag_buffer.clone(),
-                (mem::size_of::<[u32; 2]>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = device
-                .create_buffer_mapped(block.len(), wgpu::BufferUsage::all())
-                .fill_from_slice(&block.xform_index_buffer_scratch[..block.len()]);
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
+            gpu.upload_slice_to(
+                "shape-instance-xform-index-buffer-scratch",
+                &block.xform_index_buffer_scratch[..block.len()],
                 block.xform_index_buffer.clone(),
-                (mem::size_of::<u32>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = device
-                .create_buffer_mapped(block.xform_cursor, wgpu::BufferUsage::all())
-                .fill_from_slice(&block.xform_buffer_scratch[..block.xform_cursor]);
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
+            gpu.upload_slice_to(
+                "shape-instance-xform-buffer-scratch",
+                &block.xform_buffer_scratch[..block.xform_cursor],
                 block.xform_buffer.clone(),
-                (mem::size_of::<[f32; 6]>() * block.xform_cursor) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
         }
         Ok(())
     }

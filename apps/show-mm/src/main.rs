@@ -62,7 +62,7 @@ make_frame_graph!(
             t2: T2Buffer,
             text_layout: LayoutBuffer
         };
-        passes: [
+        renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
             shape: ShapeRenderPass { globals, shape_instance_buffer },
@@ -237,9 +237,9 @@ fn main() -> Fallible<()> {
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
-    let fullscreen_buffer = FullscreenBuffer::new(gpu.device())?;
+    let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let stars_buffer = StarsBuffer::new(gpu.device())?;
+    let stars_buffer = StarsBuffer::new(&gpu)?;
     let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
@@ -256,12 +256,13 @@ fn main() -> Fallible<()> {
 
     let fps_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", gpu.device())?
+        .add_screen_text(Font::HUD11, "", &gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
         .with_vertical_position(TextPositionV::Bottom)
-        .with_vertical_anchor(TextAnchorV::Bottom);
+        .with_vertical_anchor(TextAnchorV::Bottom)
+        .handle();
 
     let mut orrery = Orrery::now();
     let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
@@ -315,17 +316,17 @@ fn main() -> Fallible<()> {
             )?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
-            gpu.device(),
+            &gpu,
             &mut buffers,
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),
-            gpu.device(),
+            &gpu,
             &mut buffers,
         )?;
         text_layout_buffer
-            .borrow()
+            .borrow_mut()
             .make_upload_buffer(&gpu, &mut buffers)?;
         frame_graph.run(&mut gpu, buffers)?;
 
@@ -337,6 +338,8 @@ fn main() -> Fallible<()> {
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );
-        fps_handle.set_span(&ts, gpu.device())?;
+        fps_handle
+            .grab(&mut text_layout_buffer.borrow_mut())
+            .set_span(&ts);
     }
 }

@@ -126,7 +126,7 @@ impl<'a> T2BufferFactory<'a> {
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
         let (vertex_buffer, index_buffer, index_count) =
-            self.upload_terrain_textured_simple(&terrain, &atlas, &palette, gpu.device())?;
+            self.upload_terrain_textured_simple(&terrain, &atlas, &palette, gpu)?;
 
         let mut positions = HashMap::new();
         mem::swap(&mut positions, &mut self.memo_position);
@@ -219,11 +219,13 @@ impl<'a> T2BufferFactory<'a> {
         };
         let image_data = image_buf.into_raw();
 
-        let transfer_buffer = gpu
-            .device()
-            .create_buffer_mapped(image_data.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&image_data);
+        let transfer_buffer = gpu.push_buffer(
+            "t2-buffer-atlas-upload",
+            &image_data,
+            wgpu::BufferUsage::all(),
+        );
         let atlas_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("t2-buffer-atlas"),
             size: extent,
             array_layer_count: 1,
             mip_level_count: 1,
@@ -234,13 +236,15 @@ impl<'a> T2BufferFactory<'a> {
         });
         let mut encoder = gpu
             .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("t2-buffer-atlas-upload-command-encoder"),
+            });
         encoder.copy_buffer_to_texture(
             wgpu::BufferCopyView {
                 buffer: &transfer_buffer,
                 offset: 0,
-                row_pitch: extent.width * 4,
-                image_height: extent.height,
+                bytes_per_row: extent.width * 4,
+                rows_per_image: extent.height,
             },
             wgpu::TextureCopyView {
                 texture: &atlas_texture,
@@ -251,7 +255,7 @@ impl<'a> T2BufferFactory<'a> {
             extent,
         );
         gpu.queue_mut().submit(&[encoder.finish()]);
-        gpu.device().poll(true);
+        gpu.device().poll(wgpu::Maintain::Wait);
 
         let atlas_texture_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
             format: wgpu::TextureFormat::Rgba8Unorm,
@@ -271,29 +275,32 @@ impl<'a> T2BufferFactory<'a> {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare_function: wgpu::CompareFunction::Never,
+            compare: wgpu::CompareFunction::Never,
         });
 
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("t2-buffer-bind-group-layout"),
                     bindings: &[
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 multisampled: true,
+                                component_type: wgpu::TextureComponentType::Uint,
                                 dimension: wgpu::TextureViewDimension::D2,
                             },
                         },
-                        wgpu::BindGroupLayoutBinding {
+                        wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler,
+                            ty: wgpu::BindingType::Sampler { comparison: false },
                         },
                     ],
                 });
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("t2-buffer-bind-group"),
             layout: &bind_group_layout,
             bindings: &[
                 wgpu::Binding {
@@ -449,7 +456,7 @@ impl<'a> T2BufferFactory<'a> {
         terrain: &Terrain,
         atlas: &TextureAtlas,
         palette: &Palette,
-        device: &wgpu::Device,
+        gpu: &GPU,
     ) -> Fallible<(wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
@@ -503,22 +510,8 @@ impl<'a> T2BufferFactory<'a> {
             }
         }
 
-        trace!(
-            "uploading vertex buffer with {} bytes",
-            std::mem::size_of::<Vertex>() * verts.len()
-        );
-        let vertex_buffer = device
-            .create_buffer_mapped(verts.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&verts);
-
-        trace!(
-            "uploading index buffer with {} bytes",
-            std::mem::size_of::<u32>() * indices.len()
-        );
-        let index_buffer = device
-            .create_buffer_mapped(indices.len(), wgpu::BufferUsage::all())
-            .fill_from_slice(&indices);
-
+        let vertex_buffer = gpu.push_slice("t2-buffer-vertices", &verts, wgpu::BufferUsage::all());
+        let index_buffer = gpu.push_slice("t2-buffer-indices", &indices, wgpu::BufferUsage::all());
         Ok((vertex_buffer, index_buffer, indices.len() as u32))
     }
 }
