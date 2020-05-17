@@ -96,9 +96,9 @@ impl Globals {
         let dim = gpu.physical_size();
         let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
         let (w, h) = if dim.width > dim.height {
-            (aspect, 1f32)
+            (aspect, -1f32)
         } else {
-            (1f32, 1f32 / aspect)
+            (1f32, -1f32 / aspect)
         };
         self.screen_projection = m2v(&Matrix4::new_nonuniform_scaling(&Vector3::new(w, h, 1f32)));
         self
@@ -118,7 +118,7 @@ impl Globals {
         let view = Isometry3::look_at_rh(
             &eye.point64(),
             &(eye + camera.forward::<Kilometers>()).point64(),
-            &camera.up::<Kilometers>().vec64(),
+            &-camera.up::<Kilometers>().vec64(),
         );
         self.geocenter_km_inverse_view = m2v(&convert(view.inverse().to_homogeneous()));
         self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
@@ -144,7 +144,7 @@ impl Globals {
         let view = Isometry3::look_at_rh(
             &eye.point64(),
             &(eye + camera.forward::<Kilometers>()).point64(),
-            &camera.up::<Kilometers>().vec64(),
+            &-camera.up::<Kilometers>().vec64(),
         );
         self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
         self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));

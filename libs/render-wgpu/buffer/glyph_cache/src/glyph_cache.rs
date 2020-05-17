@@ -41,7 +41,7 @@ impl GlyphCacheIndex {
         Self(index)
     }
 
-    pub fn index(&self) -> usize {
+    pub fn index(self) -> usize {
         self.0
     }
 }

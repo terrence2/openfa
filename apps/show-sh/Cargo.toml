@@ -11,9 +11,6 @@ log = "^ 0.4"
 nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-#wgpu = { git="https://github.com/gfx-rs/wgpu-rs.git", rev="697393df4793e1a58578209885036114adfb9213" }
-wgpu = { git="https://github.com/terrence2/wgpu-rs.git", branch="tdc/wgpu-work-head" }
-#wgpu = { path="/home/terrence/Projects/wgpu-rs" }
 absolute_unit = { path = "../../libs/absolute_unit" }
 atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 camera = { path = "../../libs/render-shared/common/camera" }

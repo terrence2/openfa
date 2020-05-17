@@ -41,7 +41,6 @@ pub struct AtmosphereBuffer {
     bind_group: wgpu::BindGroup,
 
     sun_direction_buffer: Arc<Box<wgpu::Buffer>>,
-    sun_direction_buffer_size: wgpu::BufferAddress,
 }
 
 impl AtmosphereBuffer {
@@ -255,7 +254,6 @@ impl AtmosphereBuffer {
             bind_group_layout,
             bind_group,
             sun_direction_buffer: camera_and_sun_buffer,
-            sun_direction_buffer_size: camera_and_sun_buffer_size,
         })))
     }
 
@@ -279,15 +277,13 @@ impl AtmosphereBuffer {
             sun_direction.z as f32,
             0.0f32,
         ]];
-        upload_buffers.push(CopyBufferDescriptor::new(
-            gpu.push_slice(
-                "atmosphere-sun-upload-buffer",
-                &buffer,
-                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            ),
+        gpu.upload_slice_to(
+            "atmosphere-sun-upload-buffer",
+            &buffer,
             self.sun_direction_buffer.clone(),
-            self.sun_direction_buffer_size,
-        ));
+            wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+            upload_buffers,
+        );
         Ok(())
     }
 }

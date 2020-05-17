@@ -217,16 +217,13 @@ impl TerrainGeoBuffer {
         while verts.len() < 3 * self.patch_buffer_size {
             verts.push(PatchVertex::empty());
         }
-        let patch_vertex_buffer = gpu.push_slice(
+        gpu.upload_slice_to(
             "terrain-geo-patch-vertex-upload-buffer",
             &verts,
-            wgpu::BufferUsage::all(),
-        );
-        upload_buffers.push(CopyBufferDescriptor::new(
-            patch_vertex_buffer,
             self.patch_vertex_buffer.clone(),
-            (mem::size_of::<PatchVertex>() * verts.len()) as wgpu::BufferAddress,
-        ));
+            wgpu::BufferUsage::all(),
+            upload_buffers,
+        );
 
         while dbg_verts.len() < DBG_VERT_COUNT {
             dbg_verts.push(DebugVertex {
@@ -234,26 +231,20 @@ impl TerrainGeoBuffer {
                 color: [0f32, 0f32, 1f32, 1f32],
             });
         }
-        let debug_vertex_buffer = gpu.push_slice(
+        gpu.upload_slice_to(
             "terrain-geo-debug-vertices-upload-buffer",
             &dbg_verts,
-            wgpu::BufferUsage::all(),
-        );
-        upload_buffers.push(CopyBufferDescriptor::new(
-            debug_vertex_buffer,
             self.dbg_vertex_buffer.clone(),
-            (mem::size_of::<DebugVertex>() * dbg_verts.len()) as wgpu::BufferAddress,
-        ));
-        let debug_index_buffer = gpu.push_slice(
+            wgpu::BufferUsage::all(),
+            upload_buffers,
+        );
+        gpu.upload_slice_to(
             "terrain-geo-debug-indices-upload-buffer",
             &dbg_indices,
-            wgpu::BufferUsage::all(),
-        );
-        upload_buffers.push(CopyBufferDescriptor::new(
-            debug_index_buffer,
             self.dbg_index_buffer.clone(),
-            (mem::size_of::<u32>() * dbg_indices.len()) as wgpu::BufferAddress,
-        ));
+            wgpu::BufferUsage::all(),
+            upload_buffers,
+        );
 
         //println!("dt: {:?}", Instant::now() - loop_start);
         Ok(())

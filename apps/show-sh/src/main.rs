@@ -222,9 +222,9 @@ fn main() -> Fallible<()> {
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
-    let fullscreen_buffer = FullscreenBuffer::new(&mut gpu)?;
+    let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-    let stars_buffer = StarsBuffer::new(&mut gpu)?;
+    let stars_buffer = StarsBuffer::new(&gpu)?;
     let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
     let frame_graph = FrameGraph::new(
@@ -240,7 +240,7 @@ fn main() -> Fallible<()> {
 
     let fps_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", &mut gpu)?
+        .add_screen_text(Font::HUD11, "", &gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
@@ -249,7 +249,7 @@ fn main() -> Fallible<()> {
         .handle();
     let state_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", &mut gpu)?
+        .add_screen_text(Font::HUD11, "", &gpu)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
         .with_horizontal_anchor(TextAnchorH::Right)
@@ -314,13 +314,13 @@ fn main() -> Fallible<()> {
         //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
-            &mut gpu,
+            &gpu,
             &mut buffers,
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),
-            &mut gpu,
+            &gpu,
             &mut buffers,
         )?;
         text_layout_buffer

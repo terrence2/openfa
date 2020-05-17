@@ -13,10 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
+use frame_graph::CopyBufferDescriptor;
 use futures::executor::block_on;
 use input::InputSystem;
 use log::trace;
-use std::{io::Cursor, mem};
+use std::{io::Cursor, mem, sync::Arc};
 use winit::dpi::PhysicalSize;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -32,14 +33,14 @@ pub struct DrawIndirectCommand {
 pub struct GPUConfig {
     anisotropic_filtering: bool,
     max_bind_groups: u32,
-    preset_mode: wgpu::PresentMode,
+    present_mode: wgpu::PresentMode,
 }
 impl Default for GPUConfig {
     fn default() -> Self {
         Self {
             anisotropic_filtering: false,
             max_bind_groups: 6,
-            preset_mode: wgpu::PresentMode::Mailbox,
+            present_mode: wgpu::PresentMode::Mailbox,
         }
     }
 }
@@ -116,7 +117,7 @@ impl GPU {
             format: Self::texture_format(),
             width: size.width.floor() as u32,
             height: size.height.floor() as u32,
-            present_mode: config.preset_mode,
+            present_mode: config.present_mode,
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -162,7 +163,7 @@ impl GPU {
             format: Self::texture_format(),
             width: self.size.width.floor() as u32,
             height: self.size.height.floor() as u32,
-            present_mode: self.config.preset_mode,
+            present_mode: self.config.present_mode,
         };
         self.swap_chain = self.device.create_swap_chain(&self.surface, &sc_desc);
         self.depth_texture = self
@@ -184,12 +185,15 @@ impl GPU {
             .create_default_view();
     }
 
-    pub fn push_buffer(
+    pub fn maybe_push_buffer(
         &self,
         label: &'static str,
         data: &[u8],
         usage: wgpu::BufferUsage,
-    ) -> wgpu::Buffer {
+    ) -> Option<wgpu::Buffer> {
+        if data.is_empty() {
+            return None;
+        }
         let size = data.len() as wgpu::BufferAddress;
         trace!("uploading {} with {} bytes", label, size);
         let cpu_buffer = self.device.create_buffer_mapped(&wgpu::BufferDescriptor {
@@ -198,15 +202,18 @@ impl GPU {
             usage,
         });
         cpu_buffer.data.copy_from_slice(data);
-        cpu_buffer.finish()
+        Some(cpu_buffer.finish())
     }
 
-    pub fn push_slice<T: AsBytes>(
+    pub fn maybe_push_slice<T: AsBytes>(
         &self,
         label: &'static str,
         data: &[T],
         usage: wgpu::BufferUsage,
-    ) -> wgpu::Buffer {
+    ) -> Option<wgpu::Buffer> {
+        if data.is_empty() {
+            return None;
+        }
         let size = (mem::size_of::<T>() * data.len()) as wgpu::BufferAddress;
         trace!("uploading {} with {} bytes", label, size);
         let cpu_buffer = self.device.create_buffer_mapped(&wgpu::BufferDescriptor {
@@ -215,7 +222,27 @@ impl GPU {
             usage,
         });
         cpu_buffer.data.copy_from_slice(data.as_bytes());
-        cpu_buffer.finish()
+        Some(cpu_buffer.finish())
+    }
+
+    pub fn push_buffer(
+        &self,
+        label: &'static str,
+        data: &[u8],
+        usage: wgpu::BufferUsage,
+    ) -> wgpu::Buffer {
+        self.maybe_push_buffer(label, data, usage)
+            .expect("push non-empty buffer")
+    }
+
+    pub fn push_slice<T: AsBytes>(
+        &self,
+        label: &'static str,
+        data: &[T],
+        usage: wgpu::BufferUsage,
+    ) -> wgpu::Buffer {
+        self.maybe_push_slice(label, data, usage)
+            .expect("push non-empty slice")
     }
 
     pub fn push_data<T: AsBytes>(
@@ -233,6 +260,23 @@ impl GPU {
         });
         cpu_buffer.data.copy_from_slice(data.as_bytes());
         cpu_buffer.finish()
+    }
+
+    pub fn upload_slice_to<T: AsBytes>(
+        &self,
+        label: &'static str,
+        data: &[T],
+        target: Arc<Box<wgpu::Buffer>>,
+        usage: wgpu::BufferUsage,
+        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+    ) {
+        if let Some(source) = self.maybe_push_slice(label, data, usage) {
+            upload_buffers.push(CopyBufferDescriptor::new(
+                source,
+                target,
+                (mem::size_of::<T>() * data.len()) as wgpu::BufferAddress,
+            ));
+        }
     }
 
     pub fn create_shader_module(&self, spirv: &[u8]) -> Fallible<wgpu::ShaderModule> {

@@ -15,3 +15,4 @@ wgpu = "^ 0.5"
 winit = { git = "https://github.com/rust-windowing/winit", rev = "6f5e7e170cd7bd9be1bb302dd91ebd906d29cfe1" }
 #winit = { version = "0.22.1", features = ["web-sys"] }
 input = { path = "../../../render-wgpu/common/input" }
+frame_graph = { path = "../../../render-wgpu/common/frame_graph" }

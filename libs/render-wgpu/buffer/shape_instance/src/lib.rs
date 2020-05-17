@@ -697,60 +697,45 @@ impl ShapeInstanceBuffer {
         }
 
         for block in self.blocks.values() {
-            let source = gpu.push_slice(
+            gpu.upload_slice_to(
                 "shape-instance-command-buffer-scratch",
                 &block.command_buffer_scratch[..block.len()],
-                wgpu::BufferUsage::all(),
-            );
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
                 block.command_buffer.clone(),
-                (mem::size_of::<DrawIndirectCommand>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = gpu.push_slice(
+            gpu.upload_slice_to(
                 "shape-instance-transform-buffer-scratch",
                 &block.transform_buffer_scratch[..block.len()],
-                wgpu::BufferUsage::all(),
-            );
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
                 block.transform_buffer.clone(),
-                (mem::size_of::<TransformType>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = gpu.push_slice(
+            gpu.upload_slice_to(
                 "shape-instance-flag-buffer-scratch",
                 &block.flag_buffer_scratch[..block.len()],
-                wgpu::BufferUsage::all(),
-            );
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
                 block.flag_buffer.clone(),
-                (mem::size_of::<[u32; 2]>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = gpu.push_slice(
+            gpu.upload_slice_to(
                 "shape-instance-xform-index-buffer-scratch",
                 &block.xform_index_buffer_scratch[..block.len()],
-                wgpu::BufferUsage::all(),
-            );
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
                 block.xform_index_buffer.clone(),
-                (mem::size_of::<u32>() * block.len()) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
 
-            let source = gpu.push_slice(
+            gpu.upload_slice_to(
                 "shape-instance-xform-buffer-scratch",
                 &block.xform_buffer_scratch[..block.xform_cursor],
-                wgpu::BufferUsage::all(),
-            );
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
                 block.xform_buffer.clone(),
-                (mem::size_of::<[f32; 6]>() * block.xform_cursor) as wgpu::BufferAddress,
-            ));
+                wgpu::BufferUsage::all(),
+                upload_buffers,
+            );
         }
         Ok(())
     }
