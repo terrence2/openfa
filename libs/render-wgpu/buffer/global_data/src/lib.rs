@@ -96,9 +96,9 @@ impl Globals {
         let dim = gpu.physical_size();
         let aspect = gpu.aspect_ratio_f32() * 4f32 / 3f32;
         let (w, h) = if dim.width > dim.height {
-            (aspect, 1f32)
+            (aspect, -1f32)
         } else {
-            (1f32, 1f32 / aspect)
+            (1f32, -1f32 / aspect)
         };
         self.screen_projection = m2v(&Matrix4::new_nonuniform_scaling(&Vector3::new(w, h, 1f32)));
         self
@@ -118,7 +118,7 @@ impl Globals {
         let view = Isometry3::look_at_rh(
             &eye.point64(),
             &(eye + camera.forward::<Kilometers>()).point64(),
-            &camera.up::<Kilometers>().vec64(),
+            &-camera.up::<Kilometers>().vec64(),
         );
         self.geocenter_km_inverse_view = m2v(&convert(view.inverse().to_homogeneous()));
         self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
@@ -144,7 +144,7 @@ impl Globals {
         let view = Isometry3::look_at_rh(
             &eye.point64(),
             &(eye + camera.forward::<Kilometers>()).point64(),
-            &camera.up::<Kilometers>().vec64(),
+            &-camera.up::<Kilometers>().vec64(),
         );
         self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
         self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
@@ -156,12 +156,14 @@ impl GlobalParametersBuffer {
     pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
         let buffer_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
         let parameters_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("globals-buffer"),
             size: buffer_size,
             usage: wgpu::BufferUsage::STORAGE_READ | wgpu::BufferUsage::COPY_DST,
         })));
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            bindings: &[wgpu::BindGroupLayoutBinding {
+            label: Some("globals-bind-group-layout"),
+            bindings: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStage::all(),
                 ty: wgpu::BindingType::StorageBuffer {
@@ -172,6 +174,7 @@ impl GlobalParametersBuffer {
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("globals-bind-group"),
             layout: &bind_group_layout,
             bindings: &[wgpu::Binding {
                 binding: 0,
@@ -200,13 +203,13 @@ impl GlobalParametersBuffer {
     }
 
     fn make_gpu_buffer(&self, globals: Globals, gpu: &GPU) -> CopyBufferDescriptor {
-        let source = gpu
-            .device()
-            .create_buffer_mapped::<Globals>(
-                1,
-                wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            )
-            .fill_from_slice(&[globals]);
+        let source_map = gpu.device().create_buffer_mapped(&wgpu::BufferDescriptor {
+            label: Some("global-buffer"),
+            size: self.buffer_size,
+            usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
+        });
+        source_map.data.copy_from_slice(globals.as_bytes());
+        let source = source_map.finish();
         CopyBufferDescriptor::new(source, self.parameters_buffer.clone(), self.buffer_size)
     }
 

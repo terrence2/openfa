@@ -127,9 +127,9 @@ const LENGTH_LENGTHS: [u8; 6] = [2, 35, 36, 53, 38, 23];
 const DISTANCE_LENGTHS: [u8; 7] = [2, 20, 53, 230, 247, 151, 248];
 
 lazy_static! {
-    pub static ref LITERAL_CODES: Huffman = { construct(&LITERAL_LENGTHS).unwrap() };
-    pub static ref LENGTH_CODES: Huffman = { construct(&LENGTH_LENGTHS).unwrap() };
-    pub static ref DISTANCE_CODES: Huffman = { construct(&DISTANCE_LENGTHS).unwrap() };
+    pub static ref LITERAL_CODES: Huffman = construct(&LITERAL_LENGTHS).unwrap();
+    pub static ref LENGTH_CODES: Huffman = construct(&LENGTH_LENGTHS).unwrap();
+    pub static ref DISTANCE_CODES: Huffman = construct(&DISTANCE_LENGTHS).unwrap();
 }
 
 /*

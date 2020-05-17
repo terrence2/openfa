@@ -76,7 +76,7 @@ mod test {
             all_shapes.push(shape_id);
         }
         chunk_man.finish_open_chunks(&mut gpu)?;
-        gpu.device().poll(true);
+        gpu.device().poll(wgpu::Maintain::Wait);
 
         for shape_id in &all_shapes {
             let lifetime = chunk_man.part(*shape_id).widgets();

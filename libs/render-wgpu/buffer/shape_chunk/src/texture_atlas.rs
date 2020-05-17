@@ -164,13 +164,13 @@ impl MegaAtlas {
             }
         }
 
-        let (device, queue) = gpu.device_and_queue_mut();
         let extent = wgpu::Extent3d {
             width: ATLAS_WIDTH as u32,
             height: ATLAS_HEIGHT as u32,
             depth: 1,
         };
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("shape-chunk-texture-atlas"),
             size: extent,
             array_layer_count: self.images.len() as u32,
             mip_level_count: 1,
@@ -189,19 +189,24 @@ impl MegaAtlas {
             array_layer_count: self.images.len() as u32,
         });
 
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { todo: 0 });
+        let mut encoder = gpu
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("shape-chunk-texture-atlas-uploader-command-encoder"),
+            });
         for (i, layer) in self.images.iter().enumerate() {
-            let buffer = device
-                .create_buffer_mapped(ATLAS_PLANE_SIZE, wgpu::BufferUsage::COPY_SRC)
-                .fill_from_slice(&layer);
+            let buffer = gpu.push_buffer(
+                "shape-chunk-texture-atlas-upload-buffer",
+                &layer,
+                wgpu::BufferUsage::COPY_SRC,
+            );
 
             encoder.copy_buffer_to_texture(
                 wgpu::BufferCopyView {
                     buffer: &buffer,
                     offset: 0,
-                    row_pitch: extent.width * 4,
-                    image_height: extent.height,
+                    bytes_per_row: extent.width * 4,
+                    rows_per_image: extent.height,
                 },
                 wgpu::TextureCopyView {
                     texture: &texture,
@@ -212,7 +217,7 @@ impl MegaAtlas {
                 extent,
             );
         }
-        queue.submit(&[encoder.finish()]);
+        gpu.queue_mut().submit(&[encoder.finish()]);
 
         Ok(texture_view)
     }
@@ -232,26 +237,28 @@ impl MegaAtlas {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare_function: wgpu::CompareFunction::Never,
+            compare: wgpu::CompareFunction::Never,
         })
     }
 
     pub fn make_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("shape-chunk-texture-atlas-bind-group-layout"),
             bindings: &[
                 // Shared Shape Texture Atlas
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
                         multisampled: true,
+                        component_type: wgpu::TextureComponentType::Uint,
                         dimension: wgpu::TextureViewDimension::D2Array,
                     },
                 },
-                wgpu::BindGroupLayoutBinding {
+                wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler,
+                    ty: wgpu::BindingType::Sampler { comparison: false },
                 },
             ],
         })

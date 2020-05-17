@@ -222,13 +222,15 @@ impl ClosedChunk {
             v_size + a_size
         );
 
-        let vertex_buffer = gpu
-            .device()
-            .create_buffer_mapped(chunk.vertex_upload_buffer.len(), wgpu::BufferUsage::VERTEX)
-            .fill_from_slice(&chunk.vertex_upload_buffer);
+        let vertex_buffer = gpu.push_slice(
+            "shape-chunk-vertices",
+            &chunk.vertex_upload_buffer,
+            wgpu::BufferUsage::VERTEX,
+        );
 
         let atlas_view = chunk.atlas_builder.finish(gpu)?;
         let atlas_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("shape-chunk-atlas-bind-group"),
             layout,
             bindings: &[
                 // atlas texture
