@@ -29,28 +29,71 @@ use wgpu::BindingType::UniformBuffer;
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct PatchIndex(pub(crate) u32);
 
+impl PatchIndex {
+    fn new(i: usize) -> Self {
+        Self(i as u32)
+    }
+}
+
+fn p(patch_index: PatchIndex) -> usize {
+    patch_index.0 as usize
+}
+
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TreeIndex(pub(crate) u32);
 
-impl From<usize> for TreeIndex {
-    fn from(other: usize) -> Self {
-        Self(other as u32)
+impl TreeIndex {
+    fn new(i: usize) -> Self {
+        Self(i as u32)
     }
+}
+
+fn t(tree_index: TreeIndex) -> usize {
+    tree_index.0 as usize
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct VertexIndex(pub(crate) u32);
 
-impl From<u32> for VertexIndex {
-    fn from(other: u32) -> Self {
-        Self(other)
+impl VertexIndex {
+    fn new(i: usize) -> Self {
+        Self(i as u32)
     }
 }
 
+fn v(vertex_index: VertexIndex) -> usize {
+    vertex_index.0 as usize
+}
+
 struct Tree {
-    parent: TreeIndex, // owns the corners
+    parent: TreeIndex,       // owns the corners
+    patch_index: PatchIndex, // duplicates the vertex data...
     corners: [VertexIndex; 3],
     children: Option<[TreeIndex; 4]>,
+}
+
+impl Tree {
+    fn new_leaf(parent: TreeIndex, patch_index: PatchIndex, corners: [VertexIndex; 3]) -> Self {
+        Self {
+            parent,
+            patch_index,
+            corners,
+            children: None,
+        }
+    }
+
+    fn empty() -> Self {
+        Self {
+            parent: TreeIndex(UNINIT_MARKER),
+            patch_index: PatchIndex(UNINIT_MARKER),
+            corners: [
+                VertexIndex(UNINIT_MARKER),
+                VertexIndex(UNINIT_MARKER),
+                VertexIndex(UNINIT_MARKER),
+            ],
+            children: None,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -112,40 +155,85 @@ impl EdgePair {
             self.sides[0] = other_side;
         }
     }
+
+    fn opposite(&self, side: TreeIndex) -> TreeIndex {
+        if side == self.sides[0] {
+            return self.sides[1];
+        }
+        assert_eq!(side, self.sides[1]);
+        self.sides[0]
+    }
 }
 
 pub(crate) struct PatchTree {
     vertices: Vec<Vector3<f64>>,
     edges: HashMap<Edge, EdgePair>,
     tree: Vec<Tree>,
+    patches: Vec<Patch>,
+    tree_empty_set: BinaryHeap<Reverse<TreeIndex>>,
+    patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
+
+    max_level: usize,
+    depth_levels: Vec<f64>,
+
+    cached_eye_position: Point3<f64>,
 }
 
 impl PatchTree {
     pub(crate) fn new(max_level: usize, falloff_coefficient: f64) -> Self {
+        let mut depth_levels = Vec::new();
+        for i in 0..=max_level {
+            let d = 1f64 * EARTH_RADIUS_KM * 2f64.powf(-(i as f64 * falloff_coefficient));
+            depth_levels.push(d * d);
+        }
+
         let sphere = Icosahedron::new();
         let mut vertices = sphere.verts.clone();
         let mut edges = HashMap::new();
         let mut tree = Vec::new();
+        let mut patches = Vec::new();
         for (i, face) in sphere.faces.iter().enumerate() {
             let face_edges = [
-                Edge::new(face.index0.into(), face.index1.into()),
-                Edge::new(face.index1.into(), face.index2.into()),
-                Edge::new(face.index2.into(), face.index0.into()),
+                Edge::new(VertexIndex::new(face.i0()), VertexIndex::new(face.i1())),
+                Edge::new(VertexIndex::new(face.i1()), VertexIndex::new(face.i2())),
+                Edge::new(VertexIndex::new(face.i2()), VertexIndex::new(face.i0())),
             ];
             for (j, edge) in face_edges.iter().enumerate() {
-                edges
-                    .entry(*edge)
-                    .or_insert(EdgePair::new(i.into(), face.siblings[j].into()));
+                edges.entry(*edge).or_insert(EdgePair::new(
+                    TreeIndex::new(i),
+                    TreeIndex::new(face.siblings[j][0]),
+                ));
             }
             tree.push(Tree {
                 parent: TreeIndex(UNINIT_MARKER),
-                kind: NodeKind::Leaf([face.index0.into(), face.index1.into(), face.index2.into()]),
-            })
+                patch_index: PatchIndex::new(i),
+                corners: [
+                    VertexIndex::new(face.i0()),
+                    VertexIndex::new(face.i1()),
+                    VertexIndex::new(face.i2()),
+                ],
+                children: None,
+            });
+            patches.push(Patch::new());
+            patches[i].change_target(
+                TreeIndex::new(i),
+                [
+                    Point3::from(vertices[face.i0()]),
+                    Point3::from(vertices[face.i1()]),
+                    Point3::from(vertices[face.i2()]),
+                ],
+            );
         }
         Self {
             vertices,
             edges,
-            tree: Vec::new(),
+            tree,
+            patches,
+            tree_empty_set: BinaryHeap::new(),
+            patch_empty_set: BinaryHeap::new(),
+            max_level,
+            depth_levels,
+            cached_eye_position: Point3::new(0f64, 0f64, 0f64),
         }
     }
 
@@ -154,49 +242,65 @@ impl PatchTree {
         camera: &ArcBallCamera,
         live_patches: &mut Vec<PatchIndex>,
     ) {
+        self.cached_eye_position = camera.cartesian_eye_position::<Kilometers>().point64();
         self.subdivide_to_depth();
     }
 
     fn subdivide_to_depth(&mut self) {
         for i in 0..20 {
-            subdivide_to_depth_inner(&self.tree[i]);
+            self.subdivide_to_depth_inner(TreeIndex::new(i), 1);
         }
     }
 
-    fn subdivide_to_depth_inner(&mut self, node: &Tree) {
-        match node.kind {
-            NodeKind::Node(ref children) => {
-                /*
-                if !self
-                    .get_patch(node.patch_index)
-                    .keep(&self.cached_viewable_region, eye_position)
-                {
-                    return;
-                }
-
-                if node
-                    .children
-                    .iter()
-                    .all(|i| self.leaf_is_outside_distance_function(eye_position, level + 1, *i))
-                {
-                    self.rejoin_leaf_patch_into(
-                        node.parent,
-                        node.level,
-                        tree_index,
-                        &node.children,
-                    );
-
-                    live_patches.push(self.tree_node(tree_index).patch_index());
-
-                    return;
-                }
-
-                for i in &node.children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
-                }
-                 */
+    fn subdivide_to_depth_inner(&mut self, tree_index: TreeIndex, level: usize) {
+        if let Some(children) = &self.tree[t(tree_index)].children {
+            /*
+            if !self
+                .get_patch(node.patch_index)
+                .keep(&self.cached_viewable_region, eye_position)
+            {
+                return;
             }
-            NodeKind::Leaf(ref leaf_vertices) => {}
+
+            if node
+                .children
+                .iter()
+                .all(|i| self.leaf_is_outside_distance_function(eye_position, level + 1, *i))
+            {
+                self.rejoin_leaf_patch_into(
+                    node.parent,
+                    node.level,
+                    tree_index,
+                    &node.children,
+                );
+
+                live_patches.push(self.tree_node(tree_index).patch_index());
+
+                return;
+            }
+
+            for i in &node.children {
+                self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
+            }
+             */
+        } else {
+            // Don't split leaves past max level.
+            assert!(level <= self.max_level);
+
+            if level < self.max_level && self.leaf_is_inside_distance_function(level, tree_index) {
+                self.subdivide_leaf(tree_index);
+                //self.apply_distance_function_inner(eye_position, level, tree_index, live_patches);
+                return;
+            }
+
+            /*
+            if self
+                .get_patch(leaf.patch_index)
+                .keep(&self.cached_viewable_region, eye_position)
+            {
+                live_patches.push(leaf.patch_index)
+            }
+             */
         }
     }
 
@@ -216,19 +320,147 @@ impl PatchTree {
         let d2 = patch.distance_squared_to(eye_position);
         d2 > self.depth_levels[level - 1]
     }
+    */
 
-    fn leaf_is_inside_distance_function(
-        &self,
-        eye_position: &Point3<f64>,
-        level: usize,
-        patch_index: PatchIndex,
-    ) -> bool {
+    fn subdivide_edge(
+        &mut self,
+        for_leaf: TreeIndex,
+        i0: VertexIndex,
+        i1: VertexIndex,
+    ) -> VertexIndex {
+        // Find existing edge: we know it exists because the leaf exists.
+        let edge = Edge::new(i0, i1);
+        let pair = &self.edges[&edge];
+        let other_node = &self.tree[t(pair.opposite(for_leaf))];
+        if let Some(children) = &other_node.children {
+            unimplemented!()
+        }
+        let v0 = &self.vertices[v(i0)];
+        let v1 = &self.vertices[v(i1)];
+        let midpoint = IcoSphere::bisect_edge(&v0, &v1).normalize() * EARTH_RADIUS_KM;
+        let index = VertexIndex(self.vertices.len() as u32);
+        self.vertices.push(midpoint);
+        index
+    }
+
+    fn subdivide_leaf(&mut self, tree_index: TreeIndex) {
+        let [i0, i1, i2] = self.tree[t(tree_index)].corners;
+        let a = self.subdivide_edge(tree_index, i0, i1);
+        let b = self.subdivide_edge(tree_index, i1, i2);
+        let c = self.subdivide_edge(tree_index, i2, i0);
+        self.node_mut(tree_index).children = Some([
+            self.allocate_leaf(tree_index, [i0, a, c]),
+            self.allocate_leaf(tree_index, [i1, b, a]),
+            self.allocate_leaf(tree_index, [i2, c, b]),
+            self.allocate_leaf(tree_index, [a, b, c]),
+        ]);
+
+        /*
+        println!("subdivide: {:?}", self.get_patch(patch_index).owner());
+        assert!(self
+            .tree_node(self.get_patch(patch_index).owner())
+            .is_leaf());
+        self.subdivide_count += 1;
+        let current_level = self.tree_node(self.get_patch(patch_index).owner()).level();
+        let next_level = current_level + 1;
+        assert!(next_level <= self.max_level);
+        let owner = self.get_patch(patch_index).owner();
+        let [v0, v1, v2] = self.get_patch(patch_index).points().to_owned();
+        let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
+
+        // Get new points.
+        let a = Point3::from(
+            IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
+        );
+        let b = Point3::from(
+            IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
+        );
+        let c = Point3::from(
+            IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
+        );
+
+        // Allocate geometry to new patches.
+        let children = [
+            self.allocate_leaf(owner, next_level, [v0, a, c]),
+            self.allocate_leaf(owner, next_level, [v1, b, a]),
+            self.allocate_leaf(owner, next_level, [v2, c, b]),
+            self.allocate_leaf(owner, next_level, [a, b, c]),
+        ];
+
+        for i in &children {
+            live_patches.push(self.tree_node(*i).patch_index());
+        }
+
+        // Transform our leaf/patch into a node and clobber the old patch.
+        self.set_tree_node(
+            owner,
+            TreeNode::Node(Node {
+                children,
+                parent,
+                patch_index,
+                level: current_level,
+            }),
+        );
+         */
+    }
+
+    fn leaf_is_inside_distance_function(&self, level: usize, tree_index: TreeIndex) -> bool {
         assert!(level > 0);
-        let patch = self.get_patch(patch_index);
-        let d2 = patch.distance_squared_to(eye_position);
+        let patch = self.patch(self.node(tree_index).patch_index);
+        let d2 = patch.distance_squared_to(&self.cached_eye_position);
         d2 < self.depth_levels[level]
     }
-    */
+
+    fn node(&self, ti: TreeIndex) -> &Tree {
+        &self.tree[t(ti)]
+    }
+
+    fn node_mut(&mut self, ti: TreeIndex) -> &mut Tree {
+        &mut self.tree[t(ti)]
+    }
+
+    fn patch(&self, pi: PatchIndex) -> &Patch {
+        &self.patches[p(pi)]
+    }
+
+    fn patch_mut(&mut self, pi: PatchIndex) -> &mut Patch {
+        &mut self.patches[p(pi)]
+    }
+
+    fn vertex(&self, vi: VertexIndex) -> Vector3<f64> {
+        self.vertices[v(vi)]
+    }
+
+    fn allocate_patch_index(&mut self) -> PatchIndex {
+        if let Some(Reverse(patch_index)) = self.patch_empty_set.pop() {
+            return patch_index;
+        }
+        let patch_index = PatchIndex::new(self.patches.len());
+        self.patches.push(Patch::new());
+        patch_index
+    }
+
+    fn allocate_tree_index(&mut self) -> TreeIndex {
+        if let Some(Reverse(tree_index)) = self.tree_empty_set.pop() {
+            return tree_index;
+        }
+        let tree_index = TreeIndex::new(self.tree.len());
+        self.tree.push(Tree::empty());
+        tree_index
+    }
+
+    fn allocate_leaf(&mut self, parent: TreeIndex, corners: [VertexIndex; 3]) -> TreeIndex {
+        let patch_index = self.allocate_patch_index();
+        let tree_index = self.allocate_tree_index();
+        let pts = [
+            Point3::from(self.vertex(corners[0])),
+            Point3::from(self.vertex(corners[1])),
+            Point3::from(self.vertex(corners[2])),
+        ];
+        self.patch_mut(patch_index).change_target(tree_index, pts);
+        *self.node_mut(tree_index) = Tree::new_leaf(parent, patch_index, corners);
+        tree_index
+    }
 
     pub(crate) fn get_patch(&self, index: PatchIndex) -> &Patch {
         unimplemented!()
