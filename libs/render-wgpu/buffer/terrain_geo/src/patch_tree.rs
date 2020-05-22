@@ -159,11 +159,6 @@ impl PatchTree {
         }
 
         let sphere = IcoSphere::new(0);
-        let cached_eye_position = Point3::new(0f64, 0f64, 0f64);
-        let cached_eye_direction = Vector3::new(1f64, 0f64, 0f64);
-        let cached_viewable_region =
-            [Plane::from_normal_and_distance(Vector3::new(1f64, 0f64, 0f64), 0f64); 6];
-
         let mut patches = Vec::new();
         let mut tree = Vec::new();
         let mut root = Root {
@@ -197,9 +192,12 @@ impl PatchTree {
             subdivide_count: 0,
             rejoin_count: 0,
             visit_count: 0,
-            cached_viewable_region,
-            cached_eye_position,
-            cached_eye_direction,
+            cached_viewable_region: [Plane::from_normal_and_distance(
+                Vector3::new(1f64, 0f64, 0f64),
+                0f64,
+            ); 6],
+            cached_eye_position: Point3::new(0f64, 0f64, 0f64),
+            cached_eye_direction: Vector3::new(1f64, 0f64, 0f64),
         }
     }
 
