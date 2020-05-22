@@ -93,7 +93,6 @@ struct Leaf {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum TreeNode {
-    Root,
     Node(Node),
     Leaf(Leaf),
     Empty,
@@ -170,21 +169,20 @@ impl PatchTree {
         let mut root = Root {
             children: [TreeIndex(0); 20],
         };
-        tree.push(TreeNode::Root);
         for i in 0..20 {
             tree.push(TreeNode::Leaf(Leaf {
                 level: 1,
                 parent: TreeIndex(0),
                 patch_index: PatchIndex(i),
             }));
-            root.children[i] = TreeIndex(i + 1);
+            root.children[i] = TreeIndex(i);
         }
         for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let mut p = Patch::new();
-            p.change_target(TreeIndex(i + 1), [v0, v1, v2]);
+            p.change_target(TreeIndex(i), [v0, v1, v2]);
             patches.push(p)
         }
 
@@ -310,10 +308,6 @@ impl PatchTree {
         }
     }
      */
-
-    fn tree_root(&self) -> TreeNode {
-        self.tree[0]
-    }
 
     fn tree_node(&self, index: TreeIndex) -> TreeNode {
         self.tree[toff(index)]
@@ -446,7 +440,11 @@ impl PatchTree {
         eye_position: &Point3<f64>,
         live_patches: &mut Vec<PatchIndex>,
     ) {
-        self.apply_distance_function_inner(eye_position, 0, TreeIndex(0), live_patches);
+        // We have already applied visibility at this level, so we just need to recurse.
+        let children = self.root.children; // Clone to avoid dual-borrow.
+        for i in &children {
+            self.apply_distance_function_inner(eye_position, 1, *i, live_patches);
+        }
     }
 
     fn apply_distance_function_inner(
@@ -460,14 +458,6 @@ impl PatchTree {
         // TODO: select max level based on height?
 
         match self.tree_node(tree_index) {
-            TreeNode::Root => {
-                // We have already applied visibility at this level, so we just need to recurse.
-                assert_eq!(level, 0);
-                let children = self.root.children; // Clone to avoid dual-borrow.
-                for i in &children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
-                }
-            }
             TreeNode::Node(ref node) => {
                 if !self
                     .get_patch(node.patch_index)
@@ -567,19 +557,18 @@ impl PatchTree {
 
     #[allow(unused)]
     fn format_tree_display(&self) -> String {
-        self.format_tree_display_inner(0, self.tree_root())
+        let mut out = String::new();
+        out += "Root\n";
+        for child in &self.root.children {
+            out += &self.format_tree_display_inner(1, self.tree_node(*child));
+        }
+        out
     }
 
     #[allow(unused)]
     fn format_tree_display_inner(&self, lvl: usize, node: TreeNode) -> String {
         let mut out = String::new();
         match node {
-            TreeNode::Root => {
-                out += "Root\n";
-                for child in &self.root.children {
-                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
-                }
-            }
             TreeNode::Node(ref node) => {
                 let pad = "  ".repeat(lvl);
                 out += &format!("{}Node: {:?}\n", pad, node.children);
