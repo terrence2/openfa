@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(unused)]
 
+use failure::_core::hint::unreachable_unchecked;
 use nalgebra::{convert, RealField, Vector3};
 
 pub struct Face<T: RealField> {
@@ -21,7 +22,7 @@ pub struct Face<T: RealField> {
     pub index1: u32,
     pub index2: u32,
     pub normal: Vector3<T>,
-    pub siblings: [usize; 3], // 0-1, 1-2, 2-0
+    pub siblings: [[usize; 2]; 3], // 0-1, 1-2, 2-0
 }
 
 impl<T: RealField> Face<T> {
@@ -30,9 +31,9 @@ impl<T: RealField> Face<T> {
         i1: u32,
         i2: u32,
         verts: &[Vector3<T>],
-        sib01: usize,
-        sib12: usize,
-        sib20: usize,
+        sib01: [usize; 2],
+        sib12: [usize; 2],
+        sib20: [usize; 2],
     ) -> Self {
         let v0 = &verts[i0 as usize];
         let v1 = &verts[i1 as usize];
@@ -57,6 +58,15 @@ impl<T: RealField> Face<T> {
 
     pub fn i2(&self) -> usize {
         self.index2 as usize
+    }
+
+    pub fn edge(&self, i: usize) -> [usize; 2] {
+        match i {
+            0 => [self.i0(), self.i1()],
+            1 => [self.i1(), self.i2()],
+            2 => [self.i2(), self.i0()],
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -88,30 +98,32 @@ impl<T: RealField> Icosahedron<T> {
         let mut faces = vec![
             // -- 5 faces around point 0
             /* 0 */
-            Face::new(0, 11, 5, &verts, 4, 6, 1),
-            /* 1 */ Face::new(0, 5, 1, &verts, 0, 5, 2),
-            /* 2 */ Face::new(0, 1, 7, &verts, 1, 9, 3),
-            /* 3 */ Face::new(0, 7, 10, &verts, 2, 8, 4),
-            /* 4 */ Face::new(0, 10, 11, &verts, 3, 7, 0),
+            Face::new(0, 11, 5, &verts, [4, 2], [6, 0], [1, 0]),
+            /* 1 */ Face::new(0, 5, 1, &verts, [0, 2], [5, 0], [2, 0]),
+            /* 2 */ Face::new(0, 1, 7, &verts, [1, 2], [9, 0], [3, 0]),
+            /* 3 */ Face::new(0, 7, 10, &verts, [2, 2], [8, 0], [4, 0]),
+            /* 4 */ Face::new(0, 10, 11, &verts, [3, 2], [7, 0], [0, 0]),
             // -- 5 adjacent faces
-            /* 5 */ Face::new(1, 5, 9, &verts, 1, 15, 19),
-            /* 6 */ Face::new(5, 11, 4, &verts, 0, 16, 15),
-            /* 7 */ Face::new(11, 10, 2, &verts, 4, 17, 16),
-            /* 8 */ Face::new(10, 7, 6, &verts, 3, 18, 17),
-            /* 9 */ Face::new(7, 1, 8, &verts, 2, 19, 18),
+            /* 5 */
+            Face::new(1, 5, 9, &verts, [1, 1], [15, 1], [19, 2]),
+            /* 6 */ Face::new(5, 11, 4, &verts, [0, 1], [16, 1], [15, 2]),
+            /* 7 */ Face::new(11, 10, 2, &verts, [4, 1], [17, 1], [16, 2]),
+            /* 8 */ Face::new(10, 7, 6, &verts, [3, 1], [18, 1], [17, 2]),
+            /* 9 */ Face::new(7, 1, 8, &verts, [2, 1], [19, 1], [18, 2]),
             // -- 5 faces around point 3
             /* 10 */
-            Face::new(3, 9, 4, &verts, 14, 15, 11),
-            /* 11 */ Face::new(3, 4, 2, &verts, 10, 16, 12),
-            /* 12 */ Face::new(3, 2, 6, &verts, 11, 17, 13),
-            /* 13 */ Face::new(3, 6, 8, &verts, 12, 18, 14),
-            /* 14 */ Face::new(3, 8, 9, &verts, 13, 19, 10),
+            Face::new(3, 9, 4, &verts, [14, 2], [15, 0], [11, 0]),
+            /* 11 */ Face::new(3, 4, 2, &verts, [10, 2], [16, 0], [12, 0]),
+            /* 12 */ Face::new(3, 2, 6, &verts, [11, 2], [17, 0], [13, 0]),
+            /* 13 */ Face::new(3, 6, 8, &verts, [12, 2], [18, 0], [14, 0]),
+            /* 14 */ Face::new(3, 8, 9, &verts, [13, 2], [19, 0], [10, 0]),
             // -- 5 adjacent faces
-            /* 15 */ Face::new(4, 9, 5, &verts, 10, 5, 6),
-            /* 16 */ Face::new(2, 4, 11, &verts, 11, 6, 7),
-            /* 17 */ Face::new(6, 2, 10, &verts, 12, 7, 8),
-            /* 18 */ Face::new(8, 6, 7, &verts, 13, 8, 9),
-            /* 19 */ Face::new(9, 8, 1, &verts, 14, 9, 5),
+            /* 15 */
+            Face::new(4, 9, 5, &verts, [10, 1], [5, 1], [6, 2]),
+            /* 16 */ Face::new(2, 4, 11, &verts, [11, 1], [6, 1], [7, 2]),
+            /* 17 */ Face::new(6, 2, 10, &verts, [12, 1], [7, 1], [8, 2]),
+            /* 18 */ Face::new(8, 6, 7, &verts, [13, 1], [8, 1], [9, 2]),
+            /* 19 */ Face::new(9, 8, 1, &verts, [14, 1], [9, 1], [5, 2]),
         ];
 
         Self { verts, faces }
@@ -127,5 +139,13 @@ mod test {
         let ico = Icosahedron::<f64>::new();
         assert_eq!(ico.verts.len(), 12);
         assert_eq!(ico.faces.len(), 20);
+
+        for (i, face) in ico.faces.iter().enumerate() {
+            println!("at face: {:?}", i);
+            for (j, [sib, peer_edge, ..]) in face.siblings.iter().enumerate() {
+                assert_eq!(face.edge(j)[0], ico.faces[*sib].edge(*peer_edge)[1]);
+                assert_eq!(face.edge(j)[1], ico.faces[*sib].edge(*peer_edge)[0]);
+            }
+        }
     }
 }
