@@ -459,9 +459,10 @@ impl PatchTree {
                     return;
                 }
 
-                if node.children.iter().all(|i| {
+                let outside = node.children.iter().all(|i| {
                     self.leaf_is_outside_distance_function(&self.cached_eye_position, level + 1, *i)
-                }) {
+                });
+                if outside {
                     self.rejoin_leaf_patch_into(
                         node.parent,
                         node.level,

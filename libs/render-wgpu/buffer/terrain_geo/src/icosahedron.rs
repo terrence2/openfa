@@ -12,9 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(unused)]
-
-use failure::_core::hint::unreachable_unchecked;
 use nalgebra::{convert, RealField, Vector3};
 
 pub struct Face<T: RealField> {
@@ -80,7 +77,7 @@ impl<T: RealField> Icosahedron<T> {
         let t = (T::one() + convert::<f64, T>(5.0).sqrt()) / convert::<f64, T>(2.0);
 
         // The bones of the d12 are 3 orthogonal quads at the origin.
-        let mut verts = vec![
+        let verts = vec![
             Vector3::new(-T::one(), t, T::zero()).normalize(),
             Vector3::new(T::one(), t, T::zero()).normalize(),
             Vector3::new(-T::one(), -t, T::zero()).normalize(),
@@ -95,7 +92,7 @@ impl<T: RealField> Icosahedron<T> {
             Vector3::new(-t, T::zero(), T::one()).normalize(),
         ];
 
-        let mut faces = vec![
+        let faces = vec![
             // -- 5 faces around point 0
             /* 0 */
             Face::new(0, 11, 5, &verts, [4, 2], [6, 0], [1, 0]),
