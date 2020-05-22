@@ -12,11 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::patch::Patch;
+use crate::{icosahedron::Icosahedron, patch::Patch};
 
 use absolute_unit::Kilometers;
 use camera::ArcBallCamera;
-use geometry::{IcoSphere, Plane};
+use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
 use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
@@ -72,6 +72,12 @@ fn poff(pi: TreeIndex) -> usize {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct Peer {
+    peer: TreeIndex,
+    opposite_edge: u8,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Root {
     children: [TreeIndex; 20],
 }
@@ -79,6 +85,7 @@ struct Root {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Node {
     children: [TreeIndex; 4],
+    // peers: [Peer; 3],
     parent: TreeIndex,
     patch_index: PatchIndex,
     level: usize,
@@ -86,6 +93,7 @@ struct Node {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Leaf {
+    // peers: [Peer; 3],
     patch_index: PatchIndex,
     parent: TreeIndex,
     level: usize,
@@ -158,21 +166,19 @@ impl PatchTree {
             depth_levels.push(d * d);
         }
 
-        let sphere = IcoSphere::new(0);
+        let sphere = Icosahedron::new();
         let mut patches = Vec::new();
         let mut tree = Vec::new();
         let mut root = Root {
             children: [TreeIndex(0); 20],
         };
-        for i in 0..20 {
+        for (i, face) in sphere.faces.iter().enumerate() {
             tree.push(TreeNode::Leaf(Leaf {
                 level: 1,
                 parent: TreeIndex(0),
                 patch_index: PatchIndex(i),
             }));
             root.children[i] = TreeIndex(i);
-        }
-        for (i, face) in sphere.faces.iter().enumerate() {
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
@@ -399,15 +405,9 @@ impl PatchTree {
         let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
 
         // Get new points.
-        let a = Point3::from(
-            IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let b = Point3::from(
-            IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let c = Point3::from(
-            IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
-        );
+        let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
+        let b = Point3::from(bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM);
+        let c = Point3::from(bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM);
 
         // Allocate geometry to new patches.
         let children = [

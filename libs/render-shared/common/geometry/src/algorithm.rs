@@ -64,6 +64,10 @@ pub fn compute_normal<T: RealField>(p0: &Point3<T>, p1: &Point3<T>, p2: &Point3<
         .normalize()
 }
 
+pub fn bisect_edge<T: RealField>(v0: &Vector3<T>, v1: &Vector3<T>) -> Vector3<T> {
+    v0 + ((v1 - v0) / convert::<f64, T>(2f64))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

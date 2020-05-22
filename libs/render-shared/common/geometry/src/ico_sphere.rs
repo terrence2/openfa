@@ -12,8 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(unused)]
-
+use crate::algorithm::bisect_edge;
 use nalgebra::Vector3;
 
 pub struct Face {
@@ -106,9 +105,9 @@ impl IcoSphere {
         for _ in 0..iterations {
             let mut next_faces = Vec::new();
             for face in &faces {
-                let a = Self::bisect_edge(&verts[face.i0()], &verts[face.i1()]).normalize();
-                let b = Self::bisect_edge(&verts[face.i1()], &verts[face.i2()]).normalize();
-                let c = Self::bisect_edge(&verts[face.i2()], &verts[face.i0()]).normalize();
+                let a = bisect_edge(&verts[face.i0()], &verts[face.i1()]).normalize();
+                let b = bisect_edge(&verts[face.i1()], &verts[face.i2()]).normalize();
+                let c = bisect_edge(&verts[face.i2()], &verts[face.i0()]).normalize();
 
                 let ia = verts.len() as u32;
                 verts.push(a);
@@ -126,10 +125,6 @@ impl IcoSphere {
         }
 
         IcoSphere { verts, faces }
-    }
-
-    pub fn bisect_edge(v0: &Vector3<f64>, v1: &Vector3<f64>) -> Vector3<f64> {
-        v0 + ((v1 - v0) / 2f64)
     }
 }
 
