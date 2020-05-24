@@ -133,8 +133,14 @@ mod test {
         for (i, face) in ico.faces.iter().enumerate() {
             println!("at face: {:?}", i);
             for (j, [sib, peer_edge, ..]) in face.siblings.iter().enumerate() {
-                assert_eq!(face.edge(j)[0], ico.faces[*sib].edge(*peer_edge)[1]);
-                assert_eq!(face.edge(j)[1], ico.faces[*sib].edge(*peer_edge)[0]);
+                assert_eq!(
+                    face.edge(j)[0],
+                    ico.faces[*sib as usize].edge(*peer_edge as usize)[1]
+                );
+                assert_eq!(
+                    face.edge(j)[1],
+                    ico.faces[*sib as usize].edge(*peer_edge as usize)[0]
+                );
             }
         }
     }
