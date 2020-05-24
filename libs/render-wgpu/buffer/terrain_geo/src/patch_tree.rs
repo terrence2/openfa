@@ -12,11 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::patch::Patch;
+use crate::{icosahedron::Icosahedron, patch::Patch};
 
 use absolute_unit::Kilometers;
+use approx::assert_relative_eq;
 use camera::ArcBallCamera;
-use geometry::{IcoSphere, Plane};
+use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
 use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
@@ -72,6 +73,23 @@ fn poff(pi: TreeIndex) -> usize {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct Peer {
+    peer: TreeIndex,
+    opposite_edge: u8,
+}
+
+impl Peer {
+    fn from_icosahedron(raw: (usize, u8)) -> Self {
+        let (peer, opposite_edge) = raw;
+        assert!(opposite_edge < 3);
+        Self {
+            peer: TreeIndex(peer),
+            opposite_edge,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Root {
     children: [TreeIndex; 20],
 }
@@ -79,6 +97,7 @@ struct Root {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Node {
     children: [TreeIndex; 4],
+    // peers: [Peer; 3],
     parent: TreeIndex,
     patch_index: PatchIndex,
     level: usize,
@@ -86,6 +105,7 @@ struct Node {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Leaf {
+    // peers: [Peer; 3],
     patch_index: PatchIndex,
     parent: TreeIndex,
     level: usize,
@@ -93,7 +113,6 @@ struct Leaf {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum TreeNode {
-    Root,
     Node(Node),
     Leaf(Leaf),
     Empty,
@@ -104,6 +123,13 @@ impl TreeNode {
         match self {
             Self::Leaf(_) => true,
             _ => false,
+        }
+    }
+
+    fn as_node(&self) -> &Node {
+        match self {
+            Self::Node(ref node) => node,
+            _ => panic!("not a node"),
         }
     }
 
@@ -141,6 +167,7 @@ pub(crate) struct PatchTree {
     tree: Vec<TreeNode>,
     tree_empty_set: BinaryHeap<Reverse<TreeIndex>>,
     root: Root,
+    root_peers: [[Option<Peer>; 3]; 20],
 
     subdivide_count: usize,
     rejoin_count: usize,
@@ -159,32 +186,30 @@ impl PatchTree {
             depth_levels.push(d * d);
         }
 
-        let sphere = IcoSphere::new(0);
-        let cached_eye_position = Point3::new(0f64, 0f64, 0f64);
-        let cached_eye_direction = Vector3::new(1f64, 0f64, 0f64);
-        let cached_viewable_region =
-            [Plane::from_normal_and_distance(Vector3::new(1f64, 0f64, 0f64), 0f64); 6];
-
+        let sphere = Icosahedron::new();
         let mut patches = Vec::new();
         let mut tree = Vec::new();
         let mut root = Root {
             children: [TreeIndex(0); 20],
         };
-        tree.push(TreeNode::Root);
-        for i in 0..20 {
+        let mut root_peers = [[None; 3]; 20];
+        for (i, face) in sphere.faces.iter().enumerate() {
+            root_peers[i] = [
+                Some(Peer::from_icosahedron(face.sibling(0))),
+                Some(Peer::from_icosahedron(face.sibling(1))),
+                Some(Peer::from_icosahedron(face.sibling(2))),
+            ];
             tree.push(TreeNode::Leaf(Leaf {
                 level: 1,
                 parent: TreeIndex(0),
                 patch_index: PatchIndex(i),
             }));
-            root.children[i] = TreeIndex(i + 1);
-        }
-        for (i, face) in sphere.faces.iter().enumerate() {
+            root.children[i] = TreeIndex(i);
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let mut p = Patch::new();
-            p.change_target(TreeIndex(i + 1), [v0, v1, v2]);
+            p.change_target(TreeIndex(i), [v0, v1, v2]);
             patches.push(p)
         }
 
@@ -196,12 +221,16 @@ impl PatchTree {
             tree,
             tree_empty_set: BinaryHeap::new(),
             root,
+            root_peers,
             subdivide_count: 0,
             rejoin_count: 0,
             visit_count: 0,
-            cached_viewable_region,
-            cached_eye_position,
-            cached_eye_direction,
+            cached_viewable_region: [Plane::from_normal_and_distance(
+                Vector3::new(1f64, 0f64, 0f64),
+                0f64,
+            ); 6],
+            cached_eye_position: Point3::new(0f64, 0f64, 0f64),
+            cached_eye_direction: Vector3::new(1f64, 0f64, 0f64),
         }
     }
 
@@ -311,10 +340,6 @@ impl PatchTree {
     }
      */
 
-    fn tree_root(&self) -> TreeNode {
-        self.tree[0]
-    }
-
     fn tree_node(&self, index: TreeIndex) -> TreeNode {
         self.tree[toff(index)]
     }
@@ -349,7 +374,7 @@ impl PatchTree {
 
         // Build a view-direction independent tesselation based on the current camera position.
         let reshape_start = Instant::now();
-        self.apply_distance_function(&eye_position, live_patches);
+        self.apply_distance_function(live_patches);
         let reshape_time = Instant::now() - reshape_start;
 
         // Select patches based on visibility.
@@ -394,7 +419,7 @@ impl PatchTree {
     }
 
     fn subdivide_patch(&mut self, patch_index: PatchIndex, live_patches: &mut Vec<PatchIndex>) {
-        println!("subdivide: {:?}", self.get_patch(patch_index).owner());
+        // println!("subdivide: {:?}", self.get_patch(patch_index).owner());
         assert!(self
             .tree_node(self.get_patch(patch_index).owner())
             .is_leaf());
@@ -407,23 +432,18 @@ impl PatchTree {
         let parent = self.tree_node(self.get_patch(patch_index).owner()).parent();
 
         // Get new points.
-        let a = Point3::from(
-            IcoSphere::bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let b = Point3::from(
-            IcoSphere::bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM,
-        );
-        let c = Point3::from(
-            IcoSphere::bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM,
-        );
+        let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
+        let b = Point3::from(bisect_edge(&v1.coords, &v2.coords).normalize() * EARTH_RADIUS_KM);
+        let c = Point3::from(bisect_edge(&v2.coords, &v0.coords).normalize() * EARTH_RADIUS_KM);
 
         // Allocate geometry to new patches.
         let children = [
             self.allocate_leaf(owner, next_level, [v0, a, c]),
             self.allocate_leaf(owner, next_level, [v1, b, a]),
             self.allocate_leaf(owner, next_level, [v2, c, b]),
-            self.allocate_leaf(owner, next_level, [a, b, c]),
+            self.allocate_leaf(owner, next_level, [c, a, b]),
         ];
+        // println!("subdivided {:?} into {:?}", owner, children);
 
         for i in &children {
             live_patches.push(self.tree_node(*i).patch_index());
@@ -441,46 +461,67 @@ impl PatchTree {
         );
     }
 
-    fn apply_distance_function(
-        &mut self,
-        eye_position: &Point3<f64>,
-        live_patches: &mut Vec<PatchIndex>,
+    fn apply_distance_function(&mut self, live_patches: &mut Vec<PatchIndex>) {
+        // We have already applied visibility at this level, so we just need to recurse.
+        let children = self.root.children; // Clone to avoid dual-borrow.
+        for i in &children {
+            let peers = self.root_peers[*i];
+            self.apply_distance_function_inner(1, *i, &peers, live_patches);
+        }
+    }
+
+    fn assert_points_relative_eq(p0: Point3<f64>, p1: Point3<f64>) {
+        assert_relative_eq!(p0.coords[0], p1.coords[0], max_relative = 0.000_001);
+        assert_relative_eq!(p0.coords[1], p1.coords[1], max_relative = 0.000_001);
+        assert_relative_eq!(p0.coords[2], p1.coords[2], max_relative = 0.000_001);
+    }
+
+    fn check_edge_consistency(
+        &self,
+        tree_index: TreeIndex,
+        own_edge_offset: u8,
+        edge: &Option<Peer>,
     ) {
-        self.apply_distance_function_inner(eye_position, 0, TreeIndex(0), live_patches);
+        let own_patch = self.get_patch(self.tree_node(tree_index).patch_index());
+        if let Some(peer) = edge {
+            let peer_patch = self.get_patch(self.tree_node(peer.peer).patch_index());
+            let (s0, s1) = own_patch.edge(own_edge_offset);
+            let (p0, p1) = peer_patch.edge(peer.opposite_edge);
+            Self::assert_points_relative_eq(s0, p1);
+            Self::assert_points_relative_eq(s1, p0);
+        }
     }
 
     fn apply_distance_function_inner(
         &mut self,
-        eye_position: &Point3<f64>,
         level: usize,
         tree_index: TreeIndex,
+        peers: &[Option<Peer>; 3],
         live_patches: &mut Vec<PatchIndex>,
     ) {
         self.visit_count += 1;
+
+        {
+            self.check_edge_consistency(tree_index, 0, &peers[0]);
+            self.check_edge_consistency(tree_index, 1, &peers[1]);
+            self.check_edge_consistency(tree_index, 2, &peers[2]);
+        }
+
         // TODO: select max level based on height?
 
         match self.tree_node(tree_index) {
-            TreeNode::Root => {
-                // We have already applied visibility at this level, so we just need to recurse.
-                assert_eq!(level, 0);
-                let children = self.root.children; // Clone to avoid dual-borrow.
-                for i in &children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
-                }
-            }
             TreeNode::Node(ref node) => {
                 if !self
                     .get_patch(node.patch_index)
-                    .keep(&self.cached_viewable_region, eye_position)
+                    .keep(&self.cached_viewable_region, &self.cached_eye_position)
                 {
                     return;
                 }
 
-                if node
-                    .children
-                    .iter()
-                    .all(|i| self.leaf_is_outside_distance_function(eye_position, level + 1, *i))
-                {
+                let outside = node.children.iter().all(|i| {
+                    self.leaf_is_outside_distance_function(&self.cached_eye_position, level + 1, *i)
+                });
+                if outside {
                     self.rejoin_leaf_patch_into(
                         node.parent,
                         node.level,
@@ -493,8 +534,36 @@ impl PatchTree {
                     return;
                 }
 
-                for i in &node.children {
-                    self.apply_distance_function_inner(eye_position, level + 1, *i, live_patches);
+                for (i, child) in node.children.iter().enumerate() {
+                    let child_peers = match i {
+                        0 => [
+                            self.child_peer_of(peers[0], 1, 2),
+                            self.child_inner_peer_of(node.children[3], 0),
+                            self.child_peer_of(peers[2], 0, 0),
+                        ],
+                        1 => [
+                            self.child_peer_of(peers[1], 1, 2),
+                            self.child_inner_peer_of(node.children[3], 1),
+                            self.child_peer_of(peers[0], 0, 0),
+                        ],
+                        2 => [
+                            self.child_peer_of(peers[2], 1, 2),
+                            self.child_inner_peer_of(node.children[3], 2),
+                            self.child_peer_of(peers[1], 0, 0),
+                        ],
+                        3 => [
+                            self.child_inner_peer_of(node.children[0], 1),
+                            self.child_inner_peer_of(node.children[1], 1),
+                            self.child_inner_peer_of(node.children[2], 1),
+                        ],
+                        _ => unimplemented!(),
+                    };
+                    self.apply_distance_function_inner(
+                        level + 1,
+                        *child,
+                        &child_peers,
+                        live_patches,
+                    );
                 }
             }
             TreeNode::Leaf(ref leaf) => {
@@ -514,27 +583,62 @@ impl PatchTree {
                 assert!(level <= self.max_level);
 
                 if level < self.max_level
-                    && self.leaf_is_inside_distance_function(eye_position, level, leaf.patch_index)
+                    && self.leaf_is_inside_distance_function(
+                        &self.cached_eye_position,
+                        level,
+                        leaf.patch_index,
+                    )
                 {
                     self.subdivide_patch(leaf.patch_index, live_patches);
-                    self.apply_distance_function_inner(
-                        eye_position,
-                        level,
-                        tree_index,
-                        live_patches,
-                    );
+                    self.apply_distance_function_inner(level, tree_index, peers, live_patches);
                     return;
                 }
 
                 if self
                     .get_patch(leaf.patch_index)
-                    .keep(&self.cached_viewable_region, eye_position)
+                    .keep(&self.cached_viewable_region, &self.cached_eye_position)
                 {
                     live_patches.push(leaf.patch_index)
                 }
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
         }
+    }
+
+    fn child_inner_peer_of(&self, peer: TreeIndex, opposite_edge: u8) -> Option<Peer> {
+        Some(Peer {
+            peer,
+            opposite_edge,
+        })
+    }
+
+    // Which child is adjacent depends on what edge of the peer is adjacent to us. Because we are
+    // selecting children anti-clockwise and labeling edges anti-clockwise, we can start with a
+    // base peer assuming edge 0 is adjacent and bump by the edge offset to get the child peer
+    // offset. Yes, this *is* weird, at least until you spend several hours caffinated beyond safe
+    // limits. There are likely more useful patterns lurking.
+    //
+    // Because the zeroth index of every triangle in a subdivision faces outwards, opposite edge
+    // is going to be the same no matter what way the triangle is facing, thus we only need one
+    // `child_edge` indicator, independent of facing.
+    fn child_peer_of(
+        &self,
+        maybe_peer: Option<Peer>,
+        base_child_index: usize,
+        child_edge: u8,
+    ) -> Option<Peer> {
+        if let Some(peer) = maybe_peer {
+            let peer_node = self.tree_node(peer.peer);
+            if peer_node.is_leaf() {
+                return None;
+            }
+            let adjacent_child = (base_child_index + peer.opposite_edge as usize) % 3;
+            return Some(Peer {
+                peer: peer_node.as_node().children[adjacent_child],
+                opposite_edge: child_edge,
+            });
+        }
+        None
     }
 
     fn leaf_is_outside_distance_function(
@@ -567,19 +671,18 @@ impl PatchTree {
 
     #[allow(unused)]
     fn format_tree_display(&self) -> String {
-        self.format_tree_display_inner(0, self.tree_root())
+        let mut out = String::new();
+        out += "Root\n";
+        for child in &self.root.children {
+            out += &self.format_tree_display_inner(1, self.tree_node(*child));
+        }
+        out
     }
 
     #[allow(unused)]
     fn format_tree_display_inner(&self, lvl: usize, node: TreeNode) -> String {
         let mut out = String::new();
         match node {
-            TreeNode::Root => {
-                out += "Root\n";
-                for child in &self.root.children {
-                    out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
-                }
-            }
             TreeNode::Node(ref node) => {
                 let pad = "  ".repeat(lvl);
                 out += &format!("{}Node: {:?}\n", pad, node.children);
