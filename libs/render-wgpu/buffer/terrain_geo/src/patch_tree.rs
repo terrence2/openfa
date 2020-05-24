@@ -465,7 +465,7 @@ impl PatchTree {
         // We have already applied visibility at this level, so we just need to recurse.
         let children = self.root.children; // Clone to avoid dual-borrow.
         for i in &children {
-            let peers = self.root_peers[*i];
+            let peers = self.root_peers[toff(*i)];
             self.apply_distance_function_inner(1, *i, &peers, live_patches);
         }
     }
