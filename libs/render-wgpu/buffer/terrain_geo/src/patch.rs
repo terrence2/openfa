@@ -93,6 +93,15 @@ impl Patch {
         &self.pts
     }
 
+    pub(crate) fn edge(&self, i: u8) -> (Point3<f64>, Point3<f64>) {
+        match i {
+            0 => (self.pts[0], self.pts[1]),
+            1 => (self.pts[1], self.pts[2]),
+            2 => (self.pts[2], self.pts[0]),
+            _ => unreachable!(),
+        }
+    }
+
     pub(crate) fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
         if self.point_is_in_cone(point) {
             let m = point.coords.magnitude();
