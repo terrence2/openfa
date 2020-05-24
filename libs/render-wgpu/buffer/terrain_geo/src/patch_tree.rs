@@ -15,6 +15,7 @@
 use crate::{icosahedron::Icosahedron, patch::Patch};
 
 use absolute_unit::Kilometers;
+use approx::assert_relative_eq;
 use camera::ArcBallCamera;
 use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
@@ -213,7 +214,7 @@ impl PatchTree {
         }
 
         Self {
-            max_level: 2,
+            max_level,
             depth_levels,
             patches,
             patch_empty_set: BinaryHeap::new(),
@@ -371,8 +372,6 @@ impl PatchTree {
                 .min(0f64),
         );
 
-        println!("STARTING: {}", self.format_tree_display());
-
         // Build a view-direction independent tesselation based on the current camera position.
         let reshape_start = Instant::now();
         self.apply_distance_function(live_patches);
@@ -444,7 +443,7 @@ impl PatchTree {
             self.allocate_leaf(owner, next_level, [v2, c, b]),
             self.allocate_leaf(owner, next_level, [c, a, b]),
         ];
-        println!("subdivided {:?} into {:?}", owner, children);
+        // println!("subdivided {:?} into {:?}", owner, children);
 
         for i in &children {
             live_patches.push(self.tree_node(*i).patch_index());
@@ -471,6 +470,12 @@ impl PatchTree {
         }
     }
 
+    fn assert_points_relative_eq(p0: Point3<f64>, p1: Point3<f64>) {
+        assert_relative_eq!(p0.coords[0], p1.coords[0], max_relative = 0.000_001);
+        assert_relative_eq!(p0.coords[1], p1.coords[1], max_relative = 0.000_001);
+        assert_relative_eq!(p0.coords[2], p1.coords[2], max_relative = 0.000_001);
+    }
+
     fn check_edge_consistency(
         &self,
         tree_index: TreeIndex,
@@ -482,8 +487,8 @@ impl PatchTree {
             let peer_patch = self.get_patch(self.tree_node(peer.peer).patch_index());
             let (s0, s1) = own_patch.edge(own_edge_offset);
             let (p0, p1) = peer_patch.edge(peer.opposite_edge);
-            assert_eq!(s0, p1);
-            assert_eq!(s1, p0);
+            Self::assert_points_relative_eq(s0, p1);
+            Self::assert_points_relative_eq(s1, p0);
         }
     }
 
@@ -500,48 +505,6 @@ impl PatchTree {
             self.check_edge_consistency(tree_index, 0, &peers[0]);
             self.check_edge_consistency(tree_index, 1, &peers[1]);
             self.check_edge_consistency(tree_index, 2, &peers[2]);
-            // println!("AT: {:?} => {:?}", tree_index, peers);
-            // println!(
-            //     "Parent: {:?}\n  Peers   :{:?}",
-            //     self.tree_node(tree_index).parent(),
-            //     self.root_peers[self.tree_node(tree_index).parent()],
-            // );
-            let own_patch = self.get_patch(self.tree_node(tree_index).patch_index());
-            for i in 0..3 {
-                if let Some(peer) = peers[i] {
-                    // println!(
-                    //     "  edge: {} <- {:?} | {:?}",
-                    //     i,
-                    //     self.tree_node(peer.peer).parent(),
-                    //     self.root_peers[self.tree_node(peer.peer).parent()]
-                    // );
-                    let peer_patch = self.get_patch(self.tree_node(peer.peer).patch_index());
-                    // println!(
-                    //     "parent:  self-parent {} vs peer-parent {} | {:?}",
-                    //     self.tree_node(tree_index).parent(),
-                    //     self.tree_node(peer.peer).parent(),
-                    //     self.root_peers[self.tree_node(tree_index).parent()]
-                    // );
-                    // println!(
-                    //     "compare: self {}@{} vs peer {}@{}",
-                    //     tree_index, i, peer.peer, peer.opposite_edge
-                    // );
-                    let (s0, s1) = own_patch.edge(i as u8);
-                    let (p0, p1) = peer_patch.edge(peer.opposite_edge);
-                    // println!("s0:{:?}", s0);
-                    // println!("s1:{:?}", s1);
-                    // println!("p0:{:?}", p0);
-                    // println!("p1:{:?}", p1);
-                    // for pt in own_patch.points() {
-                    //     println!("  s: {:?}", pt);
-                    // }
-                    // for pt in peer_patch.points() {
-                    //     println!("  p: {:?}", pt);
-                    // }
-                    assert_eq!(s0, p1);
-                    assert_eq!(s1, p0);
-                }
-            }
         }
 
         // TODO: select max level based on height?
@@ -571,60 +534,30 @@ impl PatchTree {
                     return;
                 }
 
-                println!(
-                    "RECURSE: 0|{} x 1|{} x 2|{}",
-                    peers[0].map_or_else(|| { "x".to_owned() }, |p| format!("{}", p.opposite_edge)),
-                    peers[1].map_or_else(|| { "x".to_owned() }, |p| format!("{}", p.opposite_edge)),
-                    peers[2].map_or_else(|| { "x".to_owned() }, |p| format!("{}", p.opposite_edge)),
-                );
                 for (i, child) in node.children.iter().enumerate() {
                     let child_peers = match i {
                         0 => [
-                            self.child_peer_of_0(peers[0], [1, 2, 0], 2),
-                            Some(Peer {
-                                peer: node.children[3],
-                                opposite_edge: 0,
-                            }),
-                            self.child_peer_of_0(peers[2], [0, 1, 2], 0),
+                            self.child_peer_of(peers[0], 1, 2),
+                            self.child_inner_peer_of(node.children[3], 0),
+                            self.child_peer_of(peers[2], 0, 0),
                         ],
                         1 => [
-                            self.child_peer_of_0(peers[1], [1, 2, 0], 2),
-                            Some(Peer {
-                                peer: node.children[3],
-                                opposite_edge: 1,
-                            }),
-                            self.child_peer_of_0(peers[0], [0, 1, 2], 0),
+                            self.child_peer_of(peers[1], 1, 2),
+                            self.child_inner_peer_of(node.children[3], 1),
+                            self.child_peer_of(peers[0], 0, 0),
                         ],
                         2 => [
-                            self.child_peer_of_0(peers[2], [1, 2, 0], 2),
-                            Some(Peer {
-                                peer: node.children[3],
-                                opposite_edge: 2,
-                            }),
-                            self.child_peer_of_0(peers[1], [0, 1, 2], 0),
+                            self.child_peer_of(peers[2], 1, 2),
+                            self.child_inner_peer_of(node.children[3], 2),
+                            self.child_peer_of(peers[1], 0, 0),
                         ],
                         3 => [
-                            Some(Peer {
-                                peer: node.children[0],
-                                opposite_edge: 1,
-                            }),
-                            Some(Peer {
-                                peer: node.children[1],
-                                opposite_edge: 1,
-                            }),
-                            Some(Peer {
-                                peer: node.children[2],
-                                opposite_edge: 1,
-                            }),
+                            self.child_inner_peer_of(node.children[0], 1),
+                            self.child_inner_peer_of(node.children[1], 1),
+                            self.child_inner_peer_of(node.children[2], 1),
                         ],
                         _ => unimplemented!(),
                     };
-                    println!("CHECK: {}/{:?} | 0 -> {:?}", i, child, child_peers[0]);
-                    self.check_edge_consistency(TreeIndex(*child), 0, &child_peers[0]);
-                    println!("CHECK: {}/{:?} | 1 -> {:?}", i, child, child_peers[1]);
-                    self.check_edge_consistency(TreeIndex(*child), 1, &child_peers[1]);
-                    println!("CHECK: {}/{:?} | 2 -> {:?}", i, child, child_peers[2]);
-                    self.check_edge_consistency(TreeIndex(*child), 2, &child_peers[2]);
                     self.apply_distance_function_inner(
                         level + 1,
                         *child,
@@ -672,10 +605,26 @@ impl PatchTree {
         }
     }
 
+    fn child_inner_peer_of(&self, peer: TreeIndex, opposite_edge: u8) -> Option<Peer> {
+        Some(Peer {
+            peer,
+            opposite_edge,
+        })
+    }
+
+    // Which child is adjacent depends on what edge of the peer is adjacent to us. Because we are
+    // selecting children anti-clockwise and labeling edges anti-clockwise, we can start with a
+    // base peer assuming edge 0 is adjacent and bump by the edge offset to get the child peer
+    // offset. Yes, this *is* weird, at least until you spend several hours caffinated beyond safe
+    // limits. There are likely more useful patterns lurking.
+    //
+    // Because the zeroth index of every triangle in a subdivision faces outwards, opposite edge
+    // is going to be the same no matter what way the triangle is facing, thus we only need one
+    // `child_edge` indicator, independent of facing.
     fn child_peer_of(
         &self,
         maybe_peer: Option<Peer>,
-        child_index: u8,
+        base_child_index: usize,
         child_edge: u8,
     ) -> Option<Peer> {
         if let Some(peer) = maybe_peer {
@@ -683,28 +632,9 @@ impl PatchTree {
             if peer_node.is_leaf() {
                 return None;
             }
+            let adjacent_child = (base_child_index + peer.opposite_edge as usize) % 3;
             return Some(Peer {
-                peer: peer_node.as_node().children[child_index as usize],
-                opposite_edge: child_edge,
-            });
-        }
-        None
-    }
-
-    fn child_peer_of_0(
-        &self,
-        maybe_peer: Option<Peer>,
-        child_indices: [u8; 3],
-        child_edge: u8,
-    ) -> Option<Peer> {
-        if let Some(peer) = maybe_peer {
-            let peer_node = self.tree_node(peer.peer);
-            if peer_node.is_leaf() {
-                return None;
-            }
-            return Some(Peer {
-                peer: peer_node.as_node().children
-                    [child_indices[peer.opposite_edge as usize] as usize],
+                peer: peer_node.as_node().children[adjacent_child],
                 opposite_edge: child_edge,
             });
         }
