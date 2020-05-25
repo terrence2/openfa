@@ -97,7 +97,7 @@ struct Root {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Node {
     children: [TreeIndex; 4],
-    // peers: [Peer; 3],
+    peers: [Option<Peer>; 3],
     patch_index: PatchIndex,
     parent: TreeIndex,
     level: usize,
@@ -537,6 +537,7 @@ impl PatchTree {
                 parent,
                 patch_index,
                 level: current_level,
+                peers: *contextual_peers,
             }),
         );
     }
@@ -637,40 +638,6 @@ impl PatchTree {
                         live_patches,
                     );
                 }
-
-                /*
-                for (i, child) in node.children.iter().enumerate() {
-                    let child_peers = match i {
-                        0 => [
-                            self.child_peer_of(peers[0], 1, 2),
-                            self.child_inner_peer_of(node.children[3], 0),
-                            self.child_peer_of(peers[2], 0, 0),
-                        ],
-                        1 => [
-                            self.child_peer_of(peers[1], 1, 2),
-                            self.child_inner_peer_of(node.children[3], 1),
-                            self.child_peer_of(peers[0], 0, 0),
-                        ],
-                        2 => [
-                            self.child_peer_of(peers[2], 1, 2),
-                            self.child_inner_peer_of(node.children[3], 2),
-                            self.child_peer_of(peers[1], 0, 0),
-                        ],
-                        3 => [
-                            self.child_inner_peer_of(node.children[0], 1),
-                            self.child_inner_peer_of(node.children[1], 1),
-                            self.child_inner_peer_of(node.children[2], 1),
-                        ],
-                        _ => unimplemented!(),
-                    };
-                    self.apply_distance_function_inner(
-                        level + 1,
-                        *child,
-                        &child_peers,
-                        live_patches,
-                    );
-                }
-                */
             }
             TreeNode::Leaf(ref leaf) => {
                 for (a, b) in leaf.peers.iter().zip(peers) {
