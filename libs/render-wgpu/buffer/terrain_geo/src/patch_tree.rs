@@ -98,14 +98,14 @@ struct Root {
 struct Node {
     children: [TreeIndex; 4],
     // peers: [Peer; 3],
-    parent: TreeIndex,
     patch_index: PatchIndex,
+    parent: TreeIndex,
     level: usize,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct Leaf {
-    // peers: [Peer; 3],
+    peers: [Option<Peer>; 3],
     patch_index: PatchIndex,
     parent: TreeIndex,
     level: usize,
@@ -130,6 +130,39 @@ impl TreeNode {
         match self {
             Self::Node(ref node) => node,
             _ => panic!("not a node"),
+        }
+    }
+
+    fn as_leaf_mut(&mut self) -> &mut Leaf {
+        match self {
+            Self::Leaf(ref mut leaf) => leaf,
+            _ => panic!("not a leaf"),
+        }
+    }
+
+    fn peer(&self, edge: u8) -> &Option<Peer> {
+        match self {
+            Self::Leaf(ref leaf) => &leaf.peers[edge as usize],
+            //Self::Node(ref mut node) => node.peers,
+            _ => panic!("Node type does not have a peers list!"),
+        }
+    }
+
+    fn peer_mut(&mut self, edge: u8) -> &mut Option<Peer> {
+        match self {
+            Self::Leaf(ref mut leaf) => &mut leaf.peers[edge as usize],
+            //Self::Node(ref mut node) => node.peers,
+            _ => panic!("Node type does not have a peers list!"),
+        }
+    }
+
+    fn set_peer(&mut self, edge: u8, peer: Peer) {
+        match self {
+            Self::Leaf(ref mut leaf) => {
+                leaf.peers[edge as usize] = Some(peer);
+            }
+            //Self::Node(ref mut node) => node.peers,
+            _ => panic!("Node type does not have a peers list!"),
         }
     }
 
@@ -203,6 +236,7 @@ impl PatchTree {
                 level: 1,
                 parent: TreeIndex(0),
                 patch_index: PatchIndex(i),
+                peers: root_peers[i],
             }));
             root.children[i] = TreeIndex(i);
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
@@ -290,6 +324,7 @@ impl PatchTree {
                 parent,
                 level,
                 patch_index,
+                peers: [None; 3],
             }),
         );
         tree_index
@@ -342,6 +377,10 @@ impl PatchTree {
 
     fn tree_node(&self, index: TreeIndex) -> TreeNode {
         self.tree[toff(index)]
+    }
+
+    fn tree_node_mut(&mut self, index: TreeIndex) -> &mut TreeNode {
+        &mut self.tree[toff(index)]
     }
 
     fn set_tree_node(&mut self, index: TreeIndex, node: TreeNode) {
@@ -398,8 +437,18 @@ impl PatchTree {
         level: usize,
         tree_index: TreeIndex,
         children: &[TreeIndex; 4],
+        contextual_peers: &[Option<Peer>; 3],
     ) {
         self.rejoin_count += 1;
+
+        // Clear peer links before we free the leaves.
+        // Note: skip inner child
+        for i in 0..3 {
+            // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
+            for j in &[0u8, 2u8] {
+                self.update_peer_reverse_pointer(self.tree_node(children[i]).peer(*j), None);
+            }
+        }
 
         // Free the other 3 node/leaf pairs.
         self.free_leaf(children[0]);
@@ -408,17 +457,27 @@ impl PatchTree {
         self.free_leaf(children[3]);
 
         // Replace the current node patch as a leaf patch and free the prior leaf node.
+        // println!(
+        //     "rejoining {:?} into {:?} <- {:?}",
+        //     children, tree_index, contextual_peers
+        // );
         self.set_tree_node(
             tree_index,
             TreeNode::Leaf(Leaf {
                 patch_index: self.tree_node(tree_index).patch_index(),
                 parent: parent_index,
                 level,
+                peers: *contextual_peers,
             }),
         );
     }
 
-    fn subdivide_patch(&mut self, patch_index: PatchIndex, live_patches: &mut Vec<PatchIndex>) {
+    fn subdivide_patch(
+        &mut self,
+        patch_index: PatchIndex,
+        live_patches: &mut Vec<PatchIndex>,
+        contextual_peers: &[Option<Peer>; 3],
+    ) {
         // println!("subdivide: {:?}", self.get_patch(patch_index).owner());
         assert!(self
             .tree_node(self.get_patch(patch_index).owner())
@@ -443,6 +502,27 @@ impl PatchTree {
             self.allocate_leaf(owner, next_level, [v2, c, b]),
             self.allocate_leaf(owner, next_level, [c, a, b]),
         ];
+
+        // Note: we can't fill out inner peer info until after we create children anyway, so just
+        // do the entire thing as a post-pass.
+        let child_peers = self.make_children_peers(children, contextual_peers);
+        for (&child_index, &peers) in children.iter().zip(&child_peers) {
+            self.tree_node_mut(child_index).as_leaf_mut().peers = peers;
+        }
+
+        // Tell our neighbors that we have moved in.
+        // Note: skip inner child
+        for i in 0..3 {
+            // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
+            for j in &[0, 2] {
+                let peer = Some(Peer {
+                    peer: children[i],
+                    opposite_edge: *j as u8,
+                });
+                self.update_peer_reverse_pointer(&child_peers[i][*j], peer);
+            }
+        }
+
         // println!("subdivided {:?} into {:?}", owner, children);
 
         for i in &children {
@@ -459,6 +539,19 @@ impl PatchTree {
                 level: current_level,
             }),
         );
+    }
+
+    fn update_peer_reverse_pointer(
+        &mut self,
+        maybe_peer: &Option<Peer>,
+        new_reverse_peer: Option<Peer>,
+    ) {
+        if let Some(peer) = maybe_peer {
+            // FIXME: actually applies at all levels
+            if self.tree_node(peer.peer).is_leaf() {
+                *self.tree_node_mut(peer.peer).peer_mut(peer.opposite_edge) = new_reverse_peer;
+            }
+        }
     }
 
     fn apply_distance_function(&mut self, live_patches: &mut Vec<PatchIndex>) {
@@ -527,6 +620,7 @@ impl PatchTree {
                         node.level,
                         tree_index,
                         &node.children,
+                        peers,
                     );
 
                     live_patches.push(self.tree_node(tree_index).patch_index());
@@ -534,6 +628,17 @@ impl PatchTree {
                     return;
                 }
 
+                let children_peers = self.make_children_peers(node.children, peers);
+                for (child, child_peers) in node.children.iter().zip(&children_peers) {
+                    self.apply_distance_function_inner(
+                        level + 1,
+                        *child,
+                        child_peers,
+                        live_patches,
+                    );
+                }
+
+                /*
                 for (i, child) in node.children.iter().enumerate() {
                     let child_peers = match i {
                         0 => [
@@ -565,8 +670,12 @@ impl PatchTree {
                         live_patches,
                     );
                 }
+                */
             }
             TreeNode::Leaf(ref leaf) => {
+                for (a, b) in leaf.peers.iter().zip(peers) {
+                    assert_eq!(*a, *b);
+                }
                 /*
                 println!(
                     "lvl: {}; len: {}",
@@ -589,7 +698,7 @@ impl PatchTree {
                         leaf.patch_index,
                     )
                 {
-                    self.subdivide_patch(leaf.patch_index, live_patches);
+                    self.subdivide_patch(leaf.patch_index, live_patches, peers);
                     self.apply_distance_function_inner(level, tree_index, peers, live_patches);
                     return;
                 }
@@ -610,6 +719,35 @@ impl PatchTree {
             peer,
             opposite_edge,
         })
+    }
+
+    fn make_children_peers(
+        &self,
+        children: [TreeIndex; 4],
+        peers: &[Option<Peer>; 3],
+    ) -> [[Option<Peer>; 3]; 4] {
+        [
+            [
+                self.child_peer_of(peers[0], 1, 2),
+                self.child_inner_peer_of(children[3], 0),
+                self.child_peer_of(peers[2], 0, 0),
+            ],
+            [
+                self.child_peer_of(peers[1], 1, 2),
+                self.child_inner_peer_of(children[3], 1),
+                self.child_peer_of(peers[0], 0, 0),
+            ],
+            [
+                self.child_peer_of(peers[2], 1, 2),
+                self.child_inner_peer_of(children[3], 2),
+                self.child_peer_of(peers[1], 0, 0),
+            ],
+            [
+                self.child_inner_peer_of(children[0], 1),
+                self.child_inner_peer_of(children[1], 1),
+                self.child_inner_peer_of(children[2], 1),
+            ],
+        ]
     }
 
     // Which child is adjacent depends on what edge of the peer is adjacent to us. Because we are
