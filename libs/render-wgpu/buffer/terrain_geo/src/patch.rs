@@ -85,8 +85,8 @@ impl Patch {
         assert!(self.planes[0].point_is_in_front(&pts[2]));
         assert!(self.planes[1].point_is_in_front(&pts[0]));
         assert!(self.planes[2].point_is_in_front(&pts[1]));
-        self.imposter_baseline = (&pts[1] - &pts[0]).magnitude() / 2f64;
-        self.imposter_base = Point3::from(&pts[0].coords + &pts[1].coords + &pts[2].coords) / 3f64;
+        self.imposter_baseline = (pts[1] - pts[0]).magnitude() / 2f64;
+        self.imposter_base = Point3::from(pts[0].coords + pts[1].coords + pts[2].coords) / 3f64;
         self.impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
             - self.imposter_base.coords.magnitude())
         .min(self.imposter_baseline / 2.);
@@ -102,9 +102,9 @@ impl Patch {
         // Cross north and eye_direction to get a right vector for the polygon.
         let right = eye_direction.cross(&self.normal).normalize();
         let imposter = [
-            &self.imposter_base + ((-right) * self.imposter_baseline),
-            &self.imposter_base + (&right * self.imposter_baseline),
-            &self.imposter_base + (self.normal * self.impostor_height),
+            self.imposter_base + ((-right) * self.imposter_baseline),
+            self.imposter_base + (right * self.imposter_baseline),
+            self.imposter_base + (self.normal * self.impostor_height),
         ];
         let sa_base = solid_angle(&eye_position, &eye_direction, &self.pts);
         let sa_imp = solid_angle(&eye_position, &eye_direction, &imposter);

@@ -598,10 +598,10 @@ impl PatchTree {
 
         // Clear peer links before we free the leaves.
         // Note: skip inner child
-        for i in 0..3 {
+        for &child in children {
             // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
             for j in &[0u8, 2u8] {
-                self.update_peer_reverse_pointer(self.tree_node(children[i]).peer(*j), None);
+                self.update_peer_reverse_pointer(self.tree_node(child).peer(*j), None);
             }
         }
 
