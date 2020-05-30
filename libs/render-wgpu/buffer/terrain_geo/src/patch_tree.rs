@@ -15,7 +15,7 @@
 use crate::{icosahedron::Icosahedron, patch::Patch};
 
 use absolute_unit::Kilometers;
-use approx::assert_relative_eq;
+use approx::{assert_relative_eq, relative_eq};
 use camera::ArcBallCamera;
 use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
@@ -93,7 +93,7 @@ fn poff(pi: PatchIndex) -> usize {
     pi.0
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct PatchKey {
     solid_angle: f64,
     patch_index: PatchIndex,
@@ -119,7 +119,7 @@ impl PatchKey {
 
 impl PartialEq for PatchKey {
     fn eq(&self, other: &Self) -> bool {
-        self.solid_angle == other.solid_angle
+        self.patch_index == other.patch_index
     }
 }
 
@@ -193,6 +193,13 @@ impl TreeNode {
     fn is_leaf(&self) -> bool {
         match self {
             Self::Leaf(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_node(&self) -> bool {
+        match self {
+            Self::Node(_) => true,
             _ => false,
         }
     }
@@ -276,7 +283,7 @@ pub(crate) struct PatchTree {
     visit_count: usize,
 
     split_queue: BinaryHeap<PatchKey>,
-    //merge_queue: Vec<TreeIndex>,
+    merge_queue: BinaryHeap<Reverse<PatchKey>>,
     cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
@@ -331,7 +338,7 @@ impl PatchTree {
             rejoin_count: 0,
             visit_count: 0,
             split_queue: BinaryHeap::new(),
-            //merge_queue: Vec::new(),
+            merge_queue: BinaryHeap::new(),
             cached_viewable_region: [Plane::from_normal_and_distance(
                 Vector3::new(1f64, 0f64, 0f64),
                 0f64,
@@ -397,6 +404,10 @@ impl PatchTree {
         let tree_index = self.allocate_tree_node();
         self.get_patch_mut(patch_index)
             .change_target(tree_index, pts);
+        let eye_position = self.cached_eye_position;
+        let eye_direction = self.cached_eye_direction;
+        self.get_patch_mut(patch_index)
+            .update_for_view(&eye_position, &eye_direction);
         *self.tree_node_mut(tree_index) = TreeNode::Leaf(Leaf {
             parent,
             level,
@@ -459,6 +470,38 @@ impl PatchTree {
         &mut self.tree[toff(index)]
     }
 
+    fn is_mergable_node(&self, node: &TreeNode) -> bool {
+        for child in &node.as_node().children {
+            if !self.tree_node(*child).is_leaf() {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn max_splittable(&self) -> f64 {
+        self.split_queue
+            .peek()
+            .unwrap_or_else(|| &PatchKey {
+                solid_angle: 0f64,
+                patch_index: PatchIndex(0),
+            })
+            .solid_angle
+    }
+
+    fn min_mergeable(&self) -> f64 {
+        self.merge_queue
+            .peek()
+            .unwrap_or_else(|| {
+                &Reverse(PatchKey {
+                    solid_angle: 0f64,
+                    patch_index: PatchIndex(0),
+                })
+            })
+            .0
+            .solid_angle
+    }
+
     pub(crate) fn optimize_for_view(
         &mut self,
         camera: &ArcBallCamera,
@@ -505,12 +548,32 @@ impl PatchTree {
                     .get_patch(child_patch_index)
                     .keep(&self.cached_viewable_region, &self.cached_eye_position)
                 {
-                    self.split_queue.push(PatchKey::new(
-                        self.get_patch(child_patch_index).solid_angle(),
-                        child_patch_index,
-                    ));
+                    self.split_queue
+                        .push(self.patch_key_for_patch(child_patch_index));
                 }
             }
+        }
+
+        // Update split and merge queue caches with updated solid angles.
+        {
+            let mut split_queue = BinaryHeap::new();
+            std::mem::swap(&mut self.split_queue, &mut split_queue);
+            let mut split_vec = split_queue.into_vec();
+            for key in split_vec.iter_mut() {
+                key.solid_angle = self.get_patch(key.patch_index).solid_angle();
+            }
+            split_queue = BinaryHeap::from(split_vec);
+            std::mem::swap(&mut self.split_queue, &mut split_queue);
+        }
+        {
+            let mut merge_queue = BinaryHeap::new();
+            std::mem::swap(&mut self.merge_queue, &mut merge_queue);
+            let mut merge_vec = merge_queue.into_vec();
+            for Reverse(key) in merge_vec.iter_mut() {
+                key.solid_angle = self.get_patch(key.patch_index).solid_angle();
+            }
+            merge_queue = BinaryHeap::from(merge_vec);
+            std::mem::swap(&mut self.merge_queue, &mut merge_queue);
         }
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
@@ -534,42 +597,81 @@ impl PatchTree {
         //   }
         // }
         // Set Tf = T.
-        /*
-        while self.split_queue.len() < 300 - 2 {
-            if self.split_queue.len() >= 300 {
+
+        // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
+        //println!("{}", self.format_tree_display());
+        while self.split_queue.len() < 100 - 2 || self.max_splittable() > 2.0 * self.min_mergeable()
+        {
+            println!(
+                "{}| {} <- {} vs {}",
+                self.split_queue.len(),
+                self.max_splittable() - self.min_mergeable(),
+                self.max_splittable(),
+                self.min_mergeable(),
+            );
+            //   If T is too large or accurate {
+            if self.split_queue.len() >= 100 {
+                //      Identify lowest-priority (T, TB) in Qm.
+                let bottom_key = self.merge_queue.pop().unwrap().0;
+                let smallest_mergeable = bottom_key.patch_index;
+
+                //      Merge (T, TB).
+                let node_index = self.get_patch(smallest_mergeable).owner();
+                let node = self.tree_node(self.get_patch(smallest_mergeable).owner());
+                self.rejoin_leaf_patch_into(
+                    node.parent(),
+                    node.level(),
+                    node_index,
+                    &node.as_node().children,
+                );
+
+                //      Update queues as follows: {
+                //        Remove all merged children from Qs.
+                for child in &node.as_node().children {}
+            //        Add merge parents T, TB to Qs.
+            //        Remove (T, TB) from Qm.
+            //        Add all newly-mergeable diamonds to Qm.
             } else {
                 // Identify highest-priority T in Qs.
-                let biggest_patch = self.split_queue.pop().unwrap().patch_index;
+                let top_key = self.split_queue.pop().unwrap();
+                let biggest_patch = top_key.patch_index;
 
                 // Force-split T.
-                // let mut removed_patches = Vec::new();
+                let mut removed_nodes = Vec::new();
                 let mut added_patches = Vec::new();
-                self.subdivide_patch(biggest_patch, &mut added_patches);
+                self.subdivide_patch(biggest_patch, &mut removed_nodes, &mut added_patches);
 
                 // Update queues as follows: {
                 //   Add any new triangles in T to Qs.
-                for patch_index in added_patches {
-                    assert!(self
-                        .tree_node(self.get_patch(patch_index).owner())
-                        .is_leaf());
-                    self.split_queue.push(PatchKey::new(
-                        self.get_patch(patch_index).solid_angle(),
-                        patch_index,
-                    ));
+                //   Add all newly-mergeable diamonds to Qm.
+                for &key in &added_patches {
+                    let node = self.tree_node(self.get_patch(key.patch_index).owner());
+                    if node.is_leaf() && node.level() < self.max_level {
+                        println!("adding split <- {:?}", key);
+                        self.split_queue.push(key);
+                    } else if node.is_node() && self.is_mergable_node(&node) {
+                        println!("adding merge <- {:?}", key);
+                        self.merge_queue.push(Reverse(key));
+                    }
                 }
 
                 //   Remove from Qm any diamonds whose children were split.
-                //   Add all newly-mergeable diamonds to Qm.
+                // self.merge_queue = self
+                //     .merge_queue
+                //     .iter()
+                //     .filter(|&key| removed_nodes.contains(key))
+                //     .cloned()
+                //     .collect::<BinaryHeap<_>>();
             }
 
             // PANIC!
-            break;
+            //break;
         }
-         */
 
         // Build a view-direction independent tesselation based on the current camera position.
         let reshape_start = Instant::now();
-        self.apply_distance_function(live_patches);
+        //self.apply_distance_function();
+        self.capture_patches(live_patches);
         let reshape_time = Instant::now() - reshape_start;
 
         // Select patches based on visibility.
@@ -596,8 +698,8 @@ impl PatchTree {
     ) {
         self.rejoin_count += 1;
 
-        // Clear peer links before we free the leaves.
-        // Note: skip inner child
+        // Clear peer's backref links before we free the leaves.
+        // Note: skip inner child links
         for &child in children {
             // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
             for j in &[0u8, 2u8] {
@@ -625,7 +727,12 @@ impl PatchTree {
         });
     }
 
-    fn subdivide_patch(&mut self, patch_index: PatchIndex, live_patches: &mut Vec<PatchIndex>) {
+    fn subdivide_patch(
+        &mut self,
+        patch_index: PatchIndex,
+        removed_nodes: &mut Vec<PatchKey>,
+        added_patches: &mut Vec<PatchKey>,
+    ) {
         // println!("subdivide: {:?}", self.get_patch(patch_index).owner());
         assert!(self
             .tree_node(self.get_patch(patch_index).owner())
@@ -674,8 +781,9 @@ impl PatchTree {
 
         // println!("subdivided {:?} into {:?}", owner, children);
 
+        added_patches.push(self.patch_key_for_node(owner));
         for i in &children {
-            live_patches.push(self.tree_node(*i).patch_index());
+            added_patches.push(self.patch_key_for_node(*i));
         }
 
         // Transform our leaf/patch into a node and clobber the old patch.
@@ -688,6 +796,14 @@ impl PatchTree {
         });
     }
 
+    fn patch_key_for_node(&self, tree_index: TreeIndex) -> PatchKey {
+        self.patch_key_for_patch(self.tree_node(tree_index).patch_index())
+    }
+
+    fn patch_key_for_patch(&self, patch_index: PatchIndex) -> PatchKey {
+        PatchKey::new(self.get_patch(patch_index).solid_angle(), patch_index)
+    }
+
     fn update_peer_reverse_pointer(
         &mut self,
         maybe_peer: &Option<Peer>,
@@ -695,15 +811,6 @@ impl PatchTree {
     ) {
         if let Some(peer) = maybe_peer {
             *self.tree_node_mut(peer.peer).peer_mut(peer.opposite_edge) = new_reverse_peer;
-        }
-    }
-
-    fn apply_distance_function(&mut self, live_patches: &mut Vec<PatchIndex>) {
-        // We have already applied visibility at this level, so we just need to recurse.
-        let children = self.root.children; // Clone to avoid dual-borrow.
-        for i in &children {
-            let peers = self.root_peers[toff(*i)];
-            self.apply_distance_function_inner(1, *i, &peers, live_patches);
         }
     }
 
@@ -730,12 +837,61 @@ impl PatchTree {
         }
     }
 
-    fn apply_distance_function_inner(
+    fn capture_patches(&mut self, live_patches: &mut Vec<PatchIndex>) {
+        // We have already applied visibility at this level, so we just need to recurse.
+        let children = self.root.children; // Clone to avoid dual-borrow.
+        for i in &children {
+            let peers = self.root_peers[toff(*i)];
+            self.capture_live_patches_inner(1, *i, &peers, live_patches);
+        }
+    }
+
+    fn capture_live_patches_inner(
         &mut self,
         level: usize,
         tree_index: TreeIndex,
         peers: &[Option<Peer>; 3],
         live_patches: &mut Vec<PatchIndex>,
+    ) {
+        self.visit_count += 1;
+
+        {
+            for (i, stored_peer) in peers.iter().enumerate() {
+                assert_eq!(*self.tree_node(tree_index).peer(i as u8), *stored_peer);
+                self.check_edge_consistency(tree_index, 0, &peers[0]);
+            }
+        }
+
+        match self.tree_node(tree_index) {
+            TreeNode::Node(ref node) => {
+                let children_peers = self.make_children_peers(node.children, peers);
+                for (child, child_peers) in node.children.iter().zip(&children_peers) {
+                    self.capture_live_patches_inner(level + 1, *child, child_peers, live_patches);
+                }
+            }
+            TreeNode::Leaf(ref leaf) => {
+                // Don't split leaves past max level.
+                assert!(level <= self.max_level);
+                live_patches.push(leaf.patch_index);
+            }
+            TreeNode::Empty => panic!("empty node in patch tree"),
+        }
+    }
+
+    fn apply_distance_function(&mut self) {
+        // We have already applied visibility at this level, so we just need to recurse.
+        let children = self.root.children; // Clone to avoid dual-borrow.
+        for i in &children {
+            let peers = self.root_peers[toff(*i)];
+            self.apply_distance_function_inner(1, *i, &peers);
+        }
+    }
+
+    fn apply_distance_function_inner(
+        &mut self,
+        level: usize,
+        tree_index: TreeIndex,
+        peers: &[Option<Peer>; 3],
     ) {
         self.visit_count += 1;
 
@@ -768,19 +924,12 @@ impl PatchTree {
                         &node.children,
                     );
 
-                    live_patches.push(self.tree_node(tree_index).patch_index());
-
                     return;
                 }
 
                 let children_peers = self.make_children_peers(node.children, peers);
                 for (child, child_peers) in node.children.iter().zip(&children_peers) {
-                    self.apply_distance_function_inner(
-                        level + 1,
-                        *child,
-                        child_peers,
-                        live_patches,
-                    );
+                    self.apply_distance_function_inner(level + 1, *child, child_peers);
                 }
             }
             TreeNode::Leaf(ref leaf) => {
@@ -806,17 +955,11 @@ impl PatchTree {
                         leaf.patch_index,
                     )
                 {
-                    self.subdivide_patch(leaf.patch_index, live_patches);
-                    self.apply_distance_function_inner(level, tree_index, peers, live_patches);
+                    let mut removed_nodes = Vec::new();
+                    let mut added_nodes = Vec::new();
+                    self.subdivide_patch(leaf.patch_index, &mut removed_nodes, &mut added_nodes);
+                    self.apply_distance_function_inner(level, tree_index, peers);
                     return;
-                }
-
-                // FIXME: assert this
-                if self
-                    .get_patch(leaf.patch_index)
-                    .keep(&self.cached_viewable_region, &self.cached_eye_position)
-                {
-                    live_patches.push(leaf.patch_index)
                 }
             }
             TreeNode::Empty => panic!("empty node in patch tree"),
