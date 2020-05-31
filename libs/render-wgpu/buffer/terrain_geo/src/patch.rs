@@ -142,6 +142,8 @@ impl Patch {
         }
     }
 
+    // Might be useful later?
+    #[allow(unused)]
     pub(crate) fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
         if self.point_is_in_cone(point) {
             let m = point.coords.magnitude();
