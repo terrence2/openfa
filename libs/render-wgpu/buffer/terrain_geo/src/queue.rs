@@ -14,12 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
     patch::Patch,
-    patch_tree::{poff, toff, PatchIndex, PatchTree, TreeIndex, TreeNode},
+    patch_tree::{poff, toff, PatchTree, TreeIndex, TreeNode},
 };
 use float_ord::FloatOrd;
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BinaryHeap, HashSet},
     fmt,
 };
 
@@ -150,10 +150,6 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
     }
 
     pub(crate) fn insert(&mut self, ti: TreeIndex, solid_angle: f64) {
-        if ti == TreeIndex(15) {
-            println!("{:?}", self);
-            println!("insert: {:?}", ti);
-        }
         if self.contents.contains(&ti) {
             // Direct, simple duplicate.
             return;
@@ -169,22 +165,12 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
     }
 
     pub(crate) fn remove(&mut self, ti: TreeIndex) {
-        if ti == TreeIndex(15) {
-            println!("{:?}", self);
-            println!("remove: {:?}", ti);
-        }
         if !self.contents.contains(&ti) {
             // Note: either never added or already in removals
             return;
         }
         self.contents.remove(&ti);
         self.removals.insert(ti);
-    }
-
-    pub(crate) fn remove_all(&mut self, tis: &[TreeIndex]) {
-        for ti in tis {
-            self.remove(*ti);
-        }
     }
 
     pub(crate) fn peek_value(&mut self) -> f64 {
@@ -203,7 +189,6 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
     pub(crate) fn pop(&mut self) -> TreeIndex {
         loop {
             let value = self.heap.pop().expect("non-empty heap in pop");
-            println!("pop: {:?}", value.tree_index());
             if self.removals.contains(&value.tree_index()) {
                 assert!(!self.contents.contains(&value.tree_index()));
                 self.removals.remove(&value.tree_index());

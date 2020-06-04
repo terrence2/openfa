@@ -24,11 +24,7 @@ use camera::ArcBallCamera;
 use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
-use std::{
-    cmp::{Ordering, Reverse},
-    collections::{BinaryHeap, HashSet},
-    time::Instant,
-};
+use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
 
 // Index into the tree vec. Note, debug builds do not handle the struct indirection well,
 // so ironically release has better protections against misuse.
@@ -95,56 +91,6 @@ pub(crate) struct PatchIndex(pub(crate) usize);
 
 pub(crate) fn poff(pi: PatchIndex) -> usize {
     pi.0
-}
-
-#[derive(Debug, Copy, Clone)]
-struct PatchKey {
-    solid_angle: f64,
-    patch_index: PatchIndex,
-}
-
-impl PatchKey {
-    /*
-    fn empty(patch_index: PatchIndex) -> Self {
-        Self {
-            solid_angle: 0f64,
-            patch_index,
-        }
-    }
-     */
-
-    fn new(solid_angle: f64, patch_index: PatchIndex) -> Self {
-        Self {
-            solid_angle,
-            patch_index,
-        }
-    }
-}
-
-impl PartialEq for PatchKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.patch_index == other.patch_index
-    }
-}
-
-impl Eq for PatchKey {}
-
-impl Ord for PatchKey {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.solid_angle < other.solid_angle {
-            Ordering::Less
-        } else if self.solid_angle > other.solid_angle {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
-    }
-}
-
-impl PartialOrd for PatchKey {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -304,12 +250,6 @@ impl PatchTree {
         }
     }
 
-    /*
-    pub(crate) fn get_patch_node(&self, index: PatchIndex) -> TreeNode {
-        self.tree_node(self.get_patch(index).owner())
-    }
-     */
-
     pub(crate) fn get_patch(&self, index: PatchIndex) -> &Patch {
         &self.patches[poff(index)]
     }
@@ -383,45 +323,6 @@ impl PatchTree {
         self.free_tree_node(leaf_index);
     }
 
-    /*
-    // Ensure that patches are linear by doing tail-swap removals from the empty patch list.
-    fn compact_patches(&mut self) {
-        while let Some(empty_index) = self.patch_empty_set.pop() {
-            let mut last_index = PatchIndex(self.patches.len() - 1);
-            while self.patches[last_index.0].is_tombstone() {
-                let _ = self.patches.pop().unwrap();
-                last_index = PatchIndex(self.patches.len() - 1);
-            }
-            if empty_index.0 >= self.patches.len() {
-                continue;
-            }
-            if empty_index != last_index {
-                self.patches[empty_index.0] = self.patches[last_index.0];
-                self.tree[self.patches[empty_index.0].owner().0]
-                    .as_leaf_mut()
-                    .patch_index = empty_index;
-            }
-            let _ = self.patches.pop().unwrap();
-        }
-    }
-
-    fn order_patches(&mut self) {
-        self.patches.sort_by(|a, b| {
-            assert!(a.is_alive());
-            assert!(b.is_alive());
-            if a > b {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        });
-        // TODO: measure to see if an indirection buffer is faster than this fixup + the extra overhead of copying patches around.
-        for (i, patch) in self.patches.iter().enumerate() {
-            self.tree[patch.owner().0].as_leaf_mut().patch_index = PatchIndex(i);
-        }
-    }
-     */
-
     fn tree_node(&self, tree_index: TreeIndex) -> &TreeNode {
         self.tree[toff(tree_index)].as_ref().unwrap()
     }
@@ -449,74 +350,15 @@ impl PatchTree {
 
     fn check_queues(&self) {
         self.split_queue.assert_splittable(self);
-        /*
-        let mut dedup_split = HashSet::new();
-        for key in self.split_queue.iter() {
-            assert!(self.is_splittable_patch_key(key));
-            assert!(!dedup_split.contains(&key.patch_index));
-            dedup_split.insert(key.patch_index);
-        }
-        */
         self.merge_queue.assert_mergeable(self);
-        /*
-        let mut dedup_merge = HashSet::new();
-        for key in self.merge_queue.iter() {
-            assert!(self.is_mergeable_patch_key(&key.0));
-            //assert!(!dedup_split.contains(&key.0.patch_index));
-            assert!(!dedup_merge.contains(&key.0.patch_index));
-            dedup_merge.insert(key.0.patch_index);
-        }
-         */
     }
 
     fn update_splittable_cache(&mut self) {
         self.split_queue.update_cache(&self.tree, &self.patches);
-        /*
-        // FIXME: can we cache this?
-        let mut split_queue = BinaryHeap::new();
-        std::mem::swap(&mut self.split_queue, &mut split_queue);
-        let mut split_vec = split_queue.into_vec();
-        for key in split_vec.iter_mut() {
-            key.solid_angle = self.get_patch(key.patch_index).solid_angle();
-        }
-        split_queue = BinaryHeap::from(split_vec);
-        std::mem::swap(&mut self.split_queue, &mut split_queue);
-         */
-    }
-
-    fn remove_patches_from_split_queue(&mut self, removals: &[TreeIndex]) {
-        self.split_queue.remove_all(removals);
-        /*
-        // FIXME: can we cache this?
-        let mut split_queue = BinaryHeap::new();
-        std::mem::swap(&mut self.split_queue, &mut split_queue);
-        let mut split_vec = split_queue.into_vec();
-        // FIXME: Use drain_filter to re-use the allocation; currently only available in nightly.
-        split_vec = split_vec
-            .drain(..)
-            .filter(|&key| !removals.contains(&key.patch_index))
-            .collect::<Vec<_>>();
-        // O(n) rebuild of the queue.
-        split_queue = BinaryHeap::from(split_vec);
-        std::mem::swap(&mut self.split_queue, &mut split_queue);
-         */
     }
 
     fn max_splittable(&mut self) -> f64 {
         self.split_queue.peek_value()
-        /*
-        self.split_queue
-            .peek()
-            .unwrap_or_else(|| &PatchKey {
-                solid_angle: 0f64,
-                patch_index: PatchIndex(0),
-            })
-            .solid_angle
-         */
-    }
-
-    fn is_splittable_patch_key(&self, key: &PatchKey) -> bool {
-        self.patch_node(key.patch_index).is_leaf()
     }
 
     pub(crate) fn is_splittable_node(&self, ti: TreeIndex) -> bool {
@@ -526,51 +368,10 @@ impl PatchTree {
 
     fn update_mergeable_cache(&mut self) {
         self.merge_queue.update_cache(&self.tree, &self.patches);
-        /*
-        // FIXME: can we cache this?
-        let mut merge_queue = BinaryHeap::new();
-        std::mem::swap(&mut self.merge_queue, &mut merge_queue);
-        let mut merge_vec = merge_queue.into_vec();
-        for Reverse(key) in merge_vec.iter_mut() {
-            key.solid_angle = self.get_patch(key.patch_index).solid_angle();
-        }
-        merge_queue = BinaryHeap::from(merge_vec);
-        std::mem::swap(&mut self.merge_queue, &mut merge_queue);
-         */
-    }
-
-    fn remove_patches_from_merge_queue(&mut self, removals: &[TreeIndex]) {
-        self.merge_queue.remove_all(removals);
-        /*
-        // FIXME: can we cache this?
-        let mut merge_queue = BinaryHeap::new();
-        std::mem::swap(&mut self.merge_queue, &mut merge_queue);
-        let mut merge_vec = merge_queue.into_vec();
-        // FIXME: Use drain_filter to re-use the allocation; currently only available in nightly.
-        merge_vec = merge_vec
-            .drain(..)
-            .filter(|&Reverse(key)| !removals.contains(&key.patch_index))
-            .collect::<Vec<_>>();
-        // O(n) rebuild of the queue
-        merge_queue = BinaryHeap::from(merge_vec);
-        std::mem::swap(&mut self.merge_queue, &mut merge_queue);
-         */
     }
 
     fn min_mergeable(&mut self) -> f64 {
         self.merge_queue.peek_value()
-        /*
-        self.merge_queue
-            .peek()
-            .unwrap_or_else(|| {
-                &Reverse(PatchKey {
-                    solid_angle: 0f64,
-                    patch_index: PatchIndex(0),
-                })
-            })
-            .0
-            .solid_angle
-             */
     }
 
     pub(crate) fn is_mergeable_node(&self, ti: TreeIndex) -> bool {
@@ -690,36 +491,9 @@ impl PatchTree {
                 //      Merge (T, TB).
                 let node_index = self.get_patch(smallest_mergeable).owner();
                 let node = *self.tree_node(node_index);
-                let split_removals = *node.children();
                 self.rejoin_leaf_patch_into(node.parent, node.level, node_index, node.children());
-
-                /*
-                //      Update queues as follows: {
-                //        Remove all merged children from Qs.
-                self.remove_patches_from_split_queue(&split_removals);
                 self.check_queues();
-                //        Add merge parents T, TB to Qs.
-                //self.split_queue.push(self.patch_key_for_node(node_index));
-                self.split_queue
-                    .insert(node_index, self.tree_patch(node_index).solid_angle());
-                self.check_queues();
-                //        Remove (T, TB) from Qm.
-                self.remove_patches_from_merge_queue(&[node_index]);
-                self.check_queues();
-                //        Add all newly-mergeable diamonds to Qm.
-                for (i, maybe_node) in self.tree.iter().enumerate() {
-                    if let Some(node) = maybe_node {
-                        if node.is_node() && self.is_mergable_node(node) {
-                            println!("ADD MERGEABLE!");
-                            self.merge_queue.insert(
-                                TreeIndex(i),
-                                self.get_patch(node.patch_index).solid_angle(),
-                            );
-                        }
-                    }
-                }
-                 */
-                self.check_queues();
+                self.check_tree();
             } else {
                 if self.split_queue.len() == 0 {
                     println!("WOULD SPLIT BUT NOTHING TO SPLIT");
@@ -734,6 +508,7 @@ impl PatchTree {
                 // FIXME: use smallvec for these
                 self.subdivide_patch(biggest_patch);
                 self.check_queues();
+                self.check_tree();
             }
 
             let mut tmp = Vec::new();
@@ -783,13 +558,14 @@ impl PatchTree {
         for &child in children.iter().take(3) {
             // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
             for j in &[0u8, 2u8] {
-                let node = self.tree_node(child);
                 println!(
                     "clearing input pointer into {:?} from {:?}",
                     child,
-                    *node.peer(*j)
+                    *self.tree_node(child).peer(*j)
                 );
-                self.update_peer_reverse_pointer(*node.peer(*j), None);
+                // FIXME: We actually want to set the reverse peer to our parent sometimes maybe?
+                //        Sketch out the various cases and think it through slowly.
+                self.update_peer_reverse_pointer(*self.tree_node(child).peer(*j), None);
             }
             self.free_leaf(child);
             //        Remove all merged children from Qs.
@@ -844,9 +620,7 @@ impl PatchTree {
             //     i,
             //     self.patch_node(patch_index).peer(i)
             // );
-            if let Some(peer) = self.patch_node(patch_index).peer(own_edge_offset) {
-                // TODO:
-            } else {
+            if self.patch_node(patch_index).peer(own_edge_offset).is_none() {
                 let parent = self.tree_node(self.patch_node(patch_index).parent);
                 let offset_in_parent = parent.offset_of_child(self.get_patch(patch_index).owner());
                 let parent_edge_offset =
@@ -865,7 +639,7 @@ impl PatchTree {
                 println!("  parent_peer: {:?}", parent_peer);
                 assert!(peer_node.is_leaf());
                 self.check_tree();
-                self.subdivide_patch(peer_node.patch_index);
+                self.subdivide_patch(self.tree_node(parent_peer).patch_index);
                 self.check_tree();
             }
         }
@@ -943,14 +717,6 @@ impl PatchTree {
         };
     }
 
-    fn patch_key_for_node(&self, tree_index: TreeIndex) -> PatchKey {
-        self.patch_key_for_patch(self.tree_node(tree_index).patch_index())
-    }
-
-    fn patch_key_for_patch(&self, patch_index: PatchIndex) -> PatchKey {
-        PatchKey::new(self.get_patch(patch_index).solid_angle(), patch_index)
-    }
-
     fn update_peer_reverse_pointer(
         &mut self,
         maybe_peer: Option<Peer>,
@@ -982,6 +748,20 @@ impl PatchTree {
             assert_points_relative_eq(s0, p1);
             assert_points_relative_eq(s1, p0);
         } else {
+            let offset_in_parent = self
+                .tree_node(self.tree_node(tree_index).parent)
+                .offset_of_child(tree_index);
+            let parent_edge_offset =
+                self.find_parent_edge_for_child(own_edge_offset, offset_in_parent);
+            println!(
+                "CHECK NULL {:?} offset in parent {:?} offset {:?} parent edge {:?} parent peer {:?}",
+                tree_index,
+                self.tree_node(tree_index).parent,
+                self.tree_node(self.tree_node(tree_index).parent)
+                    .offset_of_child(tree_index),
+                parent_edge_offset,
+                self.tree_node(self.tree_node(tree_index).parent).peer(parent_edge_offset),
+            );
             // If the edge is None, the matching parent edge must not be None. This would imply
             // that the edge is adjacent to something more than one level of subdivision away
             // from it and thus that we would not be able to find an appropriate index buffer
