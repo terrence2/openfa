@@ -12,7 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{icosahedron::Icosahedron, patch::Patch};
+use crate::{
+    icosahedron::Icosahedron,
+    patch::Patch,
+    queue::{MaxHeap, MinHeap, Queue},
+};
 
 use absolute_unit::Kilometers;
 use approx::assert_relative_eq;
@@ -22,7 +26,7 @@ use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
 use std::{
     cmp::{Ordering, Reverse},
-    collections::BinaryHeap,
+    collections::{BinaryHeap, HashSet},
     time::Instant,
 };
 
@@ -79,9 +83,9 @@ fn poff(pi: TreeIndex) -> usize {
  */
 
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct TreeIndex(usize);
+pub(crate) struct TreeIndex(pub(crate) usize);
 
-fn toff(ti: TreeIndex) -> usize {
+pub(crate) fn toff(ti: TreeIndex) -> usize {
     ti.0
 }
 
@@ -89,7 +93,7 @@ fn toff(ti: TreeIndex) -> usize {
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct PatchIndex(pub(crate) usize);
 
-fn poff(pi: PatchIndex) -> usize {
+pub(crate) fn poff(pi: PatchIndex) -> usize {
     pi.0
 }
 
@@ -173,7 +177,7 @@ struct Root {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct TreeNode {
+pub(crate) struct TreeNode {
     children: Option<[TreeIndex; 4]>,
     peers: [Option<Peer>; 3],
     patch_index: PatchIndex,
@@ -206,7 +210,7 @@ impl TreeNode {
         &self.peers
     }
 
-    fn patch_index(&self) -> PatchIndex {
+    pub(crate) fn patch_index(&self) -> PatchIndex {
         self.patch_index
     }
 
@@ -238,8 +242,9 @@ pub(crate) struct PatchTree {
     rejoin_count: usize,
     visit_count: usize,
 
-    split_queue: BinaryHeap<PatchKey>,
-    merge_queue: BinaryHeap<Reverse<PatchKey>>,
+    frame_number: usize,
+    split_queue: Queue<MaxHeap>,
+    merge_queue: Queue<MinHeap>,
     cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
@@ -287,8 +292,9 @@ impl PatchTree {
             subdivide_count: 0,
             rejoin_count: 0,
             visit_count: 0,
-            split_queue: BinaryHeap::new(),
-            merge_queue: BinaryHeap::new(),
+            frame_number: 0,
+            split_queue: Queue::new(),
+            merge_queue: Queue::new(),
             cached_viewable_region: [Plane::from_normal_and_distance(
                 Vector3::new(1f64, 0f64, 0f64),
                 0f64,
@@ -424,7 +430,7 @@ impl PatchTree {
         self.tree[toff(tree_index)].as_mut().unwrap()
     }
 
-    fn tree_patch(&self, tree_index: TreeIndex) -> &Patch {
+    pub(crate) fn tree_patch(&self, tree_index: TreeIndex) -> &Patch {
         self.get_patch(self.tree_node(tree_index).patch_index)
     }
 
@@ -441,7 +447,31 @@ impl PatchTree {
         true
     }
 
+    fn check_queues(&self) {
+        self.split_queue.assert_splittable(self);
+        /*
+        let mut dedup_split = HashSet::new();
+        for key in self.split_queue.iter() {
+            assert!(self.is_splittable_patch_key(key));
+            assert!(!dedup_split.contains(&key.patch_index));
+            dedup_split.insert(key.patch_index);
+        }
+        */
+        self.merge_queue.assert_mergeable(self);
+        /*
+        let mut dedup_merge = HashSet::new();
+        for key in self.merge_queue.iter() {
+            assert!(self.is_mergeable_patch_key(&key.0));
+            //assert!(!dedup_split.contains(&key.0.patch_index));
+            assert!(!dedup_merge.contains(&key.0.patch_index));
+            dedup_merge.insert(key.0.patch_index);
+        }
+         */
+    }
+
     fn update_splittable_cache(&mut self) {
+        self.split_queue.update_cache(&self.tree, &self.patches);
+        /*
         // FIXME: can we cache this?
         let mut split_queue = BinaryHeap::new();
         std::mem::swap(&mut self.split_queue, &mut split_queue);
@@ -451,9 +481,12 @@ impl PatchTree {
         }
         split_queue = BinaryHeap::from(split_vec);
         std::mem::swap(&mut self.split_queue, &mut split_queue);
+         */
     }
 
-    fn remove_patches_from_split_queue(&mut self, removals: &[PatchIndex]) {
+    fn remove_patches_from_split_queue(&mut self, removals: &[TreeIndex]) {
+        self.split_queue.remove_all(removals);
+        /*
         // FIXME: can we cache this?
         let mut split_queue = BinaryHeap::new();
         std::mem::swap(&mut self.split_queue, &mut split_queue);
@@ -466,9 +499,12 @@ impl PatchTree {
         // O(n) rebuild of the queue.
         split_queue = BinaryHeap::from(split_vec);
         std::mem::swap(&mut self.split_queue, &mut split_queue);
+         */
     }
 
-    fn max_splittable(&self) -> f64 {
+    fn max_splittable(&mut self) -> f64 {
+        self.split_queue.peek_value()
+        /*
         self.split_queue
             .peek()
             .unwrap_or_else(|| &PatchKey {
@@ -476,13 +512,21 @@ impl PatchTree {
                 patch_index: PatchIndex(0),
             })
             .solid_angle
+         */
     }
 
     fn is_splittable_patch_key(&self, key: &PatchKey) -> bool {
         self.patch_node(key.patch_index).is_leaf()
     }
 
+    pub(crate) fn is_splittable_node(&self, ti: TreeIndex) -> bool {
+        let node = self.tree_node(ti);
+        node.is_leaf() && node.level < self.max_level
+    }
+
     fn update_mergeable_cache(&mut self) {
+        self.merge_queue.update_cache(&self.tree, &self.patches);
+        /*
         // FIXME: can we cache this?
         let mut merge_queue = BinaryHeap::new();
         std::mem::swap(&mut self.merge_queue, &mut merge_queue);
@@ -492,9 +536,12 @@ impl PatchTree {
         }
         merge_queue = BinaryHeap::from(merge_vec);
         std::mem::swap(&mut self.merge_queue, &mut merge_queue);
+         */
     }
 
-    fn remove_patches_from_merge_queue(&mut self, removals: &[PatchIndex]) {
+    fn remove_patches_from_merge_queue(&mut self, removals: &[TreeIndex]) {
+        self.merge_queue.remove_all(removals);
+        /*
         // FIXME: can we cache this?
         let mut merge_queue = BinaryHeap::new();
         std::mem::swap(&mut self.merge_queue, &mut merge_queue);
@@ -507,9 +554,12 @@ impl PatchTree {
         // O(n) rebuild of the queue
         merge_queue = BinaryHeap::from(merge_vec);
         std::mem::swap(&mut self.merge_queue, &mut merge_queue);
+         */
     }
 
-    fn min_mergeable(&self) -> f64 {
+    fn min_mergeable(&mut self) -> f64 {
+        self.merge_queue.peek_value()
+        /*
         self.merge_queue
             .peek()
             .unwrap_or_else(|| {
@@ -520,10 +570,11 @@ impl PatchTree {
             })
             .0
             .solid_angle
+             */
     }
 
-    fn is_mergeable_patch_key(&self, key: &PatchKey) -> bool {
-        let node = self.patch_node(key.patch_index);
+    pub(crate) fn is_mergeable_node(&self, ti: TreeIndex) -> bool {
+        let node = self.tree_node(ti);
         node.is_node() && self.is_mergable_node(node)
     }
 
@@ -568,18 +619,15 @@ impl PatchTree {
         //   Clear Qs, Qm.
         //   Compute priorities for T’s triangles and diamonds, then
         //     insert into Qs and Qm, respectively.
-        if self.split_queue.is_empty() {
+        if self.frame_number == 0 {
             for &child in &self.root.children {
-                let child_patch_index = self.tree_node(child).patch_index();
-                if self
-                    .get_patch(child_patch_index)
-                    .keep(&self.cached_viewable_region, &self.cached_eye_position)
-                {
-                    self.split_queue
-                        .push(self.patch_key_for_patch(child_patch_index));
-                }
+                self.split_queue
+                    .insert(child, self.tree_patch(child).solid_angle());
+                // let child_patch_index = self.tree_node(child).patch_index();
+                //     .push(self.patch_key_for_patch(child_patch_index));
             }
         }
+        self.frame_number += 1;
 
         // Update split and merge queue caches with updated solid angles.
         self.update_splittable_cache();
@@ -615,17 +663,11 @@ impl PatchTree {
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
         //println!("{}", self.format_tree_display());
-        while self.split_queue.len() > 0
-            && (patch_count < target_patch_count - 4
-                || self.max_splittable() - self.min_mergeable() > 100.0)
+        while patch_count < target_patch_count - 4
+            || self.max_splittable() - self.min_mergeable() > 100.0
         {
             self.check_tree();
-            for key in self.split_queue.iter() {
-                assert!(self.is_splittable_patch_key(key));
-            }
-            for key in self.merge_queue.iter() {
-                assert!(self.is_mergeable_patch_key(&key.0));
-            }
+            self.check_queues();
 
             // println!(
             //     "{}| {} <- {} vs {}",
@@ -637,84 +679,61 @@ impl PatchTree {
             //   If T is too large or accurate {
             if patch_count >= target_patch_count {
                 if self.merge_queue.len() == 0 {
-                    println!("WOULD MERGE");
+                    println!("WOULD MERGE BUT NOTHING TO MERGE");
                     break;
                 }
 
                 //      Identify lowest-priority (T, TB) in Qm.
-                let bottom_key = self.merge_queue.pop().unwrap().0;
-                let smallest_mergeable = bottom_key.patch_index;
+                let bottom_key = self.merge_queue.pop();
+                let smallest_mergeable = self.tree_node(bottom_key).patch_index;
 
                 //      Merge (T, TB).
                 let node_index = self.get_patch(smallest_mergeable).owner();
-                let node = *self.tree_node(self.get_patch(smallest_mergeable).owner());
-                let split_removals = node
-                    .children()
-                    .iter()
-                    .map(|ti| self.tree_node(*ti).patch_index)
-                    .collect::<Vec<_>>();
+                let node = *self.tree_node(node_index);
+                let split_removals = *node.children();
                 self.rejoin_leaf_patch_into(node.parent, node.level, node_index, node.children());
 
+                /*
                 //      Update queues as follows: {
                 //        Remove all merged children from Qs.
                 self.remove_patches_from_split_queue(&split_removals);
+                self.check_queues();
                 //        Add merge parents T, TB to Qs.
-                self.split_queue.push(self.patch_key_for_node(node_index));
+                //self.split_queue.push(self.patch_key_for_node(node_index));
+                self.split_queue
+                    .insert(node_index, self.tree_patch(node_index).solid_angle());
+                self.check_queues();
                 //        Remove (T, TB) from Qm.
-                self.remove_patches_from_merge_queue(&[node.patch_index]);
+                self.remove_patches_from_merge_queue(&[node_index]);
+                self.check_queues();
                 //        Add all newly-mergeable diamonds to Qm.
-                for maybe_node in &self.tree {
+                for (i, maybe_node) in self.tree.iter().enumerate() {
                     if let Some(node) = maybe_node {
                         if node.is_node() && self.is_mergable_node(node) {
-                            println!("ADD MERGABLE!");
-                            self.merge_queue
-                                .push(Reverse(self.patch_key_for_patch(node.patch_index)));
+                            println!("ADD MERGEABLE!");
+                            self.merge_queue.insert(
+                                TreeIndex(i),
+                                self.get_patch(node.patch_index).solid_angle(),
+                            );
                         }
                     }
                 }
+                 */
+                self.check_queues();
             } else {
+                if self.split_queue.len() == 0 {
+                    println!("WOULD SPLIT BUT NOTHING TO SPLIT");
+                    break;
+                }
+
                 // Identify highest-priority T in Qs.
-                let top_key = self.split_queue.pop().unwrap();
-                let biggest_patch = top_key.patch_index;
+                let top_tree_index = self.split_queue.pop();
+                let biggest_patch = self.tree_node(top_tree_index).patch_index;
 
                 // Force-split T.
                 // FIXME: use smallvec for these
-                let mut split_patches = Vec::new();
-                let mut touched_patches = Vec::new();
-                self.subdivide_patch(biggest_patch, &mut split_patches, &mut touched_patches);
-
-                // Update queues as follows: {
-                //   Remove T and other split triangles from Qs
-                self.remove_patches_from_split_queue(&split_patches);
-                //   Add any new triangles in T to Qs.
-                //   Add all newly-mergeable diamonds to Qm.
-                let mut unmergeable = vec![biggest_patch];
-                for &key in &touched_patches {
-                    let node = self.patch_node(key.patch_index);
-                    if node.is_leaf() && node.level < self.max_level {
-                        println!("adding split <- {:?}", key);
-                        self.split_queue.push(key);
-                    } else if node.is_node() {
-                        if self.is_mergable_node(&node) {
-                            println!("adding merge <- {:?}", key);
-                            self.merge_queue.push(Reverse(key));
-                        } else {
-                            println!("removing merge <- {:?}", key);
-                            unmergeable.push(key.patch_index);
-                        }
-                    }
-                }
-                for maybe_node in &self.tree {
-                    if let Some(node) = maybe_node {
-                        if node.is_node() && self.is_mergable_node(node) {
-                            println!("ADD MERGABLE!");
-                            self.merge_queue
-                                .push(Reverse(self.patch_key_for_patch(node.patch_index)));
-                        }
-                    }
-                }
-                //   Remove from Qm any diamonds whose children were split.
-                self.remove_patches_from_merge_queue(&unmergeable);
+                self.subdivide_patch(biggest_patch);
+                self.check_queues();
             }
 
             let mut tmp = Vec::new();
@@ -730,6 +749,8 @@ impl PatchTree {
         let reshape_time = Instant::now() - reshape_start;
 
         // Select patches based on visibility.
+        let max_split = self.max_splittable();
+        let min_merge = self.min_mergeable();
         println!(
             "patches: {} of {} [-{}] | nodes: {} [-{}] | -/+: {}/{}/{} | {:.02}/{:.02} | {:?}",
             live_patches.len(),
@@ -740,8 +761,8 @@ impl PatchTree {
             self.rejoin_count,
             self.subdivide_count,
             self.visit_count,
-            self.max_splittable(),
-            self.min_mergeable(),
+            max_split,
+            min_merge,
             reshape_time,
         );
     }
@@ -754,21 +775,36 @@ impl PatchTree {
         children: &[TreeIndex; 4],
     ) {
         self.rejoin_count += 1;
+        self.print_tree();
+        println!("in {:?}", tree_index);
 
         // Clear peer's backref links before we free the leaves.
         // Note: skip inner child links
-        for &child in children {
+        for &child in children.iter().take(3) {
             // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
             for j in &[0u8, 2u8] {
-                self.update_peer_reverse_pointer(*self.tree_node(child).peer(*j), None);
+                let node = self.tree_node(child);
+                println!(
+                    "clearing input pointer into {:?} from {:?}",
+                    child,
+                    *node.peer(*j)
+                );
+                self.update_peer_reverse_pointer(*node.peer(*j), None);
             }
+            self.free_leaf(child);
+            //        Remove all merged children from Qs.
+            self.split_queue.remove(child);
         }
-
-        // Free the other 3 node/leaf pairs.
-        self.free_leaf(children[0]);
-        self.free_leaf(children[1]);
-        self.free_leaf(children[2]);
-        self.free_leaf(children[3]);
+        //        Remove (T, TB) from Qm.
+        self.merge_queue.remove(tree_index);
+        //        Add merge parents T, TB to Qs.
+        self.split_queue
+            .insert(tree_index, self.tree_patch(tree_index).solid_angle());
+        //        Add all newly-mergeable diamonds to Qm.
+        if self.is_mergable_node(self.tree_node(parent_index)) {
+            self.merge_queue
+                .insert(parent_index, self.tree_patch(parent_index).solid_angle());
+        }
 
         // Replace the current node patch as a leaf patch and free the prior leaf node.
         let node_peers = *self.tree_node(tree_index).peers();
@@ -785,12 +821,9 @@ impl PatchTree {
         };
     }
 
-    fn subdivide_patch(
-        &mut self,
-        patch_index: PatchIndex,
-        split_patches: &mut Vec<PatchIndex>,
-        touched_patches: &mut Vec<PatchKey>,
-    ) {
+    fn subdivide_patch(&mut self, patch_index: PatchIndex) {
+        let tree_index = self.get_patch(patch_index).owner();
+
         self.subdivide_count += 1;
 
         println!(
@@ -832,7 +865,7 @@ impl PatchTree {
                 println!("  parent_peer: {:?}", parent_peer);
                 assert!(peer_node.is_leaf());
                 self.check_tree();
-                self.subdivide_patch(peer_node.patch_index, split_patches, touched_patches);
+                self.subdivide_patch(peer_node.patch_index);
                 self.check_tree();
             }
         }
@@ -848,6 +881,7 @@ impl PatchTree {
         let [v0, v1, v2] = patch.points().to_owned();
         let parent = node.parent;
         let leaf_peers = *node.peers();
+        let solid_angle = patch.solid_angle();
 
         // Get new points.
         let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
@@ -880,14 +914,24 @@ impl PatchTree {
             }
         }
 
-        // println!("subdivided {:?} into {:?}", owner, children);
+        //   Remove T and other split triangles from Qs
+        self.split_queue.remove(tree_index);
 
-        println!("    NOTING: {:?}", self.patch_key_for_patch(patch_index));
-        split_patches.push(patch_index);
-        for i in &children {
-            println!("    NOTING: {:?}", self.patch_key_for_node(*i));
-            touched_patches.push(self.patch_key_for_node(*i));
+        //   Add any new triangles in T to Qs.
+        for &child in &children {
+            if next_level < self.max_level {
+                self.split_queue
+                    .insert(child, self.tree_patch(child).solid_angle());
+            }
         }
+
+        // We can now be merged, since our children are leafs.
+        //   Add all newly-mergeable diamonds to Qm.
+        self.merge_queue.insert(tree_index, solid_angle);
+
+        // We can no longer merge the parent, since we're now a node instead of a leaf.
+        //   Remove from Qm any diamonds whose children were split.
+        self.merge_queue.remove(parent);
 
         // Transform our leaf/patch into a node and clobber the old patch.
         *self.tree_node_mut(owner) = TreeNode {
@@ -1090,24 +1134,29 @@ impl PatchTree {
         }
     }
 
+    pub(crate) fn print_tree(&self) {
+        println!("{}", self.format_tree_display());
+    }
+
     #[allow(unused)]
     fn format_tree_display(&self) -> String {
         let mut out = String::new();
         out += "Root\n";
         for child in &self.root.children {
-            out += &self.format_tree_display_inner(1, self.tree_node(*child));
+            out += &self.format_tree_display_inner(1, *child);
         }
         out
     }
 
     #[allow(unused)]
-    fn format_tree_display_inner(&self, lvl: usize, node: &TreeNode) -> String {
+    fn format_tree_display_inner(&self, lvl: usize, tree_index: TreeIndex) -> String {
+        let node = *self.tree_node(tree_index);
         let mut out = String::new();
         if node.is_node() {
             let pad = "  ".repeat(lvl);
-            out += &format!("{}Node: {:?}\n", pad, node.children);
+            out += &format!("{}Node @{}, {:?}\n", pad, toff(tree_index), node.children);
             for child in node.children() {
-                out += &self.format_tree_display_inner(lvl + 1, self.tree_node(*child));
+                out += &self.format_tree_display_inner(lvl + 1, *child);
             }
         } else {
             let pad = "  ".repeat(lvl);

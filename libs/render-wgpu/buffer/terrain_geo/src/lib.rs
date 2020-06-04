@@ -17,6 +17,7 @@ mod icosahedron;
 mod patch;
 mod patch_tree;
 mod patch_vertex;
+mod queue;
 
 use crate::patch_tree::PatchTree;
 pub use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
