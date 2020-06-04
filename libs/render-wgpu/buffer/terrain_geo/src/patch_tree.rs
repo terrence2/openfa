@@ -300,10 +300,11 @@ impl PatchTree {
         let tree_index = self.allocate_tree_node();
         self.get_patch_mut(patch_index)
             .change_target(tree_index, pts);
+        let viewable_region = self.cached_viewable_region;
         let eye_position = self.cached_eye_position;
         let eye_direction = self.cached_eye_direction;
         self.get_patch_mut(patch_index)
-            .update_for_view(&eye_position, &eye_direction);
+            .update_for_view(&viewable_region, &eye_position, &eye_direction);
         self.tree[toff(tree_index)] = Some(TreeNode {
             parent,
             level,
@@ -358,6 +359,9 @@ impl PatchTree {
     }
 
     fn max_splittable(&mut self) -> f64 {
+        if self.split_queue.is_empty() {
+            return f64::MIN;
+        }
         self.split_queue.peek_value()
     }
 
@@ -371,6 +375,9 @@ impl PatchTree {
     }
 
     fn min_mergeable(&mut self) -> f64 {
+        if self.merge_queue.is_empty() {
+            return f64::MAX;
+        }
         self.merge_queue.peek_value()
     }
 
@@ -411,7 +418,7 @@ impl PatchTree {
         // }
         for patch in self.patches.iter_mut() {
             if patch.is_alive() {
-                patch.update_for_view(&self.cached_eye_position, &self.cached_eye_direction);
+                patch.update_for_view(&self.cached_viewable_region, &self.cached_eye_position, &self.cached_eye_direction);
             }
         }
 
@@ -550,21 +557,19 @@ impl PatchTree {
         children: &[TreeIndex; 4],
     ) {
         self.rejoin_count += 1;
-        self.print_tree();
-        println!("in {:?}", tree_index);
 
         // Clear peer's backref links before we free the leaves.
         // Note: skip inner child links
         for &child in children.iter().take(3) {
             // Note: skip edges to inner child (always at 1 because 0 vertex faces outwards)
             for j in &[0u8, 2u8] {
-                println!(
-                    "clearing input pointer into {:?} from {:?}",
-                    child,
-                    *self.tree_node(child).peer(*j)
-                );
-                // FIXME: We actually want to set the reverse peer to our parent sometimes maybe?
-                //        Sketch out the various cases and think it through slowly.
+                #[cfg(debug_assertions)]
+                if let Some(child_peer) = self.tree_node(child).peer(*j) {
+                    assert!(
+                        self.tree_node(child_peer.peer).is_leaf(),
+                        "Split should have removed peer parents from mergeable status when splitting."
+                    );
+                }
                 self.update_peer_reverse_pointer(*self.tree_node(child).peer(*j), None);
             }
             self.free_leaf(child);
@@ -627,7 +632,7 @@ impl PatchTree {
                     self.find_parent_edge_for_child(own_edge_offset, offset_in_parent);
                 let parent_peer = parent
                     .peer(parent_edge_offset)
-                    .expect("parent peer must be present")
+                    .expect("parent peer is absent")
                     .peer;
 
                 // If we have no peer, we're next to a larger triangle and need to subdivide it
@@ -704,8 +709,15 @@ impl PatchTree {
         self.merge_queue.insert(tree_index, solid_angle);
 
         // We can no longer merge the parent, since we're now a node instead of a leaf.
+        // We can also no longer merge our peers into peer parents, since that would create
+        // a two level split difference after splitting this node.
         //   Remove from Qm any diamonds whose children were split.
         self.merge_queue.remove(parent);
+        for i in 0..3 {
+            if let Some(peer) = self.tree_node(tree_index).peers[i] {
+                self.merge_queue.remove(self.tree_node(peer.peer).parent);
+            }
+        }
 
         // Transform our leaf/patch into a node and clobber the old patch.
         *self.tree_node_mut(owner) = TreeNode {

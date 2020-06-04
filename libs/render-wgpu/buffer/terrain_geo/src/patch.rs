@@ -94,10 +94,15 @@ impl Patch {
 
     pub(crate) fn update_for_view(
         &mut self,
+        viewable_area: &[Plane<f64>; 6],
         eye_position: &Point3<f64>,
         eye_direction: &Vector3<f64>,
     ) {
         assert!(self.is_alive());
+        if !self.keep(viewable_area, eye_position) {
+            self.solid_angle = f64::MIN;
+            return;
+        }
 
         // Cross north and eye_direction to get a right vector for the polygon.
         let right = eye_direction.cross(&self.normal).normalize();

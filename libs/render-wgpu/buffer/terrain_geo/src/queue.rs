@@ -149,6 +149,10 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         self.heap.len() - self.removals.len()
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub(crate) fn insert(&mut self, ti: TreeIndex, solid_angle: f64) {
         if self.contents.contains(&ti) {
             // Direct, simple duplicate.
@@ -175,7 +179,7 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
 
     pub(crate) fn peek_value(&mut self) -> f64 {
         loop {
-            let value = self.heap.peek().expect("non-empty heap in peek");
+            let value = self.heap.peek().expect("empty heap in peek");
             if self.removals.contains(&value.tree_index()) {
                 assert!(!self.contents.contains(&value.tree_index()));
                 self.removals.remove(&value.tree_index());
@@ -188,7 +192,7 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
 
     pub(crate) fn pop(&mut self) -> TreeIndex {
         loop {
-            let value = self.heap.pop().expect("non-empty heap in pop");
+            let value = self.heap.pop().expect("empty heap in pop");
             if self.removals.contains(&value.tree_index()) {
                 assert!(!self.contents.contains(&value.tree_index()));
                 self.removals.remove(&value.tree_index());
