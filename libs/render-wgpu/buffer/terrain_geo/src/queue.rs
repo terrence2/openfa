@@ -59,7 +59,7 @@ impl QueueItem for MaxHeap {
 
 impl fmt::Debug for MaxHeap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", toff(self.tree_index))
+        write!(f, "{}/{:.02}", toff(self.tree_index), self.cached_value.0)
     }
 }
 
@@ -92,7 +92,12 @@ impl QueueItem for MinHeap {
 
 impl fmt::Debug for MinHeap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", toff(self.tree_index))
+        write!(
+            f,
+            "{}/{:.02}",
+            toff(self.tree_index),
+            (self.cached_value.0).0
+        )
     }
 }
 
@@ -123,8 +128,10 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         assert_eq!(self.removals.len() + self.contents.len(), self.heap.len());
         for key in self.heap.iter() {
             assert!(
-                self.removals.contains(&key.tree_index())
-                    || self.contents.contains(&key.tree_index())
+                (self.removals.contains(&key.tree_index())
+                    && !self.contents.contains(&key.tree_index()))
+                    || (self.contents.contains(&key.tree_index())
+                        && !self.removals.contains(&key.tree_index()))
             );
         }
         for &ti in &self.contents {
@@ -136,11 +143,16 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         assert_eq!(self.removals.len() + self.contents.len(), self.heap.len());
         for key in self.heap.iter() {
             assert!(
-                self.removals.contains(&key.tree_index())
-                    || self.contents.contains(&key.tree_index())
+                (self.removals.contains(&key.tree_index())
+                    && !self.contents.contains(&key.tree_index()))
+                    || (self.contents.contains(&key.tree_index())
+                        && !self.removals.contains(&key.tree_index()))
             );
         }
         for &ti in &self.contents {
+            if !tree.is_mergeable_node(ti) {
+                tree.print_tree();
+            }
             assert!(tree.is_mergeable_node(ti));
         }
     }
@@ -151,6 +163,10 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub(crate) fn contains(&self, ti: TreeIndex) -> bool {
+        self.contents.contains(&ti)
     }
 
     pub(crate) fn insert(&mut self, ti: TreeIndex, solid_angle: f64) {
@@ -208,8 +224,22 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         std::mem::swap(&mut self.heap, &mut sandbag);
         let mut heap_vec = sandbag.into_vec();
         for key in heap_vec.iter_mut() {
-            if let Some(ref node) = tree[toff(key.tree_index())] {
-                key.set_solid_angle(patches[poff(node.patch_index())].solid_angle());
+            if !self.removals.contains(&key.tree_index()) {
+                let node = tree[toff(key.tree_index())].expect("freed node in queue");
+                if node.is_leaf() {
+                    key.set_solid_angle(patches[poff(node.patch_index())].solid_angle());
+                } else {
+                    // FIXME: shame is an appropriate reaction here
+                    let mut max_sa = f64::MIN;
+                    for &child_index in node.children() {
+                        let child = tree[toff(child_index)].expect("freed child in queue");
+                        let sa = patches[poff(child.patch_index())].solid_angle();
+                        if sa > max_sa {
+                            max_sa = sa;
+                        }
+                    }
+                    key.set_solid_angle(max_sa);
+                }
             }
         }
         // O(n) rebuild of the queue

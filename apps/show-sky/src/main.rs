@@ -126,7 +126,8 @@ fn main() -> Fallible<()> {
     camera.set_eye_relative(Graticule::<Target>::new(
         degrees!(89),
         degrees!(0),
-        meters!(4_000_000),
+        //meters!(4_000_000),
+        meters!(1_400_000),
     ))?;
 
     let mut target_vec = meters!(0f64);

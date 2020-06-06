@@ -96,24 +96,30 @@ impl Patch {
         &mut self,
         viewable_area: &[Plane<f64>; 6],
         eye_position: &Point3<f64>,
-        eye_direction: &Vector3<f64>,
+        eye_direction_samples: &[&Vector3<f64>],
     ) {
         assert!(self.is_alive());
-        if !self.keep(viewable_area, eye_position) {
-            self.solid_angle = f64::MIN;
+
+        self.solid_angle = f64::MIN;
+        if !self.keep(viewable_area) {
             return;
         }
 
         // Cross north and eye_direction to get a right vector for the polygon.
-        let right = eye_direction.cross(&self.normal).normalize();
-        let imposter = [
-            self.imposter_base + ((-right) * self.imposter_baseline),
-            self.imposter_base + (right * self.imposter_baseline),
-            self.imposter_base + (self.normal * self.impostor_height),
-        ];
-        let sa_base = solid_angle(&eye_position, &eye_direction, &self.pts);
-        let sa_imp = solid_angle(&eye_position, &eye_direction, &imposter);
-        self.solid_angle = sa_base + sa_imp;
+        for sample in eye_direction_samples {
+            let right = sample.cross(&self.normal).normalize();
+            let imposter = [
+                self.imposter_base + ((-right) * self.imposter_baseline),
+                self.imposter_base + (right * self.imposter_baseline),
+                self.imposter_base + (self.normal * self.impostor_height),
+            ];
+            let sa_base = solid_angle(&eye_position, &sample, &self.pts);
+            let sa_imp = solid_angle(&eye_position, &sample, &imposter);
+            let sa = sa_base + sa_imp;
+            if sa > self.solid_angle {
+                self.solid_angle = sa;
+            }
+        }
         assert!(!self.solid_angle.is_nan());
     }
 
@@ -281,31 +287,7 @@ impl Patch {
         true
     }
 
-    // FIXME: Fuzz offset needs to be the extent of the possible normals of the patch.
-    /*
-    fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
-        for p in &self.pts {
-            if (p - eye_position).dot(&self.normal) <= -0.00001f64 {
-                return false;
-            }
-        }
-        true
-    }
-     */
-
-    pub(crate) fn keep(
-        &self,
-        viewable_area: &[Plane<f64>; 6],
-        _eye_position: &Point3<f64>,
-    ) -> bool {
-        /*
-        // Cull back-facing
-        if self.is_back_facing(eye_position) {
-            // println!("  no - back facing");
-            return false;
-        }
-        */
-
+    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
         for plane in viewable_area {
             if self.is_behind_plane(plane, false) {
                 return false;
