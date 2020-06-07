@@ -232,8 +232,7 @@ impl PatchTree {
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
-            let mut p = Patch::new();
-            p.change_target(TreeIndex(i), [v0, v1, v2]);
+            let p = Patch::new(TreeIndex(i), [v0, v1, v2]);
             patches.push(Some(p));
         }
 
@@ -284,9 +283,7 @@ impl PatchTree {
 
     fn allocate_leaf_patch(&mut self, tree_index: TreeIndex, pts: [Point3<f64>; 3]) -> PatchIndex {
         let patch_index = self.allocate_patch();
-        self.patches[poff(patch_index)] = Some(Patch::new());
-        self.get_patch_mut(patch_index)
-            .change_target(tree_index, pts);
+        self.patches[poff(patch_index)] = Some(Patch::new(tree_index, pts));
         let viewable_region = self.cached_viewable_region;
         let eye_position = self.cached_eye_position;
         let eye_direction = self.cached_eye_direction;

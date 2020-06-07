@@ -48,48 +48,35 @@ pub(crate) struct Patch {
     planes: [Plane<f64>; 3],
 
     // The leaf node that owns this patch, or None if a tombstone.
-    owner: Option<TreeIndex>,
+    owner: TreeIndex,
 }
 
 impl Patch {
-    pub(crate) fn new() -> Self {
-        Self {
-            solid_angle: 0f64,
-            impostor_height: 0f64,
-            imposter_base: Point3::new(0f64, 0f64, 0f64),
-            imposter_baseline: 0f64,
-            normal: Vector3::new(0f64, 1f64, 0f64),
-            pts: [
-                Point3::new(0f64, 0f64, 0f64),
-                Point3::new(0f64, 0f64, 0f64),
-                Point3::new(0f64, 0f64, 0f64),
-            ],
-            planes: [Plane::xy(), Plane::xy(), Plane::xy()],
-            owner: None,
-        }
-    }
-
-    pub(crate) fn change_target(&mut self, owner: TreeIndex, pts: [Point3<f64>; 3]) {
-        self.owner = Some(owner);
-        self.pts = pts;
-        self.normal = compute_normal(&pts[0], &pts[1], &pts[2]);
-        for i in 0..3 {
-            assert!(!self.normal[i].is_nan());
-        }
+    pub(crate) fn new(owner: TreeIndex, pts: [Point3<f64>; 3]) -> Self {
         let origin = Point3::new(0f64, 0f64, 0f64);
-        self.planes = [
-            Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
-            Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
-            Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
-        ];
-        assert!(self.planes[0].point_is_in_front(&pts[2]));
-        assert!(self.planes[1].point_is_in_front(&pts[0]));
-        assert!(self.planes[2].point_is_in_front(&pts[1]));
-        self.imposter_baseline = (pts[1] - pts[0]).magnitude() / 2f64;
-        self.imposter_base = Point3::from(pts[0].coords + pts[1].coords + pts[2].coords) / 3f64;
-        self.impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
-            - self.imposter_base.coords.magnitude())
-        .min(self.imposter_baseline / 2.);
+        let imposter_baseline = (pts[1] - pts[0]).magnitude() / 2f64;
+        let imposter_base = Point3::from(pts[0].coords + pts[1].coords + pts[2].coords) / 3f64;
+        let impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
+            - imposter_base.coords.magnitude())
+        .min(imposter_baseline / 2.);
+        let patch = Self {
+            solid_angle: 0f64,
+            imposter_baseline,
+            imposter_base,
+            impostor_height,
+            normal: compute_normal(&pts[0], &pts[1], &pts[2]),
+            planes: [
+                Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
+                Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
+                Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
+            ],
+            pts,
+            owner,
+        };
+        assert!(patch.planes[0].point_is_in_front(&pts[2]));
+        assert!(patch.planes[1].point_is_in_front(&pts[0]));
+        assert!(patch.planes[2].point_is_in_front(&pts[1]));
+        patch
     }
 
     pub(crate) fn update_for_view(
@@ -98,8 +85,6 @@ impl Patch {
         eye_position: &Point3<f64>,
         eye_direction_samples: &[&Vector3<f64>],
     ) {
-        assert!(self.is_alive());
-
         self.solid_angle = f64::MIN;
         if !self.keep(viewable_area) {
             return;
@@ -123,21 +108,12 @@ impl Patch {
         assert!(!self.solid_angle.is_nan());
     }
 
-    pub(crate) fn is_alive(&self) -> bool {
-        self.owner.is_some()
-    }
-
-    pub(crate) fn erect_tombstone(&mut self) {
-        self.owner = None;
-    }
-
     pub(crate) fn solid_angle(&self) -> f64 {
         self.solid_angle
     }
 
     pub(crate) fn owner(&self) -> TreeIndex {
-        assert!(self.owner.is_some());
-        self.owner.unwrap()
+        self.owner
     }
 
     pub(crate) fn points(&self) -> &[Point3<f64>; 3] {

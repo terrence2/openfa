@@ -195,7 +195,6 @@ impl TerrainGeoBuffer {
             if offset >= self.patch_buffer_size {
                 continue;
             }
-            assert!(patch.is_alive());
             let [v0, v1, v2] = patch.points();
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
