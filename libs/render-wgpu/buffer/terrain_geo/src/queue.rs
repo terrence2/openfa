@@ -219,7 +219,7 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         }
     }
 
-    pub(crate) fn update_cache(&mut self, tree: &[Option<TreeNode>], patches: &[Patch]) {
+    pub(crate) fn update_cache(&mut self, tree: &[Option<TreeNode>], patches: &[Option<Patch>]) {
         let mut sandbag = BinaryHeap::new();
         std::mem::swap(&mut self.heap, &mut sandbag);
         let mut heap_vec = sandbag.into_vec();
@@ -227,13 +227,13 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
             if !self.removals.contains(&key.tree_index()) {
                 let node = tree[toff(key.tree_index())].expect("freed node in queue");
                 if node.is_leaf() {
-                    key.set_solid_angle(patches[poff(node.patch_index())].solid_angle());
+                    key.set_solid_angle(patches[poff(node.patch_index())].unwrap().solid_angle());
                 } else {
                     // FIXME: shame is an appropriate reaction here
                     let mut max_sa = f64::MIN;
                     for &child_index in node.children() {
                         let child = tree[toff(child_index)].expect("freed child in queue");
-                        let sa = patches[poff(child.patch_index())].solid_angle();
+                        let sa = patches[poff(child.patch_index())].unwrap().solid_angle();
                         if sa > max_sa {
                             max_sa = sa;
                         }

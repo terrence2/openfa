@@ -187,7 +187,7 @@ impl TreeNode {
 
 pub(crate) struct PatchTree {
     max_level: usize,
-    patches: Vec<Patch>,
+    patches: Vec<Option<Patch>>,
     patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
     tree: Vec<Option<TreeNode>>,
     tree_empty_set: BinaryHeap<Reverse<TreeIndex>>,
@@ -234,7 +234,7 @@ impl PatchTree {
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let mut p = Patch::new();
             p.change_target(TreeIndex(i), [v0, v1, v2]);
-            patches.push(p);
+            patches.push(Some(p));
         }
 
         Self {
@@ -262,11 +262,11 @@ impl PatchTree {
     }
 
     pub(crate) fn get_patch(&self, index: PatchIndex) -> &Patch {
-        &self.patches[poff(index)]
+        self.patches[poff(index)].as_ref().unwrap()
     }
 
     fn get_patch_mut(&mut self, index: PatchIndex) -> &mut Patch {
-        &mut self.patches[poff(index)]
+        self.patches[poff(index)].as_mut().unwrap()
     }
 
     pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
@@ -278,12 +278,13 @@ impl PatchTree {
             return patch_index;
         }
         let patch_index = PatchIndex(self.patches.len());
-        self.patches.push(Patch::new());
+        self.patches.push(None);
         patch_index
     }
 
     fn allocate_leaf_patch(&mut self, tree_index: TreeIndex, pts: [Point3<f64>; 3]) -> PatchIndex {
         let patch_index = self.allocate_patch();
+        self.patches[poff(patch_index)] = Some(Patch::new());
         self.get_patch_mut(patch_index)
             .change_target(tree_index, pts);
         let viewable_region = self.cached_viewable_region;
@@ -298,7 +299,7 @@ impl PatchTree {
     }
 
     fn free_patch(&mut self, patch_index: PatchIndex) {
-        self.get_patch_mut(patch_index).erect_tombstone();
+        self.patches[poff(patch_index)] = None;
         self.patch_empty_set.push(Reverse(patch_index));
     }
 
@@ -358,17 +359,37 @@ impl PatchTree {
         self.tree_node(self.get_patch(patch_index).owner())
     }
 
-    pub(crate) fn solid_angle(&self, tree_index: TreeIndex) -> f64 {
-        assert!(self.tree_node(tree_index).is_leaf() || self.is_leaf_node(tree_index));
-        match self.tree_node(tree_index).holder {
-            TreeHolder::Patch(patch_index) => self.get_patch(patch_index).solid_angle(),
-            TreeHolder::Children(ref children) => self
-                .tree_patch(children[0])
-                .solid_angle()
-                .max(self.tree_patch(children[1]).solid_angle())
-                .max(self.tree_patch(children[2]).solid_angle())
-                .max(self.tree_patch(children[3]).solid_angle()),
+    // Note: shared with queue, which can't borrow us because we own it.
+    fn solid_angle_shared(
+        tree_index: TreeIndex,
+        tree: &[Option<TreeNode>],
+        patches: &[Option<Patch>],
+    ) -> f64 {
+        let node = tree[toff(tree_index)].unwrap();
+        assert!(node.is_leaf() || Self::is_leaf_node_shared(tree_index, tree));
+        match tree[toff(tree_index)].expect("dead node").holder {
+            TreeHolder::Patch(patch_index) => patches[poff(patch_index)]
+                .expect("dead patch")
+                .solid_angle(),
+            TreeHolder::Children(ref children) => {
+                let n0 = tree[toff(children[0])].expect("dead child node");
+                let n1 = tree[toff(children[1])].expect("dead child node");
+                let n2 = tree[toff(children[2])].expect("dead child node");
+                let n3 = tree[toff(children[3])].expect("dead child node");
+                let p0 = patches[poff(n0.patch_index())].expect("dead child patch");
+                let p1 = patches[poff(n1.patch_index())].expect("dead child patch");
+                let p2 = patches[poff(n2.patch_index())].expect("dead child patch");
+                let p3 = patches[poff(n3.patch_index())].expect("dead child patch");
+                p0.solid_angle()
+                    .max(p1.solid_angle())
+                    .max(p2.solid_angle())
+                    .max(p3.solid_angle())
+            }
         }
+    }
+
+    pub(crate) fn solid_angle(&self, tree_index: TreeIndex) -> f64 {
+        Self::solid_angle_shared(tree_index, &self.tree, &self.patches)
     }
 
     fn check_queues(&self) {
@@ -403,13 +424,18 @@ impl PatchTree {
         self.merge_queue.peek_value()
     }
 
-    fn is_leaf_node(&self, ti: TreeIndex) -> bool {
-        let node = self.tree_node(ti);
+    // Note: shared with queue via solid_angle
+    fn is_leaf_node_shared(ti: TreeIndex, tree: &[Option<TreeNode>]) -> bool {
+        let node = tree[toff(ti)].expect("dead node");
         node.is_node()
             && node
                 .children()
                 .iter()
-                .all(|child| self.tree_node(*child).is_leaf())
+                .all(|child| tree[toff(*child)].expect("dead child node").is_leaf())
+    }
+
+    fn is_leaf_node(&self, ti: TreeIndex) -> bool {
+        Self::is_leaf_node_shared(ti, &self.tree)
     }
 
     pub(crate) fn is_mergeable_node(&self, ti: TreeIndex) -> bool {
@@ -491,8 +517,8 @@ impl PatchTree {
         //   Update priorities for all elements of Qs, Qm.
         // }
         // FIXME: do we need a patch on nodes, or only on leaves?
-        for patch in self.patches.iter_mut() {
-            if patch.is_alive() {
+        for maybe_patch in self.patches.iter_mut() {
+            if let Some(patch) = maybe_patch {
                 patch.update_for_view(
                     &self.cached_viewable_region,
                     &self.cached_eye_position,
