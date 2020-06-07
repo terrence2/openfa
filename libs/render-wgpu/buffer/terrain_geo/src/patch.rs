@@ -15,7 +15,7 @@
 use crate::patch_tree::TreeIndex;
 
 use geometry::{
-    algorithm::{compute_normal, solid_angle},
+    algorithm::{compute_normal, solid_angle_tri},
     intersect,
     intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
     Plane, Sphere,
@@ -31,12 +31,6 @@ const SIDEDNESS_OFFSET: f64 = -1f64;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Patch {
-    // The solid angle to the polygon defined by pts plus an impostor billboard representing
-    // the possibility of terrain, so that we do not de-emphasize visible edges on the horizon.
-    imposter_base: Point3<f64>, // centroid
-    impostor_height: f64,       // KM
-    imposter_baseline: f64,     // KM
-
     // Normal at center of patch.
     normal: Vector3<f64>,
 
@@ -57,15 +51,7 @@ pub(crate) struct Patch {
 impl Patch {
     pub(crate) fn new(owner: TreeIndex, pts: [Point3<f64>; 3]) -> Self {
         let origin = Point3::new(0f64, 0f64, 0f64);
-        let imposter_baseline = (pts[1] - pts[0]).magnitude() / 2f64;
-        let imposter_base = Point3::from(pts[0].coords + pts[1].coords + pts[2].coords) / 3f64;
-        let impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
-            - imposter_base.coords.magnitude())
-        .min(imposter_baseline / 2.);
         let patch = Self {
-            imposter_baseline,
-            imposter_base,
-            impostor_height,
             normal: compute_normal(&pts[0], &pts[1], &pts[2]),
             planes: [
                 Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
@@ -87,7 +73,7 @@ impl Patch {
         &mut self,
         viewable_area: &[Plane<f64>; 6],
         eye_position: &Point3<f64>,
-        eye_direction_samples: &[&Vector3<f64>],
+        eye_direction: &Vector3<f64>,
     ) {
         self.cached_solid_angle = f64::MIN;
         if !self.keep(viewable_area) {
@@ -97,19 +83,9 @@ impl Patch {
         self.cached_in_view = true;
 
         // Cross north and eye_direction to get a right vector for the polygon.
-        for sample in eye_direction_samples {
-            let right = sample.cross(&self.normal).normalize();
-            let imposter = [
-                self.imposter_base + ((-right) * self.imposter_baseline),
-                self.imposter_base + (right * self.imposter_baseline),
-                self.imposter_base + (self.normal * self.impostor_height),
-            ];
-            let sa_base = solid_angle(&eye_position, &sample, &self.pts);
-            let sa_imp = solid_angle(&eye_position, &sample, &imposter);
-            let sa = sa_base + sa_imp;
-            if sa > self.cached_solid_angle {
-                self.cached_solid_angle = sa;
-            }
+        let sa = solid_angle_tri(&eye_position, &eye_direction, &self.pts);
+        if sa > self.cached_solid_angle {
+            self.cached_solid_angle = sa;
         }
         assert!(!self.cached_solid_angle.is_nan());
     }
