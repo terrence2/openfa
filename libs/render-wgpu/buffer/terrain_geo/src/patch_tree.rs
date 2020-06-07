@@ -123,10 +123,16 @@ struct Root {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum TreeHolder {
+    Children([TreeIndex; 4]),
+    Patch(PatchIndex),
+}
+
+// FIXME: remove copy from this; if we need copy we've got problems.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TreeNode {
-    children: Option<[TreeIndex; 4]>,
+    holder: TreeHolder,
     peers: [Option<Peer>; 3],
-    patch_index: PatchIndex,
     parent: Option<TreeIndex>,
     level: usize,
 }
@@ -137,11 +143,24 @@ impl TreeNode {
     }
 
     fn is_node(&self) -> bool {
-        self.children.is_some()
+        match self.holder {
+            TreeHolder::Children(ref _children) => true,
+            TreeHolder::Patch(_) => false,
+        }
     }
 
     pub(crate) fn children(&self) -> &[TreeIndex; 4] {
-        self.children.as_ref().unwrap()
+        match self.holder {
+            TreeHolder::Children(ref children) => children,
+            TreeHolder::Patch(_) => panic!("called children on a leaf node"),
+        }
+    }
+
+    pub(crate) fn patch_index(&self) -> PatchIndex {
+        match self.holder {
+            TreeHolder::Children(_) => panic!("called patch_index on a node"),
+            TreeHolder::Patch(patch_index) => patch_index,
+        }
     }
 
     fn peer(&self, edge: u8) -> &Option<Peer> {
@@ -156,17 +175,8 @@ impl TreeNode {
         &self.peers
     }
 
-    pub(crate) fn patch_index(&self) -> PatchIndex {
-        self.patch_index
-    }
-
     fn offset_of_child(&self, child_index: TreeIndex) -> u8 {
-        for (i, child) in self
-            .children
-            .expect("only call offset_of_child on a node")
-            .iter()
-            .enumerate()
-        {
+        for (i, child) in self.children().iter().enumerate() {
             if *child == child_index {
                 return i as u8;
             }
@@ -194,6 +204,7 @@ pub(crate) struct PatchTree {
     cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
+    cached_visible_patches: usize,
 }
 
 impl PatchTree {
@@ -214,9 +225,8 @@ impl PatchTree {
             tree.push(Some(TreeNode {
                 level: 1,
                 parent: None,
-                patch_index: PatchIndex(i),
+                holder: TreeHolder::Patch(PatchIndex(i)),
                 peers: root_peers[i],
-                children: None,
             }));
             root.children[i] = TreeIndex(i);
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
@@ -247,6 +257,7 @@ impl PatchTree {
             ); 6],
             cached_eye_position: Point3::new(0f64, 0f64, 0f64),
             cached_eye_direction: Vector3::new(1f64, 0f64, 0f64),
+            cached_visible_patches: 0,
         }
     }
 
@@ -268,6 +279,21 @@ impl PatchTree {
         }
         let patch_index = PatchIndex(self.patches.len());
         self.patches.push(Patch::new());
+        patch_index
+    }
+
+    fn allocate_leaf_patch(&mut self, tree_index: TreeIndex, pts: [Point3<f64>; 3]) -> PatchIndex {
+        let patch_index = self.allocate_patch();
+        self.get_patch_mut(patch_index)
+            .change_target(tree_index, pts);
+        let viewable_region = self.cached_viewable_region;
+        let eye_position = self.cached_eye_position;
+        let eye_direction = self.cached_eye_direction;
+        self.get_patch_mut(patch_index).update_for_view(
+            &viewable_region,
+            &eye_position,
+            &[&eye_direction],
+        );
         patch_index
     }
 
@@ -296,24 +322,13 @@ impl PatchTree {
         level: usize,
         pts: [Point3<f64>; 3],
     ) -> TreeIndex {
-        let patch_index = self.allocate_patch();
         let tree_index = self.allocate_tree_node();
-        self.get_patch_mut(patch_index)
-            .change_target(tree_index, pts);
-        let viewable_region = self.cached_viewable_region;
-        let eye_position = self.cached_eye_position;
-        let eye_direction = self.cached_eye_direction;
-        self.get_patch_mut(patch_index).update_for_view(
-            &viewable_region,
-            &eye_position,
-            &[&eye_direction],
-        );
+        let patch_index = self.allocate_leaf_patch(tree_index, pts);
         self.tree[toff(tree_index)] = Some(TreeNode {
+            holder: TreeHolder::Patch(patch_index),
             parent: Some(parent_index),
             level,
-            patch_index,
             peers: [None; 3],
-            children: None,
         });
         tree_index
     }
@@ -336,11 +351,24 @@ impl PatchTree {
     }
 
     pub(crate) fn tree_patch(&self, tree_index: TreeIndex) -> &Patch {
-        self.get_patch(self.tree_node(tree_index).patch_index)
+        self.get_patch(self.tree_node(tree_index).patch_index())
     }
 
     fn patch_node(&self, patch_index: PatchIndex) -> &TreeNode {
         self.tree_node(self.get_patch(patch_index).owner())
+    }
+
+    pub(crate) fn solid_angle(&self, tree_index: TreeIndex) -> f64 {
+        assert!(self.tree_node(tree_index).is_leaf() || self.is_leaf_node(tree_index));
+        match self.tree_node(tree_index).holder {
+            TreeHolder::Patch(patch_index) => self.get_patch(patch_index).solid_angle(),
+            TreeHolder::Children(ref children) => self
+                .tree_patch(children[0])
+                .solid_angle()
+                .max(self.tree_patch(children[1]).solid_angle())
+                .max(self.tree_patch(children[2]).solid_angle())
+                .max(self.tree_patch(children[3]).solid_angle()),
+        }
     }
 
     fn check_queues(&self) {
@@ -505,6 +533,7 @@ impl PatchTree {
         self.visit_count += 1;
         self.capture_patches(&mut tmp);
         let mut patch_count = tmp.len();
+        self.cached_visible_patches = patch_count;
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
         while self.max_splittable() - self.min_mergeable() > 150.0
@@ -545,6 +574,7 @@ impl PatchTree {
             self.visit_count += 1;
             self.capture_patches(&mut tmp);
             patch_count = tmp.len();
+            //assert_eq!(self.cached_visible_patches, patch_count);
         }
         assert!(patch_count <= target_patch_count);
 
@@ -578,11 +608,18 @@ impl PatchTree {
         // println!(
         //     "MERGING {:?} w/ sa: {}",
         //     tree_index,
-        //     self.tree_patch(tree_index).solid_angle()
+        //     self.solid_angle(tree_index)
         // );
         self.rejoin_count += 1;
         assert!(self.is_leaf_node(tree_index));
         let children = *self.tree_node(tree_index).children();
+
+        // Save the corners for use in our new patch.
+        let pts = [
+            self.tree_patch(children[0]).points()[0],
+            self.tree_patch(children[1]).points()[0],
+            self.tree_patch(children[2]).points()[0],
+        ];
 
         // Clear peer's backref links before we free the leaves.
         // Note: skip inner child links
@@ -606,24 +643,26 @@ impl PatchTree {
         }
         //        Remove (T, TB) from Qm.
         self.merge_queue.remove(tree_index);
-        //        Add merge parents T, TB to Qs.
-        self.split_queue
-            .insert(tree_index, self.tree_patch(tree_index).solid_angle());
 
         // Replace the current node patch as a leaf patch and free the prior leaf node.
-        self.tree_node_mut(tree_index).children = None;
+        let patch_index = self.allocate_leaf_patch(tree_index, pts);
+        self.tree_node_mut(tree_index).holder = TreeHolder::Patch(patch_index);
+
+        //        Add merge parents T, TB to Qs.
+        self.split_queue
+            .insert(tree_index, self.solid_angle(tree_index));
 
         //        Add all newly-mergeable diamonds to Qm.
         if let Some(parent_index) = self.tree_node(tree_index).parent {
             if self.is_mergeable_node(parent_index) {
                 self.merge_queue
-                    .insert(parent_index, self.tree_patch(parent_index).solid_angle());
+                    .insert(parent_index, self.solid_angle(parent_index));
             }
             for i in 0..3 {
                 if let Some(peer) = self.tree_node(parent_index).peers[i] {
                     if self.is_mergeable_node(peer.peer) {
                         self.merge_queue
-                            .insert(peer.peer, self.tree_patch(peer.peer).solid_angle());
+                            .insert(peer.peer, self.solid_angle(peer.peer));
                     }
                 }
             }
@@ -662,7 +701,7 @@ impl PatchTree {
         }
 
         let node = self.tree_node(tree_index);
-        let patch = self.get_patch(node.patch_index);
+        let patch = self.get_patch(node.patch_index());
 
         assert!(node.is_leaf());
         let current_level = node.level;
@@ -724,7 +763,8 @@ impl PatchTree {
         self.merge_queue.insert(tree_index, max_solid_angle);
 
         // Transform our leaf/patch into a node and clobber the old patch.
-        self.tree_node_mut(tree_index).children = Some(children);
+        self.free_patch(self.tree_node(tree_index).patch_index());
+        self.tree_node_mut(tree_index).holder = TreeHolder::Children(children);
 
         // We can no longer merge the parent, since we're now a node instead of a leaf.
         // We can also no longer merge our parent's peers, since that would create
@@ -847,13 +887,19 @@ impl PatchTree {
             assert_relative_eq!(p0.coords[2], p1.coords[2], max_relative = 0.000_001);
         }
 
-        let own_patch = self.tree_patch(tree_index);
+        let own_node = self.tree_node(tree_index);
         if let Some(peer) = edge {
-            let peer_patch = self.tree_patch(peer.peer);
-            let (s0, s1) = own_patch.edge(own_edge_offset);
-            let (p0, p1) = peer_patch.edge(peer.opposite_edge);
-            assert_points_relative_eq(s0, p1);
-            assert_points_relative_eq(s1, p0);
+            let other_node = self.tree_node(peer.peer);
+            if own_node.is_leaf() && other_node.is_leaf() {
+                let own_patch = self.tree_patch(tree_index);
+                let peer_patch = self.tree_patch(peer.peer);
+                let (s0, s1) = own_patch.edge(own_edge_offset);
+                let (p0, p1) = peer_patch.edge(peer.opposite_edge);
+                assert_points_relative_eq(s0, p1);
+                assert_points_relative_eq(s1, p0);
+            } else {
+                // TODO: could drill down into children to get points to match
+            }
         } else {
             // If the edge is None, the matching parent edge must not be None. This would imply
             // that the edge is adjacent to something more than one level of subdivision away
@@ -963,7 +1009,7 @@ impl PatchTree {
                 .tree_patch(tree_index)
                 .keep(&self.cached_viewable_region)
             {
-                live_patches.push(node.patch_index);
+                live_patches.push(node.patch_index());
             }
         }
     }
@@ -1012,7 +1058,7 @@ impl PatchTree {
             out += &format!(
                 "{}Leaf @{}, peers: [{},{},{}]\n",
                 pad,
-                poff(node.patch_index),
+                poff(node.patch_index()),
                 fmt_peer(&node.peers[0]),
                 fmt_peer(&node.peers[1]),
                 fmt_peer(&node.peers[2]),
