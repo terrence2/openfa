@@ -33,9 +33,8 @@ const SIDEDNESS_OFFSET: f64 = -1f64;
 pub(crate) struct Patch {
     // The solid angle to the polygon defined by pts plus an impostor billboard representing
     // the possibility of terrain, so that we do not de-emphasize visible edges on the horizon.
-    solid_angle: f64,
-    impostor_height: f64,       // KM
     imposter_base: Point3<f64>, // centroid
+    impostor_height: f64,       // KM
     imposter_baseline: f64,     // KM
 
     // Normal at center of patch.
@@ -49,6 +48,10 @@ pub(crate) struct Patch {
 
     // The leaf node that owns this patch, or None if a tombstone.
     owner: TreeIndex,
+
+    // Current view state.
+    cached_solid_angle: f64,
+    cached_in_view: bool,
 }
 
 impl Patch {
@@ -60,7 +63,6 @@ impl Patch {
             - imposter_base.coords.magnitude())
         .min(imposter_baseline / 2.);
         let patch = Self {
-            solid_angle: 0f64,
             imposter_baseline,
             imposter_base,
             impostor_height,
@@ -72,6 +74,8 @@ impl Patch {
             ],
             pts,
             owner,
+            cached_solid_angle: 0f64,
+            cached_in_view: false,
         };
         assert!(patch.planes[0].point_is_in_front(&pts[2]));
         assert!(patch.planes[1].point_is_in_front(&pts[0]));
@@ -85,10 +89,12 @@ impl Patch {
         eye_position: &Point3<f64>,
         eye_direction_samples: &[&Vector3<f64>],
     ) {
-        self.solid_angle = f64::MIN;
+        self.cached_solid_angle = f64::MIN;
         if !self.keep(viewable_area) {
+            self.cached_in_view = false;
             return;
         }
+        self.cached_in_view = true;
 
         // Cross north and eye_direction to get a right vector for the polygon.
         for sample in eye_direction_samples {
@@ -101,15 +107,19 @@ impl Patch {
             let sa_base = solid_angle(&eye_position, &sample, &self.pts);
             let sa_imp = solid_angle(&eye_position, &sample, &imposter);
             let sa = sa_base + sa_imp;
-            if sa > self.solid_angle {
-                self.solid_angle = sa;
+            if sa > self.cached_solid_angle {
+                self.cached_solid_angle = sa;
             }
         }
-        assert!(!self.solid_angle.is_nan());
+        assert!(!self.cached_solid_angle.is_nan());
     }
 
     pub(crate) fn solid_angle(&self) -> f64 {
-        self.solid_angle
+        self.cached_solid_angle
+    }
+
+    pub(crate) fn in_view(&self) -> bool {
+        self.cached_in_view
     }
 
     pub(crate) fn owner(&self) -> TreeIndex {
@@ -263,7 +273,7 @@ impl Patch {
         true
     }
 
-    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
+    fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
         for plane in viewable_area {
             if self.is_behind_plane(plane, false) {
                 return false;
