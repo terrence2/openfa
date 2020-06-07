@@ -69,7 +69,6 @@ members = [
         "libs/render-wgpu/render_pass/skybox",
         "libs/render-wgpu/render_pass/terrain",
         "libs/render-wgpu/render_pass/t2_terrain",
-        "libs/resource",
         "libs/reverse",
         "libs/sh",
         "libs/star_catalog",

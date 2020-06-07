@@ -54,7 +54,7 @@ pub const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
 lazy_static! {
     // Virtual instructions that have a one-byte header instead of
     static ref ONE_BYTE_MAGIC: HashSet<u8> =
-        { [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect() };
+        [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect();
 }
 
 // No idea what this does, but there is a 16bit count in the middle with
