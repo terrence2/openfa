@@ -27,7 +27,6 @@ use physical_constants::EARTH_RADIUS_KM;
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashSet},
-    mem,
     time::Instant,
 };
 
@@ -143,7 +142,7 @@ impl TreeNode {
 
 pub(crate) struct PatchTree {
     max_level: usize,
-    patches: Vec<Option<Patch>>,
+    patches: Vec<Patch>,
     patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
     tree: Vec<Option<TreeNode>>,
     tree_empty_set: BinaryHeap<Reverse<TreeIndex>>,
@@ -189,7 +188,7 @@ impl PatchTree {
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
             let p = Patch::new(TreeIndex(i), [v0, v1, v2]);
-            patches.push(Some(p));
+            patches.push(p);
         }
 
         Self {
@@ -217,11 +216,11 @@ impl PatchTree {
     }
 
     pub(crate) fn get_patch(&self, index: PatchIndex) -> &Patch {
-        self.patches[poff(index)].as_ref().unwrap()
+        &self.patches[poff(index)]
     }
 
     fn get_patch_mut(&mut self, index: PatchIndex) -> &mut Patch {
-        self.patches[poff(index)].as_mut().unwrap()
+        &mut self.patches[poff(index)]
     }
 
     pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
@@ -233,13 +232,13 @@ impl PatchTree {
             return patch_index;
         }
         let patch_index = PatchIndex(self.patches.len());
-        self.patches.push(None);
+        self.patches.push(Patch::empty());
         patch_index
     }
 
     fn allocate_leaf_patch(&mut self, tree_index: TreeIndex, pts: [Point3<f64>; 3]) -> PatchIndex {
         let patch_index = self.allocate_patch();
-        self.patches[poff(patch_index)] = Some(Patch::new(tree_index, pts));
+        self.patches[poff(patch_index)].retarget(tree_index, pts);
         let viewable_region = self.cached_viewable_region;
         let eye_position = self.cached_eye_position;
         let eye_direction = self.cached_eye_direction;
@@ -258,7 +257,6 @@ impl PatchTree {
         if self.get_patch(patch_index).in_view() {
             self.cached_visible_patches -= 1;
         }
-        self.patches[poff(patch_index)] = None;
         self.patch_empty_set.push(Reverse(patch_index));
     }
 
@@ -269,9 +267,14 @@ impl PatchTree {
     // in O(1) time. By removing the holes, we can leap without looking when updating the solid
     // angle in each frame, doubling our performance in the common case.
     fn compact_patches(&mut self) {
+        let mut removals = self
+            .patch_empty_set
+            .iter()
+            .map(|item| item.0)
+            .collect::<HashSet<PatchIndex>>();
         while let Some(Reverse(empty_index)) = self.patch_empty_set.pop() {
             let mut last_index = PatchIndex(self.patches.len() - 1);
-            while self.patches[poff(last_index)].is_none() {
+            while removals.contains(&last_index) {
                 let _ = self.patches.pop().unwrap();
                 last_index = PatchIndex(self.patches.len() - 1);
             }
@@ -279,8 +282,9 @@ impl PatchTree {
                 continue;
             }
             if empty_index != last_index {
+                removals.remove(&empty_index);
                 self.patches[poff(empty_index)] = self.patches[last_index.0];
-                self.tree[self.patches[empty_index.0].as_mut().unwrap().owner().0]
+                self.tree[self.patches[empty_index.0].owner().0]
                     .as_mut()
                     .unwrap()
                     .holder = TreeHolder::Patch(empty_index);
@@ -350,23 +354,21 @@ impl PatchTree {
     pub(crate) fn solid_angle_shared(
         tree_index: TreeIndex,
         tree: &[Option<TreeNode>],
-        patches: &[Option<Patch>],
+        patches: &[Patch],
     ) -> f64 {
         let node = tree[toff(tree_index)].unwrap();
         assert!(node.is_leaf() || Self::is_leaf_node_shared(tree_index, tree));
         match tree[toff(tree_index)].expect("dead node").holder {
-            TreeHolder::Patch(patch_index) => patches[poff(patch_index)]
-                .expect("dead patch")
-                .solid_angle(),
+            TreeHolder::Patch(patch_index) => patches[poff(patch_index)].solid_angle(),
             TreeHolder::Children(ref children) => {
                 let n0 = tree[toff(children[0])].expect("dead child node");
                 let n1 = tree[toff(children[1])].expect("dead child node");
                 let n2 = tree[toff(children[2])].expect("dead child node");
                 let n3 = tree[toff(children[3])].expect("dead child node");
-                let p0 = patches[poff(n0.patch_index())].expect("dead child patch");
-                let p1 = patches[poff(n1.patch_index())].expect("dead child patch");
-                let p2 = patches[poff(n2.patch_index())].expect("dead child patch");
-                let p3 = patches[poff(n3.patch_index())].expect("dead child patch");
+                let p0 = patches[poff(n0.patch_index())];
+                let p1 = patches[poff(n1.patch_index())];
+                let p2 = patches[poff(n2.patch_index())];
+                let p3 = patches[poff(n3.patch_index())];
                 p0.solid_angle()
                     .max(p1.solid_angle())
                     .max(p2.solid_angle())
@@ -461,7 +463,7 @@ impl PatchTree {
     fn count_in_view_patches(&self) -> usize {
         self.patches
             .iter()
-            .map(|mp| mp.map_or(0, |p| if p.in_view() { 1 } else { 0 }))
+            .map(|p| if p.in_view() { 1 } else { 0 })
             .sum()
     }
 
@@ -512,34 +514,12 @@ impl PatchTree {
         // FIXME: do we need a patch on nodes, or only on leaves?
         let patch_update_start = Instant::now();
         for patch in self.patches.iter_mut() {
-            patch.as_mut().unwrap().update_for_view(
+            patch.update_for_view(
                 &self.cached_viewable_region,
                 &self.cached_eye_position,
                 &self.cached_eye_direction,
             )
         }
-        /*
-        if live_top_marker < self.patches.len() - self.patch_empty_set.len() {
-            for maybe_patch in self.patches.iter_mut().skip(live_top_marker) {
-                if let Some(patch) = maybe_patch {
-                    patch.update_for_view(
-                        &self.cached_viewable_region,
-                        &self.cached_eye_position,
-                        &self.cached_eye_direction,
-                    );
-                }
-            }
-        }
-        for maybe_patch in self.patches.iter_mut() {
-            if let Some(patch) = maybe_patch {
-                patch.update_for_view(
-                    &self.cached_viewable_region,
-                    &self.cached_eye_position,
-                    &self.cached_eye_direction,
-                );
-            }
-        }
-         */
         let patch_update_duration = Instant::now() - patch_update_start;
 
         // Update split and merge queue caches with updated solid angles.
@@ -608,6 +588,8 @@ impl PatchTree {
 
         // Prepare for next frame.
         self.compact_patches();
+        self.check_tree(None);
+        self.check_queues();
 
         // Build a view-direction independent tesselation based on the current camera position.
         self.capture_patches(live_patches);

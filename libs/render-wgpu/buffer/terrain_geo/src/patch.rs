@@ -49,6 +49,17 @@ pub(crate) struct Patch {
 }
 
 impl Patch {
+    pub(crate) fn empty() -> Self {
+        Self {
+            normal: Vector3::new(1f64, 0f64, 0f64),
+            planes: [Plane::from_normal_and_distance(Vector3::new(1f64, 0f64, 0f64), 0f64); 3],
+            pts: [Point3::new(0f64, 0f64, 0f64); 3],
+            owner: TreeIndex(usize::MAX),
+            cached_solid_angle: 0f64,
+            cached_in_view: false,
+        }
+    }
+
     pub(crate) fn new(owner: TreeIndex, pts: [Point3<f64>; 3]) -> Self {
         let origin = Point3::new(0f64, 0f64, 0f64);
         let patch = Self {
@@ -67,6 +78,10 @@ impl Patch {
         assert!(patch.planes[1].point_is_in_front(&pts[0]));
         assert!(patch.planes[2].point_is_in_front(&pts[1]));
         patch
+    }
+
+    pub(crate) fn retarget(&mut self, owner: TreeIndex, pts: [Point3<f64>; 3]) {
+        *self = Self::new(owner, pts);
     }
 
     pub(crate) fn update_for_view(

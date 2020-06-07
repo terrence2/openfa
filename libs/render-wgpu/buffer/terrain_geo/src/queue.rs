@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
     patch::Patch,
-    patch_tree::{poff, toff, PatchTree, TreeIndex, TreeNode},
+    patch_tree::{toff, PatchTree, TreeIndex, TreeNode},
 };
 use float_ord::FloatOrd;
 use std::{
@@ -219,7 +219,7 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         }
     }
 
-    pub(crate) fn update_cache(&mut self, tree: &[Option<TreeNode>], patches: &[Option<Patch>]) {
+    pub(crate) fn update_cache(&mut self, tree: &[Option<TreeNode>], patches: &[Patch]) {
         let mut sandbag = BinaryHeap::new();
         std::mem::swap(&mut self.heap, &mut sandbag);
         let mut heap_vec = sandbag.into_vec();
