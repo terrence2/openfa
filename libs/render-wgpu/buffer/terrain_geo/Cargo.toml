@@ -7,7 +7,9 @@ edition = "2018"
 
 [dependencies]
 approx = "^ 0.3"
+backtrace = "^ 0.3"
 failure = "^ 0.1.2"
+float-ord = "^ 0.2"
 memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"

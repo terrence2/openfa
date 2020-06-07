@@ -15,7 +15,7 @@
 use crate::patch_tree::TreeIndex;
 
 use geometry::{
-    algorithm::compute_normal,
+    algorithm::{compute_normal, solid_angle},
     intersect,
     intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
     Plane, Sphere,
@@ -31,6 +31,13 @@ const SIDEDNESS_OFFSET: f64 = -1f64;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Patch {
+    // The solid angle to the polygon defined by pts plus an impostor billboard representing
+    // the possibility of terrain, so that we do not de-emphasize visible edges on the horizon.
+    solid_angle: f64,
+    impostor_height: f64,       // KM
+    imposter_base: Point3<f64>, // centroid
+    imposter_baseline: f64,     // KM
+
     // Normal at center of patch.
     normal: Vector3<f64>,
 
@@ -47,7 +54,10 @@ pub(crate) struct Patch {
 impl Patch {
     pub(crate) fn new() -> Self {
         Self {
-            owner: None,
+            solid_angle: 0f64,
+            impostor_height: 0f64,
+            imposter_base: Point3::new(0f64, 0f64, 0f64),
+            imposter_baseline: 0f64,
             normal: Vector3::new(0f64, 1f64, 0f64),
             pts: [
                 Point3::new(0f64, 0f64, 0f64),
@@ -55,6 +65,7 @@ impl Patch {
                 Point3::new(0f64, 0f64, 0f64),
             ],
             planes: [Plane::xy(), Plane::xy(), Plane::xy()],
+            owner: None,
         }
     }
 
@@ -74,6 +85,42 @@ impl Patch {
         assert!(self.planes[0].point_is_in_front(&pts[2]));
         assert!(self.planes[1].point_is_in_front(&pts[0]));
         assert!(self.planes[2].point_is_in_front(&pts[1]));
+        self.imposter_baseline = (pts[1] - pts[0]).magnitude() / 2f64;
+        self.imposter_base = Point3::from(pts[0].coords + pts[1].coords + pts[2].coords) / 3f64;
+        self.impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
+            - self.imposter_base.coords.magnitude())
+        .min(self.imposter_baseline / 2.);
+    }
+
+    pub(crate) fn update_for_view(
+        &mut self,
+        viewable_area: &[Plane<f64>; 6],
+        eye_position: &Point3<f64>,
+        eye_direction_samples: &[&Vector3<f64>],
+    ) {
+        assert!(self.is_alive());
+
+        self.solid_angle = f64::MIN;
+        if !self.keep(viewable_area) {
+            return;
+        }
+
+        // Cross north and eye_direction to get a right vector for the polygon.
+        for sample in eye_direction_samples {
+            let right = sample.cross(&self.normal).normalize();
+            let imposter = [
+                self.imposter_base + ((-right) * self.imposter_baseline),
+                self.imposter_base + (right * self.imposter_baseline),
+                self.imposter_base + (self.normal * self.impostor_height),
+            ];
+            let sa_base = solid_angle(&eye_position, &sample, &self.pts);
+            let sa_imp = solid_angle(&eye_position, &sample, &imposter);
+            let sa = sa_base + sa_imp;
+            if sa > self.solid_angle {
+                self.solid_angle = sa;
+            }
+        }
+        assert!(!self.solid_angle.is_nan());
     }
 
     pub(crate) fn is_alive(&self) -> bool {
@@ -82,6 +129,10 @@ impl Patch {
 
     pub(crate) fn erect_tombstone(&mut self) {
         self.owner = None;
+    }
+
+    pub(crate) fn solid_angle(&self) -> f64 {
+        self.solid_angle
     }
 
     pub(crate) fn owner(&self) -> TreeIndex {
@@ -102,6 +153,8 @@ impl Patch {
         }
     }
 
+    // Might be useful later?
+    #[allow(unused)]
     pub(crate) fn distance_squared_to(&self, point: &Point3<f64>) -> f64 {
         if self.point_is_in_cone(point) {
             let m = point.coords.magnitude();
@@ -234,31 +287,7 @@ impl Patch {
         true
     }
 
-    // FIXME: Fuzz offset needs to be the extent of the possible normals of the patch.
-    /*
-    fn is_back_facing(&self, eye_position: &Point3<f64>) -> bool {
-        for p in &self.pts {
-            if (p - eye_position).dot(&self.normal) <= -0.00001f64 {
-                return false;
-            }
-        }
-        true
-    }
-     */
-
-    pub(crate) fn keep(
-        &self,
-        viewable_area: &[Plane<f64>; 6],
-        _eye_position: &Point3<f64>,
-    ) -> bool {
-        /*
-        // Cull back-facing
-        if self.is_back_facing(eye_position) {
-            // println!("  no - back facing");
-            return false;
-        }
-        */
-
+    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
         for plane in viewable_area {
             if self.is_behind_plane(plane, false) {
                 return false;
