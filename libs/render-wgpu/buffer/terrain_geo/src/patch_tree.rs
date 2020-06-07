@@ -606,14 +606,14 @@ impl PatchTree {
         }
         assert!(self.cached_visible_patches <= target_patch_count);
 
+        // Prepare for next frame.
+        self.compact_patches();
+
         // Build a view-direction independent tesselation based on the current camera position.
         self.capture_patches(live_patches);
         assert!(live_patches.len() <= target_patch_count);
         assert_eq!(self.cached_visible_patches, live_patches.len());
         let reshape_time = Instant::now() - reshape_start;
-
-        // Prepare for next frame.
-        self.compact_patches();
 
         // Select patches based on visibility.
         let max_split = self.max_splittable();
