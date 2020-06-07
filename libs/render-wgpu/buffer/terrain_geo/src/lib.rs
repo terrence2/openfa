@@ -89,7 +89,7 @@ impl TerrainGeoBuffer {
         _gen_subdivisions: usize,
         gpu: &GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
-        let (max_level, falloff_coefficient, patch_buffer_size) = cpu_detail_level.parameters();
+        let (max_level, _falloff_coefficient, patch_buffer_size) = cpu_detail_level.parameters();
         /*
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[wgpu::BindGroupLayoutBinding {
@@ -113,7 +113,7 @@ impl TerrainGeoBuffer {
         });
         */
 
-        let patches = PatchTree::new(max_level, falloff_coefficient);
+        let patches = PatchTree::new(max_level, patch_buffer_size);
 
         println!(
             "dbg_vertex_buffer: {:08X}",

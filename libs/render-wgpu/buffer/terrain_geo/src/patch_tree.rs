@@ -197,7 +197,7 @@ pub(crate) struct PatchTree {
 }
 
 impl PatchTree {
-    pub(crate) fn new(max_level: usize, falloff_coefficient: f64) -> Self {
+    pub(crate) fn new(max_level: usize, _desired_patch_count: usize) -> Self {
         let sphere = Icosahedron::new();
         let mut patches = Vec::new();
         let mut tree = Vec::new();
@@ -516,25 +516,20 @@ impl PatchTree {
 
             //   If T is too large or accurate {
             if patch_count >= target_patch_count {
-                if self.merge_queue.len() == 0 {
+                if self.merge_queue.is_empty() {
                     panic!("would merge but nothing to merge");
-                    break;
                 }
 
                 //      Identify lowest-priority (T, TB) in Qm.
                 let bottom_key = self.merge_queue.pop();
-                let smallest_mergeable = self.tree_node(bottom_key).patch_index;
 
                 //      Merge (T, TB).
-                let node_index = self.get_patch(smallest_mergeable).owner();
-                let node = *self.tree_node(node_index);
-                self.rejoin_leaf_patch_into(node.parent, node.level, node_index, node.children());
+                self.rejoin_leaf_patch_into(bottom_key);
                 self.check_queues();
                 self.check_tree(None);
             } else {
-                if self.split_queue.len() == 0 {
+                if self.split_queue.is_empty() {
                     panic!("would split but nothing to split");
-                    break;
                 }
 
                 // Identify highest-priority T in Qs.
@@ -579,13 +574,7 @@ impl PatchTree {
         );
     }
 
-    fn rejoin_leaf_patch_into(
-        &mut self,
-        maybe_parent_index: Option<TreeIndex>,
-        level: usize,
-        tree_index: TreeIndex,
-        children: &[TreeIndex; 4],
-    ) {
+    fn rejoin_leaf_patch_into(&mut self, tree_index: TreeIndex) {
         // println!(
         //     "MERGING {:?} w/ sa: {}",
         //     tree_index,
@@ -593,6 +582,7 @@ impl PatchTree {
         // );
         self.rejoin_count += 1;
         assert!(self.is_leaf_node(tree_index));
+        let children = *self.tree_node(tree_index).children();
 
         // Clear peer's backref links before we free the leaves.
         // Note: skip inner child links
@@ -609,7 +599,7 @@ impl PatchTree {
             }
         }
         // Free children and remove from Qs.
-        for &child in children {
+        for &child in &children {
             self.free_leaf(child);
             //        Remove all merged children from Qs.
             self.split_queue.remove(child);
@@ -624,7 +614,7 @@ impl PatchTree {
         self.tree_node_mut(tree_index).children = None;
 
         //        Add all newly-mergeable diamonds to Qm.
-        if let Some(parent_index) = maybe_parent_index {
+        if let Some(parent_index) = self.tree_node(tree_index).parent {
             if self.is_mergeable_node(parent_index) {
                 self.merge_queue
                     .insert(parent_index, self.tree_patch(parent_index).solid_angle());
@@ -681,7 +671,6 @@ impl PatchTree {
         let [v0, v1, v2] = patch.points().to_owned();
         let maybe_parent_index = node.parent;
         let leaf_peers = *node.peers();
-        let solid_angle = patch.solid_angle();
 
         // Get new points.
         let a = Point3::from(bisect_edge(&v0.coords, &v1.coords).normalize() * EARTH_RADIUS_KM);
@@ -1042,7 +1031,7 @@ mod test {
 
     #[test]
     fn test_pathological() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 0.8);
+        let mut tree = PatchTree::new(15, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_eye_relative(Graticule::<Target>::new(
@@ -1051,7 +1040,6 @@ mod test {
             meters!(4_000_000),
         ))?;
 
-        println!("AT: 0");
         camera.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(0),
@@ -1059,7 +1047,6 @@ mod test {
         ));
         tree.optimize_for_view(&camera, &mut live_patches);
 
-        println!("AT: 1");
         camera.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(180),
@@ -1067,7 +1054,6 @@ mod test {
         ));
         tree.optimize_for_view(&camera, &mut live_patches);
 
-        println!("AT: 2");
         camera.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(0),
@@ -1079,7 +1065,7 @@ mod test {
 
     #[test]
     fn test_zoom_in() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 0.8);
+        let mut tree = PatchTree::new(15, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_target(Graticule::<GeoSurface>::new(
@@ -1090,7 +1076,6 @@ mod test {
 
         const CNT: i64 = 40;
         for i in 0..CNT {
-            println!("AT: {}", i);
             camera.set_eye_relative(Graticule::<Target>::new(
                 degrees!(89),
                 degrees!(0),
