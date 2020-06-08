@@ -572,7 +572,7 @@ impl PatchTree {
         let mut stuck_iterations = 0;
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
-        while self.max_splittable() - self.min_mergeable() > 150.0
+        while self.max_splittable() - self.min_mergeable() > self.target_refinement
             || self.cached_visible_patches < target_patch_count - 4
             || self.cached_visible_patches > target_patch_count
         {
