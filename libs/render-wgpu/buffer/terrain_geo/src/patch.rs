@@ -15,7 +15,7 @@
 use crate::patch_tree::TreeIndex;
 
 use geometry::{
-    algorithm::{compute_normal, solid_angle},
+    algorithm::{compute_normal, solid_angle_tri},
     intersect,
     intersect::{CirclePlaneIntersection, PlaneSide, SpherePlaneIntersection},
     Plane, Sphere,
@@ -31,13 +31,6 @@ const SIDEDNESS_OFFSET: f64 = -1f64;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Patch {
-    // The solid angle to the polygon defined by pts plus an impostor billboard representing
-    // the possibility of terrain, so that we do not de-emphasize visible edges on the horizon.
-    solid_angle: f64,
-    impostor_height: f64,       // KM
-    imposter_base: Point3<f64>, // centroid
-    imposter_baseline: f64,     // KM
-
     // Normal at center of patch.
     normal: Vector3<f64>,
 
@@ -48,96 +41,80 @@ pub(crate) struct Patch {
     planes: [Plane<f64>; 3],
 
     // The leaf node that owns this patch, or None if a tombstone.
-    owner: Option<TreeIndex>,
+    owner: TreeIndex,
+
+    // Current view state.
+    cached_solid_angle: f64,
+    cached_in_view: bool,
 }
 
 impl Patch {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
-            solid_angle: 0f64,
-            impostor_height: 0f64,
-            imposter_base: Point3::new(0f64, 0f64, 0f64),
-            imposter_baseline: 0f64,
-            normal: Vector3::new(0f64, 1f64, 0f64),
-            pts: [
-                Point3::new(0f64, 0f64, 0f64),
-                Point3::new(0f64, 0f64, 0f64),
-                Point3::new(0f64, 0f64, 0f64),
-            ],
-            planes: [Plane::xy(), Plane::xy(), Plane::xy()],
-            owner: None,
+            normal: Vector3::new(1f64, 0f64, 0f64),
+            planes: [Plane::from_normal_and_distance(Vector3::new(1f64, 0f64, 0f64), 0f64); 3],
+            pts: [Point3::new(0f64, 0f64, 0f64); 3],
+            owner: TreeIndex(usize::MAX),
+            cached_solid_angle: 0f64,
+            cached_in_view: false,
         }
     }
 
-    pub(crate) fn change_target(&mut self, owner: TreeIndex, pts: [Point3<f64>; 3]) {
-        self.owner = Some(owner);
-        self.pts = pts;
-        self.normal = compute_normal(&pts[0], &pts[1], &pts[2]);
-        for i in 0..3 {
-            assert!(!self.normal[i].is_nan());
-        }
+    pub(crate) fn new(owner: TreeIndex, pts: [Point3<f64>; 3]) -> Self {
         let origin = Point3::new(0f64, 0f64, 0f64);
-        self.planes = [
-            Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
-            Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
-            Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
-        ];
-        assert!(self.planes[0].point_is_in_front(&pts[2]));
-        assert!(self.planes[1].point_is_in_front(&pts[0]));
-        assert!(self.planes[2].point_is_in_front(&pts[1]));
-        self.imposter_baseline = (pts[1] - pts[0]).magnitude() / 2f64;
-        self.imposter_base = Point3::from(pts[0].coords + pts[1].coords + pts[2].coords) / 3f64;
-        self.impostor_height = ((EARTH_RADIUS_KM + EVEREST_HEIGHT_KM)
-            - self.imposter_base.coords.magnitude())
-        .min(self.imposter_baseline / 2.);
+        let patch = Self {
+            normal: compute_normal(&pts[0], &pts[1], &pts[2]),
+            planes: [
+                Plane::from_point_and_normal(&pts[0], &compute_normal(&pts[1], &origin, &pts[0])),
+                Plane::from_point_and_normal(&pts[1], &compute_normal(&pts[2], &origin, &pts[1])),
+                Plane::from_point_and_normal(&pts[2], &compute_normal(&pts[0], &origin, &pts[2])),
+            ],
+            pts,
+            owner,
+            cached_solid_angle: 0f64,
+            cached_in_view: false,
+        };
+        assert!(patch.planes[0].point_is_in_front(&pts[2]));
+        assert!(patch.planes[1].point_is_in_front(&pts[0]));
+        assert!(patch.planes[2].point_is_in_front(&pts[1]));
+        patch
+    }
+
+    pub(crate) fn retarget(&mut self, owner: TreeIndex, pts: [Point3<f64>; 3]) {
+        *self = Self::new(owner, pts);
     }
 
     pub(crate) fn update_for_view(
         &mut self,
         viewable_area: &[Plane<f64>; 6],
         eye_position: &Point3<f64>,
-        eye_direction_samples: &[&Vector3<f64>],
+        eye_direction: &Vector3<f64>,
     ) {
-        assert!(self.is_alive());
-
-        self.solid_angle = f64::MIN;
+        self.cached_solid_angle = f64::MIN;
         if !self.keep(viewable_area) {
+            self.cached_in_view = false;
             return;
         }
+        self.cached_in_view = true;
 
         // Cross north and eye_direction to get a right vector for the polygon.
-        for sample in eye_direction_samples {
-            let right = sample.cross(&self.normal).normalize();
-            let imposter = [
-                self.imposter_base + ((-right) * self.imposter_baseline),
-                self.imposter_base + (right * self.imposter_baseline),
-                self.imposter_base + (self.normal * self.impostor_height),
-            ];
-            let sa_base = solid_angle(&eye_position, &sample, &self.pts);
-            let sa_imp = solid_angle(&eye_position, &sample, &imposter);
-            let sa = sa_base + sa_imp;
-            if sa > self.solid_angle {
-                self.solid_angle = sa;
-            }
+        let sa = solid_angle_tri(&eye_position, &eye_direction, &self.pts);
+        if sa > self.cached_solid_angle {
+            self.cached_solid_angle = sa;
         }
-        assert!(!self.solid_angle.is_nan());
-    }
-
-    pub(crate) fn is_alive(&self) -> bool {
-        self.owner.is_some()
-    }
-
-    pub(crate) fn erect_tombstone(&mut self) {
-        self.owner = None;
+        assert!(!self.cached_solid_angle.is_nan());
     }
 
     pub(crate) fn solid_angle(&self) -> f64 {
-        self.solid_angle
+        self.cached_solid_angle
+    }
+
+    pub(crate) fn in_view(&self) -> bool {
+        self.cached_in_view
     }
 
     pub(crate) fn owner(&self) -> TreeIndex {
-        assert!(self.owner.is_some());
-        self.owner.unwrap()
+        self.owner
     }
 
     pub(crate) fn points(&self) -> &[Point3<f64>; 3] {
@@ -287,7 +264,7 @@ impl Patch {
         true
     }
 
-    pub(crate) fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
+    fn keep(&self, viewable_area: &[Plane<f64>; 6]) -> bool {
         for plane in viewable_area {
             if self.is_behind_plane(plane, false) {
                 return false;

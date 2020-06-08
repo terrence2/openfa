@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
     patch::Patch,
-    patch_tree::{poff, toff, PatchTree, TreeIndex, TreeNode},
+    patch_tree::{toff, PatchTree, TreeIndex, TreeNode},
 };
 use float_ord::FloatOrd;
 use std::{
@@ -225,21 +225,8 @@ impl<T: QueueItem + Ord + fmt::Debug> Queue<T> {
         let mut heap_vec = sandbag.into_vec();
         for key in heap_vec.iter_mut() {
             if !self.removals.contains(&key.tree_index()) {
-                let node = tree[toff(key.tree_index())].expect("freed node in queue");
-                if node.is_leaf() {
-                    key.set_solid_angle(patches[poff(node.patch_index())].solid_angle());
-                } else {
-                    // FIXME: shame is an appropriate reaction here
-                    let mut max_sa = f64::MIN;
-                    for &child_index in node.children() {
-                        let child = tree[toff(child_index)].expect("freed child in queue");
-                        let sa = patches[poff(child.patch_index())].solid_angle();
-                        if sa > max_sa {
-                            max_sa = sa;
-                        }
-                    }
-                    key.set_solid_angle(max_sa);
-                }
+                let solid_angle = PatchTree::solid_angle_shared(key.tree_index(), tree, patches);
+                key.set_solid_angle(solid_angle);
             }
         }
         // O(n) rebuild of the queue

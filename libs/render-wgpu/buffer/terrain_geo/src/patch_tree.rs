@@ -24,60 +24,22 @@ use camera::ArcBallCamera;
 use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
-use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, HashSet},
+    time::Instant,
+};
+
+// It's possible that the current viewpoint just cannot be refined to our target, given
+// our other constraints. Since we'll have another chance to optimize next frame, bail
+// if we spend too much time optimizing.
+const MAX_STUCK_ITERATIONS: usize = 6;
+
+// Adds a sanity checks to the inner loop.
+const PARANOIA_MODE: bool = false;
 
 // Index into the tree vec. Note, debug builds do not handle the struct indirection well,
 // so ironically release has better protections against misuse.
-
-/*
-#[cfg(not(debug_assertions))]
-#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct TreeIndex(usize);
-
-#[cfg(not(debug_assertions))]
-fn toff(ti: TreeIndex) -> usize {
-    ti.0
-}
-
-#[cfg(debug_assertions)]
-pub(crate) type TreeIndex = usize;
-
-#[cfg(debug_assertions)]
-#[allow(non_snake_case)]
-fn TreeIndex(i: usize) -> usize {
-    i
-}
-
-#[cfg(debug_assertions)]
-fn toff(ti: TreeIndex) -> usize {
-    ti
-}
-
-// Index into the patch vec.
-#[cfg(not(debug_assertions))]
-#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct PatchIndex(pub(crate) usize);
-
-#[cfg(not(debug_assertions))]
-fn poff(pi: PatchIndex) -> usize {
-    pi.0
-}
-
-#[cfg(debug_assertions)]
-pub(crate) type PatchIndex = usize;
-
-#[cfg(debug_assertions)]
-#[allow(non_snake_case)]
-fn PatchIndex(i: usize) -> usize {
-    i
-}
-
-#[cfg(debug_assertions)]
-fn poff(pi: TreeIndex) -> usize {
-    pi
-}
- */
-
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TreeIndex(pub(crate) usize);
 
@@ -187,6 +149,9 @@ impl TreeNode {
 
 pub(crate) struct PatchTree {
     max_level: usize,
+    target_refinement: f64,
+    desired_patch_count: usize,
+
     patches: Vec<Patch>,
     patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
     tree: Vec<Option<TreeNode>>,
@@ -194,13 +159,14 @@ pub(crate) struct PatchTree {
     root: Root,
     root_peers: [[Option<Peer>; 3]; 20],
 
+    split_queue: Queue<MaxHeap>,
+    merge_queue: Queue<MinHeap>,
+
     subdivide_count: usize,
     rejoin_count: usize,
     visit_count: usize,
 
     frame_number: usize,
-    split_queue: Queue<MaxHeap>,
-    merge_queue: Queue<MinHeap>,
     cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
@@ -208,7 +174,11 @@ pub(crate) struct PatchTree {
 }
 
 impl PatchTree {
-    pub(crate) fn new(max_level: usize, _desired_patch_count: usize) -> Self {
+    pub(crate) fn new(
+        max_level: usize,
+        target_refinement: f64,
+        desired_patch_count: usize,
+    ) -> Self {
         let sphere = Icosahedron::new();
         let mut patches = Vec::new();
         let mut tree = Vec::new();
@@ -232,13 +202,14 @@ impl PatchTree {
             let v0 = Point3::from(sphere.verts[face.i0()] * EARTH_RADIUS_KM);
             let v1 = Point3::from(sphere.verts[face.i1()] * EARTH_RADIUS_KM);
             let v2 = Point3::from(sphere.verts[face.i2()] * EARTH_RADIUS_KM);
-            let mut p = Patch::new();
-            p.change_target(TreeIndex(i), [v0, v1, v2]);
+            let p = Patch::new(TreeIndex(i), [v0, v1, v2]);
             patches.push(p);
         }
 
         Self {
             max_level,
+            target_refinement,
+            desired_patch_count,
             patches,
             patch_empty_set: BinaryHeap::new(),
             tree,
@@ -278,28 +249,66 @@ impl PatchTree {
             return patch_index;
         }
         let patch_index = PatchIndex(self.patches.len());
-        self.patches.push(Patch::new());
+        self.patches.push(Patch::empty());
         patch_index
     }
 
     fn allocate_leaf_patch(&mut self, tree_index: TreeIndex, pts: [Point3<f64>; 3]) -> PatchIndex {
         let patch_index = self.allocate_patch();
-        self.get_patch_mut(patch_index)
-            .change_target(tree_index, pts);
+        self.patches[poff(patch_index)].retarget(tree_index, pts);
         let viewable_region = self.cached_viewable_region;
         let eye_position = self.cached_eye_position;
         let eye_direction = self.cached_eye_direction;
         self.get_patch_mut(patch_index).update_for_view(
             &viewable_region,
             &eye_position,
-            &[&eye_direction],
+            &eye_direction,
         );
+        if self.get_patch(patch_index).in_view() {
+            self.cached_visible_patches += 1;
+        }
         patch_index
     }
 
     fn free_patch(&mut self, patch_index: PatchIndex) {
-        self.get_patch_mut(patch_index).erect_tombstone();
+        if self.get_patch(patch_index).in_view() {
+            self.cached_visible_patches -= 1;
+        }
         self.patch_empty_set.push(Reverse(patch_index));
+    }
+
+    // At the end of a frame, we may have net freed patches, resulting in holes. Note that there
+    // will not be many of these, since we target a fixed patch count each frame. Also, since each
+    // patch is only referred to by a single leaf node in the tree -- the patch info is only pulled
+    // out to make the tree smaller for faster tree traversal -- updating after swap can be done
+    // in O(1) time. By removing the holes, we can leap without looking when updating the solid
+    // angle in each frame, doubling our performance in the common case.
+    fn compact_patches(&mut self) {
+        let mut removals = self
+            .patch_empty_set
+            .iter()
+            .map(|item| item.0)
+            .collect::<HashSet<PatchIndex>>();
+        while let Some(Reverse(empty_index)) = self.patch_empty_set.pop() {
+            let mut last_index = PatchIndex(self.patches.len() - 1);
+            while removals.contains(&last_index) {
+                let _ = self.patches.pop().unwrap();
+                last_index = PatchIndex(self.patches.len() - 1);
+            }
+            if empty_index.0 >= self.patches.len() {
+                continue;
+            }
+            if empty_index != last_index {
+                removals.remove(&empty_index);
+                self.patches[poff(empty_index)] = self.patches[last_index.0];
+                self.tree[self.patches[empty_index.0].owner().0]
+                    .as_mut()
+                    .unwrap()
+                    .holder = TreeHolder::Patch(empty_index);
+            }
+            let _ = self.patches.pop().unwrap();
+        }
+        assert!(self.patch_empty_set.is_empty());
     }
 
     fn allocate_tree_node(&mut self) -> TreeIndex {
@@ -358,17 +367,35 @@ impl PatchTree {
         self.tree_node(self.get_patch(patch_index).owner())
     }
 
-    pub(crate) fn solid_angle(&self, tree_index: TreeIndex) -> f64 {
-        assert!(self.tree_node(tree_index).is_leaf() || self.is_leaf_node(tree_index));
-        match self.tree_node(tree_index).holder {
-            TreeHolder::Patch(patch_index) => self.get_patch(patch_index).solid_angle(),
-            TreeHolder::Children(ref children) => self
-                .tree_patch(children[0])
-                .solid_angle()
-                .max(self.tree_patch(children[1]).solid_angle())
-                .max(self.tree_patch(children[2]).solid_angle())
-                .max(self.tree_patch(children[3]).solid_angle()),
+    // Note: shared with queue, which can't borrow us because we own it.
+    pub(crate) fn solid_angle_shared(
+        tree_index: TreeIndex,
+        tree: &[Option<TreeNode>],
+        patches: &[Patch],
+    ) -> f64 {
+        let node = tree[toff(tree_index)].unwrap();
+        assert!(node.is_leaf() || Self::is_leaf_node_shared(tree_index, tree));
+        match tree[toff(tree_index)].expect("dead node").holder {
+            TreeHolder::Patch(patch_index) => patches[poff(patch_index)].solid_angle(),
+            TreeHolder::Children(ref children) => {
+                let n0 = tree[toff(children[0])].expect("dead child node");
+                let n1 = tree[toff(children[1])].expect("dead child node");
+                let n2 = tree[toff(children[2])].expect("dead child node");
+                let n3 = tree[toff(children[3])].expect("dead child node");
+                let p0 = patches[poff(n0.patch_index())];
+                let p1 = patches[poff(n1.patch_index())];
+                let p2 = patches[poff(n2.patch_index())];
+                let p3 = patches[poff(n3.patch_index())];
+                p0.solid_angle()
+                    .max(p1.solid_angle())
+                    .max(p2.solid_angle())
+                    .max(p3.solid_angle())
+            }
         }
+    }
+
+    pub(crate) fn solid_angle(&self, tree_index: TreeIndex) -> f64 {
+        Self::solid_angle_shared(tree_index, &self.tree, &self.patches)
     }
 
     fn check_queues(&self) {
@@ -403,13 +430,18 @@ impl PatchTree {
         self.merge_queue.peek_value()
     }
 
-    fn is_leaf_node(&self, ti: TreeIndex) -> bool {
-        let node = self.tree_node(ti);
+    // Note: shared with queue via solid_angle
+    fn is_leaf_node_shared(ti: TreeIndex, tree: &[Option<TreeNode>]) -> bool {
+        let node = tree[toff(ti)].expect("dead node");
         node.is_node()
             && node
                 .children()
                 .iter()
-                .all(|child| self.tree_node(*child).is_leaf())
+                .all(|child| tree[toff(*child)].expect("dead child node").is_leaf())
+    }
+
+    fn is_leaf_node(&self, ti: TreeIndex) -> bool {
+        Self::is_leaf_node_shared(ti, &self.tree)
     }
 
     pub(crate) fn is_mergeable_node(&self, ti: TreeIndex) -> bool {
@@ -445,11 +477,19 @@ impl PatchTree {
         true
     }
 
+    fn count_in_view_patches(&self) -> usize {
+        self.patches
+            .iter()
+            .map(|p| if p.in_view() { 1 } else { 0 })
+            .sum()
+    }
+
     pub(crate) fn optimize_for_view(
         &mut self,
         camera: &ArcBallCamera,
         live_patches: &mut Vec<PatchIndex>,
     ) {
+        assert!(live_patches.is_empty());
         let reshape_start = Instant::now();
 
         self.subdivide_count = 0;
@@ -480,8 +520,6 @@ impl PatchTree {
             for &child in &self.root.children {
                 self.split_queue
                     .insert(child, self.tree_patch(child).solid_angle());
-                // let child_patch_index = self.tree_node(child).patch_index();
-                //     .push(self.patch_key_for_patch(child_patch_index));
             }
         }
         self.frame_number += 1;
@@ -491,19 +529,21 @@ impl PatchTree {
         //   Update priorities for all elements of Qs, Qm.
         // }
         // FIXME: do we need a patch on nodes, or only on leaves?
+        let patch_update_start = Instant::now();
         for patch in self.patches.iter_mut() {
-            if patch.is_alive() {
-                patch.update_for_view(
-                    &self.cached_viewable_region,
-                    &self.cached_eye_position,
-                    &[&self.cached_eye_direction],
-                );
-            }
+            patch.update_for_view(
+                &self.cached_viewable_region,
+                &self.cached_eye_position,
+                &self.cached_eye_direction,
+            )
         }
+        let patch_update_duration = Instant::now() - patch_update_start;
 
         // Update split and merge queue caches with updated solid angles.
+        let queue_update_start = Instant::now();
         self.update_splittable_cache();
         self.update_mergeable_cache();
+        let queue_update_duration = Instant::now() - queue_update_start;
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
         //   If T is too large or accurate {
@@ -527,24 +567,30 @@ impl PatchTree {
         // }
         // Set Tf = T.
 
-        let target_patch_count = 200;
-
-        let mut tmp = Vec::new();
-        self.visit_count += 1;
-        self.capture_patches(&mut tmp);
-        let mut patch_count = tmp.len();
-        self.cached_visible_patches = patch_count;
+        let target_patch_count = self.desired_patch_count;
+        self.cached_visible_patches = self.count_in_view_patches();
+        let mut stuck_iterations = 0;
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
-        while self.max_splittable() - self.min_mergeable() > 150.0
-            || patch_count < target_patch_count - 4
-            || patch_count > target_patch_count
+        while self.max_splittable() - self.min_mergeable() > self.target_refinement
+            || self.cached_visible_patches < target_patch_count - 4
+            || self.cached_visible_patches > target_patch_count
         {
-            self.check_tree(None);
-            self.check_queues();
+            if self.cached_visible_patches >= target_patch_count - 4
+                && self.cached_visible_patches <= target_patch_count
+            {
+                stuck_iterations += 1;
+                if stuck_iterations > MAX_STUCK_ITERATIONS {
+                    break;
+                }
+            }
+            if PARANOIA_MODE {
+                self.check_tree(None);
+                self.check_queues();
+            }
 
             //   If T is too large or accurate {
-            if patch_count >= target_patch_count {
+            if self.cached_visible_patches >= target_patch_count {
                 if self.merge_queue.is_empty() {
                     panic!("would merge but nothing to merge");
                 }
@@ -554,8 +600,6 @@ impl PatchTree {
 
                 //      Merge (T, TB).
                 self.rejoin_leaf_patch_into(bottom_key);
-                self.check_queues();
-                self.check_tree(None);
             } else {
                 if self.split_queue.is_empty() {
                     panic!("would split but nothing to split");
@@ -566,32 +610,29 @@ impl PatchTree {
 
                 // Force-split T.
                 self.subdivide_leaf(top_leaf);
-                self.check_queues();
-                self.check_tree(None);
             }
-
-            let mut tmp = Vec::new();
-            self.visit_count += 1;
-            self.capture_patches(&mut tmp);
-            patch_count = tmp.len();
-            //assert_eq!(self.cached_visible_patches, patch_count);
         }
-        assert!(patch_count <= target_patch_count);
+        assert!(self.cached_visible_patches <= target_patch_count);
+
+        // Prepare for next frame.
+        self.compact_patches();
+        self.check_tree(None);
+        self.check_queues();
 
         // Build a view-direction independent tesselation based on the current camera position.
-        //self.apply_distance_function();
         self.capture_patches(live_patches);
+        assert!(live_patches.len() <= target_patch_count);
+        assert_eq!(self.cached_visible_patches, live_patches.len());
         let reshape_time = Instant::now() - reshape_start;
 
         // Select patches based on visibility.
         let max_split = self.max_splittable();
         let min_merge = self.min_mergeable();
         println!(
-            "r:{} qs:{} qm:{} p:{}/{} t:{}/{} | -/+: {}/{}/{} | {:.02}/{:.02} | {:?}",
-            patch_count,
+            "r:{} qs:{} qm:{} p:{} t:{}/{} | -/+: {}/{}/{} | {:.02}/{:.02} | {:?}: p|{:?} + q|{:?}",
+            live_patches.len(),
             self.split_queue.len(),
             self.merge_queue.len(),
-            live_patches.len(),
             self.patches.len(),
             self.tree.len() - self.tree_empty_set.len(),
             self.tree.len(),
@@ -601,6 +642,8 @@ impl PatchTree {
             max_split,
             min_merge,
             reshape_time,
+            patch_update_duration,
+            queue_update_duration
         );
     }
 
@@ -926,7 +969,7 @@ impl PatchTree {
                     assert!(self.tree[toff(node.parent.unwrap())].is_some());
                     let parent = self.tree_node(node.parent.unwrap());
                     if parent.is_node() {
-                        assert!(parent.children().iter().any(|f| f.0 == i));
+                        assert!(parent.children().iter().any(|f| toff(*f) == i));
                     }
                 }
             }
@@ -1005,10 +1048,7 @@ impl PatchTree {
             // Don't split leaves past max level.
             assert!(level <= self.max_level);
             // TODO: Note need to pull out index variant from peer info stored on node.
-            if self
-                .tree_patch(tree_index)
-                .keep(&self.cached_viewable_region)
-            {
+            if self.tree_patch(tree_index).in_view() {
                 live_patches.push(node.patch_index());
             }
         }
@@ -1033,7 +1073,7 @@ impl PatchTree {
     fn format_tree_display_inner(&self, lvl: usize, tree_index: TreeIndex) -> String {
         fn fmt_peer(mp: &Option<Peer>) -> String {
             if let Some(p) = mp {
-                format!("{}", p.peer.0)
+                format!("{}", toff(p.peer))
             } else {
                 "x".to_owned()
             }
@@ -1077,7 +1117,7 @@ mod test {
 
     #[test]
     fn test_pathological() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 300);
+        let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_eye_relative(Graticule::<Target>::new(
@@ -1091,6 +1131,7 @@ mod test {
             degrees!(0),
             meters!(2),
         ));
+        live_patches.clear();
         tree.optimize_for_view(&camera, &mut live_patches);
 
         camera.set_target(Graticule::<GeoSurface>::new(
@@ -1098,6 +1139,7 @@ mod test {
             degrees!(180),
             meters!(2),
         ));
+        live_patches.clear();
         tree.optimize_for_view(&camera, &mut live_patches);
 
         camera.set_target(Graticule::<GeoSurface>::new(
@@ -1105,13 +1147,14 @@ mod test {
             degrees!(0),
             meters!(2),
         ));
+        live_patches.clear();
         tree.optimize_for_view(&camera, &mut live_patches);
         Ok(())
     }
 
     #[test]
     fn test_zoom_in() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 300);
+        let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_target(Graticule::<GeoSurface>::new(
@@ -1127,7 +1170,37 @@ mod test {
                 degrees!(0),
                 meters!(4_000_000 - i * (4_000_000 / CNT)),
             ))?;
+            live_patches.clear();
             tree.optimize_for_view(&camera, &mut live_patches);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fly_forward() -> Fallible<()> {
+        let mut tree = PatchTree::new(15, 150.0, 300);
+        let mut live_patches = Vec::new();
+        let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
+        camera.set_target(Graticule::<GeoSurface>::new(
+            degrees!(0),
+            degrees!(0),
+            meters!(1000),
+        ));
+        camera.set_eye_relative(Graticule::<Target>::new(
+            degrees!(1),
+            degrees!(90),
+            meters!(1_500_000),
+        ))?;
+
+        const CNT: i64 = 40;
+        for i in 0..CNT {
+            camera.set_target(Graticule::<GeoSurface>::new(
+                degrees!(0),
+                degrees!(4 * i),
+                meters!(1000),
+            ));
+            live_patches.clear();
             tree.optimize_for_view(&camera, &mut live_patches);
         }
 

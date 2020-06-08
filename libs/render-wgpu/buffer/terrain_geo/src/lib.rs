@@ -58,11 +58,11 @@ pub enum CpuDetailLevel {
 }
 
 impl CpuDetailLevel {
-    // max-level, buffer-size, falloff-coefficient
+    // max-level, target-refinement, buffer-size
     fn parameters(&self) -> (usize, f64, usize) {
         match self {
-            Self::Low => (8, 0.8, 256),
-            Self::Medium => (14, 0.8, 768),
+            Self::Low => (8, 150.0, 256),
+            Self::Medium => (14, 150.0, 768),
         }
     }
 }
@@ -71,7 +71,7 @@ pub struct TerrainGeoBuffer {
     // Maximum number of patches for the patch buffer.
     patch_buffer_size: usize,
 
-    patches: PatchTree,
+    patch_tree: PatchTree,
 
     // bind_group_layout: wgpu::BindGroupLayout,
     // bind_group: wgpu::BindGroup,
@@ -89,7 +89,7 @@ impl TerrainGeoBuffer {
         _gen_subdivisions: usize,
         gpu: &GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
-        let (max_level, _falloff_coefficient, patch_buffer_size) = cpu_detail_level.parameters();
+        let (max_level, target_refinement, patch_buffer_size) = cpu_detail_level.parameters();
         /*
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[wgpu::BindGroupLayoutBinding {
@@ -113,7 +113,7 @@ impl TerrainGeoBuffer {
         });
         */
 
-        let patches = PatchTree::new(max_level, patch_buffer_size);
+        let patch_tree = PatchTree::new(max_level, target_refinement, patch_buffer_size);
 
         println!(
             "dbg_vertex_buffer: {:08X}",
@@ -166,7 +166,7 @@ impl TerrainGeoBuffer {
 
         Ok(Arc::new(RefCell::new(Self {
             patch_buffer_size,
-            patches,
+            patch_tree,
 
             patch_vertex_buffer,
             patch_index_buffer,
@@ -187,15 +187,14 @@ impl TerrainGeoBuffer {
         let mut verts = Vec::with_capacity(3 * self.patch_buffer_size);
         let mut dbg_indices = Vec::with_capacity(3 * self.patch_buffer_size);
         let mut live_patches = Vec::with_capacity(self.patch_buffer_size);
-        self.patches.optimize_for_view(camera, &mut live_patches);
-        assert!(live_patches.len() < self.patch_buffer_size);
+        self.patch_tree.optimize_for_view(camera, &mut live_patches);
+        assert!(live_patches.len() <= self.patch_buffer_size);
 
         for (offset, i) in live_patches.iter().enumerate() {
-            let patch = self.patches.get_patch(*i);
+            let patch = self.patch_tree.get_patch(*i);
             if offset >= self.patch_buffer_size {
                 continue;
             }
-            assert!(patch.is_alive());
             let [v0, v1, v2] = patch.points();
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
@@ -207,7 +206,7 @@ impl TerrainGeoBuffer {
             dbg_indices.push(dbg_verts.len() as u32);
             dbg_indices.push(dbg_verts.len() as u32 + 1);
             dbg_indices.push(dbg_verts.len() as u32 + 2);
-            let level = self.patches.level_of_patch(*i);
+            let level = self.patch_tree.level_of_patch(*i);
             let clr = DBG_COLORS_BY_LEVEL[level];
             dbg_verts.push(DebugVertex::new(&v0, &n0, &clr));
             dbg_verts.push(DebugVertex::new(&v1, &n1, &clr));

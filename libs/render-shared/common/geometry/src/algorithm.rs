@@ -47,6 +47,39 @@ pub fn solid_angle<T: RealField>(
     projarea / T::two_pi()
 }
 
+// Note: Identical to above, but allows unrolling the vertices loop, shaving ~10% off the
+// total execution time for the common case.
+pub fn solid_angle_tri<T: RealField>(
+    observer_position: &Point3<T>,
+    observer_direction: &Vector3<T>,
+    vertices: &[Point3<T>; 3],
+) -> T {
+    // compute projected solid area using Stoke's theorem from Improving Radiosity Solutions
+    // through the Use of Analytically Determined Form Factors by Baum, Rushmeier, and Winget
+    // (Eq. 9 on pg. 6 (or "330"))
+
+    // integrate over edges
+    let mut projarea = T::zero();
+    for (i, &v) in vertices.iter().enumerate() {
+        let j = (i + 1) % vertices.len();
+        let v0 = v - observer_position;
+        let v1 = vertices[j] - observer_position;
+        let mut tau = v0.cross(&v1);
+        let v0 = v0.normalize();
+        let v1 = v1.normalize();
+        let dotp = clamp(v0.dot(&v1), convert(-1.0), convert(1.0));
+
+        let gamma = dotp.acos();
+        assert!(gamma.is_finite(), "triangle gamma is infinite");
+
+        tau.normalize_mut();
+        tau *= gamma;
+        projarea -= observer_direction.dot(&tau);
+    }
+
+    projarea / T::two_pi()
+}
+
 pub fn perpendicular_vector<T: RealField>(v: &Vector3<T>) -> Vector3<T> {
     let n = v.normalize();
     if n[2].abs() > T::from_f64(0.5).unwrap() {
