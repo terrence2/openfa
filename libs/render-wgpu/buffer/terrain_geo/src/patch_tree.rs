@@ -30,9 +30,16 @@ use std::{
     time::Instant,
 };
 
+// It's possible that the current viewpoint just cannot be refined to our target, given
+// our other constraints. Since we'll have another chance to optimize next frame, bail
+// if we spend too much time optimizing.
+const MAX_STUCK_ITERATIONS: usize = 6;
+
+// Adds a sanity checks to the inner loop.
+const PARANOIA_MODE: bool = false;
+
 // Index into the tree vec. Note, debug builds do not handle the struct indirection well,
 // so ironically release has better protections against misuse.
-
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TreeIndex(pub(crate) usize);
 
@@ -142,6 +149,9 @@ impl TreeNode {
 
 pub(crate) struct PatchTree {
     max_level: usize,
+    target_refinement: f64,
+    desired_patch_count: usize,
+
     patches: Vec<Patch>,
     patch_empty_set: BinaryHeap<Reverse<PatchIndex>>,
     tree: Vec<Option<TreeNode>>,
@@ -149,13 +159,14 @@ pub(crate) struct PatchTree {
     root: Root,
     root_peers: [[Option<Peer>; 3]; 20],
 
+    split_queue: Queue<MaxHeap>,
+    merge_queue: Queue<MinHeap>,
+
     subdivide_count: usize,
     rejoin_count: usize,
     visit_count: usize,
 
     frame_number: usize,
-    split_queue: Queue<MaxHeap>,
-    merge_queue: Queue<MinHeap>,
     cached_viewable_region: [Plane<f64>; 6],
     cached_eye_position: Point3<f64>,
     cached_eye_direction: Vector3<f64>,
@@ -163,7 +174,11 @@ pub(crate) struct PatchTree {
 }
 
 impl PatchTree {
-    pub(crate) fn new(max_level: usize, _desired_patch_count: usize) -> Self {
+    pub(crate) fn new(
+        max_level: usize,
+        target_refinement: f64,
+        desired_patch_count: usize,
+    ) -> Self {
         let sphere = Icosahedron::new();
         let mut patches = Vec::new();
         let mut tree = Vec::new();
@@ -193,6 +208,8 @@ impl PatchTree {
 
         Self {
             max_level,
+            target_refinement,
+            desired_patch_count,
             patches,
             patch_empty_set: BinaryHeap::new(),
             tree,
@@ -550,16 +567,27 @@ impl PatchTree {
         // }
         // Set Tf = T.
 
-        let target_patch_count = 200;
+        let target_patch_count = self.desired_patch_count;
         self.cached_visible_patches = self.count_in_view_patches();
+        let mut stuck_iterations = 0;
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
         while self.max_splittable() - self.min_mergeable() > 150.0
             || self.cached_visible_patches < target_patch_count - 4
             || self.cached_visible_patches > target_patch_count
         {
-            self.check_tree(None);
-            self.check_queues();
+            if self.cached_visible_patches >= target_patch_count - 4
+                && self.cached_visible_patches <= target_patch_count
+            {
+                stuck_iterations += 1;
+                if stuck_iterations > MAX_STUCK_ITERATIONS {
+                    break;
+                }
+            }
+            if PARANOIA_MODE {
+                self.check_tree(None);
+                self.check_queues();
+            }
 
             //   If T is too large or accurate {
             if self.cached_visible_patches >= target_patch_count {
@@ -1089,7 +1117,7 @@ mod test {
 
     #[test]
     fn test_pathological() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 300);
+        let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_eye_relative(Graticule::<Target>::new(
@@ -1126,7 +1154,7 @@ mod test {
 
     #[test]
     fn test_zoom_in() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 300);
+        let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_target(Graticule::<GeoSurface>::new(
@@ -1151,7 +1179,7 @@ mod test {
 
     #[test]
     fn test_fly_forward() -> Fallible<()> {
-        let mut tree = PatchTree::new(15, 300);
+        let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
         let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
         camera.set_target(Graticule::<GeoSurface>::new(
@@ -1169,7 +1197,7 @@ mod test {
         for i in 0..CNT {
             camera.set_target(Graticule::<GeoSurface>::new(
                 degrees!(0),
-                degrees!(2 * i),
+                degrees!(4 * i),
                 meters!(1000),
             ));
             live_patches.clear();

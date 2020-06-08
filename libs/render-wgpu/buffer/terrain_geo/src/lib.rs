@@ -58,11 +58,11 @@ pub enum CpuDetailLevel {
 }
 
 impl CpuDetailLevel {
-    // max-level, buffer-size, falloff-coefficient
+    // max-level, target-refinement, buffer-size
     fn parameters(&self) -> (usize, f64, usize) {
         match self {
-            Self::Low => (8, 0.8, 256),
-            Self::Medium => (14, 0.8, 768),
+            Self::Low => (8, 150.0, 256),
+            Self::Medium => (14, 150.0, 768),
         }
     }
 }
@@ -89,7 +89,7 @@ impl TerrainGeoBuffer {
         _gen_subdivisions: usize,
         gpu: &GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
-        let (max_level, _falloff_coefficient, patch_buffer_size) = cpu_detail_level.parameters();
+        let (max_level, target_refinement, patch_buffer_size) = cpu_detail_level.parameters();
         /*
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[wgpu::BindGroupLayoutBinding {
@@ -113,7 +113,7 @@ impl TerrainGeoBuffer {
         });
         */
 
-        let patch_tree = PatchTree::new(max_level, patch_buffer_size);
+        let patch_tree = PatchTree::new(max_level, target_refinement, patch_buffer_size);
 
         println!(
             "dbg_vertex_buffer: {:08X}",
@@ -188,7 +188,7 @@ impl TerrainGeoBuffer {
         let mut dbg_indices = Vec::with_capacity(3 * self.patch_buffer_size);
         let mut live_patches = Vec::with_capacity(self.patch_buffer_size);
         self.patch_tree.optimize_for_view(camera, &mut live_patches);
-        assert!(live_patches.len() < self.patch_buffer_size);
+        assert!(live_patches.len() <= self.patch_buffer_size);
 
         for (offset, i) in live_patches.iter().enumerate() {
             let patch = self.patch_tree.get_patch(*i);
