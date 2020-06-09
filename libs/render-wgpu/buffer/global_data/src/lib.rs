@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{Kilometers, LengthUnit};
-use camera::ArcBallCamera;
+use camera::Camera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use geodesy::{Cartesian, GeoCenter};
@@ -113,21 +113,21 @@ impl Globals {
     // It takes a [-1,1] fullscreen quad and turns it into worldspace vectors starting at the
     // the camera position and extending to the fullscreen quad corners, in world space.
     // Interpolation between these vectors automatically fills in one ray for every screen pixel.
-    pub fn with_geocenter_km_raymarching(mut self, camera: &ArcBallCamera) -> Self {
-        let eye = camera.cartesian_eye_position::<Kilometers>();
+    pub fn with_geocenter_km_raymarching(mut self, camera: &Camera) -> Self {
+        let eye = camera.position::<Kilometers>().vec64();
         let view = Isometry3::look_at_rh(
-            &eye.point64(),
-            &(eye + camera.forward::<Kilometers>()).point64(),
-            &-camera.up::<Kilometers>().vec64(),
+            &Point3::from(eye),
+            &Point3::from(eye + camera.forward()),
+            &-camera.up(),
         );
         self.geocenter_km_inverse_view = m2v(&convert(view.inverse().to_homogeneous()));
         self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
-        self.geocenter_km_camera_position =
-            geocenter_cart_to_v(camera.cartesian_eye_position::<Kilometers>());
+        self.geocenter_km_camera_position = geocenter_cart_to_v(camera.position::<Kilometers>());
         self
     }
 
-    pub fn with_camera_info(mut self, camera: &ArcBallCamera) -> Self {
+    /*
+    pub fn with_camera_info(mut self, camera: &Camera) -> Self {
         // FIXME: we're using the target right now so we can see tessellation in action.
         self.camera_graticule_radians_meters = [
             f32::from(camera.get_target().latitude),
@@ -137,14 +137,15 @@ impl Globals {
         ];
         self
     }
+     */
 
     // Provide geocenter projections for use when we have nothing else to grab onto.
-    pub fn with_debug_geocenter_helpers(mut self, camera: &ArcBallCamera) -> Self {
-        let eye = camera.cartesian_eye_position::<Kilometers>();
+    pub fn with_debug_geocenter_helpers(mut self, camera: &Camera) -> Self {
+        let eye = camera.position::<Kilometers>().vec64();
         let view = Isometry3::look_at_rh(
-            &eye.point64(),
-            &(eye + camera.forward::<Kilometers>()).point64(),
-            &-camera.up::<Kilometers>().vec64(),
+            &Point3::from(eye),
+            &Point3::from(eye + camera.forward()),
+            &-camera.up(),
         );
         self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
         self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
@@ -215,7 +216,7 @@ impl GlobalParametersBuffer {
 
     pub fn make_upload_buffer(
         &self,
-        camera: &ArcBallCamera,
+        camera: &Camera,
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
@@ -223,7 +224,6 @@ impl GlobalParametersBuffer {
         let globals = globals
             .with_screen_overlay_projection(gpu)
             .with_geocenter_km_raymarching(camera)
-            .with_camera_info(camera)
             .with_debug_geocenter_helpers(camera);
         upload_buffers.push(self.make_gpu_buffer(globals, gpu));
         Ok(())
@@ -231,7 +231,7 @@ impl GlobalParametersBuffer {
 
     pub fn make_upload_buffer_for_arcball_on_globe(
         &self,
-        _camera: &ArcBallCamera,
+        _camera: &Camera,
         _gpu: &GPU,
         _upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
@@ -245,7 +245,7 @@ impl GlobalParametersBuffer {
     pub fn make_upload_buffer_for_arcball_in_tile(
         &self,
         _terrain: &Terrain,
-        _camera: &ArcBallCamera,
+        _camera: &Camera,
         _gpu: &GPU,
         _upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {

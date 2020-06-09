@@ -83,17 +83,17 @@ fn main() -> Fallible<()> {
             alpha_to_coverage_enabled: false,
         });
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
-    camera.set_distance(meters!(40.0));
+    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    arcball.set_distance(meters!(40.0));
 
     loop {
         for command in input.poll()? {
-            camera.handle_command(&command)?;
+            arcball.handle_command(&command)?;
             match command.name.as_str() {
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
-                    camera.set_aspect_ratio(gpu.aspect_ratio());
+                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
                 }
                 "window-cursor-move" => {}
                 _ => {}
@@ -104,7 +104,7 @@ fn main() -> Fallible<()> {
         let mut upload_buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer(&camera, &gpu, &mut upload_buffers)?;
+            .make_upload_buffer(arcball.camera(), &gpu, &mut upload_buffers)?;
 
         let gb_borrow = globals_buffer.borrow();
         let fs_borrow = fullscreen_buffer.borrow();
