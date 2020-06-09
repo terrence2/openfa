@@ -17,6 +17,7 @@ mod icosahedron;
 mod patch;
 mod patch_tree;
 mod patch_vertex;
+mod patch_winding;
 mod queue;
 
 use crate::patch_tree::PatchTree;
@@ -190,7 +191,7 @@ impl TerrainGeoBuffer {
         self.patch_tree.optimize_for_view(camera, &mut live_patches);
         assert!(live_patches.len() <= self.patch_buffer_size);
 
-        for (offset, i) in live_patches.iter().enumerate() {
+        for (offset, (i, _winding)) in live_patches.iter().enumerate() {
             let patch = self.patch_tree.get_patch(*i);
             if offset >= self.patch_buffer_size {
                 continue;
