@@ -117,13 +117,13 @@ fn main() -> Fallible<()> {
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.0005), meters!(3.4e+38));
-    camera.set_target(Graticule::<GeoSurface>::new(
+    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.0005), meters!(3.4e+38));
+    arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
         meters!(2),
     ));
-    camera.set_eye_relative(Graticule::<Target>::new(
+    arcball.set_eye_relative(Graticule::<Target>::new(
         degrees!(89),
         degrees!(0),
         //meters!(4_000_000),
@@ -135,7 +135,7 @@ fn main() -> Fallible<()> {
         let loop_start = Instant::now();
 
         for command in input.poll()? {
-            camera.handle_command(&command)?;
+            arcball.handle_command(&command)?;
             orrery.handle_command(&command)?;
             match command.name.as_str() {
                 "+target_up" => target_vec = meters!(1),
@@ -146,25 +146,25 @@ fn main() -> Fallible<()> {
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
-                    camera.set_aspect_ratio(gpu.aspect_ratio());
+                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
                 }
                 "window-cursor-move" => {}
                 _ => trace!("unhandled command: {}", command.name),
             }
         }
-        let mut g = camera.get_target();
+        let mut g = arcball.get_target();
         g.distance += target_vec;
         if g.distance < meters!(0f64) {
             g.distance = meters!(0f64);
         }
-        camera.set_target(g);
+        arcball.set_target(g);
 
-        camera.think();
+        arcball.think();
 
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer(arcball.camera(), &gpu, &mut buffers)?;
         //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
@@ -173,7 +173,7 @@ fn main() -> Fallible<()> {
         )?;
         terrain_geo_buffer
             .borrow_mut()
-            .make_upload_buffer(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer(arcball.camera(), &gpu, &mut buffers)?;
         layout_buffer
             .borrow_mut()
             .make_upload_buffer(&gpu, &mut buffers)?;
@@ -182,9 +182,9 @@ fn main() -> Fallible<()> {
         let frame_time = loop_start.elapsed();
         let ts = format!(
             "eye_rel: {} | asl: {}, fov: {} || Date: {:?} || frame: {}.{}ms",
-            camera.get_eye_relative(),
+            arcball.get_eye_relative(),
             g.distance,
-            degrees!(camera.get_fov()),
+            degrees!(arcball.camera().fov_y()),
             orrery.get_time(),
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),

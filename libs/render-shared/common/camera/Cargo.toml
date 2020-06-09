@@ -15,3 +15,4 @@ command = { path = "../../../command" }
 
 [dev-dependencies]
 approx = "^ 0.3"
+physical_constants = { path = "../../../physical_constants" }

@@ -265,9 +265,9 @@ fn main() -> Fallible<()> {
         .handle();
 
     let mut orrery = Orrery::now();
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
     //camera.set_target_point(&nalgebra::convert(positions[position_index]));
-    camera.set_target(Graticule::<GeoSurface>::new(
+    arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
         meters!(0),
@@ -277,14 +277,14 @@ fn main() -> Fallible<()> {
         let loop_start = Instant::now();
 
         for command in input.poll()? {
-            camera.handle_command(&command)?;
+            arcball.handle_command(&command)?;
             orrery.handle_command(&command)?;
             match command.name.as_str() {
                 // system bindings
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
-                    camera.set_aspect_ratio(gpu.aspect_ratio());
+                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
                 }
 
                 // mm bindings
@@ -310,7 +310,7 @@ fn main() -> Fallible<()> {
             .borrow()
             .make_upload_buffer_for_arcball_in_tile(
                 t2_buffer.borrow().t2(),
-                &camera,
+                arcball.camera(),
                 &gpu,
                 &mut buffers,
             )?;

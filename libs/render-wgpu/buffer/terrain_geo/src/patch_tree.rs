@@ -20,7 +20,7 @@ use crate::{
 
 use absolute_unit::Kilometers;
 use approx::assert_relative_eq;
-use camera::ArcBallCamera;
+use camera::Camera;
 use geometry::{algorithm::bisect_edge, Plane};
 use nalgebra::{Point3, Vector3};
 use physical_constants::EARTH_RADIUS_KM;
@@ -486,7 +486,7 @@ impl PatchTree {
 
     pub(crate) fn optimize_for_view(
         &mut self,
-        camera: &ArcBallCamera,
+        camera: &Camera,
         live_patches: &mut Vec<PatchIndex>,
     ) {
         assert!(live_patches.is_empty());
@@ -496,18 +496,23 @@ impl PatchTree {
         self.rejoin_count = 0;
         self.visit_count = 0;
 
-        let camera_target = camera.cartesian_target_position::<Kilometers>().vec64();
-        let eye_position = camera.cartesian_eye_position::<Kilometers>().point64();
-        let eye_direction = camera_target - eye_position.coords;
-        self.cached_eye_position = eye_position;
-        self.cached_eye_direction = eye_direction;
+        // let camera_target = camera.cartesian_target_position::<Kilometers>().vec64();
+        // let eye_position = camera.cartesian_eye_position::<Kilometers>().point64();
+        // let eye_direction = (camera_target - eye_position.coords).normalize();
+        self.cached_eye_position = camera.position::<Kilometers>().point64();
+        self.cached_eye_direction = *camera.forward();
 
-        for (i, f) in camera.world_space_frustum().iter().enumerate() {
+        for (i, f) in camera
+            .world_space_frustum::<Kilometers>()
+            .iter()
+            .enumerate()
+        {
             self.cached_viewable_region[i] = *f;
         }
         self.cached_viewable_region[5] = Plane::from_normal_and_distance(
-            eye_position.coords.normalize(),
-            (((EARTH_RADIUS_KM * EARTH_RADIUS_KM) / eye_position.coords.magnitude()) - 100f64)
+            self.cached_eye_position.coords.normalize(),
+            (((EARTH_RADIUS_KM * EARTH_RADIUS_KM) / self.cached_eye_position.coords.magnitude())
+                - 100f64)
                 .min(0f64),
         );
 
@@ -1112,6 +1117,7 @@ impl PatchTree {
 mod test {
     use super::*;
     use absolute_unit::{degrees, meters};
+    use camera::ArcBallCamera;
     use failure::Fallible;
     use geodesy::{GeoSurface, Graticule, Target};
 
@@ -1119,36 +1125,36 @@ mod test {
     fn test_pathological() -> Fallible<()> {
         let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
-        let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
-        camera.set_eye_relative(Graticule::<Target>::new(
+        let mut arcball = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
+        arcball.set_eye_relative(Graticule::<Target>::new(
             degrees!(89),
             degrees!(0),
             meters!(4_000_000),
         ))?;
 
-        camera.set_target(Graticule::<GeoSurface>::new(
+        arcball.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(0),
             meters!(2),
         ));
         live_patches.clear();
-        tree.optimize_for_view(&camera, &mut live_patches);
+        tree.optimize_for_view(arcball.camera(), &mut live_patches);
 
-        camera.set_target(Graticule::<GeoSurface>::new(
+        arcball.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(180),
             meters!(2),
         ));
         live_patches.clear();
-        tree.optimize_for_view(&camera, &mut live_patches);
+        tree.optimize_for_view(arcball.camera(), &mut live_patches);
 
-        camera.set_target(Graticule::<GeoSurface>::new(
+        arcball.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(0),
             meters!(2),
         ));
         live_patches.clear();
-        tree.optimize_for_view(&camera, &mut live_patches);
+        tree.optimize_for_view(arcball.camera(), &mut live_patches);
         Ok(())
     }
 
@@ -1156,8 +1162,8 @@ mod test {
     fn test_zoom_in() -> Fallible<()> {
         let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
-        let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
-        camera.set_target(Graticule::<GeoSurface>::new(
+        let mut arcball = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
+        arcball.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(0),
             meters!(2),
@@ -1165,13 +1171,13 @@ mod test {
 
         const CNT: i64 = 40;
         for i in 0..CNT {
-            camera.set_eye_relative(Graticule::<Target>::new(
+            arcball.set_eye_relative(Graticule::<Target>::new(
                 degrees!(89),
                 degrees!(0),
                 meters!(4_000_000 - i * (4_000_000 / CNT)),
             ))?;
             live_patches.clear();
-            tree.optimize_for_view(&camera, &mut live_patches);
+            tree.optimize_for_view(arcball.camera(), &mut live_patches);
         }
 
         Ok(())
@@ -1181,13 +1187,13 @@ mod test {
     fn test_fly_forward() -> Fallible<()> {
         let mut tree = PatchTree::new(15, 150.0, 300);
         let mut live_patches = Vec::new();
-        let mut camera = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
-        camera.set_target(Graticule::<GeoSurface>::new(
+        let mut arcball = ArcBallCamera::new(16.0 / 9.0, meters!(0.1), meters!(10_000));
+        arcball.set_target(Graticule::<GeoSurface>::new(
             degrees!(0),
             degrees!(0),
             meters!(1000),
         ));
-        camera.set_eye_relative(Graticule::<Target>::new(
+        arcball.set_eye_relative(Graticule::<Target>::new(
             degrees!(1),
             degrees!(90),
             meters!(1_500_000),
@@ -1195,13 +1201,13 @@ mod test {
 
         const CNT: i64 = 40;
         for i in 0..CNT {
-            camera.set_target(Graticule::<GeoSurface>::new(
+            arcball.set_target(Graticule::<GeoSurface>::new(
                 degrees!(0),
                 degrees!(4 * i),
                 meters!(1000),
             ));
             live_patches.clear();
-            tree.optimize_for_view(&camera, &mut live_patches);
+            tree.optimize_for_view(arcball.camera(), &mut live_patches);
         }
 
         Ok(())

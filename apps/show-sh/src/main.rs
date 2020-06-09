@@ -213,8 +213,8 @@ fn main() -> Fallible<()> {
         .ensure_uploaded(&mut gpu)?;
 
     let mut orrery = Orrery::now();
-    let mut camera = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001), meters!(3.4e+38));
-    camera.set_target(Graticule::<GeoSurface>::new(
+    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001), meters!(3.4e+38));
+    arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
         meters!(10),
@@ -261,13 +261,13 @@ fn main() -> Fallible<()> {
         let loop_start = Instant::now();
 
         for command in input.poll()? {
-            camera.handle_command(&command)?;
+            arcball.handle_command(&command)?;
             orrery.handle_command(&command)?;
             match command.name.as_str() {
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
                     gpu.note_resize(&input);
-                    camera.set_aspect_ratio(gpu.aspect_ratio());
+                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
                 }
                 "+rudder-left" => update!(galaxy, ent, move_rudder_left),
                 "-rudder-left" => update!(galaxy, ent, move_rudder_center),
@@ -310,7 +310,7 @@ fn main() -> Fallible<()> {
         let mut buffers = Vec::new();
         globals_buffer
             .borrow()
-            .make_upload_buffer(&camera, &gpu, &mut buffers)?;
+            .make_upload_buffer(arcball.camera(), &gpu, &mut buffers)?;
         //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
@@ -345,7 +345,7 @@ fn main() -> Fallible<()> {
             .draw_state;
         let params = format!(
             "dist: {}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
-            camera.get_distance(),
+            arcball.get_distance(),
             !ds.gear_retracted(),
             ds.gear_position(),
             ds.flaps_down(),

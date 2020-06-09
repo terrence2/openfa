@@ -22,7 +22,7 @@ mod queue;
 use crate::patch_tree::PatchTree;
 pub use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
 
-use camera::ArcBallCamera;
+use camera::Camera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
@@ -179,7 +179,7 @@ impl TerrainGeoBuffer {
 
     pub fn make_upload_buffer(
         &mut self,
-        camera: &ArcBallCamera,
+        camera: &Camera,
         gpu: &GPU,
         upload_buffers: &mut Vec<CopyBufferDescriptor>,
     ) -> Fallible<()> {
