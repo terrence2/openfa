@@ -15,6 +15,7 @@
 use crate::{
     icosahedron::Icosahedron,
     patch::Patch,
+    patch_winding::PatchWinding,
     queue::{MaxHeap, MinHeap, Queue},
 };
 
@@ -56,7 +57,7 @@ pub(crate) fn poff(pi: PatchIndex) -> usize {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct Peer {
+pub(crate) struct Peer {
     peer: TreeIndex,
     opposite_edge: u8,
 }
@@ -487,7 +488,7 @@ impl PatchTree {
     pub(crate) fn optimize_for_view(
         &mut self,
         camera: &Camera,
-        live_patches: &mut Vec<PatchIndex>,
+        live_patches: &mut Vec<(PatchIndex, PatchWinding)>,
     ) {
         assert!(live_patches.is_empty());
         let reshape_start = Instant::now();
@@ -1029,7 +1030,7 @@ impl PatchTree {
         }
     }
 
-    fn capture_patches(&self, live_patches: &mut Vec<PatchIndex>) {
+    fn capture_patches(&self, live_patches: &mut Vec<(PatchIndex, PatchWinding)>) {
         // We have already applied visibility at this level, so we just need to recurse.
         let children = self.root.children; // Clone to avoid dual-borrow.
         for i in &children {
@@ -1041,7 +1042,7 @@ impl PatchTree {
         &self,
         level: usize,
         tree_index: TreeIndex,
-        live_patches: &mut Vec<PatchIndex>,
+        live_patches: &mut Vec<(PatchIndex, PatchWinding)>,
     ) {
         let node = self.tree_node(tree_index);
 
@@ -1053,8 +1054,8 @@ impl PatchTree {
             // Don't split leaves past max level.
             assert!(level <= self.max_level);
             // TODO: Note need to pull out index variant from peer info stored on node.
-            if self.tree_patch(tree_index).in_view() {
-                live_patches.push(node.patch_index());
+            if self.get_patch(node.patch_index()).in_view() {
+                live_patches.push((node.patch_index(), PatchWinding::from_peers(&node.peers)));
             }
         }
     }
