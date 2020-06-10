@@ -92,7 +92,7 @@ enum TreeHolder {
 }
 
 // FIXME: remove copy from this; if we need copy we've got problems.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TreeNode {
     holder: TreeHolder,
     peers: [Option<Peer>; 3],
@@ -374,15 +374,15 @@ impl PatchTree {
         tree: &[Option<TreeNode>],
         patches: &[Patch],
     ) -> f64 {
-        let node = tree[toff(tree_index)].unwrap();
+        let node = tree[toff(tree_index)].as_ref().expect("dead node in tree");
         assert!(node.is_leaf() || Self::is_leaf_node_shared(tree_index, tree));
-        match tree[toff(tree_index)].expect("dead node").holder {
+        match node.holder {
             TreeHolder::Patch(patch_index) => patches[poff(patch_index)].solid_angle(),
             TreeHolder::Children(ref children) => {
-                let n0 = tree[toff(children[0])].expect("dead child node");
-                let n1 = tree[toff(children[1])].expect("dead child node");
-                let n2 = tree[toff(children[2])].expect("dead child node");
-                let n3 = tree[toff(children[3])].expect("dead child node");
+                let n0 = tree[toff(children[0])].as_ref().expect("dead child node");
+                let n1 = tree[toff(children[1])].as_ref().expect("dead child node");
+                let n2 = tree[toff(children[2])].as_ref().expect("dead child node");
+                let n3 = tree[toff(children[3])].as_ref().expect("dead child node");
                 let p0 = patches[poff(n0.patch_index())];
                 let p1 = patches[poff(n1.patch_index())];
                 let p2 = patches[poff(n2.patch_index())];
@@ -433,12 +433,14 @@ impl PatchTree {
 
     // Note: shared with queue via solid_angle
     fn is_leaf_node_shared(ti: TreeIndex, tree: &[Option<TreeNode>]) -> bool {
-        let node = tree[toff(ti)].expect("dead node");
+        let node = tree[toff(ti)].as_ref().expect("dead node");
         node.is_node()
-            && node
-                .children()
-                .iter()
-                .all(|child| tree[toff(*child)].expect("dead child node").is_leaf())
+            && node.children().iter().all(|child| {
+                tree[toff(*child)]
+                    .as_ref()
+                    .expect("dead child node")
+                    .is_leaf()
+            })
     }
 
     fn is_leaf_node(&self, ti: TreeIndex) -> bool {
@@ -923,7 +925,6 @@ impl PatchTree {
         None
     }
 
-    // FIXME: rename
     fn check_edge_consistency(
         &self,
         tree_index: TreeIndex,
@@ -1084,7 +1085,7 @@ impl PatchTree {
                 "x".to_owned()
             }
         }
-        let node = *self.tree_node(tree_index);
+        let node = self.tree_node(tree_index);
         let mut out = String::new();
         if node.is_node() {
             let pad = "  ".repeat(lvl);
