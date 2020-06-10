@@ -24,6 +24,7 @@ gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { path = "../../libs/render-wgpu/common/input" }
 lib = { path = "../../libs/lib" }
 orrery = { path = "../../libs/orrery" }
+physical_constants = { path = "../../libs/physical_constants" }
 pal = { path = "../../libs/pal" }
 screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
