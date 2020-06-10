@@ -23,10 +23,12 @@ mod queue;
 use crate::patch_tree::PatchTree;
 pub use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
 
+use absolute_unit::Kilometers;
 use camera::Camera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
 use gpu::GPU;
+use nalgebra::{Matrix4, Point3};
 use std::{cell::RefCell, mem, ops::Range, sync::Arc};
 
 const DBG_VERT_COUNT: usize = 4096;
@@ -66,6 +68,12 @@ impl CpuDetailLevel {
             Self::Medium => (14, 150.0, 768),
         }
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct PatchMetdata {
+    vertex_offset: u32,
+    index_buffer: u32,
 }
 
 pub struct TerrainGeoBuffer {
@@ -191,6 +199,8 @@ impl TerrainGeoBuffer {
         self.patch_tree.optimize_for_view(camera, &mut live_patches);
         assert!(live_patches.len() <= self.patch_buffer_size);
 
+        let scale = Matrix4::new_scaling(1_000.0);
+        let view = camera.view::<Kilometers>();
         for (offset, (i, _winding)) in live_patches.iter().enumerate() {
             let patch = self.patch_tree.get_patch(*i);
             if offset >= self.patch_buffer_size {
@@ -200,18 +210,24 @@ impl TerrainGeoBuffer {
             let n0 = v0.coords.normalize();
             let n1 = v1.coords.normalize();
             let n2 = v2.coords.normalize();
-            verts.push(PatchVertex::new(&v0, &n0));
-            verts.push(PatchVertex::new(&v1, &n1));
-            verts.push(PatchVertex::new(&v2, &n2));
+
+            // project patch verts from global coordinates into view space.
+            let v0 = scale * view.to_homogeneous() * v0.to_homogeneous();
+            let v1 = scale * view.to_homogeneous() * v1.to_homogeneous();
+            let v2 = scale * view.to_homogeneous() * v2.to_homogeneous();
+
+            verts.push(PatchVertex::new(&Point3::from(v0.xyz()), &n0));
+            verts.push(PatchVertex::new(&Point3::from(v1.xyz()), &n1));
+            verts.push(PatchVertex::new(&Point3::from(v2.xyz()), &n2));
 
             dbg_indices.push(dbg_verts.len() as u32);
             dbg_indices.push(dbg_verts.len() as u32 + 1);
             dbg_indices.push(dbg_verts.len() as u32 + 2);
             let level = self.patch_tree.level_of_patch(*i);
             let clr = DBG_COLORS_BY_LEVEL[level];
-            dbg_verts.push(DebugVertex::new(&v0, &n0, &clr));
-            dbg_verts.push(DebugVertex::new(&v1, &n1, &clr));
-            dbg_verts.push(DebugVertex::new(&v2, &n2, &clr));
+            dbg_verts.push(DebugVertex::new(&Point3::from(v0.xyz()), &n0, &clr));
+            dbg_verts.push(DebugVertex::new(&Point3::from(v1.xyz()), &n1, &clr));
+            dbg_verts.push(DebugVertex::new(&Point3::from(v2.xyz()), &n2, &clr));
         }
         self.dbg_vertex_count = dbg_verts.len() as u32;
         //println!("verts: {}: {:?}", cnt, Instant::now() - loop_start);

@@ -33,7 +33,7 @@ layout(location = 2) in vec2 graticule;
 //};
 
 void main() {
-    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * vec4(position, 1);
+    gl_Position = dbg_geocenter_m_projection() * vec4(position, 1);
 
     /*
     float lat = graticule[0] * PI / 180.0;

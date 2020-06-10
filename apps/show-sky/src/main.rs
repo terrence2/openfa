@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters};
+use absolute_unit::{degrees, kilometers, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use chrono::prelude::*;
@@ -28,6 +28,7 @@ use lib::Library;
 use log::trace;
 use nalgebra::convert;
 use orrery::Orrery;
+use physical_constants::EARTH_RADIUS_KM;
 use screen_text::ScreenTextRenderPass;
 use simplelog::{Config, LevelFilter, TermLogger};
 use skybox::SkyboxRenderPass;
@@ -117,7 +118,11 @@ fn main() -> Fallible<()> {
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.0005), meters!(3.4e+38));
+    let mut arcball = ArcBallCamera::new(
+        gpu.aspect_ratio(),
+        meters!(0.5),
+        meters!(kilometers!(EARTH_RADIUS_KM * 2.0 * 1.3)),
+    );
     arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),

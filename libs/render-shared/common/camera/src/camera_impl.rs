@@ -29,8 +29,6 @@ pub struct Camera {
     forward: Vector3<f64>,
     up: Vector3<f64>,
     right: Vector3<f64>,
-
-    projection: Perspective3<f64>,
 }
 
 impl Camera {
@@ -52,13 +50,6 @@ impl Camera {
             forward: Vector3::new(0f64, 0f64, -1f64),
             up: Vector3::new(0f64, 1f64, 0f64),
             right: Vector3::new(1f64, 0f64, 0f64),
-
-            projection: Perspective3::new(
-                1f64 / aspect_ratio,
-                fov_y.into(),
-                z_near.into(),
-                z_far.into(),
-            ),
         }
     }
 
@@ -81,7 +72,6 @@ impl Camera {
 
     pub fn set_fov_y<T: AngleUnit>(&mut self, fov: Angle<T>) {
         self.fov_y = radians!(fov);
-        self.recompute_projection();
     }
 
     pub fn aspect_ratio(&self) -> f64 {
@@ -90,7 +80,6 @@ impl Camera {
 
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f64) {
         self.aspect_ratio = aspect_ratio;
-        self.recompute_projection();
     }
 
     pub fn position<T: LengthUnit>(&self) -> Cartesian<GeoCenter, T> {
@@ -113,8 +102,22 @@ impl Camera {
         &self.right
     }
 
-    pub fn projection(&self) -> Perspective3<f64> {
-        self.projection
+    pub fn projection<T: LengthUnit>(&self) -> Perspective3<f64> {
+        Perspective3::new(
+            1f64 / self.aspect_ratio,
+            self.fov_y.into(),
+            Length::<T>::from(&self.z_near).into(),
+            Length::<T>::from(&self.z_far).into(),
+        )
+    }
+
+    pub fn view<T: LengthUnit>(&self) -> Isometry3<f64> {
+        let eye = self.position::<T>().vec64();
+        Isometry3::look_at_rh(
+            &Point3::from(eye),
+            &Point3::from(eye + self.forward()),
+            &-self.up(),
+        )
     }
 
     pub fn world_space_frustum<T: LengthUnit>(&self) -> [Plane<f64>; 5] {
@@ -134,7 +137,7 @@ impl Camera {
             &self.up,
         );
 
-        let m = self.projection.as_matrix() * view.to_homogeneous();
+        let m = self.projection::<T>().as_matrix() * view.to_homogeneous();
 
         let lp = (m.row(3) + m.row(0)).transpose();
         let lm = lp.xyz().magnitude();
@@ -157,14 +160,5 @@ impl Camera {
         let near = Plane::from_normal_and_distance(np.xyz() / nm, -np[3] / nm);
 
         [left, right, bottom, top, near]
-    }
-
-    fn recompute_projection(&mut self) {
-        self.projection = Perspective3::new(
-            1f64 / self.aspect_ratio,
-            self.fov_y.into(),
-            self.z_near.into(),
-            self.z_far.into(),
-        );
     }
 }
