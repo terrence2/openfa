@@ -26,5 +26,5 @@ layout(location = 0) out smooth vec4 v_color;
 
 void main() {
     v_color = color;
-    gl_Position = dbg_geocenter_km_projection() * dbg_geocenter_km_view() * position;
+    gl_Position = dbg_geocenter_m_projection() * position;
 }

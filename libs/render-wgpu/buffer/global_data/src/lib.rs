@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{Kilometers, LengthUnit};
+use absolute_unit::{Kilometers, LengthUnit, Meters};
 use camera::Camera;
 use failure::Fallible;
 use frame_graph::CopyBufferDescriptor;
@@ -61,7 +61,7 @@ struct Globals {
 
     // Camera parameters in geocenter km (mostly for debugging).
     debug_geocenter_km_view: [[f32; 4]; 4],
-    debug_geocenter_km_proj: [[f32; 4]; 4],
+    debug_geocenter_m_proj: [[f32; 4]; 4],
 
     // Inverted camera parameters in ecliptic XYZ, 1km per unit.
     geocenter_km_inverse_view: [[f32; 4]; 4],
@@ -121,7 +121,7 @@ impl Globals {
             &-camera.up(),
         );
         self.geocenter_km_inverse_view = m2v(&convert(view.inverse().to_homogeneous()));
-        self.geocenter_km_inverse_proj = m2v(&convert(camera.projection().inverse()));
+        self.geocenter_km_inverse_proj = m2v(&convert(camera.projection::<Kilometers>().inverse()));
         self.geocenter_km_camera_position = geocenter_cart_to_v(camera.position::<Kilometers>());
         self
     }
@@ -141,14 +141,8 @@ impl Globals {
 
     // Provide geocenter projections for use when we have nothing else to grab onto.
     pub fn with_debug_geocenter_helpers(mut self, camera: &Camera) -> Self {
-        let eye = camera.position::<Kilometers>().vec64();
-        let view = Isometry3::look_at_rh(
-            &Point3::from(eye),
-            &Point3::from(eye + camera.forward()),
-            &-camera.up(),
-        );
-        self.debug_geocenter_km_view = m2v(&convert(view.to_homogeneous()));
-        self.debug_geocenter_km_proj = m2v(&convert(camera.projection().to_homogeneous()));
+        self.debug_geocenter_km_view = m2v(&convert(camera.view::<Kilometers>().to_homogeneous()));
+        self.debug_geocenter_m_proj = m2v(&convert(camera.projection::<Meters>().to_homogeneous()));
         self
     }
 }

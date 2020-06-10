@@ -117,7 +117,7 @@ fn main() -> Fallible<()> {
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.0005), meters!(3.4e+38));
+    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.5), meters!(3.4e+35));
     arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
         degrees!(0),
