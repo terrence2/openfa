@@ -12,30 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod frame_state_tracker;
 
-pub struct CopyBufferDescriptor {
-    pub source: ::wgpu::Buffer,
-    pub source_offset: ::wgpu::BufferAddress,
-    pub destination: ::std::sync::Arc<::std::boxed::Box<::wgpu::Buffer>>,
-    pub destination_offset: ::wgpu::BufferAddress,
-    pub copy_size: ::wgpu::BufferAddress,
-}
-
-impl CopyBufferDescriptor {
-    pub fn new(
-        source: ::wgpu::Buffer,
-        destination: ::std::sync::Arc<::std::boxed::Box<::wgpu::Buffer>>,
-        copy_size: ::wgpu::BufferAddress,
-    ) -> Self {
-        Self {
-            source,
-            source_offset: 0,
-            destination,
-            destination_offset: 0,
-            copy_size,
-        }
-    }
-}
+pub use crate::frame_state_tracker::FrameStateTracker;
 
 #[macro_export]
 macro_rules! make_frame_graph {
@@ -79,13 +58,13 @@ macro_rules! make_frame_graph {
                 })
             }
 
-            pub fn run(&self, gpu: &mut ::gpu::GPU, mut upload_buffers: Vec<$crate::CopyBufferDescriptor>) -> ::failure::Fallible<()> {
+            pub fn run(&self, gpu: &mut ::gpu::GPU, tracker: &mut $crate::FrameStateTracker) -> ::failure::Fallible<()> {
                 $(
                     let $buffer_name = self.$buffer_name.borrow();
                 )*
                 let mut frame = gpu.begin_frame()?;
                 {
-                    for desc in upload_buffers.drain(..) {
+                    for desc in tracker.drain_uploads() {
                         frame.copy_buffer_to_buffer(
                             &desc.source,
                             desc.source_offset,
@@ -106,6 +85,7 @@ macro_rules! make_frame_graph {
                     )*
                 }
                 frame.finish();
+                tracker.reset();
 
                 Ok(())
             }

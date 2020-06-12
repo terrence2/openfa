@@ -18,7 +18,7 @@ pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
 use failure::Fallible;
-use frame_graph::CopyBufferDescriptor;
+use frame_graph::FrameStateTracker;
 use gpu::{DrawIndirectCommand, GPU};
 use legion::prelude::*;
 use lib::Library;
@@ -605,7 +605,7 @@ impl ShapeInstanceBuffer {
         start: &Instant,
         world: &mut World,
         gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         let now = Instant::now();
 
@@ -702,7 +702,7 @@ impl ShapeInstanceBuffer {
                 &block.command_buffer_scratch[..block.len()],
                 block.command_buffer.clone(),
                 wgpu::BufferUsage::all(),
-                upload_buffers,
+                tracker,
             );
 
             gpu.upload_slice_to(
@@ -710,7 +710,7 @@ impl ShapeInstanceBuffer {
                 &block.transform_buffer_scratch[..block.len()],
                 block.transform_buffer.clone(),
                 wgpu::BufferUsage::all(),
-                upload_buffers,
+                tracker,
             );
 
             gpu.upload_slice_to(
@@ -718,7 +718,7 @@ impl ShapeInstanceBuffer {
                 &block.flag_buffer_scratch[..block.len()],
                 block.flag_buffer.clone(),
                 wgpu::BufferUsage::all(),
-                upload_buffers,
+                tracker,
             );
 
             gpu.upload_slice_to(
@@ -726,7 +726,7 @@ impl ShapeInstanceBuffer {
                 &block.xform_index_buffer_scratch[..block.len()],
                 block.xform_index_buffer.clone(),
                 wgpu::BufferUsage::all(),
-                upload_buffers,
+                tracker,
             );
 
             gpu.upload_slice_to(
@@ -734,7 +734,7 @@ impl ShapeInstanceBuffer {
                 &block.xform_buffer_scratch[..block.xform_cursor],
                 block.xform_buffer.clone(),
                 wgpu::BufferUsage::all(),
-                upload_buffers,
+                tracker,
             );
         }
         Ok(())

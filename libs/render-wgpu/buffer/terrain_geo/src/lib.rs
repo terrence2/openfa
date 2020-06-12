@@ -26,7 +26,7 @@ pub use crate::{debug_vertex::DebugVertex, patch_vertex::PatchVertex};
 use absolute_unit::Kilometers;
 use camera::Camera;
 use failure::Fallible;
-use frame_graph::CopyBufferDescriptor;
+use frame_graph::FrameStateTracker;
 use gpu::GPU;
 use nalgebra::{Matrix4, Point3};
 use std::{cell::RefCell, mem, ops::Range, sync::Arc};
@@ -219,7 +219,7 @@ impl TerrainGeoBuffer {
                 });
         let subdivide_shader =
             gpu.create_shader_module(include_bytes!("../target/subdivide.comp.spirv"))?;
-        let subdivide_pipeline =
+        let _subdivide_pipeline =
             gpu.device()
                 .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                     layout: &gpu
@@ -233,7 +233,7 @@ impl TerrainGeoBuffer {
                     },
                 });
 
-        let subdivide_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+        let _subdivide_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain-geo-subdivide-bind-group"),
             layout: &subdivide_bind_group_layout,
             bindings: &[
@@ -271,7 +271,7 @@ impl TerrainGeoBuffer {
         &mut self,
         camera: &Camera,
         gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         let mut dbg_verts = Vec::with_capacity(3 * self.patch_buffer_size);
         let mut verts = Vec::with_capacity(3 * self.patch_buffer_size);
@@ -321,7 +321,7 @@ impl TerrainGeoBuffer {
             &verts,
             self.patch_vertex_buffer.clone(),
             wgpu::BufferUsage::all(),
-            upload_buffers,
+            tracker,
         );
 
         while dbg_verts.len() < DBG_VERT_COUNT {
@@ -335,14 +335,14 @@ impl TerrainGeoBuffer {
             &dbg_verts,
             self.dbg_vertex_buffer.clone(),
             wgpu::BufferUsage::all(),
-            upload_buffers,
+            tracker,
         );
         gpu.upload_slice_to(
             "terrain-geo-debug-indices-upload-buffer",
             &dbg_indices,
             self.dbg_index_buffer.clone(),
             wgpu::BufferUsage::all(),
-            upload_buffers,
+            tracker,
         );
 
         //println!("dt: {:?}", Instant::now() - loop_start);

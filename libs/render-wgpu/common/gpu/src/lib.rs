@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{err_msg, Fallible};
-use frame_graph::CopyBufferDescriptor;
+use frame_graph::FrameStateTracker;
 use futures::executor::block_on;
 use input::InputSystem;
 use log::trace;
@@ -268,14 +268,10 @@ impl GPU {
         data: &[T],
         target: Arc<Box<wgpu::Buffer>>,
         usage: wgpu::BufferUsage,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) {
         if let Some(source) = self.maybe_push_slice(label, data, usage) {
-            upload_buffers.push(CopyBufferDescriptor::new(
-                source,
-                target,
-                (mem::size_of::<T>() * data.len()) as wgpu::BufferAddress,
-            ));
+            tracker.upload(source, target, mem::size_of::<T>() * data.len());
         }
     }
 

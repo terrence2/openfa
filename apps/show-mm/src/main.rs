@@ -273,6 +273,7 @@ fn main() -> Fallible<()> {
         meters!(0),
     ));
 
+    let mut tracker = Default::default();
     loop {
         let loop_start = Instant::now();
 
@@ -305,30 +306,29 @@ fn main() -> Fallible<()> {
             }
         }
 
-        let mut buffers = Vec::new();
         globals_buffer
             .borrow()
             .make_upload_buffer_for_arcball_in_tile(
                 t2_buffer.borrow().t2(),
                 arcball.camera(),
                 &gpu,
-                &mut buffers,
+                &mut tracker,
             )?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
             &gpu,
-            &mut buffers,
+            &mut tracker,
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),
             &gpu,
-            &mut buffers,
+            &mut tracker,
         )?;
         text_layout_buffer
             .borrow_mut()
-            .make_upload_buffer(&gpu, &mut buffers)?;
-        frame_graph.run(&mut gpu, buffers)?;
+            .make_upload_buffer(&gpu, &mut tracker)?;
+        frame_graph.run(&mut gpu, &mut tracker)?;
 
         let ft = loop_start.elapsed();
         let ts = format!(
