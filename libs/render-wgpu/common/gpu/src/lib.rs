@@ -347,6 +347,10 @@ impl<'a> Frame<'a> {
         })
     }
 
+    pub fn begin_compute_pass(&mut self) -> wgpu::ComputePass {
+        self.encoder.begin_compute_pass()
+    }
+
     pub fn finish(self) {
         self.queue.submit(&[self.encoder.finish()]);
     }

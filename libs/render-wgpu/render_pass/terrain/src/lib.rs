@@ -23,6 +23,7 @@ use terrain_geo::{DebugVertex, PatchVertex, TerrainGeoBuffer};
 pub struct TerrainRenderPass {
     debug_patch_pipeline: wgpu::RenderPipeline,
 
+    #[allow(unused)]
     debug_intersect_pipeline: wgpu::RenderPipeline,
 }
 
@@ -165,12 +166,12 @@ impl TerrainRenderPass {
         _atmosphere_buffer: &'a AtmosphereBuffer,
         terrain_geo_buffer: &'a TerrainGeoBuffer,
     ) -> wgpu::RenderPass<'a> {
-        rpass.set_pipeline(&self.debug_intersect_pipeline);
-        rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0, 0);
-        rpass.set_vertex_buffer(0, &terrain_geo_buffer.debug_vertex_buffer(), 0, 0);
-        //rpass.draw_indexed(terrain_geo_buffer.debug_index_range(), 0, 0..1);
-        rpass.draw(terrain_geo_buffer.debug_index_range(), 0..1);
+        // rpass.set_pipeline(&self.debug_intersect_pipeline);
+        // rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
+        // rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0, 0);
+        // rpass.set_vertex_buffer(0, &terrain_geo_buffer.debug_vertex_buffer(), 0, 0);
+        // //rpass.draw_indexed(terrain_geo_buffer.debug_index_range(), 0, 0..1);
+        // rpass.draw(terrain_geo_buffer.debug_index_range(), 0..1);
 
         rpass.set_pipeline(&self.debug_patch_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
@@ -187,7 +188,7 @@ impl TerrainRenderPass {
         );
         */
         rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0, 0);
-        rpass.set_vertex_buffer(0, &terrain_geo_buffer.patch_vertex_buffer(), 0, 0);
+        rpass.set_vertex_buffer(0, &terrain_geo_buffer.vertex_buffer(), 0, 0);
         for i in 0..terrain_geo_buffer.num_patches() {
             rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
         }

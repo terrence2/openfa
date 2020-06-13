@@ -20,11 +20,15 @@ struct PatchVertex {
     float graticule[2];
 };
 
-layout(local_size_x = 8, local_size_y = 1, local_size_z = 1) in;
-layout(binding = 0) uniform PatchVertices { PatchVertex patch_vertices[]; };
-layout(binding = 1) uniform writeonly SubdivideVertices { PatchVertex subdivide_verticies[]; };
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(binding = 0) buffer PatchVertices { PatchVertex patch_vertices[]; };
+layout(binding = 1) buffer writeonly SubdivideVertices { PatchVertex subdivide_vertices[]; };
 
 void
 main()
 {
+    uint i = gl_GlobalInvocationID.x;
+    subdivide_vertices[i * 3 + 0] = patch_vertices[i * 3 + 0];
+    subdivide_vertices[i * 3 + 1] = patch_vertices[i * 3 + 1];
+    subdivide_vertices[i * 3 + 2] = patch_vertices[i * 3 + 2];
 }

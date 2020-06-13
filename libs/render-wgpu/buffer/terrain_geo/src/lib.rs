@@ -103,10 +103,13 @@ pub struct TerrainGeoBuffer {
 
     patch_tree: PatchTree,
 
-    // bind_group_layout: wgpu::BindGroupLayout,
-    // bind_group: wgpu::BindGroup,
     patch_vertex_buffer: Arc<Box<wgpu::Buffer>>,
     patch_index_buffer: wgpu::Buffer,
+
+    target_vertex_buffer: Arc<Box<wgpu::Buffer>>,
+
+    subdivide_pipeline: wgpu::ComputePipeline,
+    subdivide_bind_group: wgpu::BindGroup,
 
     dbg_vertex_buffer: Arc<Box<wgpu::Buffer>>,
     dbg_index_buffer: Arc<Box<wgpu::Buffer>>,
@@ -217,9 +220,10 @@ impl TerrainGeoBuffer {
                         },
                     ],
                 });
+
         let subdivide_shader =
             gpu.create_shader_module(include_bytes!("../target/subdivide.comp.spirv"))?;
-        let _subdivide_pipeline =
+        let subdivide_pipeline =
             gpu.device()
                 .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                     layout: &gpu
@@ -233,7 +237,7 @@ impl TerrainGeoBuffer {
                     },
                 });
 
-        let _subdivide_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+        let subdivide_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain-geo-subdivide-bind-group"),
             layout: &subdivide_bind_group_layout,
             bindings: &[
@@ -260,6 +264,11 @@ impl TerrainGeoBuffer {
 
             patch_vertex_buffer,
             patch_index_buffer,
+
+            target_vertex_buffer,
+
+            subdivide_pipeline,
+            subdivide_bind_group,
 
             dbg_vertex_buffer,
             dbg_index_buffer,
@@ -349,6 +358,16 @@ impl TerrainGeoBuffer {
         Ok(())
     }
 
+    pub fn precompute<'a>(
+        &'a self,
+        mut cpass: wgpu::ComputePass<'a>,
+    ) -> Fallible<wgpu::ComputePass<'a>> {
+        cpass.set_pipeline(&self.subdivide_pipeline);
+        cpass.set_bind_group(0, &self.subdivide_bind_group, &[]);
+        cpass.dispatch((self.patch_buffer_size / 3) as u32, 1, 1);
+        Ok(cpass)
+    }
+
     /*
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.bind_group_layout
@@ -360,6 +379,10 @@ impl TerrainGeoBuffer {
 
     pub fn num_patches(&self) -> i32 {
         self.patch_buffer_size as i32
+    }
+
+    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
+        &self.target_vertex_buffer
     }
 
     pub fn patch_index_buffer(&self) -> &wgpu::Buffer {

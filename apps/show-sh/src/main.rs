@@ -56,6 +56,7 @@ make_frame_graph!(
             stars: StarsBuffer,
             text_layout: LayoutBuffer
         };
+        precompute: {};
         renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             shape: ShapeRenderPass { globals, shape_instance_buffer },
@@ -227,7 +228,7 @@ fn main() -> Fallible<()> {
     let stars_buffer = StarsBuffer::new(&gpu)?;
     let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
-    let frame_graph = FrameGraph::new(
+    let mut frame_graph = FrameGraph::new(
         &mut gpu,
         &atmosphere_buffer,
         &fullscreen_buffer,
@@ -257,7 +258,6 @@ fn main() -> Fallible<()> {
         .with_vertical_anchor(TextAnchorV::Bottom)
         .handle();
 
-    let mut tracker = Default::default();
     loop {
         let loop_start = Instant::now();
 
@@ -308,25 +308,27 @@ fn main() -> Fallible<()> {
             }
         }
 
-        globals_buffer
-            .borrow()
-            .make_upload_buffer(arcball.camera(), &gpu, &mut tracker)?;
+        globals_buffer.borrow().make_upload_buffer(
+            arcball.camera(),
+            &gpu,
+            frame_graph.tracker_mut(),
+        )?;
         //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
             &gpu,
-            &mut tracker,
+            frame_graph.tracker_mut(),
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
             &galaxy.start_owned(),
             galaxy.world_mut(),
             &gpu,
-            &mut tracker,
+            frame_graph.tracker_mut(),
         )?;
         text_layout_buffer
             .borrow_mut()
-            .make_upload_buffer(&gpu, &mut tracker)?;
-        frame_graph.run(&mut gpu, &mut tracker)?;
+            .make_upload_buffer(&gpu, frame_graph.tracker_mut())?;
+        frame_graph.run(&mut gpu)?;
 
         let frame_time = loop_start.elapsed();
         let time_str = format!(
