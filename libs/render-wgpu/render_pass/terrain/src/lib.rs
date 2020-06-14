@@ -18,7 +18,7 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
-use terrain_geo::{DebugVertex, PatchVertex, TerrainGeoBuffer};
+use terrain_geo::{DebugVertex, TerrainGeoBuffer, TerrainVertex};
 
 pub struct TerrainRenderPass {
     debug_patch_pipeline: wgpu::RenderPipeline,
@@ -87,7 +87,7 @@ impl TerrainRenderPass {
                     }),
                     vertex_state: wgpu::VertexStateDescriptor {
                         index_format: wgpu::IndexFormat::Uint32,
-                        vertex_buffers: &[PatchVertex::descriptor()],
+                        vertex_buffers: &[TerrainVertex::descriptor()],
                     },
                     sample_count: 1,
                     sample_mask: !0,
@@ -187,7 +187,7 @@ impl TerrainRenderPass {
             &[],
         );
         */
-        rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0, 0);
+        rpass.set_index_buffer(terrain_geo_buffer.patch_debug_index_buffer(), 0, 0);
         rpass.set_vertex_buffer(0, &terrain_geo_buffer.vertex_buffer(), 0, 0);
         for i in 0..terrain_geo_buffer.num_patches() {
             rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
