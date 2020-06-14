@@ -108,6 +108,7 @@ pub struct TerrainGeoBuffer {
     patch_upload_buffer: Arc<Box<wgpu::Buffer>>,
     patch_debug_index_buffer: wgpu::Buffer,
 
+    subdivide_context: SubdivisionContext,
     subdivide_context_buffer: Arc<Box<wgpu::Buffer>>,
     target_vertex_buffer: Arc<Box<wgpu::Buffer>>,
 
@@ -188,22 +189,22 @@ impl TerrainGeoBuffer {
         );
 
         // Create the context buffer for uploading uniform data to our subdivision process.
-        let subdivision_context = SubdivisionContext {
+        let subdivide_context = SubdivisionContext {
             //target_stride: GpuDetailLevel::vertices_per_subdivision(subdivisions) as u32,
-            target_stride: 3,
+            target_stride: 6,
             pad: [0; 3],
         };
         let subdivide_context_buffer_size =
             mem::size_of::<SubdivisionContext>() as wgpu::BufferAddress;
         let subdivide_context_buffer = Arc::new(Box::new(gpu.push_data(
             "subdivision-context",
-            &subdivision_context,
+            &subdivide_context,
             wgpu::BufferUsage::UNIFORM,
         )));
 
         // Create target vertex buffer.
         let target_patch_byte_size =
-            mem::size_of::<TerrainVertex>() * subdivision_context.target_stride as usize;
+            mem::size_of::<TerrainVertex>() * subdivide_context.target_stride as usize;
         let target_vertex_buffer_size =
             (target_patch_byte_size * desired_patch_count) as wgpu::BufferAddress;
         let target_vertex_buffer = Arc::new(Box::new(gpu.device().create_buffer(
@@ -299,6 +300,7 @@ impl TerrainGeoBuffer {
 
             target_vertex_buffer,
 
+            subdivide_context,
             subdivide_context_buffer,
             subdivide_prepare_pipeline,
             subdivide_prepare_bind_group,
@@ -471,6 +473,11 @@ impl TerrainGeoBuffer {
 
     pub fn patch_debug_index_buffer(&self) -> &wgpu::Buffer {
         &self.patch_debug_index_buffer
+    }
+
+    pub fn patch_offset(&self, patch_number: i32) -> i32 {
+        assert!(patch_number >= 0);
+        (patch_number as u32 * self.subdivide_context.target_stride) as i32
     }
 
     pub fn patch_index_range(&self) -> Range<u32> {
