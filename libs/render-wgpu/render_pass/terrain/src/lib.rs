@@ -153,6 +153,53 @@ impl TerrainRenderPass {
                     alpha_to_coverage_enabled: false,
                 });
 
+        let _pipeline = gpu
+            .device()
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                layout: &gpu
+                    .device()
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        bind_group_layouts: &[globals_buffer.bind_group_layout()],
+                    }),
+                vertex_stage: wgpu::ProgrammableStageDescriptor {
+                    module: &vert_shader,
+                    entry_point: "main",
+                },
+                fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                    module: &frag_shader,
+                    entry_point: "main",
+                }),
+                rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: wgpu::CullMode::None,
+                    depth_bias: 0,
+                    depth_bias_slope_scale: 0.0,
+                    depth_bias_clamp: 0.0,
+                }),
+                primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
+                color_states: &[wgpu::ColorStateDescriptor {
+                    format: GPU::texture_format(),
+                    color_blend: wgpu::BlendDescriptor::REPLACE,
+                    alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: GPU::DEPTH_FORMAT,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
+                vertex_state: wgpu::VertexStateDescriptor {
+                    index_format: wgpu::IndexFormat::Uint32,
+                    vertex_buffers: &[TerrainVertex::descriptor()],
+                },
+                sample_count: 1,
+                sample_mask: !0,
+                alpha_to_coverage_enabled: false,
+            });
         Ok(Self {
             debug_patch_pipeline,
             debug_intersect_pipeline,
@@ -187,9 +234,9 @@ impl TerrainRenderPass {
             &[],
         );
         */
-        rpass.set_index_buffer(terrain_geo_buffer.patch_debug_index_buffer(), 0, 0);
         rpass.set_vertex_buffer(0, &terrain_geo_buffer.vertex_buffer(), 0, 0);
         for i in 0..terrain_geo_buffer.num_patches() {
+            rpass.set_index_buffer(terrain_geo_buffer.patch_debug_index_buffer(), 0, 0);
             rpass.draw_indexed(
                 terrain_geo_buffer.patch_index_range(),
                 terrain_geo_buffer.patch_offset(i),

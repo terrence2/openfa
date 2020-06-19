@@ -14,14 +14,17 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod debug_vertex;
 mod icosahedron;
+mod index_dependency_lut;
 mod patch;
 mod patch_tree;
 mod patch_winding;
 mod queue;
 mod terrain_vertex;
 
-use crate::patch_tree::PatchTree;
-pub use crate::{debug_vertex::DebugVertex, terrain_vertex::TerrainVertex};
+pub use crate::{
+    debug_vertex::DebugVertex, patch_winding::PatchWinding, terrain_vertex::TerrainVertex,
+};
+use crate::{index_dependency_lut::*, patch_tree::PatchTree};
 
 use absolute_unit::Kilometers;
 use camera::Camera;
@@ -95,6 +98,8 @@ impl GpuDetailLevel {
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Debug, Copy, Clone)]
 pub struct SubdivisionContext {
+    // Number of unique vertices in a patch. Skip past this many vertices in a buffer to
+    // get to the next patch.
     target_stride: u32,
     pad: [u32; 3],
 }
@@ -104,6 +109,7 @@ pub struct TerrainGeoBuffer {
     desired_patch_count: usize,
 
     patch_tree: PatchTree,
+    patch_windings: Vec<PatchWinding>,
 
     patch_upload_buffer: Arc<Box<wgpu::Buffer>>,
     patch_debug_index_buffer: wgpu::Buffer,
@@ -129,8 +135,12 @@ impl TerrainGeoBuffer {
     ) -> Fallible<Arc<RefCell<Self>>> {
         let (max_level, target_refinement, desired_patch_count) = cpu_detail_level.parameters();
         let subdivisions = gpu_detail_level.parameters();
+        let subdivisions = 0;
 
         let patch_tree = PatchTree::new(max_level, target_refinement, desired_patch_count);
+
+        let mut patch_windings = Vec::with_capacity(desired_patch_count);
+        patch_windings.resize(desired_patch_count, PatchWinding::Full);
 
         println!(
             "dbg_vertex_buffer: {:08X}",
@@ -291,9 +301,73 @@ impl TerrainGeoBuffer {
                 ],
             });
 
+        // Create the index dependence lut.
+        let index_dependency_lut_buffer_size = (mem::size_of::<u32>()
+            * Self::get_index_dependency_lut(subdivisions).len())
+            as wgpu::BufferAddress;
+        let index_dependency_lut_buffer = gpu.push_slice(
+            "index-dependency-lut",
+            Self::get_index_dependency_lut(subdivisions),
+            wgpu::BufferUsage::STORAGE,
+        );
+
+        let subdivide_expand_bind_group_layout =
+            gpu.device()
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("terrain-geo-subdivide-bind-group-layout"),
+                    bindings: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: true,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: false,
+                            },
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::StorageBuffer {
+                                dynamic: false,
+                                readonly: true,
+                            },
+                        },
+                    ],
+                });
+
+        let subdivide_expand_shader =
+            gpu.create_shader_module(include_bytes!("../target/subdivide_expand.comp.spirv"))?;
+        let subdivide_expand_pipeline =
+            gpu.device()
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    layout: &gpu
+                        .device()
+                        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                            bind_group_layouts: &[&subdivide_expand_bind_group_layout],
+                        }),
+                    compute_stage: wgpu::ProgrammableStageDescriptor {
+                        module: &subdivide_expand_shader,
+                        entry_point: "main",
+                    },
+                });
+
         Ok(Arc::new(RefCell::new(Self {
             desired_patch_count,
             patch_tree,
+            patch_windings,
 
             patch_upload_buffer,
             patch_debug_index_buffer,
@@ -326,7 +400,8 @@ impl TerrainGeoBuffer {
 
         let scale = Matrix4::new_scaling(1_000.0);
         let view = camera.view::<Kilometers>();
-        for (offset, (i, _winding)) in live_patches.iter().enumerate() {
+        for (offset, (i, winding)) in live_patches.iter().enumerate() {
+            self.patch_windings[offset] = *winding;
             let patch = self.patch_tree.get_patch(*i);
             if offset >= self.desired_patch_count {
                 continue;
@@ -403,52 +478,26 @@ impl TerrainGeoBuffer {
         Ok(cpass)
     }
 
-    fn build_index_dependence_lut() -> Vec<(u32, u32)> {
-        let mut lut = vec![(0, 0); 3];
-        // Self::build_index_dependence_lut_inner(1, 1, &[0, 1, 2], &mut lut);
-        // Self::build_index_dependence_lut_inner(1, 2, &[0, 1, 2], &mut lut);
-        // // for target_level in 1..2 {
-        // //     Self::build_index_dependence_lut_inner(1, target_level, [], &mut lut);
-        // //     Self::build_index_dependence_lut_inner(1, target_level, 2, 0, &mut lut);
-        // //     Self::build_index_dependence_lut_inner(1, target_level, 0, 1, &mut lut);
-        // // }
-        // println!("LUT: {:?}", lut);
-        lut
+    fn get_index_buffer() -> Vec<u32> {
+        // This needs to line up with our index dependence lut. There's not really any trivial
+        // way
+        vec![]
     }
 
-    /*
-    fn build_index_dependence_lut_inner(
-        subdivision_level: usize,
-        target_level: usize,
-        crnrs: &[u32; 3],
-        lut: &mut Vec<(u32, u32)>,
-    ) {
-        // Starting at 1->2.
-        //let base = lut.len() as u32;
-        let base = GpuDetailLevel::vertices_per_subdivision(subdivision_level - 1) as u32;
-        let edges = [base, base + 1, base + 2];
-        println!(
-            "enter triangle: {}/{}: {:?} with edges: {:?}",
-            subdivision_level, target_level, crnrs, edges
-        );
-        let t0_corners = [edges[2], edges[1], crnrs[0]];
-        let t1_corners = [crnrs[1], edges[0], edges[2]];
-        let t2_corners = [edges[0], crnrs[2], edges[1]];
-        let t3_corners = [edges[1], edges[2], edges[0]];
-
-        if subdivision_level == target_level {
-            lut.push((crnrs[1], crnrs[2]));
-            lut.push((crnrs[2], crnrs[0]));
-            lut.push((crnrs[0], crnrs[1]));
-        } else {
-            let lvl = subdivision_level + 1;
-            Self::build_index_dependence_lut_inner(lvl, target_level, &t0_corners, lut);
-            // Self::build_index_dependence_lut_inner(lvl, target_level, &t1_corners, lut);
-            // Self::build_index_dependence_lut_inner(lvl, target_level, &t2_corners, lut);
-            // Self::build_index_dependence_lut_inner(lvl, target_level, &t3_corners, lut);
+    fn get_index_dependency_lut(subdivisions: usize) -> &'static [u32] {
+        match subdivisions {
+            0 => &INDEX_DEPENDENCY_LUT0,
+            1 => &INDEX_DEPENDENCY_LUT1,
+            2 => &INDEX_DEPENDENCY_LUT2,
+            3 => &INDEX_DEPENDENCY_LUT3,
+            4 => &INDEX_DEPENDENCY_LUT4,
+            5 => &INDEX_DEPENDENCY_LUT5,
+            6 => &INDEX_DEPENDENCY_LUT6,
+            7 => &INDEX_DEPENDENCY_LUT7,
+            8 => &INDEX_DEPENDENCY_LUT8,
+            _ => panic!("subdivisions only supported up to 9"),
         }
     }
-     */
 
     /*
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
