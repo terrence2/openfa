@@ -163,7 +163,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
       * [ ] Shape shadowing
     * Planetary Scale Rendering; Using [Kooima's thesis](https://www.evl.uic.edu/documents/kooima-dissertation-uic.pdf).
       * [x] Patch management
-      * [ ] Patch tesselation
+      * [x] Patch tesselation
       * [ ] Heightmap generator
       * [ ] Heightmap memory manager
       * [ ] Colormap generator
