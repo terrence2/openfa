@@ -241,10 +241,6 @@ impl PatchTree {
         &mut self.patches[poff(index)]
     }
 
-    pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
-        self.patch_node(patch_index).level
-    }
-
     fn allocate_patch(&mut self) -> PatchIndex {
         if let Some(Reverse(patch_index)) = self.patch_empty_set.pop() {
             return patch_index;
@@ -362,10 +358,6 @@ impl PatchTree {
 
     pub(crate) fn tree_patch(&self, tree_index: TreeIndex) -> &Patch {
         self.get_patch(self.tree_node(tree_index).patch_index())
-    }
-
-    fn patch_node(&self, patch_index: PatchIndex) -> &TreeNode {
-        self.tree_node(self.get_patch(patch_index).owner())
     }
 
     // Note: shared with queue, which can't borrow us because we own it.

@@ -27,6 +27,19 @@ pub enum PatchWinding {
 }
 
 impl PatchWinding {
+    pub(crate) fn all_windings() -> [Self; 8] {
+        [
+            Self::Full,
+            Self::Missing0,
+            Self::Missing1,
+            Self::Missing2,
+            Self::Missing01,
+            Self::Missing12,
+            Self::Missing20,
+            Self::Empty,
+        ]
+    }
+
     pub(crate) fn from_peers(peers: &[Option<Peer>; 3]) -> Self {
         match (peers[0].is_some(), peers[1].is_some(), peers[2].is_some()) {
             (true, true, true) => Self::Full,
