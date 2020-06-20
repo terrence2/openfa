@@ -122,7 +122,9 @@ fn main() -> Fallible<()> {
     let mut arcball = ArcBallCamera::new(
         gpu.aspect_ratio(),
         meters!(0.5),
-        meters!(kilometers!(EARTH_RADIUS_KM * 2.0 * 1.3)),
+        // FIXME: return our near precision
+        meters!(kilometers!(EARTH_RADIUS_KM * 2.0 * 4.0)),
+        //meters!(kilometers!(EARTH_RADIUS_KM * 2.0 * 1.3)),
     );
     arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
@@ -132,8 +134,8 @@ fn main() -> Fallible<()> {
     arcball.set_eye_relative(Graticule::<Target>::new(
         degrees!(89),
         degrees!(0),
-        //meters!(4_000_000),
-        meters!(1_400_000),
+        meters!(4_000_000),
+        // meters!(1_400_000),
     ))?;
 
     let mut target_vec = meters!(0f64);
