@@ -515,7 +515,7 @@ impl TerrainGeoBuffer {
         Ok(cpass)
     }
 
-    fn get_wireframe_index_buffer(subdivisions: usize, winding: PatchWinding) -> &'static [u32] {
+    fn get_wireframe_index_buffer(subdivisions: usize, _winding: PatchWinding) -> &'static [u32] {
         // TODO: expand with each of the possible windings
         match subdivisions {
             0 => &WIREFRAME_INDICES0,
@@ -527,15 +527,8 @@ impl TerrainGeoBuffer {
             6 => &WIREFRAME_INDICES6,
             7 => &WIREFRAME_INDICES7,
             8 => &WIREFRAME_INDICES8,
-            9 => &WIREFRAME_INDICES9,
-            _ => panic!("only up to 9 subdivisions supported"),
+            _ => panic!("only up to 8 subdivisions supported"),
         }
-    }
-
-    fn get_index_buffer() -> Vec<u32> {
-        // This needs to line up with our index dependence lut. There's not really any trivial
-        // way
-        vec![]
     }
 
     fn get_index_dependency_lut(subdivisions: usize) -> &'static [u32] {
@@ -549,8 +542,7 @@ impl TerrainGeoBuffer {
             6 => &INDEX_DEPENDENCY_LUT6,
             7 => &INDEX_DEPENDENCY_LUT7,
             8 => &INDEX_DEPENDENCY_LUT8,
-            9 => &INDEX_DEPENDENCY_LUT9,
-            _ => panic!("subdivisions only supported up to 9"),
+            _ => panic!("only up to 8 subdivisions supported"),
         }
     }
 

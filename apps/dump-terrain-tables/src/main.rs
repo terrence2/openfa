@@ -40,7 +40,7 @@ struct Opt {
     dump_index_dependency_luts: bool,
 
     /// Select the max subdivision depth to dump.
-    #[structopt(short, long, default_value = "9")]
+    #[structopt(short, long, default_value = "8")]
     max_level: usize,
 }
 
@@ -175,7 +175,7 @@ fn make_wireframe_list(max_level: usize) {
         // }
         let indices = make_line_list(&bins, &binned, 0);
         println!(
-            "pub const WIREFRAME_INDICES{}: [u32; {}] = {:?};",
+            "pub static WIREFRAME_INDICES{}: [u32; {}] = {:?};",
             i,
             indices.len(),
             indices
@@ -209,7 +209,7 @@ fn make_index_dependency_luts(max_level: usize) {
     for i in 0..=max_level {
         let (_tris, deps) = make_tris(i);
         println!(
-            "pub const INDEX_DEPENDENCY_LUT{}: [u32; {}] = [\n    {}\n];",
+            "pub static INDEX_DEPENDENCY_LUT{}: [u32; {}] = [\n    {}\n];",
             i,
             deps.len() * 2,
             deps.iter()
@@ -224,7 +224,7 @@ fn make_index_dependency_luts(max_level: usize) {
 fn make_line_list(
     bins: &[(i64, i64)],
     binned: &HashMap<(i64, i64), Vec<Triangle>>,
-    winding: u8,
+    _winding: u8,
 ) -> Vec<u32> {
     let mut indices = Vec::new();
 
@@ -257,7 +257,7 @@ fn make_line_list(
 fn make_triangle_strip(
     bins: &[(i64, i64)],
     binned: &HashMap<(i64, i64), Vec<Triangle>>,
-    winding: u8,
+    _winding: u8,
 ) -> Vec<u32> {
     let mut indices = Vec::new();
 
@@ -496,7 +496,7 @@ mod test {
         }
 
         for i in 0..9 {
-            let (tris, deps) = make_tris(i);
+            let (tris, _) = make_tris(i);
             let expect = (((2f64.powf(i as f64) + 1f64) * (2f64.powf(i as f64) + 2f64)) / 2f64)
                 .floor() as usize;
             assert_eq!(count_unique_vertices(&tris), expect);
