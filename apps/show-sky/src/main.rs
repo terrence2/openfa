@@ -35,7 +35,7 @@ use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
 use terrain::TerrainRenderPass;
-use terrain_geo::{CpuDetailLevel, TerrainGeoBuffer};
+use terrain_geo::{CpuDetailLevel, GpuDetailLevel, TerrainGeoBuffer};
 use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
 
 make_frame_graph!(
@@ -48,6 +48,7 @@ make_frame_graph!(
             terrain_geo: TerrainGeoBuffer,
             text_layout: LayoutBuffer
         };
+        precompute: { terrain_geo };
         renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             terrain: TerrainRenderPass { globals, atmosphere, terrain_geo },
@@ -74,10 +75,10 @@ fn main() -> Fallible<()> {
     ])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let detail = if cfg!(debug_assertions) {
-        CpuDetailLevel::Low
+    let (cpu_detail, gpu_detail) = if cfg!(debug_assertions) {
+        (CpuDetailLevel::Low, GpuDetailLevel::Medium)
     } else {
-        CpuDetailLevel::Medium
+        (CpuDetailLevel::Medium, GpuDetailLevel::High)
     };
 
     ///////////////////////////////////////////////////////////
@@ -85,10 +86,10 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
-    let terrain_geo_buffer = TerrainGeoBuffer::new(detail, 1, &gpu)?;
+    let terrain_geo_buffer = TerrainGeoBuffer::new(cpu_detail, gpu_detail, &gpu)?;
     let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
 
-    let frame_graph = FrameGraph::new(
+    let mut frame_graph = FrameGraph::new(
         &mut gpu,
         &atmosphere_buffer,
         &fullscreen_buffer,
@@ -166,23 +167,25 @@ fn main() -> Fallible<()> {
 
         arcball.think();
 
-        let mut buffers = Vec::new();
-        globals_buffer
-            .borrow()
-            .make_upload_buffer(arcball.camera(), &gpu, &mut buffers)?;
-        //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
+        globals_buffer.borrow().make_upload_buffer(
+            arcball.camera(),
+            &gpu,
+            frame_graph.tracker_mut(),
+        )?;
         atmosphere_buffer.borrow().make_upload_buffer(
             convert(orrery.sun_direction()),
             &gpu,
-            &mut buffers,
+            frame_graph.tracker_mut(),
         )?;
-        terrain_geo_buffer
-            .borrow_mut()
-            .make_upload_buffer(arcball.camera(), &gpu, &mut buffers)?;
+        terrain_geo_buffer.borrow_mut().make_upload_buffer(
+            arcball.camera(),
+            &gpu,
+            frame_graph.tracker_mut(),
+        )?;
         layout_buffer
             .borrow_mut()
-            .make_upload_buffer(&gpu, &mut buffers)?;
-        frame_graph.run(&mut gpu, buffers)?;
+            .make_upload_buffer(&gpu, frame_graph.tracker_mut())?;
+        frame_graph.run(&mut gpu)?;
 
         let frame_time = loop_start.elapsed();
         let ts = format!(

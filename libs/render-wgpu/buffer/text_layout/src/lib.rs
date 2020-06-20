@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use fnt::Fnt;
-use frame_graph::CopyBufferDescriptor;
+use frame_graph::FrameStateTracker;
 use glyph_cache::{GlyphCache, GlyphCacheIndex};
 use gpu::GPU;
 use lib::Library;
@@ -394,7 +394,7 @@ impl Layout {
         &mut self,
         glyph_cache: &GlyphCache,
         gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         if self.text_render_context.is_none() {
             self.text_render_context =
@@ -424,11 +424,11 @@ impl Layout {
             }],
             wgpu::BufferUsage::all(),
         );
-        upload_buffers.push(CopyBufferDescriptor::new(
+        tracker.upload(
             buffer,
             self.layout_data_buffer.clone(),
-            mem::size_of::<LayoutData>() as wgpu::BufferAddress,
-        ));
+            mem::size_of::<LayoutData>(),
+        );
 
         Ok(())
     }
@@ -611,13 +611,13 @@ impl LayoutBuffer {
     pub fn make_upload_buffer(
         &mut self,
         gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         for layout in self.layouts.iter_mut() {
             layout.make_upload_buffer(
                 &self.glyph_caches[layout.glyph_cache_index.index()],
                 gpu,
-                upload_buffers,
+                tracker,
             )?;
         }
         Ok(())

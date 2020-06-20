@@ -21,13 +21,13 @@ use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default)]
-pub struct PatchVertex {
+pub struct TerrainVertex {
     position: [f32; 3],
     normal: [f32; 3],
     graticule: [f32; 2],
 }
 
-impl PatchVertex {
+impl TerrainVertex {
     pub fn empty() -> Self {
         Self {
             position: [0f32; 3],
@@ -78,20 +78,20 @@ impl PatchVertex {
 
         assert_eq!(
             tmp.attributes[0].offset,
-            offset_of!(PatchVertex, position) as wgpu::BufferAddress
+            offset_of!(TerrainVertex, position) as wgpu::BufferAddress
         );
 
         assert_eq!(
             tmp.attributes[1].offset,
-            offset_of!(PatchVertex, normal) as wgpu::BufferAddress
+            offset_of!(TerrainVertex, normal) as wgpu::BufferAddress
         );
 
         assert_eq!(
             tmp.attributes[2].offset,
-            offset_of!(PatchVertex, graticule) as wgpu::BufferAddress
+            offset_of!(TerrainVertex, graticule) as wgpu::BufferAddress
         );
 
-        assert_eq!(mem::size_of::<PatchVertex>(), 32);
+        assert_eq!(mem::size_of::<TerrainVertex>(), 32);
 
         tmp
     }

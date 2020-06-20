@@ -22,3 +22,6 @@ geometry = { path = "../../../render-shared/common/geometry" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 physical_constants = { path = "../../../physical_constants" }
 universe = { path = "../../../universe" }
+
+[build-dependencies]
+build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

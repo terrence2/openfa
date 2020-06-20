@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::patch_tree::Peer;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PatchWinding {
     Full,
     Missing0,
@@ -26,6 +27,19 @@ pub enum PatchWinding {
 }
 
 impl PatchWinding {
+    pub(crate) fn all_windings() -> [Self; 8] {
+        [
+            Self::Full,
+            Self::Missing0,
+            Self::Missing1,
+            Self::Missing2,
+            Self::Missing01,
+            Self::Missing12,
+            Self::Missing20,
+            Self::Empty,
+        ]
+    }
+
     pub(crate) fn from_peers(peers: &[Option<Peer>; 3]) -> Self {
         match (peers[0].is_some(), peers[1].is_some(), peers[2].is_some()) {
             (true, true, true) => Self::Full,
@@ -36,6 +50,19 @@ impl PatchWinding {
             (true, false, false) => Self::Missing12,
             (false, true, false) => Self::Missing20,
             (false, false, false) => Self::Empty,
+        }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        match self {
+            Self::Full => 0,
+            Self::Missing0 => 1,
+            Self::Missing1 => 2,
+            Self::Missing2 => 3,
+            Self::Missing01 => 4,
+            Self::Missing12 => 5,
+            Self::Missing20 => 6,
+            Self::Empty => 7,
         }
     }
 }

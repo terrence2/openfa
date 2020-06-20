@@ -12,42 +12,23 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod frame_state_tracker;
 
-pub struct CopyBufferDescriptor {
-    pub source: ::wgpu::Buffer,
-    pub source_offset: ::wgpu::BufferAddress,
-    pub destination: ::std::sync::Arc<::std::boxed::Box<::wgpu::Buffer>>,
-    pub destination_offset: ::wgpu::BufferAddress,
-    pub copy_size: ::wgpu::BufferAddress,
-}
-
-impl CopyBufferDescriptor {
-    pub fn new(
-        source: ::wgpu::Buffer,
-        destination: ::std::sync::Arc<::std::boxed::Box<::wgpu::Buffer>>,
-        copy_size: ::wgpu::BufferAddress,
-    ) -> Self {
-        Self {
-            source,
-            source_offset: 0,
-            destination,
-            destination_offset: 0,
-            copy_size,
-        }
-    }
-}
+pub use crate::frame_state_tracker::FrameStateTracker;
 
 #[macro_export]
 macro_rules! make_frame_graph {
     (
         $name:ident {
             buffers: { $($buffer_name:ident: $buffer_type:ty),* };
+            precompute: { $($precompute_name:ident),* };
             renderers: [
                 $( $renderer_name:ident: $renderer_type:ty { $($input_buffer_name:ident),* } ),*
             ];
         }
     ) => {
         pub struct $name {
+            tracker: $crate::FrameStateTracker,
             $(
                 $buffer_name: ::std::sync::Arc<::std::cell::RefCell<$buffer_type>>
             ),*,
@@ -64,7 +45,8 @@ macro_rules! make_frame_graph {
                     $buffer_name: &::std::sync::Arc<::std::cell::RefCell<$buffer_type>>
                 ),*
             ) -> ::failure::Fallible<Self> {
-                Ok(Self {
+                let mut graph = Self {
+                    tracker: Default::default(),
                     $(
                         $buffer_name: $buffer_name.to_owned()
                     ),*,
@@ -76,16 +58,17 @@ macro_rules! make_frame_graph {
                             ),*
                         )?
                     ),*
-                })
+                };
+                Ok(graph)
             }
 
-            pub fn run(&self, gpu: &mut ::gpu::GPU, mut upload_buffers: Vec<$crate::CopyBufferDescriptor>) -> ::failure::Fallible<()> {
+            pub fn run(&mut self, gpu: &mut ::gpu::GPU) -> ::failure::Fallible<()> {
                 $(
                     let $buffer_name = self.$buffer_name.borrow();
                 )*
                 let mut frame = gpu.begin_frame()?;
                 {
-                    for desc in upload_buffers.drain(..) {
+                    for desc in self.tracker.drain_uploads() {
                         frame.copy_buffer_to_buffer(
                             &desc.source,
                             desc.source_offset,
@@ -95,19 +78,32 @@ macro_rules! make_frame_graph {
                         );
                     }
 
-                    let rpass = frame.begin_render_pass();
-                    $(
-                        let rpass = self.$renderer_name.draw(
-                            rpass,
-                            $(
-                                &$input_buffer_name
-                            ),*
-                        );
-                    )*
+                    {
+                        let cpass = frame.begin_compute_pass();
+                        $(
+                            let cpass = $precompute_name.precompute(cpass);
+                        )*
+                    }
+
+                    {
+                        let rpass = frame.begin_render_pass();
+                        $(
+                            let rpass = self.$renderer_name.draw(
+                                rpass,
+                                $(
+                                    &$input_buffer_name
+                                ),*
+                            );
+                        )*
+                    }
                 }
                 frame.finish();
 
                 Ok(())
+            }
+
+            pub fn tracker_mut(&mut self) -> &mut $crate::FrameStateTracker {
+                &mut self.tracker
             }
         }
     };

@@ -18,12 +18,10 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
-use terrain_geo::{DebugVertex, PatchVertex, TerrainGeoBuffer};
+use terrain_geo::{TerrainGeoBuffer, TerrainVertex};
 
 pub struct TerrainRenderPass {
-    debug_patch_pipeline: wgpu::RenderPipeline,
-
-    debug_intersect_pipeline: wgpu::RenderPipeline,
+    patch_pipeline: wgpu::RenderPipeline,
 }
 
 impl TerrainRenderPass {
@@ -40,122 +38,55 @@ impl TerrainRenderPass {
         let frag_shader =
             gpu.create_shader_module(include_bytes!("../target/terrain.frag.spirv"))?;
 
-        let dbg_vert_shader =
-            gpu.create_shader_module(include_bytes!("../target/debug_intersection.vert.spirv"))?;
-        let dbg_frag_shader =
-            gpu.create_shader_module(include_bytes!("../target/debug_intersection.frag.spirv"))?;
+        let patch_pipeline = gpu
+            .device()
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                layout: &gpu
+                    .device()
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        bind_group_layouts: &[globals_buffer.bind_group_layout()],
+                    }),
+                vertex_stage: wgpu::ProgrammableStageDescriptor {
+                    module: &vert_shader,
+                    entry_point: "main",
+                },
+                fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                    module: &frag_shader,
+                    entry_point: "main",
+                }),
+                rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: wgpu::CullMode::None,
+                    depth_bias: 0,
+                    depth_bias_slope_scale: 0.0,
+                    depth_bias_clamp: 0.0,
+                }),
+                primitive_topology: wgpu::PrimitiveTopology::LineList,
+                color_states: &[wgpu::ColorStateDescriptor {
+                    format: GPU::texture_format(),
+                    color_blend: wgpu::BlendDescriptor::REPLACE,
+                    alpha_blend: wgpu::BlendDescriptor::REPLACE,
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: GPU::DEPTH_FORMAT,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
+                vertex_state: wgpu::VertexStateDescriptor {
+                    index_format: wgpu::IndexFormat::Uint32,
+                    vertex_buffers: &[TerrainVertex::descriptor()],
+                },
+                sample_count: 1,
+                sample_mask: !0,
+                alpha_to_coverage_enabled: false,
+            });
 
-        let debug_patch_pipeline =
-            gpu.device()
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    layout: &gpu
-                        .device()
-                        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                            bind_group_layouts: &[globals_buffer.bind_group_layout()],
-                        }),
-                    vertex_stage: wgpu::ProgrammableStageDescriptor {
-                        module: &vert_shader,
-                        entry_point: "main",
-                    },
-                    fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                        module: &frag_shader,
-                        entry_point: "main",
-                    }),
-                    rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                        front_face: wgpu::FrontFace::Cw,
-                        cull_mode: wgpu::CullMode::None,
-                        depth_bias: 0,
-                        depth_bias_slope_scale: 0.0,
-                        depth_bias_clamp: 0.0,
-                    }),
-                    primitive_topology: wgpu::PrimitiveTopology::LineList,
-                    color_states: &[wgpu::ColorStateDescriptor {
-                        format: GPU::texture_format(),
-                        color_blend: wgpu::BlendDescriptor::REPLACE,
-                        alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                        write_mask: wgpu::ColorWrite::ALL,
-                    }],
-                    depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
-                        format: GPU::DEPTH_FORMAT,
-                        depth_write_enabled: false,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                        stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                        stencil_read_mask: 0,
-                        stencil_write_mask: 0,
-                    }),
-                    vertex_state: wgpu::VertexStateDescriptor {
-                        index_format: wgpu::IndexFormat::Uint32,
-                        vertex_buffers: &[PatchVertex::descriptor()],
-                    },
-                    sample_count: 1,
-                    sample_mask: !0,
-                    alpha_to_coverage_enabled: false,
-                });
-
-        let pipeline_layout =
-            gpu.device()
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    bind_group_layouts: &[
-                        globals_buffer.bind_group_layout(),
-                        // atmosphere_buffer.bind_group_layout(),
-                        // terrain_geo_buffer.bind_group_layout(),
-                    ],
-                });
-
-        let debug_intersect_pipeline =
-            gpu.device()
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    layout: &pipeline_layout,
-                    vertex_stage: wgpu::ProgrammableStageDescriptor {
-                        module: &dbg_vert_shader,
-                        entry_point: "main",
-                    },
-                    fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                        module: &dbg_frag_shader,
-                        entry_point: "main",
-                    }),
-                    rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                        front_face: wgpu::FrontFace::Ccw,
-                        cull_mode: wgpu::CullMode::Back,
-                        depth_bias: 0,
-                        depth_bias_slope_scale: 0.0,
-                        depth_bias_clamp: 0.0,
-                    }),
-                    primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-                    color_states: &[wgpu::ColorStateDescriptor {
-                        format: GPU::texture_format(),
-                        //                    color_blend: wgpu::BlendDescriptor {
-                        //                        src_factor: wgpu::BlendFactor::SrcAlpha,
-                        //                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                        //                        operation: wgpu::BlendOperation::Add,
-                        //                    },
-                        color_blend: wgpu::BlendDescriptor::REPLACE,
-                        alpha_blend: wgpu::BlendDescriptor::REPLACE,
-                        write_mask: wgpu::ColorWrite::ALL,
-                    }],
-                    depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
-                        format: GPU::DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                        stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                        stencil_read_mask: 0,
-                        stencil_write_mask: 0,
-                    }),
-                    vertex_state: wgpu::VertexStateDescriptor {
-                        index_format: wgpu::IndexFormat::Uint32,
-                        vertex_buffers: &[DebugVertex::descriptor()],
-                    },
-                    sample_count: 1,
-                    sample_mask: !0,
-                    alpha_to_coverage_enabled: false,
-                });
-
-        Ok(Self {
-            debug_patch_pipeline,
-            debug_intersect_pipeline,
-        })
+        Ok(Self { patch_pipeline })
     }
 
     pub fn draw<'a>(
@@ -165,14 +96,7 @@ impl TerrainRenderPass {
         _atmosphere_buffer: &'a AtmosphereBuffer,
         terrain_geo_buffer: &'a TerrainGeoBuffer,
     ) -> wgpu::RenderPass<'a> {
-        rpass.set_pipeline(&self.debug_intersect_pipeline);
-        rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(terrain_geo_buffer.debug_index_buffer(), 0, 0);
-        rpass.set_vertex_buffer(0, &terrain_geo_buffer.debug_vertex_buffer(), 0, 0);
-        //rpass.draw_indexed(terrain_geo_buffer.debug_index_range(), 0, 0..1);
-        rpass.draw(terrain_geo_buffer.debug_index_range(), 0..1);
-
-        rpass.set_pipeline(&self.debug_patch_pipeline);
+        rpass.set_pipeline(&self.patch_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
         /*
         rpass.set_bind_group(
@@ -186,10 +110,16 @@ impl TerrainRenderPass {
             &[],
         );
         */
-        rpass.set_index_buffer(terrain_geo_buffer.patch_index_buffer(), 0, 0);
-        rpass.set_vertex_buffer(0, &terrain_geo_buffer.patch_vertex_buffer(), 0, 0);
+        rpass.set_vertex_buffer(0, &terrain_geo_buffer.vertex_buffer(), 0, 0);
         for i in 0..terrain_geo_buffer.num_patches() {
-            rpass.draw_indexed(terrain_geo_buffer.patch_index_range(), i * 3, 0..1);
+            let winding = terrain_geo_buffer.patch_winding(i);
+            let base_vertex = terrain_geo_buffer.patch_vertex_buffer_offset(i);
+            rpass.set_index_buffer(terrain_geo_buffer.wireframe_index_buffer(winding), 0, 0);
+            rpass.draw_indexed(
+                terrain_geo_buffer.wireframe_index_range(winding),
+                base_vertex,
+                0..1,
+            );
         }
         rpass
     }

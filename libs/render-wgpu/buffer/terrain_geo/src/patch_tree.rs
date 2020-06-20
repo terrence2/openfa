@@ -241,10 +241,6 @@ impl PatchTree {
         &mut self.patches[poff(index)]
     }
 
-    pub(crate) fn level_of_patch(&self, patch_index: PatchIndex) -> usize {
-        self.patch_node(patch_index).level
-    }
-
     fn allocate_patch(&mut self) -> PatchIndex {
         if let Some(Reverse(patch_index)) = self.patch_empty_set.pop() {
             return patch_index;
@@ -362,10 +358,6 @@ impl PatchTree {
 
     pub(crate) fn tree_patch(&self, tree_index: TreeIndex) -> &Patch {
         self.get_patch(self.tree_node(tree_index).patch_index())
-    }
-
-    fn patch_node(&self, patch_index: PatchIndex) -> &TreeNode {
-        self.tree_node(self.get_patch(patch_index).owner())
     }
 
     // Note: shared with queue, which can't borrow us because we own it.
@@ -536,8 +528,6 @@ impl PatchTree {
         //   Continue processing T=T{f-1}.
         //   Update priorities for all elements of Qs, Qm.
         // }
-        // FIXME: do we need a patch on nodes, or only on leaves?
-        let patch_update_start = Instant::now();
         for patch in self.patches.iter_mut() {
             patch.update_for_view(
                 &self.cached_viewable_region,
@@ -545,13 +535,10 @@ impl PatchTree {
                 &self.cached_eye_direction,
             )
         }
-        let patch_update_duration = Instant::now() - patch_update_start;
 
         // Update split and merge queue caches with updated solid angles.
-        let queue_update_start = Instant::now();
         self.update_splittable_cache();
         self.update_mergeable_cache();
-        let queue_update_duration = Instant::now() - queue_update_start;
 
         // While T is not the target size/accuracy, or the maximum split priority is greater than the minimum merge priority {
         //   If T is too large or accurate {
@@ -584,6 +571,9 @@ impl PatchTree {
             || self.cached_visible_patches < target_patch_count - 4
             || self.cached_visible_patches > target_patch_count
         {
+            if self.max_splittable() == f64::MIN && self.min_mergeable() == f64::MIN {
+                break;
+            }
             if self.cached_visible_patches >= target_patch_count - 4
                 && self.cached_visible_patches <= target_patch_count
             {
@@ -637,7 +627,7 @@ impl PatchTree {
         let max_split = self.max_splittable();
         let min_merge = self.min_mergeable();
         println!(
-            "r:{} qs:{} qm:{} p:{} t:{}/{} | -/+: {}/{}/{} | {:.02}/{:.02} | {:?}: p|{:?} + q|{:?}",
+            "r:{} qs:{} qm:{} p:{} t:{}/{} | -/+: {}/{}/{} | {:.02}/{:.02} | {:?}",
             live_patches.len(),
             self.split_queue.len(),
             self.merge_queue.len(),
@@ -650,8 +640,6 @@ impl PatchTree {
             max_split,
             min_merge,
             reshape_time,
-            patch_update_duration,
-            queue_update_duration
         );
     }
 

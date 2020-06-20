@@ -15,7 +15,7 @@
 use absolute_unit::{Kilometers, LengthUnit, Meters};
 use camera::Camera;
 use failure::Fallible;
-use frame_graph::CopyBufferDescriptor;
+use frame_graph::FrameStateTracker;
 use geodesy::{Cartesian, GeoCenter};
 use gpu::GPU;
 use nalgebra::{convert, Isometry3, Matrix4, Point3, Vector3, Vector4};
@@ -197,7 +197,7 @@ impl GlobalParametersBuffer {
         &self.bind_group
     }
 
-    fn make_gpu_buffer(&self, globals: Globals, gpu: &GPU) -> CopyBufferDescriptor {
+    fn upload_gpu_buffer(&self, globals: Globals, gpu: &GPU, tracker: &mut FrameStateTracker) {
         let source_map = gpu.device().create_buffer_mapped(&wgpu::BufferDescriptor {
             label: Some("global-buffer"),
             size: self.buffer_size,
@@ -205,21 +205,21 @@ impl GlobalParametersBuffer {
         });
         source_map.data.copy_from_slice(globals.as_bytes());
         let source = source_map.finish();
-        CopyBufferDescriptor::new(source, self.parameters_buffer.clone(), self.buffer_size)
+        tracker.upload_ba(source, self.parameters_buffer.clone(), self.buffer_size)
     }
 
     pub fn make_upload_buffer(
         &self,
         camera: &Camera,
         gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         let globals: Globals = Default::default();
         let globals = globals
             .with_screen_overlay_projection(gpu)
             .with_geocenter_km_raymarching(camera)
             .with_debug_geocenter_helpers(camera);
-        upload_buffers.push(self.make_gpu_buffer(globals, gpu));
+        self.upload_gpu_buffer(globals, gpu, tracker);
         Ok(())
     }
 
@@ -227,7 +227,7 @@ impl GlobalParametersBuffer {
         &self,
         _camera: &Camera,
         _gpu: &GPU,
-        _upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        _tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         /*
         let globals = Self::arcball_camera_to_buffer(100f32, 100f32, 0f32, 0f32, camera, gpu);
@@ -241,7 +241,7 @@ impl GlobalParametersBuffer {
         _terrain: &Terrain,
         _camera: &Camera,
         _gpu: &GPU,
-        _upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        _tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         /*
         let globals = Self::arcball_camera_to_buffer(

@@ -12,15 +12,27 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#version 450
-#include <common/shader_globals/include/global.glsl>
-#include <buffer/global_data/include/global.glsl>
 
-layout(location = 0) in vec4 v_color;
-layout(location = 0) out vec4 f_color;
+struct TerrainVertex {
+    // Note that we cannot use vec3 here as that packs into vec4 in a struct storage buffer context, unlike in a
+    // vertex context where it packs properly. :shrug:
+    float position[3];
+    float normal[3];
+    float graticule[2];
+};
 
-void
-main()
-{
-    f_color = v_color;
-}
+// 3 vertices per patch stride in the upload buffer.
+#define PATCH_UPLOAD_STRIDE 3
+
+struct SubdivisionContext {
+    uint target_stride;
+    uint target_subdivision_level;
+    uint pad[2];
+};
+
+struct SubdivisionExpandContext {
+    uint current_target_subdivision_level;
+    uint skip_vertices_in_patch;
+    uint compute_vertices_in_patch;
+    uint pad[1];
+};

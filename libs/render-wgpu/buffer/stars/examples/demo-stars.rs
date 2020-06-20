@@ -119,17 +119,17 @@ fn main() -> Fallible<()> {
         }
 
         // Prepare new camera parameters.
-        let mut upload_buffers = Vec::new();
+        let mut tracker = Default::default();
         globals_buffer
             .borrow()
-            .make_upload_buffer(arcball.camera(), &gpu, &mut upload_buffers)?;
+            .make_upload_buffer(arcball.camera(), &gpu, &mut tracker)?;
 
         let gb_borrow = globals_buffer.borrow();
         let fs_borrow = fullscreen_buffer.borrow();
         let sb_borrow = stars_buffers.borrow();
         let mut frame = gpu.begin_frame()?;
         {
-            for desc in upload_buffers.drain(..) {
+            for desc in tracker.drain_uploads() {
                 frame.copy_buffer_to_buffer(
                     &desc.source,
                     desc.source_offset,

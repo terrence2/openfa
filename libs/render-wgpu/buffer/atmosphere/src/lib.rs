@@ -27,7 +27,7 @@ mod precompute;
 
 use crate::{earth_consts::ATMOSPHERE_PARAMETERS_BUFFER_SIZE, precompute::Precompute};
 use failure::Fallible;
-use frame_graph::CopyBufferDescriptor;
+use frame_graph::FrameStateTracker;
 use gpu::GPU;
 use log::trace;
 use nalgebra::Vector3;
@@ -269,7 +269,7 @@ impl AtmosphereBuffer {
         &self,
         sun_direction: Vector3<f32>,
         gpu: &GPU,
-        upload_buffers: &mut Vec<CopyBufferDescriptor>,
+        tracker: &mut FrameStateTracker,
     ) -> Fallible<()> {
         let buffer = [[
             sun_direction.x as f32,
@@ -282,7 +282,7 @@ impl AtmosphereBuffer {
             &buffer,
             self.sun_direction_buffer.clone(),
             wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_SRC,
-            upload_buffers,
+            tracker,
         );
         Ok(())
     }
