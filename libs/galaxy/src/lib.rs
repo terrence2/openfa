@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use legion::entity::Entity;
+pub use legion::{entity::Entity, world::EntityStore};
 pub use universe::component::{Rotation, Scale, Transform};
 
 use failure::Fallible;
@@ -108,7 +108,7 @@ impl Galaxy {
         let entity = entities[0];
         if widgets.errata().has_xform_animation {
             self.legion_world
-                .add_component(entity, ShapeXformBuffer::default());
+                .add_component(entity, ShapeXformBuffer::default())?;
         }
         Ok(entity)
     }

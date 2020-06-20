@@ -24,6 +24,7 @@ use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
+use legion::world::EntityStore;
 use log::trace;
 use nalgebra::{convert, Point3, UnitQuaternion};
 use omnilib::{make_opt_struct, OmniLib};

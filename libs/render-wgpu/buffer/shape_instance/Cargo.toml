@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-legion = "= 0.2.1"
+legion = "= 0.2.4"
 log = "^ 0.4"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
