@@ -195,10 +195,6 @@ impl TerrainGeoBuffer {
         // Create target vertex buffer.
         let target_patch_byte_size =
             mem::size_of::<TerrainVertex>() * subdivide_context.target_stride as usize;
-        println!(
-            "target verticies: {}",
-            subdivide_context.target_stride as usize * desired_patch_count
-        );
         assert_eq!(target_patch_byte_size % 4, 0);
         let target_vertex_buffer_size =
             (target_patch_byte_size * desired_patch_count) as wgpu::BufferAddress;
@@ -464,18 +460,18 @@ impl TerrainGeoBuffer {
                 continue;
             }
             let [v0, v1, v2] = patch.points();
-            let n0 = v0.coords.normalize();
-            let n1 = v1.coords.normalize();
-            let n2 = v2.coords.normalize();
+            let n0 = view.to_homogeneous() * v0.coords.normalize().to_homogeneous();
+            let n1 = view.to_homogeneous() * v1.coords.normalize().to_homogeneous();
+            let n2 = view.to_homogeneous() * v2.coords.normalize().to_homogeneous();
 
             // project patch verts from global coordinates into view space.
             let v0 = scale * view.to_homogeneous() * v0.to_homogeneous();
             let v1 = scale * view.to_homogeneous() * v1.to_homogeneous();
             let v2 = scale * view.to_homogeneous() * v2.to_homogeneous();
 
-            verts.push(TerrainVertex::new(&Point3::from(v0.xyz()), &n0));
-            verts.push(TerrainVertex::new(&Point3::from(v1.xyz()), &n1));
-            verts.push(TerrainVertex::new(&Point3::from(v2.xyz()), &n2));
+            verts.push(TerrainVertex::new(&Point3::from(v0.xyz()), &n0.xyz()));
+            verts.push(TerrainVertex::new(&Point3::from(v1.xyz()), &n1.xyz()));
+            verts.push(TerrainVertex::new(&Point3::from(v2.xyz()), &n2.xyz()));
         }
         // println!("verts: {}", verts.len());
 
@@ -502,7 +498,6 @@ impl TerrainGeoBuffer {
         cpass.set_bind_group(0, &self.subdivide_prepare_bind_group, &[]);
         cpass.dispatch(3 * self.desired_patch_count as u32, 1, 1);
 
-        // 012,345,012,345
         for i in 0..self.subdivisions {
             let (expand, bind_group) = &self.subdivide_expand_bind_groups[i];
             let iteration_count =

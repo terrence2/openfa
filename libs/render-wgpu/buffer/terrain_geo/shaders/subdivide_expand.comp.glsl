@@ -40,12 +40,48 @@ main()
     uint dep_a = patch_base + index_dependency_lut[patch_offset * 2 + 0];
     uint dep_b = patch_base + index_dependency_lut[patch_offset * 2 + 1];
 
-    target_vertices[offset].position[0] = (target_vertices[dep_a].position[0] + target_vertices[dep_b].position[0]) / 2.0;
-    target_vertices[offset].position[1] = (target_vertices[dep_a].position[1] + target_vertices[dep_b].position[1]) / 2.0;
-    target_vertices[offset].position[2] = (target_vertices[dep_a].position[2] + target_vertices[dep_b].position[2]) / 2.0;
-    target_vertices[offset].normal[0] = 1.0;
-    target_vertices[offset].normal[1] = 1.0;
-    target_vertices[offset].normal[2] = 1.0;
-    target_vertices[offset].graticule[0] = 0.0;
-    target_vertices[offset].graticule[1] = 0.0;
+    // Do normal interpolation the normal way.
+    vec3 na = vec3(target_vertices[dep_a].normal[0], target_vertices[dep_a].normal[1], target_vertices[dep_a].normal[2]);
+    vec3 nb = vec3(target_vertices[dep_b].normal[0], target_vertices[dep_b].normal[1], target_vertices[dep_b].normal[2]);
+    vec3 tmp = na + nb;
+    vec3 nt = tmp / length(tmp);
+    float w = acos(dot(na, nb));
+
+    // Use the haversine geodesic midpoint method to compute graticule.
+    // j/k => a/b
+    float phi_a = target_vertices[dep_a].graticule[0];
+    float theta_a = target_vertices[dep_a].graticule[1];
+    float phi_b = target_vertices[dep_b].graticule[0];
+    float theta_b = target_vertices[dep_b].graticule[1];
+    // bx = cos(φk) · cos(θk−θj)
+    float beta_x = cos(phi_b) * cos(theta_b - theta_a);
+    // by = cos(φk) · sin(θk−θj)
+    float beta_y = cos(phi_b) * sin(theta_b - theta_a);
+    // φi = atan2(sin(φj) + sin(φk), √((cos(φj) + bx)^2 + by^2))
+    float cpa_beta_x = cos(phi_a) + beta_x;
+    float phi_t = atan(
+        sin(phi_a) + sin(phi_b),
+        sqrt(cpa_beta_x * cpa_beta_x + beta_y * beta_y)
+    );
+    // θi = θj + atan2(by, cos(φj) + bx)
+    float theta_t = theta_a + atan(beta_y, cos(phi_a) + beta_x);
+
+    // Use the clever tan method from figure 35.
+    vec3 pa = vec3(target_vertices[dep_a].position[0], target_vertices[dep_a].position[1], target_vertices[dep_a].position[2]);
+    vec3 pb = vec3(target_vertices[dep_b].position[0], target_vertices[dep_b].position[1], target_vertices[dep_b].position[2]);
+    float x = length(pb - pa) / 2.0;
+    // 1/2 factor from the fact that we are computing tangent of the midpoint.
+    // I have no idea why we need the second 1/2 factor in there.
+    float y = x * tan(w / 4);
+    vec3 midpoint = (pa + pb) / 2.0;
+    vec3 pt = midpoint + y * nt;
+
+    target_vertices[offset].position[0] = pt.x;
+    target_vertices[offset].position[1] = pt.y;
+    target_vertices[offset].position[2] = pt.z;
+    target_vertices[offset].normal[0] = nt.x;
+    target_vertices[offset].normal[1] = nt.y;
+    target_vertices[offset].normal[2] = nt.z;
+    target_vertices[offset].graticule[0] = phi_t;
+    target_vertices[offset].graticule[1] = theta_t;
 }
