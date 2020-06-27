@@ -32,12 +32,28 @@ pub struct Angle<Unit: AngleUnit> {
 }
 
 impl<Unit: AngleUnit> Angle<Unit> {
+    pub fn floor(self) -> f64 {
+        f64::from(self).floor()
+    }
+
+    pub fn ceil(self) -> f64 {
+        f64::from(self).ceil()
+    }
+
+    pub fn round(self) -> f64 {
+        f64::from(self).round()
+    }
+
     pub fn cos(self) -> f64 {
         f64::from(self).cos()
     }
 
     pub fn sin(self) -> f64 {
         f64::from(self).sin()
+    }
+
+    pub fn tan(self) -> f64 {
+        f64::from(self).tan()
     }
 
     pub fn f32(self) -> f32 {
@@ -172,7 +188,7 @@ impl_unit_for_numerics!(impl_angle_unit_for_numeric_type);
 
 #[cfg(test)]
 mod test {
-    use crate::{degrees, radians};
+    use crate::{arcminutes, arcseconds, degrees, radians};
     use std::f64::consts::PI;
 
     #[test]
@@ -189,5 +205,12 @@ mod test {
 
         println!("d    : {}", degrees!(r));
         println!("d    : {}", f64::from(degrees!(r)));
+    }
+
+    #[test]
+    fn test_arcminute_arcsecond() {
+        let a = degrees!(1);
+        assert_eq!(arcminutes!(a).f32(), 60.0);
+        assert_eq!(arcseconds!(a).f32(), 60.0 * 60.0);
     }
 }
