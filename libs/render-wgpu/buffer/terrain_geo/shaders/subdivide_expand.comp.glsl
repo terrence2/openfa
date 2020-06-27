@@ -45,7 +45,8 @@ main()
     vec3 nb = vec3(target_vertices[dep_b].normal[0], target_vertices[dep_b].normal[1], target_vertices[dep_b].normal[2]);
     vec3 tmp = na + nb;
     vec3 nt = tmp / length(tmp);
-    float w = acos(dot(na, nb));
+    // Note clamp to 1 to avoid NaN from acos.
+    float w = acos(min(1, dot(na, nt)));
 
     // Use the haversine geodesic midpoint method to compute graticule.
     // j/k => a/b
@@ -70,9 +71,9 @@ main()
     vec3 pa = vec3(target_vertices[dep_a].position[0], target_vertices[dep_a].position[1], target_vertices[dep_a].position[2]);
     vec3 pb = vec3(target_vertices[dep_b].position[0], target_vertices[dep_b].position[1], target_vertices[dep_b].position[2]);
     float x = length(pb - pa) / 2.0;
-    // 1/2 factor from the fact that we are computing tangent of the midpoint.
-    // I have no idea why we need the second 1/2 factor in there.
-    float y = x * tan(w / 4);
+    // Note that the angle we get is not the same as the opposite-over-adjacent angle we want.
+    // It seems to be related to that angle though, by being 2x that angle; thus, divide by 2.
+    float y = x * tan(w / 2);
     vec3 midpoint = (pa + pb) / 2.0;
     vec3 pt = midpoint + y * nt;
 
