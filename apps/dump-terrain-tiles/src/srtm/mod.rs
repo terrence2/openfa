@@ -12,29 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod srtm;
+mod index;
+mod tile;
 
-use crate::srtm::SrtmIndex;
-
-use failure::Fallible;
-use std::path::PathBuf;
-use structopt::StructOpt;
-
-#[derive(Debug, StructOpt)]
-#[structopt(
-    name = "dump-terrain-tiles",
-    about = "Slice various data sets into the formats we need."
-)]
-struct Opt {
-    /// Slice srtm into tiles
-    #[structopt(short = "s", long)]
-    srtm_directory: PathBuf,
-}
-
-fn main() -> Fallible<()> {
-    let opt = Opt::from_args();
-
-    let index = SrtmIndex::from_directory(&opt.srtm_directory);
-
-    Ok(())
-}
+pub use index::Index as SrtmIndex;
+pub use tile::Tile as SrtmTile;
