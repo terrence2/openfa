@@ -59,6 +59,10 @@ impl<Unit: AngleUnit> Angle<Unit> {
     pub fn f32(self) -> f32 {
         f32::from(self)
     }
+
+    pub fn f64(self) -> f64 {
+        f64::from(self)
+    }
 }
 
 impl<Unit> fmt::Display for Angle<Unit>

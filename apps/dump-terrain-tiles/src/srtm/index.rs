@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::srtm::tile::Tile;
 use failure::Fallible;
+use geodesy::{GeoCenter, Graticule};
 use std::{
     collections::HashMap,
     fs::File,
@@ -23,7 +24,7 @@ use std::{
 
 pub struct Index {
     tiles: Vec<Tile>,
-    // from latitude to list of tiles at latitude, sorted by longitude.
+    // by latitude, then longitude
     by_graticule: HashMap<i16, HashMap<i16, usize>>,
 }
 
@@ -59,5 +60,41 @@ impl Index {
             tiles,
             by_graticule,
         })
+    }
+
+    #[allow(unused)]
+    pub fn sample_linear(&self, grat: &Graticule<GeoCenter>) -> f32 {
+        let lat = Tile::index(grat.lat());
+        let lon = Tile::index(grat.lon());
+        if let Some(row) = self.by_graticule.get(&lat) {
+            if let Some(&tile_id) = row.get(&lon) {
+                return self.tiles[tile_id].sample_linear(grat);
+            }
+        }
+        0f32
+    }
+
+    #[allow(unused)]
+    pub fn sample_nearest(&self, grat: &Graticule<GeoCenter>) -> i16 {
+        let lat = Tile::index(grat.lat());
+        let lon = Tile::index(grat.lon());
+        if let Some(row) = self.by_graticule.get(&lat) {
+            if let Some(&tile_id) = row.get(&lon) {
+                // use absolute_unit::Degrees;
+                // println!(
+                //     "{}x{} => {}x{} => {}x{} => {} => {}",
+                //     grat.lat::<Degrees>(),
+                //     grat.lon::<Degrees>(),
+                //     lat,
+                //     lon,
+                //     self.tiles[tile_id].latitude(),
+                //     self.tiles[tile_id].longitude(),
+                //     tile_id,
+                //     self.tiles[tile_id].sample_nearest(grat)
+                // );
+                return self.tiles[tile_id].sample_nearest(grat);
+            }
+        }
+        0
     }
 }
