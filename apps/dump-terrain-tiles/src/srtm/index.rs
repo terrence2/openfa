@@ -82,7 +82,7 @@ impl Index {
             if let Some(&tile_id) = row.get(&lon) {
                 // use absolute_unit::Degrees;
                 // println!(
-                //     "{}x{} => {}x{} => {}x{} => {} => {}",
+                //     "ISN: {}x{} => {}x{} => {}x{} => {} => {}",
                 //     grat.lat::<Degrees>(),
                 //     grat.lon::<Degrees>(),
                 //     lat,

@@ -12,7 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use std::path::Path;
+use failure::Fallible;
+use std::{
+    fs,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
+use zerocopy::AsBytes;
 
 // The physical number of pixels in the tile.
 pub const TILE_PHYSICAL_SIZE: usize = 512;
@@ -26,6 +33,9 @@ pub const TILE_SAMPLES: i32 = 510;
 pub const TILE_EXTENT: i32 = TILE_SAMPLES - 1;
 
 pub struct Tile {
+    // The location of the tile.
+    path: PathBuf,
+
     // Number of arcseconds in a sample.
     resolution: i32,
 
@@ -37,12 +47,63 @@ pub struct Tile {
 }
 
 impl Tile {
-    pub fn new(resolution: i32, base: (i32, i32)) -> Self {
+    pub fn new(dataset_path: &Path, resolution: i32, base: (i32, i32)) -> Self {
+        let mut path = dataset_path.to_owned();
+        path.push(&format!("R{}", resolution));
+        path.push(&Self::filename_base(resolution, base));
+
         Self {
+            path: path.to_owned(),
             resolution,
             base,
             data: [[0i16; TILE_PHYSICAL_SIZE]; TILE_PHYSICAL_SIZE],
         }
+    }
+
+    fn arcsecond_to_dms(mut arcsecs: i32) -> (i32, i32, i32) {
+        let degrees = arcsecs / 3_600;
+        arcsecs -= degrees * 3_600;
+        let minutes = arcsecs / 60;
+        arcsecs -= minutes * 60;
+        (degrees, minutes, arcsecs)
+    }
+
+    pub fn filename_base(resolution: i32, base: (i32, i32)) -> String {
+        let (mut lat, mut lon) = base;
+        let lat_hemi = if lat >= 0 {
+            "N"
+        } else {
+            lat = -lat;
+            "S"
+        };
+        let lon_hemi = if lon >= 0 {
+            "E"
+        } else {
+            lon = -lon;
+            "W"
+        };
+        let (lat_d, lat_m, lat_s) = Self::arcsecond_to_dms(lat);
+        let (lon_d, lon_m, lon_s) = Self::arcsecond_to_dms(lon);
+        format!(
+            "R{}-{}{:03}d{:02}m{:02}s-{}{:03}d{:02}m{:02}s",
+            resolution, lat_hemi, lat_d, lat_m, lat_s, lon_hemi, lon_d, lon_m, lon_s
+        )
+    }
+
+    pub fn find_sampled_extremes(&self) -> (i16, i16) {
+        let mut lo = i16::MAX;
+        let mut hi = i16::MIN;
+        for row in self.data.iter() {
+            for &v in row.iter() {
+                if v > hi {
+                    hi = v;
+                }
+                if v < lo {
+                    lo = v;
+                }
+            }
+        }
+        (lo, hi)
     }
 
     // Set a sample, offset in samples from the base corner.
@@ -52,16 +113,10 @@ impl Tile {
 
     pub fn save_equalized_png(&self, directory: &Path) {
         let mut path = directory.to_owned();
-        path.push(self.file_name());
+        path.push(Self::filename_base(self.resolution, self.base));
 
-        let mut high = i16::MIN;
-        for row in self.data.iter() {
-            for &v in row.iter() {
-                if v > high {
-                    high = v;
-                }
-            }
-        }
+        let (_, high) = self.find_sampled_extremes();
+
         use image::{ImageBuffer, Luma};
         let mut pic: image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
             image::ImageBuffer::new(512, 512);
@@ -80,20 +135,16 @@ impl Tile {
         pic.save(path.with_extension("png"));
     }
 
-    pub fn file_name(&self) -> String {
-        let (mut lat, mut lon) = self.base;
-        let lat_hemi = if lat >= 0 {
-            "N"
-        } else {
-            lat = -lat;
-            "S"
-        };
-        let lon_hemi = if lon >= 0 {
-            "E"
-        } else {
-            lon = -lon;
-            "W"
-        };
-        format!("{}{:07}{}{:07}.mpt", lon_hemi, lon, lat_hemi, lat)
+    pub fn file_exists(&self) -> bool {
+        self.path.exists()
+    }
+
+    pub fn write(&self) -> Fallible<()> {
+        if !self.path.parent().expect("subdir").exists() {
+            fs::create_dir(self.path.parent().expect("subdir"));
+        }
+        let mut fp = File::create(&self.path.with_extension("bin"))?;
+        fp.write(self.data.as_bytes());
+        Ok(())
     }
 }

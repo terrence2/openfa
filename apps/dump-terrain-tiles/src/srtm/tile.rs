@@ -175,6 +175,14 @@ impl Tile {
     // away with a much cheaper lookup (about 2x faster).
     #[allow(unused)]
     pub fn sample_nearest(&self, grat: &Graticule<GeoCenter>) -> i16 {
+        // println!(
+        //     "  TSN: {} in {}, {}, {}, {}",
+        //     grat,
+        //     self.tile_extent[0],
+        //     self.tile_extent[1],
+        //     self.tile_extent[2],
+        //     self.tile_extent[3]
+        // );
         assert!(grat.lon::<Degrees>() >= self.tile_extent[0].lon());
         assert!(grat.lon::<Degrees>() < self.tile_extent[1].lon());
         assert!(grat.lon::<Degrees>() < self.tile_extent[2].lon());
@@ -184,8 +192,6 @@ impl Tile {
         assert!(grat.lat::<Degrees>() < self.tile_extent[2].lat());
         assert!(grat.lat::<Degrees>() < self.tile_extent[3].lat());
 
-        let foo =
-            (grat.lat::<ArcSeconds>() - self.tile_extent[0].lat::<ArcSeconds>()).round() as usize;
         let row = TILE_SIZE
             - (grat.lat::<ArcSeconds>() - self.tile_extent[0].lat::<ArcSeconds>()).round() as usize
             - 1;
@@ -200,7 +206,7 @@ impl Tile {
     pub fn index(a: Angle<Degrees>) -> i16 {
         let f = a.f64().floor();
         assert!(f >= -180.0);
-        assert!(f < 180.0);
+        assert!(f <= 180.0);
         f as i16
     }
 

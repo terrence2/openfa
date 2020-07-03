@@ -15,6 +15,5 @@
 mod index;
 mod tile;
 
-pub use index::Index as MipIndex;
-pub use tile::Tile as MipTile;
-pub use tile::{TILE_EXTENT, TILE_PHYSICAL_SIZE, TILE_SAMPLES};
+pub use index::{DataSetCoordinates, DataSetDataKind, Index as MipIndex};
+pub use tile::{Tile as MipTile, TILE_EXTENT, TILE_PHYSICAL_SIZE, TILE_SAMPLES};
