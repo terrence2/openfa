@@ -19,9 +19,12 @@ mod patch_tree;
 mod patch_winding;
 mod queue;
 mod terrain_vertex;
+mod tile_manager;
 mod wireframe_indices;
 
-use crate::{index_dependency_lut::*, patch_tree::PatchTree, wireframe_indices::*};
+use crate::{
+    index_dependency_lut::*, patch_tree::PatchTree, tile_manager::TileManager, wireframe_indices::*,
+};
 pub use crate::{patch_winding::PatchWinding, terrain_vertex::TerrainVertex};
 
 use absolute_unit::Kilometers;
@@ -162,6 +165,7 @@ impl TerrainGeoBuffer {
         let subdivisions = gpu_detail_level.parameters();
 
         let patch_tree = PatchTree::new(max_level, target_refinement, desired_patch_count);
+        let tile_manager = TileManager::new(gpu);
 
         let mut patch_windings = Vec::with_capacity(desired_patch_count);
         patch_windings.resize(desired_patch_count, PatchWinding::Full);
