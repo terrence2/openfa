@@ -79,7 +79,7 @@ pub(crate) struct MegaAtlas {
     // needs to know how many slices and we don't have that up front.
     images: Vec<Vec<u8>>,
 
-    // For each image, for each of the 8 columns in the image, how many vertical
+    // For each image, for each of the 4 columns in the image, how many vertical
     // pixels are used.
     utilization: Vec<[usize; 4]>,
 
