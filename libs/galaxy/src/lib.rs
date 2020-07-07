@@ -29,7 +29,7 @@ use shape_instance::{
 use std::{sync::Arc, time::Instant};
 
 pub struct Galaxy {
-    start: Instant,
+    start_time: Instant,
 
     _legion_universe: Universe,
     legion_world: World,
@@ -45,7 +45,7 @@ impl Galaxy {
         let legion_world = legion_universe.create_world();
 
         Ok(Self {
-            start: Instant::now(),
+            start_time: Instant::now(),
             _legion_universe: legion_universe,
             legion_world,
             palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
@@ -73,12 +73,12 @@ impl Galaxy {
         &self.palette
     }
 
-    pub fn start(&self) -> &Instant {
-        &self.start
+    pub fn start_time(&self) -> &Instant {
+        &self.start_time
     }
 
-    pub fn start_owned(&self) -> Instant {
-        self.start
+    pub fn start_time_owned(&self) -> Instant {
+        self.start_time
     }
 
     pub fn create_building(

@@ -320,7 +320,7 @@ fn main() -> Fallible<()> {
             frame_graph.tracker_mut(),
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
-            &galaxy.start_owned(),
+            &galaxy.start_time_owned(),
             galaxy.world_mut(),
             &gpu,
             frame_graph.tracker_mut(),
