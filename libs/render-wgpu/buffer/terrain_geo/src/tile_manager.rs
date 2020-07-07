@@ -50,11 +50,12 @@ use crate::GpuDetail;
 use failure::Fallible;
 use gpu::GPU;
 use std::{fs::File, io::Read, path::PathBuf};
+use zerocopy::LayoutVerified;
 
 const TILE_SIZE: u32 = 512;
 
-const INDEX_WIDTH: u32 = 2560;
-const INDEX_HEIGHT: u32 = 1280;
+// const INDEX_WIDTH: u32 = 2560;
+// const INDEX_HEIGHT: u32 = 1280;
 
 pub(crate) struct TileManager {
     /*
@@ -63,9 +64,13 @@ pub(crate) struct TileManager {
     srtm_index_texture_view: wgpu::TextureView,
     srtm_index_texture_sampler: wgpu::Sampler,
      */
+    #[allow(unused)]
     srtm_atlas_texture_extent: wgpu::Extent3d,
+    #[allow(unused)]
     srtm_atlas_texture: wgpu::Texture,
+    #[allow(unused)]
     srtm_atlas_texture_view: wgpu::TextureView,
+    #[allow(unused)]
     srtm_atlas_texture_sampler: wgpu::Sampler,
 
     bind_group_layout: wgpu::BindGroupLayout,
@@ -247,15 +252,14 @@ impl TileManager {
 
         // FIXME: test that our basic primitives work as expected.
         let root_data = {
-            let mut path = srtm_path.clone();
+            let mut path = srtm_path;
             path.push(srtm_index_json["path"].as_str().expect("string"));
             let mut fp = File::open(&path)?;
             let mut data = [0u8; 2 * 512 * 512];
             fp.read_exact(&mut data)?;
             //data
-            let foo: &[u8] = &data;
-            use zerocopy::{AsBytes, FromBytes, LayoutVerified};
-            let result_data: LayoutVerified<&[u8], [u16]> = LayoutVerified::new_slice(foo).unwrap();
+            let as2: &[u8] = &data;
+            let result_data: LayoutVerified<&[u8], [u16]> = LayoutVerified::new_slice(as2).unwrap();
             result_data.into_slice().to_owned()
         };
 
@@ -323,7 +327,7 @@ mod test {
     fn test_tile_manager() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let tm = TileManager::new(&mut gpu, &GpuDetailLevel::Low.parameters())?;
+        let _tm = TileManager::new(&mut gpu, &GpuDetailLevel::Low.parameters())?;
         gpu.device().poll(wgpu::Maintain::Wait);
         Ok(())
     }

@@ -62,7 +62,7 @@ impl ChildIndex {
         }
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn key_name(&self) -> String {
         match self {
             Self::SouthWest => "south_west",
             Self::SouthCenter => "south_center",
@@ -97,7 +97,7 @@ impl Tile {
         path.push(&Self::filename_base(base));
 
         Self {
-            path: path.to_owned(),
+            path,
             scale,
             base,
             data: [[0i16; TILE_PHYSICAL_SIZE]; TILE_PHYSICAL_SIZE],
@@ -183,6 +183,7 @@ impl Tile {
         Ok(())
     }
 
+    #[allow(unused)]
     pub fn file_exists(&self) -> bool {
         self.path.exists()
     }
@@ -192,7 +193,7 @@ impl Tile {
             fs::create_dir(self.path.parent().expect("subdir"))?;
         }
         let mut fp = File::create(&self.path.with_extension("bin"))?;
-        fp.write(self.data.as_bytes())?;
+        fp.write_all(self.data.as_bytes())?;
         Ok(())
     }
 
@@ -200,7 +201,7 @@ impl Tile {
         let mut children = JsonValue::new_object();
         for (i, maybe_child) in self.children.iter().enumerate() {
             if let Some(child) = maybe_child {
-                let key = ChildIndex::from_index(i).to_string();
+                let key = ChildIndex::from_index(i).key_name();
                 children.insert(&key, child.read().unwrap().as_json()?)?;
             }
         }

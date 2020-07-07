@@ -193,6 +193,7 @@ impl_unit_for_numerics!(impl_angle_unit_for_numeric_type);
 #[cfg(test)]
 mod test {
     use crate::{arcminutes, arcseconds, degrees, radians};
+    use approx::assert_relative_eq;
     use std::f64::consts::PI;
 
     #[test]
@@ -214,7 +215,7 @@ mod test {
     #[test]
     fn test_arcminute_arcsecond() {
         let a = degrees!(1);
-        assert_eq!(arcminutes!(a).f32(), 60.0);
-        assert_eq!(arcseconds!(a).f32(), 60.0 * 60.0);
+        assert_relative_eq!(arcminutes!(a).f32(), 60f32);
+        assert_relative_eq!(arcseconds!(a).f32(), 60f32 * 60f32);
     }
 }

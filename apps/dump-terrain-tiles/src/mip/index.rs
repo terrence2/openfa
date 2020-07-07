@@ -132,7 +132,7 @@ impl IndexDataSet {
 
         // Find the parent tile in the higher scale. Note the Tile docs for meaning of the index.
         let parent_scale = scale * 2;
-        assert!(self.tiles.contains_key(&parent_scale) || self.tiles.len() == 0);
+        assert!(self.tiles.contains_key(&parent_scale) || self.tiles.is_empty());
         if !self.tiles.is_empty() {
             let align_lat = (base.0 + AS_PER_HEMI_LAT) % parent_scale == 0;
             let align_lon = (base.1 + AS_PER_HEMI_LON) % parent_scale == 0;
@@ -152,7 +152,7 @@ impl IndexDataSet {
         // Keep a global record of all tiles we've created so we can make an index later.
         self.tiles
             .entry(scale)
-            .or_insert_with(|| HashMap::new())
+            .or_insert_with(HashMap::new)
             .insert(base, tile.clone());
 
         tile

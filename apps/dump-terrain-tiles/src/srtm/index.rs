@@ -51,7 +51,7 @@ impl Index {
             let lon = tile.longitude();
             by_graticule
                 .entry(tile.latitude())
-                .or_insert_with(|| HashMap::new())
+                .or_insert_with(HashMap::new)
                 .insert(lon, i);
         }
 
