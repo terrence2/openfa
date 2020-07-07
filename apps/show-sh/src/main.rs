@@ -90,7 +90,7 @@ macro_rules! update {
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    TermLogger::init(LevelFilter::Debug, Config::default())?;
+    TermLogger::init(LevelFilter::Warn, Config::default())?;
 
     let (omni, inputs) = opt.find_inputs(&opt.shapes)?;
     if inputs.is_empty() {
@@ -309,6 +309,7 @@ fn main() -> Fallible<()> {
             }
         }
 
+        arcball.think();
         globals_buffer.borrow().make_upload_buffer(
             arcball.camera(),
             &gpu,
@@ -321,7 +322,7 @@ fn main() -> Fallible<()> {
             frame_graph.tracker_mut(),
         )?;
         shape_instance_buffer.borrow_mut().make_upload_buffer(
-            &galaxy.start_owned(),
+            &galaxy.start_time_owned(),
             galaxy.world_mut(),
             &gpu,
             frame_graph.tracker_mut(),
