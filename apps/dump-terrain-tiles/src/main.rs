@@ -16,13 +16,10 @@ mod mip;
 mod srtm;
 
 use crate::{
-    mip::{
-        DataSetCoordinates, DataSetDataKind, MipIndex, MipTile, TILE_EXTENT, TILE_PHYSICAL_SIZE,
-        TILE_SAMPLES,
-    },
+    mip::{DataSetCoordinates, DataSetDataKind, MipIndex, TILE_EXTENT, TILE_SAMPLES},
     srtm::SrtmIndex,
 };
-use absolute_unit::{arcseconds, degrees, meters};
+use absolute_unit::{arcseconds, meters};
 use failure::Fallible;
 use geodesy::{GeoCenter, Graticule};
 use std::{
@@ -47,6 +44,11 @@ struct Opt {
     output_directory: PathBuf,
 }
 
+pub const AS_PER_SPHERE_LON: i32 = 360 * 60 * 60;
+pub const AS_PER_SPHERE_LAT: i32 = 120 * 60 * 60;
+pub const AS_PER_HEMI_LON: i32 = AS_PER_SPHERE_LON / 2;
+pub const AS_PER_HEMI_LAT: i32 = AS_PER_SPHERE_LAT / 2;
+
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
 
@@ -66,7 +68,7 @@ fn main() -> Fallible<()> {
     // Variables:
     //   Tile size: 512 or 1024? I think 512 still since bandwidth is still an issue.
     // Resolutions:
-    //  resolution  | ~tiles   | tiles/hemi
+    //  scale       | ~tiles   | tiles/hemi
     //  ------------|----------|------------
     //   1"         | 700,000  | 648,000
     //   2"         | 180,000  | 324,000
@@ -77,23 +79,19 @@ fn main() -> Fallible<()> {
     //  64" | 1'4"  |     175  |  10,125
     // 128" | 2'8"  |
     // 256" | 4'16" |
-    let as_per_hemi_lon = 180 * 60 * 60;
-    let as_per_hemi_lat = 60 * 60 * 60;
 
-    for &resolution in &[512] {
-        let tile_extent_as = TILE_EXTENT * resolution;
-        let tiles_per_hemi_lon = ((as_per_hemi_lon as f64) / (tile_extent_as as f64)).ceil() as i32;
-        let tiles_per_hemi_lat = ((as_per_hemi_lat as f64) / (tile_extent_as as f64)).ceil() as i32;
+    for &scale in &[4096, 2048, 1024, 512] {
+        let tile_extent_as = TILE_EXTENT * scale;
+        let tiles_per_sphere_lon =
+            ((AS_PER_SPHERE_LON as f64) / (tile_extent_as as f64)).ceil() as i32;
+        let tiles_per_sphere_lat =
+            ((AS_PER_SPHERE_LAT as f64) / (tile_extent_as as f64)).ceil() as i32;
 
-        let lon_tile_indices = (-tiles_per_hemi_lon..=-1).chain(0..tiles_per_hemi_lon);
-        let lat_tile_indices = (-tiles_per_hemi_lat..=-1).chain(0..tiles_per_hemi_lat);
+        for lat_tile_offset in 0..tiles_per_sphere_lat {
+            let lat_as = (lat_tile_offset * tile_extent_as) - AS_PER_HEMI_LAT;
 
-        let mut lon_as = 0;
-        for lat_tile_offset in lat_tile_indices {
-            let lat_as = lat_tile_offset * tile_extent_as;
-
-            for lon_tile_offset in lon_tile_indices.clone() {
-                let lon_as = lon_tile_offset * tile_extent_as;
+            for lon_tile_offset in 0..tiles_per_sphere_lon {
+                let lon_as = (lon_tile_offset * tile_extent_as) - AS_PER_HEMI_LON;
 
                 // Note that the base of the tile might extend past the data area, so we need to
                 // manually clamp and wrap each individual position back into a reasonable spot.
@@ -102,14 +100,20 @@ fn main() -> Fallible<()> {
                     arcseconds!(lon_as),
                     meters!(0),
                 );
-                println!("at tile: {} {} => {}", lat_as, lon_as, base);
+                println!(
+                    "building: scale {} [{} of {}] @ {}",
+                    scale,
+                    lat_tile_offset * tiles_per_sphere_lon + lon_tile_offset + 1,
+                    tiles_per_sphere_lat * tiles_per_sphere_lon,
+                    base
+                );
 
                 // Fill in a tile.
                 let mut tile = mip_srtm
                     .borrow_mut()
                     .write()
                     .unwrap()
-                    .add_tile(resolution, (lat_as, lon_as));
+                    .add_tile(scale, (lat_as, lon_as));
                 let mut td = tile.borrow_mut().write().unwrap();
                 for lat_i in -1..TILE_SAMPLES + 1 {
                     if lat_i % 8 == 0 {
@@ -117,15 +121,15 @@ fn main() -> Fallible<()> {
                         stdout().flush()?;
                     }
 
-                    let lat_actual = lat_as + lat_i * resolution;
+                    let lat_actual = lat_as + lat_i * scale;
                     let lat_position = lat_actual.max(-60 * 60 * 60).min(60 * 60 * 60);
 
                     for lon_i in -1..TILE_SAMPLES + 1 {
-                        let lon_actual = lon_as + lon_i * resolution;
-                        let lon_position = if lon_actual < -as_per_hemi_lon {
-                            as_per_hemi_lon - (-lon_actual - as_per_hemi_lon)
-                        } else if lon_actual > as_per_hemi_lon {
-                            -as_per_hemi_lon + (lon_actual - as_per_hemi_lon)
+                        let lon_actual = lon_as + lon_i * scale;
+                        let lon_position = if lon_actual < -AS_PER_HEMI_LON {
+                            AS_PER_HEMI_LON - (-lon_actual - AS_PER_HEMI_LON)
+                        } else if lon_actual > AS_PER_HEMI_LON {
+                            -AS_PER_HEMI_LON + (lon_actual - AS_PER_HEMI_LON)
                         } else {
                             lon_actual
                         };
@@ -140,12 +144,12 @@ fn main() -> Fallible<()> {
                         td.set_sample(lat_i + 1, lon_i + 1, height);
                     }
                 }
-                td.save_equalized_png(std::path::Path::new("scanout"));
+                td.save_equalized_png(std::path::Path::new("scanout"))?;
                 td.write()?;
                 println!();
             }
         }
     }
-
+    mip_srtm.write().unwrap().write()?;
     Ok(())
 }

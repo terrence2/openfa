@@ -13,11 +13,14 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
+use image::{ImageBuffer, Luma};
+use json::JsonValue;
 use std::{
     fs,
     fs::File,
     io::Write,
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 use zerocopy::AsBytes;
 
@@ -28,36 +31,82 @@ pub const TILE_PHYSICAL_SIZE: usize = 512;
 // for linear filtering to pull from when we use this source as a texture.
 pub const TILE_SAMPLES: i32 = 510;
 
-// Width and height of the tile coverage. Multiply with the tile resolution to get width or height
+// Width and height of the tile coverage. Multiply with the tile scale to get width or height
 // in arcseconds.
 pub const TILE_EXTENT: i32 = TILE_SAMPLES - 1;
+
+pub enum ChildIndex {
+    SouthWest,
+    SouthCenter,
+    CenterWest,
+    Center,
+}
+
+impl ChildIndex {
+    pub fn to_index(&self) -> usize {
+        match self {
+            Self::SouthWest => 0,
+            Self::SouthCenter => 1,
+            Self::CenterWest => 2,
+            Self::Center => 3,
+        }
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::SouthWest,
+            1 => Self::SouthCenter,
+            2 => Self::CenterWest,
+            3 => Self::Center,
+            _ => panic!("not a valid index"),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::SouthWest => "south_west",
+            Self::SouthCenter => "south_center",
+            Self::CenterWest => "center_west",
+            Self::Center => "center",
+        }
+        .to_owned()
+    }
+}
 
 pub struct Tile {
     // The location of the tile.
     path: PathBuf,
 
     // Number of arcseconds in a sample.
-    resolution: i32,
+    scale: i32,
 
     // The tile's bottom left corner.
     base: (i32, i32),
 
     // Samples. Low indices are more south. This is opposite from SRTM ordering.
     data: [[i16; TILE_PHYSICAL_SIZE]; TILE_PHYSICAL_SIZE],
+
+    // Keep a quad-tree of children. Indices as per ChildIndex.
+    children: [Option<Arc<RwLock<Tile>>>; 4],
 }
 
 impl Tile {
-    pub fn new(dataset_path: &Path, resolution: i32, base: (i32, i32)) -> Self {
+    pub fn new(dataset_path: &Path, scale: i32, base: (i32, i32)) -> Self {
         let mut path = dataset_path.to_owned();
-        path.push(&format!("R{}", resolution));
-        path.push(&Self::filename_base(resolution, base));
+        path.push(&format!("scale-{}", scale));
+        path.push(&Self::filename_base(base));
 
         Self {
             path: path.to_owned(),
-            resolution,
+            scale,
             base,
             data: [[0i16; TILE_PHYSICAL_SIZE]; TILE_PHYSICAL_SIZE],
+            children: [None, None, None, None],
         }
+    }
+
+    pub fn set_child(&mut self, index: ChildIndex, child: Arc<RwLock<Tile>>) {
+        self.children[index.to_index()] = Some(child);
     }
 
     fn arcsecond_to_dms(mut arcsecs: i32) -> (i32, i32, i32) {
@@ -68,7 +117,7 @@ impl Tile {
         (degrees, minutes, arcsecs)
     }
 
-    pub fn filename_base(resolution: i32, base: (i32, i32)) -> String {
+    pub fn filename_base(base: (i32, i32)) -> String {
         let (mut lat, mut lon) = base;
         let lat_hemi = if lat >= 0 {
             "N"
@@ -85,8 +134,8 @@ impl Tile {
         let (lat_d, lat_m, lat_s) = Self::arcsecond_to_dms(lat);
         let (lon_d, lon_m, lon_s) = Self::arcsecond_to_dms(lon);
         format!(
-            "R{}-{}{:03}d{:02}m{:02}s-{}{:03}d{:02}m{:02}s",
-            resolution, lat_hemi, lat_d, lat_m, lat_s, lon_hemi, lon_d, lon_m, lon_s
+            "{}{:03}d{:02}m{:02}s-{}{:03}d{:02}m{:02}s",
+            lat_hemi, lat_d, lat_m, lat_s, lon_hemi, lon_d, lon_m, lon_s
         )
     }
 
@@ -111,15 +160,13 @@ impl Tile {
         self.data[lat_offset as usize][lon_offset as usize] = sample;
     }
 
-    pub fn save_equalized_png(&self, directory: &Path) {
+    pub fn save_equalized_png(&self, directory: &Path) -> Fallible<()> {
         let mut path = directory.to_owned();
-        path.push(Self::filename_base(self.resolution, self.base));
+        path.push(format!("R{}-", self.scale) + &Self::filename_base(self.base));
 
         let (_, high) = self.find_sampled_extremes();
 
-        use image::{ImageBuffer, Luma};
-        let mut pic: image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
-            image::ImageBuffer::new(512, 512);
+        let mut pic: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::new(512, 512);
         for (y, row) in self.data.iter().enumerate() {
             for (x, &v) in row.iter().enumerate() {
                 // Scale 0..high into 0..255
@@ -132,7 +179,8 @@ impl Tile {
                 );
             }
         }
-        pic.save(path.with_extension("png"));
+        pic.save(path.with_extension("png"))?;
+        Ok(())
     }
 
     pub fn file_exists(&self) -> bool {
@@ -141,10 +189,38 @@ impl Tile {
 
     pub fn write(&self) -> Fallible<()> {
         if !self.path.parent().expect("subdir").exists() {
-            fs::create_dir(self.path.parent().expect("subdir"));
+            fs::create_dir(self.path.parent().expect("subdir"))?;
         }
         let mut fp = File::create(&self.path.with_extension("bin"))?;
-        fp.write(self.data.as_bytes());
+        fp.write(self.data.as_bytes())?;
         Ok(())
+    }
+
+    pub fn as_json(&self) -> Fallible<JsonValue> {
+        let mut children = JsonValue::new_object();
+        for (i, maybe_child) in self.children.iter().enumerate() {
+            if let Some(child) = maybe_child {
+                let key = ChildIndex::from_index(i).to_string();
+                children.insert(&key, child.read().unwrap().as_json()?)?;
+            }
+        }
+
+        let mut base = JsonValue::new_object();
+        base.insert("latitude_arcseconds", self.base.0)?;
+        base.insert("longitude_arcseconds", self.base.1)?;
+
+        let mut obj = JsonValue::new_object();
+        obj.insert("children", children)?;
+        obj.insert("base", base)?;
+        obj.insert("scale", self.scale)?;
+        let rel = self
+            .path
+            .strip_prefix(self.path.parent().unwrap().parent().unwrap())?
+            .with_extension("bin")
+            .to_string_lossy()
+            .to_string();
+        obj.insert::<&str>("path", &rel)?;
+
+        Ok(obj)
     }
 }

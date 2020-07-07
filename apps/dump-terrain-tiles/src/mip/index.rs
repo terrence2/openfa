@@ -12,7 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::mip::tile::Tile;
+use crate::{
+    mip::tile::{ChildIndex, Tile, TILE_EXTENT},
+    AS_PER_HEMI_LAT, AS_PER_HEMI_LON,
+};
 use failure::Fallible;
 use json::JsonValue;
 use std::{
@@ -25,7 +28,7 @@ use std::{
 // The top level directory contains sub-folders for each dataset we have filtered for rendering.
 // Each data set may be in spherical coordinates or cartesian polar coordinates.
 // Each data set may be either a color data set or a height data set.
-// Each data set has a collection of directories, one per mip level, named by resolution.
+// Each data set has a collection of directories, one per mip level, named by scale.
 pub struct Index {
     path: PathBuf,
     data_sets: HashMap<String, Arc<RwLock<IndexDataSet>>>,
@@ -80,6 +83,7 @@ impl DataSetCoordinates {
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DataSetDataKind {
     Color,
+    Normal,
     Height,
 }
 
@@ -87,6 +91,7 @@ impl DataSetDataKind {
     fn name(&self) -> String {
         match self {
             Self::Color => "color",
+            Self::Normal => "normal",
             Self::Height => "height",
         }
         .to_owned()
@@ -99,6 +104,7 @@ pub struct IndexDataSet {
     kind: DataSetDataKind,
     coordinates: DataSetCoordinates,
     tiles: HashMap<i32, HashMap<(i32, i32), Arc<RwLock<Tile>>>>,
+    root: Option<Arc<RwLock<Tile>>>,
 }
 
 impl IndexDataSet {
@@ -117,36 +123,65 @@ impl IndexDataSet {
             kind,
             coordinates,
             tiles: HashMap::new(),
+            root: None,
         })
     }
 
-    pub fn add_tile(&mut self, resolution: i32, base: (i32, i32)) -> Arc<RwLock<Tile>> {
-        let tile = Arc::new(RwLock::new(Tile::new(&self.path, resolution, base)));
+    pub fn add_tile(&mut self, scale: i32, base: (i32, i32)) -> Arc<RwLock<Tile>> {
+        let tile = Arc::new(RwLock::new(Tile::new(&self.path, scale, base)));
 
+        // Find the parent tile in the higher scale. Note the Tile docs for meaning of the index.
+        let parent_scale = scale * 2;
+        assert!(self.tiles.contains_key(&parent_scale) || self.tiles.len() == 0);
+        if !self.tiles.is_empty() {
+            let align_lat = (base.0 + AS_PER_HEMI_LAT) % parent_scale == 0;
+            let align_lon = (base.1 + AS_PER_HEMI_LON) % parent_scale == 0;
+            let extent = scale * TILE_EXTENT;
+            let (child_index, parent_corner) = match (align_lat, align_lon) {
+                (true, true) => (ChildIndex::SouthWest, base),
+                (true, false) => (ChildIndex::SouthCenter, (base.0, base.1 - extent)),
+                (false, true) => (ChildIndex::CenterWest, (base.0 - extent, base.1)),
+                (false, false) => (ChildIndex::Center, (base.0 - extent, base.1 - extent)),
+            };
+            let parent = self.tiles[&parent_scale][&parent_corner].clone();
+            parent.write().unwrap().set_child(child_index, tile.clone());
+        } else {
+            self.root = Some(tile.clone());
+        }
+
+        // Keep a global record of all tiles we've created so we can make an index later.
         self.tiles
-            .entry(resolution)
+            .entry(scale)
             .or_insert_with(|| HashMap::new())
             .insert(base, tile.clone());
 
         tile
     }
 
-    pub fn as_json(&self) {
+    pub fn as_json(&self) -> Fallible<JsonValue> {
+        let root = self
+            .root
+            .as_ref()
+            .expect("a tree")
+            .read()
+            .unwrap()
+            .as_json()?;
+
         let mut obj = JsonValue::new_object();
+        obj.insert::<&str>("name", &self.name)?;
+        obj.insert("root", root)?;
+        obj.insert("kind", self.kind.name())?;
+        obj.insert("coordinates", self.coordinates.name())?;
 
-        for (resolution, tiles_in_level) in self.tiles.iter() {
-            let mut tile_arr = JsonValue::new_array();
-            for tile in tiles_in_level.values() {
-                let mut tile_info = JsonValue::new_object();
-            }
-
-            obj.insert(&format!("{}", resolution), tile_arr);
-        }
-
-        ()
+        Ok(obj)
     }
 
     pub fn write(&self) -> Fallible<()> {
+        let mut filename = self.path.clone();
+        filename.push("index.json");
+
+        fs::write(filename, self.as_json()?.to_string())?;
+
         Ok(())
     }
 }

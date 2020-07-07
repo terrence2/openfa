@@ -193,7 +193,7 @@ where
 mod test {
     use super::*;
     use crate::{GeoCenter, GeoSurface};
-    use absolute_unit::{degrees, kilometers, meters, Kilometers, Meters};
+    use absolute_unit::{degrees, kilometers, meters, Kilometers};
     use approx::assert_abs_diff_eq;
     use physical_constants::EARTH_RADIUS_KM;
 

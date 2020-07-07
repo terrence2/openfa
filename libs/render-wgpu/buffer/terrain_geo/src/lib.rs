@@ -59,6 +59,22 @@ const DBG_COLORS_BY_LEVEL: [[f32; 3]; 19] = [
     [0.10, 0.75, 0.72],
 ];
 
+pub(crate) struct CpuDetail {
+    max_level: usize,
+    target_refinement: f64,
+    desired_patch_count: usize,
+}
+
+impl CpuDetail {
+    fn new(max_level: usize, target_refinement: f64, desired_patch_count: usize) -> Self {
+        Self {
+            max_level,
+            target_refinement,
+            desired_patch_count,
+        }
+    }
+}
+
 pub enum CpuDetailLevel {
     Low,
     Medium,
@@ -68,12 +84,29 @@ pub enum CpuDetailLevel {
 
 impl CpuDetailLevel {
     // max-level, target-refinement, buffer-size
-    fn parameters(&self) -> (usize, f64, usize) {
+    fn parameters(&self) -> CpuDetail {
         match self {
-            Self::Low => (8, 150.0, 200),
-            Self::Medium => (15, 150.0, 300),
-            Self::High => (16, 150.0, 400),
-            Self::Ultra => (17, 150.0, 500),
+            Self::Low => CpuDetail::new(8, 150.0, 200),
+            Self::Medium => CpuDetail::new(15, 150.0, 300),
+            Self::High => CpuDetail::new(16, 150.0, 400),
+            Self::Ultra => CpuDetail::new(17, 150.0, 500),
+        }
+    }
+}
+
+pub(crate) struct GpuDetail {
+    // Number of tesselation subdivision steps to compute on the GPU each frame.
+    subdivisions: usize,
+
+    // The number of tiles to store on the GPU.
+    tile_cache_size: u32,
+}
+
+impl GpuDetail {
+    fn new(subdivisions: usize, tile_cache_size: u32) -> Self {
+        Self {
+            subdivisions,
+            tile_cache_size,
         }
     }
 }
@@ -87,12 +120,12 @@ pub enum GpuDetailLevel {
 
 impl GpuDetailLevel {
     // subdivisions
-    fn parameters(&self) -> usize {
+    fn parameters(&self) -> GpuDetail {
         match self {
-            Self::Low => 2,
-            Self::Medium => 4,
-            Self::High => 6,
-            Self::Ultra => 7,
+            Self::Low => GpuDetail::new(2, 128), // 64MiB
+            Self::Medium => GpuDetail::new(4, 256),
+            Self::High => GpuDetail::new(6, 512),
+            Self::Ultra => GpuDetail::new(7, 1024),
         }
     }
 
@@ -140,6 +173,8 @@ pub struct TerrainGeoBuffer {
     patch_tree: PatchTree,
     patch_windings: Vec<PatchWinding>,
 
+    tile_manager: TileManager,
+
     patch_upload_buffer: Arc<Box<wgpu::Buffer>>,
 
     subdivide_context: SubdivisionContext,
@@ -159,21 +194,25 @@ impl TerrainGeoBuffer {
     pub fn new(
         cpu_detail_level: CpuDetailLevel,
         gpu_detail_level: GpuDetailLevel,
-        gpu: &GPU,
+        gpu: &mut GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
-        let (max_level, target_refinement, desired_patch_count) = cpu_detail_level.parameters();
-        let subdivisions = gpu_detail_level.parameters();
+        let cpu_detail = cpu_detail_level.parameters();
+        let gpu_detail = gpu_detail_level.parameters();
 
-        let patch_tree = PatchTree::new(max_level, target_refinement, desired_patch_count);
-        let tile_manager = TileManager::new(gpu);
+        let patch_tree = PatchTree::new(
+            cpu_detail.max_level,
+            cpu_detail.target_refinement,
+            cpu_detail.desired_patch_count,
+        );
+        let tile_manager = TileManager::new(gpu, &gpu_detail)?;
 
-        let mut patch_windings = Vec::with_capacity(desired_patch_count);
-        patch_windings.resize(desired_patch_count, PatchWinding::Full);
+        let mut patch_windings = Vec::with_capacity(cpu_detail.desired_patch_count);
+        patch_windings.resize(cpu_detail.desired_patch_count, PatchWinding::Full);
 
         let patch_upload_stride = 3; // 3 vertices per patch in the upload buffer.
         let patch_upload_byte_size = TerrainVertex::mem_size() * patch_upload_stride;
         let patch_upload_buffer_size =
-            (patch_upload_byte_size * desired_patch_count) as wgpu::BufferAddress;
+            (patch_upload_byte_size * cpu_detail.desired_patch_count) as wgpu::BufferAddress;
         let patch_upload_buffer = Arc::new(Box::new(gpu.device().create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("terrain-geo-patch-vertex-buffer"),
@@ -184,8 +223,8 @@ impl TerrainGeoBuffer {
 
         // Create the context buffer for uploading uniform data to our subdivision process.
         let subdivide_context = SubdivisionContext {
-            target_stride: GpuDetailLevel::vertices_per_subdivision(subdivisions) as u32,
-            target_subdivision_level: subdivisions as u32,
+            target_stride: GpuDetailLevel::vertices_per_subdivision(gpu_detail.subdivisions) as u32,
+            target_subdivision_level: gpu_detail.subdivisions as u32,
             pad: [0u32; 2],
         };
         let subdivide_context_buffer_size =
@@ -201,7 +240,7 @@ impl TerrainGeoBuffer {
             mem::size_of::<TerrainVertex>() * subdivide_context.target_stride as usize;
         assert_eq!(target_patch_byte_size % 4, 0);
         let target_vertex_buffer_size =
-            (target_patch_byte_size * desired_patch_count) as wgpu::BufferAddress;
+            (target_patch_byte_size * cpu_detail.desired_patch_count) as wgpu::BufferAddress;
         let target_vertex_buffer = Arc::new(Box::new(gpu.device().create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("terrain-geo-sub-vertex-buffer"),
@@ -286,11 +325,11 @@ impl TerrainGeoBuffer {
 
         // Create the index dependence lut.
         let index_dependency_lut_buffer_size = (mem::size_of::<u32>()
-            * Self::get_index_dependency_lut(subdivisions).len())
+            * Self::get_index_dependency_lut(gpu_detail.subdivisions).len())
             as wgpu::BufferAddress;
         let index_dependency_lut_buffer = gpu.push_slice(
             "terrain-geo-index-dependency-lut",
-            Self::get_index_dependency_lut(subdivisions),
+            Self::get_index_dependency_lut(gpu_detail.subdivisions),
             wgpu::BufferUsage::STORAGE_READ,
         );
 
@@ -349,7 +388,7 @@ impl TerrainGeoBuffer {
                 });
 
         let mut subdivide_expand_bind_groups = Vec::new();
-        for i in 1..subdivisions + 1 {
+        for i in 1..gpu_detail.subdivisions + 1 {
             let expand_context = SubdivisionExpandContext {
                 current_target_subdivision_level: i as u32,
                 skip_vertices_in_patch: GpuDetailLevel::vertices_per_subdivision(i - 1) as u32,
@@ -410,7 +449,7 @@ impl TerrainGeoBuffer {
             .map(|&winding| {
                 gpu.push_slice(
                     "terrain-geo-wireframe-indices-SUB",
-                    Self::get_wireframe_index_buffer(subdivisions, winding),
+                    Self::get_wireframe_index_buffer(gpu_detail.subdivisions, winding),
                     wgpu::BufferUsage::INDEX,
                 )
             })
@@ -419,14 +458,17 @@ impl TerrainGeoBuffer {
         let wireframe_index_ranges = PatchWinding::all_windings()
             .iter()
             .map(|&winding| {
-                0u32..Self::get_wireframe_index_buffer(subdivisions, winding).len() as u32
+                0u32..Self::get_wireframe_index_buffer(gpu_detail.subdivisions, winding).len()
+                    as u32
             })
             .collect::<Vec<_>>();
 
         Ok(Arc::new(RefCell::new(Self {
-            desired_patch_count,
+            desired_patch_count: cpu_detail.desired_patch_count,
             patch_tree,
             patch_windings,
+
+            tile_manager,
 
             patch_upload_buffer,
 
@@ -434,7 +476,7 @@ impl TerrainGeoBuffer {
             wireframe_index_buffers,
             wireframe_index_ranges,
 
-            subdivisions,
+            subdivisions: gpu_detail.subdivisions,
             subdivide_context,
             subdivide_prepare_pipeline,
             subdivide_prepare_bind_group,
@@ -463,19 +505,22 @@ impl TerrainGeoBuffer {
             if offset >= self.desired_patch_count {
                 continue;
             }
-            let [v0, v1, v2] = patch.points();
-            let n0 = view.to_homogeneous() * v0.coords.normalize().to_homogeneous();
-            let n1 = view.to_homogeneous() * v1.coords.normalize().to_homogeneous();
-            let n2 = view.to_homogeneous() * v2.coords.normalize().to_homogeneous();
+            let [pw0, pw1, pw2] = patch.points();
+            let nv0 = view.to_homogeneous() * pw0.coords.normalize().to_homogeneous();
+            let nv1 = view.to_homogeneous() * pw1.coords.normalize().to_homogeneous();
+            let nv2 = view.to_homogeneous() * pw2.coords.normalize().to_homogeneous();
 
             // project patch verts from global coordinates into view space.
-            let v0 = scale * view.to_homogeneous() * v0.to_homogeneous();
-            let v1 = scale * view.to_homogeneous() * v1.to_homogeneous();
-            let v2 = scale * view.to_homogeneous() * v2.to_homogeneous();
+            let vv0 = scale * view.to_homogeneous() * pw0.to_homogeneous();
+            let vv1 = scale * view.to_homogeneous() * pw1.to_homogeneous();
+            let vv2 = scale * view.to_homogeneous() * pw2.to_homogeneous();
+            let pv0 = Point3::from(vv0.xyz());
+            let pv1 = Point3::from(vv1.xyz());
+            let pv2 = Point3::from(vv2.xyz());
 
-            verts.push(TerrainVertex::new(&Point3::from(v0.xyz()), &n0.xyz()));
-            verts.push(TerrainVertex::new(&Point3::from(v1.xyz()), &n1.xyz()));
-            verts.push(TerrainVertex::new(&Point3::from(v2.xyz()), &n2.xyz()));
+            verts.push(TerrainVertex::new(pw0, &pv0, &nv0.xyz()));
+            verts.push(TerrainVertex::new(pw1, &pv1, &nv1.xyz()));
+            verts.push(TerrainVertex::new(pw2, &pv2, &nv2.xyz()));
         }
         // println!("verts: {}", verts.len());
 
@@ -545,14 +590,13 @@ impl TerrainGeoBuffer {
         }
     }
 
-    /*
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
+        self.tile_manager.bind_group_layout()
     }
-    pub fn block_bind_group(&self) -> &wgpu::BindGroup {
-        &self.block_bind_group
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        self.tile_manager.bind_group()
     }
-    */
 
     pub fn num_patches(&self) -> i32 {
         self.desired_patch_count as i32

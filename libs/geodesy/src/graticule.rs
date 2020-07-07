@@ -14,8 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{Cartesian, GeoCenter, GeoSurface};
 use absolute_unit::{
-    degrees, kilometers, meters, radians, Angle, AngleUnit, Degrees, Length, LengthUnit, Meters,
-    Radians,
+    degrees, kilometers, meters, radians, Angle, AngleUnit, Length, LengthUnit, Meters, Radians,
 };
 use num_traits::Float;
 use physical_constants::EARTH_RADIUS_KM;
@@ -129,8 +128,8 @@ impl<Unit: LengthUnit> From<Cartesian<GeoCenter, Unit>> for Graticule<GeoCenter>
 #[cfg(test)]
 mod test {
     use super::*;
-    use absolute_unit::{meters, radians, Degrees};
-    use approx::{abs_diff_eq, relative_eq};
+    use absolute_unit::{meters, radians};
+    use approx::relative_eq;
 
     #[test]
     fn test_position() {

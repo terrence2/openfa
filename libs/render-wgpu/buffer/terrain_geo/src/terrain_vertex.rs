@@ -36,12 +36,14 @@ impl TerrainVertex {
         }
     }
 
-    pub fn new(v0: &Point3<f64>, n0: &Vector3<f64>) -> Self {
+    pub fn new(v_world: &Point3<f64>, v_view: &Point3<f64>, n0: &Vector3<f64>) -> Self {
         Self {
-            position: [v0[0] as f32, v0[1] as f32, v0[2] as f32],
+            position: [v_view[0] as f32, v_view[1] as f32, v_view[2] as f32],
             normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
-            graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(*v0))
-                .lat_lon::<Radians, f32>(),
+            graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
+                *v_world,
+            ))
+            .lat_lon::<Radians, f32>(),
         }
     }
 
