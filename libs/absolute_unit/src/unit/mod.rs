@@ -14,6 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Angular
+pub(crate) mod arcminutes;
+pub(crate) mod arcseconds;
 pub(crate) mod degrees;
 pub(crate) mod radians;
 

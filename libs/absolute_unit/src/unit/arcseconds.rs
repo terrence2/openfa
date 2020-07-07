@@ -12,16 +12,26 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::angle::AngleUnit;
+use std::f64::consts::PI;
+
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub struct ArcSeconds;
+impl AngleUnit for ArcSeconds {
+    fn unit_name() -> &'static str {
+        "arcsec"
+    }
+    fn suffix() -> &'static str {
+        "\""
+    }
+    fn femto_radians_in_unit() -> i64 {
+        ((1_000_000_000_000_000f64 * PI) / 180f64 / 60f64 / 60f64) as i64
+    }
+}
 
 #[macro_export]
-macro_rules! impl_unit_for_numerics {
-    ($it:tt) => {
-        $it!(f64);
-        $it!(f32);
-        $it!(isize);
-        $it!(i64);
-        $it!(i32);
-        $it!(i16);
-        $it!(i8);
+macro_rules! arcseconds {
+    ($num:expr) => {
+        $crate::Angle::<$crate::ArcSeconds>::from(&$num)
     };
 }

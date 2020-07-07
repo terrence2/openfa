@@ -10,6 +10,7 @@ approx = "^ 0.3"
 backtrace = "^ 0.3"
 failure = "^ 0.1.2"
 float-ord = "^ 0.2"
+json = "^ 0.12"
 memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
@@ -22,6 +23,9 @@ geometry = { path = "../../../render-shared/common/geometry" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 physical_constants = { path = "../../../physical_constants" }
 universe = { path = "../../../universe" }
+
+[dev-dependencies]
+input = { path = "../../../render-wgpu/common/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

@@ -28,8 +28,8 @@ impl TerrainRenderPass {
     pub fn new(
         gpu: &mut GPU,
         globals_buffer: &GlobalParametersBuffer,
-        _atmosphere_buffer: &AtmosphereBuffer,
-        _terrain_geo_buffer: &TerrainGeoBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
+        terrain_geo_buffer: &TerrainGeoBuffer,
     ) -> Fallible<Self> {
         trace!("TerrainRenderPass::new");
 
@@ -44,7 +44,11 @@ impl TerrainRenderPass {
                 layout: &gpu
                     .device()
                     .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        bind_group_layouts: &[globals_buffer.bind_group_layout()],
+                        bind_group_layouts: &[
+                            globals_buffer.bind_group_layout(),
+                            atmosphere_buffer.bind_group_layout(),
+                            terrain_geo_buffer.bind_group_layout(),
+                        ],
                     }),
                 vertex_stage: wgpu::ProgrammableStageDescriptor {
                     module: &vert_shader,
@@ -93,12 +97,11 @@ impl TerrainRenderPass {
         &'a self,
         mut rpass: wgpu::RenderPass<'a>,
         globals_buffer: &'a GlobalParametersBuffer,
-        _atmosphere_buffer: &'a AtmosphereBuffer,
+        atmosphere_buffer: &'a AtmosphereBuffer,
         terrain_geo_buffer: &'a TerrainGeoBuffer,
     ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.patch_pipeline);
         rpass.set_bind_group(Group::Globals.index(), &globals_buffer.bind_group(), &[]);
-        /*
         rpass.set_bind_group(
             Group::Atmosphere.index(),
             &atmosphere_buffer.bind_group(),
@@ -106,10 +109,9 @@ impl TerrainRenderPass {
         );
         rpass.set_bind_group(
             Group::Terrain.index(),
-            &terrain_geo_buffer.block_bind_group(),
+            &terrain_geo_buffer.bind_group(),
             &[],
         );
-        */
         rpass.set_vertex_buffer(0, &terrain_geo_buffer.vertex_buffer(), 0, 0);
         for i in 0..terrain_geo_buffer.num_patches() {
             let winding = terrain_geo_buffer.patch_winding(i);

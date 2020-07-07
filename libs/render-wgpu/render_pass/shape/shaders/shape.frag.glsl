@@ -37,6 +37,8 @@ void main() {
     } else if (v_tex_coord.x == 0.0) {
         f_color = v_color;
     } else {
+        // FIXME: I think this breaks if our mega-atlas spills into a second layer. The layer should be part
+        // FIXME: of the texture coordinate we are uploading.
         vec4 tex_color = texture(sampler2DArray(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), vec3(v_tex_coord, 0));
         if ((f_flags0 & 1) == 1) {
             f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);

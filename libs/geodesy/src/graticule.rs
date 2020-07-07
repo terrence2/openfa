@@ -54,9 +54,26 @@ where
 
     pub fn lat_lon<UnitAng: AngleUnit, T: Float>(&self) -> [T; 2] {
         [
-            T::from(f64::from(Angle::<UnitAng>::from(&self.latitude))).unwrap(),
-            T::from(f64::from(Angle::<UnitAng>::from(&self.longitude))).unwrap(),
+            T::from(f64::from(self.lat::<UnitAng>())).unwrap(),
+            T::from(f64::from(self.lon::<UnitAng>())).unwrap(),
         ]
+    }
+
+    pub fn lat<UnitAng: AngleUnit>(&self) -> Angle<UnitAng> {
+        Angle::<UnitAng>::from(&self.latitude)
+    }
+
+    pub fn lon<UnitAng: AngleUnit>(&self) -> Angle<UnitAng> {
+        Angle::<UnitAng>::from(&self.longitude)
+    }
+}
+
+impl<Origin> Default for Graticule<Origin>
+where
+    Origin: GraticuleOrigin,
+{
+    fn default() -> Self {
+        Graticule::new(degrees!(0), degrees!(0), meters!(0))
     }
 }
 
@@ -112,7 +129,7 @@ impl<Unit: LengthUnit> From<Cartesian<GeoCenter, Unit>> for Graticule<GeoCenter>
 mod test {
     use super::*;
     use absolute_unit::{meters, radians};
-    use approx::abs_diff_eq;
+    use approx::relative_eq;
 
     #[test]
     fn test_position() {
@@ -127,11 +144,22 @@ mod test {
         let g0 = Graticule::<GeoCenter>::new(degrees!(lat), degrees!(lon), meters!(100));
         let c = Cartesian::<GeoCenter, Meters>::from(g0);
         let g1 = Graticule::<GeoCenter>::from(c);
-        println!("g0: {:?}", g0);
-        println!("g1: {:?}", g1);
-        abs_diff_eq!(f64::from(g0.latitude), f64::from(g1.latitude))
-            && abs_diff_eq!(f64::from(g0.longitude), f64::from(g1.longitude))
-            && abs_diff_eq!(f64::from(g0.distance), f64::from(g1.distance))
+        let lat_eq = relative_eq!(
+            f64::from(g0.latitude),
+            f64::from(g1.latitude),
+            max_relative = 0.000_000_001
+        );
+        let lon_eq = relative_eq!(
+            f64::from(g0.longitude),
+            f64::from(g1.longitude),
+            max_relative = 0.000_000_1
+        );
+        let dist_eq = relative_eq!(
+            f64::from(g0.distance),
+            f64::from(g1.distance),
+            max_relative = 0.000_000_001
+        );
+        lat_eq && lon_eq && dist_eq
     }
 
     #[test]
