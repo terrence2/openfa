@@ -28,13 +28,16 @@
 
 layout(location = 0) out vec4 f_color;
 
+layout(location = 0) in vec4 v_color;
+
 // TODO: move to globals?
 //const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 
 void
 main()
 {
-    f_color = vec4(1, 0, 1, 1);
+    f_color = v_color;
+    //f_color = vec4(1, 0, 1, 1);
 /*
     vec3 intersect = v_position.xyz;
     vec3 normal = v_normal.xyz;

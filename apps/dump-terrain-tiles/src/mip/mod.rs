@@ -12,16 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod index;
+mod tile;
 
-#[macro_export]
-macro_rules! impl_unit_for_numerics {
-    ($it:tt) => {
-        $it!(f64);
-        $it!(f32);
-        $it!(isize);
-        $it!(i64);
-        $it!(i32);
-        $it!(i16);
-        $it!(i8);
-    };
-}
+pub use index::{DataSetCoordinates, DataSetDataKind, Index as MipIndex};
+pub use tile::{Tile as MipTile, TILE_EXTENT, TILE_PHYSICAL_SIZE, TILE_SAMPLES};
