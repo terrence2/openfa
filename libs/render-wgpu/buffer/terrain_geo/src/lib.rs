@@ -23,7 +23,8 @@ mod tile_manager;
 mod wireframe_indices;
 
 use crate::{
-    index_dependency_lut::*, patch_tree::PatchTree, tile_manager::TileManager, wireframe_indices::*,
+    index_dependency_lut::*, patch_tree::PatchTree, tile_manager::TileManager,
+    wireframe_indices::get_wireframe_index_buffer,
 };
 pub use crate::{patch_winding::PatchWinding, terrain_vertex::TerrainVertex};
 
@@ -122,7 +123,7 @@ impl GpuDetailLevel {
     // subdivisions
     fn parameters(&self) -> GpuDetail {
         match self {
-            Self::Low => GpuDetail::new(2, 128), // 64MiB
+            Self::Low => GpuDetail::new(3, 128), // 64MiB
             Self::Medium => GpuDetail::new(4, 256),
             Self::High => GpuDetail::new(6, 512),
             Self::Ultra => GpuDetail::new(7, 1024),
@@ -449,7 +450,7 @@ impl TerrainGeoBuffer {
             .map(|&winding| {
                 gpu.push_slice(
                     "terrain-geo-wireframe-indices-SUB",
-                    Self::get_wireframe_index_buffer(gpu_detail.subdivisions, winding),
+                    get_wireframe_index_buffer(gpu_detail.subdivisions, winding),
                     wgpu::BufferUsage::INDEX,
                 )
             })
@@ -458,8 +459,7 @@ impl TerrainGeoBuffer {
         let wireframe_index_ranges = PatchWinding::all_windings()
             .iter()
             .map(|&winding| {
-                0u32..Self::get_wireframe_index_buffer(gpu_detail.subdivisions, winding).len()
-                    as u32
+                0u32..get_wireframe_index_buffer(gpu_detail.subdivisions, winding).len() as u32
             })
             .collect::<Vec<_>>();
 
@@ -559,22 +559,6 @@ impl TerrainGeoBuffer {
         Ok(cpass)
     }
 
-    fn get_wireframe_index_buffer(subdivisions: usize, _winding: PatchWinding) -> &'static [u32] {
-        // TODO: expand with each of the possible windings
-        match subdivisions {
-            0 => &WIREFRAME_INDICES0,
-            1 => &WIREFRAME_INDICES1,
-            2 => &WIREFRAME_INDICES2,
-            3 => &WIREFRAME_INDICES3,
-            4 => &WIREFRAME_INDICES4,
-            5 => &WIREFRAME_INDICES5,
-            6 => &WIREFRAME_INDICES6,
-            7 => &WIREFRAME_INDICES7,
-            8 => &WIREFRAME_INDICES8,
-            _ => panic!("only up to 8 subdivisions supported"),
-        }
-    }
-
     fn get_index_dependency_lut(subdivisions: usize) -> &'static [u32] {
         match subdivisions {
             0 => &INDEX_DEPENDENCY_LUT0,
@@ -618,8 +602,7 @@ impl TerrainGeoBuffer {
     pub fn patch_winding(&self, patch_number: i32) -> PatchWinding {
         assert!(patch_number >= 0);
         assert!(patch_number < self.num_patches());
-        //self.patch_windings[patch_number as usize]
-        PatchWinding::Full
+        self.patch_windings[patch_number as usize]
     }
 
     pub fn wireframe_index_buffer(&self, winding: PatchWinding) -> &wgpu::Buffer {
