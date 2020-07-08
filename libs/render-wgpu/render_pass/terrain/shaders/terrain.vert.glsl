@@ -44,11 +44,20 @@ void main() {
     float longitude = graticule.y;
     float s = (longitude + PI) / (2.0 * PI);
 
+    // Map s, t onto the actual subsection of the atlas that is used.
+    float tile_extent = 512.0 * 4096.0;
+    float fract_lon = (360.0 * 60.0 * 60.0) / tile_extent;
+    float fract_lat = (120.0 * 60.0 * 60.0) / tile_extent;
+
     // Note: layer 0 happens to be our 4096 scale top level, so just use it for now.
-    ivec4 foo = texture(isampler2DArray(srtm_atlas_texture, srtm_atlas_sampler), vec3(s, t, 0));
-    //int texel = texture(foo, vec3(s, t, 0)).r;
-/*
-    */
-    //v_color = vec4(foo.r / 255.0, 0, 0, 1);
-    v_color = vec4(1, 0, 1, 1);
+    ivec4 height_texel = texture(
+        isampler2DArray(srtm_atlas_texture, srtm_atlas_sampler),
+        vec3(
+            1.0 - s * fract_lon,
+            t * fract_lat,
+            0
+        )
+    );
+    float height = height_texel.r / 255.0;
+    v_color = vec4(height, height, height, 1);
 }
