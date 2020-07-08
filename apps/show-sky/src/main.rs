@@ -76,7 +76,7 @@ fn main() -> Fallible<()> {
     let mut gpu = GPU::new(&input, Default::default())?;
 
     let (cpu_detail, gpu_detail) = if cfg!(debug_assertions) {
-        (CpuDetailLevel::Low, GpuDetailLevel::Medium)
+        (CpuDetailLevel::Low, GpuDetailLevel::Low)
     } else {
         (CpuDetailLevel::Medium, GpuDetailLevel::High)
     };

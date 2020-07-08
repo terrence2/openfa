@@ -1042,7 +1042,6 @@ impl PatchTree {
         } else {
             // Don't split leaves past max level.
             assert!(level <= self.max_level);
-            // TODO: Note need to pull out index variant from peer info stored on node.
             if self.get_patch(node.patch_index()).in_view() {
                 live_patches.push((node.patch_index(), PatchWinding::from_peers(&node.peers)));
             }

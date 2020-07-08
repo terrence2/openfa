@@ -49,5 +49,6 @@ void main() {
     //int texel = texture(foo, vec3(s, t, 0)).r;
 /*
     */
-    v_color = vec4(foo.r / 255.0, 0, 0, 1);
+    //v_color = vec4(foo.r / 255.0, 0, 0, 1);
+    v_color = vec4(1, 0, 1, 1);
 }
