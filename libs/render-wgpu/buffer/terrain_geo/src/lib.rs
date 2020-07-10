@@ -19,11 +19,12 @@ mod patch_tree;
 mod patch_winding;
 mod queue;
 mod terrain_vertex;
-mod tile_manager;
 mod wireframe_indices;
 
+pub mod tile;
+
 use crate::{
-    index_dependency_lut::*, patch_tree::PatchTree, tile_manager::TileManager,
+    index_dependency_lut::*, patch_tree::PatchTree, tile::TileManager,
     wireframe_indices::get_wireframe_index_buffer,
 };
 pub use crate::{patch_winding::PatchWinding, terrain_vertex::TerrainVertex};
@@ -32,6 +33,7 @@ use absolute_unit::Kilometers;
 use camera::Camera;
 use failure::Fallible;
 use frame_graph::FrameStateTracker;
+use geodesy::{Cartesian, GeoCenter, Graticule};
 use gpu::GPU;
 use nalgebra::{Matrix4, Point3};
 use std::{cell::RefCell, mem, ops::Range, sync::Arc};
@@ -517,10 +519,20 @@ impl TerrainGeoBuffer {
             let pv0 = Point3::from(vv0.xyz());
             let pv1 = Point3::from(vv1.xyz());
             let pv2 = Point3::from(vv2.xyz());
+            let cart0 = Cartesian::<GeoCenter, Kilometers>::from(pw0.coords);
+            let cart1 = Cartesian::<GeoCenter, Kilometers>::from(pw1.coords);
+            let cart2 = Cartesian::<GeoCenter, Kilometers>::from(pw2.coords);
+            let g0 = Graticule::<GeoCenter>::from(cart0);
+            let g1 = Graticule::<GeoCenter>::from(cart1);
+            let g2 = Graticule::<GeoCenter>::from(cart2);
 
-            verts.push(TerrainVertex::new(pw0, &pv0, &nv0.xyz()));
-            verts.push(TerrainVertex::new(pw1, &pv1, &nv1.xyz()));
-            verts.push(TerrainVertex::new(pw2, &pv2, &nv2.xyz()));
+            self.tile_manager.note_required(&g0);
+            self.tile_manager.note_required(&g1);
+            self.tile_manager.note_required(&g2);
+
+            verts.push(TerrainVertex::new(&pv0, &nv0.xyz(), &g0));
+            verts.push(TerrainVertex::new(&pv1, &nv1.xyz(), &g1));
+            verts.push(TerrainVertex::new(&pv2, &nv2.xyz(), &g2));
         }
         // println!("verts: {}", verts.len());
 

@@ -24,6 +24,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
+use terrain_geo::tile::{DataSetCoordinates, DataSetDataKind};
 
 // The top level directory contains sub-folders for each dataset we have filtered for rendering.
 // Each data set may be in spherical coordinates or cartesian polar coordinates.
@@ -61,40 +62,6 @@ impl Index {
         )?));
         self.data_sets.insert(name.to_owned(), ds.clone());
         Ok(ds)
-    }
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum DataSetCoordinates {
-    Spherical,
-    CartesianPolar,
-}
-
-impl DataSetCoordinates {
-    fn name(&self) -> String {
-        match self {
-            Self::Spherical => "spherical",
-            Self::CartesianPolar => "cartesian_polar",
-        }
-        .to_owned()
-    }
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum DataSetDataKind {
-    Color,
-    Normal,
-    Height,
-}
-
-impl DataSetDataKind {
-    fn name(&self) -> String {
-        match self {
-            Self::Color => "color",
-            Self::Normal => "normal",
-            Self::Height => "height",
-        }
-        .to_owned()
     }
 }
 

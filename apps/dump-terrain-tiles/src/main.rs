@@ -16,7 +16,7 @@ mod mip;
 mod srtm;
 
 use crate::{
-    mip::{DataSetCoordinates, DataSetDataKind, MipIndex, TILE_EXTENT, TILE_SAMPLES},
+    mip::{MipIndex, TILE_EXTENT, TILE_SAMPLES},
     srtm::SrtmIndex,
 };
 use absolute_unit::{arcseconds, meters};
@@ -28,6 +28,7 @@ use std::{
     path::PathBuf,
 };
 use structopt::StructOpt;
+use terrain_geo::tile::{DataSetCoordinates, DataSetDataKind};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
