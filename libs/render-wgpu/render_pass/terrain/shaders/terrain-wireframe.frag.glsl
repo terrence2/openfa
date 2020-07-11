@@ -12,8 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod index;
-mod tile;
+#version 450
+#include <common/shader_globals/include/global.glsl>
+#include <buffer/global_data/include/global.glsl>
 
-pub use index::Index as MipIndex;
-pub use tile::{Tile as MipTile, TILE_EXTENT, TILE_PHYSICAL_SIZE, TILE_SAMPLES};
+layout(location = 0) out vec4 f_color;
+
+void
+main()
+{
+    f_color = vec4(1, 0, 1, 1);
+}

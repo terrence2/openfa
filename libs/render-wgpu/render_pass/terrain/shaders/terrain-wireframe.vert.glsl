@@ -12,8 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod index;
-mod tile;
+#version 450
+#include <common/shader_globals/include/global.glsl>
+#include <buffer/global_data/include/library.glsl>
 
-pub use index::Index as MipIndex;
-pub use tile::{Tile as MipTile, TILE_EXTENT, TILE_PHYSICAL_SIZE, TILE_SAMPLES};
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 graticule;
+
+void main() {
+    // FIXME: no need for a center indicator on the projection matrix, just scale.
+    gl_Position = dbg_geocenter_m_projection() * vec4(position, 1);
+}

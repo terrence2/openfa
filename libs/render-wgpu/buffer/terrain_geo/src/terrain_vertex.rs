@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{Kilometers, Radians};
-use geodesy::{Cartesian, GeoCenter, Graticule};
+use absolute_unit::Radians;
+use geodesy::{GeoCenter, Graticule};
 use memoffset::offset_of;
 use nalgebra::{Point3, Vector3};
 use std::mem;
@@ -36,14 +36,11 @@ impl TerrainVertex {
         }
     }
 
-    pub fn new(v_world: &Point3<f64>, v_view: &Point3<f64>, n0: &Vector3<f64>) -> Self {
+    pub fn new(v_view: &Point3<f64>, n0: &Vector3<f64>, graticule: &Graticule<GeoCenter>) -> Self {
         Self {
             position: [v_view[0] as f32, v_view[1] as f32, v_view[2] as f32],
             normal: [n0[0] as f32, n0[1] as f32, n0[2] as f32],
-            graticule: Graticule::<GeoCenter>::from(Cartesian::<GeoCenter, Kilometers>::from(
-                *v_world,
-            ))
-            .lat_lon::<Radians, f32>(),
+            graticule: graticule.lat_lon::<Radians, f32>(),
         }
     }
 

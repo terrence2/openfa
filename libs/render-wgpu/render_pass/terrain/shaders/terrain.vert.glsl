@@ -25,12 +25,10 @@ layout(location = 2) in vec2 graticule;
 
 layout(location = 0) out vec4 v_color;
 
-/*
-layout(set = 2, binding = 0) uniform texture2D srtm_index_texture;
+layout(set = 2, binding = 0) uniform itexture2D srtm_index_texture;
 layout(set = 2, binding = 1) uniform sampler srtm_index_sampler;
-*/
-layout(set = 2, binding = 0) uniform itexture2DArray srtm_atlas_texture;
-layout(set = 2, binding = 1) uniform sampler srtm_atlas_sampler;
+layout(set = 2, binding = 2) uniform itexture2DArray srtm_atlas_texture;
+layout(set = 2, binding = 3) uniform sampler srtm_atlas_sampler;
 
 void main() {
     // FIXME: no need for a center indicator on the projection matrix, just scale.
@@ -50,6 +48,7 @@ void main() {
     float fract_lat = (120.0 * 60.0 * 60.0) / tile_extent;
 
     // Note: layer 0 happens to be our 4096 scale top level, so just use it for now.
+    /*
     ivec4 height_texel = texture(
         isampler2DArray(srtm_atlas_texture, srtm_atlas_sampler),
         vec3(
@@ -60,4 +59,7 @@ void main() {
     );
     float height = height_texel.r / 255.0;
     v_color = vec4(height, height, height, 1);
+    */
+
+    v_color = vec4(1, 0, 1, 1);
 }

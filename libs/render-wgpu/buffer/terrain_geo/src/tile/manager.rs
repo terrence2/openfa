@@ -46,24 +46,27 @@
 //     * We update the index texture with a compute shader that overwrites if the scale is smaller.
 
 // First pass: hard code everything.
-use crate::GpuDetail;
+use crate::{tile::QuadTree, GpuDetail};
 use failure::Fallible;
+use geodesy::{GeoCenter, Graticule};
 use gpu::GPU;
 use std::{fs::File, io::Read, path::PathBuf};
-use zerocopy::LayoutVerified;
 
 const TILE_SIZE: u32 = 512;
 
-// const INDEX_WIDTH: u32 = 2560;
-// const INDEX_HEIGHT: u32 = 1280;
+const INDEX_WIDTH: u32 = 2560;
+const INDEX_HEIGHT: u32 = 1280;
 
 pub(crate) struct TileManager {
-    /*
+    #[allow(unused)]
     srtm_index_texture_extent: wgpu::Extent3d,
+    #[allow(unused)]
     srtm_index_texture: wgpu::Texture,
+    #[allow(unused)]
     srtm_index_texture_view: wgpu::TextureView,
+    #[allow(unused)]
     srtm_index_texture_sampler: wgpu::Sampler,
-     */
+
     #[allow(unused)]
     srtm_atlas_texture_extent: wgpu::Extent3d,
     #[allow(unused)]
@@ -75,6 +78,8 @@ pub(crate) struct TileManager {
 
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
+
+    tree: QuadTree,
 }
 
 impl TileManager {
@@ -93,7 +98,6 @@ impl TileManager {
         // tile. Tiles are additionally fringed with a border such that linear filtering can be
         // used in the tile lookup without further effort. In combination, this lets us point the
         // full power of the texturing hardware at the problem, with very little extra overhead.
-        /*
         let srtm_index_texture_extent = wgpu::Extent3d {
             width: INDEX_WIDTH,
             height: INDEX_HEIGHT,
@@ -130,7 +134,6 @@ impl TileManager {
             lod_max_clamp: 9_999_999f32,
             compare: wgpu::CompareFunction::Never,
         });
-         */
 
         // The atlas texture is a 2d array of tiles. All tiles have the same size, but may be
         // pre-sampled at various scaling factors, allowing us to use a single atlas for all
@@ -178,7 +181,6 @@ impl TileManager {
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("terrain-geo-tile-bind-group-layout"),
                     bindings: &[
-                        /*
                         // SRTM Index
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
@@ -194,10 +196,9 @@ impl TileManager {
                             visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler { comparison: false },
                         },
-                         */
                         // SRTM Height Atlas
                         wgpu::BindGroupLayoutEntry {
-                            binding: 0,
+                            binding: 2,
                             visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::SampledTexture {
                                 dimension: wgpu::TextureViewDimension::D2Array,
@@ -206,7 +207,7 @@ impl TileManager {
                             },
                         },
                         wgpu::BindGroupLayoutEntry {
-                            binding: 1,
+                            binding: 3,
                             visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler { comparison: false },
                         },
@@ -218,7 +219,6 @@ impl TileManager {
             layout: &bind_group_layout,
             bindings: &[
                 // Height Index
-                /*
                 wgpu::Binding {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&srtm_index_texture_view),
@@ -227,14 +227,13 @@ impl TileManager {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&srtm_index_texture_sampler),
                 },
-                 */
                 // Height Atlas
                 wgpu::Binding {
-                    binding: 0,
+                    binding: 2,
                     resource: wgpu::BindingResource::TextureView(&srtm_atlas_texture_view),
                 },
                 wgpu::Binding {
-                    binding: 1,
+                    binding: 3,
                     resource: wgpu::BindingResource::Sampler(&srtm_atlas_texture_sampler),
                 },
             ],
@@ -249,8 +248,10 @@ impl TileManager {
             index_file.read_to_string(&mut index_content)?;
             json::parse(&index_content)?
         };
+        let tree = QuadTree::from_json(&srtm_path, &srtm_index_json)?;
 
         // FIXME: test that our basic primitives work as expected.
+        /*
         let root_data = {
             let mut path = srtm_path;
             path.push(srtm_index_json["path"].as_str().expect("string"));
@@ -290,14 +291,14 @@ impl TileManager {
         );
         gpu.queue_mut().submit(&[encoder.finish()]);
         gpu.device().poll(wgpu::Maintain::Wait);
+         */
 
         Ok(Self {
-            /*
             srtm_index_texture_extent,
             srtm_index_texture,
             srtm_index_texture_view,
             srtm_index_texture_sampler,
-             */
+
             srtm_atlas_texture_extent,
             srtm_atlas_texture,
             srtm_atlas_texture_view,
@@ -305,7 +306,13 @@ impl TileManager {
 
             bind_group_layout,
             bind_group,
+
+            tree,
         })
+    }
+
+    pub fn note_required(&mut self, grat: &Graticule<GeoCenter>) {
+        self.tree.note_required(grat)
     }
 
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {

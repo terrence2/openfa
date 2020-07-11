@@ -13,7 +13,6 @@ members = [
         "apps/dump-asm",
         "apps/dump-lay",
         "apps/dump-lib",
-        "apps/dump-terrain-tables",
         "apps/dump-terrain-tiles",
         "apps/dump-xt",
         "apps/pack-pic",
