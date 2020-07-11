@@ -25,7 +25,6 @@ members = [
         # "apps/show-sh-raw",
 
         "libs/animate",
-        "libs/ansi",
         "libs/asset",
         "libs/dlg",
         "libs/fnt",

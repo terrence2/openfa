@@ -7,5 +7,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 failure = ">= 0.1"
 clap = ">= 2.29"
-ansi = { path = "../ansi/" }
+ansi = { path = "../nitrogen/system/ansi/" }
 peff = { path = "../peff/" }

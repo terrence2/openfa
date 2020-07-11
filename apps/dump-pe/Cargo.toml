@@ -7,6 +7,6 @@ edition = "2018"
 [dependencies]
 failure = ">= 0.1.2"
 structopt = ">= 0.2"
-ansi = { path = "../../libs/ansi" }
+ansi = { path = "../../libs/nitrogen/system/ansi" }
 omnilib = { path = "../../libs/omnilib" }
 peff = { path = "../../libs/peff" }
