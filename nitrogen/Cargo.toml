@@ -8,8 +8,6 @@ edition = "2018"
 members = [
     "apps/dump-terrain-tables",
 
-#    "libs/hal/gpu",
-
     "libs/sim/absolute_unit",
     "libs/sim/camera",
     "libs/sim/geodesy",
@@ -17,6 +15,7 @@ members = [
     "libs/sim/orrery",
     "libs/sim/physical_constants",
 
+    "libs/system/ansi",
     "libs/system/command",
     "libs/system/frame_graph",
     "libs/system/gpu",
