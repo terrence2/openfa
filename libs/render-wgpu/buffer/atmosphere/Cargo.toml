@@ -18,13 +18,13 @@ num-traits = "^ 0.2"
 static_assertions = "^ 1"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-camera = { path = "../../../render-shared/common/camera" }
-frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+camera = { path = "../../../nitrogen/sim/camera" }
+frame_graph = { path = "../../../nitrogen/system/frame_graph" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 
 [dev-dependencies]
 spirv-reflect = "^ 0.2"
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

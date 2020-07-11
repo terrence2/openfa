@@ -8,14 +8,14 @@ edition = "2018"
 failure = "^ 0.1.2"
 zerocopy = "^ 0.2"
 wgpu = "^ 0.5"
-camera = { path = "../../../render-shared/common/camera" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+camera = { path = "../../../nitrogen/sim/camera" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 
 [dev-dependencies]
 absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
-command = { path = "../../../command" }
+command = { path = "../../../nitrogen/system/command" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

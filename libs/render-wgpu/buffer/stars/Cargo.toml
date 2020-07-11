@@ -14,16 +14,16 @@ nalgebra = "^ 0.20"
 static_assertions = "^ 1"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-camera = { path = "../../../render-shared/common/camera" }
+camera = { path = "../../../nitrogen/sim/camera" }
 star_catalog = { path = "../../../star_catalog" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 
 [dev-dependencies]
 absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
-command = { path = "../../../command" }
+command = { path = "../../../nitrogen/system/command" }
 fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

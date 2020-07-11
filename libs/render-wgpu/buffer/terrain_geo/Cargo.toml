@@ -16,16 +16,16 @@ nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
 absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
-camera = { path = "../../../render-shared/common/camera" }
-frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
+camera = { path = "../../../nitrogen/sim/camera" }
+frame_graph = { path = "../../../nitrogen/system/frame_graph" }
 geodesy = { path = "../../../nitrogen/sim/geodesy" }
-geometry = { path = "../../../render-shared/common/geometry" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+geometry = { path = "../../../nitrogen/sim/geometry" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 physical_constants = { path = "../../../nitrogen/sim/physical_constants" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }

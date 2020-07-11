@@ -12,7 +12,7 @@ lazy_static = ">= 1"
 log = ">= 0.4"
 rusttype = "^ 0.7"
 wgpu = "^ 0.5"
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 fnt = { path = "../../../fnt" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }

@@ -21,9 +21,9 @@ vulkano-shaders = "^ 0.14"
 vulkano-win = "^ 0.14"
 winit = "^ 0.19"
 asset = { path = "../../libs/asset" }
-camera = { path = "../../libs/render-shared/common/camera" }
+camera = { path = "../../libs/nitrogen/sim/camera" }
 fnt = { path = "../../libs/fnt" }
-geometry = { path = "../../libs/render-shared/common/geometry" }
+geometry = { path = "../../libs/nitrogen/sim/geometry" }
 i386 = { path = "../../libs/i386" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }

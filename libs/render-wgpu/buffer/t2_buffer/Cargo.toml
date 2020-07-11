@@ -12,7 +12,7 @@ memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../lay" }
 lib = { path = "../../../lib" }
 mm = { path = "../../../mm" }
@@ -25,5 +25,5 @@ universe = { path = "../../../universe" }
 [dev-dependencies]
 simplelog = "^ 0.5"
 omnilib = { path = "../../../omnilib" }
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 xt = { path = "../../../xt" }
