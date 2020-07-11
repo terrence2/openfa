@@ -1,0 +1,17 @@
+[package]
+name = "input"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+log = "^ 0.4"
+failure = "^ 0.1.2"
+smallvec = "^ 0.6"
+#winit = "0.20.0-alpha3"
+winit = { git = "https://github.com/rust-windowing/winit", rev = "6f5e7e170cd7bd9be1bb302dd91ebd906d29cfe1" }
+command = { path = "../../system/command" }
+
+[dev-dependencies]
+approx = "^ 0.3"
+simplelog = "^ 0.5"

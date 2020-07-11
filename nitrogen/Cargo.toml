@@ -8,9 +8,19 @@ edition = "2018"
 members = [
     "apps/dump-terrain-tables",
 
+#    "libs/hal/gpu",
+
     "libs/sim/absolute_unit",
+    "libs/sim/camera",
     "libs/sim/geodesy",
+    "libs/sim/geometry",
+    "libs/sim/orrery",
     "libs/sim/physical_constants",
+
+    "libs/system/command",
+    "libs/system/frame_graph",
+    "libs/system/gpu",
+    "libs/system/input",
 ]
 
 [dependencies]
