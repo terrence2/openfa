@@ -10,7 +10,7 @@ log = "^ 0.4"
 wgpu = "^ 0.5"
 atmosphere = { path = "../../../render-wgpu/buffer/atmosphere" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
 t2_buffer = { path = "../../../render-wgpu/buffer/t2_buffer" }
 

@@ -12,20 +12,22 @@ log = "^ 0.4"
 nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-absolute_unit = { path = "../../libs/absolute_unit" }
-atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
-camera = { path = "../../libs/render-shared/common/camera" }
-command = { path = "../../libs/command" }
-frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
-fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
-geodesy = { path = "../../libs/geodesy" }
-global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
-gpu = { path = "../../libs/render-wgpu/common/gpu" }
-input = { path = "../../libs/render-wgpu/common/input" }
+
 lib = { path = "../../libs/lib" }
-orrery = { path = "../../libs/orrery" }
-physical_constants = { path = "../../libs/physical_constants" }
-pal = { path = "../../libs/pal" }
+
+absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
+camera = { path = "../../libs/nitrogen/sim/camera" }
+command = { path = "../../libs/nitrogen/system/command" }
+frame_graph = { path = "../../libs/nitrogen/system/frame_graph" }
+geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
+gpu = { path = "../../libs/nitrogen/system/gpu" }
+input = { path = "../../libs/nitrogen/system/input" }
+orrery = { path = "../../libs/nitrogen/sim/orrery" }
+physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
+
+atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
+fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
 screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { path = "../../libs/render-wgpu/buffer/stars" }

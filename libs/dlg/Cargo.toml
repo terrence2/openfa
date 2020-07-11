@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 failure = ">= 0.1.2"
-ansi = { path = "../ansi" }
+ansi = { path = "../nitrogen/system/ansi" }
 packed_struct = { path = "../packed_struct" }
 peff = { path = "../peff" }
 reverse = { path = "../reverse" }

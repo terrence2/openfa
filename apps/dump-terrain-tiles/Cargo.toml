@@ -12,6 +12,6 @@ memmap = "^ 0.7"
 nalgebra = "^ 0.20"
 structopt = "^ 0.3"
 zerocopy = "^ 0.2"
-absolute_unit = { path = "../../libs/absolute_unit" }
-geodesy = { path = "../../libs/geodesy" }
+absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
+geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
 terrain_geo = { path = "../../libs/render-wgpu/buffer/terrain_geo" }

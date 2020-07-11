@@ -8,7 +8,7 @@ edition = "2018"
 failure = "^ 0.1.2"
 image = "^ 0.21"
 structopt = "^ 0.2"
-ansi = { path = "../../libs/ansi" }
+ansi = { path = "../../libs/nitrogen/system/ansi" }
 omnilib = { path = "../../libs/omnilib" }
 pal = { path = "../../libs/pal" }
 pic = { path = "../../libs/pic" }

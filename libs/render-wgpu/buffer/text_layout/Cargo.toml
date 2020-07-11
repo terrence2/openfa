@@ -12,10 +12,10 @@ wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
 fnt = { path = "../../../fnt" }
 lib = { path = "../../../lib" }
-frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+frame_graph = { path = "../../../nitrogen/system/frame_graph" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 glyph_cache = { path = "../../../render-wgpu/buffer/glyph_cache" }
 
 [dev-dependencies]
 omnilib = { path = "../../../omnilib" }
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }

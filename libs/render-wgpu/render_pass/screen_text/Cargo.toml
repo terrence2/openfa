@@ -8,7 +8,7 @@ edition = "2018"
 failure = "^ 0.1.2"
 log = "^ 0.4"
 wgpu = "^ 0.5"
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
 shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
 text_layout = { path = "../../../render-wgpu/buffer/text_layout" }

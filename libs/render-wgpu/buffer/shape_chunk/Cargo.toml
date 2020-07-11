@@ -15,7 +15,7 @@ nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
 animate = { path = "../../../animate" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
@@ -25,4 +25,4 @@ sh = { path = "../../../sh" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }

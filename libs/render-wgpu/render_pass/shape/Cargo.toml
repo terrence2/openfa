@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 wgpu = "^ 0.5"
-gpu = { path = "../../../render-wgpu/common/gpu" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
 shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
@@ -15,9 +15,9 @@ shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
 
 [dev-dependencies]
 nalgebra = "^ 0.20"
-camera = { path = "../../../render-shared/common/camera" }
+camera = { path = "../../../nitrogen/sim/camera" }
 galaxy = { path = "../../../galaxy" }
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 universe = { path = "../../../universe" }

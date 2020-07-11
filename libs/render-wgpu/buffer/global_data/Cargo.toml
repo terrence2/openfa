@@ -9,16 +9,16 @@ failure = "^ 0.1.2"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-absolute_unit = { path = "../../../absolute_unit" }
-geodesy = { path = "../../../geodesy" }
-camera = { path = "../../../render-shared/common/camera" }
-frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
-gpu = { path = "../../../render-wgpu/common/gpu" }
+absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
+geodesy = { path = "../../../nitrogen/sim/geodesy" }
+camera = { path = "../../../nitrogen/sim/camera" }
+frame_graph = { path = "../../../nitrogen/system/frame_graph" }
+gpu = { path = "../../../nitrogen/system/gpu" }
 t2 = { path = "../../../t2" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]
-input = { path = "../../../render-wgpu/common/input" }
+input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
 build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
