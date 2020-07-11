@@ -1,0 +1,7 @@
+[package]
+name = "physical_constants"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]

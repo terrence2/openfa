@@ -7,6 +7,10 @@ edition = "2018"
 [workspace]
 members = [
     "apps/dump-terrain-tables",
+
+    "libs/sim/absolute_unit",
+    "libs/sim/geodesy",
+    "libs/sim/physical_constants",
 ]
 
 [dependencies]

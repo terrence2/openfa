@@ -1,0 +1,15 @@
+[package]
+name = "geodesy"
+description = "Geometric coordinates with units built on absolute_unit."
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+nalgebra = "^ 0.20"
+num-traits = "^ 0.2"
+absolute_unit = { path = "../../sim/absolute_unit" }
+physical_constants = { path = "../../sim/physical_constants" }
+
+[dev-dependencies]
+approx = "^ 0.3"

@@ -216,8 +216,7 @@ fn make_wireframe_list(max_level: usize) {
     println!("// cargo run -p terrain_geo --example make-strips");
     for subdivisions in 0..=max_level {
         let (tris, _deps) = make_tris(subdivisions);
-        let mut bins = collect_unique_rows(&tris);
-        bins.reverse();
+        let bins = collect_unique_rows(&tris);
         let binned = bin_by_row(&tris);
         for &winding in &PatchWinding::all_windings() {
             let indices = make_line_list(&bins, &binned, winding);
@@ -530,7 +529,9 @@ fn collect_unique_rows(tris: &[Triangle]) -> Vec<(i64, i64)> {
     }
     let mut v = uniq.drain().collect::<Vec<i64>>();
     v.sort();
-    (&v).windows(2).map(|v| (v[0], v[1])).collect::<Vec<_>>()
+    let mut bins = (&v).windows(2).map(|v| (v[0], v[1])).collect::<Vec<_>>();
+    bins.reverse();
+    bins
 }
 
 fn count_unique_vertices(tris: &[Triangle]) -> usize {

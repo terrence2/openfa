@@ -1,0 +1,9 @@
+[package]
+name = "absolute_unit"
+description = "A system of scalars with units."
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+approx = "^ 0.3"
