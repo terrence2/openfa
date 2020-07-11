@@ -1,12 +1,11 @@
 [package]
-name = "nitrogen"
+name = "dump-terrain-tables"
 version = "0.1.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
-[workspace]
-members = [
-    "apps/dump-terrain-tables",
-]
-
 [dependencies]
+failure = "^ 0.1.2"
+nalgebra = "^ 0.18"
+structopt = "^ 0.3"
+
