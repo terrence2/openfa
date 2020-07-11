@@ -12,19 +12,19 @@ log = "^ 0.4"
 nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-absolute_unit = { path = "../../libs/absolute_unit" }
+absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 camera = { path = "../../libs/render-shared/common/camera" }
 command = { path = "../../libs/command" }
 frame_graph = { path = "../../libs/render-wgpu/common/frame_graph" }
 fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
-geodesy = { path = "../../libs/geodesy" }
+geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
 global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
 gpu = { path = "../../libs/render-wgpu/common/gpu" }
 input = { path = "../../libs/render-wgpu/common/input" }
 lib = { path = "../../libs/lib" }
 orrery = { path = "../../libs/orrery" }
-physical_constants = { path = "../../libs/physical_constants" }
+physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
 pal = { path = "../../libs/pal" }
 screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }

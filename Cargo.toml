@@ -24,7 +24,6 @@ members = [
         # "apps/dump-vulkan",
         # "apps/show-sh-raw",
 
-        "libs/absolute_unit",
         "libs/animate",
         "libs/ansi",
         "libs/asset",
@@ -32,7 +31,6 @@ members = [
         "libs/dlg",
         "libs/fnt",
         "libs/galaxy",
-        "libs/geodesy",
         "libs/i386",
         "libs/jt",
         "libs/lay",

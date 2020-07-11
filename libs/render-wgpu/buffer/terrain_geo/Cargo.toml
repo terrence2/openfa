@@ -15,13 +15,13 @@ memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-absolute_unit = { path = "../../../absolute_unit" }
+absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
 camera = { path = "../../../render-shared/common/camera" }
 frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
-geodesy = { path = "../../../geodesy" }
+geodesy = { path = "../../../nitrogen/sim/geodesy" }
 geometry = { path = "../../../render-shared/common/geometry" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
-physical_constants = { path = "../../../physical_constants" }
+physical_constants = { path = "../../../nitrogen/sim/physical_constants" }
 universe = { path = "../../../universe" }
 
 [dev-dependencies]

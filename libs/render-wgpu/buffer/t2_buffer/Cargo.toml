@@ -17,7 +17,7 @@ lay = { path = "../../../lay" }
 lib = { path = "../../../lib" }
 mm = { path = "../../../mm" }
 pal = { path = "../../../pal" }
-physical_constants = { path = "../../../physical_constants" }
+physical_constants = { path = "../../../nitrogen/sim/physical_constants" }
 pic = { path = "../../../pic" }
 t2 = { path = "../../../t2" }
 universe = { path = "../../../universe" }

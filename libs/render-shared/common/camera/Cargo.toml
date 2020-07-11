@@ -8,11 +8,11 @@ edition = "2018"
 failure = "^ 0.1.2"
 log = ">= 0.4"
 nalgebra = "^ 0.20"
-absolute_unit = { path = "../../../absolute_unit" }
+absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
 geometry = { path = "../../../render-shared/common/geometry" }
-geodesy = { path = "../../../geodesy" }
+geodesy = { path = "../../../nitrogen/sim/geodesy" }
 command = { path = "../../../command" }
 
 [dev-dependencies]
 approx = "^ 0.3"
-physical_constants = { path = "../../../physical_constants" }
+physical_constants = { path = "../../../nitrogen/sim/physical_constants" }

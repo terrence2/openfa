@@ -9,8 +9,8 @@ failure = "^ 0.1.2"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-absolute_unit = { path = "../../../absolute_unit" }
-geodesy = { path = "../../../geodesy" }
+absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
+geodesy = { path = "../../../nitrogen/sim/geodesy" }
 camera = { path = "../../../render-shared/common/camera" }
 frame_graph = { path = "../../../render-wgpu/common/frame_graph" }
 gpu = { path = "../../../render-wgpu/common/gpu" }

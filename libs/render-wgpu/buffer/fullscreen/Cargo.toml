@@ -12,7 +12,7 @@ camera = { path = "../../../render-shared/common/camera" }
 gpu = { path = "../../../render-wgpu/common/gpu" }
 
 [dev-dependencies]
-absolute_unit = { path = "../../../absolute_unit" }
+absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
 command = { path = "../../../command" }
 global_data = { path = "../../../render-wgpu/buffer/global_data" }
 input = { path = "../../../render-wgpu/common/input" }
