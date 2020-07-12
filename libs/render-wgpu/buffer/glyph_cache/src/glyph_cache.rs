@@ -57,9 +57,17 @@ pub struct GlyphFrame {
     pub left_side_bearing: f32,
 }
 
-pub enum GlyphCache {
-    FNT(GlyphCacheFNT),
-    TTF(GlyphCacheTTF),
+pub trait GlyphFontInterface {
+    fn bind_group(&self) -> &wgpu::BindGroup;
+    fn render_height(&self) -> f32;
+    fn can_render_char(&self, c: char) -> bool;
+    fn frame_for(&self, c: char) -> &GlyphFrame;
+    fn pair_kerning(&self, a: char, b: char) -> f32;
+}
+
+pub struct GlyphCache {
+    index: GlyphCacheIndex,
+    font: Box<dyn GlyphFontInterface>,
 }
 
 impl GlyphCache {
@@ -69,12 +77,14 @@ impl GlyphCache {
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
-        Ok(GlyphCache::FNT(GlyphCacheFNT::new_transparent_fnt(
-            fnt,
+        Ok(Self {
             index,
-            bind_group_layout,
-            gpu,
-        )?))
+            font: Box::new(GlyphCacheFNT::new_transparent_fnt(
+                fnt,
+                bind_group_layout,
+                gpu,
+            )?),
+        })
     }
 
     pub fn new_ttf(
@@ -83,19 +93,14 @@ impl GlyphCache {
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
-        Ok(GlyphCache::TTF(GlyphCacheTTF::new_ttf(
-            bytes,
+        Ok(Self {
             index,
-            bind_group_layout,
-            gpu,
-        )?))
+            font: Box::new(GlyphCacheTTF::new_ttf(bytes, bind_group_layout, gpu)?),
+        })
     }
 
     pub fn render_height(&self) -> f32 {
-        match self {
-            GlyphCache::FNT(fnt) => fnt.render_height,
-            GlyphCache::TTF(ttf) => ttf.render_height,
-        }
+        self.font.render_height()
     }
 
     pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -121,38 +126,23 @@ impl GlyphCache {
     }
 
     pub fn index(&self) -> GlyphCacheIndex {
-        match self {
-            GlyphCache::FNT(fnt) => fnt.index,
-            GlyphCache::TTF(ttf) => ttf.index,
-        }
+        self.index
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
-        match self {
-            GlyphCache::FNT(fnt) => &fnt.bind_group,
-            GlyphCache::TTF(ttf) => &ttf.bind_group,
-        }
+        self.font.bind_group()
     }
 
     pub fn can_render_char(&self, c: char) -> bool {
-        match self {
-            GlyphCache::FNT(fnt) => fnt.glyph_frames.contains_key(&c),
-            GlyphCache::TTF(ttf) => ttf.glyph_frames.contains_key(&c),
-        }
+        self.font.can_render_char(c)
     }
 
     pub fn frame_for(&self, c: char) -> &GlyphFrame {
-        match self {
-            GlyphCache::FNT(fnt) => &fnt.glyph_frames[&c],
-            GlyphCache::TTF(ttf) => &ttf.glyph_frames[&c],
-        }
+        self.font.frame_for(c)
     }
 
     pub fn pair_kerning(&self, a: char, b: char) -> f32 {
-        match self {
-            GlyphCache::FNT(_) => 0f32,
-            GlyphCache::TTF(ttf) => ttf.font.pair_kerning(ttf.scale, a, b),
-        }
+        self.font.pair_kerning(a, b)
     }
 
     fn upload_texture_luma(
@@ -234,8 +224,6 @@ impl GlyphCache {
 }
 
 pub struct GlyphCacheFNT {
-    index: GlyphCacheIndex,
-
     // These get composited in software, then uploaded in a single texture.
     bind_group: wgpu::BindGroup,
 
@@ -247,10 +235,31 @@ pub struct GlyphCacheFNT {
     render_height: f32,
 }
 
+impl GlyphFontInterface for GlyphCacheFNT {
+    fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    fn render_height(&self) -> f32 {
+        self.render_height
+    }
+
+    fn can_render_char(&self, c: char) -> bool {
+        self.glyph_frames.contains_key(&c)
+    }
+
+    fn frame_for(&self, c: char) -> &GlyphFrame {
+        &self.glyph_frames[&c]
+    }
+
+    fn pair_kerning(&self, _a: char, _b: char) -> f32 {
+        0f32
+    }
+}
+
 impl GlyphCacheFNT {
     pub fn new_transparent_fnt(
         fnt: &Fnt,
-        index: GlyphCacheIndex,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
@@ -329,7 +338,6 @@ impl GlyphCacheFNT {
         });
 
         Ok(Self {
-            index,
             bind_group,
             glyph_frames,
             render_height: fnt.height as f32 / SCREEN_SCALE[1],
@@ -338,8 +346,6 @@ impl GlyphCacheFNT {
 }
 
 pub struct GlyphCacheTTF {
-    index: GlyphCacheIndex,
-
     bind_group: wgpu::BindGroup,
 
     // Map to positions in the glyph cache.
@@ -354,10 +360,31 @@ pub struct GlyphCacheTTF {
     render_height: f32,
 }
 
+impl GlyphFontInterface for GlyphCacheTTF {
+    fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    fn render_height(&self) -> f32 {
+        self.render_height
+    }
+
+    fn can_render_char(&self, c: char) -> bool {
+        self.glyph_frames.contains_key(&c)
+    }
+
+    fn frame_for(&self, c: char) -> &GlyphFrame {
+        &self.glyph_frames[&c]
+    }
+
+    fn pair_kerning(&self, a: char, b: char) -> f32 {
+        self.font.pair_kerning(self.scale, a, b)
+    }
+}
+
 impl GlyphCacheTTF {
     pub fn new_ttf(
         bytes: &'static [u8],
-        index: GlyphCacheIndex,
         bind_group_layout: &wgpu::BindGroupLayout,
         gpu: &mut GPU,
     ) -> Fallible<Self> {
@@ -434,7 +461,6 @@ impl GlyphCacheTTF {
         });
 
         Ok(Self {
-            index,
             bind_group,
             glyph_frames,
             font,
