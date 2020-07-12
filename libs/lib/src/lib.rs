@@ -17,6 +17,7 @@
 
 #![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
+use catalog::{Catalog, DirectoryDrawer, DrawerFileId, DrawerFileMetadata, DrawerInterface};
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, err_msg, Fallible};
 use glob::{MatchOptions, Pattern};
@@ -58,6 +59,15 @@ impl CompressionType {
             4 => CompressionType::PKWare,
             _ => unreachable!(),
         })
+    }
+
+    fn name(&self) -> Option<&'static str> {
+        match self {
+            Self::None => None,
+            Self::LZSS => Some("lzss"),
+            Self::PXPK => Some("pxpk"),
+            Self::PKWare => Some("pkware"),
+        }
     }
 }
 
@@ -106,6 +116,11 @@ impl Priority {
             return 0;
         }
         (1u8 + c.unwrap() as u8 - b'A') as usize
+    }
+
+    fn as_drawer_priority(&self) -> i64 {
+        let offset = (self.priority * 26 + self.version) as i64;
+        i64::MAX - offset
     }
 }
 
@@ -269,6 +284,149 @@ impl LibFile {
 
     pub fn file_count(&self) -> usize {
         self.local_index.len()
+    }
+}
+
+pub struct LibDrawer {
+    drawer_index: HashMap<DrawerFileId, String>,
+    index: HashMap<DrawerFileId, PackedFileInfo>,
+    data: Mmap,
+    priority: i64,
+    name: String,
+}
+
+impl LibDrawer {
+    pub fn from_path(priority: i64, path: &Path) -> Fallible<Box<dyn DrawerInterface>> {
+        trace!("opening lib file {:?} with priority {}", path, priority);
+        let fp = fs::File::open(path)?;
+        let map = unsafe { MmapOptions::new().map(&fp)? };
+
+        // Header
+        ensure!(map.len() > mem::size_of::<LibHeader>(), "lib too short");
+        let hdr_ptr: *const LibHeader = map.as_ptr() as *const _;
+        let hdr: &LibHeader = unsafe { &*hdr_ptr };
+        let magic = String::from_utf8(hdr.magic().to_vec())?;
+        ensure!(magic == "EALIB", "lib missing magic");
+
+        // Entries
+        let mut drawer_index: HashMap<DrawerFileId, String> = HashMap::new();
+        let mut index: HashMap<DrawerFileId, PackedFileInfo> = HashMap::new();
+        let entries_start = mem::size_of::<LibHeader>();
+        let entries_end = entries_start + hdr.count() as usize * mem::size_of::<LibEntry>();
+        ensure!(map.len() > entries_end, "lib too short for entries");
+        // FIXME: use LayoutVerified from zerocopy here
+        let entries: &[LibEntry] = unsafe { mem::transmute(&map[entries_start..entries_end]) };
+        for i in 0..hdr.count() as usize {
+            let dfid = DrawerFileId::from_u32(i as u32);
+            let entry = &entries[i];
+            let name = String::from_utf8(entry.name().to_vec())?
+                .trim_matches('\0')
+                .to_uppercase();
+            let end_offset = if i + 1 < hdr.count() as usize {
+                entries[i + 1].offset() as usize
+            } else {
+                map.len()
+            };
+            // Note: there is at least one duplicate in ATF Gold's 2.LIB.
+            let info = PackedFileInfo::new(0, entry.offset() as usize, end_offset, entry.flags())?;
+            drawer_index.insert(dfid, name.clone());
+            index.insert(dfid, info);
+        }
+
+        Ok(Box::new(Self {
+            drawer_index,
+            index,
+            data: map,
+            priority,
+            name: path
+                .file_name()
+                .expect("a file")
+                .to_string_lossy()
+                .to_string(),
+        }))
+    }
+}
+
+impl DrawerInterface for LibDrawer {
+    fn index(&self) -> Fallible<HashMap<DrawerFileId, String>> {
+        Ok(self.drawer_index.clone())
+    }
+
+    fn priority(&self) -> i64 {
+        self.priority
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn stat_sync(&self, id: DrawerFileId) -> Fallible<DrawerFileMetadata> {
+        ensure!(self.index.contains_key(&id));
+        let info = &self.index[&id];
+        Ok(match info.compression {
+            CompressionType::None => DrawerFileMetadata {
+                drawer_file_id: id,
+                name: self.drawer_index[&id].to_owned(),
+                compression: info.compression.name(),
+                packed_size: (info.end_offset - info.start_offset) as u64,
+                unpacked_size: (info.end_offset - info.start_offset) as u64,
+                path: None,
+            },
+            CompressionType::PKWare => {
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                DrawerFileMetadata {
+                    drawer_file_id: id,
+                    name: self.drawer_index[&id].to_owned(),
+                    compression: info.compression.name(),
+                    packed_size: (info.end_offset - info.start_offset) as u64,
+                    unpacked_size: u64::from(dwords[0]),
+                    path: None,
+                }
+            }
+            CompressionType::LZSS => {
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                DrawerFileMetadata {
+                    drawer_file_id: id,
+                    name: self.drawer_index[&id].to_owned(),
+                    compression: info.compression.name(),
+                    packed_size: (info.end_offset - info.start_offset) as u64,
+                    unpacked_size: u64::from(dwords[0]),
+                    path: None,
+                }
+            }
+            CompressionType::PXPK => unimplemented!(),
+        })
+    }
+
+    fn read_sync(&self, id: DrawerFileId) -> Fallible<Cow<[u8]>> {
+        ensure!(self.index.contains_key(&id));
+        let info = &self.index[&id];
+        Ok(match info.compression {
+            CompressionType::None => Cow::from(&self.data[info.start_offset..info.end_offset]),
+            CompressionType::PKWare => {
+                // FIXME: zerocopy
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                let expect_output_size = Some(dwords[0] as usize);
+                Cow::from(pkware::explode(
+                    &self.data[info.start_offset + 4..info.end_offset],
+                    expect_output_size,
+                )?)
+            }
+            CompressionType::LZSS => {
+                // FIXME: zerocopy
+                let dwords: &[u32] =
+                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                let expect_output_size = Some(dwords[0] as usize);
+                Cow::from(lzss::explode(
+                    &self.data[info.start_offset + 4..info.end_offset],
+                    expect_output_size,
+                )?)
+            }
+            CompressionType::PXPK => unimplemented!(),
+        })
     }
 }
 
@@ -491,6 +649,30 @@ impl Library {
         Self::from_paths(&[])
     }
 
+    pub fn catalog_from_paths(libpaths: &[PathBuf]) -> Fallible<Catalog> {
+        let mut catalog = Catalog::empty();
+        for libpath in libpaths {
+            let prio = Priority::from_path(&libpath)?;
+            let name = libpath
+                .file_name()
+                .expect("name")
+                .to_string_lossy()
+                .to_string();
+            if libpath.is_file() {
+                catalog.add_drawer(LibDrawer::from_path(prio.as_drawer_priority(), libpath)?)?;
+            } else if libpath.is_dir() {
+                catalog.add_drawer(DirectoryDrawer::from_directory(
+                    &name,
+                    prio.priority as i64,
+                    libpath,
+                )?)?;
+            } else {
+                bail!("library: tried to open non-file");
+            };
+        }
+        Ok(catalog)
+    }
+
     pub fn from_paths(libpaths: &[PathBuf]) -> Fallible<Self> {
         // Ensure that all libs in the stack have a unique priority.
         let mut priorities = HashMap::new();
@@ -545,6 +727,18 @@ impl Library {
     pub fn from_dir_search(search_path: &Path) -> Fallible<Self> {
         let libdirs = Self::find_all_lib_dirs_under(search_path)?;
         Self::from_paths(&libdirs)
+    }
+
+    /// Find all lib files under search path and index them.
+    pub fn catalog_from_file_search(search_path: &Path) -> Fallible<Catalog> {
+        let libfiles = Self::find_all_lib_files_under(search_path)?;
+        Self::catalog_from_paths(&libfiles)
+    }
+
+    /// Find all lib directories under search path and index them.
+    pub fn catalog_from_dir_search(search_path: &Path) -> Fallible<Catalog> {
+        let libdirs = Self::find_all_lib_dirs_under(search_path)?;
+        Self::catalog_from_paths(&libdirs)
     }
 
     pub fn num_libs(&self) -> usize {
@@ -673,7 +867,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn can_load_all_files_in_all_libfiles() -> Fallible<()> {
+    fn library_load_all_files_in_all_libfiles() -> Fallible<()> {
         let libs = Library::from_file_search(Path::new("../../test_data/packed/FA"))?;
         for name in libs.find_matching("*")?.iter() {
             println!("At: {}", name);
@@ -684,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn can_load_all_files_in_all_libdirs() -> Fallible<()> {
+    fn library_load_all_files_in_all_libdirs() -> Fallible<()> {
         let libs = Library::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
         for name in libs.find_matching("*")?.iter() {
             println!("At: {}", name);
@@ -703,6 +897,36 @@ mod tests {
         for libpath in libpaths.iter() {
             let txt = libs.load_masked_text("FILE.TXT", libpath)?;
             assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn catalog_mask_lower_priority_files() -> Fallible<()> {
+        let catalog = Library::catalog_from_dir_search(Path::new("./test_data/masking"))?;
+        let txt = catalog.read_name_sync("FILE.TXT")?;
+        assert_eq!(txt, b"20b\n" as &[u8]);
+        Ok(())
+    }
+
+    #[test]
+    fn catalog_load_all_files_in_all_libdirs() -> Fallible<()> {
+        let catalog = Library::catalog_from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
+        for name in catalog.find_matching("*")?.iter() {
+            println!("At: {}", name);
+            let data = catalog.read_name_sync(name)?;
+            assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn catalog_load_all_files_in_all_libfiles() -> Fallible<()> {
+        let catalog = Library::catalog_from_file_search(Path::new("../../test_data/packed/FA"))?;
+        for name in catalog.find_matching("*")?.iter() {
+            println!("At: {}", name);
+            let data = catalog.read_name_sync(name)?;
+            assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
         Ok(())
     }
