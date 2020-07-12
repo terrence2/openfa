@@ -145,7 +145,7 @@ impl TextPositionV {
 pub struct LayoutHandle(usize);
 
 impl LayoutHandle {
-    pub fn grab<'a>(&self, buffer: &'a mut LayoutBuffer) -> &'a mut Layout {
+    pub fn grab<'a>(&self, buffer: &'a mut TextLayoutBuffer) -> &'a mut Layout {
         buffer.layout_mut(*self)
     }
 }
@@ -495,7 +495,7 @@ pub enum Font {
     QUANTICO,
 }
 
-pub struct LayoutBuffer {
+pub struct TextLayoutBuffer {
     glyph_cache_map: HashMap<Font, GlyphCacheIndex>,
     glyph_caches: Vec<GlyphCache>,
     layout_map: HashMap<Font, Vec<LayoutHandle>>,
@@ -504,7 +504,7 @@ pub struct LayoutBuffer {
     layout_bind_group_layout: wgpu::BindGroupLayout,
 }
 
-impl LayoutBuffer {
+impl TextLayoutBuffer {
     pub fn new(lib: &Library, gpu: &mut GPU) -> Fallible<Arc<RefCell<Self>>> {
         trace!("LayoutBuffer::new");
 
@@ -641,7 +641,7 @@ mod test {
         for (game, lib) in omni.libraries() {
             println!("At: {}", game);
 
-            let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
+            let layout_buffer = TextLayoutBuffer::new(&lib, &mut gpu)?;
 
             layout_buffer
                 .borrow_mut()
@@ -731,7 +731,7 @@ mod test {
         let mut gpu = GPU::new(&input, Default::default())?;
 
         let lib = Arc::new(Box::new(Library::empty()?));
-        let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
+        let layout_buffer = TextLayoutBuffer::new(&lib, &mut gpu)?;
 
         layout_buffer
             .borrow_mut()

@@ -40,7 +40,7 @@ use std::time::Instant;
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
-use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
+use text_layout::{Font, TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -60,7 +60,7 @@ make_frame_graph!(
             shape_instance_buffer: ShapeInstanceBuffer,
             stars: StarsBuffer,
             t2: T2Buffer,
-            text_layout: LayoutBuffer
+            text_layout: TextLayoutBuffer
         };
         precompute: {};
         renderers: [
@@ -241,7 +241,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
-    let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
+    let text_layout_buffer = TextLayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
     let mut frame_graph = FrameGraph::new(
         &mut gpu,

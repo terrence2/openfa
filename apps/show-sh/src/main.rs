@@ -37,7 +37,7 @@ use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
 use structopt::StructOpt;
-use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
+use text_layout::{Font, TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 
 make_opt_struct!(
     #[structopt(name = "show-sh", about = "Show the contents of a SH file")]
@@ -55,7 +55,7 @@ make_frame_graph!(
             globals: GlobalParametersBuffer,
             shape_instance_buffer: ShapeInstanceBuffer,
             stars: StarsBuffer,
-            text_layout: LayoutBuffer
+            text_layout: TextLayoutBuffer
         };
         precompute: {};
         renderers: [
@@ -227,7 +227,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
-    let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
+    let text_layout_buffer = TextLayoutBuffer::new(galaxy.library(), &mut gpu)?;
 
     let mut frame_graph = FrameGraph::new(
         &mut gpu,
