@@ -14,10 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{DrawerFileId, DrawerInterface, FileMetadata};
 use failure::{ensure, Fallible};
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use glob::{MatchOptions, Pattern};
+use std::{borrow::Cow, collections::HashMap};
 
 type DrawerId = u32;
 
@@ -36,7 +34,7 @@ pub struct FileId {
 pub struct Catalog {
     last_drawer: DrawerId,
     drawer_index: HashMap<(i64, String), DrawerId>,
-    drawers: HashMap<DrawerId, Arc<RwLock<dyn DrawerInterface>>>,
+    drawers: HashMap<DrawerId, Box<dyn DrawerInterface>>,
     index: HashMap<String, FileId>,
 }
 
@@ -50,16 +48,17 @@ impl Catalog {
         }
     }
 
-    pub fn with_drawers(drawers: &[Arc<RwLock<dyn DrawerInterface>>]) -> Fallible<Self> {
+    pub fn with_drawers(mut drawers: Vec<Box<dyn DrawerInterface>>) -> Fallible<Self> {
         let mut catalog = Self::empty();
-        for drawer in drawers {
-            catalog.add_drawer(drawer.clone())?;
+        for drawer in drawers.drain(..) {
+            catalog.add_drawer(drawer)?;
         }
         Ok(catalog)
     }
 
-    pub fn add_drawer(&mut self, drawer_ref: Arc<RwLock<dyn DrawerInterface>>) -> Fallible<()> {
-        let drawer = drawer_ref.read().unwrap();
+    pub fn add_drawer(&mut self, drawer: Box<dyn DrawerInterface>) -> Fallible<()> {
+        let next_priority = drawer.priority();
+        let index = drawer.index()?;
         let drawer_key = (drawer.priority(), drawer.name().to_owned());
         ensure!(
             !self.drawer_index.contains_key(&drawer_key),
@@ -68,13 +67,11 @@ impl Catalog {
         let drawer_id = self.last_drawer;
         self.last_drawer = self.last_drawer + 1;
         self.drawer_index.insert(drawer_key.to_owned(), drawer_id);
-        self.drawers.insert(drawer_id, drawer_ref.clone());
-        let drawer_index = drawer.index()?;
-        for (name, &drawer_file_id) in drawer_index.iter() {
+        self.drawers.insert(drawer_id, drawer);
+        for (&drawer_file_id, name) in index.iter() {
             if self.index.contains_key(name) {
                 let prior_drawer = self.index[name].drawer_id;
-                let prior_priority = self.drawers[&prior_drawer].read().unwrap().priority();
-                let next_priority = drawer_ref.read().unwrap().priority();
+                let prior_priority = self.drawers[&prior_drawer].priority();
                 // If there is already a higher priority entry, skip indexing the new version.
                 if next_priority < prior_priority {
                     continue;
@@ -91,14 +88,33 @@ impl Catalog {
         Ok(())
     }
 
+    pub fn find_matching(&self, glob: &str) -> Fallible<Vec<String>> {
+        let mut matching = Vec::new();
+        let opts = MatchOptions {
+            case_sensitive: false,
+            require_literal_leading_dot: false,
+            require_literal_separator: true,
+        };
+        let pattern = Pattern::new(glob)?;
+        for key in self.index.keys() {
+            if pattern.matches_with(key, opts) {
+                matching.push(key.to_owned());
+            }
+        }
+        Ok(matching)
+    }
+
     pub fn stat_name_sync(&self, name: &str) -> Fallible<FileMetadata> {
         ensure!(self.index.contains_key(name), "file not found");
         let fid = &self.index[name];
-        let drawer_meta = self.drawers[&fid.drawer_id]
-            .read()
-            .unwrap()
-            .stat(fid.drawer_file_id)?;
+        let drawer_meta = self.drawers[&fid.drawer_id].stat_sync(fid.drawer_file_id)?;
         Ok(FileMetadata::from_drawer(*fid, drawer_meta))
+    }
+
+    pub fn read_name_sync(&self, name: &str) -> Fallible<Cow<[u8]>> {
+        ensure!(self.index.contains_key(name), "file not found");
+        let fid = &self.index[name];
+        Ok(self.drawers[&fid.drawer_id].read_sync(fid.drawer_file_id)?)
     }
 }
 
@@ -110,14 +126,15 @@ mod tests {
 
     #[test]
     fn basic_functionality() -> Fallible<()> {
-        let mut catalog = Catalog::with_drawers(&[DirectoryDrawer::new("a", 0, "./test_data/a")?])?;
+        let mut catalog =
+            Catalog::with_drawers(vec![DirectoryDrawer::new("a", 0, "./test_data/a")?])?;
 
         // Expect success
         let meta = catalog.stat_name_sync("a.txt")?;
         assert_eq!(meta.name, "a.txt");
         assert_eq!(meta.path, Some(PathBuf::from("./test_data/a/a.txt")));
-        // let data = catalog.read_name_string_sync("a.txt");
-        // assert_eq!(data, "hello");
+        let data = catalog.read_name_sync("a.txt")?;
+        assert_eq!(data, "hello".as_bytes());
 
         // Missing file
         assert!(catalog.stat_name_sync("a_long_and_silly_name").is_err());
@@ -129,16 +146,16 @@ mod tests {
         let meta = catalog.stat_name_sync("a.txt")?;
         assert_eq!(meta.name, "a.txt");
         assert_eq!(meta.path, Some(PathBuf::from("./test_data/a/a.txt")));
-        // let data = catalog.read_name_string_sync("a.txt");
-        // assert_eq!(data, "hello");
+        let data = catalog.read_name_sync("a.txt")?;
+        assert_eq!(data, "hello".as_bytes());
 
         // Add a third drawer with higher priority.
         catalog.add_drawer(DirectoryDrawer::new("b", 1, "./test_data/b")?)?;
         let meta = catalog.stat_name_sync("a.txt")?;
         assert_eq!(meta.name, "a.txt");
         assert_eq!(meta.path, Some(PathBuf::from("./test_data/b/a.txt")));
-        // let data = catalog.read_name_string_sync("a.txt");
-        // assert_eq!(data, "world");
+        let data = catalog.read_name_sync("a.txt")?;
+        assert_eq!(data, "world".as_bytes());
 
         Ok(())
     }

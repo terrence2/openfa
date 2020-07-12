@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use std::{collections::HashMap, path::PathBuf};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf};
 
 // Files are identified by an id internally.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -45,7 +45,7 @@ pub trait DrawerInterface {
     // every name that can be loaded from the drawer, even if it is not yet loadable. After
     // this method is called, the catalog will never reference the returned names again, in
     // preference of the associated FileId returned here.
-    fn index(&self) -> Fallible<HashMap<String, DrawerFileId>>;
+    fn index(&self) -> Fallible<HashMap<DrawerFileId, String>>;
 
     // Must return the priority of a drawer. Files from drawers with higher priority will be
     // loaded from by name before drawers with lower priority. Clients can still list every
@@ -57,6 +57,9 @@ pub trait DrawerInterface {
     // further progress.
     fn name(&self) -> &str;
 
-    // Stat must fill out the stat struct for the given file id.
-    fn stat(&self, id: DrawerFileId) -> Fallible<DrawerFileMetadata>;
+    // Stat must fill out the stat struct for the given file.
+    fn stat_sync(&self, id: DrawerFileId) -> Fallible<DrawerFileMetadata>;
+
+    // Provide the content of the given file.
+    fn read_sync(&self, id: DrawerFileId) -> Fallible<Cow<[u8]>>;
 }

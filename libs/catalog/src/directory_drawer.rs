@@ -14,13 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{DrawerFileId, DrawerFileMetadata, DrawerInterface};
 use failure::{ensure, Fallible};
-use std::{
-    collections::HashMap,
-    ffi::OsStr,
-    fs,
-    path::PathBuf,
-    sync::{Arc, RwLock},
-};
+use std::{borrow::Cow, collections::HashMap, ffi::OsStr, fs, io::Read, path::PathBuf};
 
 pub struct DirectoryDrawer {
     name: String,
@@ -34,7 +28,7 @@ impl DirectoryDrawer {
         name: &str,
         priority: i64,
         path_name: &S,
-    ) -> Fallible<Arc<RwLock<dyn DrawerInterface>>> {
+    ) -> Fallible<Box<dyn DrawerInterface>> {
         let path = PathBuf::from(path_name);
         let mut dd = Self {
             name: name.to_owned(),
@@ -54,17 +48,13 @@ impl DirectoryDrawer {
                 );
             }
         }
-        Ok(Arc::new(RwLock::new(dd)))
+        Ok(Box::new(dd))
     }
 }
 
 impl DrawerInterface for DirectoryDrawer {
-    fn index(&self) -> Fallible<HashMap<String, DrawerFileId>> {
-        let mut out = HashMap::new();
-        for (fid, name) in self.index.iter() {
-            out.insert(name.clone(), *fid);
-        }
-        Ok(out)
+    fn index(&self) -> Fallible<HashMap<DrawerFileId, String>> {
+        Ok(self.index.clone())
     }
 
     fn priority(&self) -> i64 {
@@ -75,7 +65,7 @@ impl DrawerInterface for DirectoryDrawer {
         &self.name
     }
 
-    fn stat(&self, id: DrawerFileId) -> Fallible<DrawerFileMetadata> {
+    fn stat_sync(&self, id: DrawerFileId) -> Fallible<DrawerFileMetadata> {
         ensure!(self.index.contains_key(&id), "file not found");
         let mut global_path = self.path.clone();
         global_path.push(&self.index[&id]);
@@ -88,5 +78,15 @@ impl DrawerInterface for DirectoryDrawer {
             unpacked_size: meta.len(),
             path: Some(global_path),
         })
+    }
+
+    fn read_sync(&self, id: DrawerFileId) -> Fallible<Cow<[u8]>> {
+        ensure!(self.index.contains_key(&id), "file not found");
+        let mut global_path = self.path.clone();
+        global_path.push(&self.index[&id]);
+        let mut fp = fs::File::open(&global_path)?;
+        let mut content = Vec::new();
+        fp.read_to_end(&mut content)?;
+        Ok(Cow::from(content))
     }
 }
