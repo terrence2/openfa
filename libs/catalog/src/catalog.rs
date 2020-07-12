@@ -65,8 +65,8 @@ impl Catalog {
             "duplicate drawer added"
         );
         let drawer_id = self.last_drawer;
-        self.last_drawer = self.last_drawer + 1;
-        self.drawer_index.insert(drawer_key.to_owned(), drawer_id);
+        self.last_drawer += 1;
+        self.drawer_index.insert(drawer_key, drawer_id);
         self.drawers.insert(drawer_id, drawer);
         for (&drawer_file_id, name) in index.iter() {
             if self.index.contains_key(name) {
@@ -126,15 +126,18 @@ mod tests {
 
     #[test]
     fn basic_functionality() -> Fallible<()> {
-        let mut catalog =
-            Catalog::with_drawers(vec![DirectoryDrawer::new("a", 0, "./test_data/a")?])?;
+        let mut catalog = Catalog::with_drawers(vec![DirectoryDrawer::from_directory(
+            "a",
+            0,
+            "./test_data/a",
+        )?])?;
 
         // Expect success
         let meta = catalog.stat_name_sync("a.txt")?;
         assert_eq!(meta.name, "a.txt");
         assert_eq!(meta.path, Some(PathBuf::from("./test_data/a/a.txt")));
         let data = catalog.read_name_sync("a.txt")?;
-        assert_eq!(data, "hello".as_bytes());
+        assert_eq!(data, b"hello" as &[u8]);
 
         // Missing file
         assert!(catalog.stat_name_sync("a_long_and_silly_name").is_err());
@@ -142,20 +145,20 @@ mod tests {
         assert!(catalog.stat_name_sync("nested").is_err());
 
         // Add a second drawer with lower priority.
-        catalog.add_drawer(DirectoryDrawer::new("b", -1, "./test_data/b")?)?;
+        catalog.add_drawer(DirectoryDrawer::from_directory("b", -1, "./test_data/b")?)?;
         let meta = catalog.stat_name_sync("a.txt")?;
         assert_eq!(meta.name, "a.txt");
         assert_eq!(meta.path, Some(PathBuf::from("./test_data/a/a.txt")));
         let data = catalog.read_name_sync("a.txt")?;
-        assert_eq!(data, "hello".as_bytes());
+        assert_eq!(data, b"hello" as &[u8]);
 
         // Add a third drawer with higher priority.
-        catalog.add_drawer(DirectoryDrawer::new("b", 1, "./test_data/b")?)?;
+        catalog.add_drawer(DirectoryDrawer::from_directory("b", 1, "./test_data/b")?)?;
         let meta = catalog.stat_name_sync("a.txt")?;
         assert_eq!(meta.name, "a.txt");
         assert_eq!(meta.path, Some(PathBuf::from("./test_data/b/a.txt")));
         let data = catalog.read_name_sync("a.txt")?;
-        assert_eq!(data, "world".as_bytes());
+        assert_eq!(data, b"world" as &[u8]);
 
         Ok(())
     }

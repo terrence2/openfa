@@ -309,7 +309,6 @@ impl LibDrawer {
         ensure!(magic == "EALIB", "lib missing magic");
 
         // Entries
-        let mut visited = HashMap::new();
         let mut drawer_index: HashMap<DrawerFileId, String> = HashMap::new();
         let mut index: HashMap<DrawerFileId, PackedFileInfo> = HashMap::new();
         let entries_start = mem::size_of::<LibHeader>();
@@ -328,20 +327,10 @@ impl LibDrawer {
             } else {
                 map.len()
             };
-            // This occurs at least once in ATF Gold's 2.LIB.
-            if visited.contains_key(&name) {
-                let new_name = format!("__rename{}__{}", i, name);
-                let fileinfo = index[&visited[&name]].clone();
-                drawer_index.insert(dfid, new_name.clone());
-                index.insert(dfid, fileinfo);
-                visited.insert(new_name, dfid);
-            } else {
-                let info =
-                    PackedFileInfo::new(0, entry.offset() as usize, end_offset, entry.flags())?;
-                drawer_index.insert(dfid, name.clone());
-                index.insert(dfid, info);
-                visited.insert(name, dfid);
-            }
+            // Note: there is at least one duplicate in ATF Gold's 2.LIB.
+            let info = PackedFileInfo::new(0, entry.offset() as usize, end_offset, entry.flags())?;
+            drawer_index.insert(dfid, name.clone());
+            index.insert(dfid, info);
         }
 
         Ok(Box::new(Self {
@@ -669,10 +658,14 @@ impl Library {
                 .expect("name")
                 .to_string_lossy()
                 .to_string();
-            let drawer = if libpath.is_file() {
+            if libpath.is_file() {
                 catalog.add_drawer(LibDrawer::from_path(prio.as_drawer_priority(), libpath)?)?;
             } else if libpath.is_dir() {
-                catalog.add_drawer(DirectoryDrawer::new(&name, prio.priority as i64, libpath)?)?;
+                catalog.add_drawer(DirectoryDrawer::from_directory(
+                    &name,
+                    prio.priority as i64,
+                    libpath,
+                )?)?;
             } else {
                 bail!("library: tried to open non-file");
             };
@@ -912,12 +905,7 @@ mod tests {
     fn catalog_mask_lower_priority_files() -> Fallible<()> {
         let catalog = Library::catalog_from_dir_search(Path::new("./test_data/masking"))?;
         let txt = catalog.read_name_sync("FILE.TXT")?;
-        assert_eq!(txt, "20b\n".as_bytes());
-        // let libpaths = libs.find_masked("FILE.TXT")?;
-        // for libpath in libpaths.iter() {
-        //     let txt = libs.load_masked_text("FILE.TXT", libpath)?;
-        //     assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
-        // }
+        assert_eq!(txt, b"20b\n" as &[u8]);
         Ok(())
     }
 

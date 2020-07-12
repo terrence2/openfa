@@ -24,7 +24,7 @@ pub struct DirectoryDrawer {
 }
 
 impl DirectoryDrawer {
-    pub fn new<S: AsRef<OsStr> + ?Sized>(
+    pub fn from_directory<S: AsRef<OsStr> + ?Sized>(
         name: &str,
         priority: i64,
         path_name: &S,
