@@ -17,11 +17,13 @@ use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
 use failure::{bail, Fallible};
+use fnt::{Fnt, Font};
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
+use glyph_cache::FntFont;
 use gpu::GPU;
 use input::InputSystem;
 use legion::world::EntityStore;
@@ -37,7 +39,7 @@ use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
 use structopt::StructOpt;
-use text_layout::{Font, TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
+use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 
 make_opt_struct!(
     #[structopt(name = "show-sh", about = "Show the contents of a SH file")]
@@ -227,7 +229,11 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
-    let text_layout_buffer = TextLayoutBuffer::new(galaxy.library(), &mut gpu)?;
+    let mut text_layout_buffer = TextLayoutBuffer::new(&mut gpu)?;
+    // let bgl = *text_layout_buffer.borrow().layout_bind_group_layout();
+    // let fnt = Fnt::from_bytes(&lib.load("HUD11.FNT")?)?;
+    // let font = FntFont::new(&fnt, &bgl, &mut gpu);
+    // text_layout_buffer.add_font(Font::HUD11.name(), FntFont::new(&mut gpu)?)?;
 
     let mut frame_graph = FrameGraph::new(
         &mut gpu,
@@ -242,7 +248,7 @@ fn main() -> Fallible<()> {
 
     let fps_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", &gpu)?
+        .add_screen_text(Font::HUD11.name(), "", &gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
@@ -251,7 +257,7 @@ fn main() -> Fallible<()> {
         .handle();
     let state_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", &gpu)?
+        .add_screen_text(Font::HUD11.name(), "", &gpu)?
         .with_color(&[1f32, 0.5f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Right)
         .with_horizontal_anchor(TextAnchorH::Right)

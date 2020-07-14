@@ -12,14 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod fnt_font;
-mod font_interface;
-mod glyph_cache;
-mod glyph_frame;
-mod ttf_font;
+#[derive(Debug)]
+pub struct GlyphFrame {
+    // Left and right texture coordinates.
+    pub s0: f32,
+    pub s1: f32,
 
-pub use crate::fnt_font::FntFont;
-pub use crate::font_interface::FontInterface;
-pub use crate::glyph_cache::{GlyphCache, GlyphCacheIndex};
-pub use crate::glyph_frame::GlyphFrame;
-pub use crate::ttf_font::TtfFont;
+    // Width scaled into the right perspective for rendering.
+    pub advance_width: f32,
+    pub left_side_bearing: f32,
+}

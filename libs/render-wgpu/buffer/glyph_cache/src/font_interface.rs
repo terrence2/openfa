@@ -12,14 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod fnt_font;
-mod font_interface;
-mod glyph_cache;
-mod glyph_frame;
-mod ttf_font;
+use crate::glyph_frame::GlyphFrame;
 
-pub use crate::fnt_font::FntFont;
-pub use crate::font_interface::FontInterface;
-pub use crate::glyph_cache::{GlyphCache, GlyphCacheIndex};
-pub use crate::glyph_frame::GlyphFrame;
-pub use crate::ttf_font::TtfFont;
+pub trait FontInterface {
+    fn bind_group(&self) -> &wgpu::BindGroup;
+    fn render_height(&self) -> f32;
+    fn can_render_char(&self, c: char) -> bool;
+    fn frame_for(&self, c: char) -> &GlyphFrame;
+    fn pair_kerning(&self, a: char, b: char) -> f32;
+}

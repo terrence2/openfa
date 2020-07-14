@@ -105,8 +105,8 @@ impl ScreenTextRenderPass {
     ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), &global_data.bind_group(), &[]);
-        for (&font, layout_handles) in layout_buffer.layouts_by_font() {
-            let glyph_cache = layout_buffer.glyph_cache(font);
+        for (font_name, layout_handles) in layout_buffer.layouts_by_font() {
+            let glyph_cache = layout_buffer.glyph_cache(font_name);
             rpass.set_bind_group(Group::GlyphCache.index(), &glyph_cache.bind_group(), &[]);
             for &layout_handle in layout_handles {
                 let layout = layout_buffer.layout(layout_handle);

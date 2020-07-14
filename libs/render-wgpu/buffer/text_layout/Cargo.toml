@@ -10,8 +10,6 @@ log = "^ 0.4"
 memoffset = "^ 0.5"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-fnt = { path = "../../../fnt" }
-lib = { path = "../../../lib" }
 frame_graph = { path = "../../../nitrogen/system/frame_graph" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 glyph_cache = { path = "../../../render-wgpu/buffer/glyph_cache" }

@@ -12,26 +12,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::{font_interface::FontInterface, glyph_frame::GlyphFrame};
+
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{ensure, Fallible};
 use fnt::Fnt;
 use gpu::GPU;
-use i386::{Interpreter, Reg};
 use image::{GrayImage, ImageBuffer, Luma};
-use lazy_static::lazy_static;
 use log::trace;
 use rusttype::{Font, Point, Scale};
 use std::collections::HashMap;
-
-lazy_static! {
-    static ref CP437_TO_CHAR: HashMap<u8, char> = {
-        let dos: Vec<u8> = (1..255).collect();
-        let utf = String::from_cp437(dos, &CP437_CONTROL);
-        (1..255).zip(utf.chars()).collect()
-    };
-}
-
-const SCREEN_SCALE: [f32; 2] = [320f32, 240f32];
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct GlyphCacheIndex(usize);
@@ -46,31 +36,13 @@ impl GlyphCacheIndex {
     }
 }
 
-#[derive(Debug)]
-pub struct GlyphFrame {
-    // Left and right texture coordinates.
-    pub s0: f32,
-    pub s1: f32,
-
-    // Width scaled into the right perspective for rendering.
-    pub advance_width: f32,
-    pub left_side_bearing: f32,
-}
-
-pub trait GlyphFontInterface {
-    fn bind_group(&self) -> &wgpu::BindGroup;
-    fn render_height(&self) -> f32;
-    fn can_render_char(&self, c: char) -> bool;
-    fn frame_for(&self, c: char) -> &GlyphFrame;
-    fn pair_kerning(&self, a: char, b: char) -> f32;
-}
-
 pub struct GlyphCache {
     index: GlyphCacheIndex,
-    font: Box<dyn GlyphFontInterface>,
+    font: Box<dyn FontInterface>,
 }
 
 impl GlyphCache {
+    /*
     pub fn new_transparent_fnt(
         fnt: &Fnt,
         index: GlyphCacheIndex,
@@ -79,11 +51,7 @@ impl GlyphCache {
     ) -> Fallible<Self> {
         Ok(Self {
             index,
-            font: Box::new(GlyphCacheFNT::new_transparent_fnt(
-                fnt,
-                bind_group_layout,
-                gpu,
-            )?),
+            font: Box::new(FntFont::new_transparent_fnt(fnt, bind_group_layout, gpu)?),
         })
     }
 
@@ -95,8 +63,12 @@ impl GlyphCache {
     ) -> Fallible<Self> {
         Ok(Self {
             index,
-            font: Box::new(GlyphCacheTTF::new_ttf(bytes, bind_group_layout, gpu)?),
+            font: Box::new(TtfFont::new_ttf(bytes, bind_group_layout, gpu)?),
         })
+    }
+     */
+    pub fn new(index: GlyphCacheIndex, font: Box<dyn FontInterface>) -> Self {
+        Self { index, font }
     }
 
     pub fn render_height(&self) -> f32 {
@@ -145,7 +117,7 @@ impl GlyphCache {
         self.font.pair_kerning(a, b)
     }
 
-    fn upload_texture_luma(
+    pub(crate) fn upload_texture_luma(
         gpu: &mut GPU,
         image_buf: ImageBuffer<Luma<u8>, Vec<u8>>,
     ) -> Fallible<wgpu::TextureView> {
@@ -208,7 +180,7 @@ impl GlyphCache {
         Ok(texture_view)
     }
 
-    fn make_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+    pub(crate) fn make_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -219,253 +191,6 @@ impl GlyphCache {
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
             compare: wgpu::CompareFunction::Never,
-        })
-    }
-}
-
-pub struct GlyphCacheFNT {
-    // These get composited in software, then uploaded in a single texture.
-    bind_group: wgpu::BindGroup,
-
-    // The positions of glyphs within the texture (as needed for layout later)
-    // are stored in a map by glyph index.
-    glyph_frames: HashMap<char, GlyphFrame>,
-
-    // The intended render height of the font in vulkan coordinates.
-    render_height: f32,
-}
-
-impl GlyphFontInterface for GlyphCacheFNT {
-    fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
-    fn render_height(&self) -> f32 {
-        self.render_height
-    }
-
-    fn can_render_char(&self, c: char) -> bool {
-        self.glyph_frames.contains_key(&c)
-    }
-
-    fn frame_for(&self, c: char) -> &GlyphFrame {
-        &self.glyph_frames[&c]
-    }
-
-    fn pair_kerning(&self, _a: char, _b: char) -> f32 {
-        0f32
-    }
-}
-
-impl GlyphCacheFNT {
-    pub fn new_transparent_fnt(
-        fnt: &Fnt,
-        bind_group_layout: &wgpu::BindGroupLayout,
-        gpu: &mut GPU,
-    ) -> Fallible<Self> {
-        trace!("GlyphCacheFNT::new");
-
-        let mut width = 0;
-        for glyph_index in 0..=255 {
-            if !fnt.glyphs.contains_key(&glyph_index) {
-                continue;
-            }
-            width += fnt.glyphs[&glyph_index].width;
-        }
-
-        let mut buf = GrayImage::new(width as u32, fnt.height as u32);
-        for p in buf.pixels_mut() {
-            *p = Luma { data: [0] };
-        }
-
-        let mut interp = Interpreter::new();
-        interp.add_trampoline(0x60_0000, "finish", 0);
-        interp.set_register_value(Reg::EAX, 0xFF_FF_FF_FF);
-        interp.set_register_value(Reg::ECX, width as u32);
-        interp.set_register_value(Reg::EDI, 0x30_0000);
-        interp.map_writable(0x30_0000, buf.into_raw())?;
-
-        let mut x = 0;
-        let mut glyph_frames = HashMap::new();
-        for glyph_index in 0..=255 {
-            if !fnt.glyphs.contains_key(&glyph_index) {
-                continue;
-            }
-            let glyph = &fnt.glyphs[&glyph_index];
-
-            interp.clear_code();
-            interp.add_code(glyph.bytecode.clone());
-            interp.push_stack_value(0x60_0000);
-
-            let rv = interp.interpret(0)?;
-            let (trampoline_name, args) = rv.ok_trampoline()?;
-            ensure!(trampoline_name == "finish", "expect return to finish");
-            ensure!(args.is_empty(), "expect no args out");
-
-            glyph_frames.insert(
-                CP437_TO_CHAR[&glyph_index],
-                GlyphFrame {
-                    s0: x as f32 / width as f32,
-                    s1: (x + glyph.width) as f32 / width as f32,
-                    advance_width: glyph.width as f32 / SCREEN_SCALE[0],
-                    left_side_bearing: 0f32,
-                },
-            );
-            x += glyph.width;
-            interp.set_register_value(Reg::EDI, 0x30_0000 + x as u32);
-        }
-
-        let plane = interp.unmap_writable(0x30_0000)?;
-        let buf =
-            GrayImage::from_raw(width as u32, fnt.height as u32, plane).expect("same parameters");
-
-        let texture_view = GlyphCache::upload_texture_luma(gpu, buf)?;
-        let sampler = GlyphCache::make_sampler(gpu.device());
-
-        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("glyph-cache-FNT-bind-group"),
-            layout: bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::Binding {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        Ok(Self {
-            bind_group,
-            glyph_frames,
-            render_height: fnt.height as f32 / SCREEN_SCALE[1],
-        })
-    }
-}
-
-pub struct GlyphCacheTTF {
-    bind_group: wgpu::BindGroup,
-
-    // Map to positions in the glyph cache.
-    glyph_frames: HashMap<char, GlyphFrame>,
-
-    // The actual font data.
-    font: Font<'static>,
-
-    // The rendered scale of the font.
-    scale: Scale,
-
-    render_height: f32,
-}
-
-impl GlyphFontInterface for GlyphCacheTTF {
-    fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
-    fn render_height(&self) -> f32 {
-        self.render_height
-    }
-
-    fn can_render_char(&self, c: char) -> bool {
-        self.glyph_frames.contains_key(&c)
-    }
-
-    fn frame_for(&self, c: char) -> &GlyphFrame {
-        &self.glyph_frames[&c]
-    }
-
-    fn pair_kerning(&self, a: char, b: char) -> f32 {
-        self.font.pair_kerning(self.scale, a, b)
-    }
-}
-
-impl GlyphCacheTTF {
-    pub fn new_ttf(
-        bytes: &'static [u8],
-        bind_group_layout: &wgpu::BindGroupLayout,
-        gpu: &mut GPU,
-    ) -> Fallible<Self> {
-        trace!("GlyphCacheTTF::new");
-
-        let font = Font::from_bytes(bytes)?;
-
-        let scale = Scale::uniform(64.0);
-        let additional_scale = 8f32;
-        const ORIGIN: Point<f32> = Point { x: 0.0, y: 0.0 };
-        let mut glyph_frames = HashMap::new();
-
-        // Find our aggregate width.
-        let v_metrics = font.v_metrics(scale);
-        let height = v_metrics.ascent - v_metrics.descent;
-        let pixel_height = (height).ceil() as u32;
-        let mut pixel_width = 0u32;
-        for i in 1..255 {
-            let c = CP437_TO_CHAR[&i];
-            let glyph = font.glyph(c).scaled(scale).positioned(ORIGIN);
-            if let Some(bb) = glyph.pixel_bounding_box() {
-                pixel_width += (bb.max.x - bb.min.x) as u32 + 1;
-            }
-        }
-
-        // Extract all necessary glyphs to a texture and upload to GPU.
-        let mut buf = GrayImage::new(pixel_width, pixel_height);
-        let mut offset = 0;
-        for i in 1..255 {
-            let c = CP437_TO_CHAR[&i];
-            let raw_glyph = font.glyph(c).scaled(scale);
-            let h_metrics = raw_glyph.h_metrics();
-            let glyph = raw_glyph.positioned(ORIGIN);
-            if let Some(bb) = glyph.pixel_bounding_box() {
-                glyph.draw(|x, y, v| {
-                    buf.put_pixel(
-                        offset + x,
-                        (v_metrics.ascent + bb.min.y as f32 + y as f32).floor() as u32,
-                        Luma([(v * 255.0) as u8]),
-                    )
-                });
-                let glyph_width = (bb.max.x - bb.min.x) as u32;
-                glyph_frames.insert(
-                    c,
-                    GlyphFrame {
-                        s0: offset as f32 / pixel_width as f32,
-                        s1: (offset + glyph_width) as f32 / pixel_width as f32,
-                        advance_width: h_metrics.advance_width
-                            / (SCREEN_SCALE[0] * additional_scale),
-                        left_side_bearing: h_metrics.left_side_bearing
-                            / (SCREEN_SCALE[0] * additional_scale),
-                    },
-                );
-                offset += glyph_width + 1;
-            }
-        }
-
-        let texture_view = GlyphCache::upload_texture_luma(gpu, buf)?;
-        let sampler = GlyphCache::make_sampler(gpu.device());
-
-        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("glyph-cache-TTF-bind-group"),
-            layout: bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::Binding {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        Ok(Self {
-            bind_group,
-            glyph_frames,
-            font,
-            scale,
-            render_height: scale.y / (SCREEN_SCALE[1] * additional_scale),
         })
     }
 }

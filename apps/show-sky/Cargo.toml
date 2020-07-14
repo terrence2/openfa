@@ -13,8 +13,6 @@ nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 
-lib = { path = "../../libs/lib" }
-
 absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
 command = { path = "../../libs/nitrogen/system/command" }
