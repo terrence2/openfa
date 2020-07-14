@@ -15,7 +15,7 @@
 use crate::glyph_frame::GlyphFrame;
 
 pub trait FontInterface {
-    fn bind_group(&self) -> &wgpu::BindGroup;
+    fn gpu_resources(&self) -> (&wgpu::TextureView, &wgpu::Sampler);
     fn render_height(&self) -> f32;
     fn can_render_char(&self, c: char) -> bool;
     fn frame_for(&self, c: char) -> &GlyphFrame;

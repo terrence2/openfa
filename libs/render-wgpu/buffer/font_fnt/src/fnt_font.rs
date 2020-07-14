@@ -15,7 +15,7 @@
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{ensure, Fallible};
 use fnt::Fnt;
-use glyph_cache::{FontInterface, GlyphCache, GlyphFrame};
+use glyph_cache::{FontInterface, GlyphFrame};
 use gpu::GPU;
 use i386::{Interpreter, Reg};
 use image::{GrayImage, ImageBuffer, Luma};
@@ -35,7 +35,8 @@ lazy_static! {
 
 pub struct FntFont {
     // These get composited in software, then uploaded in a single texture.
-    bind_group: wgpu::BindGroup,
+    texture_view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
 
     // The positions of glyphs within the texture (as needed for layout later)
     // are stored in a map by glyph index.
@@ -46,8 +47,8 @@ pub struct FntFont {
 }
 
 impl FontInterface for FntFont {
-    fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
+    fn gpu_resources(&self) -> (&wgpu::TextureView, &wgpu::Sampler) {
+        (&self.texture_view, &self.sampler)
     }
 
     fn render_height(&self) -> f32 {
@@ -68,11 +69,7 @@ impl FontInterface for FntFont {
 }
 
 impl FntFont {
-    pub fn new(
-        fnt: &Fnt,
-        bind_group_layout: &wgpu::BindGroupLayout,
-        gpu: &mut GPU,
-    ) -> Fallible<Box<dyn FontInterface>> {
+    pub fn new(fnt: &Fnt, gpu: &mut GPU) -> Fallible<Box<dyn FontInterface>> {
         trace!("GlyphCacheFNT::new");
 
         let mut width = 0;
@@ -131,26 +128,22 @@ impl FntFont {
         let buf =
             GrayImage::from_raw(width as u32, fnt.height as u32, plane).expect("same parameters");
 
-        let texture_view = GlyphCache::upload_texture_luma(gpu, buf)?;
-        let sampler = GlyphCache::make_sampler(gpu.device());
-
-        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("glyph-cache-FNT-bind-group"),
-            layout: bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::Binding {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
+        let texture_view = font_common::upload_texture_luma(buf, gpu)?;
+        let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: 0f32,
+            lod_max_clamp: 9_999_999f32,
+            compare: wgpu::CompareFunction::Never,
         });
 
         Ok(Box::new(Self {
-            bind_group,
+            texture_view,
+            sampler,
             glyph_frames,
             render_height: fnt.height as f32 / SCREEN_SCALE[1],
         }) as Box<dyn FontInterface>)

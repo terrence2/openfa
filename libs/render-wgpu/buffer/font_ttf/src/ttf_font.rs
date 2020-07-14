@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::Fallible;
-use glyph_cache::{FontInterface, GlyphCache, GlyphFrame};
+use glyph_cache::{FontInterface, GlyphFrame};
 use gpu::GPU;
 use image::{GrayImage, Luma};
 use lazy_static::lazy_static;
@@ -33,7 +33,8 @@ lazy_static! {
 }
 
 pub struct TtfFont {
-    bind_group: wgpu::BindGroup,
+    texture_view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
 
     // Map to positions in the glyph cache.
     glyph_frames: HashMap<char, GlyphFrame>,
@@ -48,8 +49,8 @@ pub struct TtfFont {
 }
 
 impl FontInterface for TtfFont {
-    fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
+    fn gpu_resources(&self) -> (&wgpu::TextureView, &wgpu::Sampler) {
+        (&self.texture_view, &self.sampler)
     }
 
     fn render_height(&self) -> f32 {
@@ -70,11 +71,7 @@ impl FontInterface for TtfFont {
 }
 
 impl TtfFont {
-    pub fn new(
-        bytes: &'static [u8],
-        bind_group_layout: &wgpu::BindGroupLayout,
-        gpu: &mut GPU,
-    ) -> Fallible<Box<dyn FontInterface>> {
+    pub fn new(bytes: &'static [u8], gpu: &mut GPU) -> Fallible<Box<dyn FontInterface>> {
         trace!("GlyphCacheTTF::new");
 
         let font = Font::from_bytes(bytes)?;
@@ -129,26 +126,22 @@ impl TtfFont {
             }
         }
 
-        let texture_view = GlyphCache::upload_texture_luma(gpu, buf)?;
-        let sampler = GlyphCache::make_sampler(gpu.device());
-
-        let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("glyph-cache-TTF-bind-group"),
-            layout: bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::Binding {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
+        let texture_view = font_common::upload_texture_luma(buf, gpu)?;
+        let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: 0f32,
+            lod_max_clamp: 9_999_999f32,
+            compare: wgpu::CompareFunction::Never,
         });
 
         Ok(Box::new(Self {
-            bind_group,
+            texture_view,
+            sampler,
             glyph_frames,
             font,
             scale,

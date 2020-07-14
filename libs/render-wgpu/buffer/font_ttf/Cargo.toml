@@ -16,3 +16,4 @@ rusttype = "^ 0.7"
 wgpu = "^ 0.5"
 gpu = { path = "../../../nitrogen/system/gpu" }
 glyph_cache = { path = "../../../render-wgpu/buffer/glyph_cache" }
+font_common = { path = "../../../render-wgpu/buffer/font_common" }

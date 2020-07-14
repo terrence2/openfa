@@ -158,7 +158,9 @@ impl TextLayoutBuffer {
         glyph_cache_map.insert(FALLBACK_FONT_NAME.to_owned(), index);
         glyph_caches.push(GlyphCache::new(
             index,
-            TtfFont::new(&QUANTICO_TTF_DATA, &glyph_bind_group_layout, gpu)?,
+            TtfFont::new(&QUANTICO_TTF_DATA, gpu)?,
+            &glyph_bind_group_layout,
+            gpu,
         ));
 
         Ok(Arc::new(RefCell::new(Self {
