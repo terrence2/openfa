@@ -117,7 +117,7 @@ impl GlyphCache {
         self.font.pair_kerning(a, b)
     }
 
-    pub(crate) fn upload_texture_luma(
+    pub fn upload_texture_luma(
         gpu: &mut GPU,
         image_buf: ImageBuffer<Luma<u8>, Vec<u8>>,
     ) -> Fallible<wgpu::TextureView> {
@@ -180,7 +180,7 @@ impl GlyphCache {
         Ok(texture_view)
     }
 
-    pub(crate) fn make_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+    pub fn make_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,

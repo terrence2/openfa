@@ -12,9 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{font_interface::FontInterface, glyph_cache::GlyphCache, glyph_frame::GlyphFrame};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::Fallible;
+use glyph_cache::{FontInterface, GlyphCache, GlyphFrame};
 use gpu::GPU;
 use image::{GrayImage, Luma};
 use lazy_static::lazy_static;

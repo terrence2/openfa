@@ -46,6 +46,8 @@ members = [
         "libs/pkware",
         "libs/pt",
         "libs/render-wgpu/buffer/atmosphere",
+        "libs/render-wgpu/buffer/font_fnt",
+        "libs/render-wgpu/buffer/font_ttf",
         "libs/render-wgpu/buffer/fullscreen",
         "libs/render-wgpu/buffer/global_data",
         "libs/render-wgpu/buffer/glyph_cache",

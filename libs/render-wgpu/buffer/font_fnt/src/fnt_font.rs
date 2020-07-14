@@ -12,10 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{glyph_cache::GlyphCache, FontInterface, GlyphFrame};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{ensure, Fallible};
 use fnt::Fnt;
+use glyph_cache::{FontInterface, GlyphCache, GlyphFrame};
 use gpu::GPU;
 use i386::{Interpreter, Reg};
 use image::{GrayImage, ImageBuffer, Luma};
@@ -83,6 +83,8 @@ impl FntFont {
             width += fnt.glyphs[&glyph_index].width;
         }
 
+        // FIXME: we should probably move bitmap generation into FNT and keep this about
+        //        managing the texture
         let mut buf = GrayImage::new(width as u32, fnt.height as u32);
         for p in buf.pixels_mut() {
             *p = Luma { data: [0] };

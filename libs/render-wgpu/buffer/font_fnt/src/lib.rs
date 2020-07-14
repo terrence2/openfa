@@ -12,10 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod font_interface;
-mod glyph_cache;
-mod glyph_frame;
+mod fnt_font;
 
-pub use crate::font_interface::FontInterface;
-pub use crate::glyph_cache::{GlyphCache, GlyphCacheIndex};
-pub use crate::glyph_frame::GlyphFrame;
+pub use crate::fnt_font::FntFont;

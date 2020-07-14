@@ -19,8 +19,9 @@ use crate::layout::Layout;
 pub use crate::layout_vertex::LayoutVertex;
 
 use failure::Fallible;
+use font_ttf::TtfFont;
 use frame_graph::FrameStateTracker;
-use glyph_cache::{GlyphCache, GlyphCacheIndex, TtfFont};
+use glyph_cache::{GlyphCache, GlyphCacheIndex};
 use gpu::GPU;
 use log::trace;
 use std::{cell::RefCell, collections::HashMap, mem, ops::Range, sync::Arc};

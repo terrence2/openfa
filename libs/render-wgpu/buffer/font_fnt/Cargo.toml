@@ -1,0 +1,18 @@
+[package]
+name = "font_fnt"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+codepage-437 = "^ 0.1.0"
+failure = "^ 0.1.2"
+image = "^ 0.21"
+lazy_static = ">= 1"
+log = ">= 0.4"
+rusttype = "^ 0.7"
+wgpu = "^ 0.5"
+fnt = { path = "../../../fnt" }
+glyph_cache = { path = "../../../render-wgpu/buffer/glyph_cache" }
+gpu = { path = "../../../nitrogen/system/gpu" }
+i386 = { path = "../../../i386" }

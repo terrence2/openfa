@@ -20,9 +20,9 @@ fnt = { path = "../../libs/fnt" }
 frame_graph = { path = "../../libs/nitrogen/system/frame_graph" }
 fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
 geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
+font_fnt = { path = "../../libs/render-wgpu/buffer/font_fnt" }
 galaxy = { path = "../../libs/galaxy" }
 global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
-glyph_cache = { path = "../../libs/render-wgpu/buffer/glyph_cache" }
 gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }
 lib = { path = "../../libs/lib" }
