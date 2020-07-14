@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::Fallible;
-use glyph_cache::{FontInterface, GlyphFrame};
+use font_common::{upload_texture_luma, FontInterface, GlyphFrame};
 use gpu::GPU;
 use image::{GrayImage, Luma};
 use lazy_static::lazy_static;
@@ -126,7 +126,7 @@ impl TtfFont {
             }
         }
 
-        let texture_view = font_common::upload_texture_luma(buf, gpu)?;
+        let texture_view = upload_texture_luma(buf, gpu)?;
         let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,

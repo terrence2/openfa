@@ -12,9 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{font_interface::FontInterface, glyph_frame::GlyphFrame};
-
 use failure::Fallible;
+use font_common::{FontInterface, GlyphFrame};
 use gpu::GPU;
 use image::{GrayImage, ImageBuffer, Luma};
 use log::trace;

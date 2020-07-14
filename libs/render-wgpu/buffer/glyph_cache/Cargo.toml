@@ -11,3 +11,4 @@ lazy_static = ">= 1"
 log = ">= 0.4"
 wgpu = "^ 0.5"
 gpu = { path = "../../../nitrogen/system/gpu" }
+font_common = { path = "../../../render-wgpu/buffer/font_common" }

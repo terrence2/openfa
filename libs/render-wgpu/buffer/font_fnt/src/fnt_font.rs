@@ -15,7 +15,7 @@
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{ensure, Fallible};
 use fnt::Fnt;
-use glyph_cache::{FontInterface, GlyphFrame};
+use font_common::{upload_texture_luma, FontInterface, GlyphFrame};
 use gpu::GPU;
 use i386::{Interpreter, Reg};
 use image::{GrayImage, ImageBuffer, Luma};
@@ -128,7 +128,7 @@ impl FntFont {
         let buf =
             GrayImage::from_raw(width as u32, fnt.height as u32, plane).expect("same parameters");
 
-        let texture_view = font_common::upload_texture_luma(buf, gpu)?;
+        let texture_view = upload_texture_luma(buf, gpu)?;
         let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
