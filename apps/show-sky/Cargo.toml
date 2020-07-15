@@ -13,8 +13,6 @@ nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 
-lib = { path = "../../libs/lib" }
-
 absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
 command = { path = "../../libs/nitrogen/system/command" }
@@ -27,10 +25,10 @@ physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
 
 atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
 fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
-global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
+global_data = { path = "../../libs/nitrogen/wgpu-buffer/global_data" }
 screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { path = "../../libs/render-wgpu/buffer/stars" }
 terrain = { path = "../../libs/render-wgpu/render_pass/terrain" }
 terrain_geo = { path = "../../libs/render-wgpu/buffer/terrain_geo" }
-text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }
+text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }

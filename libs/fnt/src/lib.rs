@@ -24,6 +24,61 @@ use std::{collections::HashMap, mem};
 // Save chars to png when testing.
 const DUMP_CHARS: bool = false;
 
+// Note: a list of all FNT related resources. It's not yet clear how these pieces fit
+// together for all scenarios yet. I believe that the PIC's below hold blending data
+// suitable for several fonts in a certain color against various background.
+const _FONT_FILES: [&str; 12] = [
+    "4X12.FNT",
+    "4X6.FNT",
+    "HUD00.FNT",
+    "HUD01.FNT",
+    "HUD11.FNT",
+    "HUDSYM00.FNT",
+    "HUDSYM01.FNT",
+    "HUDSYM11.FNT",
+    "MAPFONT.FNT",
+    "WIN00.FNT",
+    "WIN01.FNT",
+    "WIN11.FNT",
+];
+
+const _FONT_BACKGROUNDS: [&str; 21] = [
+    "ARMFONT.PIC",
+    "BODYFONT.PIC",
+    "BOLDFONT.PIC",
+    "FNTWPNB.PIC",
+    "FNTWPNY.PIC",
+    "FONT4X6.PIC",
+    "FONTACD.PIC",
+    "FONTACT.PIC",
+    "FONTDFD.PIC",
+    "FONTDFT.PIC",
+    "HEADFONT.PIC",
+    "LRGFONT.PIC",
+    "MAPFONT.PIC",
+    "MENUFONT.PIC",
+    "MFONT320.PIC",
+    "MPFONT.PIC",
+    "PANELFNT.PIC",
+    "PANLFNT2.PIC",
+    "SMLFONT.PIC",
+    "VIDEOFNT.PIC",
+    "WHEELFNT.PIC",
+];
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Font {
+    HUD11,
+}
+
+impl Font {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::HUD11 => "hud11",
+        }
+    }
+}
+
 pub struct GlyphInfo {
     pub glyph_index: u8,
     pub glyph_char: String,
@@ -39,7 +94,7 @@ pub struct Fnt {
 const FNT_LOAD_BASE: u32 = 0x0000_0000;
 
 impl Fnt {
-    pub fn from_bytes(_game: &str, _name: &str, bytes: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
         let mut pe = PE::from_bytes(bytes)?;
         pe.relocate(FNT_LOAD_BASE)?;
 
@@ -191,7 +246,7 @@ mod tests {
             );
 
             let lib = omni.library(game);
-            let fnt = Fnt::from_bytes(game, name, &lib.load(name)?)?;
+            let fnt = Fnt::from_bytes(&lib.load(name)?)?;
             fnt.analyze(game, name)?;
         }
 

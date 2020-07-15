@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-#include <buffer/glyph_cache/include/global.glsl>
+#include <wgpu-buffer/text_layout/include/global.glsl>
 
 layout(location = 0) in vec2 v_tex_coord;
 layout(location = 1) in vec4 v_color;

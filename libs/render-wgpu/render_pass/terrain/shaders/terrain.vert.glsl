@@ -15,7 +15,7 @@
 #version 450
 #include <common/shader_globals/include/global.glsl>
 #include <common/shader_globals/include/quaternion.glsl>
-#include <buffer/global_data/include/library.glsl>
+#include <wgpu-buffer/global_data/include/global_data.glsl>
 
 #define EARTH_TO_KM 6370.0
 

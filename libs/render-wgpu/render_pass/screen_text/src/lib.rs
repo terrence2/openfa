@@ -17,7 +17,7 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
 use shader_globals::Group;
-use text_layout::{LayoutBuffer, LayoutVertex};
+use text_layout::{LayoutVertex, TextLayoutBuffer};
 
 pub struct ScreenTextRenderPass {
     pipeline: wgpu::RenderPipeline,
@@ -27,7 +27,7 @@ impl ScreenTextRenderPass {
     pub fn new(
         gpu: &mut GPU,
         global_data: &GlobalParametersBuffer,
-        layout_buffer: &LayoutBuffer,
+        layout_buffer: &TextLayoutBuffer,
     ) -> Fallible<Self> {
         trace!("ScreenTextRenderPass::new");
 
@@ -101,12 +101,12 @@ impl ScreenTextRenderPass {
         &'a self,
         mut rpass: wgpu::RenderPass<'a>,
         global_data: &'a GlobalParametersBuffer,
-        layout_buffer: &'a LayoutBuffer,
+        layout_buffer: &'a TextLayoutBuffer,
     ) -> wgpu::RenderPass<'a> {
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), &global_data.bind_group(), &[]);
-        for (&font, layout_handles) in layout_buffer.layouts_by_font() {
-            let glyph_cache = layout_buffer.glyph_cache(font);
+        for (font_name, layout_handles) in layout_buffer.layouts_by_font() {
+            let glyph_cache = layout_buffer.glyph_cache(font_name);
             rpass.set_bind_group(Group::GlyphCache.index(), &glyph_cache.bind_group(), &[]);
             for &layout_handle in layout_handles {
                 let layout = layout_buffer.layout(layout_handle);

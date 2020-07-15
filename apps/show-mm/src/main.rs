@@ -17,6 +17,7 @@ use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
 use failure::{bail, Fallible};
+use fnt::Font;
 use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
@@ -40,7 +41,7 @@ use std::time::Instant;
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
 use t2_terrain::T2TerrainRenderPass;
-use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
+use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 use xt::TypeManager;
 
 make_opt_struct!(
@@ -60,7 +61,7 @@ make_frame_graph!(
             shape_instance_buffer: ShapeInstanceBuffer,
             stars: StarsBuffer,
             t2: T2Buffer,
-            text_layout: LayoutBuffer
+            text_layout: TextLayoutBuffer
         };
         precompute: {};
         renderers: [
@@ -241,7 +242,7 @@ fn main() -> Fallible<()> {
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
-    let text_layout_buffer = LayoutBuffer::new(galaxy.library(), &mut gpu)?;
+    let text_layout_buffer = TextLayoutBuffer::new(&mut gpu)?;
 
     let mut frame_graph = FrameGraph::new(
         &mut gpu,
@@ -257,7 +258,7 @@ fn main() -> Fallible<()> {
 
     let fps_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::HUD11, "", &gpu)?
+        .add_screen_text(Font::HUD11.name(), "", &gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
@@ -308,8 +309,9 @@ fn main() -> Fallible<()> {
 
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_in_tile(
-                t2_buffer.borrow().t2(),
+            //.make_upload_buffer_for_arcball_in_tile(
+            .make_upload_buffer(
+                //t2_buffer.borrow().t2(),
                 arcball.camera(),
                 &gpu,
                 frame_graph.tracker_mut(),

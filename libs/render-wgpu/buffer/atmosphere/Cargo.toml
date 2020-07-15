@@ -27,4 +27,4 @@ spirv-reflect = "^ 0.2"
 input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
+build-shaders = { path = "../../../nitrogen/wgpu-render/build-shaders" }

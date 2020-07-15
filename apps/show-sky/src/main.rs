@@ -24,7 +24,6 @@ use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
-use lib::Library;
 use log::trace;
 use nalgebra::convert;
 use orrery::Orrery;
@@ -36,7 +35,7 @@ use stars::StarsBuffer;
 use std::time::Instant;
 use terrain::TerrainRenderPass;
 use terrain_geo::{CpuDetailLevel, GpuDetailLevel, TerrainGeoBuffer};
-use text_layout::{Font, LayoutBuffer, TextAnchorH, TextAnchorV, TextPositionH, TextPositionV};
+use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 
 make_frame_graph!(
     FrameGraph {
@@ -46,7 +45,7 @@ make_frame_graph!(
             globals: GlobalParametersBuffer,
             stars: StarsBuffer,
             terrain_geo: TerrainGeoBuffer,
-            text_layout: LayoutBuffer
+            text_layout: TextLayoutBuffer
         };
         precompute: { terrain_geo };
         renderers: [
@@ -59,9 +58,6 @@ make_frame_graph!(
 
 fn main() -> Fallible<()> {
     TermLogger::init(LevelFilter::Warn, Config::default())?;
-
-    use std::sync::Arc;
-    let lib = Arc::new(Box::new(Library::empty()?));
 
     let system_bindings = Bindings::new("map")
         .bind("+target_up", "Up")?
@@ -87,7 +83,7 @@ fn main() -> Fallible<()> {
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
     let terrain_geo_buffer = TerrainGeoBuffer::new(cpu_detail, gpu_detail, &mut gpu)?;
-    let layout_buffer = LayoutBuffer::new(&lib, &mut gpu)?;
+    let text_layout_buffer = TextLayoutBuffer::new(&mut gpu)?;
 
     let mut frame_graph = FrameGraph::new(
         &mut gpu,
@@ -96,13 +92,13 @@ fn main() -> Fallible<()> {
         &globals_buffer,
         &stars_buffer,
         &terrain_geo_buffer,
-        &layout_buffer,
+        &text_layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
 
-    let fps_handle = layout_buffer
+    let fps_handle = text_layout_buffer
         .borrow_mut()
-        .add_screen_text(Font::QUANTICO, "", &gpu)?
+        .add_screen_text("", "", &gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
         .with_horizontal_anchor(TextAnchorH::Left)
@@ -184,7 +180,7 @@ fn main() -> Fallible<()> {
             &gpu,
             frame_graph.tracker_mut(),
         )?;
-        layout_buffer
+        text_layout_buffer
             .borrow_mut()
             .make_upload_buffer(&gpu, frame_graph.tracker_mut())?;
         frame_graph.run(&mut gpu)?;
@@ -200,7 +196,7 @@ fn main() -> Fallible<()> {
             frame_time.subsec_micros(),
         );
         fps_handle
-            .grab(&mut layout_buffer.borrow_mut())
+            .grab(&mut text_layout_buffer.borrow_mut())
             .set_span(&ts);
     }
 }

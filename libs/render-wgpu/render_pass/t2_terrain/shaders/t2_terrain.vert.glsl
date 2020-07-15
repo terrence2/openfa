@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <common/shader_globals/include/global.glsl>
-#include <buffer/global_data/include/library.glsl>
+#include <wgpu-buffer/global_data/include/global_data.glsl>
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;

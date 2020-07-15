@@ -12,8 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod fnt_font;
 
-layout(set = 2, binding = 0) buffer LayoutData {
-    vec4 text_layout_position;
-    vec4 text_layout_color;
-};
+pub use crate::fnt_font::FntFont;
