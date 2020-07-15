@@ -13,6 +13,6 @@ log = ">= 0.4"
 rusttype = "^ 0.7"
 wgpu = "^ 0.5"
 fnt = { path = "../../../fnt" }
-font_common = { path = "../../../render-wgpu/buffer/font_common" }
+font_common = { path = "../../../nitrogen/wgpu-buffer/font_common" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 i386 = { path = "../../../i386" }

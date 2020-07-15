@@ -16,7 +16,7 @@
 #include <common/shader_globals/include/global.glsl>
 #include <buffer/atmosphere/include/global.glsl>
 #include <buffer/stars/include/global.glsl>
-#include <buffer/global_data/include/global.glsl>
+#include <wgpu-buffer/global_data/include/global_data.glsl>
 
 #include <buffer/atmosphere/include/descriptorset.glsl>
 #include <buffer/atmosphere/include/library.glsl>

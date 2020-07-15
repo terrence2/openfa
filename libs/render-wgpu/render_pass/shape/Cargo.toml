@@ -8,7 +8,7 @@ edition = "2018"
 failure = "^ 0.1.2"
 wgpu = "^ 0.5"
 gpu = { path = "../../../nitrogen/system/gpu" }
-global_data = { path = "../../../render-wgpu/buffer/global_data" }
+global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
@@ -23,4 +23,4 @@ pal = { path = "../../../pal" }
 universe = { path = "../../../universe" }
 
 [build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
+build-shaders = { path = "../../../nitrogen/wgpu-render/build-shaders" }

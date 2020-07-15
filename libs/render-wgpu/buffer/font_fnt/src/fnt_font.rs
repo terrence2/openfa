@@ -18,7 +18,7 @@ use fnt::Fnt;
 use font_common::{upload_texture_luma, FontInterface, GlyphFrame};
 use gpu::GPU;
 use i386::{Interpreter, Reg};
-use image::{GrayImage, ImageBuffer, Luma};
+use image::{GrayImage, Luma};
 use lazy_static::lazy_static;
 use log::trace;
 use std::collections::HashMap;
@@ -69,7 +69,7 @@ impl FontInterface for FntFont {
 }
 
 impl FntFont {
-    pub fn new(fnt: &Fnt, gpu: &mut GPU) -> Fallible<Box<dyn FontInterface>> {
+    pub fn from_fnt(fnt: &Fnt, gpu: &mut GPU) -> Fallible<Box<dyn FontInterface>> {
         trace!("GlyphCacheFNT::new");
 
         let mut width = 0;

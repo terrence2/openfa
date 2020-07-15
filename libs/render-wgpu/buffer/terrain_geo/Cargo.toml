@@ -28,4 +28,4 @@ universe = { path = "../../../universe" }
 input = { path = "../../../nitrogen/system/input" }
 
 [build-dependencies]
-build-shaders = { path = "../../../render-wgpu/common/build-shaders" }
+build-shaders = { path = "../../../nitrogen/wgpu-render/build-shaders" }

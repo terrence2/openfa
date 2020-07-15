@@ -22,7 +22,7 @@ fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
 geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
 font_fnt = { path = "../../libs/render-wgpu/buffer/font_fnt" }
 galaxy = { path = "../../libs/galaxy" }
-global_data = { path = "../../libs/render-wgpu/buffer/global_data" }
+global_data = { path = "../../libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }
 lib = { path = "../../libs/lib" }
@@ -33,4 +33,4 @@ shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { path = "../../libs/render-wgpu/buffer/stars" }
-text_layout = { path = "../../libs/render-wgpu/buffer/text_layout" }
+text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }

@@ -309,8 +309,9 @@ fn main() -> Fallible<()> {
 
         globals_buffer
             .borrow()
-            .make_upload_buffer_for_arcball_in_tile(
-                t2_buffer.borrow().t2(),
+            //.make_upload_buffer_for_arcball_in_tile(
+            .make_upload_buffer(
+                //t2_buffer.borrow().t2(),
                 arcball.camera(),
                 &gpu,
                 frame_graph.tracker_mut(),

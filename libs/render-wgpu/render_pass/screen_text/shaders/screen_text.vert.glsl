@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-#include <buffer/global_data/include/global.glsl>
-#include <buffer/text_layout/include/global.glsl>
+#include <wgpu-buffer/global_data/include/global_data.glsl>
+#include <wgpu-buffer/text_layout/include/global.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 1) in vec2 tex_coord;
