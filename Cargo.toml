@@ -53,7 +53,6 @@ members = [
         "libs/render-wgpu/buffer/stars",
         "libs/render-wgpu/buffer/terrain_geo",
         "libs/render-wgpu/buffer/t2_buffer",
-        "libs/render-wgpu/common/shader_globals",
         "libs/render-wgpu/render_pass/screen_text",
         "libs/render-wgpu/render_pass/shape",
         "libs/render-wgpu/render_pass/skybox",
@@ -63,6 +62,7 @@ members = [
         "libs/sh",
         "libs/star_catalog",
         "libs/t2",
+        "libs/wgpu-render/ofa_groups",
         "libs/xt",
 ]
 

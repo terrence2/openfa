@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <wgpu-buffer/global_data/include/global_data.glsl>
-#include <wgpu-buffer/text_layout/include/global.glsl>
+#include <wgpu-buffer/text_layout/include/text_layout.glsl>
 
 layout(location = 0) in vec2 position;
 layout(location = 1) in vec2 tex_coord;

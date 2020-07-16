@@ -17,7 +17,7 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
-use shader_globals::Group;
+use shader_shared::Group;
 use t2_buffer::{T2Buffer, T2Vertex};
 
 pub struct T2TerrainRenderPass {
