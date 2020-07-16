@@ -12,7 +12,7 @@ atmosphere = { path = "../../../render-wgpu/buffer/atmosphere" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
-shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
+shader_shared = { path = "../../../nitrogen/wgpu-render/shader_shared" }
 stars = { path = "../../../render-wgpu/buffer/stars" }
 
 [build-dependencies]

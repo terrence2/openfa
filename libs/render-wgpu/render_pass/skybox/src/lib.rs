@@ -21,7 +21,7 @@ use fullscreen::{FullscreenBuffer, FullscreenVertex};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
-use shader_globals::Group;
+use shader_shared::Group;
 use stars::StarsBuffer;
 
 pub struct SkyboxRenderPass {

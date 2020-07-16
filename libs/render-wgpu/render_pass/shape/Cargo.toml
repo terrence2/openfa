@@ -9,7 +9,8 @@ failure = "^ 0.1.2"
 wgpu = "^ 0.5"
 gpu = { path = "../../../nitrogen/system/gpu" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
-shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
+ofa_groups = { path = "../../../wgpu-render/ofa_groups" }
+shader_shared = { path = "../../../nitrogen/wgpu-render/shader_shared" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
 

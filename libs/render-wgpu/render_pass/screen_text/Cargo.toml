@@ -10,7 +10,7 @@ log = "^ 0.4"
 wgpu = "^ 0.5"
 gpu = { path = "../../../nitrogen/system/gpu" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
-shader_globals = { path = "../../../render-wgpu/common/shader_globals" }
+shader_shared = { path = "../../../nitrogen/wgpu-render/shader_shared" }
 text_layout = { path = "../../../nitrogen/wgpu-buffer/text_layout" }
 
 [build-dependencies]

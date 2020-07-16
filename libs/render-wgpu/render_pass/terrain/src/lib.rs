@@ -17,7 +17,7 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
-use shader_globals::Group;
+use shader_shared::Group;
 use terrain_geo::{TerrainGeoBuffer, TerrainVertex};
 
 pub struct TerrainRenderPass {

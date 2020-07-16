@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-#include <common/shader_globals/include/global.glsl>
-#include <common/shader_globals/include/quaternion.glsl>
+#include <wgpu-render/shader_shared/include/consts.glsl>
+#include <wgpu-render/shader_shared/include/quaternion.glsl>
 #include <wgpu-buffer/global_data/include/global_data.glsl>
 
 #define EARTH_TO_KM 6370.0
