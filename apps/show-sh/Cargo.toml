@@ -31,6 +31,6 @@ orrery = { path = "../../libs/nitrogen/sim/orrery" }
 screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
-skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
-stars = { path = "../../libs/render-wgpu/buffer/stars" }
+skybox = { path = "../../libs/nitrogen/wgpu-render/skybox" }
+stars = { path = "../../libs/nitrogen/wgpu-buffer/stars" }
 text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }
