@@ -17,9 +17,9 @@
 #include <wgpu-buffer/global_data/include/global_data.glsl>
 // #include <buffer/terrain/include/global.glsl>
 
-//#include <buffer/atmosphere/include/global.glsl>
-//#include <buffer/atmosphere/include/descriptorset.glsl>
-//#include <buffer/atmosphere/include/library.glsl>
+//#include <wgpu-buffer/atmosphere/include/global.glsl>
+//#include <wgpu-buffer/atmosphere/include/descriptorset.glsl>
+//#include <wgpu-buffer/atmosphere/include/library.glsl>
 
 //layout(location = 0) in vec4 v_position; // hm tile xyz
 //layout(location = 1) in vec4 v_normal; // hm tile xyz

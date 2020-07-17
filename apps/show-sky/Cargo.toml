@@ -22,13 +22,13 @@ gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
 physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
-
-atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
-fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
+fullscreen = { path = "../../libs/nitrogen/wgpu-buffer/fullscreen" }
 global_data = { path = "../../libs/nitrogen/wgpu-buffer/global_data" }
-screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
+screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }
+text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }
+
 skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
 stars = { path = "../../libs/render-wgpu/buffer/stars" }
 terrain = { path = "../../libs/render-wgpu/render_pass/terrain" }
 terrain_geo = { path = "../../libs/render-wgpu/buffer/terrain_geo" }
-text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }

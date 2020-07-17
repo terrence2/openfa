@@ -14,12 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <wgpu-render/shader_shared/include/consts.glsl>
-#include <buffer/atmosphere/include/global.glsl>
+#include <wgpu-buffer/atmosphere/include/global.glsl>
 #include <buffer/stars/include/global.glsl>
 #include <wgpu-buffer/global_data/include/global_data.glsl>
 
-#include <buffer/atmosphere/include/descriptorset.glsl>
-#include <buffer/atmosphere/include/library.glsl>
+#include <wgpu-buffer/atmosphere/include/descriptorset.glsl>
+#include <wgpu-buffer/atmosphere/include/library.glsl>
 
 layout(location = 0) in vec3 v_ray;
 layout(location = 0) out vec4 f_color;

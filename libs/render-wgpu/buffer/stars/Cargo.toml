@@ -15,13 +15,13 @@ static_assertions = "^ 1"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
 camera = { path = "../../../nitrogen/sim/camera" }
-star_catalog = { path = "../../../star_catalog" }
+star_catalog = { path = "../../../nitrogen/sim/star_catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 
 [dev-dependencies]
 absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
 command = { path = "../../../nitrogen/system/command" }
-fullscreen = { path = "../../../render-wgpu/buffer/fullscreen" }
+fullscreen = { path = "../../../nitrogen/wgpu-buffer/fullscreen" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 input = { path = "../../../nitrogen/system/input" }
 
