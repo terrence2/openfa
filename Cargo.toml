@@ -21,10 +21,8 @@ members = [
 
         # Legacy: avoid pulling in all of vulkano
         # "apps/dump-vulkan",
-        # "apps/show-sh-raw",
 
         "libs/animate",
-        "libs/asset",
         "libs/catalog",
         "libs/dlg",
         "libs/fnt",
