@@ -14,7 +14,7 @@ memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
-animate = { path = "../../../animate" }
+animate = { path = "../../../nitrogen/sim/animate" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 i386 = { path = "../../../i386" }
 lib = { path = "../../../lib" }
