@@ -22,7 +22,7 @@ omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
 sh = { path = "../../../sh" }
-universe = { path = "../../../universe" }
+universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
 input = { path = "../../../nitrogen/system/input" }

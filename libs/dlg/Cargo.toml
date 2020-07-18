@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 failure = ">= 0.1.2"
 ansi = { path = "../nitrogen/system/ansi" }
-packed_struct = { path = "../packed_struct" }
+packed_struct = { path = "../nitrogen/system/packed_struct" }
 peff = { path = "../peff" }
 reverse = { path = "../reverse" }
 

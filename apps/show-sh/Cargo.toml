@@ -13,12 +13,12 @@ nalgebra = "^ 0.20"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
-atmosphere = { path = "../../libs/render-wgpu/buffer/atmosphere" }
+atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
 command = { path = "../../libs/nitrogen/system/command" }
 fnt = { path = "../../libs/fnt" }
 frame_graph = { path = "../../libs/nitrogen/system/frame_graph" }
-fullscreen = { path = "../../libs/render-wgpu/buffer/fullscreen" }
+fullscreen = { path = "../../libs/nitrogen/wgpu-buffer/fullscreen" }
 geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
 font_fnt = { path = "../../libs/render-wgpu/buffer/font_fnt" }
 galaxy = { path = "../../libs/galaxy" }
@@ -28,9 +28,9 @@ input = { path = "../../libs/nitrogen/system/input" }
 lib = { path = "../../libs/lib" }
 omnilib = { path = "../../libs/omnilib" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
-screen_text = { path = "../../libs/render-wgpu/render_pass/screen_text" }
+screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
-skybox = { path = "../../libs/render-wgpu/render_pass/skybox" }
-stars = { path = "../../libs/render-wgpu/buffer/stars" }
+skybox = { path = "../../libs/nitrogen/wgpu-render/skybox" }
+stars = { path = "../../libs/nitrogen/wgpu-buffer/stars" }
 text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }

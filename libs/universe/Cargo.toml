@@ -1,9 +1,0 @@
-[package]
-name = "universe"
-version = "0.1.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2018"
-
-[dependencies]
-legion = "= 0.2.4"
-nalgebra = "^ 0.20"

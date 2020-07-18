@@ -16,7 +16,7 @@ lib = { path = "../../../lib" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
-universe = { path = "../../../universe" }
+universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
 input = { path = "../../../nitrogen/system/input" }

@@ -21,7 +21,7 @@ galaxy = { path = "../../../galaxy" }
 input = { path = "../../../nitrogen/system/input" }
 omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
-universe = { path = "../../../universe" }
+universe = { path = "../../../nitrogen/sim/universe" }
 
 [build-dependencies]
 build-shaders = { path = "../../../nitrogen/wgpu-render/build-shaders" }
