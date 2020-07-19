@@ -16,6 +16,6 @@ log = ">= 0.4"
 memmap = "^ 0.6"
 regex = ">= 1"
 lzss = { path = "../lzss" }
-catalog = { path = "../catalog" }
+catalog = { path = "../nitrogen/system/catalog" }
 packed_struct = { path = "../nitrogen/system/packed_struct" }
 pkware = { path = "../pkware" }

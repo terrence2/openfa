@@ -239,7 +239,8 @@ mod test {
             let types = TypeManager::new(lib.clone());
             let contents = lib.load_text(name)?;
             let mm = MissionMap::from_str(&contents, &types, &lib)?;
-            let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &lib)?;
+            let system_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
+            let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &system_palette)?;
 
             let mut pic_data = HashMap::new();
             let base_name = mm.get_base_texture_name()?;

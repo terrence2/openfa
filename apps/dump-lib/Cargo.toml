@@ -8,4 +8,5 @@ edition = "2018"
 failure = ">= 0.1.2"
 humansize = ">= 1.0.1"
 structopt = ">= 0.2"
+catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/lib" }
