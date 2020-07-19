@@ -17,7 +17,9 @@
 
 #![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
-use catalog::{Catalog, DirectoryDrawer, DrawerFileId, DrawerFileMetadata, DrawerInterface};
+use catalog::{
+    Catalog, DirectoryDrawer, DrawerFileId, DrawerFileMetadata, DrawerInterface, FileId,
+};
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, err_msg, Fallible};
 use glob::{MatchOptions, Pattern};
@@ -29,6 +31,7 @@ use regex::Regex;
 use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
+    env,
     ffi::OsStr,
     fs,
     io::Read,
@@ -120,7 +123,7 @@ impl Priority {
 
     fn as_drawer_priority(&self) -> i64 {
         let offset = (self.priority * 26 + self.version) as i64;
-        i64::MAX - offset
+        -offset
     }
 }
 
@@ -287,6 +290,251 @@ impl LibFile {
     }
 }
 
+// FIXME: should this all be in Galaxy?
+pub struct GameInfo {
+    pub name: &'static str,
+    pub long_name: &'static str,
+    pub developer: &'static str,
+    pub publisher: &'static str,
+    pub release_year: usize,
+    pub release_month: usize,
+    pub release_day: usize,
+    pub test_dir: &'static str,
+    pub allow_packed_t2: bool,
+}
+
+impl GameInfo {
+    pub fn packed_label(&self) -> String {
+        format!("packed:{}", self.test_dir)
+    }
+
+    pub fn unpacked_label(&self) -> String {
+        format!("unpacked:{}", self.test_dir)
+    }
+
+    pub fn label(&self) -> String {
+        let use_packed = env::var("USE_PACKED").unwrap_or("0".to_owned());
+        if use_packed == "1" || use_packed.to_ascii_lowercase().starts_with("t") {
+            self.packed_label()
+        } else {
+            self.unpacked_label()
+        }
+    }
+}
+
+const ATF: GameInfo = GameInfo {
+    name: "ATF",
+    long_name: "Jane's ATF: Advanced Tactical Fighters",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    test_dir: "ATF",
+    release_year: 1996,
+    release_month: 3,
+    release_day: 31,
+    allow_packed_t2: false,
+};
+
+const ATF_NATO: GameInfo = GameInfo {
+    name: "ATF Nato Fighters",
+    long_name: "Jane's ATF: Nato Fighters",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1996,
+    release_month: 9,
+    release_day: 30,
+    test_dir: "ATFNATO",
+    allow_packed_t2: false,
+};
+
+const ATF_GOLD: GameInfo = GameInfo {
+    name: "ATF Gold",
+    long_name: "Jane's ATF: Gold Edition",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1997,
+    release_month: 0,
+    release_day: 0,
+    test_dir: "ATFGOLD",
+    allow_packed_t2: true,
+};
+
+const USNF: GameInfo = GameInfo {
+    name: "USNF",
+    long_name: "U.S. Navy Fighters",
+    developer: "Electronic Arts Inc.",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1994,
+    release_month: 11,
+    release_day: 1,
+    test_dir: "USNF",
+    allow_packed_t2: false,
+};
+
+const USMF: GameInfo = GameInfo {
+    name: "MF",
+    long_name: "U.S. Navy Fighters Expansion Disk: Marine Fighters",
+    developer: "Electronic Arts Inc.",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1995,
+    release_month: 0,
+    release_day: 0,
+    test_dir: "MF",
+    allow_packed_t2: false,
+};
+
+const USNF97: GameInfo = GameInfo {
+    name: "US Navy Fighters '97",
+    long_name: "Jane's US Navy Fighters '97",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1996,
+    release_month: 11,
+    release_day: 0,
+    test_dir: "USNF97",
+    allow_packed_t2: true,
+};
+
+const FIGHTERS_ANTHOLOGY: GameInfo = GameInfo {
+    name: "Fighters Anthology",
+    long_name: "Jane's Fighters Anthology",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1998,
+    release_month: 0,
+    release_day: 0,
+    test_dir: "FA",
+    allow_packed_t2: true,
+};
+
+pub const GAME_INFO: [&'static GameInfo; 7] = [
+    &USNF,
+    &USMF,
+    &ATF,
+    &ATF_NATO,
+    &USNF97,
+    &ATF_GOLD,
+    &FIGHTERS_ANTHOLOGY,
+];
+
+// FA Engine aware lookup of asset files. This can run in several modes:
+//   1) Collect all games as tags under test_data/packed and add lib drawers
+//   2) Collect all games as tags under test_data/unpacked and add dir drawers
+//   3) Collect all files under a single tag in the current directory.
+pub struct CatalogBuilder;
+
+impl CatalogBuilder {
+    pub fn build() -> Fallible<Catalog> {
+        let mut catalog = Catalog::empty();
+
+        let cwd = env::current_dir()?;
+
+        // Load any T2 and LIBs in the current directory under the default label.
+        catalog.add_drawer(DirectoryDrawer::from_directory_with_extension(
+            101, &cwd, "t2",
+        )?)?;
+        for raw_entry in fs::read_dir(&cwd)? {
+            if let Ok(entry) = raw_entry {
+                if let Some(ext) = entry.path().extension() {
+                    if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
+                        catalog.add_drawer(LibDrawer::from_path(100, &entry.path())?)?;
+                    }
+                }
+            }
+        }
+
+        // Look up the test directories and load each in a label.
+        let test_data_dir = Self::find_test_data_dir(cwd);
+        if let Some(test_dir) = test_data_dir {
+            let base_pack_dir = test_dir.join("packed");
+            let base_loose_dir = test_dir.join("unpacked");
+            for game in &GAME_INFO {
+                let pack_dir = base_pack_dir.join(game.test_dir);
+                for raw_entry in fs::read_dir(&pack_dir)? {
+                    if let Ok(entry) = raw_entry {
+                        if let Some(ext) = entry.path().extension() {
+                            if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
+                                let priority =
+                                    Priority::from_path(&entry.path())?.as_drawer_priority();
+                                catalog.add_labeled_drawer(
+                                    &game.packed_label(),
+                                    LibDrawer::from_path(priority, &entry.path())?,
+                                )?;
+                            }
+                        }
+                    }
+                }
+
+                let loose_dir = base_loose_dir.join(game.test_dir);
+                for raw_entry in fs::read_dir(&loose_dir)? {
+                    if let Ok(entry) = raw_entry {
+                        if let Some(ext) = entry.path().extension() {
+                            if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
+                                let priority =
+                                    Priority::from_path(&entry.path())?.as_drawer_priority();
+                                catalog.add_labeled_drawer(
+                                    &game.unpacked_label(),
+                                    DirectoryDrawer::from_directory(priority, &entry.path())?,
+                                )?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(catalog)
+    }
+
+    pub fn build_and_select(inputs: &[String]) -> Fallible<(Catalog, Vec<FileId>)> {
+        let catalog = Self::build()?;
+        let mut selected = Vec::new();
+
+        let fuzzy = MatchOptions {
+            case_sensitive: false,
+            require_literal_leading_dot: false,
+            require_literal_separator: true,
+        };
+        for input in inputs {
+            // Expand input into a game match and a name match.
+            let (game_input, name_input) = if input.contains(':') {
+                let parts = input.split(':').collect::<Vec<_>>();
+                (
+                    parts[parts.len() - 2].to_owned(),
+                    parts[parts.len() - 1].to_owned(),
+                )
+            } else {
+                (catalog.default_label().to_owned(), input.to_owned())
+            };
+
+            // Match against all games.
+            let game_pattern = Pattern::new(&game_input)?;
+            for game in &GAME_INFO {
+                let game_label = game.label();
+                if game_pattern.matches_with(game.test_dir, fuzzy) {
+                    let matching = catalog.find_labeled_matching(&game_label, &name_input)?;
+                    selected.extend_from_slice(&matching);
+                }
+            }
+        }
+
+        Ok((catalog, selected))
+    }
+
+    fn find_test_data_dir(mut cwd: PathBuf) -> Option<PathBuf> {
+        loop {
+            if cwd.join("test_data").exists() {
+                return Some(cwd.join("test_data"));
+            }
+            if let Some(next) = cwd.parent() {
+                cwd = next.to_owned();
+            } else {
+                break;
+            }
+        }
+        None
+    }
+}
+
 pub struct LibDrawer {
     drawer_index: HashMap<DrawerFileId, String>,
     index: HashMap<DrawerFileId, PackedFileInfo>,
@@ -333,16 +581,18 @@ impl LibDrawer {
             index.insert(dfid, info);
         }
 
+        let name = path
+            .file_name()
+            .expect("a file")
+            .to_string_lossy()
+            .to_string();
+
         Ok(Box::new(Self {
             drawer_index,
             index,
             data: map,
             priority,
-            name: path
-                .file_name()
-                .expect("a file")
-                .to_string_lossy()
-                .to_string(),
+            name,
         }))
     }
 }
@@ -653,16 +903,10 @@ impl Library {
         let mut catalog = Catalog::empty();
         for libpath in libpaths {
             let prio = Priority::from_path(&libpath)?;
-            let name = libpath
-                .file_name()
-                .expect("name")
-                .to_string_lossy()
-                .to_string();
             if libpath.is_file() {
                 catalog.add_drawer(LibDrawer::from_path(prio.as_drawer_priority(), libpath)?)?;
             } else if libpath.is_dir() {
                 catalog.add_drawer(DirectoryDrawer::from_directory(
-                    &name,
                     prio.priority as i64,
                     libpath,
                 )?)?;
@@ -870,7 +1114,6 @@ mod tests {
     fn library_load_all_files_in_all_libfiles() -> Fallible<()> {
         let libs = Library::from_file_search(Path::new("../../test_data/packed/FA"))?;
         for name in libs.find_matching("*")?.iter() {
-            println!("At: {}", name);
             let data = libs.load(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
@@ -881,7 +1124,6 @@ mod tests {
     fn library_load_all_files_in_all_libdirs() -> Fallible<()> {
         let libs = Library::from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
         for name in libs.find_matching("*")?.iter() {
-            println!("At: {}", name);
             let data = libs.load(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
@@ -889,21 +1131,8 @@ mod tests {
     }
 
     #[test]
-    fn mask_lower_priority_files() -> Fallible<()> {
-        let libs = Library::from_dir_search(Path::new("./test_data/masking"))?;
-        let txt = libs.load_text("FILE.TXT")?;
-        assert_eq!(txt, "20b\n");
-        let libpaths = libs.find_masked("FILE.TXT")?;
-        for libpath in libpaths.iter() {
-            let txt = libs.load_masked_text("FILE.TXT", libpath)?;
-            assert!(txt == "10\n" || txt == "20\n" || txt == "20a\n");
-        }
-        Ok(())
-    }
-
-    #[test]
     fn catalog_mask_lower_priority_files() -> Fallible<()> {
-        let catalog = Library::catalog_from_dir_search(Path::new("./test_data/masking"))?;
+        let catalog = Library::catalog_from_dir_search(Path::new("./mask_test_data/masking"))?;
         let txt = catalog.read_name_sync("FILE.TXT")?;
         assert_eq!(txt, b"20b\n" as &[u8]);
         Ok(())
@@ -912,7 +1141,7 @@ mod tests {
     #[test]
     fn catalog_load_all_files_in_all_libdirs() -> Fallible<()> {
         let catalog = Library::catalog_from_dir_search(Path::new("../../test_data/unpacked/FA"))?;
-        for name in catalog.find_matching("*")?.iter() {
+        for name in catalog.find_matching_names("*")?.iter() {
             println!("At: {}", name);
             let data = catalog.read_name_sync(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
@@ -923,11 +1152,16 @@ mod tests {
     #[test]
     fn catalog_load_all_files_in_all_libfiles() -> Fallible<()> {
         let catalog = Library::catalog_from_file_search(Path::new("../../test_data/packed/FA"))?;
-        for name in catalog.find_matching("*")?.iter() {
-            println!("At: {}", name);
+        for name in catalog.find_matching_names("*")?.iter() {
             let data = catalog.read_name_sync(name)?;
             assert!((data[0] as usize + data[data.len() - 1] as usize) < 512);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_catalog_builder() -> Fallible<()> {
+        let _catalog = CatalogBuilder::build()?;
         Ok(())
     }
 }

@@ -14,12 +14,14 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Unpack lib files.
+use catalog::Catalog;
 use failure::Fallible;
 use humansize::{file_size_opts as options, FileSize};
+use lib::LibDrawer;
 use std::{
     fs::{create_dir, remove_file, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use structopt::StructOpt;
 
@@ -63,15 +65,15 @@ fn main() -> Fallible<()> {
 fn handle_ls(inputs: Vec<PathBuf>) -> Fallible<()> {
     let multi_input = inputs.len() > 1;
     for (i, input) in inputs.iter().enumerate() {
-        let libfile = lib::Library::from_paths(&[Path::new(input).to_owned()])?;
+        let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
         if multi_input {
             if i != 0 {
                 println!();
             }
-            println!("{:?}:", input);
+            println!("{}:", input.to_string_lossy());
         }
-        for name in libfile.find_matching("*")?.iter() {
-            let info = libfile.stat(name)?;
+        for name in catalog.find_matching_names("*")?.iter() {
+            let info = catalog.stat_name_sync(name)?;
             let mut psize = info.packed_size.file_size(options::BINARY).unwrap();
             if psize.ends_with(" B") {
                 psize += "  ";
@@ -80,7 +82,7 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Fallible<()> {
             if asize.ends_with(" B") {
                 asize += "  ";
             }
-            let ratio = if info.packed_size == info.unpacked_size {
+            let ratio = if info.packed_size == info.unpacked_size && info.unpacked_size > 0 {
                 "~".to_owned()
             } else {
                 format!(
@@ -90,8 +92,12 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Fallible<()> {
             };
 
             println!(
-                "{:15} {:?} {:>12} {:>12}  {}",
-                info.name, info.compression, psize, asize, ratio
+                "{:15} {:<8} {:>12} {:>12}  {}",
+                info.name,
+                info.compression.unwrap_or("none"),
+                psize,
+                asize,
+                ratio
             );
         }
     }
@@ -103,14 +109,14 @@ fn handle_unpack(inputs: Vec<PathBuf>, output_path: PathBuf) -> Fallible<()> {
     for input in &inputs {
         let libname = input.file_name().expect("no filename in library");
         let outdir = output_path.join(libname);
-        let libfile = lib::Library::from_paths(&[Path::new(input).to_owned()])?;
+        let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
         if !outdir.exists() {
             create_dir(&outdir)?;
         }
-        for name in libfile.find_matching("*")?.iter() {
+        for name in catalog.find_matching_names("*")?.iter() {
             let outfilename = outdir.join(name);
             println!("{:?}:{} -> {:?}", input, name, outfilename);
-            let content = libfile.load(name)?;
+            let content = catalog.read_name_sync(name)?;
             if outfilename.exists() {
                 remove_file(&outfilename)?;
             }

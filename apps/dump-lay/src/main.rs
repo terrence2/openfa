@@ -14,21 +14,33 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use lay::Layer;
-use omnilib::OmniLib;
+use lib::CatalogBuilder;
 use pal::Palette;
 use std::fs;
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = "dump-lay", about = "Dump LAY files")]
+struct Opt {
+    /// Layer files to dump
+    #[structopt()]
+    inputs: Vec<String>,
+}
 
 fn main() -> Fallible<()> {
-    let omni = OmniLib::new_for_test_in_games(&["FA"])?;
+    let opt = Opt::from_args();
+    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
+    for &fid in &inputs {
+        let label = catalog.file_label(fid)?;
+        let game = label.split(':').last().unwrap();
+        let name = catalog.stat_sync(fid)?.name;
+        fs::create_dir_all(&format!("dump/lay-pal/{}-{}", game, name))?;
 
-    for (libname, name) in omni.find_matching("*.LAY")? {
-        println!("Dumping {}:{}", libname, name);
-        fs::create_dir_all(&format!("dump/lay-pal/{}-{}", libname, name))?;
+        let system_palette_data = catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?;
+        let system_palette = Palette::from_bytes(&system_palette_data)?;
 
-        let lib = omni.library(&libname);
-        let system_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-        let data = lib.load(&name)?;
-        let layer = Layer::from_bytes(&data, &lib)?;
+        let layer_data = catalog.read_sync(fid)?;
+        let layer = Layer::from_bytes(&layer_data, &system_palette)?;
         for i in 0..5 {
             if i >= layer.num_indices() {
                 continue;
@@ -47,10 +59,11 @@ fn main() -> Fallible<()> {
             palette.overlay_at(&r0, 0xE0 - 1)?;
             palette.overlay_at(&r3, 0xD0)?;
             palette.overlay_at(&r2, 0xC0)?;
-
             // palette.override_one(0xFF, [0, 0, 0]);
 
-            palette.dump_png(&format!("dump/lay-pal/{}-{}/{}.png", libname, name, i))?
+            let name = format!("dump/lay-pal/{}-{}/{}", game, name, i);
+            println!("Writing: {}.png", name);
+            palette.dump_png(&name)?
         }
     }
 

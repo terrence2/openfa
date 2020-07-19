@@ -19,10 +19,6 @@ members = [
     "apps/show-sh",
     "apps/show-sky",
 
-    # Legacy: avoid pulling in all of vulkano
-    # "apps/dump-vulkan",
-
-    "libs/catalog",
     "libs/dlg",
     "libs/fnt",
     "libs/galaxy",

@@ -13,7 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
-use lib::Library;
 use packed_struct::packed_struct;
 use pal::Palette;
 use peff::PE;
@@ -90,19 +89,18 @@ impl Layer {
         self.frag_offsets.len()
     }
 
-    pub fn from_bytes(data: &[u8], lib: &Library) -> Fallible<Layer> {
+    pub fn from_bytes(data: &[u8], palette: &Palette) -> Fallible<Layer> {
         let mut pe = PE::from_bytes(data)?;
         pe.relocate(0x0000_0000)?;
-        Layer::from_pe("inval", &pe, lib)
+        Layer::from_pe("inval", &pe, palette)
     }
 
-    fn from_pe(prefix: &str, pe: &peff::PE, lib: &Library) -> Fallible<Layer> {
+    fn from_pe(prefix: &str, pe: &peff::PE, palette: &Palette) -> Fallible<Layer> {
         assert!(!prefix.is_empty());
 
         let mut frag_offsets = Vec::new();
 
-        let pal_data = lib.load("PALETTE.PAL")?;
-        let palette_digest = md5::compute(&pal_data);
+        let palette_digest = md5::compute(&palette.as_bytes());
 
         let dump_stuff = false;
 
@@ -222,18 +220,18 @@ impl Layer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     #[test]
     fn it_can_parse_all_lay_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
-        ])?;
-        for (game, name) in omni.find_matching("*.LAY")?.iter() {
-            println!("At: {}:{} @ {}", game, name, omni.path(game, name)?);
-            let lib = omni.library(game);
-            let data = lib.load(name)?;
-            let _lay = Layer::from_bytes(&data, &lib)?;
+        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*.LAY".to_owned()])?;
+
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            let system_palette_data = catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?;
+            let system_palette = Palette::from_bytes(&system_palette_data)?;
+            let layer_data = catalog.read_sync(fid)?;
+            let _layer = Layer::from_bytes(&layer_data, &system_palette)?;
         }
 
         Ok(())
