@@ -147,7 +147,8 @@ impl<'a> T2BufferFactory<'a> {
     }
 
     fn load_palette(&self) -> Fallible<Palette> {
-        let layer = Layer::from_bytes(&self.lib.load(&self.mm.layer_name())?, self.lib)?;
+        let layer =
+            Layer::from_bytes(&self.lib.load(&self.mm.layer_name())?, &self.system_palette)?;
         let layer_index = if self.mm.layer_index() != 0 {
             self.mm.layer_index()
         } else {

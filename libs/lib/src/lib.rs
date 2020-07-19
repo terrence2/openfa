@@ -313,8 +313,8 @@ impl GameInfo {
     }
 
     pub fn label(&self) -> String {
-        let use_packed = env::var("USE_PACKED").unwrap_or("0".to_owned());
-        if use_packed == "1" || use_packed.to_ascii_lowercase().starts_with("t") {
+        let use_packed = env::var("USE_PACKED").unwrap_or_else(|_| "0".to_owned());
+        if use_packed == "1" || use_packed.to_ascii_lowercase().starts_with('t') {
             self.packed_label()
         } else {
             self.unpacked_label()
@@ -406,7 +406,7 @@ const FIGHTERS_ANTHOLOGY: GameInfo = GameInfo {
     allow_packed_t2: true,
 };
 
-pub const GAME_INFO: [&'static GameInfo; 7] = [
+pub const GAME_INFO: [&GameInfo; 7] = [
     &USNF,
     &USMF,
     &ATF,
