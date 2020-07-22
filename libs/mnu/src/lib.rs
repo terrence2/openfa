@@ -12,6 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+#![allow(clippy::transmute_ptr_to_ptr)]
+
 use ansi::ansi;
 use failure::Fallible;
 use peff::PE;
@@ -61,18 +63,19 @@ impl Menu {
         let mut relocs = HashSet::new();
         let mut targets = HashSet::new();
         let mut target_names = HashMap::new();
-        for reloc in &pe.relocs {
-            let r = *reloc as usize;
-            relocs.insert((r, 0));
-            relocs.insert((r + 1, 1));
-            relocs.insert((r + 2, 2));
-            relocs.insert((r + 3, 3));
-            let a = pe.code[r] as usize;
-            let b = pe.code[r + 1] as usize;
-            let c = pe.code[r + 2] as usize;
-            let d = pe.code[r + 3] as usize;
-            //println!("a: {:02X} {:02X} {:02X} {:02X}", d, c, b, a);
-            let vtgt = (d << 24) + (c << 16) + (b << 8) + a;
+        for reloc_ptr in &pe.relocs {
+            let reloc = *reloc_ptr as usize;
+            relocs.insert((reloc, 0));
+            relocs.insert((reloc + 1, 1));
+            relocs.insert((reloc + 2, 2));
+            relocs.insert((reloc + 3, 3));
+            let tgt = [
+                pe.code[reloc] as usize,
+                pe.code[reloc + 1] as usize,
+                pe.code[reloc + 2] as usize,
+                pe.code[reloc + 3] as usize,
+            ];
+            let vtgt = (tgt[3] << 24) | (tgt[2] << 16) | (tgt[1] << 8) | tgt[0];
             let tgt = vtgt - vaddr;
             println!(
                 "tgt:{:04X} => {:04X} <> {}",
@@ -82,14 +85,14 @@ impl Menu {
             );
             for thunk in &pe.thunks {
                 if vtgt == thunk.vaddr as usize {
-                    target_names.insert(r + 3, thunk.name.to_owned());
+                    target_names.insert(reloc + 3, thunk.name.to_owned());
                     break;
                 }
             }
             for (thunk_off, thunk) in &thunks {
                 println!("AT:{:04X} ?= {:04X}", *thunk_off, tgt);
                 if tgt == *thunk_off {
-                    target_names.insert(r + 3, thunk.name.to_owned());
+                    target_names.insert(reloc + 3, thunk.name.to_owned());
                     break;
                 }
             }
@@ -117,7 +120,7 @@ impl Menu {
             } else if relocs.contains(&(offset, 1)) {
                 out += &format!("{}{}{}", ansi().green(), &b, ansi());
             } else if relocs.contains(&(offset, 2)) {
-                out += &format!("{}{}{}", ansi().green(), &b, ansi());
+                out += &format!("{}{}{}", ansi().cyan(), &b, ansi());
             } else if relocs.contains(&(offset, 3)) {
                 if target_names.contains_key(&offset) {
                     out += &format!(
