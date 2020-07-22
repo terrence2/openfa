@@ -101,7 +101,7 @@ fn main() -> Fallible<()> {
     let label = catalog.file_label(fid)?;
     catalog.set_default_label(&label);
     let meta = catalog.stat_sync(fid)?;
-    let shape_name = meta.name.clone();
+    let shape_name = meta.name;
     let mut galaxy = Galaxy::new(&catalog)?;
 
     let system_bindings = Bindings::new("system")

@@ -197,7 +197,7 @@ impl InstanceBlock {
             ],
         });
 
-        let ret = Ok(Self {
+        Ok(Self {
             block_id,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
@@ -220,9 +220,7 @@ impl InstanceBlock {
             xform_index_buffer,
             xform_buffer,
             bind_group,
-        });
-
-        ret
+        })
     }
 
     pub fn id(&self) -> BlockId {
@@ -805,9 +803,7 @@ mod test {
                 }
 
                 for _ in 0..1 {
-                    let mut foo = inst_man.borrow_mut();
-                    println!("A");
-                    let (chunk_id, slot_id) = foo.upload_and_allocate_slot(
+                    let (chunk_id, slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
                         &name,
                         DrawSelection::NormalModel,
                         &palette,
