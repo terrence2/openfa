@@ -22,8 +22,8 @@ pub enum Group {
 impl Group {
     pub fn index(self) -> u32 {
         match self {
-            Self::ShapeChunk => 1,
-            Self::ShapeBlock => 2,
+            Self::ShapeChunk => 2,
+            Self::ShapeBlock => 3,
         }
     }
 }

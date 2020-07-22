@@ -10,13 +10,13 @@ legion = "= 0.2.4"
 log = "^ 0.4"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
+catalog = { path = "../../../nitrogen/system/catalog" }
 frame_graph = { path = "../../../nitrogen/system/frame_graph" }
 gpu = { path = "../../../nitrogen/system/gpu" }
-lib = { path = "../../../lib" }
-omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
+lib = { path = "../../../lib" }
 input = { path = "../../../nitrogen/system/input" }

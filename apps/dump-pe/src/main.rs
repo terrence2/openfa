@@ -14,45 +14,41 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::{ansi, terminal_size};
 use failure::Fallible;
-use omnilib::{make_opt_struct, OmniLib};
+use lib::CatalogBuilder;
 use peff::PE;
 use std::{collections::HashSet, iter};
 use structopt::StructOpt;
 
-make_opt_struct!(
-    #[structopt(
-        name = "pedump",
-        about = "Show the contents of a PF portable executable file"
-    )]
-    Opts {
-        #[structopt(help = "PE files to output")]
-        omni_inputs => Vec<String>
-    }
-);
+/// Dump PE files
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// PE files to dump
+    inputs: Vec<String>,
+}
 
 fn main() -> Fallible<()> {
-    let opt = Opts::from_args();
+    let opt = Opt::from_args();
+    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
 
     let (_, width) = terminal_size();
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
 
-    let (omni, inputs) = opt.find_inputs(&opt.omni_inputs)?;
-    if inputs.is_empty() {
-        println!("No inputs found!");
-        return Ok(());
-    }
+    for &fid in &inputs {
+        let label = catalog.file_label(fid)?;
+        let game = label.split(':').last().unwrap();
+        let meta = catalog.stat_sync(fid)?;
 
-    for (game, name) in &inputs {
-        let lib = omni.library(&game);
-        let content = lib.load(&name)?;
+        //let lib = omni.library(&game);
+        //let content = lib.load(&name)?;
+        let content = catalog.read_sync(fid)?;
         let pe = PE::from_bytes(&content)?;
 
-        println!("{}:{}", game, name);
+        println!("{}:{}", game, meta.name);
         println!(
             "{}",
             iter::repeat("=")
-                .take(1 + game.len() + name.len())
+                .take(1 + game.len() + meta.name.len())
                 .collect::<String>()
         );
         println!("image base: 0x{:08X}", pe.image_base);

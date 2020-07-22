@@ -12,17 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, err_msg, Fallible};
-use lib::Library;
-use omnilib::OmniLib;
+use catalog::Catalog;
+use failure::{bail, ensure, err_msg, Fallible};
+use lib::CatalogBuilder;
 use pal::Palette;
 use pic::{Header, Pic};
 use rand::Rng;
-use std::{env, fs, fs::File, io::Write, mem, path::PathBuf};
+use std::{fs, fs::File, io::Write, mem, path::PathBuf};
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "picpack")] //, about = "")]
 /// A PIC authoring tool for Janes Fighters Anthology.
 ///
 /// Examples:
@@ -57,6 +55,7 @@ use structopt::StructOpt;
 ///
 /// This tool supports many source image formats. See the complete list at:
 ///   https://docs.rs/image/0.21.0/image/
+#[derive(Debug, StructOpt)]
 struct Opt {
     /// Save the new PIC file here
     #[structopt(
@@ -102,8 +101,8 @@ struct Opt {
     source_image: PathBuf,
 }
 
-fn load_palette_from_resource(lib: &Library, resource_name: &str) -> Fallible<Palette> {
-    let data = lib.load(resource_name)?;
+fn load_palette_from_resource(catalog: &Catalog, resource_name: &str) -> Fallible<Palette> {
+    let data = catalog.read_name_sync(resource_name)?;
     if resource_name.to_uppercase().ends_with("PAL") {
         return Palette::from_bytes(&data);
     }
@@ -124,25 +123,14 @@ fn load_palette(opt: &Opt) -> Fallible<Palette> {
         "PALETTE.PAL"
     };
 
-    // If the resource contains a ':', then assume test.
-    if resource_name.contains(':') {
-        ensure!(
-            opt.game_path.is_none(),
-            "game path must not be set if using a GAME:FILE.EXT resource"
-        );
-        let omni = OmniLib::new_for_test()?;
-        let parts = resource_name.split(':').collect::<Vec<_>>();
-        return load_palette_from_resource(&omni.library(parts[0]), parts[1]);
+    // FIXME: support a game dir properly
+    let (catalog, inputs) = CatalogBuilder::build_and_select(&[resource_name.to_owned()])?;
+    if inputs.len() != 1 {
+        bail!("expected exactly one input");
     }
-
-    // Otherwise load from a game directory.
-    let game_path = if let Some(ref path) = opt.game_path {
-        path.to_owned()
-    } else {
-        env::current_dir()?
-    };
-    let lib = Library::from_file_search(&game_path)?;
-    load_palette_from_resource(&lib, resource_name)
+    let fid = *inputs.first().expect("one input");
+    let meta = catalog.stat_sync(fid)?;
+    load_palette_from_resource(&catalog, &meta.name)
 }
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {

@@ -18,10 +18,11 @@ pub use ot::parse;
 pub use ot::ObjectType;
 pub use pt::{Envelope, PlaneType};
 
+use catalog::Catalog;
 use failure::{bail, Fallible};
-use lib::Library;
+use lib::from_dos_string;
 use log::trace;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // A generic type.
 #[derive(Debug)]
@@ -106,32 +107,29 @@ impl TypeRef {
 }
 
 // Knows how to load a type from a game library. Keeps a cached copy and hands
-// out a pointer to the type.
+// out a pointer to the type, since we frequently need to load the same item
+// repeatedly.
 pub struct TypeManager {
-    // The library to load from.
-    library: Arc<Box<Library>>,
-
     // Cache immutable resources. Use interior mutability for ease of use.
     cache: RefCell<HashMap<String, TypeRef>>,
 }
 
 impl TypeManager {
-    pub fn new(library: Arc<Box<Library>>) -> TypeManager {
+    pub fn empty() -> TypeManager {
         trace!("TypeManager::new");
         TypeManager {
-            library,
             cache: RefCell::new(HashMap::new()),
         }
     }
 
-    pub fn load(&self, name: &str) -> Fallible<TypeRef> {
+    pub fn load(&self, name: &str, catalog: &Catalog) -> Fallible<TypeRef> {
         if let Some(item) = self.cache.borrow().get(name) {
             trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());
         };
 
         trace!("TypeManager::load({})", name);
-        let content = self.library.load_text(name)?;
+        let content = from_dos_string(catalog.read_name_sync(name)?);
         let ext = name.rsplitn(2, '.').collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
@@ -163,32 +161,30 @@ impl TypeManager {
 }
 
 #[cfg(test)]
-extern crate omnilib;
-
-#[cfg(test)]
 mod tests {
     use super::*;
-    use failure::Error;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     #[test]
     fn can_parse_all_entity_types() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
-        ])?;
-        for (game, name) in omni.find_matching("*.[OJNP]T")?.iter() {
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.[OJNP]T".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
             );
-            let lib = omni.library(game);
-            let types = TypeManager::new(lib.clone());
-            let ty = types.load(name)?;
+            let types = TypeManager::empty();
+            catalog.set_default_label(&label);
+            let ty = types.load(&meta.name, &catalog)?;
             // Only one misspelling in 2500 files.
-            assert!(ty.ot().file_name() == *name || *name == "SMALLARM.JT");
+            assert!(ty.ot().file_name() == meta.name || meta.name == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:?} <> {}",
             //     game, name, ot.explosion_type, ot.long_name

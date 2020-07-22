@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use atmosphere::AtmosphereBuffer;
 use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
@@ -28,6 +29,7 @@ impl ShapeRenderPass {
     pub fn new(
         gpu: &GPU,
         globals_buffer: &GlobalParametersBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
         inst_man: &ShapeInstanceBuffer,
     ) -> Fallible<Self> {
         let vert_shader = gpu.create_shader_module(include_bytes!("../target/shape.vert.spirv"))?;
@@ -38,7 +40,7 @@ impl ShapeRenderPass {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
-                        // atmosphere
+                        atmosphere_buffer.bind_group_layout(),
                         inst_man.chunk_man.bind_group_layout(),
                         inst_man.bind_group_layout(),
                     ],
@@ -95,6 +97,7 @@ impl ShapeRenderPass {
         &'a self,
         mut rpass: wgpu::RenderPass<'a>,
         globals_buffer: &'a GlobalParametersBuffer,
+        atmosphere_buffer: &'a AtmosphereBuffer,
         shape_instance_buffer: &'a ShapeInstanceBuffer,
     ) -> wgpu::RenderPass<'a> {
         assert_ne!(LocalGroup::ShapeChunk.index(), Group::Globals.index());
@@ -103,7 +106,11 @@ impl ShapeRenderPass {
         assert_ne!(LocalGroup::ShapeBlock.index(), Group::Atmosphere.index());
         rpass.set_pipeline(&self.pipeline);
         rpass.set_bind_group(Group::Globals.index(), globals_buffer.bind_group(), &[]);
-        //rpass.set_bind_group(1, atmosphere_buffer.bind_group(), &[]);
+        rpass.set_bind_group(
+            Group::Atmosphere.index(),
+            atmosphere_buffer.bind_group(),
+            &[],
+        );
 
         for block in shape_instance_buffer.blocks.values() {
             let chunk = shape_instance_buffer.chunk_man.chunk(block.chunk_id());
@@ -134,11 +141,17 @@ mod tests {
     #[test]
     fn it_works() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
-        let gpu = GPU::new(&input, Default::default())?;
+        let mut gpu = GPU::new(&input, Default::default())?;
+        let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
-        let inst_man = ShapeInstanceBuffer::new(&gpu.device())?;
+        let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
 
-        let _ = ShapeRenderPass::new(&gpu, &globals_buffer.borrow(), &inst_man.borrow())?;
+        let _ = ShapeRenderPass::new(
+            &gpu,
+            &globals_buffer.borrow(),
+            &atmosphere_buffer.borrow(),
+            &inst_man.borrow(),
+        )?;
 
         Ok(())
     }

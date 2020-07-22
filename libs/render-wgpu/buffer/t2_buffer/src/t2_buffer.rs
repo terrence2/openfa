@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
+use catalog::Catalog;
 use failure::Fallible;
 use gpu::GPU;
 use lay::Layer;
-use lib::Library;
 use log::trace;
 use memoffset::offset_of;
 use mm::MissionMap;
@@ -102,7 +102,7 @@ impl Vertex {
 struct T2BufferFactory<'a> {
     mm: &'a MissionMap,
     system_palette: &'a Palette,
-    lib: &'a Library,
+    catalog: &'a Catalog,
 
     memo_normal: HashMap<[(u32, u32); 3], Vector3<f32>>,
     memo_position: HashMap<(u32, u32), Vector3<f32>>,
@@ -110,11 +110,11 @@ struct T2BufferFactory<'a> {
 }
 
 impl<'a> T2BufferFactory<'a> {
-    fn new(mm: &'a MissionMap, system_palette: &'a Palette, lib: &'a Library) -> Self {
+    fn new(mm: &'a MissionMap, system_palette: &'a Palette, catalog: &'a Catalog) -> Self {
         Self {
             mm,
             system_palette,
-            lib,
+            catalog,
             memo_position: HashMap::new(),
             memo_normal: HashMap::new(),
             memo_vert: HashMap::new(),
@@ -122,7 +122,7 @@ impl<'a> T2BufferFactory<'a> {
     }
 
     fn build(&mut self, gpu: &mut GPU) -> Fallible<Arc<RefCell<T2Buffer>>> {
-        let terrain = Terrain::from_bytes(&self.lib.load(&self.mm.t2_name())?)?;
+        let terrain = Terrain::from_bytes(&self.catalog.read_name_sync(&self.mm.t2_name())?)?;
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
         let (vertex_buffer, index_buffer, index_count) =
@@ -147,8 +147,10 @@ impl<'a> T2BufferFactory<'a> {
     }
 
     fn load_palette(&self) -> Fallible<Palette> {
-        let layer =
-            Layer::from_bytes(&self.lib.load(&self.mm.layer_name())?, &self.system_palette)?;
+        let layer = Layer::from_bytes(
+            &self.catalog.read_name_sync(&self.mm.layer_name())?,
+            &self.system_palette,
+        )?;
         let layer_index = if self.mm.layer_index() != 0 {
             self.mm.layer_index()
         } else {
@@ -203,7 +205,7 @@ impl<'a> T2BufferFactory<'a> {
                     continue;
                 }
                 let name = tmap.loc.pic_file(&texture_base_name);
-                let data = self.lib.load(&name)?;
+                let data = self.catalog.read_name_sync(&name)?;
                 let pic = Pic::decode(palette, &data)?;
                 loaded.insert(tmap.loc.clone());
                 pics.push((tmap.loc.clone(), pic));
@@ -534,11 +536,11 @@ impl T2Buffer {
     pub fn new(
         mm: &MissionMap,
         system_palette: &Palette,
-        lib: &Library,
+        catalog: &Catalog,
         gpu: &mut GPU,
     ) -> Fallible<Arc<RefCell<Self>>> {
         trace!("T2Renderer::new");
-        T2BufferFactory::new(mm, system_palette, lib).build(gpu)
+        T2BufferFactory::new(mm, system_palette, catalog).build(gpu)
     }
 
     pub fn t2(&self) -> &Terrain {
@@ -633,19 +635,25 @@ impl T2Buffer {
 mod test {
     use super::*;
     use input::InputSystem;
-    use omnilib::OmniLib;
+    use lib::{from_dos_string, CatalogBuilder};
     use xt::TypeManager;
 
     #[test]
     fn test_tile_to_earth() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let lib = omni.library("FA");
-        let types = TypeManager::new(lib.clone());
-        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-        let mm = MissionMap::from_str(&lib.load_text("BAL.MM")?, &types, &lib)?;
-        let _t2_buffer = T2Buffer::new(&mm, &palette, &lib, &mut gpu)?;
+
+        let (mut catalog, inputs) =
+            CatalogBuilder::build_and_select(&["FA:PALETTE.PAL".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let types = TypeManager::empty();
+            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+            let content = from_dos_string(catalog.read_name_sync("BAL.MM")?);
+            let mm = MissionMap::from_str(&content, &types, &catalog)?;
+            let _t2_buffer = T2Buffer::new(&mm, &palette, &catalog, &mut gpu)?;
+        }
         Ok(())
     }
 }

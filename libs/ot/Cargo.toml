@@ -10,4 +10,4 @@ failure = ">= 0.1.2"
 nalgebra = "^ 0.20"
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

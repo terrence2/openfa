@@ -1474,13 +1474,9 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 }
 
 #[cfg(test)]
-extern crate omnilib;
-
-#[cfg(test)]
 mod tests {
     use super::*;
-    use failure::Error;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
     use simplelog::{Config, LevelFilter, TermLogger};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
@@ -1532,27 +1528,25 @@ mod tests {
     fn it_works() -> Fallible<()> {
         TermLogger::init(LevelFilter::Info, Config::default())?;
 
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "ATFGOLD", "USNF97", "ATF", "ATFNATO", "MF", "USNF",
-        ])?;
-
         #[allow(unused_variables, unused_mut)]
         let mut freq: HashMap<&'static str, usize> = HashMap::new();
 
-        for (game, name) in omni.find_matching("*.SH")?.iter() {
+        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
             );
 
-            let lib = omni.library(game);
-            let data = lib.load(name)?;
+            let data = catalog.read_sync(fid)?;
             let shape = RawShape::from_bytes(&data)?;
-
-            //compute_instr_freqs(&shape, &mut freq);
 
             // Ensure that f2 points to the trailer if it exists.
             // And conversely that we found the trailer in the right place.

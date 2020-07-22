@@ -10,10 +10,11 @@ legion = "= 0.2.4"
 nalgebra = "^ 0.20"
 lib = { path = "../lib" }
 pal = { path = "../pal" }
+catalog = { path = "../nitrogen/system/catalog" }
 physical_constants = { path = "../nitrogen/sim/physical_constants" }
 shape_chunk = { path = "../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../render-wgpu/buffer/shape_instance" }
 universe = { path = "../nitrogen/sim/universe" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

@@ -713,22 +713,33 @@ impl Terrain {
 #[cfg(test)]
 mod test {
     use super::*;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     const DUMP: bool = false;
 
     #[test]
     fn it_can_parse_all_t2_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test()?;
-        for (game, name) in omni.find_matching("*.T2")?.iter() {
-            println!("AT: {}:{} @ {}", game, name, omni.path(game, name)?);
-            let lib = omni.library(game);
-            let contents = lib.load(name)?;
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.T2".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
+            );
+            let contents = catalog.read_sync(fid)?;
             let terrain = Terrain::from_bytes(&contents)?;
             if DUMP {
-                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, name))?;
+                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, meta.name))?;
             }
         }
+
         Ok(())
     }
 }

@@ -16,10 +16,10 @@ use crate::{
     texture_atlas::MegaAtlas,
     upload::{AnalysisResults, DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
+use catalog::Catalog;
 use failure::Fallible;
 use gpu::DrawIndirectCommand;
 use lazy_static::lazy_static;
-use lib::Library;
 use pal::Palette;
 use sh::RawShape;
 use std::{
@@ -162,10 +162,10 @@ impl OpenChunk {
         sh: &RawShape,
         selection: &DrawSelection,
         palette: &Palette,
-        lib: &Library,
+        catalog: &Catalog,
     ) -> Fallible<ShapeId> {
         let start_vertex = self.vertex_upload_buffer.len();
-        let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, lib).draw_model(
+        let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, catalog).draw_model(
             sh,
             analysis,
             selection,

@@ -26,7 +26,6 @@ global_data = { path = "../../libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }
 lib = { path = "../../libs/lib" }
-omnilib = { path = "../../libs/omnilib" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
 screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }

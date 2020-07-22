@@ -15,14 +15,14 @@ nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
 animate = { path = "../../../nitrogen/sim/animate" }
+catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 i386 = { path = "../../../i386" }
-lib = { path = "../../../lib" }
-omnilib = { path = "../../../omnilib" }
 pal = { path = "../../../pal" }
 pic = { path = "../../../pic" }
 sh = { path = "../../../sh" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
+lib = { path = "../../../lib" }
 input = { path = "../../../nitrogen/system/input" }

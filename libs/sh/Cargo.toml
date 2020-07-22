@@ -16,4 +16,4 @@ reverse = { path = "../reverse" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

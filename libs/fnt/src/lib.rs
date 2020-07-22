@@ -226,28 +226,26 @@ impl Fnt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use failure::Error;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     #[test]
     fn it_can_parse_all_fnt_files() -> Fallible<()> {
-        assert_eq!(2 + 2, 4);
-
-        let omni = OmniLib::new_for_test_in_games(&[
-            "USNF", "MF", "ATF", "ATFNATO", "ATFGOLD", "USNF97", "FA",
-        ])?;
-        for (game, name) in omni.find_matching("*.FNT")?.iter() {
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.FNT".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
             );
-
-            let lib = omni.library(game);
-            let fnt = Fnt::from_bytes(&lib.load(name)?)?;
-            fnt.analyze(game, name)?;
+            let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
+            fnt.analyze(game, &meta.name)?;
         }
 
         Ok(())

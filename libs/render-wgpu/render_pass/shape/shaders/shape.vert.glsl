@@ -34,16 +34,16 @@ layout(location = 3) flat out uint f_flags1;
 
 // Per shape input
 const uint MAX_XFORM_ID = 32;
-layout(set = 2, binding = 0) buffer ShapeInstanceBlockTransforms {
+layout(set = 3, binding = 0) buffer ShapeInstanceBlockTransforms {
     float shape_transforms[];
 };
-layout(set = 2, binding = 1) buffer ShapeInstanceBlockFlags {
+layout(set = 3, binding = 1) buffer ShapeInstanceBlockFlags {
     uint shape_flags[];
 };
-layout(set = 2, binding = 2) buffer ShapeInstanceBlockXformOffsets {
+layout(set = 3, binding = 2) buffer ShapeInstanceBlockXformOffsets {
     uint shape_xform_offsets[];
 };
-layout(set = 2, binding = 3) buffer ShapeInstanceBlockXforms {
+layout(set = 3, binding = 3) buffer ShapeInstanceBlockXforms {
     float shape_xforms[];
 };
 

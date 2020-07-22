@@ -9,6 +9,6 @@ failure = "^ 0.1.2"
 structopt = "^ 0.2"
 simplelog = "^ 0.5"
 i386 = { path = "../../libs/i386" }
-sh = { path = "../../libs/sh" }
-omnilib = { path = "../../libs/omnilib" }
+lib = { path = "../../libs/lib" }
 reverse = { path = "../../libs/reverse" }
+sh = { path = "../../libs/sh" }

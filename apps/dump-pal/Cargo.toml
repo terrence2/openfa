@@ -8,5 +8,5 @@ edition = "2018"
 failure = ">= 0.1"
 image = "^ 0.21"
 structopt = ">= 0.2"
+lib = { path = "../../libs/lib" }
 pal = { path = "../../libs/pal" }
-omnilib = { path = "../../libs/omnilib" }

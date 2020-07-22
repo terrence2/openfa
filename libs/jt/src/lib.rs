@@ -181,31 +181,29 @@ impl ProjectileType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use failure::Error;
-    use omnilib::OmniLib;
+    use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
     fn it_can_parse_all_projectile_files() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF97", "MF", "USNF",
-        ])?;
-        for (game, name) in omni.find_matching("*.JT")?.iter() {
+        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.JT".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
             );
-            let lib = omni.library(game);
-            let contents = lib.load_text(name)?;
+            let contents = from_dos_string(catalog.read_sync(fid)?);
             let jt = ProjectileType::from_text(&contents)?;
-            assert!(jt.ot.file_name() == *name || *name == "SMALLARM.JT");
-            // println!(
-            //     "{}:{:13}> {:08X} <> {} <> {}",
-            //     game, name, jt.unk0, jt.obj.long_name, name
-            // );
+            // Only one misspelling in 2500 files.
+            assert!(jt.ot.file_name() == meta.name || meta.name == "SMALLARM.JT");
         }
+
         Ok(())
     }
 }

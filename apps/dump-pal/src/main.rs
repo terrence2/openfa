@@ -13,57 +13,66 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use omnilib::{make_opt_struct, OmniLib};
+use lib::CatalogBuilder;
 use pal::Palette;
+use std::fs;
 use structopt::StructOpt;
 
-make_opt_struct!(
-    #[structopt(name = "paldump", about = "Show the contents of a PAL file")]
-    Opts {
-        #[structopt(short = "d", long = "dump", help = "Dump the palette to a png")]
-        dump => bool,
+/// Dump and query PAL files
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// Dump the palette to a png
+    #[structopt(short, long)]
+    dump: bool,
 
-        #[structopt(short = "p", long = "position", help = "Show the color at this offset offset")]
-        position => Option<String>,
+    /// Show the color at this offset
+    #[structopt(short, long)]
+    position: Option<String>,
 
-        #[structopt(help = "PAL file to context")]
-        omni_input => String
-    }
-);
+    /// PAL file to analyze
+    inputs: Vec<String>,
+}
 
 fn main() -> Fallible<()> {
-    let opt = Opts::from_args();
+    let opt = Opt::from_args();
+    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
+    for &fid in &inputs {
+        let label = catalog.file_label(fid)?;
+        let game = label.split(':').last().unwrap();
+        let meta = catalog.stat_sync(fid)?;
 
-    let (omni, game, name) = opt.find_input(&opt.omni_input)?;
-    let lib = omni.library(&game);
-    let pal = Palette::from_bytes(&lib.load(&name)?)?;
+        let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
+        if opt.dump {
+            println!("Dumping palette: {}:{}", label, meta.name);
 
-    if opt.dump {
-        let size = 80;
-        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
-        for i in 0..16 {
-            for j in 0..16 {
-                let off = (j << 4 | i) as usize;
-                for ip in 0..size {
-                    for jp in 0..size {
-                        buf.put_pixel(i * size + ip, j * size + jp, pal.rgb(off)?);
+            let size = 80;
+            let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+            for i in 0..16 {
+                for j in 0..16 {
+                    let off = (j << 4 | i) as usize;
+                    for ip in 0..size {
+                        for jp in 0..size {
+                            buf.put_pixel(i * size + ip, j * size + jp, pal.rgb(off)?);
+                        }
                     }
                 }
             }
+            let img = image::ImageRgb8(buf);
+            fs::create_dir_all(&format!("dump/palette/{}-{}", game, meta.name))?;
+            let output = format!("dump/palette/{}-{}/palette.png", game, meta.name);
+            img.save(&output)?;
+
+            return Ok(());
         }
-        let img = image::ImageRgb8(buf);
-        img.save("palette.png")?;
 
-        return Ok(());
-    }
-
-    if let Some(pos_str) = opt.position {
-        let pos = if pos_str.starts_with("0x") {
-            usize::from_str_radix(&pos_str[2..], 16)?
-        } else {
-            pos_str.parse::<usize>()?
-        };
-        println!("{:02X} => {:?}", pos, pal.rgb(pos)?);
+        if let Some(pos_str) = opt.position.clone() {
+            let pos = if pos_str.starts_with("0x") {
+                usize::from_str_radix(&pos_str[2..], 16)?
+            } else {
+                pos_str.parse::<usize>()?
+            };
+            println!("{:02X} => {:?}", pos, pal.rgb(pos)?);
+        }
     }
 
     Ok(())

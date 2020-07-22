@@ -9,4 +9,4 @@ failure = ">= 0.1.2"
 ot = { path = "../ot" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

@@ -10,4 +10,4 @@ nalgebra = "^ 0.20"
 ot = { path = "../ot" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

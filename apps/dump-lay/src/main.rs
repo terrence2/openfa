@@ -19,11 +19,10 @@ use pal::Palette;
 use std::fs;
 use structopt::StructOpt;
 
+/// Dump LAY files
 #[derive(Debug, StructOpt)]
-#[structopt(name = "dump-lay", about = "Dump LAY files")]
 struct Opt {
     /// Layer files to dump
-    #[structopt()]
     inputs: Vec<String>,
 }
 
@@ -61,9 +60,9 @@ fn main() -> Fallible<()> {
             palette.overlay_at(&r2, 0xC0)?;
             // palette.override_one(0xFF, [0, 0, 0]);
 
-            let name = format!("dump/lay-pal/{}-{}/{}", game, name, i);
-            println!("Writing: {}.png", name);
-            palette.dump_png(&name)?
+            let output = format!("dump/lay-pal/{}-{}/{}", game, name, i);
+            println!("Writing: {}.png", output);
+            palette.dump_png(&output)?
         }
     }
 

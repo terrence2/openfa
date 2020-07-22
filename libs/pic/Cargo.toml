@@ -12,4 +12,4 @@ packed_struct = { path = "../nitrogen/system/packed_struct" }
 pal = { path = "../pal" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

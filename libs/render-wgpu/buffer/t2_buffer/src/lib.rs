@@ -16,5 +16,7 @@
 mod t2_buffer;
 mod texture_atlas;
 
-pub use t2_buffer::{T2Buffer, Vertex as T2Vertex};
-pub use texture_atlas::TextureAtlas;
+pub use crate::{
+    t2_buffer::{T2Buffer, Vertex as T2Vertex},
+    texture_atlas::TextureAtlas,
+};

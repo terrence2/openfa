@@ -11,4 +11,4 @@ peff = { path = "../peff" }
 reverse = { path = "../reverse" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }
