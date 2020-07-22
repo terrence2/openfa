@@ -29,21 +29,16 @@ mod test {
     use failure::Fallible;
     use gpu::GPU;
     use input::InputSystem;
+    use lib::CatalogBuilder;
     use log::trace;
-    use omnilib::OmniLib;
     use pal::Palette;
+    use std::collections::HashMap;
 
     #[test]
     fn test_load_all() -> Fallible<()> {
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
 
-        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let lib = omni.library("FA");
-        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-
-        let mut shapes = lib.find_matching("*.SH")?;
-        shapes.sort();
         let skipped = vec![
             "CATGUY.SH",  // 640
             "MOON.SH",    // 41
@@ -60,28 +55,52 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let mut chunk_man = ShapeChunkBuffer::new(gpu.device())?;
-        let mut all_shapes = Vec::new();
-        for name in shapes {
-            if skipped.contains(&name.as_str()) {
-                continue;
-            }
-            let (_chunk_id, shape_id) = chunk_man.upload_shape(
-                &name,
-                DrawSelection::NormalModel,
-                &palette,
-                &lib,
-                &mut gpu,
-            )?;
-            all_shapes.push(shape_id);
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
+        let mut shapes = HashMap::new();
+        for &fid in &inputs {
+            shapes
+                .entry(catalog.file_label(fid).unwrap())
+                .or_insert_with(Vec::new)
+                .push(fid)
         }
-        chunk_man.finish_open_chunks(&mut gpu)?;
-        gpu.device().poll(wgpu::Maintain::Wait);
 
-        for shape_id in &all_shapes {
-            let lifetime = chunk_man.part(*shape_id).widgets();
-            let widgets = lifetime.read().unwrap();
-            trace!("{} - {}", widgets.num_xforms(), widgets.name());
+        for (label, files) in &shapes {
+            catalog.set_default_label(label);
+            let game = label.split(':').last().unwrap();
+            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+
+            let mut chunk_man = ShapeChunkBuffer::new(gpu.device())?;
+            let mut all_shapes = Vec::new();
+            for &fid in files {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game,
+                    meta.name,
+                    meta.path
+                        .unwrap_or_else(|| "<none>".into())
+                        .to_string_lossy()
+                );
+                if skipped.contains(&meta.name.as_str()) {
+                    continue;
+                }
+                let (_chunk_id, shape_id) = chunk_man.upload_shape(
+                    &meta.name,
+                    DrawSelection::NormalModel,
+                    &palette,
+                    &catalog,
+                    &mut gpu,
+                )?;
+                all_shapes.push(shape_id);
+            }
+            chunk_man.finish_open_chunks(&mut gpu)?;
+            gpu.device().poll(wgpu::Maintain::Wait);
+
+            for shape_id in &all_shapes {
+                let lifetime = chunk_man.part(*shape_id).widgets();
+                let widgets = lifetime.read().unwrap();
+                trace!("{} - {}", widgets.num_xforms(), widgets.name());
+            }
         }
 
         Ok(())

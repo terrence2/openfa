@@ -12,9 +12,9 @@ memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 zerocopy = "^ 0.2"
+catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../lay" }
-lib = { path = "../../../lib" }
 mm = { path = "../../../mm" }
 pal = { path = "../../../pal" }
 physical_constants = { path = "../../../nitrogen/sim/physical_constants" }
@@ -23,7 +23,7 @@ t2 = { path = "../../../t2" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
+lib = { path = "../../../lib" }
 simplelog = "^ 0.5"
-omnilib = { path = "../../../omnilib" }
 input = { path = "../../../nitrogen/system/input" }
 xt = { path = "../../../xt" }

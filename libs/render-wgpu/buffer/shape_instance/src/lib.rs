@@ -17,11 +17,11 @@ mod components;
 pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
+use catalog::Catalog;
 use failure::Fallible;
 use frame_graph::FrameStateTracker;
 use gpu::{DrawIndirectCommand, GPU};
 use legion::prelude::*;
-use lib::Library;
 use log::trace;
 use pal::Palette;
 use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets};
@@ -97,10 +97,10 @@ pub struct InstanceBlock {
     //    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
     //
     pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
-    transform_buffer_scratch: [TransformType; BLOCK_SIZE],
-    flag_buffer_scratch: [[u32; 2]; BLOCK_SIZE],
-    xform_index_buffer_scratch: [u32; BLOCK_SIZE],
-    xform_buffer_scratch: [[f32; 6]; 14 * BLOCK_SIZE],
+    transform_buffer_scratch: Box<[TransformType; BLOCK_SIZE]>,
+    flag_buffer_scratch: Box<[[u32; 2]; BLOCK_SIZE]>,
+    xform_index_buffer_scratch: Box<[u32; BLOCK_SIZE]>,
+    xform_buffer_scratch: Box<[[f32; 6]; 14 * BLOCK_SIZE]>,
 
     command_buffer: Arc<Box<wgpu::Buffer>>,
     transform_buffer: Arc<Box<wgpu::Buffer>>,
@@ -197,7 +197,7 @@ impl InstanceBlock {
             ],
         });
 
-        Ok(Self {
+        let ret = Ok(Self {
             block_id,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
@@ -210,17 +210,19 @@ impl InstanceBlock {
                 first_vertex: 0,
                 first_instance: 0,
             }; BLOCK_SIZE],
-            transform_buffer_scratch: [[0f32; 8]; BLOCK_SIZE],
-            flag_buffer_scratch: [[0u32; 2]; BLOCK_SIZE],
-            xform_index_buffer_scratch: [0u32; BLOCK_SIZE],
-            xform_buffer_scratch: [[0f32; 6]; 14 * BLOCK_SIZE],
+            transform_buffer_scratch: Box::new([[0f32; 8]; BLOCK_SIZE]),
+            flag_buffer_scratch: Box::new([[0u32; 2]; BLOCK_SIZE]),
+            xform_index_buffer_scratch: Box::new([0u32; BLOCK_SIZE]),
+            xform_buffer_scratch: Box::new([[0f32; 6]; 14 * BLOCK_SIZE]),
             command_buffer,
             transform_buffer,
             flag_buffer,
             xform_index_buffer,
             xform_buffer,
             bind_group,
-        })
+        });
+
+        ret
     }
 
     pub fn id(&self) -> BlockId {
@@ -537,13 +539,13 @@ impl ShapeInstanceBuffer {
         name: &str,
         selection: DrawSelection,
         palette: &Palette,
-        lib: &Library,
+        catalog: &Catalog,
         gpu: &mut GPU,
     ) -> Fallible<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
             .chunk_man
-            .upload_shape(name, selection, &palette, &lib, gpu)?;
+            .upload_shape(name, selection, &palette, &catalog, gpu)?;
 
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -745,28 +747,78 @@ impl ShapeInstanceBuffer {
 mod test {
     use super::*;
     use input::InputSystem;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
     use pal::Palette;
     use shape_chunk::DrawSelection;
 
     #[test]
     fn test_creation() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let lib = omni.library("FA");
-        let palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-
         let input = InputSystem::new(vec![])?;
         let mut gpu = GPU::new(&input, Default::default())?;
-        let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
 
-        for _ in 0..100 {
-            let (_chunk_id, _slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
-                "T80.SH",
-                DrawSelection::NormalModel,
-                &palette,
-                &lib,
-                &mut gpu,
-            )?;
+        let skipped = vec![
+            "CATGUY.SH",  // 640
+            "MOON.SH",    // 41
+            "SOLDIER.SH", // 320
+            "CHAFF.SH",
+            "CRATER.SH",
+            "DEBRIS.SH",
+            "EXP.SH",
+            "FIRE.SH",
+            "FLARE.SH",
+            "MOTHB.SH",
+            "SMOKE.SH",
+            "WAVE1.SH",
+            "WAVE2.SH",
+        ];
+
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
+        let mut shapes = HashMap::new();
+        for &fid in &inputs {
+            shapes
+                .entry(catalog.file_label(fid).unwrap())
+                .or_insert_with(Vec::new)
+                .push(fid)
+        }
+
+        for (label, files) in &shapes {
+            catalog.set_default_label(label);
+            let game = label.split(':').last().unwrap();
+            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+
+            let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
+            let mut all_chunks = Vec::new();
+            let mut all_slots = Vec::new();
+            for &fid in files {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game,
+                    meta.name,
+                    meta.path
+                        .unwrap_or_else(|| "<none>".into())
+                        .to_string_lossy()
+                );
+                let name = meta.name.clone();
+                if skipped.contains(&meta.name.as_str()) {
+                    continue;
+                }
+
+                for _ in 0..1 {
+                    let mut foo = inst_man.borrow_mut();
+                    println!("A");
+                    let (chunk_id, slot_id) = foo.upload_and_allocate_slot(
+                        &name,
+                        DrawSelection::NormalModel,
+                        &palette,
+                        &catalog,
+                        &mut gpu,
+                    )?;
+                    all_chunks.push(chunk_id);
+                    all_slots.push(slot_id);
+                }
+                gpu.device().poll(wgpu::Maintain::Wait);
+            }
         }
 
         Ok(())

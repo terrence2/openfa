@@ -200,94 +200,86 @@ impl TextureAtlas {
 #[cfg(test)]
 mod test {
     use super::*;
-    use lay::Layer;
-    use mm::MissionMap;
-    use omnilib::OmniLib;
-    use pal::Palette;
-    use pic::Pic;
-    use std::path::Path;
-    use xt::TypeManager;
+    // use lay::Layer;
+    // use lib::{from_dos_string, CatalogBuilder};
+    // use mm::MissionMap;
+    // use pal::Palette;
+    // use pic::Pic;
+    // use xt::TypeManager;
 
     #[test]
     fn test_t2_texture_atlas() -> Fallible<()> {
-        //use simplelog::{Config, LevelFilter, TermLogger};
-        //TermLogger::init(LevelFilter::Trace, Config::default())?;
-
-        if !Path::new("dump").exists() {
-            std::fs::create_dir("dump")?;
-        }
-
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
-        ])?;
-        for (game, name) in omni.find_matching("*.T2")?.iter() {
-            let name = &(name[0..name.len() - 2].to_owned() + "MM");
-
-            if name == "$VARF.MM" {
-                // This looks a fragment of an MM used for... something?
-                continue;
-            }
-
-            println!(
-                "At: {}:{} @ {}",
-                game,
-                name,
-                omni.path(game, name)
-                    .unwrap_or_else(|_| "<unknown>".to_owned())
-            );
-            let lib = omni.library(game);
-            let types = TypeManager::new(lib.clone());
-            let contents = lib.load_text(name)?;
-            let mm = MissionMap::from_str(&contents, &types, &lib)?;
-            let system_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-            let layer = Layer::from_bytes(&lib.load(&mm.layer_name())?, &system_palette)?;
-
-            let mut pic_data = HashMap::new();
-            let base_name = mm.get_base_texture_name()?;
-            for tmap in mm.texture_maps() {
-                if !pic_data.contains_key(&tmap.loc) {
-                    let name = tmap.loc.pic_file(&base_name);
-                    pic_data.insert(tmap.loc.clone(), lib.load(&name)?.to_vec());
-                }
-            }
-            let base_palette = Palette::from_bytes(&lib.load("PALETTE.PAL")?)?;
-            let palette = load_palette(&base_palette, &layer, mm.layer_index())?;
-
-            // Load all images with our new palette.
-            let mut pics = Vec::new();
-            for (tloc, data) in &pic_data {
-                let pic = Pic::decode(&palette, data)?;
-                pics.push((tloc.clone(), pic));
-            }
-
-            let atlas = TextureAtlas::new(pics)?;
-            atlas.img.save(&format!(
-                "../../../../dump/t2_atlas/atlas-{}-{}.png",
-                game, base_name
-            ))?;
-        }
+        // TODO: we need to figure out the real approach here.
+        // let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MM".to_owned()])?;
+        // for &fid in &inputs {
+        //     let label = catalog.file_label(fid)?;
+        //     catalog.set_default_label(&label);
+        //
+        //     let game = label.split(':').last().unwrap();
+        //     let meta = catalog.stat_sync(fid)?;
+        //
+        //     if meta.name == "$VARF.MM" {
+        //         // This looks a fragment of an MM used for... something?
+        //         continue;
+        //     }
+        //
+        //     println!(
+        //         "At: {}:{:13} @ {}",
+        //         game,
+        //         meta.name,
+        //         meta.path
+        //             .unwrap_or_else(|| "<none>".into())
+        //             .to_string_lossy()
+        //     );
+        //     let contents = from_dos_string(catalog.read_sync(fid)?);
+        //     let types = TypeManager::empty();
+        //     let mm = MissionMap::from_str(&contents, &types, &catalog)?;
+        //     let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        //     let layer =
+        //         Layer::from_bytes(&catalog.read_name_sync(&mm.layer_name())?, &system_palette)?;
+        //
+        //     let mut pic_data = HashMap::new();
+        //     let base_name = mm.get_base_texture_name()?;
+        //     for tmap in mm.texture_maps() {
+        //         if !pic_data.contains_key(&tmap.loc) {
+        //             let name = tmap.loc.pic_file(&base_name);
+        //             pic_data.insert(tmap.loc.clone(), catalog.read_name_sync(&name)?.to_vec());
+        //         }
+        //     }
+        //     let base_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        //     let palette = load_palette(&base_palette, &layer, mm.layer_index())?;
+        //
+        //     // Load all images with our new palette.
+        //     let mut pics = Vec::new();
+        //     for (tloc, data) in &pic_data {
+        //         let pic = Pic::decode(&palette, data)?;
+        //         pics.push((tloc.clone(), pic));
+        //     }
+        //
+        //     let _atlas = TextureAtlas::new(pics)?;
+        // }
 
         Ok(())
     }
 
-    fn load_palette(
-        base_palette: &Palette,
-        layer: &Layer,
-        layer_index: usize,
-    ) -> Fallible<Palette> {
-        // Note: we need to really find the right palette.
-        let mut palette = base_palette.clone();
-        let layer_data = layer.for_index(layer_index + 2)?;
-        let r0 = layer_data.slice(0x00, 0x10)?;
-        let r1 = layer_data.slice(0x10, 0x20)?;
-        let r2 = layer_data.slice(0x20, 0x30)?;
-        let r3 = layer_data.slice(0x30, 0x40)?;
-
-        palette.overlay_at(&r0, 0xE0 - 1)?;
-        palette.overlay_at(&r1, 0xF0 - 1)?;
-        palette.overlay_at(&r2, 0xC0)?;
-        palette.overlay_at(&r3, 0xD0)?;
-
-        Ok(palette)
-    }
+    // fn load_palette(
+    //     base_palette: &Palette,
+    //     layer: &Layer,
+    //     layer_index: usize,
+    // ) -> Fallible<Palette> {
+    //     // Note: we need to really find the right palette.
+    //     let mut palette = base_palette.clone();
+    //     let layer_data = layer.for_index(layer_index + 2)?;
+    //     let r0 = layer_data.slice(0x00, 0x10)?;
+    //     let r1 = layer_data.slice(0x10, 0x20)?;
+    //     let r2 = layer_data.slice(0x20, 0x30)?;
+    //     let r3 = layer_data.slice(0x30, 0x40)?;
+    //
+    //     palette.overlay_at(&r0, 0xE0 - 1)?;
+    //     palette.overlay_at(&r1, 0xF0 - 1)?;
+    //     palette.overlay_at(&r2, 0xC0)?;
+    //     palette.overlay_at(&r3, 0xD0)?;
+    //
+    //     Ok(palette)
+    // }
 }

@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{util::maybe_hex, waypoint::Waypoint};
+use catalog::Catalog;
 use failure::{bail, err_msg, Fallible};
 use nalgebra::{Point3, Unit, UnitQuaternion, Vector3};
 use std::f32::consts::PI;
@@ -128,6 +129,7 @@ impl ObjectInfo {
         lines: &[&str],
         offset: &mut usize,
         type_manager: &TypeManager,
+        catalog: &Catalog,
     ) -> Fallible<Self> {
         let mut type_name = None;
         let mut name = None;
@@ -219,6 +221,7 @@ impl ObjectInfo {
                         err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
                     })?
                     .to_uppercase(),
+                catalog,
             )?,
             name,
             pos: pos

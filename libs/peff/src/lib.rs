@@ -746,34 +746,32 @@ const DOSX_HEADER: &[u8] = &[
 ];
 
 #[cfg(test)]
-extern crate omnilib;
-
-#[cfg(test)]
 mod tests {
     use super::*;
-    use failure::Error;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     #[test]
     fn it_works() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "ATF", "ATFGOLD", "ATFNATO", "USNF", "MF", "USNF97",
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&[
+            "*:*.SH".to_owned(),
+            "*:*.LAY".to_owned(),
+            "*:*.DLG".to_owned(),
+            "*:*.MNU".to_owned(),
         ])?;
-
-        let sh = omni.find_matching("*.SH")?;
-        let lay = omni.find_matching("*.LAY")?;
-        let dlg = omni.find_matching("*.DLG")?;
-
-        for (game, name) in sh.iter().chain(lay.iter()).chain(dlg.iter()) {
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                name,
-                omni.path(game, name)
-                    .or_else::<Error, _>(|_| Ok("<none>".to_string()))?
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
             );
-            let lib = omni.library(game);
-            let data = lib.load(name)?;
+            let data = catalog.read_sync(fid)?;
             let _pe = PE::from_bytes(&data)?;
         }
 

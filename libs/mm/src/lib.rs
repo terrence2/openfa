@@ -20,8 +20,8 @@ mod util;
 mod waypoint;
 
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
+use catalog::Catalog;
 use failure::{bail, ensure, err_msg, Fallible};
-use lib::Library;
 use std::{collections::HashMap, str::FromStr};
 use xt::TypeManager;
 
@@ -94,7 +94,7 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str, type_manager: &TypeManager, lib: &Library) -> Fallible<Self> {
+    pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Fallible<Self> {
         let lines = s.lines().collect::<Vec<&str>>();
         assert_eq!(lines[0], "textFormat");
 
@@ -127,13 +127,13 @@ impl MissionMap {
                 "map" => {
                     assert!(map_name.is_none());
                     map_name = Some(parts[1].to_owned());
-                    t2_name = Some(Self::find_t2_for_map(parts[1], lib)?);
+                    t2_name = Some(Self::find_t2_for_map(parts[1], catalog)?);
                 }
                 "layer" => {
                     layer_name = Some(Self::find_layer(
                         map_name.as_ref().expect("map before layer"),
                         parts[1],
-                        lib,
+                        catalog,
                     )?);
                     layer_index = Some(parts[2].parse::<usize>()?);
                 }
@@ -228,7 +228,7 @@ impl MissionMap {
                 }
                 "obj" => {
                     offset += 1;
-                    let obj = ObjectInfo::from_lines(&lines, &mut offset, type_manager)?;
+                    let obj = ObjectInfo::from_lines(&lines, &mut offset, type_manager, catalog)?;
                     objects.push(obj);
                 }
                 "special" => {
@@ -450,15 +450,15 @@ impl MissionMap {
     // USNF:
     //     installdir: UKR.T2, $UKR[1-8].T2
     //     MM+M refs: ukr.T2, $ukr[1-8].T2
-    fn find_t2_for_map(map_name: &str, lib: &Library) -> Fallible<String> {
+    fn find_t2_for_map(map_name: &str, catalog: &Catalog) -> Fallible<String> {
         let raw = map_name.to_uppercase();
 
-        if lib.file_exists(&raw) {
+        if catalog.exists(&raw) {
             return Ok(raw);
         }
 
         // ~KURILE.T2 && ~TVIET.T2
-        if raw.starts_with('~') && lib.file_exists(&raw[1..]) {
+        if raw.starts_with('~') && catalog.exists(&raw[1..]) {
             return Ok(raw[1..].to_owned());
         }
 
@@ -484,7 +484,7 @@ impl MissionMap {
     // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
     // except when it is a modified version with the first (non-tilde) character of the MM name
     // appended to the end of the LAY name, before the dot.
-    fn find_layer(map_name: &str, layer_name: &str, lib: &Library) -> Fallible<String> {
+    fn find_layer(map_name: &str, layer_name: &str, catalog: &Catalog) -> Fallible<String> {
         let first_char = map_name.chars().next().expect("the first character");
         let layer_parts = layer_name.split('.').collect::<Vec<&str>>();
         ensure!(layer_parts.len() == 2, "expected one dot in layer name");
@@ -493,7 +493,7 @@ impl MissionMap {
             "expected LAY extension"
         );
         let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
-        if lib.file_exists(&alt_layer_name) {
+        if catalog.exists(&alt_layer_name) {
             return Ok(alt_layer_name);
         }
         Ok(layer_name.to_uppercase())
@@ -523,10 +523,45 @@ impl MissionMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnilib::OmniLib;
+    use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
     fn it_can_parse_all_mm_files() -> Fallible<()> {
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MM".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
+
+            if game == "ATFGOLD"
+                && (meta.name.contains("UKR") || meta.name == "KURILE.MM" || meta.name == "VIET.MM")
+            {
+                continue;
+            }
+
+            if meta.name == "$VARF.MM" {
+                // This looks a fragment of an MM used for... something?
+                continue;
+            }
+
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
+            );
+
+            catalog.set_default_label(&label);
+            let type_manager = TypeManager::empty();
+            let contents = from_dos_string(catalog.read_sync(fid)?);
+            let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
+            assert_eq!(mm.get_base_texture_name()?.len(), 3);
+            assert!(mm.t2_name.ends_with(".T2"));
+        }
+
+        /*
         let omni = OmniLib::new_for_test_in_games(&[
             "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
         ])?;
@@ -556,6 +591,8 @@ mod tests {
             assert_eq!(mm.get_base_texture_name()?.len(), 3);
             assert!(mm.t2_name.ends_with(".T2"));
         }
+
+         */
 
         Ok(())
     }

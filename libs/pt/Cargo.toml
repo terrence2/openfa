@@ -10,4 +10,4 @@ nt = { path = "../nt" }
 ot = { path = "../ot" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

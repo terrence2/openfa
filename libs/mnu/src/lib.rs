@@ -25,6 +25,10 @@ impl Menu {
     pub fn from_bytes(name: &str, bytes: &[u8]) -> Fallible<Self> {
         let pe = PE::from_bytes(bytes)?;
 
+        if !pe.section_info.contains_key("CODE") {
+            return Ok(Self {});
+        }
+
         let vaddr = pe.section_info["CODE"].virtual_address as usize;
 
         let mut all_thunk_descrs = Vec::new();
@@ -143,21 +147,26 @@ impl Menu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     #[test]
     fn it_can_load_all_menus() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        for (game, name) in omni.find_matching("*.MNU")? {
-            //println!("AT: {}:{}", game, name);
-
-            //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
-            //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
-
-            let _mnu = Menu::from_bytes(
-                &format!("{}:{}", game, name),
-                &omni.library(&game).load(&name)?,
-            )?;
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MNU".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
+            );
+            let _mnu =
+                Menu::from_bytes(&format!("{}:{}", game, meta.name), &catalog.read_sync(fid)?)?;
         }
 
         Ok(())

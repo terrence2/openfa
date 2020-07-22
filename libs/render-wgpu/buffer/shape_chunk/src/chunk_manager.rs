@@ -18,8 +18,8 @@ use crate::{
     texture_atlas::MegaAtlas,
     upload::DrawSelection,
 };
+use catalog::Catalog;
 use failure::{err_msg, Fallible};
-use lib::Library;
 use pal::Palette;
 use sh::RawShape;
 use std::collections::HashMap;
@@ -74,7 +74,7 @@ impl ShapeChunkBuffer {
         name: &str,
         selection: DrawSelection,
         palette: &Palette,
-        lib: &Library,
+        catalog: &Catalog,
         gpu: &mut gpu::GPU,
     ) -> Fallible<(ChunkId, ShapeId)> {
         if let Some(&shape_id) = self.name_to_shape_map.get(name) {
@@ -82,7 +82,7 @@ impl ShapeChunkBuffer {
             return Ok((chunk_id, shape_id));
         }
 
-        let sh = RawShape::from_bytes(&lib.load(&name)?)?;
+        let sh = RawShape::from_bytes(&catalog.read_name_sync(&name)?)?;
         let analysis = ShapeUploader::analyze_model(name, &sh, &selection)?;
         let chunk_flags = ChunkFlags::for_analysis(&analysis);
 
@@ -102,7 +102,7 @@ impl ShapeChunkBuffer {
             .open_chunks
             .get_mut(&chunk_flags)
             .expect("an open chunk")
-            .upload_shape(name, analysis, &sh, &selection, palette, lib)?;
+            .upload_shape(name, analysis, &sh, &selection, palette, catalog)?;
 
         self.name_to_shape_map.insert(name.to_owned(), shape_id);
         self.shape_to_chunk_map.insert(shape_id, chunk_id);

@@ -17,10 +17,10 @@ use crate::{
     texture_atlas::{Frame, MegaAtlas},
 };
 use bitflags::bitflags;
+use catalog::Catalog;
 use failure::{bail, ensure, err_msg, Fallible};
 use i386::Interpreter;
 use lazy_static::lazy_static;
-use lib::Library;
 use log::trace;
 use memoffset::offset_of;
 use pal::Palette;
@@ -698,7 +698,7 @@ impl ShapeWidgets {
 pub struct ShapeUploader<'a> {
     name: &'a str,
     palette: &'a Palette,
-    lib: &'a Library,
+    catalog: &'a Catalog,
     aabb_min: [f32; 3],
     aabb_max: [f32; 3],
     vert_pool: Vec<Vertex>,
@@ -707,11 +707,11 @@ pub struct ShapeUploader<'a> {
 }
 
 impl<'a> ShapeUploader<'a> {
-    pub fn new(name: &'a str, palette: &'a Palette, lib: &'a Library) -> Self {
+    pub fn new(name: &'a str, palette: &'a Palette, catalog: &'a Catalog) -> Self {
         Self {
             name,
             palette,
-            lib,
+            catalog,
             aabb_min: [INFINITY; 3],
             aabb_max: [NEG_INFINITY; 3],
             vert_pool: Vec::new(),
@@ -1175,7 +1175,7 @@ impl<'a> ShapeUploader<'a> {
 
                 Instr::TextureRef(texture) => {
                     let filename = texture.filename.to_uppercase();
-                    let data = self.lib.load(&filename)?;
+                    let data = self.catalog.read_name_sync(&filename)?;
                     let pic = Pic::from_bytes(&data)?;
                     self.active_frame = Some(atlas.push(&filename, &pic, data, self.palette)?);
                 }

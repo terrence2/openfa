@@ -27,9 +27,9 @@ use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
 use legion::world::EntityStore;
+use lib::CatalogBuilder;
 use log::trace;
 use nalgebra::{convert, Point3, UnitQuaternion};
-use omnilib::{make_opt_struct, OmniLib};
 use orrery::Orrery;
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
@@ -41,13 +41,12 @@ use std::time::Instant;
 use structopt::StructOpt;
 use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 
-make_opt_struct!(
-    #[structopt(name = "show-sh", about = "Show the contents of a SH file")]
-    Opt {
-        #[structopt(help = "Shapes to load")]
-        shapes => Vec<String>
-    }
-);
+/// Show the contents of a SH file
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// Shapes to show
+    inputs: Vec<String>,
+}
 
 make_frame_graph!(
     FrameGraph {
@@ -62,7 +61,7 @@ make_frame_graph!(
         precompute: {};
         renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
-            shape: ShapeRenderPass { globals, shape_instance_buffer },
+            shape: ShapeRenderPass { globals, atmosphere, shape_instance_buffer },
             screen_text: ScreenTextRenderPass { globals, text_layout }
         ];
     }
@@ -92,15 +91,18 @@ macro_rules! update {
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    TermLogger::init(LevelFilter::Warn, Config::default())?;
-
-    let (omni, inputs) = opt.find_inputs(&opt.shapes)?;
+    let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     if inputs.is_empty() {
         bail!("no inputs");
     }
-    let (game, shape_name) = inputs.first().unwrap();
-    let lib = omni.library(&game);
-    let mut galaxy = Galaxy::new(lib.clone())?;
+    let fid = *inputs.first().unwrap();
+    TermLogger::init(LevelFilter::Warn, Config::default())?;
+
+    let label = catalog.file_label(fid)?;
+    catalog.set_default_label(&label);
+    let meta = catalog.stat_sync(fid)?;
+    let shape_name = meta.name.clone();
+    let mut galaxy = Galaxy::new(&catalog)?;
 
     let system_bindings = Bindings::new("system")
         .bind("exit", "Escape")?
@@ -146,7 +148,7 @@ fn main() -> Fallible<()> {
             "FUEL.SH",
             DrawSelection::NormalModel,
             galaxy.palette(),
-            galaxy.library(),
+            &catalog,
             &mut gpu,
         )?;
     galaxy.create_building(
@@ -164,7 +166,7 @@ fn main() -> Fallible<()> {
             &shape_name,
             DrawSelection::NormalModel,
             galaxy.palette(),
-            galaxy.library(),
+            &catalog,
             &mut gpu,
         )?;
     let ent = galaxy.create_building(
@@ -182,7 +184,7 @@ fn main() -> Fallible<()> {
             &shape_name,
             DrawSelection::NormalModel,
             galaxy.palette(),
-            galaxy.library(),
+            &catalog,
             &mut gpu,
         )?;
     galaxy.create_building(
@@ -200,7 +202,7 @@ fn main() -> Fallible<()> {
             &shape_name,
             DrawSelection::NormalModel,
             galaxy.palette(),
-            galaxy.library(),
+            &catalog,
             &mut gpu,
         )?;
     galaxy.create_building(
@@ -230,7 +232,7 @@ fn main() -> Fallible<()> {
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
     let text_layout_buffer = TextLayoutBuffer::new(&mut gpu)?;
-    let fnt = Fnt::from_bytes(&lib.load("HUD11.FNT")?)?;
+    let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
     let font = FntFont::from_fnt(&fnt, &mut gpu)?;
     text_layout_buffer
         .borrow_mut()

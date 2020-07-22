@@ -7,11 +7,9 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 failure = ">= 0.1.2"
 log = ">= 0.4"
-lib = { path = "../lib" }
+catalog = { path = "../nitrogen/system/catalog" }
 jt = { path = "../jt" }
+lib = { path = "../lib" }
 nt = { path = "../nt" }
 ot = { path = "../ot" }
 pt = { path = "../pt" }
-
-[dev-dependencies]
-omnilib = { path = "../omnilib" }

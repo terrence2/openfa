@@ -9,6 +9,6 @@ failure = "^ 0.1.2"
 image = "^ 0.21"
 structopt = "^ 0.2"
 ansi = { path = "../../libs/nitrogen/system/ansi" }
-omnilib = { path = "../../libs/omnilib" }
+lib = { path = "../../libs/lib" }
 pal = { path = "../../libs/pal" }
 pic = { path = "../../libs/pic" }

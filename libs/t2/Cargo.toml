@@ -13,4 +13,4 @@ packed_struct = { path = "../nitrogen/system/packed_struct" }
 reverse = { path = "../reverse/" }
 
 [dev-dependencies]
-omnilib = { path = "../omnilib" }
+lib = { path = "../lib" }

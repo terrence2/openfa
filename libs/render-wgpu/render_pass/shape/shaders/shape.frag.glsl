@@ -23,8 +23,8 @@ layout(location = 3) flat in uint f_flags1;
 // Output
 layout(location = 0) out vec4 f_color;
 
-layout(set = 1, binding = 0) uniform texture2DArray chunk_mega_atlas_texture;
-layout(set = 1, binding = 1) uniform sampler chunk_mega_atlas_sampler;
+layout(set = 2, binding = 0) uniform texture2DArray chunk_mega_atlas_texture;
+layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
 
 //layout(set = 6, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
 //layout(set = 6, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC

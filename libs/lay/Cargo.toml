@@ -10,5 +10,7 @@ failure = ">= 0.1"
 md5 = ">= 0.3"
 packed_struct = { path = "../nitrogen/system/packed_struct" }
 pal = { path = "../pal" }
-lib = { path = "../lib" }
 peff = { path = "../peff" }
+
+[dev-dependencies]
+lib = { path = "../lib" }

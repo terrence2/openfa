@@ -8,5 +8,5 @@ edition = "2018"
 failure = "^ 0.1.2"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-omnilib = { path = "../../libs/omnilib" }
+lib = { path = "../../libs/lib" }
 xt = { path = "../../libs/xt" }

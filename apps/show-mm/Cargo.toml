@@ -26,7 +26,6 @@ gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
-omnilib = { path = "../../libs/omnilib" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
 physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
 screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }

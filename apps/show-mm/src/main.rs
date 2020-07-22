@@ -25,10 +25,10 @@ use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use input::InputSystem;
+use lib::{from_dos_string, CatalogBuilder};
 use log::trace;
 use mm::MissionMap;
 use nalgebra::convert;
-use omnilib::{make_opt_struct, OmniLib};
 use orrery::Orrery;
 use physical_constants::FEET_TO_HM_32;
 use screen_text::ScreenTextRenderPass;
@@ -44,13 +44,12 @@ use t2_terrain::T2TerrainRenderPass;
 use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
 use xt::TypeManager;
 
-make_opt_struct!(
-    #[structopt(name = "mm_explorer", about = "Show the contents of an MM file")]
-    Opt {
-        #[structopt(help = "MM file to load")]
-        omni_input => String
-    }
-);
+/// Show the contents of an MM file
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// Map to show
+    inputs: Vec<String>,
+}
 
 make_frame_graph!(
     FrameGraph {
@@ -67,7 +66,7 @@ make_frame_graph!(
         renderers: [
             skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
             terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
-            shape: ShapeRenderPass { globals, shape_instance_buffer },
+            shape: ShapeRenderPass { globals, atmosphere, shape_instance_buffer },
             screen_text: ScreenTextRenderPass { globals, text_layout }
         ];
     }
@@ -75,11 +74,18 @@ make_frame_graph!(
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
+    let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
+    if inputs.is_empty() {
+        bail!("no inputs");
+    }
+    let fid = *inputs.first().unwrap();
     TermLogger::init(LevelFilter::Warn, Config::default())?;
 
-    let (omni, game, name) = opt.find_input(&opt.omni_input)?;
-    let lib = omni.library(&game);
-    let mut galaxy = Galaxy::new(lib)?;
+    let label = catalog.file_label(fid)?;
+    catalog.set_default_label(&label);
+    let meta = catalog.stat_sync(fid)?;
+    let name = meta.name.clone();
+    let mut galaxy = Galaxy::new(&catalog)?;
 
     let mm_bindings = Bindings::new("map")
         .bind("prev-object", "Shift+n")?
@@ -95,17 +101,17 @@ fn main() -> Fallible<()> {
     ])?;
     let mut gpu = GPU::new(&input, Default::default())?;
 
-    let types = TypeManager::new(galaxy.library_owned());
+    let types = TypeManager::empty();
     let mm = MissionMap::from_str(
-        &galaxy.library().load_text(&name)?,
+        &from_dos_string(catalog.read_name_sync(&name)?),
         &types,
-        galaxy.library(),
+        &catalog,
     )?;
 
     let mut position_index = 0;
     let mut positions = Vec::new();
     let mut names = Vec::new();
-    let t2_buffer = T2Buffer::new(&mm, galaxy.palette(), galaxy.library(), &mut gpu)?;
+    let t2_buffer = T2Buffer::new(&mm, galaxy.palette(), &catalog, &mut gpu)?;
 
     let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
@@ -122,7 +128,7 @@ fn main() -> Fallible<()> {
                     info.xt().ot().shape.as_ref().expect("a shape file"),
                     DrawSelection::NormalModel,
                     galaxy.palette(),
-                    galaxy.library(),
+                    &catalog,
                     &mut gpu,
                 )?;
             let aabb = *shape_instance_buffer

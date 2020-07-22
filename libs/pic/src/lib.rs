@@ -297,15 +297,26 @@ impl Pic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
     use std::{fs, path::Path};
 
     #[test]
     fn it_can_new_all_pics() -> Fallible<()> {
-        let omni = OmniLib::new_for_test()?;
-        for (game, name) in omni.find_matching("*.PIC")?.iter() {
-            println!("AT: {}:{}", game, name);
-            let _img = Pic::from_bytes(&omni.library(&game).load(&name)?)?;
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
+            );
+            let _img = Pic::from_bytes(&catalog.read_sync(fid)?)?;
         }
 
         Ok(())
@@ -313,17 +324,28 @@ mod tests {
 
     #[test]
     fn it_can_decode_all_pics() -> Fallible<()> {
-        let omni = OmniLib::new_for_test()?;
-        for (game, name) in omni.find_matching("*.PIC")?.iter() {
-            println!("AT: {}:{}", game, name);
-            let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
-            let img = Pic::decode(&palette, &omni.library(&game).load(&name)?)?;
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
+            );
+            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+            let img = Pic::decode(&palette, &catalog.read_sync(fid)?)?;
 
             if false {
                 let name = format!(
                     "dump/{}/{}.png",
                     game,
-                    name.split('.').collect::<Vec<_>>().first().unwrap()
+                    meta.name.split('.').collect::<Vec<_>>().first().unwrap()
                 );
                 let path = Path::new(&name);
                 println!("Write: {}", path.display());

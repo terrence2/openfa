@@ -14,82 +14,64 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
 use image::GenericImageView;
-use omnilib::{make_opt_struct, OmniLib};
+use lib::CatalogBuilder;
 use pal::Palette;
 use pic::Pic;
 use std::{fs, iter};
 use structopt::StructOpt;
 
-make_opt_struct!(#[structopt(
-    name = "picdump",
-    about = "Extract PICs to PNG files and show PIC metadata"
-)]
-Opt {
-    #[structopt(
-        short = "s",
-        long = "show-palette",
-        help = "Dump the palette here as a PNG"
-    )]
-    show_palette => Option<String>,
+/// Extract PICs to PNG files and show PIC metadata
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// Dump the palette here as a PNG
+    #[structopt(short, long)]
+    show_palette: Option<String>,
 
-    #[structopt(
-        short = "d",
-        long = "dump-palette",
-        help = "Dump the palette here as a PAL"
-    )]
-    dump_palette => Option<String>,
+    /// Dump the palette here as a PAL
+    #[structopt(short, long)]
+    dump_palette: Option<String>,
 
-    #[structopt(
-        short = "a",
-        long = "ascii",
-        help = "Print the image as ascii"
-    )]
-    show_ascii => bool,
+    /// Print the image as ascii
+    #[structopt(short = "a", long = "ascii")]
+    show_ascii: bool,
 
-    #[structopt(
-        short = "b",
-        long = "gray-scale",
-        help = "Output as grayscale rather than palettized"
-    )]
-    grayscale => bool,
+    /// Output as grayscale rather than palettized
+    #[structopt(short = "b", long = "gray-scale")]
+    grayscale: bool,
 
-    #[structopt(
-        short = "u",
-        long = "use-palette",
-        help = "Use the given palette when decoding"
-    )]
-    use_palette => Option<String>,
+    /// Use the given palette when decoding
+    #[structopt(short = "u", long = "use-palette")]
+    use_palette: Option<String>,
 
-    #[structopt(
-        short = "o",
-        long = "output",
-        help = "Write the image to the given file"
-    )]
-    write_image => Option<String>,
+    /// Write the image to the given file
+    #[structopt(short = "o", long = "output")]
+    write_image: Option<String>,
 
-    #[structopt(help = "PIC files to process")]
-    omni_inputs => Vec<String>
-});
+    /// One or more PIC files to process
+    inputs: Vec<String>,
+}
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-
-    let (omni, inputs) = opt.find_inputs(&opt.omni_inputs)?;
+    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     if inputs.is_empty() {
         println!("No inputs found!");
         return Ok(());
     }
 
-    for (game, name) in &inputs {
-        let lib = omni.library(&game);
-        let content = lib.load(&name)?;
+    for &fid in &inputs {
+        let label = catalog.file_label(fid)?;
+        let game = label.split(':').last().unwrap();
+        let meta = catalog.stat_sync(fid)?;
+
+        let content = catalog.read_sync(fid)?;
         let image = Pic::from_bytes(&content)?;
 
-        println!("{}:{}", game, name);
+        println!("{}:{}", game, meta.name);
         println!(
             "{}",
             iter::repeat("=")
-                .take(1 + game.len() + name.len())
+                .take(1 + game.len() + meta.name.len())
                 .collect::<String>()
         );
         println!("format: {:?}", image.format);
@@ -113,7 +95,7 @@ fn main() -> Fallible<()> {
             } else if opt.grayscale {
                 Palette::grayscale()?
             } else {
-                Palette::from_bytes(&lib.load("PALETTE.PAL")?)?
+                Palette::from_bytes(&catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?)?
             };
             let image = Pic::decode(&palette, &content)?;
             image.save(target)?;

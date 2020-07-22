@@ -13,61 +13,77 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::Fallible;
-use omnilib::{make_opt_struct, OmniLib};
+use lib::CatalogBuilder;
 use reverse::b2h;
 use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
 use simplelog::*;
 use std::{collections::HashMap, fs};
 use structopt::StructOpt;
 
-make_opt_struct!(#[structopt(
-    name = "shdump",
-    about = "OpenFA shape slicing and discovery tooling"
-)]
-Opt {
-    #[structopt(short = "v", long = "verbose", help = "Trace execution")]
-    verbose => bool,
+/// SH format slicing and discovery tooling
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// Trace execution
+    #[structopt(short, long)]
+    verbose: bool,
 
-    #[structopt(short = "a", long = "all", help = "Show all")]
-    show_all => bool,
+    /// Show all instructions
+    #[structopt(short = "a", long = "all")]
+    show_all: bool,
 
-    #[structopt(short = "e", long = "extents", help = "Show the min and max coordinates")]
-    show_extents => bool,
+    /// Show the min and max coordinates
+    #[structopt(short = "e", long = "extents")]
+    show_extents: bool,
 
-    #[structopt(short = "m", long = "matching", help = "Show matching instructions")]
-    show_matching => Option<String>,
+    /// Show matching instructions
+    #[structopt(short = "m", long = "matching")]
+    show_matching: Option<String>,
 
-    #[structopt(short = "r", long = "matching-memref", help = "Show matching memory loads")]
-    show_matching_memref => Option<String>,
+    /// Show matching memory loads
+    #[structopt(short = "r", long = "matching-memref")]
+    show_matching_memref: Option<String>,
 
-    #[structopt(short = "p", long = "plus", default_value = "0", help = "Show count after matching")]
-    show_after_matching => usize,
+    /// Show count after matching
+    #[structopt(short = "p", long = "plus", default_value = "0")]
+    show_after_matching: usize,
 
-    #[structopt(short = "l", long = "last", help = "Show last instructions")]
-    show_last => bool,
+    /// Show last instructions
+    #[structopt(short = "l", long = "last")]
+    show_last: bool,
 
-    #[structopt(short = "u", long = "unknown", help = "Show unknown instructions")]
-    show_unknown => bool,
+    /// Show unknown instructions
+    #[structopt(short = "u", long = "unknown")]
+    show_unknown: bool,
 
-    #[structopt(short = "x", long = "memory", help = "Show all i386 memory refs")]
-    show_memory => bool,
+    /// Show all i386 memory refs
+    #[structopt(short = "x", long = "memory")]
+    show_memory: bool,
 
-    #[structopt(short = "n", long = "no-name", help = "Elide names in output")]
-    quiet => bool,
+    /// Elide names in output
+    #[structopt(short = "n", long = "no-name")]
+    quiet: bool,
 
-    #[structopt(short = "d", long = "dump-code", help = "Dump all i386 code fragments")]
-    dump_code => bool,
+    /// Dump all i386 code fragments
+    #[structopt(short, long)]
+    dump_code: bool,
 
-    #[structopt(short = "c", long = "custom", help = "Custom")]
-    custom => bool,
+    /// Run a custom action
+    #[structopt(short, long)]
+    custom: bool,
 
-    #[structopt(help = "Shape files to display.")]
-    omni_inputs => Vec<String>
-});
+    /// Shape files to display
+    #[structopt()]
+    inputs: Vec<String>,
+}
 
 #[allow(clippy::cognitive_complexity)] // Impossible to organize if you don't know what the goal is.
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
+    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
+    if inputs.is_empty() {
+        println!("No inputs found!");
+        return Ok(());
+    }
     let level = if opt.verbose {
         LevelFilter::Trace
     } else {
@@ -75,10 +91,12 @@ fn main() -> Fallible<()> {
     };
     TermLogger::init(level, Config::default())?;
 
-    let (omni, inputs) = opt.find_inputs(&opt.omni_inputs)?;
-    for (game, name) in &inputs {
-        let lib = omni.library(&game);
-        let data = lib.load(name)?;
+    for &fid in &inputs {
+        let label = catalog.file_label(fid)?;
+        let game = label.split(':').last().unwrap();
+        let meta = catalog.stat_sync(fid)?;
+
+        let data = catalog.read_sync(fid)?;
         let shape = RawShape::from_bytes(&data)?;
 
         if opt.show_all {
@@ -123,7 +141,7 @@ fn main() -> Fallible<()> {
                     if opt.quiet {
                         println!("{}", out);
                     } else {
-                        println!("{:60}: {}", name, out);
+                        println!("{:60}: {}", meta.name, out);
                     }
                 }
             }
@@ -143,7 +161,7 @@ fn main() -> Fallible<()> {
                                             tramp.name,
                                             sh_instr.at_offset(),
                                             game,
-                                            name,
+                                            meta.name,
                                             instr.show_relative(sh_instr.at_offset() + pos)
                                         );
                                     }
@@ -161,12 +179,12 @@ fn main() -> Fallible<()> {
                 .map(sh::Instr::show)
                 .ok_or("NO INSTRUCTIONS")
                 .unwrap();
-            println!("{:20}: {}", name, fmt);
+            println!("{:20}: {}", meta.name, fmt);
         } else if opt.show_unknown {
             for i in shape.instrs.iter() {
                 if let sh::Instr::UnknownUnknown(unk) = i {
-                    //println!("{:20}: {}", name, i.show());
-                    println!("{}, {:20}", format_unk(&unk.data), name);
+                    //println!("{:20}: {}", meta.name, i.show());
+                    println!("{}, {:20}", format_unk(&unk.data), meta.name);
                 }
             }
         } else if opt.show_memory {
@@ -198,7 +216,7 @@ fn main() -> Fallible<()> {
                     let filename = format!(
                         "dump/i386/{}/{}-{:04X}.i386",
                         game,
-                        name,
+                        meta.name,
                         vinstr.at_offset()
                     );
                     let mut v: Vec<u8> = Vec::new();
@@ -218,7 +236,7 @@ fn main() -> Fallible<()> {
                     if let sh::Instr::UnknownData(_) = suc {
                         let suc2 = &shape.instrs[offset + 2];
                         if let sh::Instr::X86Code(_) = suc2 {
-                            println!("{} - {:?}", suc.magic(), name);
+                            println!("{} - {:?}", suc.magic(), meta.name);
                             //println!("{}", suc.magic());
                         }
                         offset += 1;

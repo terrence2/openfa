@@ -15,9 +15,9 @@
 pub use legion::{entity::Entity, world::EntityStore};
 pub use universe::component::{Rotation, Scale, Transform};
 
+use catalog::Catalog;
 use failure::Fallible;
 use legion::prelude::*;
-use lib::Library;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
 use physical_constants::FEET_TO_HM_32;
@@ -35,12 +35,12 @@ pub struct Galaxy {
     legion_world: World,
 
     // Resources
-    lib: Arc<Box<Library>>,
+    //lib: Arc<Box<Library>>,
     palette: Arc<Palette>,
 }
 
 impl Galaxy {
-    pub fn new(lib: Arc<Box<Library>>) -> Fallible<Self> {
+    pub fn new(catalog: &Catalog) -> Fallible<Self> {
         let legion_universe = Universe::new();
         let legion_world = legion_universe.create_world();
 
@@ -48,8 +48,10 @@ impl Galaxy {
             start_time: Instant::now(),
             _legion_universe: legion_universe,
             legion_world,
-            palette: Arc::new(Palette::from_bytes(&lib.load("PALETTE.PAL")?)?),
-            lib,
+            palette: Arc::new(Palette::from_bytes(
+                &catalog.read_name_sync("PALETTE.PAL")?,
+            )?),
+            //lib,
         })
     }
 
@@ -61,6 +63,7 @@ impl Galaxy {
         &mut self.legion_world
     }
 
+    /*
     pub fn library(&self) -> &Library {
         &self.lib
     }
@@ -68,6 +71,7 @@ impl Galaxy {
     pub fn library_owned(&self) -> Arc<Box<Library>> {
         self.lib.clone()
     }
+     */
 
     pub fn palette(&self) -> &Palette {
         &self.palette
@@ -161,12 +165,29 @@ impl Galaxy {
 #[cfg(test)]
 mod test {
     use super::*;
-    use omnilib::OmniLib;
+    use lib::CatalogBuilder;
 
     #[test]
     fn test_it_works() -> Fallible<()> {
-        let omni = OmniLib::new_for_test_in_games(&["FA"])?;
-        let _universe = Galaxy::new(omni.library("FA"))?;
+        // Note: rely on uniqueness of PALETTE.PAL to give us every game.
+        let (mut catalog, inputs) =
+            CatalogBuilder::build_and_select(&["*:PALETTE.PAL".to_owned()])?;
+        for &fid in &inputs {
+            let label = catalog.file_label(fid)?;
+            catalog.set_default_label(&label);
+            let game = label.split(':').last().unwrap();
+            let meta = catalog.stat_sync(fid)?;
+            println!(
+                "At: {}:{:13} @ {}",
+                game,
+                meta.name,
+                meta.path
+                    .unwrap_or_else(|| "<none>".into())
+                    .to_string_lossy()
+            );
+            //let _universe = Galaxy::new(omni.library("FA"))?;
+        }
+
         Ok(())
     }
 }
