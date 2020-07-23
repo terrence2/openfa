@@ -17,7 +17,6 @@ members = [
     "apps/pack-pic",
     "apps/show-mm",
     "apps/show-sh",
-    "apps/show-sky",
 
     "libs/dlg",
     "libs/fnt",
