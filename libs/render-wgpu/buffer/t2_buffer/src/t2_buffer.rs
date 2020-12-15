@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
 use catalog::Catalog;
+use commandable::{commandable, Commandable};
 use failure::Fallible;
 use gpu::GPU;
 use lay::Layer;
@@ -25,11 +26,9 @@ use pal::Palette;
 use physical_constants::{EARTH_RADIUS_KM_32, FEET_TO_HM_32, FEET_TO_KM};
 use pic::Pic;
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     mem,
     ops::Range,
-    sync::Arc,
 };
 use t2::{Sample, Terrain};
 use zerocopy::{AsBytes, FromBytes};
@@ -121,7 +120,7 @@ impl<'a> T2BufferFactory<'a> {
         }
     }
 
-    fn build(&mut self, gpu: &mut GPU) -> Fallible<Arc<RefCell<T2Buffer>>> {
+    fn build(&mut self, gpu: &mut GPU) -> Fallible<T2Buffer> {
         let terrain = Terrain::from_bytes(&self.catalog.read_name_sync(&self.mm.t2_name())?)?;
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
@@ -134,7 +133,7 @@ impl<'a> T2BufferFactory<'a> {
         let mut normals = HashMap::new();
         mem::swap(&mut normals, &mut self.memo_normal);
 
-        Ok(Arc::new(RefCell::new(T2Buffer {
+        Ok(T2Buffer {
             bind_group_layout,
             bind_group,
             vertex_buffer,
@@ -143,7 +142,7 @@ impl<'a> T2BufferFactory<'a> {
             positions,
             normals,
             terrain,
-        })))
+        })
     }
 
     fn load_palette(&self) -> Fallible<Palette> {
@@ -524,6 +523,7 @@ impl<'a> T2BufferFactory<'a> {
     }
 }
 
+#[derive(Commandable)]
 pub struct T2Buffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -537,13 +537,14 @@ pub struct T2Buffer {
     terrain: Terrain,
 }
 
+#[commandable]
 impl T2Buffer {
     pub fn new(
         mm: &MissionMap,
         system_palette: &Palette,
         catalog: &Catalog,
         gpu: &mut GPU,
-    ) -> Fallible<Arc<RefCell<Self>>> {
+    ) -> Fallible<Self> {
         trace!("T2Renderer::new");
         T2BufferFactory::new(mm, system_palette, catalog).build(gpu)
     }

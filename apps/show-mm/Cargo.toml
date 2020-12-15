@@ -5,13 +5,15 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+env_logger = "^ 0.7"
 failure = "^ 0.1.2"
 image = "^ 0.21"
+legion = "= 0.2.4"
 log = "^ 0.4"
 nalgebra = "^ 0.20"
 rand = "^ 0.3"
-simplelog = "^ 0.5"
 structopt = "^ 0.2"
+winit = "^ 0.23"
 absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }

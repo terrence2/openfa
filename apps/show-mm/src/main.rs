@@ -18,13 +18,13 @@ use camera::ArcBallCamera;
 use command::Bindings;
 use failure::{bail, Fallible};
 use fnt::Font;
-use frame_graph::make_frame_graph;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::GPU;
-use input::InputSystem;
+use gpu::{make_frame_graph, GPU};
+use input::{InputController, InputSystem};
+use legion::prelude::*;
 use lib::{from_dos_string, CatalogBuilder};
 use log::trace;
 use mm::MissionMap;
@@ -34,14 +34,13 @@ use physical_constants::FEET_TO_HM_32;
 use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
-use simplelog::{Config, LevelFilter, TermLogger};
-use skybox::SkyboxRenderPass;
 use stars::StarsBuffer;
 use std::time::Instant;
 use structopt::StructOpt;
 use t2_buffer::T2Buffer;
-use t2_terrain::T2TerrainRenderPass;
+// use t2_terrain::T2TerrainRenderPass;
 use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
+use winit::window::Window;
 use xt::TypeManager;
 
 /// Show the contents of an MM file
@@ -62,24 +61,51 @@ make_frame_graph!(
             t2: T2Buffer,
             text_layout: TextLayoutBuffer
         };
-        precompute: {};
         renderers: [
-            skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
-            terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
+            //skybox: SkyboxRenderPass { globals, fullscreen, stars, atmosphere },
+            //terrain: T2TerrainRenderPass { globals, atmosphere, t2 },
             shape: ShapeRenderPass { globals, atmosphere, shape_instance_buffer },
             screen_text: ScreenTextRenderPass { globals, text_layout }
+        ];
+        passes: [
+            draw: Render(Screen) {
+                shape( globals, atmosphere, shape_instance_buffer ),
+                screen_text( globals, text_layout )
+            }
         ];
     }
 );
 
 fn main() -> Fallible<()> {
+    env_logger::init();
+
+    let mm_bindings = Bindings::new("map")
+        .bind("mm.prev-object", "Shift+n")?
+        .bind("mm.next-object", "n")?;
+    let system_bindings = Bindings::new("map")
+        .bind("system.exit", "Escape")?
+        .bind("system.exit", "q")?;
+    InputSystem::run_forever(
+        vec![
+            Orrery::debug_bindings()?,
+            ArcBallCamera::default_bindings()?,
+            mm_bindings,
+            system_bindings,
+        ],
+        window_main,
+    )
+}
+
+fn window_main(window: Window, input_controller: &InputController) -> Fallible<()> {
     let opt = Opt::from_args();
     let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     if inputs.is_empty() {
         bail!("no inputs");
     }
     let fid = *inputs.first().unwrap();
-    TermLogger::init(LevelFilter::Warn, Config::default())?;
+
+    //let mut async_rt = Runtime::new()?;
+    let mut legion = World::default();
 
     let label = catalog.file_label(fid)?;
     catalog.set_default_label(&label);
@@ -87,19 +113,7 @@ fn main() -> Fallible<()> {
     let name = meta.name;
     let mut galaxy = Galaxy::new(&catalog)?;
 
-    let mm_bindings = Bindings::new("map")
-        .bind("prev-object", "Shift+n")?
-        .bind("next-object", "n")?;
-    let system_bindings = Bindings::new("map")
-        .bind("exit", "Escape")?
-        .bind("exit", "q")?;
-    let mut input = InputSystem::new(vec![
-        Orrery::debug_bindings()?,
-        ArcBallCamera::default_bindings()?,
-        mm_bindings,
-        system_bindings,
-    ])?;
-    let mut gpu = GPU::new(&input, Default::default())?;
+    let mut gpu = GPU::new(&window, Default::default())?;
 
     let types = TypeManager::empty();
     let mm = MissionMap::from_str(
@@ -113,7 +127,7 @@ fn main() -> Fallible<()> {
     let mut names = Vec::new();
     let t2_buffer = T2Buffer::new(&mm, galaxy.palette(), &catalog, &mut gpu)?;
 
-    let shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
+    let mut shape_instance_buffer = ShapeInstanceBuffer::new(gpu.device())?;
     {
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
@@ -122,17 +136,14 @@ fn main() -> Fallible<()> {
                 continue;
             }
 
-            let (shape_id, slot_id) = shape_instance_buffer
-                .borrow_mut()
-                .upload_and_allocate_slot(
-                    info.xt().ot().shape.as_ref().expect("a shape file"),
-                    DrawSelection::NormalModel,
-                    galaxy.palette(),
-                    &catalog,
-                    &mut gpu,
-                )?;
+            let (shape_id, slot_id) = shape_instance_buffer.upload_and_allocate_slot(
+                info.xt().ot().shape.as_ref().expect("a shape file"),
+                DrawSelection::NormalModel,
+                galaxy.palette(),
+                &catalog,
+                &mut gpu,
+            )?;
             let aabb = *shape_instance_buffer
-                .borrow()
                 .part(shape_id)
                 .widgets()
                 .read()
@@ -162,7 +173,7 @@ fn main() -> Fallible<()> {
                     4f32
                 };
                 let mut p = info.position();
-                let ns_ft = t2_buffer.borrow().t2().extent_north_south_in_ft();
+                let ns_ft = t2_buffer.t2().extent_north_south_in_ft();
                 p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
                 p *= FEET_TO_HM_32;
                 p.coords[1] = /*t2_buffer.borrow().ground_height_at_tile(&p)*/
@@ -183,7 +194,7 @@ fn main() -> Fallible<()> {
                 galaxy.create_building(
                     slot_id,
                     shape_id,
-                    shape_instance_buffer.borrow().part(shape_id),
+                    shape_instance_buffer.part(shape_id),
                     scale,
                     p,
                     info.angle(),
@@ -239,31 +250,30 @@ fn main() -> Fallible<()> {
         }
         */
     }
-    shape_instance_buffer
-        .borrow_mut()
-        .ensure_uploaded(&mut gpu)?;
+    shape_instance_buffer.ensure_uploaded(&mut gpu)?;
 
     ///////////////////////////////////////////////////////////
-    let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
+    let atmosphere_buffer = AtmosphereBuffer::new(false, &mut gpu)?;
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
     let text_layout_buffer = TextLayoutBuffer::new(&mut gpu)?;
 
     let mut frame_graph = FrameGraph::new(
+        &mut legion,
         &mut gpu,
-        &atmosphere_buffer,
-        &fullscreen_buffer,
-        &globals_buffer,
-        &shape_instance_buffer,
-        &stars_buffer,
-        &t2_buffer,
-        &text_layout_buffer,
+        atmosphere_buffer,
+        fullscreen_buffer,
+        globals_buffer,
+        shape_instance_buffer,
+        stars_buffer,
+        t2_buffer,
+        text_layout_buffer,
     )?;
     ///////////////////////////////////////////////////////////
 
-    let fps_handle = text_layout_buffer
-        .borrow_mut()
+    let fps_handle = frame_graph
+        .text_layout
         .add_screen_text(Font::HUD11.name(), "", &gpu)?
         .with_color(&[1f32, 0f32, 0f32, 1f32])
         .with_horizontal_position(TextPositionH::Left)
@@ -273,7 +283,7 @@ fn main() -> Fallible<()> {
         .handle();
 
     let mut orrery = Orrery::now();
-    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1), meters!(3.4e+38));
+    let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.1));
     //camera.set_target_point(&nalgebra::convert(positions[position_index]));
     arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
@@ -284,14 +294,14 @@ fn main() -> Fallible<()> {
     loop {
         let loop_start = Instant::now();
 
-        for command in input.poll()? {
+        for command in input_controller.poll()? {
             arcball.handle_command(&command)?;
             orrery.handle_command(&command)?;
-            match command.name.as_str() {
+            match command.command() {
                 // system bindings
                 "window-close" | "window-destroy" | "exit" => return Ok(()),
                 "window-resize" => {
-                    gpu.note_resize(&input);
+                    gpu.note_resize(&window);
                     arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
                 }
 
@@ -309,34 +319,38 @@ fn main() -> Fallible<()> {
                     //camera.set_target_point(&nalgebra::convert(positions[position_index]));
                 }
 
-                _ => trace!("unhandled command: {}", command.name),
+                _ => trace!("unhandled command: {}", command.full()),
             }
         }
 
-        globals_buffer
-            .borrow()
+        let mut tracker = Default::default();
+        arcball.think();
+
+        frame_graph
+            .globals
             //.make_upload_buffer_for_arcball_in_tile(
             .make_upload_buffer(
                 //t2_buffer.borrow().t2(),
                 arcball.camera(),
+                2.2,
                 &gpu,
-                frame_graph.tracker_mut(),
+                &mut tracker,
             )?;
-        atmosphere_buffer.borrow().make_upload_buffer(
+        frame_graph.atmosphere.make_upload_buffer(
             convert(orrery.sun_direction()),
             &gpu,
-            frame_graph.tracker_mut(),
+            &mut tracker,
         )?;
-        shape_instance_buffer.borrow_mut().make_upload_buffer(
+        frame_graph.shape_instance_buffer.make_upload_buffer(
             &galaxy.start_time_owned(),
             galaxy.world_mut(),
             &gpu,
-            frame_graph.tracker_mut(),
+            &mut tracker,
         )?;
-        text_layout_buffer
-            .borrow_mut()
-            .make_upload_buffer(&gpu, frame_graph.tracker_mut())?;
-        frame_graph.run(&mut gpu)?;
+        frame_graph
+            .text_layout
+            .make_upload_buffer(&gpu, &mut tracker)?;
+        frame_graph.run(&mut gpu, tracker)?;
 
         let ft = loop_start.elapsed();
         let ts = format!(
@@ -346,8 +360,6 @@ fn main() -> Fallible<()> {
             ft.as_secs() * 1000 + u64::from(ft.subsec_millis()),
             ft.subsec_micros()
         );
-        fps_handle
-            .grab(&mut text_layout_buffer.borrow_mut())
-            .set_span(&ts);
+        fps_handle.grab(&mut frame_graph.text_layout).set_span(&ts);
     }
 }

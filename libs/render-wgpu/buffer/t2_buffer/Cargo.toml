@@ -13,6 +13,8 @@ nalgebra = "^ 0.20"
 wgpu = "^ 0.6"
 zerocopy = "^ 0.3"
 catalog = { path = "../../../nitrogen/system/catalog" }
+command = { path = "../../../nitrogen/system/command" }
+commandable = { path = "../../../nitrogen/system/commandable" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../lay" }
 mm = { path = "../../../mm" }

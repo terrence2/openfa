@@ -18,7 +18,7 @@ use image::DynamicImage;
 use log::trace;
 use pal::Palette;
 use pic::Pic;
-use std::{borrow::Cow, collections::HashMap, num::NonZeroU32};
+use std::{borrow::Cow, collections::HashMap};
 
 const DUMP_ATLAS: bool = false;
 
@@ -197,7 +197,7 @@ impl MegaAtlas {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("shape-chunk-texture-atlas-uploader-command-encoder"),
             });
-        for (i, layer) in self.images.iter().enumerate() {
+        for (_i, layer) in self.images.iter().enumerate() {
             let buffer = gpu.push_buffer(
                 "shape-chunk-texture-atlas-upload-buffer",
                 &layer,
