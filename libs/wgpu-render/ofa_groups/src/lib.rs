@@ -17,6 +17,7 @@
 pub enum Group {
     ShapeChunk,
     ShapeBlock,
+    T2Terrain,
 }
 
 impl Group {
@@ -24,6 +25,7 @@ impl Group {
         match self {
             Self::ShapeChunk => 2,
             Self::ShapeBlock => 3,
+            Self::T2Terrain => 2,
         }
     }
 }

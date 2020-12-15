@@ -34,6 +34,7 @@ const float EXPOSURE = MAX_LUMINOUS_EFFICACY * 0.0001;
 void
 main()
 {
+/*
     vec3 intersect = v_position.xyz;
     vec3 normal = v_normal.xyz;
     vec3 sun_direction = sun_direction.xyz;
@@ -87,6 +88,8 @@ main()
             vec3(1.0) - exp(-ground_radiance / vec3(atmosphere.whitepoint) * EXPOSURE),
             vec3(1.0 / 2.2)
         );
-
     f_color = vec4(color, 1);
+*/
+
+    f_color = v_position;
 }

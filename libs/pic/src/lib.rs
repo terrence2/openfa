@@ -69,7 +69,7 @@ pub struct Pic {
 impl Pic {
     /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
     pub fn from_bytes(data: &[u8]) -> Fallible<Pic> {
-        let header = Header::overlay(data)?;
+        let header = Header::overlay(&data[..mem::size_of::<Header>()]);
         let format = PicFormat::from_word(header.format())?;
         if format == PicFormat::JPEG {
             let img = image::load_from_memory(data)?;
@@ -103,7 +103,7 @@ impl Pic {
 
     /// Render the PIC in `data` into a raster image. The given palette will be used if the image does not contain its own.
     pub fn decode(palette: &Palette, data: &[u8]) -> Fallible<DynamicImage> {
-        let header = Header::overlay(data)?;
+        let header = Header::overlay(&data[..mem::size_of::<Header>()]);
         let format = PicFormat::from_word(header.format())?;
         Ok(match format {
             PicFormat::JPEG => image::load_from_memory(data)?,
@@ -259,6 +259,10 @@ impl Pic {
             }
             let pos = (offset[0] + i % width, offset[1] + i / width);
             let base = 4 * (pos.1 as usize * span + pos.0 as usize);
+            // println!(
+            //     "i: {}, offset: {:?}, pos: {:?}, base: {}",
+            //     i, offset, pos, base
+            // );
             into_buffer[base..base + 4].copy_from_slice(&clr.data);
         }
         Ok(())
@@ -275,7 +279,8 @@ impl Pic {
         assert_eq!(spans.len() % mem::size_of::<Span>(), 0);
         let span_cnt = spans.len() / mem::size_of::<Span>() - 1;
         for i in 0..span_cnt {
-            let span = Span::overlay(&spans[i * mem::size_of::<Span>()..])?;
+            let span =
+                Span::overlay(&spans[i * mem::size_of::<Span>()..(i + 1) * mem::size_of::<Span>()]);
             assert!(span.row() < height);
             assert!(span.index() < pixels.len());
             assert!(span.start() < width);

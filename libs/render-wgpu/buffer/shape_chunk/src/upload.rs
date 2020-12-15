@@ -1033,11 +1033,11 @@ impl<'a> ShapeUploader<'a> {
 
         let calls = Self::find_external_calls(x86, sh)?;
         let mut calls = calls.keys().cloned().collect::<Vec<&str>>();
-        calls.sort();
+        calls.sort_unstable();
 
         let memrefs = Self::find_external_references(x86, sh);
         let mut reads = memrefs.keys().cloned().collect::<Vec<&str>>();
-        reads.sort();
+        reads.sort_unstable();
 
         //println!("MEMREFS: {:?}", memrefs);
 

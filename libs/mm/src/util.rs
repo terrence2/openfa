@@ -22,8 +22,8 @@ where
     <T as ::std::str::FromStr>::Err: 'static + ::std::error::Error + Send + Sync,
 {
     ensure!(n.is_ascii(), "non-ascii in number");
-    Ok(if n.starts_with('$') {
-        T::from_str_radix(&n[1..], 16)?
+    Ok(if let Some(hex) = n.strip_prefix('$') {
+        T::from_str_radix(hex, 16)?
     } else {
         n.parse::<T>()?
     })

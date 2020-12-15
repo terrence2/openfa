@@ -28,16 +28,19 @@ mod test {
     use super::*;
     use failure::Fallible;
     use gpu::GPU;
-    use input::InputSystem;
     use lib::CatalogBuilder;
     use log::trace;
     use pal::Palette;
     use std::collections::HashMap;
+    use winit::{event_loop::EventLoop, window::Window};
 
+    #[cfg(unix)]
     #[test]
     fn test_load_all() -> Fallible<()> {
-        let input = InputSystem::new(vec![])?;
-        let mut gpu = GPU::new(&input, Default::default())?;
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let mut gpu = GPU::new(&window, Default::default())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640

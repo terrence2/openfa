@@ -39,10 +39,7 @@ impl FieldType {
     }
 
     pub fn is_numeric(&self) -> bool {
-        match self {
-            FieldType::Byte | FieldType::Word | FieldType::DWord => true,
-            _ => false,
-        }
+        matches!(self, FieldType::Byte | FieldType::Word | FieldType::DWord)
     }
 }
 
@@ -69,10 +66,10 @@ impl FieldNumber {
     // anyway. The assumption appears to be that truncation will happen. At
     // least one of these instances implies sign extension as well.
     fn parse_numeric(vs: &str) -> Fallible<(Repr, u32)> {
-        let tpl = if vs.starts_with('$') {
-            (Repr::Hex, u32::from_str_radix(&vs[1..], 16)?)
-        } else if vs.starts_with('^') {
-            (Repr::Car, vs[1..].parse::<u32>()? * 256)
+        let tpl = if let Some(hex) = vs.strip_prefix('$') {
+            (Repr::Hex, u32::from_str_radix(hex, 16)?)
+        } else if let Some(short) = vs.strip_prefix('^') {
+            (Repr::Car, short.parse::<u32>()? * 256)
         } else {
             (Repr::Dec, vs.parse::<i32>()? as u32)
         };

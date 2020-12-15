@@ -7,12 +7,13 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 log = "^ 0.4"
-wgpu = "^ 0.5"
+wgpu = "^ 0.6"
 atmosphere = { path = "../../../nitrogen/wgpu-buffer/atmosphere" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
+ofa_groups = { path = "../../../wgpu-render/ofa_groups" }
 shader_shared = { path = "../../../nitrogen/wgpu-render/shader_shared" }
 t2_buffer = { path = "../../../render-wgpu/buffer/t2_buffer" }
 
 [build-dependencies]
-build-shaders = { path = "../../../nitrogen/wgpu-render/build-shaders" }
+build_shaders = { path = "../../../nitrogen/system/build_shaders" }

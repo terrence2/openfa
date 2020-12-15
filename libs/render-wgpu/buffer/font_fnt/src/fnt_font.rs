@@ -79,6 +79,7 @@ impl FntFont {
             }
             width += fnt.glyphs[&glyph_index].width;
         }
+        width = GPU::stride_for_row_size(width as u32) as i32;
 
         // FIXME: we should probably move bitmap generation into FNT and keep this about
         //        managing the texture
@@ -128,8 +129,9 @@ impl FntFont {
         let buf =
             GrayImage::from_raw(width as u32, fnt.height as u32, plane).expect("same parameters");
 
-        let texture_view = upload_texture_luma(buf, gpu)?;
+        let texture_view = upload_texture_luma("fnt-face-texture-view", buf, gpu)?;
         let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("fnt-face-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -138,7 +140,8 @@ impl FntFont {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare: wgpu::CompareFunction::Never,
+            anisotropy_clamp: None,
+            compare: None,
         });
 
         Ok(Box::new(Self {

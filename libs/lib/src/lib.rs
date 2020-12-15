@@ -23,6 +23,8 @@ pub use crate::{
     game_info::{GameInfo, GAME_INFO},
 };
 
+use async_trait::async_trait;
+use byteorder::{ByteOrder, LittleEndian};
 use catalog::{DrawerFileId, DrawerFileMetadata, DrawerInterface};
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
 use failure::{ensure, err_msg, Fallible};
@@ -35,6 +37,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     fs, mem,
+    ops::Range,
     path::{Path, PathBuf},
     str,
 };
@@ -238,6 +241,7 @@ pub fn from_dos_string(input: Cow<[u8]>) -> Cow<str> {
     }
 }
 
+#[async_trait]
 impl DrawerInterface for LibDrawer {
     fn index(&self) -> Fallible<HashMap<DrawerFileId, String>> {
         Ok(self.drawer_index.clone())
@@ -297,26 +301,88 @@ impl DrawerInterface for LibDrawer {
         Ok(match info.compression {
             CompressionType::None => Cow::from(&self.data[info.start_offset..info.end_offset]),
             CompressionType::PKWare => {
+                assert!(info.start_offset + 4 <= info.end_offset);
+                let expect_output_size = LittleEndian::read_u32(&self.data) as usize;
+                Cow::from(pkware::explode(
+                    &self.data[info.start_offset + 4..info.end_offset],
+                    Some(expect_output_size),
+                )?)
+            }
+            CompressionType::LZSS => {
+                assert!(info.start_offset + 4 <= info.end_offset);
+                let expect_output_size = LittleEndian::read_u32(&self.data) as usize;
+                Cow::from(lzss::explode(
+                    &self.data[info.start_offset + 4..info.end_offset],
+                    Some(expect_output_size),
+                )?)
+            }
+            CompressionType::PXPK => unimplemented!(),
+        })
+    }
+
+    fn read_slice_sync(&self, id: DrawerFileId, extent: Range<usize>) -> Fallible<Cow<[u8]>> {
+        ensure!(self.index.contains_key(&id));
+        let info = &self.index[&id];
+        Ok(match info.compression {
+            CompressionType::None => {
+                assert!(info.start_offset + extent.start <= info.end_offset);
+                assert!(info.start_offset + extent.end <= info.end_offset);
+                Cow::from(
+                    &self.data[info.start_offset + extent.start..info.start_offset + extent.end],
+                )
+            }
+            _ => unimplemented!("slice on compressed file"),
+        })
+    }
+
+    async fn read(&self, id: DrawerFileId) -> Fallible<Vec<u8>> {
+        ensure!(self.index.contains_key(&id));
+        let info = &self.index[&id];
+        // FIXME: make this more async friendly by spawn blocking off the io thread
+        Ok(match info.compression {
+            CompressionType::None => {
+                let mut out = Vec::new();
+                out.copy_from_slice(&self.data[info.start_offset..info.end_offset]);
+                out
+            }
+            CompressionType::PKWare => {
                 // FIXME: zerocopy
                 let dwords: &[u32] =
                     unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
                 let expect_output_size = Some(dwords[0] as usize);
-                Cow::from(pkware::explode(
+                pkware::explode(
                     &self.data[info.start_offset + 4..info.end_offset],
                     expect_output_size,
-                )?)
+                )?
             }
             CompressionType::LZSS => {
                 // FIXME: zerocopy
                 let dwords: &[u32] =
                     unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
                 let expect_output_size = Some(dwords[0] as usize);
-                Cow::from(lzss::explode(
+                lzss::explode(
                     &self.data[info.start_offset + 4..info.end_offset],
                     expect_output_size,
-                )?)
+                )?
             }
             CompressionType::PXPK => unimplemented!(),
+        })
+    }
+
+    async fn read_slice(&self, id: DrawerFileId, extent: Range<usize>) -> Fallible<Vec<u8>> {
+        ensure!(self.index.contains_key(&id));
+        let info = &self.index[&id];
+        Ok(match info.compression {
+            CompressionType::None => {
+                assert!(info.start_offset + extent.start <= info.end_offset);
+                assert!(info.start_offset + extent.end <= info.end_offset);
+                let mut out = Vec::new();
+                out.copy_from_slice(
+                    &self.data[info.start_offset + extent.start..info.start_offset + extent.end],
+                );
+                out
+            }
+            _ => unimplemented!("slice on compressed file"),
         })
     }
 }

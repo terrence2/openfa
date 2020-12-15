@@ -18,9 +18,9 @@ pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
 use catalog::Catalog;
+use commandable::{commandable, Commandable};
 use failure::Fallible;
-use frame_graph::FrameStateTracker;
-use gpu::{DrawIndirectCommand, GPU};
+use gpu::{DrawIndirectCommand, UploadTracker, GPU};
 use legion::prelude::*;
 use log::trace;
 use pal::Palette;
@@ -29,6 +29,7 @@ use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     mem,
+    num::NonZeroU64,
     sync::Arc,
     time::Instant,
 };
@@ -112,6 +113,15 @@ pub struct InstanceBlock {
 }
 
 impl InstanceBlock {
+    const TRANSFORM_BUFFER_SIZE: wgpu::BufferAddress =
+        (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
+    const FLAG_BUFFER_SIZE: wgpu::BufferAddress =
+        (mem::size_of::<[u32; 2]>() * BLOCK_SIZE) as wgpu::BufferAddress;
+    const XFORM_INDEX_BUFFER_SIZE: wgpu::BufferAddress =
+        (mem::size_of::<u32>() * BLOCK_SIZE) as wgpu::BufferAddress;
+    const XFORM_BUFFER_SIZE: wgpu::BufferAddress =
+        (mem::size_of::<[f32; 6]>() * 14 * BLOCK_SIZE) as wgpu::BufferAddress;
+
     fn new(
         block_id: BlockId,
         chunk_id: ChunkId,
@@ -127,72 +137,59 @@ impl InstanceBlock {
             label: Some("shape-instance-command-buffer"),
             size: command_buffer_size,
             usage: wgpu::BufferUsage::all(),
+            mapped_at_creation: false,
         })));
 
-        let transform_buffer_size =
-            (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
-            size: transform_buffer_size,
+            size: Self::TRANSFORM_BUFFER_SIZE,
             usage: wgpu::BufferUsage::all(),
+            mapped_at_creation: false,
         })));
 
         // TODO: Only allocate flag and xform buffers if the block requires them
 
-        let flag_buffer_size = (mem::size_of::<[u32; 2]>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let flag_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-flag-buffer"),
-            size: flag_buffer_size,
+            size: Self::FLAG_BUFFER_SIZE,
             usage: wgpu::BufferUsage::all(),
+            mapped_at_creation: false,
         })));
 
-        let xform_index_buffer_size = (mem::size_of::<u32>() * BLOCK_SIZE) as wgpu::BufferAddress;
         let xform_index_buffer =
             Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("shape-instance-xform-index-buffer"),
-                size: xform_index_buffer_size,
+                size: Self::XFORM_INDEX_BUFFER_SIZE,
                 usage: wgpu::BufferUsage::all(),
+                mapped_at_creation: false,
             })));
 
-        let xform_buffer_size =
-            (mem::size_of::<[f32; 6]>() * 14 * BLOCK_SIZE) as wgpu::BufferAddress;
         let xform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
-            size: xform_buffer_size,
+            size: Self::XFORM_BUFFER_SIZE,
             usage: wgpu::BufferUsage::all(),
+            mapped_at_creation: false,
         })));
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-instance-bind-group"),
             layout: &layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &transform_buffer,
-                        range: 0..transform_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(transform_buffer.slice(..)),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &flag_buffer,
-                        range: 0..flag_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(flag_buffer.slice(..)),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &xform_index_buffer,
-                        range: 0..xform_index_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(xform_index_buffer.slice(..)),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &xform_buffer,
-                        range: 0..xform_buffer_size,
-                    },
+                    resource: wgpu::BindingResource::Buffer(xform_buffer.slice(..)),
                 },
             ],
         });
@@ -438,6 +435,7 @@ impl InstanceBlock {
     */
 }
 
+#[derive(Commandable)]
 pub struct ShapeInstanceBuffer {
     pub chunk_man: ShapeChunkBuffer,
 
@@ -448,18 +446,21 @@ pub struct ShapeInstanceBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
+#[commandable]
 impl ShapeInstanceBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Arc<RefCell<Self>>> {
+    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shape-instance-bind-group-layout"),
-            bindings: &[
+            entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::StorageBuffer {
                         dynamic: false,
                         readonly: true,
+                        min_binding_size: NonZeroU64::new(InstanceBlock::TRANSFORM_BUFFER_SIZE),
                     },
+                    count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
@@ -467,7 +468,9 @@ impl ShapeInstanceBuffer {
                     ty: wgpu::BindingType::StorageBuffer {
                         dynamic: false,
                         readonly: true,
+                        min_binding_size: NonZeroU64::new(InstanceBlock::FLAG_BUFFER_SIZE),
                     },
+                    count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
@@ -475,7 +478,9 @@ impl ShapeInstanceBuffer {
                     ty: wgpu::BindingType::StorageBuffer {
                         dynamic: false,
                         readonly: true,
+                        min_binding_size: NonZeroU64::new(InstanceBlock::XFORM_INDEX_BUFFER_SIZE),
                     },
+                    count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
@@ -483,18 +488,20 @@ impl ShapeInstanceBuffer {
                     ty: wgpu::BindingType::StorageBuffer {
                         dynamic: false,
                         readonly: true,
+                        min_binding_size: NonZeroU64::new(InstanceBlock::XFORM_BUFFER_SIZE),
                     },
+                    count: None,
                 },
             ],
         });
 
-        Ok(Arc::new(RefCell::new(Self {
+        Ok(Self {
             chunk_man: ShapeChunkBuffer::new(device)?,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
             bind_group_layout,
-        })))
+        })
     }
 
     pub fn block(&self, id: &BlockId) -> &InstanceBlock {
@@ -605,7 +612,7 @@ impl ShapeInstanceBuffer {
         start: &Instant,
         world: &mut World,
         gpu: &GPU,
-        tracker: &mut FrameStateTracker,
+        tracker: &mut UploadTracker,
     ) -> Fallible<()> {
         let now = Instant::now();
 
@@ -701,7 +708,6 @@ impl ShapeInstanceBuffer {
                 "shape-instance-command-buffer-scratch",
                 &block.command_buffer_scratch[..block.len()],
                 block.command_buffer.clone(),
-                wgpu::BufferUsage::all(),
                 tracker,
             );
 
@@ -709,7 +715,6 @@ impl ShapeInstanceBuffer {
                 "shape-instance-transform-buffer-scratch",
                 &block.transform_buffer_scratch[..block.len()],
                 block.transform_buffer.clone(),
-                wgpu::BufferUsage::all(),
                 tracker,
             );
 
@@ -717,7 +722,6 @@ impl ShapeInstanceBuffer {
                 "shape-instance-flag-buffer-scratch",
                 &block.flag_buffer_scratch[..block.len()],
                 block.flag_buffer.clone(),
-                wgpu::BufferUsage::all(),
                 tracker,
             );
 
@@ -725,7 +729,6 @@ impl ShapeInstanceBuffer {
                 "shape-instance-xform-index-buffer-scratch",
                 &block.xform_index_buffer_scratch[..block.len()],
                 block.xform_index_buffer.clone(),
-                wgpu::BufferUsage::all(),
                 tracker,
             );
 
@@ -733,7 +736,6 @@ impl ShapeInstanceBuffer {
                 "shape-instance-xform-buffer-scratch",
                 &block.xform_buffer_scratch[..block.xform_cursor],
                 block.xform_buffer.clone(),
-                wgpu::BufferUsage::all(),
                 tracker,
             );
         }
@@ -744,15 +746,18 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use input::InputSystem;
     use lib::CatalogBuilder;
     use pal::Palette;
     use shape_chunk::DrawSelection;
+    use winit::{event_loop::EventLoop, window::Window};
 
+    #[cfg(unix)]
     #[test]
     fn test_creation() -> Fallible<()> {
-        let input = InputSystem::new(vec![])?;
-        let mut gpu = GPU::new(&input, Default::default())?;
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let mut gpu = GPU::new(&window, Default::default())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -784,7 +789,7 @@ mod test {
             let game = label.split(':').last().unwrap();
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
 
-            let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
+            let mut inst_man = ShapeInstanceBuffer::new(gpu.device())?;
             let mut all_chunks = Vec::new();
             let mut all_slots = Vec::new();
             for &fid in files {
@@ -803,7 +808,7 @@ mod test {
                 }
 
                 for _ in 0..1 {
-                    let (chunk_id, slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
+                    let (chunk_id, slot_id) = inst_man.upload_and_allocate_slot(
                         &name,
                         DrawSelection::NormalModel,
                         &palette,

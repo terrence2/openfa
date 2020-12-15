@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
 use catalog::Catalog;
+use commandable::{commandable, Commandable};
 use failure::Fallible;
 use gpu::GPU;
 use lay::Layer;
@@ -25,11 +26,9 @@ use pal::Palette;
 use physical_constants::{EARTH_RADIUS_KM_32, FEET_TO_HM_32, FEET_TO_KM};
 use pic::Pic;
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     mem,
     ops::Range,
-    sync::Arc,
 };
 use t2::{Sample, Terrain};
 use zerocopy::{AsBytes, FromBytes};
@@ -121,7 +120,7 @@ impl<'a> T2BufferFactory<'a> {
         }
     }
 
-    fn build(&mut self, gpu: &mut GPU) -> Fallible<Arc<RefCell<T2Buffer>>> {
+    fn build(&mut self, gpu: &mut GPU) -> Fallible<T2Buffer> {
         let terrain = Terrain::from_bytes(&self.catalog.read_name_sync(&self.mm.t2_name())?)?;
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
@@ -134,7 +133,7 @@ impl<'a> T2BufferFactory<'a> {
         let mut normals = HashMap::new();
         mem::swap(&mut normals, &mut self.memo_normal);
 
-        Ok(Arc::new(RefCell::new(T2Buffer {
+        Ok(T2Buffer {
             bind_group_layout,
             bind_group,
             vertex_buffer,
@@ -143,7 +142,7 @@ impl<'a> T2BufferFactory<'a> {
             positions,
             normals,
             terrain,
-        })))
+        })
     }
 
     fn load_palette(&self) -> Fallible<Palette> {
@@ -228,9 +227,8 @@ impl<'a> T2BufferFactory<'a> {
             wgpu::BufferUsage::all(),
         );
         let atlas_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
-            label: Some("t2-buffer-atlas"),
+            label: Some("t2-buffer-atlas-texture"),
             size: extent,
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -245,31 +243,34 @@ impl<'a> T2BufferFactory<'a> {
         encoder.copy_buffer_to_texture(
             wgpu::BufferCopyView {
                 buffer: &transfer_buffer,
-                offset: 0,
-                bytes_per_row: extent.width * 4,
-                rows_per_image: extent.height,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: extent.width * 4,
+                    rows_per_image: extent.height,
+                },
             },
             wgpu::TextureCopyView {
                 texture: &atlas_texture,
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             extent,
         );
-        gpu.queue_mut().submit(&[encoder.finish()]);
+        gpu.queue_mut().submit(vec![encoder.finish()]);
         gpu.device().poll(wgpu::Maintain::Wait);
 
         let atlas_texture_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            dimension: wgpu::TextureViewDimension::D2,
+            label: Some("t2-buffer-atlas-texture-view"),
+            format: None,
+            dimension: None,
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,
-            level_count: 1, // mip level
+            level_count: None,
             base_array_layer: 0,
-            array_layer_count: 1,
+            array_layer_count: None,
         });
         let sampler_resource = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("t2-atlas-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -278,14 +279,15 @@ impl<'a> T2BufferFactory<'a> {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare: wgpu::CompareFunction::Never,
+            compare: None,
+            anisotropy_clamp: None,
         });
 
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("t2-buffer-bind-group-layout"),
-                    bindings: &[
+                    entries: &[
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStage::FRAGMENT,
@@ -294,23 +296,25 @@ impl<'a> T2BufferFactory<'a> {
                                 component_type: wgpu::TextureComponentType::Uint,
                                 dimension: wgpu::TextureViewDimension::D2,
                             },
+                            count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler { comparison: false },
+                            count: None,
                         },
                     ],
                 });
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("t2-buffer-bind-group"),
             layout: &bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&atlas_texture_view),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler_resource),
                 },
@@ -519,6 +523,7 @@ impl<'a> T2BufferFactory<'a> {
     }
 }
 
+#[derive(Commandable)]
 pub struct T2Buffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -532,13 +537,14 @@ pub struct T2Buffer {
     terrain: Terrain,
 }
 
+#[commandable]
 impl T2Buffer {
     pub fn new(
         mm: &MissionMap,
         system_palette: &Palette,
         catalog: &Catalog,
         gpu: &mut GPU,
-    ) -> Fallible<Arc<RefCell<Self>>> {
+    ) -> Fallible<Self> {
         trace!("T2Renderer::new");
         T2BufferFactory::new(mm, system_palette, catalog).build(gpu)
     }
@@ -555,12 +561,12 @@ impl T2Buffer {
         &self.bind_group_layout
     }
 
-    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.vertex_buffer
+    pub fn vertex_buffer(&self) -> wgpu::BufferSlice {
+        self.vertex_buffer.slice(..)
     }
 
-    pub fn index_buffer(&self) -> &wgpu::Buffer {
-        &self.index_buffer
+    pub fn index_buffer(&self) -> wgpu::BufferSlice {
+        self.index_buffer.slice(..)
     }
 
     pub fn index_range(&self) -> Range<u32> {
@@ -634,14 +640,17 @@ impl T2Buffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use input::InputSystem;
     use lib::{from_dos_string, CatalogBuilder};
+    use winit::{event_loop::EventLoop, window::Window};
     use xt::TypeManager;
 
+    #[cfg(unix)]
     #[test]
     fn test_tile_to_earth() -> Fallible<()> {
-        let input = InputSystem::new(vec![])?;
-        let mut gpu = GPU::new(&input, Default::default())?;
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let mut gpu = GPU::new(&window, Default::default())?;
 
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["FA:PALETTE.PAL".to_owned()])?;

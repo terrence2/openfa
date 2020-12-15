@@ -27,9 +27,14 @@ layout(location = 2) out smooth vec4 v_color;
 layout(location = 3) out smooth vec2 v_tex_coord;
 
 void main() {
-    gl_Position = camera_projection() * camera_view() * vec4(position, 1.0);
-    v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
-    v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
+    gl_Position = camera_perspective_m * camera_view_m * vec4(position, 1.0);
+
+    //v_position = tile_to_earth_translation() + (tile_to_earth_scale() * tile_to_earth_rotation() * (vec4(position, 1.0) - tile_center_offset()));
+    v_position = gl_Position;
+
+    //v_normal = tile_to_earth_rotation() * vec4(normal, 1.0);
+    v_normal = v_position;
+
     v_color = color;
     v_tex_coord = tex_coord;
 }

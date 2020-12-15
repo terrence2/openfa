@@ -66,8 +66,8 @@ fn main() -> Fallible<()> {
         }
 
         if let Some(pos_str) = opt.position.clone() {
-            let pos = if pos_str.starts_with("0x") {
-                usize::from_str_radix(&pos_str[2..], 16)?
+            let pos = if let Some(hex) = pos_str.strip_prefix("0x") {
+                usize::from_str_radix(hex, 16)?
             } else {
                 pos_str.parse::<usize>()?
             };
