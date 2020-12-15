@@ -746,15 +746,18 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use input::InputSystem;
     use lib::CatalogBuilder;
     use pal::Palette;
     use shape_chunk::DrawSelection;
+    use winit::{event_loop::EventLoop, window::Window};
 
+    #[cfg(unix)]
     #[test]
     fn test_creation() -> Fallible<()> {
-        let input = InputSystem::new(vec![])?;
-        let mut gpu = GPU::new(&input, Default::default())?;
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let mut gpu = GPU::new(&window, Default::default())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -786,7 +789,7 @@ mod test {
             let game = label.split(':').last().unwrap();
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
 
-            let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
+            let mut inst_man = ShapeInstanceBuffer::new(gpu.device())?;
             let mut all_chunks = Vec::new();
             let mut all_slots = Vec::new();
             for &fid in files {
@@ -805,7 +808,7 @@ mod test {
                 }
 
                 for _ in 0..1 {
-                    let (chunk_id, slot_id) = inst_man.borrow_mut().upload_and_allocate_slot(
+                    let (chunk_id, slot_id) = inst_man.upload_and_allocate_slot(
                         &name,
                         DrawSelection::NormalModel,
                         &palette,

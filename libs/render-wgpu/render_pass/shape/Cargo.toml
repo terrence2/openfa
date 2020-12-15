@@ -19,7 +19,7 @@ shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
 
 [dev-dependencies]
-input = { path = "../../../nitrogen/system/input" }
+winit = "^ 0.23"
 
 [build-dependencies]
 build_shaders = { path = "../../../nitrogen/system/build_shaders" }

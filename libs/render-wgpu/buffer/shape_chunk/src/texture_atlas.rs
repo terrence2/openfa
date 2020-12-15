@@ -142,7 +142,7 @@ impl MegaAtlas {
             self.utilization[layer][column] as u32 + 1,
         ];
         let write_pointer = &mut self.images[layer];
-        Pic::decode_into_buffer(palette, write_pointer, ATLAS_STRIDE, offset, pic, &data)?;
+        Pic::decode_into_buffer(palette, write_pointer, ATLAS_WIDTH, offset, pic, &data)?;
 
         // FIXME: fill in border with a copy of the other side.
 

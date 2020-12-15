@@ -146,22 +146,19 @@ impl ShapeRenderPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use input::InputSystem;
+    use winit::{event_loop::EventLoop, window::Window};
 
+    #[cfg(unix)]
     #[test]
     fn it_works() -> Fallible<()> {
-        let input = InputSystem::new(vec![])?;
-        let mut gpu = GPU::new(&input, Default::default())?;
-        let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu)?;
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let mut gpu = GPU::new(&window, Default::default())?;
+        let atmosphere_buffer = AtmosphereBuffer::new(false, &mut gpu)?;
         let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
         let inst_man = ShapeInstanceBuffer::new(gpu.device())?;
-
-        let _ = ShapeRenderPass::new(
-            &gpu,
-            &globals_buffer.borrow(),
-            &atmosphere_buffer.borrow(),
-            &inst_man.borrow(),
-        )?;
+        let _ = ShapeRenderPass::new(&gpu, &globals_buffer, &atmosphere_buffer, &inst_man)?;
 
         Ok(())
     }

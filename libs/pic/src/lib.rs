@@ -259,6 +259,10 @@ impl Pic {
             }
             let pos = (offset[0] + i % width, offset[1] + i / width);
             let base = 4 * (pos.1 as usize * span + pos.0 as usize);
+            // println!(
+            //     "i: {}, offset: {:?}, pos: {:?}, base: {}",
+            //     i, offset, pos, base
+            // );
             into_buffer[base..base + 4].copy_from_slice(&clr.data);
         }
         Ok(())

@@ -73,7 +73,7 @@ impl TextureAtlas {
     pub fn new(sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
         ensure!(!sources.is_empty(), "cannot create atlas with no textures");
         let mut uniform = false;
-        if let Some((TLoc::Index(_), _)) = sources.iter().next() {
+        if let Some((TLoc::Index(_), _)) = sources.get(0) {
             uniform = true;
         }
 

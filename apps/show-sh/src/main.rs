@@ -23,7 +23,7 @@ use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, UploadTracker, GPU};
+use gpu::{make_frame_graph, GPU};
 use input::{InputController, InputSystem};
 use legion::prelude::*;
 use lib::CatalogBuilder;
