@@ -640,14 +640,17 @@ impl T2Buffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use input::InputSystem;
     use lib::{from_dos_string, CatalogBuilder};
+    use winit::{event_loop::EventLoop, window::Window};
     use xt::TypeManager;
 
+    #[cfg(unix)]
     #[test]
     fn test_tile_to_earth() -> Fallible<()> {
-        let input = InputSystem::new(vec![])?;
-        let mut gpu = GPU::new(&input, Default::default())?;
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let mut gpu = GPU::new(&window, Default::default())?;
 
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["FA:PALETTE.PAL".to_owned()])?;

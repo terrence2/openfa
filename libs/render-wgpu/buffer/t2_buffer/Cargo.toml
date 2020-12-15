@@ -25,7 +25,6 @@ t2 = { path = "../../../t2" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
+winit = "^ 0.23"
 lib = { path = "../../../lib" }
-simplelog = "^ 0.5"
-input = { path = "../../../nitrogen/system/input" }
 xt = { path = "../../../xt" }
