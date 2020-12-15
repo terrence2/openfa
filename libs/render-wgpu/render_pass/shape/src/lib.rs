@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use atmosphere::AtmosphereBuffer;
+use commandable::{commandable, Commandable};
 use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
@@ -21,10 +22,12 @@ use shader_shared::Group;
 use shape_chunk::Vertex;
 use shape_instance::ShapeInstanceBuffer;
 
+#[derive(Commandable)]
 pub struct ShapeRenderPass {
     pipeline: wgpu::RenderPipeline,
 }
 
+#[commandable]
 impl ShapeRenderPass {
     pub fn new(
         gpu: &GPU,
@@ -38,6 +41,8 @@ impl ShapeRenderPass {
         let pipeline_layout =
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("shape-render-pipeline-layout"),
+                    push_constant_ranges: &[],
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
@@ -49,7 +54,8 @@ impl ShapeRenderPass {
         let pipeline = gpu
             .device()
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                layout: &pipeline_layout,
+                label: Some("shape-render-pipeline"),
+                layout: Some(&pipeline_layout),
                 vertex_stage: wgpu::ProgrammableStageDescriptor {
                     module: &vert_shader,
                     entry_point: "main",
@@ -64,6 +70,7 @@ impl ShapeRenderPass {
                     depth_bias: 0,
                     depth_bias_slope_scale: 0.0,
                     depth_bias_clamp: 0.0,
+                    clamp_depth: false,
                 }),
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                 color_states: &[wgpu::ColorStateDescriptor {
@@ -75,11 +82,14 @@ impl ShapeRenderPass {
                 depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
                     format: GPU::DEPTH_FORMAT,
                     depth_write_enabled: true,
+                    // FIXME: we need to swap this for inverted depth
                     depth_compare: wgpu::CompareFunction::Less,
-                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                    stencil_read_mask: 0,
-                    stencil_write_mask: 0,
+                    stencil: wgpu::StencilStateDescriptor {
+                        front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                        back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                        read_mask: 0,
+                        write_mask: 0,
+                    },
                 }),
                 vertex_state: wgpu::VertexStateDescriptor {
                     index_format: wgpu::IndexFormat::Uint16,
@@ -99,7 +109,7 @@ impl ShapeRenderPass {
         globals_buffer: &'a GlobalParametersBuffer,
         atmosphere_buffer: &'a AtmosphereBuffer,
         shape_instance_buffer: &'a ShapeInstanceBuffer,
-    ) -> wgpu::RenderPass<'a> {
+    ) -> Fallible<wgpu::RenderPass<'a>> {
         assert_ne!(LocalGroup::ShapeChunk.index(), Group::Globals.index());
         assert_ne!(LocalGroup::ShapeChunk.index(), Group::Atmosphere.index());
         assert_ne!(LocalGroup::ShapeBlock.index(), Group::Globals.index());
@@ -118,7 +128,7 @@ impl ShapeRenderPass {
             // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
             rpass.set_bind_group(LocalGroup::ShapeChunk.index(), chunk.bind_group(), &[]);
             rpass.set_bind_group(LocalGroup::ShapeBlock.index(), block.bind_group(), &[]);
-            rpass.set_vertex_buffer(0, &chunk.vertex_buffer(), 0, 0);
+            rpass.set_vertex_buffer(0, chunk.vertex_buffer());
             for i in 0..block.len() {
                 //rpass.draw_indirect(block.command_buffer(), i as u64);
                 let cmd = block.command_buffer_scratch[i];
@@ -129,7 +139,7 @@ impl ShapeRenderPass {
                 );
             }
         }
-        rpass
+        Ok(rpass)
     }
 }
 

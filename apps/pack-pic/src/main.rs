@@ -20,6 +20,7 @@ use pic::{Header, Pic};
 use rand::Rng;
 use std::{fs, fs::File, io::Write, mem, path::PathBuf};
 use structopt::StructOpt;
+use zerocopy::AsBytes;
 
 /// A PIC authoring tool for Janes Fighters Anthology.
 ///
@@ -236,7 +237,7 @@ fn main() -> Fallible<()> {
     let pix = compute_pixels(buffer, &pal, opt.dither_quality)?;
 
     let mut fp = File::create(&opt.output)?;
-    fp.write_all(pic_header.as_bytes()?)?;
+    fp.write_all(pic_header.as_bytes())?;
     fp.write_all(&pix)?;
     if opt.include_palette {
         fp.write_all(&pal_bytes)?;

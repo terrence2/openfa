@@ -5,13 +5,13 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-codepage-437 = "^ 0.1.0"
-failure = "^ 0.1.2"
+codepage-437 = "^ 0.1"
+failure = "^ 0.1"
 image = "^ 0.21"
-lazy_static = ">= 1"
-log = ">= 0.4"
+lazy_static = "^ 1"
+log = "^ 0.4"
 rusttype = "^ 0.7"
-wgpu = "^ 0.5"
+wgpu = "^ 0.6"
 fnt = { path = "../../../fnt" }
 font_common = { path = "../../../nitrogen/wgpu-buffer/font_common" }
 gpu = { path = "../../../nitrogen/system/gpu" }

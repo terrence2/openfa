@@ -193,7 +193,10 @@ impl Layer {
         // decode 7 palettes at ptr_second
         // These are all gray scales. Maybe for the skybox?
         offset = header.ptr_second() as usize;
-        assert_eq!(palette_digest, md5::compute(&data[offset..offset + 0x300]));
+        assert_eq!(
+            palette_digest.0,
+            md5::compute(&data[offset..offset + 0x300]).0
+        );
         if dump_stuff {
             let name = format!("dump/{}/second-0", prefix);
             println!("dumping {}", name);

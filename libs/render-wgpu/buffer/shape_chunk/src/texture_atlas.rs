@@ -13,11 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
+use gpu::GPU;
 use image::DynamicImage;
 use log::trace;
 use pal::Palette;
 use pic::Pic;
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, num::NonZeroU32};
 
 const DUMP_ATLAS: bool = false;
 
@@ -66,9 +67,11 @@ impl Frame {
     }
 }
 
-const ATLAS_WIDTH: usize = 1024 + 4 * 2 + 2;
+const ATLAS_WIDTH0: usize = 1024 + 4 * 2 + 2;
+const ATLAS_STRIDE: usize = GPU::stride_for_row_size(ATLAS_WIDTH0 as u32 * 4) as usize;
+const ATLAS_WIDTH: usize = ATLAS_STRIDE / 4;
 const ATLAS_HEIGHT: usize = 4098;
-const ATLAS_PLANE_SIZE: usize = ATLAS_WIDTH * ATLAS_HEIGHT * 4;
+const ATLAS_PLANE_SIZE: usize = ATLAS_STRIDE * ATLAS_HEIGHT;
 
 // Load padded/wrapped 256px wide strips into a 2048+ 2D image slices stacked into
 // a Texture2DArray for upload to the GPU. Each Atlas contains the textures for many
@@ -139,7 +142,7 @@ impl MegaAtlas {
             self.utilization[layer][column] as u32 + 1,
         ];
         let write_pointer = &mut self.images[layer];
-        Pic::decode_into_buffer(palette, write_pointer, ATLAS_WIDTH, offset, pic, &data)?;
+        Pic::decode_into_buffer(palette, write_pointer, ATLAS_STRIDE, offset, pic, &data)?;
 
         // FIXME: fill in border with a copy of the other side.
 
@@ -167,12 +170,11 @@ impl MegaAtlas {
         let extent = wgpu::Extent3d {
             width: ATLAS_WIDTH as u32,
             height: ATLAS_HEIGHT as u32,
-            depth: 1,
+            depth: 1, //self.images.len() as u32,
         };
         let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
-            label: Some("shape-chunk-texture-atlas"),
+            label: Some("shape-chunk-atlas-texture"),
             size: extent,
-            array_layer_count: self.images.len() as u32,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -180,13 +182,14 @@ impl MegaAtlas {
             usage: wgpu::TextureUsage::all(),
         });
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            dimension: wgpu::TextureViewDimension::D2Array,
+            label: Some("shape-chunk-atlas-texture-view"),
+            format: None,
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,
-            level_count: 1,
+            level_count: None,
             base_array_layer: 0,
-            array_layer_count: self.images.len() as u32,
+            array_layer_count: None, //NonZeroU32::new(self.images.len() as u32),
         });
 
         let mut encoder = gpu
@@ -204,20 +207,25 @@ impl MegaAtlas {
             encoder.copy_buffer_to_texture(
                 wgpu::BufferCopyView {
                     buffer: &buffer,
-                    offset: 0,
-                    bytes_per_row: extent.width * 4,
-                    rows_per_image: extent.height,
+                    layout: wgpu::TextureDataLayout {
+                        offset: 0,
+                        bytes_per_row: extent.width * 4,
+                        rows_per_image: extent.height,
+                    },
                 },
                 wgpu::TextureCopyView {
                     texture: &texture,
                     mip_level: 0,
-                    array_layer: i as u32,
                     origin: wgpu::Origin3d::ZERO,
                 },
-                extent,
+                wgpu::Extent3d {
+                    width: ATLAS_WIDTH as u32,
+                    height: ATLAS_HEIGHT as u32,
+                    depth: 1, // i as u32,
+                },
             );
         }
-        gpu.queue_mut().submit(&[encoder.finish()]);
+        gpu.queue_mut().submit(vec![encoder.finish()]);
 
         Ok(texture_view)
     }
@@ -229,6 +237,7 @@ impl MegaAtlas {
 
     pub fn make_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("shape-chunk-atlas-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -237,14 +246,15 @@ impl MegaAtlas {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare: wgpu::CompareFunction::Never,
+            anisotropy_clamp: None,
+            compare: None,
         })
     }
 
     pub fn make_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shape-chunk-texture-atlas-bind-group-layout"),
-            bindings: &[
+            entries: &[
                 // Shared Shape Texture Atlas
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -254,11 +264,13 @@ impl MegaAtlas {
                         component_type: wgpu::TextureComponentType::Uint,
                         dimension: wgpu::TextureViewDimension::D2Array,
                     },
+                    count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Sampler { comparison: false },
+                    count: None,
                 },
             ],
         })

@@ -232,13 +232,13 @@ impl ClosedChunk {
         let atlas_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-chunk-atlas-bind-group"),
             layout,
-            bindings: &[
+            entries: &[
                 // atlas texture
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&atlas_view),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(sampler),
                 },
@@ -259,8 +259,8 @@ impl ClosedChunk {
         &self.atlas_bind_group
     }
 
-    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.vertex_buffer
+    pub fn vertex_buffer(&self) -> wgpu::BufferSlice {
+        self.vertex_buffer.slice(..)
     }
 
     pub fn vertex_count(&self) -> u32 {

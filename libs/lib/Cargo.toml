@@ -8,13 +8,17 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 benchmark = []
 
 [dependencies]
-codepage-437 = ">= 0.1.0"
-failure = ">= 0.1.2"
-glob = ">= 0.2"
-lazy_static = ">= 1.0"
-log = ">= 0.4"
+async-trait = "^ 0.1"
+byteorder = "^ 1"
+codepage-437 = "^ 0.1"
+failure = "^ 0.1"
+glob = "^ 0.2"
+lazy_static = "^ 1"
+log = "^ 0.4"
 memmap = "^ 0.6"
-regex = ">= 1"
+regex = "^ 1"
+tokio = { version = "^ 0.2", features = ["rt-threaded", "macros", "fs"] }
+zerocopy = "^ 0.3"
 lzss = { path = "../lzss" }
 catalog = { path = "../nitrogen/system/catalog" }
 packed_struct = { path = "../nitrogen/system/packed_struct" }

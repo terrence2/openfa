@@ -9,9 +9,10 @@ failure = "^ 0.1.2"
 legion = "= 0.2.4"
 log = "^ 0.4"
 nalgebra = "^ 0.20"
-wgpu = "^ 0.5"
+wgpu = "^ 0.6"
 catalog = { path = "../../../nitrogen/system/catalog" }
-frame_graph = { path = "../../../nitrogen/system/frame_graph" }
+command = { path = "../../../nitrogen/system/command" }
+commandable = { path = "../../../nitrogen/system/commandable" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }

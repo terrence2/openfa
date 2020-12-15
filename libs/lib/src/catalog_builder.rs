@@ -128,8 +128,8 @@ impl CatalogBuilder {
             let game_pattern = Pattern::new(&game_input)?;
             for game in &GAME_INFO {
                 let game_label = game.label();
-                if game_pattern.matches_with(game.test_dir, fuzzy) {
-                    let matching = catalog.find_labeled_matching(&game_label, &name_input)?;
+                if game_pattern.matches_with(game.test_dir, &fuzzy) {
+                    let matching = catalog.find_labeled_matching(&game_label, &name_input, None)?;
                     selected.extend_from_slice(&matching);
                 }
             }

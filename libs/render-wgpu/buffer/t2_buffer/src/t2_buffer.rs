@@ -228,9 +228,8 @@ impl<'a> T2BufferFactory<'a> {
             wgpu::BufferUsage::all(),
         );
         let atlas_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
-            label: Some("t2-buffer-atlas"),
+            label: Some("t2-buffer-atlas-texture"),
             size: extent,
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -245,31 +244,34 @@ impl<'a> T2BufferFactory<'a> {
         encoder.copy_buffer_to_texture(
             wgpu::BufferCopyView {
                 buffer: &transfer_buffer,
-                offset: 0,
-                bytes_per_row: extent.width * 4,
-                rows_per_image: extent.height,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: extent.width * 4,
+                    rows_per_image: extent.height,
+                },
             },
             wgpu::TextureCopyView {
                 texture: &atlas_texture,
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             extent,
         );
-        gpu.queue_mut().submit(&[encoder.finish()]);
+        gpu.queue_mut().submit(vec![encoder.finish()]);
         gpu.device().poll(wgpu::Maintain::Wait);
 
         let atlas_texture_view = atlas_texture.create_view(&wgpu::TextureViewDescriptor {
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            dimension: wgpu::TextureViewDimension::D2,
+            label: Some("t2-buffer-atlas-texture-view"),
+            format: None,
+            dimension: None,
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,
-            level_count: 1, // mip level
+            level_count: None,
             base_array_layer: 0,
-            array_layer_count: 1,
+            array_layer_count: None,
         });
         let sampler_resource = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("t2-atlas-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -278,14 +280,15 @@ impl<'a> T2BufferFactory<'a> {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0f32,
             lod_max_clamp: 9_999_999f32,
-            compare: wgpu::CompareFunction::Never,
+            compare: None,
+            anisotropy_clamp: None,
         });
 
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("t2-buffer-bind-group-layout"),
-                    bindings: &[
+                    entries: &[
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStage::FRAGMENT,
@@ -294,23 +297,25 @@ impl<'a> T2BufferFactory<'a> {
                                 component_type: wgpu::TextureComponentType::Uint,
                                 dimension: wgpu::TextureViewDimension::D2,
                             },
+                            count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStage::FRAGMENT,
                             ty: wgpu::BindingType::Sampler { comparison: false },
+                            count: None,
                         },
                     ],
                 });
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("t2-buffer-bind-group"),
             layout: &bind_group_layout,
-            bindings: &[
-                wgpu::Binding {
+            entries: &[
+                wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(&atlas_texture_view),
                 },
-                wgpu::Binding {
+                wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&sampler_resource),
                 },
@@ -555,12 +560,12 @@ impl T2Buffer {
         &self.bind_group_layout
     }
 
-    pub fn vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.vertex_buffer
+    pub fn vertex_buffer(&self) -> wgpu::BufferSlice {
+        self.vertex_buffer.slice(..)
     }
 
-    pub fn index_buffer(&self) -> &wgpu::Buffer {
-        &self.index_buffer
+    pub fn index_buffer(&self) -> wgpu::BufferSlice {
+        self.index_buffer.slice(..)
     }
 
     pub fn index_range(&self) -> Range<u32> {

@@ -10,6 +10,7 @@ image = "^ 0.21"
 num = "0.2"
 rand = "0.6"
 structopt = "0.2"
+zerocopy = "^ 0.3"
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/lib" }
 pal = { path = "../../libs/pal" }

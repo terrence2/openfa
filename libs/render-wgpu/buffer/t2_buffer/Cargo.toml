@@ -7,11 +7,11 @@ edition = "2018"
 [dependencies]
 failure = "^ 0.1.2"
 image = "^ 0.21"
-log = ">= 0.4"
+log = "^ 0.4"
 memoffset = "^ 0.5"
 nalgebra = "^ 0.20"
-wgpu = "^ 0.5"
-zerocopy = "^ 0.2"
+wgpu = "^ 0.6"
+zerocopy = "^ 0.3"
 catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../lay" }

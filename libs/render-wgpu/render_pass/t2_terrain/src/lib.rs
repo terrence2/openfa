@@ -17,6 +17,7 @@ use failure::Fallible;
 use global_data::GlobalParametersBuffer;
 use gpu::GPU;
 use log::trace;
+use ofa_groups::Group as OfaGroup;
 use shader_shared::Group;
 use t2_buffer::{T2Buffer, T2Vertex};
 
@@ -41,6 +42,8 @@ impl T2TerrainRenderPass {
         let pipeline_layout =
             gpu.device()
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("t2-terrain-render-pipeline-layout"),
+                    push_constant_ranges: &[],
                     bind_group_layouts: &[
                         globals_buffer.bind_group_layout(),
                         atmosphere_buffer.bind_group_layout(),
@@ -51,7 +54,8 @@ impl T2TerrainRenderPass {
         let pipeline = gpu
             .device()
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                layout: &pipeline_layout,
+                label: Some("t2-terrain-render-pipeline"),
+                layout: Some(&pipeline_layout),
                 vertex_stage: wgpu::ProgrammableStageDescriptor {
                     module: &vert_shader,
                     entry_point: "main",
@@ -66,10 +70,11 @@ impl T2TerrainRenderPass {
                     depth_bias: 0,
                     depth_bias_slope_scale: 0.0,
                     depth_bias_clamp: 0.0,
+                    clamp_depth: false,
                 }),
                 primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
                 color_states: &[wgpu::ColorStateDescriptor {
-                    format: GPU::texture_format(),
+                    format: GPU::SCREEN_FORMAT,
                     color_blend: wgpu::BlendDescriptor {
                         src_factor: wgpu::BlendFactor::SrcAlpha,
                         dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -82,10 +87,12 @@ impl T2TerrainRenderPass {
                     format: GPU::DEPTH_FORMAT,
                     depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::Less,
-                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
-                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
-                    stencil_read_mask: 0,
-                    stencil_write_mask: 0,
+                    stencil: wgpu::StencilStateDescriptor {
+                        front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                        back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                        read_mask: 0,
+                        write_mask: 0,
+                    },
                 }),
                 vertex_state: wgpu::VertexStateDescriptor {
                     index_format: wgpu::IndexFormat::Uint32,
@@ -113,9 +120,9 @@ impl T2TerrainRenderPass {
             &atmosphere_buffer.bind_group(),
             &[],
         );
-        rpass.set_bind_group(Group::Terrain.index(), &t2_buffer.bind_group(), &[]);
-        rpass.set_index_buffer(t2_buffer.index_buffer(), 0, 0);
-        rpass.set_vertex_buffer(0, &t2_buffer.vertex_buffer(), 0, 0);
+        rpass.set_bind_group(OfaGroup::T2Terrain.index(), &t2_buffer.bind_group(), &[]);
+        rpass.set_index_buffer(t2_buffer.index_buffer());
+        rpass.set_vertex_buffer(0, t2_buffer.vertex_buffer());
         rpass.draw_indexed(t2_buffer.index_range(), 0, 0..1);
         rpass
     }
