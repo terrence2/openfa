@@ -6,12 +6,12 @@ edition = "2018"
 
 [dependencies]
 bitflags = "^ 1"
-failure = "^ 0.1"
-image = "^ 0.21"
+failure = "^ 0.1.2"
+image = "^ 0.23"
 lazy_static = "^ 1"
 log = "^ 0.4"
-memoffset = "^ 0.5"
-nalgebra = "^ 0.20"
+memoffset = "^ 0.6"
+nalgebra = "^ 0.24"
 wgpu = "^ 0.6"
 zerocopy = "^ 0.3"
 animate = { path = "../../../nitrogen/sim/animate" }

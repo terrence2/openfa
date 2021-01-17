@@ -29,12 +29,12 @@ lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
 physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
-screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
-terrain = { path = "../../libs/nitrogen/wgpu-render/terrain" }
 stars = { path = "../../libs/nitrogen/wgpu-buffer/stars" }
 t2_buffer = { path = "../../libs/render-wgpu/buffer/t2_buffer" }
 t2_terrain = { path = "../../libs/render-wgpu/render_pass/t2_terrain" }
-text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }
+ui = { path = "../../libs/nitrogen/wgpu-buffer/ui" }
+widget = { path = "../../libs/nitrogen/wgpu-buffer/widget" }
+world = { path = "../../libs/nitrogen/wgpu-buffer/world" }
 xt = { path = "../../libs/xt" }

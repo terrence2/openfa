@@ -6,9 +6,9 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-legion = "= 0.2.4"
+legion = "^ 0.3"
 log = "^ 0.4"
-nalgebra = "^ 0.20"
+nalgebra = "^ 0.24"
 wgpu = "^ 0.6"
 catalog = { path = "../../../nitrogen/system/catalog" }
 command = { path = "../../../nitrogen/system/command" }

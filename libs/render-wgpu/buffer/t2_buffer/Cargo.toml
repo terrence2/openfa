@@ -6,10 +6,10 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
-image = "^ 0.21"
+image = "^ 0.23"
 log = "^ 0.4"
-memoffset = "^ 0.5"
-nalgebra = "^ 0.20"
+memoffset = "^ 0.6"
+nalgebra = "^ 0.24"
 wgpu = "^ 0.6"
 zerocopy = "^ 0.3"
 catalog = { path = "../../../nitrogen/system/catalog" }

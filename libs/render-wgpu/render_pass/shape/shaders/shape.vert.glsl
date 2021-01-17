@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 
-#include <wgpu-render/shader_shared/include/consts.glsl>
+#include <wgpu-buffer/shader_shared/include/consts.glsl>
 #include <wgpu-buffer/global_data/include/global_data.glsl>
 #include <buffer/shape_chunk/include/include_shape.glsl>
 
