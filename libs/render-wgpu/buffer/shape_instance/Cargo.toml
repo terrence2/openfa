@@ -11,7 +11,6 @@ log = "^ 0.4"
 nalgebra = "^ 0.20"
 wgpu = "^ 0.5"
 catalog = { path = "../../../nitrogen/system/catalog" }
-frame_graph = { path = "../../../nitrogen/system/frame_graph" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }

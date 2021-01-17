@@ -8,6 +8,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 log = ">= 0.4"
 bitflags = ">= 1"
 failure = ">= 0.1"
+zerocopy = "^ 0.3"
 packed_struct = { path = "../nitrogen/system/packed_struct" }
 
 [dev-dependencies]

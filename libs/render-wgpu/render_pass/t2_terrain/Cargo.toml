@@ -11,8 +11,8 @@ wgpu = "^ 0.5"
 atmosphere = { path = "../../../nitrogen/wgpu-buffer/atmosphere" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
-shader_shared = { path = "../../../nitrogen/wgpu-render/shader_shared" }
+shader_shared = { path = "../../../nitrogen/wgpu-buffer/shader_shared" }
 t2_buffer = { path = "../../../render-wgpu/buffer/t2_buffer" }
 
 [build-dependencies]
-build-shaders = { path = "../../../nitrogen/wgpu-render/build-shaders" }
+build_shaders = { path = "../../../nitrogen/system/build_shaders" }
