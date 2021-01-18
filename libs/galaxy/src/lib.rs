@@ -93,7 +93,7 @@ impl Galaxy {
     ) -> Fallible<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
-        let mut entity = self.legion_world.push((
+        let entity = self.legion_world.push((
             Transform::new(position.coords),
             Rotation::new(*rotation),
             Scale::new(/*SHAPE_UNIT_TO_FEET */ scale * FEET_TO_HM_32),

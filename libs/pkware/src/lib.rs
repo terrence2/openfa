@@ -253,7 +253,7 @@ impl<'a> State<'a> {
         let lit = self.bits(8)?;
         ensure!(lit <= 1, "invalid header");
         let dict = self.bits(8)?;
-        ensure!(dict >= 4 && dict <= 6, "invalid dict-bits");
+        ensure!((4..=6).contains(&dict), "invalid dict-bits");
 
         /* decode literals and length/distance pairs */
         loop {

@@ -17,7 +17,7 @@
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, Fallible};
 use i386::{ByteCode, Interpreter, Reg};
-use image::{GrayAlphaImage, ImageBuffer, LumaA};
+use image::{ImageBuffer, LumaA};
 use peff::PE;
 use std::{collections::HashMap, mem};
 
@@ -203,7 +203,6 @@ impl Fnt {
         name: &str,
         glyph: &GlyphInfo,
     ) -> Fallible<()> {
-        let img = GrayAlphaImage::from(buf);
         if DUMP_CHARS {
             let mut ch = glyph.glyph_char.clone();
             if ch == "/" {
@@ -213,7 +212,7 @@ impl Fnt {
                 "../../dump/fnt/{}/{}-char-{:02X}-{}.png",
                 game, name, glyph.glyph_index, ch
             );
-            img.save(filename)?;
+            buf.save(filename)?;
         }
         Ok(())
     }

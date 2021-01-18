@@ -58,7 +58,7 @@ impl Waypoint {
             let parts = lines[*offset]
                 .trim()
                 .split(' ')
-                .filter(|&s| s != "")
+                .filter(|&s| !s.is_empty())
                 .collect::<Vec<&str>>();
             if parts.is_empty() {
                 break;

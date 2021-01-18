@@ -623,9 +623,8 @@ impl ShapeInstanceBuffer {
 
         // Animate the draw_state. We'll use the updated values below when computing
         // xform and frame based animation states.
-        <Write<ShapeState>>::query().par_for_each_mut(world, |mut shape_state| {
-            shape_state.draw_state.animate(&now)
-        });
+        <Write<ShapeState>>::query()
+            .par_for_each_mut(world, |shape_state| shape_state.draw_state.animate(&now));
 
         let mut query = <(
             Read<Transform>,
@@ -635,17 +634,14 @@ impl ShapeInstanceBuffer {
         )>::query();
         // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
         //    .filter(changed::<Transform>() | changed::<Rotation>());
-        query.par_for_each_mut(
-            world,
-            |(transform, rotation, scale, mut transform_buffer)| {
-                (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
-                (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
-                (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
-            },
-        );
+        query.par_for_each_mut(world, |(transform, rotation, scale, transform_buffer)| {
+            (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
+            (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
+            (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+        });
 
         let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
-        query.par_for_each_mut(world, |(shape_state, mut flag_buffer)| {
+        query.par_for_each_mut(world, |(shape_state, flag_buffer)| {
             shape_state
                 .draw_state
                 .build_mask_into(&start, &mut flag_buffer.buffer)
@@ -653,7 +649,7 @@ impl ShapeInstanceBuffer {
         });
 
         let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
-        query.par_for_each_mut(world, |(shape_ref, shape_state, mut xform_buffer)| {
+        query.par_for_each_mut(world, |(shape_ref, shape_state, xform_buffer)| {
             let part = self.chunk_man.part(shape_ref.shape_id);
             WIDGET_CACHE.with(|widget_cache| {
                 match widget_cache.borrow_mut().entry(shape_ref.shape_id) {

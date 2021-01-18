@@ -151,7 +151,7 @@ impl JumpToDetail {
         assert_eq!(data[1], 0x00);
         let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
         let level = word_ref[1] as u16;
-        assert!(level >= 1 && level <= 3);
+        assert!((1..=3).contains(&level));
         let offset_to_target = word_ref[0] as isize;
         Ok(Self {
             offset,

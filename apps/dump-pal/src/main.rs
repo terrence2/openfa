@@ -57,10 +57,9 @@ fn main() -> Fallible<()> {
                     }
                 }
             }
-            let img = image::RgbImage::from(buf);
             fs::create_dir_all(&format!("dump/palette/{}-{}", game, meta.name))?;
             let output = format!("dump/palette/{}-{}/palette.png", game, meta.name);
-            img.save(&output)?;
+            buf.save(&output)?;
 
             return Ok(());
         }

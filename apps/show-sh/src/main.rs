@@ -15,15 +15,15 @@
 use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
-use catalog::{Catalog, DirectoryDrawer};
+use catalog::DirectoryDrawer;
 use command::{Bindings, CommandHandler};
 use composite::CompositeRenderPass;
 use failure::{bail, Fallible};
-use fnt::{Fnt, Font};
+use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
-use geodesy::{GeoSurface, Graticule};
+use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
 use gpu::{make_frame_graph, GPU};
 use input::{InputController, InputSystem};
@@ -33,7 +33,7 @@ use log::trace;
 use nalgebra::{convert, Point3, UnitQuaternion};
 use orrery::Orrery;
 use shape::ShapeRenderPass;
-use shape_instance::{DrawSelection, DrawState, ShapeInstanceBuffer, ShapeState};
+use shape_instance::{DrawSelection, ShapeInstanceBuffer, ShapeState};
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -124,6 +124,8 @@ fn main() -> Fallible<()> {
     env_logger::init();
 
     let system_bindings = Bindings::new("system")
+        .bind("world.toggle_wireframe", "w")?
+        .bind("world.toggle_debug_mode", "r")?
         .bind("system.exit", "Escape")?
         .bind("system.exit", "q")?;
     let shape_bindings = Bindings::new("shape")
@@ -167,7 +169,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
 
     let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     for (i, d) in opt.libdir.iter().enumerate() {
-        println!("D: {:?}", d);
         catalog.add_drawer(DirectoryDrawer::from_directory(100 + i as i64, d)?)?;
     }
     if inputs.is_empty() {
@@ -185,6 +186,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
     let mut legion = World::default();
 
     let label = catalog.file_label(fid)?;
+    println!("Default label: {}", label);
     catalog.set_default_label(&label);
     let meta = catalog.stat_sync(fid)?;
     let shape_name = meta.name;
@@ -302,13 +304,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         &ui_render_pass,
     )?;
 
-    // let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
-    // let font = FntFont::from_fnt(&fnt, &mut gpu)?;
-    // text_layout_buffer.add_font(Font::HUD11.name().into(), font, &gpu);
-
-    // let bgl = *text_layout_buffer.borrow().layout_bind_group_layout();
-    // text_layout_buffer.add_font(Font::HUD11.name(), FntFont::new(&mut gpu)?)?;
-
     let mut frame_graph = FrameGraph::new(
         &mut legion,
         &mut gpu,
@@ -324,10 +319,15 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         ui_render_pass,
         composite_render_pass,
     )?;
-    let catalog = Arc::new(AsyncRwLock::new(catalog));
     ///////////////////////////////////////////////////////////
 
-    let version_label = Label::new("Nitrogen v0.1")
+    let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
+    let font = FntFont::from_fnt(&fnt)?;
+    frame_graph.widgets.add_font("HUD11", font);
+
+    let catalog = Arc::new(AsyncRwLock::new(catalog));
+
+    let version_label = Label::new("OpenFA show-sh v0.0")
         .with_color(Color::Green)
         .with_size(8.0)
         .wrapped();
@@ -355,7 +355,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         .root()
         .write()
         .add_child(state_label.clone())
-        .set_float(PositionH::End, PositionV::Bottom);
+        .set_float(PositionH::Start, PositionV::Bottom);
 
     let terminal = Terminal::new(frame_graph.widgets.font_context())
         .with_visible(false)
@@ -364,34 +364,26 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         .widgets
         .root()
         .write()
-        .add_child(terminal.clone())
+        .add_child(terminal)
         .set_float(PositionH::Start, PositionV::Top);
-    /*
-    let fps_handle = frame_graph
-        .text_layout
-        .add_screen_text(Font::HUD11.name(), "", &gpu)?
-        .with_color(&[1f32, 0f32, 0f32, 1f32])
-        .with_horizontal_position(TextPositionH::Left)
-        .with_horizontal_anchor(TextAnchorH::Left)
-        .with_vertical_position(TextPositionV::Top)
-        .with_vertical_anchor(TextAnchorV::Top)
-        .handle();
-    let state_handle = frame_graph
-        .text_layout
-        .add_screen_text(Font::HUD11.name(), "", &gpu)?
-        .with_color(&[1f32, 0.5f32, 0f32, 1f32])
-        .with_horizontal_position(TextPositionH::Right)
-        .with_horizontal_anchor(TextAnchorH::Right)
-        .with_vertical_position(TextPositionV::Bottom)
-        .with_vertical_anchor(TextAnchorV::Bottom)
-        .handle();
-     */
 
-    let mut tone_gamma = 2.2f32;
-    let mut is_camera_pinned = false;
-    let mut camera_double = arcball.camera().to_owned();
-    let mut target_vec = meters!(0f64);
-    let mut show_terminal = false;
+    // everest: 27.9880704,86.9245623
+    arcball.set_target(Graticule::<GeoSurface>::new(
+        degrees!(27.9880704),
+        degrees!(-86.9245623), // FIXME: wat?
+        meters!(8000.),
+    ));
+    arcball.set_eye_relative(Graticule::<Target>::new(
+        degrees!(11.5),
+        degrees!(869.5),
+        meters!(67668.5053),
+    ))?;
+
+    let tone_gamma = 2.2f32;
+    let _is_camera_pinned = false;
+    let _camera_double = arcball.camera().to_owned();
+    let _target_vec = meters!(0f64);
+    let _show_terminal = false;
     loop {
         let loop_start = Instant::now();
 
@@ -474,7 +466,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         )?;
         frame_graph.terrain_geo().make_upload_buffer(
             arcball.camera(),
-            &camera_double,
+            &arcball.camera(),
             catalog.clone(),
             &mut async_rt,
             &mut gpu,

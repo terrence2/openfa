@@ -12,6 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
 use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
@@ -363,3 +365,5 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         fps_handle.grab(&mut frame_graph.text_layout).set_span(&ts);
     }
 }
+*/
+fn main() {}

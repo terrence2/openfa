@@ -164,37 +164,18 @@ impl Reg {
     }
 
     pub fn is_reg16(&self) -> bool {
-        match self {
-            Reg::AX => true,
-            Reg::BX => true,
-            Reg::CX => true,
-            Reg::DX => true,
-            Reg::SP => true,
-            Reg::BP => true,
-            Reg::SI => true,
-            Reg::DI => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Reg::AX | Reg::BX | Reg::CX | Reg::DX | Reg::SP | Reg::BP | Reg::SI | Reg::DI
+        )
     }
 
     pub fn is_low8(&self) -> bool {
-        match self {
-            Reg::AL => true,
-            Reg::BL => true,
-            Reg::CL => true,
-            Reg::DL => true,
-            _ => false,
-        }
+        matches!(self, Reg::AL | Reg::BL | Reg::CL | Reg::DL)
     }
 
     pub fn is_high8(&self) -> bool {
-        match self {
-            Reg::AH => true,
-            Reg::BH => true,
-            Reg::CH => true,
-            Reg::DH => true,
-            _ => false,
-        }
+        matches!(self, Reg::AH | Reg::BH | Reg::CH | Reg::DH)
     }
 }
 
@@ -370,6 +351,7 @@ impl OperandDecodeState {
         Ok(out)
     }
 
+    #[allow(clippy::unusual_byte_groupings)]
     fn read_sib(&mut self, mod_: u8, code: &[u8], ip: &mut usize) -> Fallible<(u8, Reg, Reg)> {
         ensure!(
             code.len() > *ip,
@@ -938,13 +920,11 @@ impl Instr {
         })
     }
 
+    pub fn is_jump(&self) -> bool {
+        matches!(self.memonic, Memonic::Jump | Memonic::Call | Memonic::Jcc(_))
+    }
+
     pub fn show_relative(&self, base: usize) -> String {
-        let show_target = match self.memonic {
-            Memonic::Jump => true,
-            Memonic::Call => true,
-            Memonic::Jcc(_) => true,
-            _ => false,
-        };
         let mut s = format!(
             "{}{:24}{} {:?}(",
             ansi().green(),
@@ -956,7 +936,7 @@ impl Instr {
             if i != 0 {
                 s += ", ";
             }
-            s += &op.show_relative(base + self.size(), show_target);
+            s += &op.show_relative(base + self.size(), self.is_jump());
         }
         s += ")";
         if let Some(ctx) = &self.context {

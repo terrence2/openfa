@@ -102,7 +102,7 @@ impl X86Trampoline {
         })
     }
 
-    fn find_matching_thunk<'a>(addr: u32, pe: &'a PE) -> Fallible<&'a Thunk> {
+    fn find_matching_thunk(addr: u32, pe: &PE) -> Fallible<&Thunk> {
         // The thunk table is code and therefore should have had a relocation entry
         // to move those pointers when we called relocate on the PE.
         trace!(
@@ -238,15 +238,6 @@ pub struct X86Code {
 impl X86Code {
     pub const MAGIC: u8 = 0xF0;
 
-    fn instr_is_relative_jump(instr: &i386::Instr) -> bool {
-        match instr.memonic {
-            Memonic::Call => true,
-            Memonic::Jump => true,
-            Memonic::Jcc(ref _cc) => true,
-            _ => false,
-        }
-    }
-
     fn operand_to_offset(op: &Operand) -> usize {
         // Note that we cannot rely on negative jumps being encoded with a signed instr.
         let delta = match op {
@@ -270,7 +261,7 @@ impl X86Code {
         let ip_end = bc.size as usize;
         for instr in bc.instrs.iter() {
             ip += instr.size();
-            if Self::instr_is_relative_jump(&instr) {
+            if instr.is_jump() {
                 let delta = Self::operand_to_offset(&instr.operands[0]);
                 let ip_target = ip + delta;
                 if ip_target >= ip_end {

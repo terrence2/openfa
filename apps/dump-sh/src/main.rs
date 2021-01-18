@@ -255,7 +255,7 @@ fn format_unk(xs: &[u8]) -> String {
     let mut out = Vec::new();
     for &x in xs.iter() {
         out.push(' ');
-        if x >= 0x21 && x <= 0x5E || x >= 0x61 && x <= 0x7E {
+        if (0x21..=0x5E).contains(&x) || (0x61..=0x7E).contains(&x) {
             out.push(' ');
             out.push(x as char);
         } else {

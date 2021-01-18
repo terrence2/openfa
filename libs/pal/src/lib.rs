@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
-use image::{ImageBuffer, Pixel, Rgb, RgbImage, Rgba};
+use image::{ImageBuffer, Pixel, Rgb, Rgba};
 use std::{borrow::Cow, fs::File, io::Write};
 
 #[derive(Clone)]
@@ -139,8 +139,7 @@ impl Palette {
                 }
             }
         }
-        let img = RgbImage::from(buf);
-        img.save(path.to_owned() + ".png")?;
+        buf.save(path.to_owned() + ".png")?;
         Ok(())
     }
 
@@ -206,8 +205,7 @@ impl Palette {
             }
         }
 
-        let img = RgbImage::from(buf);
-        img.save(name.to_owned() + ".png")?;
+        buf.save(name.to_owned() + ".png")?;
         Ok(())
     }
 }

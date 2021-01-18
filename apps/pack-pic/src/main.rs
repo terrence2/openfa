@@ -194,7 +194,7 @@ fn main() -> Fallible<()> {
     );
 
     let dynamic_image = image::open(&opt.source_image)?;
-    let buffer = dynamic_image.to_rgba();
+    let buffer = dynamic_image.to_rgba8();
     let dim = buffer.dimensions();
 
     let pal = load_palette(&opt)?;
