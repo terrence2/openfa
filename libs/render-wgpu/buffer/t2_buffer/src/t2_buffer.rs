@@ -212,7 +212,7 @@ impl<'a> T2BufferFactory<'a> {
         }
 
         let atlas = TextureAtlas::new(pics)?;
-        let image_buf = atlas.img.to_rgba();
+        let image_buf = atlas.img.to_rgba8();
         let image_dim = image_buf.dimensions();
         let extent = wgpu::Extent3d {
             width: image_dim.0,
@@ -440,7 +440,7 @@ impl<'a> T2BufferFactory<'a> {
 
         let mut color = palette.rgba(sample.color as usize).unwrap();
         if sample.color == 0xFF {
-            color.data[3] = 0;
+            color[3] = 0;
         }
 
         let vert = Vertex {

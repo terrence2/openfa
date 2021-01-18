@@ -17,7 +17,7 @@
 use codepage_437::{FromCp437, CP437_CONTROL};
 use failure::{bail, ensure, Fallible};
 use i386::{ByteCode, Interpreter, Reg};
-use image::{ImageBuffer, LumaA};
+use image::{GrayAlphaImage, ImageBuffer, LumaA};
 use peff::PE;
 use std::{collections::HashMap, mem};
 
@@ -189,11 +189,7 @@ impl Fnt {
                 edi_map.truncate(WIDTH * self.height);
                 for (i, v) in edi_map.iter().enumerate() {
                     //println!("{} => {}x{}", i, i % WIDTH, i / WIDTH);
-                    buf.put_pixel(
-                        (i % WIDTH) as u32,
-                        (i / WIDTH) as u32,
-                        LumaA { data: [*v, *v] },
-                    );
+                    buf.put_pixel((i % WIDTH) as u32, (i / WIDTH) as u32, LumaA([*v, *v]));
                 }
                 Self::save_char(buf, game, name, glyph)?;
             }
@@ -207,7 +203,7 @@ impl Fnt {
         name: &str,
         glyph: &GlyphInfo,
     ) -> Fallible<()> {
-        let img = image::ImageLumaA8(buf);
+        let img = GrayAlphaImage::from(buf);
         if DUMP_CHARS {
             let mut ch = glyph.glyph_char.clone();
             if ch == "/" {

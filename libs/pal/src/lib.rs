@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{ensure, Fallible};
-use image::{Pixel, Rgb, Rgba};
+use image::{ImageBuffer, Pixel, Rgb, RgbImage, Rgba};
 use std::{borrow::Cow, fs::File, io::Write};
 
 #[derive(Clone)]
@@ -43,13 +43,11 @@ impl Palette {
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgb {
-                data: [
-                    (data[i * 3] << 2) | (data[i * 3] >> 6),
-                    (data[i * 3 + 1] << 2) | (data[i * 3 + 1] >> 6),
-                    (data[i * 3 + 2] << 2) | (data[i * 3 + 2] >> 6),
-                ],
-            });
+            entries.push(Rgb([
+                (data[i * 3] << 2) | (data[i * 3] >> 6),
+                (data[i * 3 + 1] << 2) | (data[i * 3 + 1] >> 6),
+                (data[i * 3 + 2] << 2) | (data[i * 3 + 2] >> 6),
+            ]));
         }
         Ok(Self {
             color_count,
@@ -62,9 +60,7 @@ impl Palette {
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgb {
-                data: [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]],
-            });
+            entries.push(Rgb([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]));
         }
         Ok(Self {
             color_count,
@@ -78,22 +74,20 @@ impl Palette {
 
     pub fn rgba(&self, index: usize) -> Fallible<Rgba<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
-        Ok(Rgba {
-            data: [
-                self.entries[index][0],
-                self.entries[index][1],
-                self.entries[index][2],
-                255,
-            ],
-        })
+        Ok(Rgba([
+            self.entries[index][0],
+            self.entries[index][1],
+            self.entries[index][2],
+            255,
+        ]))
     }
 
     pub fn rgba_f32(&self, index: usize) -> Fallible<[f32; 4]> {
         let c = self.rgb(index)?;
         Ok([
-            f32::from(c.data[0]) / 256f32,
-            f32::from(c.data[1]) / 256f32,
-            f32::from(c.data[2]) / 256f32,
+            f32::from(c[0]) / 256f32,
+            f32::from(c[1]) / 256f32,
+            f32::from(c[2]) / 256f32,
             1f32,
         ])
     }
@@ -134,7 +128,7 @@ impl Palette {
     /// entry to an 80x80 pixel square in order to increase visbility.
     pub fn dump_png(&self, path: &str) -> Fallible<()> {
         let size = 80;
-        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+        let mut buf = ImageBuffer::new(16u32 * size, 16u32 * size);
         for i in 0..16 {
             for j in 0..16 {
                 let off = (j << 4 | i) as usize;
@@ -145,7 +139,7 @@ impl Palette {
                 }
             }
         }
-        let img = image::ImageRgb8(buf);
+        let img = RgbImage::from(buf);
         img.save(path.to_owned() + ".png")?;
         Ok(())
     }
@@ -172,7 +166,7 @@ impl Palette {
     /// data, data that ends with a truncated color, and data that is too long.
     pub fn dump_partial(data: &[u8], scale: u8, name: &str) -> Fallible<()> {
         let size = 80;
-        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+        let mut buf = ImageBuffer::new(16u32 * size, 16u32 * size);
 
         // Dump a haze everywhere so we know what was unset.
         for i in 0..16 {
@@ -212,7 +206,7 @@ impl Palette {
             }
         }
 
-        let img = image::ImageRgb8(buf);
+        let img = RgbImage::from(buf);
         img.save(name.to_owned() + ".png")?;
         Ok(())
     }
@@ -240,16 +234,12 @@ mod tests {
 
     #[test]
     fn it_works_with_normal_palette() -> Fallible<()> {
+        // FIXME: use test loader to find and load all PAL files.
         let mut fp = fs::File::open("test_data/PALETTE.PAL")?;
         let mut data = Vec::new();
         fp.read_to_end(&mut data)?;
         let pal = Palette::from_bytes(&data)?;
-        assert_eq!(
-            pal.rgb(1)?,
-            Rgb {
-                data: [252, 0, 252]
-            }
-        );
+        assert_eq!(pal.rgb(1)?, Rgb([252, 0, 252]));
         Ok(())
     }
 

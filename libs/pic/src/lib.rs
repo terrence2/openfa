@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use failure::{bail, ensure, Fallible};
-use image::{DynamicImage, GenericImage, GenericImageView, ImageRgba8};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer};
 use packed_struct::packed_struct;
 use pal::Palette;
 use std::{borrow::Cow, mem};
@@ -210,16 +210,16 @@ impl Pic {
         palette: &Palette,
         pixels: &[u8],
     ) -> Fallible<DynamicImage> {
-        let mut imgbuf = image::ImageBuffer::new(width, height);
+        let mut imgbuf = ImageBuffer::new(width, height);
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
             let mut clr = palette.rgba(pix)?;
             if pix == 0xFF {
-                clr.data[3] = 0x00;
+                clr[3] = 0x00;
             }
             *p = clr;
         }
-        Ok(ImageRgba8(imgbuf))
+        Ok(DynamicImage::ImageRgba8(imgbuf))
     }
 
     fn decode_format0_into(
@@ -235,7 +235,7 @@ impl Pic {
             let pix = *p as usize;
             let mut clr = palette.rgba(pix)?;
             if pix == 0xFF {
-                clr.data[3] = 0x00;
+                clr[3] = 0x00;
             }
             into_image.put_pixel(offset_x + i % width, offset_y + i / width, clr);
         }
@@ -255,7 +255,7 @@ impl Pic {
             let pix = *p as usize;
             let mut clr = palette.rgba(pix)?;
             if pix == 0xFF {
-                clr.data[3] = 0x00;
+                clr[3] = 0x00;
             }
             let pos = (offset[0] + i % width, offset[1] + i / width);
             let base = 4 * (pos.1 as usize * span + pos.0 as usize);
@@ -263,7 +263,7 @@ impl Pic {
             //     "i: {}, offset: {:?}, pos: {:?}, base: {}",
             //     i, offset, pos, base
             // );
-            into_buffer[base..base + 4].copy_from_slice(&clr.data);
+            into_buffer[base..base + 4].copy_from_slice(&clr.0);
         }
         Ok(())
     }
@@ -275,7 +275,7 @@ impl Pic {
         spans: &[u8],
         pixels: &[u8],
     ) -> Fallible<DynamicImage> {
-        let mut imgbuf = image::ImageBuffer::new(width, height);
+        let mut imgbuf = ImageBuffer::new(width, height);
         assert_eq!(spans.len() % mem::size_of::<Span>(), 0);
         let span_cnt = spans.len() / mem::size_of::<Span>() - 1;
         for i in 0..span_cnt {
@@ -295,7 +295,8 @@ impl Pic {
                 imgbuf.put_pixel(column, span.row(), clr);
             }
         }
-        Ok(ImageRgba8(imgbuf))
+        Ok(DynamicImage::ImageRgba8(imgbuf))
+        //Ok(RgbaImage::from(imgbuf))
     }
 }
 

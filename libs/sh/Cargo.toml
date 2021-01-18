@@ -5,10 +5,10 @@ edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-bitflags = "1.0"
-failure = ">= 0.1.2"
-lazy_static = "1.0"
-log = ">= 0.4"
+bitflags = "^ 1"
+failure = "^ 0.1.2"
+lazy_static = "^ 1"
+log = "^ 0.4"
 ansi = { path = "../nitrogen/system/ansi" }
 i386 = { path = "../i386" }
 peff = { path = "../peff" }

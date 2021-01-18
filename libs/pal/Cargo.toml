@@ -6,4 +6,4 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 failure = "^ 0.1.2"
-image = "^ 0.21"
+image = "^ 0.23"

@@ -6,11 +6,11 @@ edition = "2018"
 
 [dependencies]
 failure = "^ 0.1.2"
+log = "^ 0.4"
 wgpu = "^ 0.6"
 atmosphere = { path = "../../../nitrogen/wgpu-buffer/atmosphere" }
 command = { path = "../../../nitrogen/system/command" }
 commandable = { path = "../../../nitrogen/system/commandable" }
-log = "^ 0.4"
 gpu = { path = "../../../nitrogen/system/gpu" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 ofa_groups = { path = "../../../wgpu-render/ofa_groups" }
@@ -19,7 +19,7 @@ shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 shape_instance = { path = "../../../render-wgpu/buffer/shape_instance" }
 
 [dev-dependencies]
-winit = "^ 0.23"
+winit = { version = "^ 0.24", features = ["web-sys"] }
 
 [build-dependencies]
 build_shaders = { path = "../../../nitrogen/system/build_shaders" }

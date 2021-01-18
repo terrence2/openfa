@@ -110,7 +110,7 @@ impl TextureAtlas {
             let coord0 = TexCoord::new(cursor_x, cursor_y, &img);
             let coord1 = TexCoord::new(cursor_x + PATCH_SIZE, cursor_y + PATCH_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-            img.copy_from(src, cursor_x, cursor_y);
+            img.copy_from(src, cursor_x, cursor_y)?;
 
             cursor_x += PATCH_SIZE + 1;
             if cursor_x >= atlas_width {
@@ -158,7 +158,7 @@ impl TextureAtlas {
             let coord0 = TexCoord::new(cursor_x, cursor_y, &img);
             let coord1 = TexCoord::new(cursor_x + PATCH_SIZE, cursor_y + PATCH_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-            img.copy_from(src, cursor_x, cursor_y);
+            img.copy_from(src, cursor_x, cursor_y)?;
             cursor_x += PATCH_SIZE + 2;
             if (cursor_x + 1) >= atlas_width {
                 cursor_x = 1;
@@ -187,7 +187,7 @@ impl TextureAtlas {
             let coord0 = TexCoord::new(target_x, target_y, &img);
             let coord1 = TexCoord::new(target_x + HALF_SIZE, target_y + HALF_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-            img.copy_from(src, target_x, target_y);
+            img.copy_from(src, target_x, target_y)?;
             if (cursor_x + 1) >= atlas_width {
                 cursor_x = 1;
                 cursor_y += PATCH_SIZE + 2;

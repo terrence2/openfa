@@ -5,11 +5,11 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "0.1.2"
-image = "^ 0.21"
-num = "0.2"
-rand = "0.6"
-structopt = "0.2"
+failure = "^ 0.1.2"
+image = "^ 0.23"
+num = "^ 0.2"
+rand = "^ 0.7"
+structopt = "^ 0.2"
 zerocopy = "^ 0.3"
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/lib" }

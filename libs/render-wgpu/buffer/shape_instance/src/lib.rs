@@ -21,7 +21,7 @@ use catalog::Catalog;
 use commandable::{commandable, Commandable};
 use failure::Fallible;
 use gpu::{DrawIndirectCommand, UploadTracker, GPU};
-use legion::prelude::*;
+use legion::*;
 use log::trace;
 use pal::Palette;
 use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets};
@@ -627,7 +627,7 @@ impl ShapeInstanceBuffer {
             shape_state.draw_state.animate(&now)
         });
 
-        let query = <(
+        let mut query = <(
             Read<Transform>,
             Read<Rotation>,
             Read<Scale>,
@@ -644,7 +644,7 @@ impl ShapeInstanceBuffer {
             },
         );
 
-        let query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
+        let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
         query.par_for_each_mut(world, |(shape_state, mut flag_buffer)| {
             shape_state
                 .draw_state
@@ -652,7 +652,7 @@ impl ShapeInstanceBuffer {
                 .unwrap();
         });
 
-        let query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
+        let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
         query.par_for_each_mut(world, |(shape_ref, shape_state, mut xform_buffer)| {
             let part = self.chunk_man.part(shape_ref.shape_id);
             WIDGET_CACHE.with(|widget_cache| {
@@ -683,7 +683,7 @@ impl ShapeInstanceBuffer {
             });
         });
 
-        let query = <(
+        let mut query = <(
             Read<ShapeRef>,
             Read<ShapeSlot>,
             Read<ShapeTransformBuffer>,

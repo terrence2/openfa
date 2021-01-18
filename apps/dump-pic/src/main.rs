@@ -107,7 +107,7 @@ fn main() -> Fallible<()> {
             let (width, height) = image.dimensions();
             for h in 0..height {
                 for w in 0..width {
-                    print!("{:02X} ", image.get_pixel(w, h).data[0]);
+                    print!("{:02X} ", image.get_pixel(w, h)[0]);
                 }
                 println!();
             }
