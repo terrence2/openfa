@@ -15,7 +15,7 @@
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use ansi::ansi;
-use failure::Fallible;
+use anyhow::Result;
 use peff::PE;
 use reverse::bs2s;
 use std::collections::{HashMap, HashSet};
@@ -24,7 +24,7 @@ use std::mem;
 pub struct Menu {}
 
 impl Menu {
-    pub fn from_bytes(name: &str, bytes: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(name: &str, bytes: &[u8]) -> Result<Self> {
         let pe = PE::from_bytes(bytes)?;
 
         if !pe.section_info.contains_key("CODE") {
@@ -153,7 +153,7 @@ mod tests {
     use lib::CatalogBuilder;
 
     #[test]
-    fn it_can_load_all_menus() -> Fallible<()> {
+    fn it_can_load_all_menus() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MNU".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

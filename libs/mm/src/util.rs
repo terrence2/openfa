@@ -12,10 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use anyhow::{ensure, Result};
 use num_traits::Num;
 
-pub(crate) fn maybe_hex<T>(n: &str) -> Fallible<T>
+pub(crate) fn maybe_hex<T>(n: &str) -> Result<T>
 where
     T: Num + ::std::str::FromStr,
     <T as Num>::FromStrRadixErr: 'static + ::std::error::Error + Send + Sync,

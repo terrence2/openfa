@@ -13,35 +13,45 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters};
+use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
-use command::Bindings;
-use failure::{bail, Fallible};
-use fnt::{Fnt, Font};
+use catalog::DirectoryDrawer;
+use chrono::{TimeZone, Utc};
+use command::{Bindings, CommandHandler};
+use composite::CompositeRenderPass;
+use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
-use geodesy::{GeoSurface, Graticule};
+use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
 use gpu::{make_frame_graph, GPU};
 use input::{InputController, InputSystem};
-use legion::prelude::*;
+use legion::world::World;
 use lib::CatalogBuilder;
 use log::trace;
 use nalgebra::{convert, Point3, UnitQuaternion};
 use orrery::Orrery;
-use screen_text::ScreenTextRenderPass;
 use shape::ShapeRenderPass;
-use shape_instance::{DrawSelection, DrawState, ShapeInstanceBuffer, ShapeState};
+use shape_instance::{DrawSelection, ShapeInstanceBuffer, ShapeState};
 use stars::StarsBuffer;
-use std::time::Instant;
+use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use text_layout::{TextAnchorH, TextAnchorV, TextLayoutBuffer, TextPositionH, TextPositionV};
+use terrain_geo::{CpuDetailLevel, GpuDetailLevel, TerrainGeoBuffer};
+use tokio::{runtime::Runtime as TokioRuntime, sync::RwLock as AsyncRwLock};
+use ui::UiRenderPass;
+use widget::{Color, Label, PositionH, PositionV, Terminal, WidgetBuffer};
 use winit::window::Window;
+use world::WorldRenderPass;
 
 /// Show the contents of a SH file
 #[derive(Debug, StructOpt)]
 struct Opt {
+    /// Extra directories to treat as libraries
+    #[structopt(short, long)]
+    libdir: Vec<PathBuf>,
+
     /// Shapes to show
     inputs: Vec<String>,
 }
@@ -53,18 +63,41 @@ make_frame_graph!(
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
             shape_instance_buffer: ShapeInstanceBuffer,
+            shape: ShapeRenderPass,
             stars: StarsBuffer,
-            text_layout: TextLayoutBuffer
+            terrain_geo: TerrainGeoBuffer,
+            widgets: WidgetBuffer,
+            world: WorldRenderPass,
+            ui: UiRenderPass,
+            composite: CompositeRenderPass
         };
-        renderers: [
-            // terrain: TerrainRenderPass { globals, atmosphere, stars, terrain_geo },
-            shape: ShapeRenderPass { globals, atmosphere, shape_instance_buffer },
-            screen_text: ScreenTextRenderPass { globals, text_layout }
-        ];
         passes: [
-            draw: Render(Screen) {
-                shape( globals, atmosphere, shape_instance_buffer ),
-                screen_text( globals, text_layout )
+            // terrain_geo
+            // Update the indices so we have correct height data to tessellate with and normal
+            // and color data to accumulate.
+            paint_atlas_indices: Any() { terrain_geo() },
+            // Apply heights to the terrain mesh.
+            tessellate: Compute() { terrain_geo() },
+            // Render the terrain mesh's texcoords to an offscreen buffer.
+            deferred_texture: Render(terrain_geo, deferred_texture_target) {
+                terrain_geo( globals )
+            },
+            // Accumulate normal and color data.
+            accumulate_normal_and_color: Compute() { terrain_geo( globals ) },
+
+            // world: Flatten terrain g-buffer into the final image and mix in stars.
+            render_world: Render(world, offscreen_target) {
+                world( globals, fullscreen, atmosphere, stars, terrain_geo )
+            },
+
+            // ui: Draw our widgets onto a buffer with resolution independent of the world.
+            render_ui: Render(ui, offscreen_target) {
+                ui( globals, widgets, world )
+            },
+
+            // composite: Accumulate offscreen buffers into a final image.
+            composite_scene: Render(Screen) {
+                composite( fullscreen, globals, world, ui )
             }
         ];
     }
@@ -72,30 +105,28 @@ make_frame_graph!(
 
 macro_rules! update {
     ($galaxy:ident, $shape_entity:ident, $func:ident) => {{
-        $galaxy
-            .world_mut()
-            .get_component_mut::<ShapeState>($shape_entity)
-            .map(|mut shape| {
-                let ds: &mut DrawState = &mut shape.draw_state;
-                ds.$func();
-            });
+        $galaxy.world_mut().entry($shape_entity).map(|entry| {
+            if let Ok(state) = entry.into_component_mut::<ShapeState>() {
+                state.draw_state.$func();
+            }
+        });
     }};
 
     ($galaxy:ident, $shape_entity:ident, $func:ident, $arg:expr) => {{
-        $galaxy
-            .world_mut()
-            .get_component_mut::<ShapeState>($shape_entity)
-            .map(|mut shape| {
-                let ds: &mut DrawState = &mut shape.draw_state;
-                ds.$func($arg);
-            });
+        $galaxy.world_mut().entry($shape_entity).map(|entry| {
+            if let Ok(state) = entry.into_component_mut::<ShapeState>() {
+                state.draw_state.$func($arg);
+            }
+        });
     }};
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     env_logger::init();
 
     let system_bindings = Bindings::new("system")
+        .bind("world.toggle_wireframe", "w")?
+        .bind("world.toggle_debug_mode", "r")?
         .bind("system.exit", "Escape")?
         .bind("system.exit", "q")?;
     let shape_bindings = Bindings::new("shape")
@@ -134,19 +165,29 @@ fn main() -> Fallible<()> {
     )
 }
 
-fn window_main(window: Window, input_controller: &InputController) -> Fallible<()> {
+fn window_main(window: Window, input_controller: &InputController) -> Result<()> {
     let opt = Opt::from_args();
 
     let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
+    for (i, d) in opt.libdir.iter().enumerate() {
+        catalog.add_drawer(DirectoryDrawer::from_directory(100 + i as i64, d)?)?;
+    }
     if inputs.is_empty() {
         bail!("no inputs");
     }
     let fid = *inputs.first().unwrap();
 
-    //let mut async_rt = Runtime::new()?;
+    let (cpu_detail, gpu_detail) = if cfg!(debug_assertions) {
+        (CpuDetailLevel::Low, GpuDetailLevel::Low)
+    } else {
+        (CpuDetailLevel::Medium, GpuDetailLevel::High)
+    };
+
+    let mut async_rt = TokioRuntime::new()?;
     let mut legion = World::default();
 
     let label = catalog.file_label(fid)?;
+    println!("Default label: {}", label);
     catalog.set_default_label(&label);
     let meta = catalog.stat_sync(fid)?;
     let shape_name = meta.name;
@@ -222,7 +263,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
 
     shape_instance_buffer.ensure_uploaded(&mut gpu)?;
 
-    let mut orrery = Orrery::now();
+    let mut orrery = Orrery::new(Utc.ymd(1964, 2, 24).and_hms(12, 0, 0));
     let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001));
     arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
@@ -234,13 +275,35 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
     let atmosphere_buffer = AtmosphereBuffer::new(false, &mut gpu)?;
     let fullscreen_buffer = FullscreenBuffer::new(&gpu)?;
     let globals_buffer = GlobalParametersBuffer::new(gpu.device())?;
+    let shape_render_pass = ShapeRenderPass::new(
+        &gpu,
+        &globals_buffer,
+        &atmosphere_buffer,
+        &shape_instance_buffer,
+    )?;
     let stars_buffer = StarsBuffer::new(&gpu)?;
-    let mut text_layout_buffer = TextLayoutBuffer::new(&mut gpu)?;
-    let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
-    let font = FntFont::from_fnt(&fnt, &mut gpu)?;
-    text_layout_buffer.add_font(Font::HUD11.name().into(), font, &gpu);
-    // let bgl = *text_layout_buffer.borrow().layout_bind_group_layout();
-    // text_layout_buffer.add_font(Font::HUD11.name(), FntFont::new(&mut gpu)?)?;
+    let widget_buffer = WidgetBuffer::new(&mut gpu)?;
+    let terrain_geo_buffer =
+        TerrainGeoBuffer::new(&catalog, cpu_detail, gpu_detail, &globals_buffer, &mut gpu)?;
+    let world_render_pass = WorldRenderPass::new(
+        &mut gpu,
+        &globals_buffer,
+        &atmosphere_buffer,
+        &stars_buffer,
+        &terrain_geo_buffer,
+    )?;
+    let ui_render_pass = UiRenderPass::new(
+        &mut gpu,
+        &globals_buffer,
+        &widget_buffer,
+        &world_render_pass,
+    )?;
+    let composite_render_pass = CompositeRenderPass::new(
+        &mut gpu,
+        &globals_buffer,
+        &world_render_pass,
+        &ui_render_pass,
+    )?;
 
     let mut frame_graph = FrameGraph::new(
         &mut legion,
@@ -249,42 +312,96 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         fullscreen_buffer,
         globals_buffer,
         shape_instance_buffer,
+        shape_render_pass,
         stars_buffer,
-        text_layout_buffer,
+        terrain_geo_buffer,
+        widget_buffer,
+        world_render_pass,
+        ui_render_pass,
+        composite_render_pass,
     )?;
     ///////////////////////////////////////////////////////////
 
-    let fps_handle = frame_graph
-        .text_layout
-        .add_screen_text(Font::HUD11.name(), "", &gpu)?
-        .with_color(&[1f32, 0f32, 0f32, 1f32])
-        .with_horizontal_position(TextPositionH::Left)
-        .with_horizontal_anchor(TextAnchorH::Left)
-        .with_vertical_position(TextPositionV::Top)
-        .with_vertical_anchor(TextAnchorV::Top)
-        .handle();
-    let state_handle = frame_graph
-        .text_layout
-        .add_screen_text(Font::HUD11.name(), "", &gpu)?
-        .with_color(&[1f32, 0.5f32, 0f32, 1f32])
-        .with_horizontal_position(TextPositionH::Right)
-        .with_horizontal_anchor(TextAnchorH::Right)
-        .with_vertical_position(TextPositionV::Bottom)
-        .with_vertical_anchor(TextAnchorV::Bottom)
-        .handle();
+    let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
+    let font = FntFont::from_fnt(&fnt)?;
+    frame_graph.widgets.add_font("HUD11", font);
 
+    let catalog = Arc::new(AsyncRwLock::new(catalog));
+
+    // let version_label = Label::new("OpenFA show-sh v0.0")
+    //     .with_color(Color::Green)
+    //     .with_size(8.0)
+    //     .wrapped();
+    // frame_graph
+    //     .widgets
+    //     .root()
+    //     .write()
+    //     .add_child(version_label)
+    //     .set_float(PositionH::End, PositionV::Bottom);
+
+    // let fps_label = Label::new("fps")
+    //     .with_color(Color::Red)
+    //     .with_size(13.0)
+    //     .wrapped();
+    // frame_graph
+    //     .widgets
+    //     .root()
+    //     .write()
+    //     .add_child(fps_label.clone())
+    //     .set_float(PositionH::Start, PositionV::Top);
+
+    let state_label = Label::new("state")
+        .with_font(frame_graph.widgets.font_context().font_id_for_name("HUD11"))
+        .with_color(Color::Orange)
+        .wrapped();
+    frame_graph
+        .widgets
+        .root()
+        .write()
+        .add_child(state_label.clone())
+        .set_float(PositionH::Start, PositionV::Center);
+
+    // let terminal = Terminal::new(frame_graph.widgets.font_context())
+    //     .with_visible(false)
+    //     .wrapped();
+    // frame_graph
+    //     .widgets
+    //     .root()
+    //     .write()
+    //     .add_child(terminal)
+    //     .set_float(PositionH::Start, PositionV::Top);
+
+    // everest: 27.9880704,86.9245623
+    arcball.set_target(Graticule::<GeoSurface>::new(
+        degrees!(27.9880704),
+        degrees!(-86.9245623), // FIXME: wat?
+        meters!(8000.),
+    ));
+    arcball.set_eye_relative(Graticule::<Target>::new(
+        degrees!(11.5),
+        degrees!(869.5),
+        meters!(67668.5053),
+    ))?;
+
+    let tone_gamma = 2.2f32;
+    let _is_camera_pinned = false;
+    let _camera_double = arcball.camera().to_owned();
+    let _target_vec = meters!(0f64);
+    let _show_terminal = false;
     loop {
         let loop_start = Instant::now();
 
-        for command in input_controller.poll()? {
+        frame_graph
+            .widgets
+            .handle_keyboard(&input_controller.poll_keyboard()?)?;
+        for command in input_controller.poll_commands()? {
+            if InputSystem::is_close_command(&command) || command.full() == "system.exit" {
+                return Ok(());
+            }
+            frame_graph.handle_command(&command);
             arcball.handle_command(&command)?;
             orrery.handle_command(&command)?;
             match command.command() {
-                "window-close" | "window-destroy" | "exit" => return Ok(()),
-                "window-resize" => {
-                    gpu.note_resize(&window);
-                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
-                }
                 "+rudder-left" => update!(galaxy, ent, move_rudder_left),
                 "-rudder-left" => update!(galaxy, ent, move_rudder_center),
                 "+rudder-right" => update!(galaxy, ent, move_rudder_right),
@@ -319,47 +436,76 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
                 "toggle-hook" => update!(galaxy, ent, toggle_hook),
                 "toggle-player-dead" => update!(galaxy, ent, toggle_player_dead),
                 "window-cursor-move" => {}
+                // system bindings
+                "window.resize" => {
+                    gpu.note_resize(None, &window);
+                    frame_graph.terrain_geo.note_resize(&gpu);
+                    frame_graph.world.note_resize(&gpu);
+                    frame_graph.ui.note_resize(&gpu);
+                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
+                }
+                "window.dpi-change" => {
+                    gpu.note_resize(Some(command.float(0)?), &window);
+                    frame_graph.terrain_geo.note_resize(&gpu);
+                    frame_graph.world.note_resize(&gpu);
+                    frame_graph.ui.note_resize(&gpu);
+                    arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
+                }
                 _ => trace!("unhandled command: {}", command.full()),
             }
         }
 
         let mut tracker = Default::default();
-
         arcball.think();
-        frame_graph
-            .globals
-            .make_upload_buffer(arcball.camera(), 2.2, &gpu, &mut tracker)?;
-        //.make_upload_buffer_for_arcball_on_globe(&camera, &gpu, &mut buffers)?;
-        frame_graph.atmosphere.make_upload_buffer(
+        frame_graph.globals().make_upload_buffer(
+            arcball.camera(),
+            tone_gamma,
+            &gpu,
+            &mut tracker,
+        )?;
+        frame_graph.atmosphere().make_upload_buffer(
             convert(orrery.sun_direction()),
             &gpu,
             &mut tracker,
         )?;
-        frame_graph.shape_instance_buffer.make_upload_buffer(
+        frame_graph.terrain_geo().make_upload_buffer(
+            arcball.camera(),
+            &arcball.camera(),
+            catalog.clone(),
+            &mut async_rt,
+            &mut gpu,
+            &mut tracker,
+        )?;
+        frame_graph
+            .widgets()
+            .make_upload_buffer(&gpu, &mut tracker)?;
+        frame_graph.shape_instance_buffer().make_upload_buffer(
             &galaxy.start_time_owned(),
             galaxy.world_mut(),
             &gpu,
             &mut tracker,
         )?;
-        frame_graph
-            .text_layout
-            .make_upload_buffer(&gpu, &mut tracker)?;
-        frame_graph.run(&mut gpu, tracker)?;
+        if !frame_graph.run(&mut gpu, tracker)? {
+            gpu.note_resize(None, &window);
+            frame_graph.terrain_geo.note_resize(&gpu);
+            frame_graph.world.note_resize(&gpu);
+            frame_graph.ui.note_resize(&gpu);
+            arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
+        }
 
-        let frame_time = loop_start.elapsed();
-        let time_str = format!(
-            "{}.{} ms",
-            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
-            frame_time.subsec_micros()
-        );
-        fps_handle
-            .grab(&mut frame_graph.text_layout)
-            .set_span(&time_str);
+        // let frame_time = loop_start.elapsed();
+        // let time_str = format!(
+        //     "{}.{} ms",
+        //     frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
+        //     frame_time.subsec_micros()
+        // );
+        // fps_label.write().set_text(&time_str);
 
         let ds = galaxy
-            .world()
-            .get_component::<ShapeState>(ent)
+            .world_mut()
+            .entry(ent)
             .unwrap()
+            .into_component::<ShapeState>()?
             .draw_state;
         let params = format!(
             "dist: {}, gear:{}/{:.1}, flaps:{}, brake:{}, hook:{}, bay:{}/{:.1}, aft:{}, swp:{}",
@@ -374,8 +520,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
             ds.afterburner_enabled(),
             ds.wing_sweep_angle(),
         );
-        state_handle
-            .grab(&mut frame_graph.text_layout)
-            .set_span(&params);
+        state_label.write().set_text(&params);
     }
 }

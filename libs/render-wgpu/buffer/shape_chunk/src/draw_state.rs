@@ -15,7 +15,7 @@
 use crate::upload::{ShapeErrata, VertexFlags};
 use animate::{Animation, LinearAnimationTemplate};
 use bitflags::bitflags;
-use failure::{bail, Fallible};
+use anyhow::{bail, Result};
 use std::time::{Duration, Instant};
 
 const ANIMATION_FRAME_TIME: usize = 166; // ms
@@ -308,14 +308,14 @@ impl DrawState {
         self.wing_sweep_pos += self.wing_sweep_delta;
     }
 
-    pub fn build_mask_into(&self, start: &Instant, buffer: &mut [u32]) -> Fallible<()> {
+    pub fn build_mask_into(&self, start: &Instant, buffer: &mut [u32]) -> Result<()> {
         let flags = self.build_mask(start)?;
         buffer[0] = (flags & 0xFFFF_FFFF) as u32;
         buffer[1] = (flags >> 32) as u32;
         Ok(())
     }
 
-    pub fn build_mask(&self, start: &Instant) -> Fallible<u64> {
+    pub fn build_mask(&self, start: &Instant) -> Result<u64> {
         let mut mask = VertexFlags::STATIC | VertexFlags::BLEND_TEXTURE;
 
         let elapsed = start.elapsed().as_millis() as usize;

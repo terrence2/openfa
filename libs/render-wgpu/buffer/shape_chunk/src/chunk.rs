@@ -16,9 +16,8 @@ use crate::{
     texture_atlas::MegaAtlas,
     upload::{AnalysisResults, DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
+use anyhow::Result;
 use catalog::Catalog;
-use failure::Fallible;
-use gpu::DrawIndirectCommand;
 use lazy_static::lazy_static;
 use pal::Palette;
 use sh::RawShape;
@@ -27,6 +26,7 @@ use std::{
     mem,
     sync::{Arc, Mutex, RwLock},
 };
+use zerocopy::{AsBytes, FromBytes};
 
 const CHUNK_MODEL_TARGET_COUNT: usize = 512;
 
@@ -37,6 +37,15 @@ const VERTEX_CHUNK_HIGH_WATER_COUNT: usize =
     VERTEX_CHUNK_HIGH_WATER_BYTES / mem::size_of::<Vertex>();
 const VERTEX_CHUNK_BYTES: usize = VERTEX_CHUNK_HIGH_WATER_BYTES + MAX_VERTEX_BYTES;
 const VERTEX_CHUNK_COUNT: usize = VERTEX_CHUNK_BYTES / mem::size_of::<Vertex>();
+
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+pub struct DrawIndirectCommand {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ChunkId(u32);
@@ -135,7 +144,7 @@ pub struct OpenChunk {
 }
 
 impl OpenChunk {
-    pub(crate) fn new(chunk_flags: ChunkFlags) -> Fallible<Self> {
+    pub(crate) fn new(chunk_flags: ChunkFlags) -> Result<Self> {
         Ok(Self {
             chunk_id: allocate_chunk_id(),
             chunk_flags,
@@ -163,7 +172,7 @@ impl OpenChunk {
         selection: &DrawSelection,
         palette: &Palette,
         catalog: &Catalog,
-    ) -> Fallible<ShapeId> {
+    ) -> Result<ShapeId> {
         let start_vertex = self.vertex_upload_buffer.len();
         let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, catalog).draw_model(
             sh,
@@ -211,7 +220,7 @@ impl ClosedChunk {
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
         gpu: &mut gpu::GPU,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
         let a_size = chunk.atlas_builder.atlas_size();
         println!(

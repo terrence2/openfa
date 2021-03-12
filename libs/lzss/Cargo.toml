@@ -5,4 +5,4 @@ edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-failure = "0.1"
+anyhow = "^ 1"

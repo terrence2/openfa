@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use anyhow::{ensure, Result};
 use gpu::GPU;
 use image::DynamicImage;
 use log::trace;
@@ -91,7 +91,7 @@ pub(crate) struct MegaAtlas {
 }
 
 impl MegaAtlas {
-    pub(crate) fn new() -> Fallible<Self> {
+    pub(crate) fn new() -> Result<Self> {
         Ok(Self {
             images: vec![vec![0; ATLAS_PLANE_SIZE]],
             utilization: vec![[0; 4]],
@@ -117,7 +117,7 @@ impl MegaAtlas {
         pic: &Pic,
         data: Cow<'_, [u8]>,
         palette: &Palette,
-    ) -> Fallible<Frame> {
+    ) -> Result<Frame> {
         // If we have already loaded the texture, just return the existing frame.
         if let Some(frame) = self.frames.get(name) {
             return Ok(frame.clone());
@@ -156,7 +156,7 @@ impl MegaAtlas {
         Ok(self.frames[name].clone())
     }
 
-    pub(crate) fn finish(self, gpu: &mut gpu::GPU) -> Fallible<wgpu::TextureView> {
+    pub(crate) fn finish(self, gpu: &mut gpu::GPU) -> Result<wgpu::TextureView> {
         if DUMP_ATLAS {
             for (layer, buffer) in self.images.iter().enumerate() {
                 let mut img = DynamicImage::new_rgba8(ATLAS_WIDTH as u32, ATLAS_HEIGHT as u32);
@@ -248,6 +248,7 @@ impl MegaAtlas {
             lod_max_clamp: 9_999_999f32,
             anisotropy_clamp: None,
             compare: None,
+            border_color: None,
         })
     }
 
@@ -259,17 +260,20 @@ impl MegaAtlas {
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::SampledTexture {
+                    ty: wgpu::BindingType::Texture {
                         multisampled: true,
-                        component_type: wgpu::TextureComponentType::Uint,
-                        dimension: wgpu::TextureViewDimension::D2Array,
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                     },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler { comparison: false },
+                    ty: wgpu::BindingType::Sampler {
+                        filtering: true,
+                        comparison: false,
+                    },
                     count: None,
                 },
             ],

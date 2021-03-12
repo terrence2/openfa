@@ -12,9 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use anyhow::{ensure, Result};
 
-pub fn explode(input_data: &[u8], expect_output_size: Option<usize>) -> Fallible<Vec<u8>> {
+pub fn explode(input_data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>> {
     let mut input_offset = 0;
     let mut dict: [u8; 4096] = [b' '; 4096];
     let mut dict_offset = 0;
@@ -63,7 +63,7 @@ mod tests {
     use std::path::Path;
     use std::{fs, io::Read};
 
-    fn find_expect_data(path: &str) -> Fallible<Option<Vec<u8>>> {
+    fn find_expect_data(path: &str) -> Result<Option<Vec<u8>>> {
         // strip ./test_data/inputs/ and .lzss.zip
         let path_stem = &path.to_owned()[19..path.len() - 9];
         let expect_path = format!("../../test_data/lzss/expect/{}", path_stem);
@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn it_doesnt_crash() -> Fallible<()> {
+    fn it_doesnt_crash() -> Result<()> {
         let paths = fs::read_dir("../../test_data/lzss/inputs")?;
         for i in paths {
             let entry = i?;

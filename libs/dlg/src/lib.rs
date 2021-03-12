@@ -16,7 +16,7 @@
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use ansi::ansi;
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use packed_struct::packed_struct;
 use peff::PE;
 use reverse::bs2s;
@@ -52,7 +52,7 @@ pub enum PreloadKind {
 }
 
 impl PreloadKind {
-    fn from_name(name: &str) -> Fallible<Self> {
+    fn from_name(name: &str) -> Result<Self> {
         Ok(match name {
             "_ChoosePreload" => PreloadKind::ChoosePreload,
             "_GrafPrefPreload" => PreloadKind::GrafPrefPreload,
@@ -87,7 +87,7 @@ impl Preload {
         offset: &mut usize,
         pe: &PE,
         trampolines: &HashMap<u32, String>,
-    ) -> Fallible<Preload> {
+    ) -> Result<Preload> {
         let header_ptr: *const PreloadHeader = bytes.as_ptr() as *const _;
         let header: &PreloadHeader = unsafe { &*header_ptr };
         ensure!(
@@ -165,7 +165,7 @@ impl DrawAction {
         offset: &mut usize,
         pe: &PE,
         trampolines: &HashMap<u32, String>,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         let header_ptr: *const DrawActionHeader = bytes.as_ptr() as *const _;
         let header: &DrawActionHeader = unsafe { &*header_ptr };
         ensure!(
@@ -236,7 +236,7 @@ impl DrawRocker {
         offset: &mut usize,
         _pe: &PE,
         _trampolines: &HashMap<u32, String>,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         let header_ptr: *const DrawRockerHeader = bytes.as_ptr() as *const _;
         let header: &DrawRockerHeader = unsafe { &*header_ptr };
         ensure!(
@@ -276,7 +276,7 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let pe = PE::from_bytes(bytes)?;
         if pe.code.is_empty() {
             return Ok(Self {
@@ -333,7 +333,7 @@ impl Dialog {
         Ok(Self { widgets })
     }
 
-    fn find_trampolines(pe: &PE) -> Fallible<HashMap<u32, String>> {
+    fn find_trampolines(pe: &PE) -> Result<HashMap<u32, String>> {
         ensure!(pe.code.len() >= 6, "PE too short for trampolines");
         let mut tramps = HashMap::new();
         let mut tramp_offset = pe.code.len() - 6;
@@ -359,7 +359,7 @@ impl Dialog {
         Ok(tramps)
     }
 
-    fn find_targets(pe: &PE, trampolines: &HashMap<u32, String>) -> Fallible<HashSet<usize>> {
+    fn find_targets(pe: &PE, trampolines: &HashMap<u32, String>) -> Result<HashSet<usize>> {
         let mut targets = HashSet::new();
         for reloc in &pe.relocs {
             let r = *reloc as usize;
@@ -377,7 +377,7 @@ impl Dialog {
 
     #[allow(clippy::many_single_char_names)]
     #[allow(clippy::if_same_then_else)]
-    pub fn explore(name: &str, bytes: &[u8]) -> Fallible<()> {
+    pub fn explore(name: &str, bytes: &[u8]) -> Result<()> {
         let pe = PE::from_bytes(bytes)?;
         if pe.code.is_empty() {
             return Ok(());
@@ -480,7 +480,7 @@ mod tests {
     use lib::CatalogBuilder;
 
     #[test]
-    fn it_can_load_all_dialogs() -> Fallible<()> {
+    fn it_can_load_all_dialogs() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.DLG".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

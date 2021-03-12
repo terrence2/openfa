@@ -12,11 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+
+/*
 use absolute_unit::{degrees, meters};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use command::Bindings;
-use failure::{bail, Fallible};
+use anyhow::{bail, Result};
 use fnt::Font;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
@@ -76,7 +78,7 @@ make_frame_graph!(
     }
 );
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     env_logger::init();
 
     let mm_bindings = Bindings::new("map")
@@ -96,7 +98,7 @@ fn main() -> Fallible<()> {
     )
 }
 
-fn window_main(window: Window, input_controller: &InputController) -> Fallible<()> {
+fn window_main(window: Window, input_controller: &InputController) -> Result<()> {
     let opt = Opt::from_args();
     let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     if inputs.is_empty() {
@@ -363,3 +365,5 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
         fps_handle.grab(&mut frame_graph.text_layout).set_span(&ts);
     }
 }
+*/
+fn main() {}

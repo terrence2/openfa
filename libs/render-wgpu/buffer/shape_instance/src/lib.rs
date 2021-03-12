@@ -17,14 +17,15 @@ mod components;
 pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
+use anyhow::Result;
 use catalog::Catalog;
-use commandable::{commandable, Commandable};
-use failure::Fallible;
-use gpu::{DrawIndirectCommand, UploadTracker, GPU};
-use legion::prelude::*;
+use gpu::{UploadTracker, GPU};
+use legion::*;
 use log::trace;
 use pal::Palette;
-use shape_chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets};
+use shape_chunk::{
+    ChunkId, ChunkPart, DrawIndirectCommand, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets,
+};
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
@@ -127,7 +128,7 @@ impl InstanceBlock {
         chunk_id: ChunkId,
         layout: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         // This class contains the fixed-size device local blocks that we will render from.
         trace!("InstanceBlock::new({:?})", block_id);
 
@@ -177,19 +178,35 @@ impl InstanceBlock {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer(transform_buffer.slice(..)),
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &transform_buffer,
+                        offset: 0,
+                        size: None,
+                    },
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Buffer(flag_buffer.slice(..)),
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &flag_buffer,
+                        offset: 0,
+                        size: None,
+                    },
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer(xform_index_buffer.slice(..)),
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &xform_index_buffer,
+                        offset: 0,
+                        size: None,
+                    },
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::Buffer(xform_buffer.slice(..)),
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &xform_buffer,
+                        offset: 0,
+                        size: None,
+                    },
                 },
             ],
         });
@@ -382,7 +399,7 @@ impl InstanceBlock {
     fn update_buffers(
         &self,
         mut cbb: AutoCommandBufferBuilder,
-    ) -> Fallible<AutoCommandBufferBuilder> {
+    ) -> Result<AutoCommandBufferBuilder> {
         let dic = self.command_buffer_scratch.to_vec();
         let command_buffer_upload = self.command_buffer_pool.chunk(dic)?;
         cbb = cbb.copy_buffer(command_buffer_upload, self.command_buffer.clone())?;
@@ -409,7 +426,7 @@ impl InstanceBlock {
         chunk: &ClosedChunk,
         camera: &dyn CameraAbstract,
         window: &GraphicsWindow,
-    ) -> Fallible<AutoCommandBufferBuilder> {
+    ) -> Result<AutoCommandBufferBuilder> {
         let mut push_constants = vs::ty::PushConstantData::new();
         push_constants.set_projection(&camera.projection_matrix());
         push_constants.set_view(&camera.view_matrix());
@@ -435,7 +452,6 @@ impl InstanceBlock {
     */
 }
 
-#[derive(Commandable)]
 pub struct ShapeInstanceBuffer {
     pub chunk_man: ShapeChunkBuffer,
 
@@ -446,18 +462,17 @@ pub struct ShapeInstanceBuffer {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
-#[commandable]
 impl ShapeInstanceBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+    pub fn new(device: &wgpu::Device) -> Result<Self> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shape-instance-bind-group-layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
                         min_binding_size: NonZeroU64::new(InstanceBlock::TRANSFORM_BUFFER_SIZE),
                     },
                     count: None,
@@ -465,9 +480,9 @@ impl ShapeInstanceBuffer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
                         min_binding_size: NonZeroU64::new(InstanceBlock::FLAG_BUFFER_SIZE),
                     },
                     count: None,
@@ -475,9 +490,9 @@ impl ShapeInstanceBuffer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
                         min_binding_size: NonZeroU64::new(InstanceBlock::XFORM_INDEX_BUFFER_SIZE),
                     },
                     count: None,
@@ -485,9 +500,9 @@ impl ShapeInstanceBuffer {
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::StorageBuffer {
-                        dynamic: false,
-                        readonly: true,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
                         min_binding_size: NonZeroU64::new(InstanceBlock::XFORM_BUFFER_SIZE),
                     },
                     count: None,
@@ -546,7 +561,7 @@ impl ShapeInstanceBuffer {
         palette: &Palette,
         catalog: &Catalog,
         gpu: &mut GPU,
-    ) -> Fallible<(ShapeId, SlotId)> {
+    ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
             .chunk_man
@@ -581,7 +596,7 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(&mut self, gpu: &mut GPU) -> Fallible<()> {
+    pub fn ensure_uploaded(&mut self, gpu: &mut GPU) -> Result<()> {
         self.chunk_man.finish_open_chunks(gpu)
     }
 
@@ -613,7 +628,7 @@ impl ShapeInstanceBuffer {
         world: &mut World,
         gpu: &GPU,
         tracker: &mut UploadTracker,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let now = Instant::now();
 
         // Reset cursor for our next upload.
@@ -623,11 +638,10 @@ impl ShapeInstanceBuffer {
 
         // Animate the draw_state. We'll use the updated values below when computing
         // xform and frame based animation states.
-        <Write<ShapeState>>::query().par_for_each_mut(world, |mut shape_state| {
-            shape_state.draw_state.animate(&now)
-        });
+        <Write<ShapeState>>::query()
+            .par_for_each_mut(world, |shape_state| shape_state.draw_state.animate(&now));
 
-        let query = <(
+        let mut query = <(
             Read<Transform>,
             Read<Rotation>,
             Read<Scale>,
@@ -635,25 +649,22 @@ impl ShapeInstanceBuffer {
         )>::query();
         // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
         //    .filter(changed::<Transform>() | changed::<Rotation>());
-        query.par_for_each_mut(
-            world,
-            |(transform, rotation, scale, mut transform_buffer)| {
-                (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
-                (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
-                (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
-            },
-        );
+        query.par_for_each_mut(world, |(transform, rotation, scale, transform_buffer)| {
+            (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
+            (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
+            (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+        });
 
-        let query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
-        query.par_for_each_mut(world, |(shape_state, mut flag_buffer)| {
+        let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
+        query.par_for_each_mut(world, |(shape_state, flag_buffer)| {
             shape_state
                 .draw_state
                 .build_mask_into(&start, &mut flag_buffer.buffer)
                 .unwrap();
         });
 
-        let query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
-        query.par_for_each_mut(world, |(shape_ref, shape_state, mut xform_buffer)| {
+        let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
+        query.par_for_each_mut(world, |(shape_ref, shape_state, xform_buffer)| {
             let part = self.chunk_man.part(shape_ref.shape_id);
             WIDGET_CACHE.with(|widget_cache| {
                 match widget_cache.borrow_mut().entry(shape_ref.shape_id) {
@@ -683,7 +694,7 @@ impl ShapeInstanceBuffer {
             });
         });
 
-        let query = <(
+        let mut query = <(
             Read<ShapeRef>,
             Read<ShapeSlot>,
             Read<ShapeTransformBuffer>,
@@ -747,17 +758,19 @@ impl ShapeInstanceBuffer {
 mod test {
     use super::*;
     use lib::CatalogBuilder;
+    use nitrous::Interpreter;
     use pal::Palette;
     use shape_chunk::DrawSelection;
     use winit::{event_loop::EventLoop, window::Window};
 
     #[cfg(unix)]
     #[test]
-    fn test_creation() -> Fallible<()> {
+    fn test_creation() -> Result<()> {
         use winit::platform::unix::EventLoopExtUnix;
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
-        let mut gpu = GPU::new(&window, Default::default())?;
+        let interpreter = Interpreter::new();
+        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -789,7 +802,7 @@ mod test {
             let game = label.split(':').last().unwrap();
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
 
-            let mut inst_man = ShapeInstanceBuffer::new(gpu.device())?;
+            let mut inst_man = ShapeInstanceBuffer::new(gpu.read().device())?;
             let mut all_chunks = Vec::new();
             let mut all_slots = Vec::new();
             for &fid in files {
@@ -813,12 +826,12 @@ mod test {
                         DrawSelection::NormalModel,
                         &palette,
                         &catalog,
-                        &mut gpu,
+                        &mut gpu.write(),
                     )?;
                     all_chunks.push(chunk_id);
                     all_slots.push(slot_id);
                 }
-                gpu.device().poll(wgpu::Maintain::Wait);
+                gpu.read().device().poll(wgpu::Maintain::Wait);
             }
         }
 

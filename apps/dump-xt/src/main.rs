@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Fallible;
+use anyhow::Result;
 use lib::CatalogBuilder;
 use simplelog::{Config, LevelFilter, TermLogger};
 use structopt::StructOpt;
@@ -25,7 +25,7 @@ struct Opt {
     inputs: Vec<String>,
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
     let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     TermLogger::init(LevelFilter::Warn, Config::default())?;

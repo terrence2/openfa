@@ -19,7 +19,7 @@ pub use ot::ObjectType;
 pub use pt::{Envelope, PlaneType};
 
 use catalog::Catalog;
-use failure::{bail, Fallible};
+use anyhow::{bail, Result};
 use lib::from_dos_string;
 use log::trace;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -43,14 +43,14 @@ impl Type {
         }
     }
 
-    pub fn jt(&self) -> Fallible<&ProjectileType> {
+    pub fn jt(&self) -> Result<&ProjectileType> {
         Ok(match self {
             Type::JT(ref jt) => &jt,
             _ => bail!("Type: not a projectile"),
         })
     }
 
-    pub fn nt(&self) -> Fallible<&NpcType> {
+    pub fn nt(&self) -> Result<&NpcType> {
         Ok(match self {
             Type::NT(ref nt) => &nt,
             Type::PT(ref pt) => &pt.nt,
@@ -58,7 +58,7 @@ impl Type {
         })
     }
 
-    pub fn pt(&self) -> Fallible<&PlaneType> {
+    pub fn pt(&self) -> Result<&PlaneType> {
         Ok(match self {
             Type::PT(ref pt) => &pt,
             _ => bail!("Type: not a plane"),
@@ -81,15 +81,15 @@ impl TypeRef {
         self.0.ot()
     }
 
-    pub fn jt(&self) -> Fallible<&ProjectileType> {
+    pub fn jt(&self) -> Result<&ProjectileType> {
         self.0.jt()
     }
 
-    pub fn nt(&self) -> Fallible<&NpcType> {
+    pub fn nt(&self) -> Result<&NpcType> {
         self.0.nt()
     }
 
-    pub fn pt(&self) -> Fallible<&PlaneType> {
+    pub fn pt(&self) -> Result<&PlaneType> {
         self.0.pt()
     }
 
@@ -122,7 +122,7 @@ impl TypeManager {
         }
     }
 
-    pub fn load(&self, name: &str, catalog: &Catalog) -> Fallible<TypeRef> {
+    pub fn load(&self, name: &str, catalog: &Catalog) -> Result<TypeRef> {
         if let Some(item) = self.cache.borrow().get(name) {
             trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());
@@ -166,7 +166,7 @@ mod tests {
     use lib::CatalogBuilder;
 
     #[test]
-    fn can_parse_all_entity_types() -> Fallible<()> {
+    fn can_parse_all_entity_types() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.[OJNP]T".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

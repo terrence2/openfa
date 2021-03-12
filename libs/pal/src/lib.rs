@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
-use image::{Pixel, Rgb, Rgba};
+use anyhow::{ensure, Result};
+use image::{ImageBuffer, Pixel, Rgb, Rgba};
 use std::{borrow::Cow, fs::File, io::Write};
 
 #[derive(Clone)]
@@ -23,11 +23,11 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn empty() -> Fallible<Self> {
+    pub fn empty() -> Result<Self> {
         Self::from_bytes(&[])
     }
 
-    pub fn grayscale() -> Fallible<Self> {
+    pub fn grayscale() -> Result<Self> {
         let mut arr = [0u8; 256 * 3];
         for i in 0..256 {
             arr[i * 3] = i as u8;
@@ -37,19 +37,17 @@ impl Palette {
         Self::from_bytes_prescaled(&arr)
     }
 
-    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
         // The VGA palette contains 6 bit colors, so we need to scale by 4 and add the bottom 2 bits.
         ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgb {
-                data: [
-                    (data[i * 3] << 2) | (data[i * 3] >> 6),
-                    (data[i * 3 + 1] << 2) | (data[i * 3 + 1] >> 6),
-                    (data[i * 3 + 2] << 2) | (data[i * 3 + 2] >> 6),
-                ],
-            });
+            entries.push(Rgb([
+                (data[i * 3] << 2) | (data[i * 3] >> 6),
+                (data[i * 3 + 1] << 2) | (data[i * 3 + 1] >> 6),
+                (data[i * 3 + 2] << 2) | (data[i * 3 + 2] >> 6),
+            ]));
         }
         Ok(Self {
             color_count,
@@ -57,14 +55,12 @@ impl Palette {
         })
     }
 
-    pub fn from_bytes_prescaled(data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_prescaled(data: &[u8]) -> Result<Self> {
         ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgb {
-                data: [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]],
-            });
+            entries.push(Rgb([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]));
         }
         Ok(Self {
             color_count,
@@ -76,34 +72,32 @@ impl Palette {
         self.entries.iter()
     }
 
-    pub fn rgba(&self, index: usize) -> Fallible<Rgba<u8>> {
+    pub fn rgba(&self, index: usize) -> Result<Rgba<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
-        Ok(Rgba {
-            data: [
-                self.entries[index][0],
-                self.entries[index][1],
-                self.entries[index][2],
-                255,
-            ],
-        })
+        Ok(Rgba([
+            self.entries[index][0],
+            self.entries[index][1],
+            self.entries[index][2],
+            255,
+        ]))
     }
 
-    pub fn rgba_f32(&self, index: usize) -> Fallible<[f32; 4]> {
+    pub fn rgba_f32(&self, index: usize) -> Result<[f32; 4]> {
         let c = self.rgb(index)?;
         Ok([
-            f32::from(c.data[0]) / 256f32,
-            f32::from(c.data[1]) / 256f32,
-            f32::from(c.data[2]) / 256f32,
+            f32::from(c[0]) / 256f32,
+            f32::from(c[1]) / 256f32,
+            f32::from(c[2]) / 256f32,
             1f32,
         ])
     }
 
-    pub fn rgb(&self, index: usize) -> Fallible<Rgb<u8>> {
+    pub fn rgb(&self, index: usize) -> Result<Rgb<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
         Ok(self.entries[index])
     }
 
-    pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Fallible<()> {
+    pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Result<()> {
         let mut dst_i = offset;
         for src_i in 0..other.entries.len() {
             if dst_i >= self.entries.len() {
@@ -122,7 +116,7 @@ impl Palette {
     }
 
     // Slice from [start to end), half-open.
-    pub fn slice(&self, start: usize, end: usize) -> Fallible<Palette> {
+    pub fn slice(&self, start: usize, end: usize) -> Result<Palette> {
         let slice = self.entries[start..end].to_owned();
         Ok(Palette {
             color_count: slice.len(),
@@ -132,9 +126,9 @@ impl Palette {
 
     /// Dump this pal to `path` in PNG format, in a 16x16 grid, expanding each
     /// entry to an 80x80 pixel square in order to increase visbility.
-    pub fn dump_png(&self, path: &str) -> Fallible<()> {
+    pub fn dump_png(&self, path: &str) -> Result<()> {
         let size = 80;
-        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+        let mut buf = ImageBuffer::new(16u32 * size, 16u32 * size);
         for i in 0..16 {
             for j in 0..16 {
                 let off = (j << 4 | i) as usize;
@@ -145,8 +139,7 @@ impl Palette {
                 }
             }
         }
-        let img = image::ImageRgb8(buf);
-        img.save(path.to_owned() + ".png")?;
+        buf.save(path.to_owned() + ".png")?;
         Ok(())
     }
 
@@ -162,7 +155,7 @@ impl Palette {
     }
 
     /// Save this pal to `path` in PAL format (e.g. raw VGA palette data).
-    pub fn dump_pal(&self, path: &str) -> Fallible<()> {
+    pub fn dump_pal(&self, path: &str) -> Result<()> {
         let mut fp = File::create(path)?;
         fp.write_all(&self.as_bytes())?;
         Ok(())
@@ -170,9 +163,9 @@ impl Palette {
 
     /// Show the given data as if it were colors for a palette. Ignores short
     /// data, data that ends with a truncated color, and data that is too long.
-    pub fn dump_partial(data: &[u8], scale: u8, name: &str) -> Fallible<()> {
+    pub fn dump_partial(data: &[u8], scale: u8, name: &str) -> Result<()> {
         let size = 80;
-        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+        let mut buf = ImageBuffer::new(16u32 * size, 16u32 * size);
 
         // Dump a haze everywhere so we know what was unset.
         for i in 0..16 {
@@ -212,8 +205,7 @@ impl Palette {
             }
         }
 
-        let img = image::ImageRgb8(buf);
-        img.save(name.to_owned() + ".png")?;
+        buf.save(name.to_owned() + ".png")?;
         Ok(())
     }
 }
@@ -239,22 +231,18 @@ mod tests {
     use std::io::prelude::*;
 
     #[test]
-    fn it_works_with_normal_palette() -> Fallible<()> {
+    fn it_works_with_normal_palette() -> Result<()> {
+        // FIXME: use test loader to find and load all PAL files.
         let mut fp = fs::File::open("test_data/PALETTE.PAL")?;
         let mut data = Vec::new();
         fp.read_to_end(&mut data)?;
         let pal = Palette::from_bytes(&data)?;
-        assert_eq!(
-            pal.rgb(1)?,
-            Rgb {
-                data: [252, 0, 252]
-            }
-        );
+        assert_eq!(pal.rgb(1)?, Rgb([252, 0, 252]));
         Ok(())
     }
 
     #[test]
-    fn it_can_be_empty() -> Fallible<()> {
+    fn it_can_be_empty() -> Result<()> {
         let empty = Vec::new();
         let pal = Palette::from_bytes(&empty)?;
         assert_eq!(pal.color_count, 0);

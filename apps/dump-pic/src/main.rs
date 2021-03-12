@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Fallible;
+use anyhow::Result;
 use image::GenericImageView;
 use lib::CatalogBuilder;
 use pal::Palette;
@@ -51,7 +51,7 @@ struct Opt {
     inputs: Vec<String>,
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
     let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     if inputs.is_empty() {
@@ -107,7 +107,7 @@ fn main() -> Fallible<()> {
             let (width, height) = image.dimensions();
             for h in 0..height {
                 for w in 0..width {
-                    print!("{:02X} ", image.get_pixel(w, h).data[0]);
+                    print!("{:02X} ", image.get_pixel(w, h)[0]);
                 }
                 println!();
             }

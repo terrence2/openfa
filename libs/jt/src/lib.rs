@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use ot::{
     make_type_struct, parse,
     parse::{parse_string, FieldRow, FromRow},
@@ -33,7 +33,7 @@ impl FromRow for ProjectileNames {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self::Produces> {
+    ) -> Result<Self::Produces> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "si_names", "expected pointer to si_names");
         ensure!(values.len() >= 2, "expected at least 2 names in si_names");
@@ -59,7 +59,7 @@ enum ProjectileTypeVersion {
 }
 
 impl ProjectileTypeVersion {
-    fn from_len(n: usize) -> Fallible<Self> {
+    fn from_len(n: usize) -> Result<Self> {
         Ok(match n {
             81 => ProjectileTypeVersion::V0,
             84 => ProjectileTypeVersion::V1,
@@ -164,7 +164,7 @@ ProjectileType(ot: ObjectType, version: ProjectileTypeVersion) {                
 }];
 
 impl ProjectileType {
-    pub fn from_text(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Result<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -184,7 +184,7 @@ mod tests {
     use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
-    fn it_can_parse_all_projectile_files() -> Fallible<()> {
+    fn it_can_parse_all_projectile_files() -> Result<()> {
         let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.JT".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

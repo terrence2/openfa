@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::ansi;
-use failure::Fallible;
+use anyhow::Result;
 use reverse::p2s;
 use std::mem;
 
@@ -28,7 +28,7 @@ impl PtrToObjEnd {
     pub const MAGIC: u8 = 0xF2;
     pub const SIZE: usize = 4;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };

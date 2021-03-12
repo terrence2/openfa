@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Fallible;
+use anyhow::Result;
 use lib::CatalogBuilder;
 use pal::Palette;
 use std::fs;
@@ -33,7 +33,7 @@ struct Opt {
     inputs: Vec<String>,
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
     let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     for &fid in &inputs {
@@ -57,10 +57,9 @@ fn main() -> Fallible<()> {
                     }
                 }
             }
-            let img = image::ImageRgb8(buf);
             fs::create_dir_all(&format!("dump/palette/{}-{}", game, meta.name))?;
             let output = format!("dump/palette/{}-{}/palette.png", game, meta.name);
-            img.save(&output)?;
+            buf.save(&output)?;
 
             return Ok(());
         }

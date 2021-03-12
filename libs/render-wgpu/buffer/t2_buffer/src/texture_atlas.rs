@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use image::{DynamicImage, GenericImage, GenericImageView};
 use log::trace;
 use mm::{MapOrientation, TLoc};
@@ -70,7 +70,7 @@ pub struct TextureAtlas {
 }
 
 impl TextureAtlas {
-    pub fn new(sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
+    pub fn new(sources: Vec<(TLoc, DynamicImage)>) -> Result<Self> {
         ensure!(!sources.is_empty(), "cannot create atlas with no textures");
         let mut uniform = false;
         if let Some((TLoc::Index(_), _)) = sources.get(0) {
@@ -85,7 +85,7 @@ impl TextureAtlas {
     }
 
     // Most terrains all use 256x256 images, so
-    fn pack_trivial(sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
+    fn pack_trivial(sources: Vec<(TLoc, DynamicImage)>) -> Result<Self> {
         let num_across = (sources.len() as f64).sqrt().ceil() as u32;
         let extra = num_across * num_across - sources.len() as u32;
         let num_down = num_across - (extra / num_across);
@@ -110,7 +110,7 @@ impl TextureAtlas {
             let coord0 = TexCoord::new(cursor_x, cursor_y, &img);
             let coord1 = TexCoord::new(cursor_x + PATCH_SIZE, cursor_y + PATCH_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-            img.copy_from(src, cursor_x, cursor_y);
+            img.copy_from(src, cursor_x, cursor_y)?;
 
             cursor_x += PATCH_SIZE + 1;
             if cursor_x >= atlas_width {
@@ -122,7 +122,7 @@ impl TextureAtlas {
         Ok(Self { img, frames })
     }
 
-    fn pack_complex(mut sources: Vec<(TLoc, DynamicImage)>) -> Fallible<Self> {
+    fn pack_complex(mut sources: Vec<(TLoc, DynamicImage)>) -> Result<Self> {
         sources.sort_unstable_by(|a, b| a.1.width().cmp(&b.1.width()).reverse());
         let count256 = sources.iter().filter(|(_, img)| img.width() == 256).count();
         let count128 = sources.len() - count256;
@@ -158,7 +158,7 @@ impl TextureAtlas {
             let coord0 = TexCoord::new(cursor_x, cursor_y, &img);
             let coord1 = TexCoord::new(cursor_x + PATCH_SIZE, cursor_y + PATCH_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-            img.copy_from(src, cursor_x, cursor_y);
+            img.copy_from(src, cursor_x, cursor_y)?;
             cursor_x += PATCH_SIZE + 2;
             if (cursor_x + 1) >= atlas_width {
                 cursor_x = 1;
@@ -187,7 +187,7 @@ impl TextureAtlas {
             let coord0 = TexCoord::new(target_x, target_y, &img);
             let coord1 = TexCoord::new(target_x + HALF_SIZE, target_y + HALF_SIZE, &img);
             frames.insert(tloc.to_owned(), Frame { coord0, coord1 });
-            img.copy_from(src, target_x, target_y);
+            img.copy_from(src, target_x, target_y)?;
             if (cursor_x + 1) >= atlas_width {
                 cursor_x = 1;
                 cursor_y += PATCH_SIZE + 2;
@@ -210,7 +210,7 @@ mod test {
     // use xt::TypeManager;
 
     #[test]
-    fn test_t2_texture_atlas() -> Fallible<()> {
+    fn test_t2_texture_atlas() -> Result<()> {
         // TODO: we need to figure out the real approach here.
         // let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MM".to_owned()])?;
         // for &fid in &inputs {
@@ -268,7 +268,7 @@ mod test {
     //     base_palette: &Palette,
     //     layer: &Layer,
     //     layer_index: usize,
-    // ) -> Fallible<Palette> {
+    // ) -> Result<Palette> {
     //     // Note: we need to really find the right palette.
     //     let mut palette = base_palette.clone();
     //     let layer_data = layer.for_index(layer_index + 2)?;

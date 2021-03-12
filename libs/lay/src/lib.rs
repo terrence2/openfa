@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{ensure, Fallible};
+use anyhow::{ensure, Result};
 use packed_struct::packed_struct;
 use pal::Palette;
 use peff::PE;
@@ -79,7 +79,7 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn for_index(&self, index: usize) -> Fallible<Palette> {
+    pub fn for_index(&self, index: usize) -> Result<Palette> {
         let base = self.frag_offsets[index];
         let slice = &self.data[base..base + PALETTE_SLICE_SIZE];
         Palette::from_bytes(slice)
@@ -89,13 +89,13 @@ impl Layer {
         self.frag_offsets.len()
     }
 
-    pub fn from_bytes(data: &[u8], palette: &Palette) -> Fallible<Layer> {
+    pub fn from_bytes(data: &[u8], palette: &Palette) -> Result<Layer> {
         let mut pe = PE::from_bytes(data)?;
         pe.relocate(0x0000_0000)?;
         Layer::from_pe("inval", &pe, palette)
     }
 
-    fn from_pe(prefix: &str, pe: &peff::PE, palette: &Palette) -> Fallible<Layer> {
+    fn from_pe(prefix: &str, pe: &peff::PE, palette: &Palette) -> Result<Layer> {
         assert!(!prefix.is_empty());
 
         let mut frag_offsets = Vec::new();
@@ -226,7 +226,7 @@ mod tests {
     use lib::CatalogBuilder;
 
     #[test]
-    fn it_can_parse_all_lay_files() -> Fallible<()> {
+    fn it_can_parse_all_lay_files() -> Result<()> {
         let (catalog, inputs) = CatalogBuilder::build_and_select(&["*.LAY".to_owned()])?;
 
         for &fid in &inputs {

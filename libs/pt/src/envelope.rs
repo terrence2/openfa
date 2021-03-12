@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use ot::{
     make_type_struct,
     parse::{FieldRow, FromRows},
@@ -25,7 +25,8 @@ enum EnvelopeVersion {
 }
 
 impl EnvelopeVersion {
-    fn from_len(_: usize) -> Fallible<Self> {
+    #[allow(clippy::unnecessary_wraps)] // actually necessary
+    fn from_len(_: usize) -> Result<Self> {
         Ok(EnvelopeVersion::V0)
     }
 }
@@ -48,7 +49,7 @@ impl FromRows for EnvelopeShape {
     fn from_rows(
         rows: &[FieldRow],
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<(Self::Produces, usize)> {
+    ) -> Result<(Self::Produces, usize)> {
         let mut shape = Vec::new();
         for j in 0..20 {
             let speed = u32::from(rows[j * 2].value().numeric()?.word()?) as i32 as f32;

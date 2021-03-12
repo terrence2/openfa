@@ -12,12 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use legion::{entity::Entity, world::EntityStore};
+//pub use legion::{entity::Entity, world::EntityStore};
 pub use universe::component::{Rotation, Scale, Transform};
 
 use catalog::Catalog;
-use failure::Fallible;
-use legion::prelude::*;
+use anyhow::Result;
+use legion::*;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
 use physical_constants::FEET_TO_HM_32;
@@ -31,7 +31,6 @@ use std::{sync::Arc, time::Instant};
 pub struct Galaxy {
     start_time: Instant,
 
-    _legion_universe: Universe,
     legion_world: World,
 
     // Resources
@@ -40,13 +39,11 @@ pub struct Galaxy {
 }
 
 impl Galaxy {
-    pub fn new(catalog: &Catalog) -> Fallible<Self> {
-        let legion_universe = Universe::new();
-        let legion_world = legion_universe.create_world();
+    pub fn new(catalog: &Catalog) -> Result<Self> {
+        let legion_world = World::new(Default::default());
 
         Ok(Self {
             start_time: Instant::now(),
-            _legion_universe: legion_universe,
             legion_world,
             palette: Arc::new(Palette::from_bytes(
                 &catalog.read_name_sync("PALETTE.PAL")?,
@@ -93,26 +90,24 @@ impl Galaxy {
         scale: f32,
         position: Point3<f32>,
         rotation: &UnitQuaternion<f32>,
-    ) -> Fallible<Entity> {
+    ) -> Result<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
-        let entities = self.legion_world.insert(
-            (),
-            vec![(
-                Transform::new(position.coords),
-                Rotation::new(*rotation),
-                Scale::new(/*SHAPE_UNIT_TO_FEET */ scale * FEET_TO_HM_32),
-                ShapeRef::new(shape_id),
-                ShapeSlot::new(slot_id),
-                ShapeState::new(widgets.errata()),
-                ShapeTransformBuffer::default(),
-                ShapeFlagBuffer::default(),
-            )],
-        );
-        let entity = entities[0];
+        let entity = self.legion_world.push((
+            Transform::new(position.coords),
+            Rotation::new(*rotation),
+            Scale::new(/*SHAPE_UNIT_TO_FEET */ scale * FEET_TO_HM_32),
+            ShapeRef::new(shape_id),
+            ShapeSlot::new(slot_id),
+            ShapeState::new(widgets.errata()),
+            ShapeTransformBuffer::default(),
+            ShapeFlagBuffer::default(),
+        ));
         if widgets.errata().has_xform_animation {
             self.legion_world
-                .add_component(entity, ShapeXformBuffer::default())?;
+                .entry(entity)
+                .expect("just created")
+                .add_component(ShapeXformBuffer::default());
         }
         Ok(entity)
     }
@@ -123,7 +118,7 @@ impl Galaxy {
         slot_id: SlotId,
         shape_id: ShapeId,
         position: Point3<f32>,
-    ) -> Fallible<Entity> {
+    ) -> Result<Entity> {
         Ok(self
             .ecs
             .create_entity()
@@ -138,7 +133,7 @@ impl Galaxy {
         shape_id: ShapeId,
         position: Point3<f64>,
         part: &ChunkPart,
-    ) -> Fallible<Entity> {
+    ) -> Result<Entity> {
         //let slot_id = self.shape_renderer.chunk_manager().reserve_slot()?;
 
         let widget_ref = part.widgets();
@@ -158,7 +153,7 @@ impl Galaxy {
     */
 
     pub fn destroy_entity(&mut self, entity: Entity) -> bool {
-        self.legion_world.delete(entity)
+        self.legion_world.remove(entity)
     }
 }
 
@@ -168,7 +163,7 @@ mod test {
     use lib::CatalogBuilder;
 
     #[test]
-    fn test_it_works() -> Fallible<()> {
+    fn test_it_works() -> Result<()> {
         // Note: rely on uniqueness of PALETTE.PAL to give us every game.
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["*:PALETTE.PAL".to_owned()])?;

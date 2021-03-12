@@ -16,7 +16,7 @@ pub mod parse;
 
 pub use crate::parse::{parse_string, FieldRow, FieldType, FromRow, Repr};
 use bitflags::bitflags;
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use nalgebra::Point3;
 use std::{collections::HashMap, mem};
 
@@ -30,7 +30,7 @@ pub enum TypeTag {
 }
 
 impl TypeTag {
-    pub fn from_byte(n: u8) -> Fallible<TypeTag> {
+    pub fn from_byte(n: u8) -> Result<TypeTag> {
         if n != 1 && n != 3 && n != 5 && n != 7 {
             bail!("unknown TypeTag {}", n);
         }
@@ -43,7 +43,7 @@ impl FromRow for TypeTag {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self::Produces> {
+    ) -> Result<Self::Produces> {
         TypeTag::from_byte(field.value().numeric()?.byte()?)
     }
 }
@@ -63,7 +63,7 @@ pub enum ObjectKind {
 }
 
 impl ObjectKind {
-    fn from_word(x: u16) -> Fallible<Self> {
+    fn from_word(x: u16) -> Result<Self> {
         match x {
             0b1000_0000_0000_0000 => Ok(ObjectKind::Fighter),
             0b0100_0000_0000_0000 => Ok(ObjectKind::Bomber),
@@ -87,7 +87,7 @@ impl FromRow for ObjectKind {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self::Produces> {
+    ) -> Result<Self::Produces> {
         ObjectKind::from_word(field.value().numeric()?.word()?)
     }
 }
@@ -105,7 +105,7 @@ pub enum ProcKind {
 }
 
 impl ProcKind {
-    fn from_symbol(s: &str) -> Fallible<ProcKind> {
+    fn from_symbol(s: &str) -> Result<ProcKind> {
         Ok(match s {
             "_OBJProc" => ProcKind::OBJ,
             "_PLANEProc" => ProcKind::PLANE,
@@ -125,7 +125,7 @@ impl FromRow for ProcKind {
     fn from_row(
         field: &FieldRow,
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self::Produces> {
+    ) -> Result<Self::Produces> {
         ProcKind::from_symbol(&field.value().symbol()?)
     }
 }
@@ -159,7 +159,7 @@ pub struct ObjectNames {
 
 impl FromRow for ObjectNames {
     type Produces = ObjectNames;
-    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Fallible<ObjectNames> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<ObjectNames> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "ot_names", "expected pointer to ot_names");
         Ok(ObjectNames {
@@ -180,7 +180,7 @@ enum ObjectTypeVersion {
 }
 
 impl ObjectTypeVersion {
-    fn from_len(n: usize) -> Fallible<Self> {
+    fn from_len(n: usize) -> Result<Self> {
         Ok(match n {
             49 => ObjectTypeVersion::V0,
             51 => ObjectTypeVersion::V1,
@@ -256,7 +256,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
 }];
 
 impl ObjectType {
-    pub fn from_text(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Result<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -286,7 +286,7 @@ mod tests {
     use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
-    fn can_parse_all_entity_types() -> Fallible<()> {
+    fn can_parse_all_entity_types() -> Result<()> {
         let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.[OJNP]T".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

@@ -15,7 +15,7 @@
 use crate::instr::read_name;
 use ansi::ansi;
 use bitflags::bitflags;
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use reverse::p2s;
 use std::{mem, slice::Iter};
 
@@ -29,7 +29,7 @@ impl TextureRef {
     pub const MAGIC: u8 = 0xE2;
     pub const SIZE: usize = 16;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let filename = read_name(&data[2..Self::SIZE])?;
@@ -74,7 +74,7 @@ pub enum TextureIndexKind {
 }
 
 impl TextureIndexKind {
-    pub fn from_u16(kind: u16) -> Fallible<Self> {
+    pub fn from_u16(kind: u16) -> Result<Self> {
         match kind {
             0 => Ok(TextureIndexKind::TailLeft),
             1 => Ok(TextureIndexKind::TailRight),
@@ -97,7 +97,7 @@ impl TextureIndex {
     pub const MAGIC: u8 = 0xE0;
     pub const SIZE: usize = 4;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         let data2: &[u16] = unsafe { mem::transmute(&data[2..]) };
         Ok(TextureIndex {
@@ -137,7 +137,7 @@ pub struct VertexBuf {
 impl VertexBuf {
     pub const MAGIC: u8 = 0x82;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
         let head: &[u16] = unsafe { mem::transmute(&data[2..6]) };
@@ -355,7 +355,7 @@ impl Facet {
     // FC 0b1110_1110_0000_0110  98 00 03 E1 78 7B BD F2 FC 09 FB            03   0300 B800 1201        AA00 C101 C100 8D01 A900 4501
     // FC 0b1110_1110_0000_0111  98 00 47 2B 1C 88 69 F4 0D F8 C5            03   FD00 4200 0301        7A B3 7A A8 37 AC 1E
      */
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
 
         let mut off = 1;
@@ -571,7 +571,7 @@ impl VertexNormal {
     pub const MAGIC: u8 = 0xF6;
     pub const SIZE: usize = 7;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         let uword_ref: &[i16] = unsafe { mem::transmute(&data[1..]) };
         let index = uword_ref[0] as usize;

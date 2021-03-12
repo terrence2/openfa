@@ -5,19 +5,18 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "^ 0.1.2"
-legion = "= 0.2.4"
+anyhow = "^ 1"
+legion = "^ 0.3"
 log = "^ 0.4"
-nalgebra = "^ 0.20"
-wgpu = "^ 0.6"
+nalgebra = "^ 0.24"
+wgpu = "^ 0.7"
 catalog = { path = "../../../nitrogen/system/catalog" }
-command = { path = "../../../nitrogen/system/command" }
-commandable = { path = "../../../nitrogen/system/commandable" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 pal = { path = "../../../pal" }
 shape_chunk = { path = "../../../render-wgpu/buffer/shape_chunk" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
-winit = "^ 0.23"
+winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../../lib" }
+nitrous = { path = "../../../nitrogen/system/nitrous" }

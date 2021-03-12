@@ -14,15 +14,16 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+use anyhow::{bail, ensure, Result};
 use bitflags::bitflags;
-use failure::{bail, ensure, Fail, Fallible};
 use log::trace;
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
+use thiserror::Error;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 enum PEError {
-    #[fail(display = "name ran off end of file")]
+    #[error("name ran off end of file")]
     NameUnending {},
 }
 
@@ -76,7 +77,7 @@ impl SectionInfo {
 }
 
 impl PE {
-    pub fn from_bytes(data: &[u8]) -> Fallible<PE> {
+    pub fn from_bytes(data: &[u8]) -> Result<PE> {
         assert_eq!(mem::size_of::<COFFHeader>(), 20);
         assert_eq!(mem::size_of::<OptionalHeader>(), 28);
         assert_eq!(mem::size_of::<WindowsHeader>(), 68);
@@ -327,7 +328,7 @@ impl PE {
             .collect::<HashMap<String, SectionInfo>>()
     }
 
-    fn parse_idata(section: &SectionHeader, idata: &[u8]) -> Fallible<Vec<Thunk>> {
+    fn parse_idata(section: &SectionHeader, idata: &[u8]) -> Result<Vec<Thunk>> {
         ensure!(
             idata.len() > mem::size_of::<ImportDirectoryEntry>() * 2,
             "section data too short for directory"
@@ -423,7 +424,7 @@ impl PE {
         Ok(thunks)
     }
 
-    fn read_name(n: &[u8]) -> Fallible<String> {
+    fn read_name(n: &[u8]) -> Result<String> {
         let end_offset: usize = n
             .iter()
             .position(|&c| c == 0)
@@ -431,7 +432,7 @@ impl PE {
         Ok(str::from_utf8(&n[..end_offset])?.to_owned())
     }
 
-    fn parse_relocs(relocs: &[u8], code_section: Option<&SectionHeader>) -> Fallible<Vec<u32>> {
+    fn parse_relocs(relocs: &[u8], code_section: Option<&SectionHeader>) -> Result<Vec<u32>> {
         let mut out = Vec::new();
         let mut offset = 0usize;
         trace!(
@@ -501,7 +502,7 @@ impl PE {
         0
     }
 
-    pub fn relocate(&mut self, target: u32) -> Fallible<()> {
+    pub fn relocate(&mut self, target: u32) -> Result<()> {
         let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
         for &reloc in self.relocs.iter() {
             let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
@@ -751,7 +752,7 @@ mod tests {
     use lib::CatalogBuilder;
 
     #[test]
-    fn it_works() -> Fallible<()> {
+    fn it_works() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&[
             "*:*.SH".to_owned(),
             "*:*.LAY".to_owned(),

@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 env_logger = "^ 0.7"
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 image = "^ 0.21"
 legion = "= 0.2.4"
 log = "^ 0.4"
@@ -17,7 +17,7 @@ winit = "^ 0.23"
 absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
-command = { path = "../../libs/nitrogen/system/command" }
+nitrous = { path = "../../libs/nitrogen/system/nitrous" }
 fnt = { path = "../../libs/fnt" }
 fullscreen = { path = "../../libs/nitrogen/wgpu-buffer/fullscreen" }
 galaxy = { path = "../../libs/galaxy" }
@@ -29,12 +29,12 @@ lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
 physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
-screen_text = { path = "../../libs/nitrogen/wgpu-render/screen_text" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
-terrain = { path = "../../libs/nitrogen/wgpu-render/terrain" }
 stars = { path = "../../libs/nitrogen/wgpu-buffer/stars" }
 t2_buffer = { path = "../../libs/render-wgpu/buffer/t2_buffer" }
 t2_terrain = { path = "../../libs/render-wgpu/render_pass/t2_terrain" }
-text_layout = { path = "../../libs/nitrogen/wgpu-buffer/text_layout" }
+ui = { path = "../../libs/nitrogen/wgpu-buffer/ui" }
+widget = { path = "../../libs/nitrogen/wgpu-buffer/widget" }
+world = { path = "../../libs/nitrogen/wgpu-buffer/world" }
 xt = { path = "../../libs/xt" }

@@ -11,13 +11,13 @@ benchmark = []
 async-trait = "^ 0.1"
 byteorder = "^ 1"
 codepage-437 = "^ 0.1"
-failure = "^ 0.1"
+anyhow = "^ 1"
 glob = "^ 0.2"
 lazy_static = "^ 1"
 log = "^ 0.4"
 memmap = "^ 0.6"
 regex = "^ 1"
-tokio = { version = "^ 0.2", features = ["rt-threaded", "macros", "fs"] }
+tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 zerocopy = "^ 0.3"
 lzss = { path = "../lzss" }
 catalog = { path = "../nitrogen/system/catalog" }

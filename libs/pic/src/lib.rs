@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
-use image::{DynamicImage, GenericImage, GenericImageView, ImageRgba8};
+use anyhow::{bail, ensure, Result};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer};
 use packed_struct::packed_struct;
 use pal::Palette;
 use std::{borrow::Cow, mem};
@@ -47,7 +47,7 @@ pub enum PicFormat {
 }
 
 impl PicFormat {
-    pub fn from_word(format: u16) -> Fallible<Self> {
+    pub fn from_word(format: u16) -> Result<Self> {
         Ok(match format {
             0 => PicFormat::Format0,
             1 => PicFormat::Format1,
@@ -68,8 +68,8 @@ pub struct Pic {
 
 impl Pic {
     /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
-    pub fn from_bytes(data: &[u8]) -> Fallible<Pic> {
-        let header = Header::overlay(&data[..mem::size_of::<Header>()]);
+    pub fn from_bytes(data: &[u8]) -> Result<Pic> {
+        let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
         if format == PicFormat::JPEG {
             let img = image::load_from_memory(data)?;
@@ -102,8 +102,8 @@ impl Pic {
     }
 
     /// Render the PIC in `data` into a raster image. The given palette will be used if the image does not contain its own.
-    pub fn decode(palette: &Palette, data: &[u8]) -> Fallible<DynamicImage> {
-        let header = Header::overlay(&data[..mem::size_of::<Header>()]);
+    pub fn decode(palette: &Palette, data: &[u8]) -> Result<DynamicImage> {
+        let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
         Ok(match format {
             PicFormat::JPEG => image::load_from_memory(data)?,
@@ -136,7 +136,7 @@ impl Pic {
         offset_y: u32,
         pic: &Pic,
         data: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         match pic.format {
             PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
             PicFormat::Format0 => {
@@ -165,7 +165,7 @@ impl Pic {
         offset: [u32; 2],
         pic: &Pic,
         data: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         match pic.format {
             PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
             PicFormat::Format0 => {
@@ -191,7 +191,7 @@ impl Pic {
         header: &'a Header,
         data: &'a [u8],
         system_palette: &'a Palette,
-    ) -> Fallible<Cow<'a, Palette>> {
+    ) -> Result<Cow<'a, Palette>> {
         if header.palette_size() == 0 {
             return Ok(Cow::from(system_palette));
         }
@@ -209,17 +209,17 @@ impl Pic {
         height: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Fallible<DynamicImage> {
-        let mut imgbuf = image::ImageBuffer::new(width, height);
+    ) -> Result<DynamicImage> {
+        let mut imgbuf = ImageBuffer::new(width, height);
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
             let mut clr = palette.rgba(pix)?;
             if pix == 0xFF {
-                clr.data[3] = 0x00;
+                clr[3] = 0x00;
             }
             *p = clr;
         }
-        Ok(ImageRgba8(imgbuf))
+        Ok(DynamicImage::ImageRgba8(imgbuf))
     }
 
     fn decode_format0_into(
@@ -229,13 +229,13 @@ impl Pic {
         width: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
             let mut clr = palette.rgba(pix)?;
             if pix == 0xFF {
-                clr.data[3] = 0x00;
+                clr[3] = 0x00;
             }
             into_image.put_pixel(offset_x + i % width, offset_y + i / width, clr);
         }
@@ -249,13 +249,13 @@ impl Pic {
         width: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
             let mut clr = palette.rgba(pix)?;
             if pix == 0xFF {
-                clr.data[3] = 0x00;
+                clr[3] = 0x00;
             }
             let pos = (offset[0] + i % width, offset[1] + i / width);
             let base = 4 * (pos.1 as usize * span + pos.0 as usize);
@@ -263,7 +263,7 @@ impl Pic {
             //     "i: {}, offset: {:?}, pos: {:?}, base: {}",
             //     i, offset, pos, base
             // );
-            into_buffer[base..base + 4].copy_from_slice(&clr.data);
+            into_buffer[base..base + 4].copy_from_slice(&clr.0);
         }
         Ok(())
     }
@@ -274,13 +274,14 @@ impl Pic {
         palette: &Palette,
         spans: &[u8],
         pixels: &[u8],
-    ) -> Fallible<DynamicImage> {
-        let mut imgbuf = image::ImageBuffer::new(width, height);
+    ) -> Result<DynamicImage> {
+        let mut imgbuf = ImageBuffer::new(width, height);
         assert_eq!(spans.len() % mem::size_of::<Span>(), 0);
         let span_cnt = spans.len() / mem::size_of::<Span>() - 1;
         for i in 0..span_cnt {
-            let span =
-                Span::overlay(&spans[i * mem::size_of::<Span>()..(i + 1) * mem::size_of::<Span>()]);
+            let span = Span::overlay(
+                &spans[i * mem::size_of::<Span>()..(i + 1) * mem::size_of::<Span>()],
+            )?;
             assert!(span.row() < height);
             assert!(span.index() < pixels.len());
             assert!(span.start() < width);
@@ -295,7 +296,8 @@ impl Pic {
                 imgbuf.put_pixel(column, span.row(), clr);
             }
         }
-        Ok(ImageRgba8(imgbuf))
+        Ok(DynamicImage::ImageRgba8(imgbuf))
+        //Ok(RgbaImage::from(imgbuf))
     }
 }
 
@@ -306,7 +308,7 @@ mod tests {
     use std::{fs, path::Path};
 
     #[test]
-    fn it_can_new_all_pics() -> Fallible<()> {
+    fn it_can_new_all_pics() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;
@@ -328,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn it_can_decode_all_pics() -> Fallible<()> {
+    fn it_can_decode_all_pics() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

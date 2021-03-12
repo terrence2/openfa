@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{util::maybe_hex, waypoint::Waypoint};
+use anyhow::{anyhow, bail, Result};
 use catalog::Catalog;
-use failure::{bail, err_msg, Fallible};
 use nalgebra::{Point3, Unit, UnitQuaternion, Vector3};
-use std::f32::consts::PI;
+use std::{f32::consts::PI, str::SplitAsciiWhitespace};
 use xt::{TypeManager, TypeRef};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,7 +61,7 @@ pub enum Nationality {
 }
 
 impl Nationality {
-    fn from_ordinal(n: usize) -> Fallible<Self> {
+    fn from_ordinal(n: usize) -> Result<Self> {
         Ok(match n {
             0 => Nationality::Unk0,
             1 => Nationality::Unk1,
@@ -125,13 +125,12 @@ pub struct ObjectInfo {
 }
 
 impl ObjectInfo {
-    pub(crate) fn from_lines(
-        lines: &[&str],
-        offset: &mut usize,
+    pub(crate) fn from_tokens(
+        tokens: &mut SplitAsciiWhitespace,
         type_manager: &TypeManager,
         catalog: &Catalog,
-    ) -> Fallible<Self> {
-        let mut type_name = None;
+    ) -> Result<Self> {
+        let mut xt = None;
         let mut name = None;
         let mut pos = None;
         let mut angle = UnitQuaternion::identity();
@@ -144,95 +143,101 @@ impl ObjectInfo {
         let mut react = None;
         let mut search_dist = None;
 
-        while lines[*offset].trim() != "." {
-            let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
-            match parts[0].trim_start() {
+        while let Some(token) = tokens.next() {
+            match token {
                 "type" => {
-                    type_name = Some(parts[1].trim().to_owned());
+                    // TODO: pass raw in so we can dedup on the &str.
+                    xt = Some(
+                        type_manager.load(&tokens.next().expect("type").to_uppercase(), catalog)?,
+                    );
                 }
                 "name" => {
-                    // Start of Header in ascii? :shrug:
-                    assert!(parts[1].starts_with(1 as char));
-                    assert!(parts[1].ends_with(1 as char));
-                    let end = parts[1].len() - 1;
-                    name = Some(parts[1][1..end].to_owned());
+                    // FIXME: share with code in special
+                    // Start of Header (0x01) marks delimiting the string? Must be a dos thing. :shrug:
+                    // Regardless, we need to accumulate tokens until we find one ending in a 1, since
+                    // we've split on spaces already.
+                    let tmp = tokens.next().expect("name");
+                    assert!(tmp.starts_with(1 as char));
+                    if tmp.ends_with(1 as char) {
+                        let end = tmp.len() - 1;
+                        name = Some(tmp[1..end].to_owned());
+                    } else {
+                        let mut tmp = tmp.to_owned();
+                        while let Some(next) = tokens.next() {
+                            tmp += next;
+                            if tmp.ends_with(1 as char) {
+                                break;
+                            }
+                        }
+                        let end = tmp.len() - 1;
+                        name = Some(tmp[1..end].to_owned());
+                    }
                 }
                 "pos" => {
-                    let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    pos = Some(Point3::new(
-                        ns[0].parse::<i32>()? as f32,
-                        ns[1].parse::<i32>()? as f32,
-                        ns[2].parse::<i32>()? as f32,
-                    ));
+                    let x = tokens.next().expect("pos x").parse::<i32>()? as f32;
+                    let y = tokens.next().expect("pos y").parse::<i32>()? as f32;
+                    let z = tokens.next().expect("pos z").parse::<i32>()? as f32;
+                    pos = Some(Point3::new(x, y, z));
                     // All non-plane entities are at height 0 and need to be moved
                     // to the right elevation at startup.
-                    if !type_name.as_ref().expect("type name").ends_with(".PT") {
-                        assert_eq!(ns[1].parse::<i32>()?, 0);
+                    if !xt.as_ref().expect("xt").is_pt() {
+                        assert!(y.abs() < f32::EPSILON);
                     }
                 }
                 "angle" => {
-                    let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    let is = [
-                        ns[0].parse::<i32>()?,
-                        ns[1].parse::<i32>()?,
-                        ns[2].parse::<i32>()?,
-                    ];
+                    let x = tokens.next().expect("pos x").parse::<i32>()? as f32;
+                    let y = tokens.next().expect("pos y").parse::<i32>()?;
+                    let z = tokens.next().expect("pos z").parse::<i32>()?;
                     // No entities are tilted or pitched, only rotated.
-                    assert_eq!(is[1], 0);
-                    assert_eq!(is[2], 0);
+                    assert_eq!(y, 0);
+                    assert_eq!(z, 0);
                     angle = UnitQuaternion::from_axis_angle(
                         &Unit::new_unchecked(Vector3::new(0f32, 1f32, 0f32)),
-                        -(is[0] as f32 * PI / 180f32),
+                        -(x as f32 * PI / 180f32),
                     );
                 }
                 "nationality" => {
-                    nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
+                    nationality = Some(Nationality::from_ordinal(
+                        tokens.next().expect("nationality").parse::<usize>()?,
+                    )?)
                 }
                 "nationality2" => {
-                    nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
+                    nationality = Some(Nationality::from_ordinal(
+                        tokens.next().expect("nationality2").parse::<usize>()?,
+                    )?)
                 }
                 "nationality3" => {
-                    nationality = Some(Nationality::from_ordinal(parts[1].parse::<usize>()?)?)
+                    nationality = Some(Nationality::from_ordinal(
+                        tokens.next().expect("nationality3").parse::<usize>()?,
+                    )?)
                 }
-                "flags" => flags = maybe_hex::<u16>(parts[1])?,
-                "speed" => speed = parts[1].parse::<i32>()? as f32,
-                "alias" => alias = parts[1].parse::<i32>()?,
-                "skill" => skill = Some(parts[1].parse::<u8>()?),
+                "flags" => flags = maybe_hex::<u16>(tokens.next().expect("flags"))?,
+                "speed" => speed = tokens.next().expect("speed").parse::<i32>()? as f32,
+                "alias" => alias = tokens.next().expect("alias").parse::<i32>()?,
+                "skill" => skill = Some(tokens.next().expect("skill").parse::<u8>()?),
                 "react" => {
-                    let subparts = parts[1].split(' ').collect::<Vec<&str>>();
-                    assert!(type_name.is_some());
                     react = Some((
-                        maybe_hex::<u16>(subparts[0])?,
-                        maybe_hex::<u16>(subparts[1])?,
-                        maybe_hex::<u16>(subparts[2])?,
+                        maybe_hex::<u16>(tokens.next().expect("react[0]"))?,
+                        maybe_hex::<u16>(tokens.next().expect("react[1]"))?,
+                        maybe_hex::<u16>(tokens.next().expect("react[2]"))?,
                     ));
                 }
-                "searchDist" => search_dist = Some(parts[1].parse::<u32>()?),
+                "searchDist" => {
+                    search_dist = Some(tokens.next().expect("search dist").parse::<u32>()?)
+                }
+                "." => break,
                 _ => {
-                    bail!("unknown obj key: {}", parts[0]);
+                    bail!("unknown obj key: {}", token);
                 }
             }
-            *offset += 1;
         }
         Ok(ObjectInfo {
-            xt: type_manager.load(
-                &type_name
-                    .ok_or_else(|| {
-                        err_msg(format!("mm:obj: type not set in obj ending {}", *offset))
-                    })?
-                    .to_uppercase(),
-                catalog,
-            )?,
+            xt: xt.ok_or_else(|| anyhow!("mm:obj: type not set in obj"))?,
             name,
-            pos: pos
-                .ok_or_else(|| err_msg(format!("mm:obj: pos not set in obj ending {}", *offset)))?,
+            pos: pos.ok_or_else(|| anyhow!("mm:obj: pos not set in obj"))?,
             angle,
-            nationality: nationality.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:obj: nationality not set in obj ending {}",
-                    *offset
-                ))
-            })?,
+            nationality: nationality
+                .ok_or_else(|| anyhow!("mm:obj: nationality not set in obj",))?,
             flags,
             speed,
             alias,

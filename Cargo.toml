@@ -6,17 +6,18 @@ edition = "2018"
 
 [workspace]
 members = [
+    "apps/dump-asm",
+    "apps/dump-lay",
+    "apps/dump-lib",
+    "apps/dump-mm",
     "apps/dump-pal",
     "apps/dump-pe",
     "apps/dump-pic",
     "apps/dump-sh",
-    "apps/dump-asm",
-    "apps/dump-lay",
-    "apps/dump-lib",
     "apps/dump-xt",
     "apps/pack-pic",
-    "apps/show-mm",
-    "apps/show-sh",
+    # "apps/show-mm",
+    # "apps/show-sh",
 
     "libs/dlg",
     "libs/fnt",
@@ -61,3 +62,46 @@ debug = true
 #opt-level = 2
 
 [dependencies]
+
+chrono = "^ 0.4"
+anyhow = "^ 1"
+env_logger = "^ 0.7"
+image = "^ 0.23"
+legion = "= 0.2.4"
+log = "^ 0.4"
+nalgebra = "^ 0.24"
+parking_lot = "^ 0.11"
+paste = "^ 1"
+rand = "^ 0.3"
+structopt = "^ 0.3"
+tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
+winit = { version = "^ 0.24", features = ["web-sys"] }
+absolute_unit = { path = "libs/nitrogen/sim/absolute_unit" }
+atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
+camera = { path = "libs/nitrogen/sim/camera" }
+catalog = { path = "libs/nitrogen/system/catalog" }
+composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
+fnt = { path = "libs/fnt" }
+fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
+galaxy = { path = "libs/galaxy" }
+geodesy = { path = "libs/nitrogen/sim/geodesy" }
+global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
+gpu = { path = "libs/nitrogen/system/gpu" }
+input = { path = "libs/nitrogen/system/input" }
+lib = { path = "libs/lib" }
+mm = { path = "libs/mm" }
+nitrous = { path = "libs/nitrogen/system/nitrous" }
+nitrous_injector = { path = "libs/nitrogen/system/nitrous_injector" }
+orrery = { path = "libs/nitrogen/sim/orrery" }
+physical_constants = { path = "libs/nitrogen/sim/physical_constants" }
+shape = { path = "libs/render-wgpu/render_pass/shape" }
+shape_instance = { path = "libs/render-wgpu/buffer/shape_instance" }
+stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
+t2_buffer = { path = "libs/render-wgpu/buffer/t2_buffer" }
+t2_terrain = { path = "libs/render-wgpu/render_pass/t2_terrain" }
+terrain_geo = { path = "libs/nitrogen/wgpu-buffer/terrain_geo" }
+ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
+universe = { path = "libs/nitrogen/sim/universe" }
+widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
+world = { path = "libs/nitrogen/wgpu-buffer/world" }
+xt = { path = "libs/xt" }

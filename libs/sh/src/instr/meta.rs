@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::instr::read_name;
 use ansi::ansi;
-use failure::Fallible;
+use anyhow::Result;
 use reverse::{bs2s, p2s, p_2_i16};
 
 #[derive(Debug)]
@@ -26,7 +26,7 @@ pub struct SourceRef {
 impl SourceRef {
     pub const MAGIC: u8 = 0x42;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let source = read_name(&data[2..])?;
@@ -66,7 +66,7 @@ pub struct EndOfShape {
 
 // 1 2 3 2 1 0*
 impl EndOfShape {
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         Ok(Self {
             offset,
             data: data.to_owned(),
@@ -111,7 +111,7 @@ pub struct EndOfObject {
 impl EndOfObject {
     pub const SIZE: usize = 18;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         Ok(Self {
             offset,
             data: data.as_ptr(),
@@ -155,7 +155,7 @@ pub struct Pad1E {
 impl Pad1E {
     pub const MAGIC: u8 = 0x1E;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         let mut cnt = 0;
         while cnt < data.len() && data[cnt] == 0x1E {
             cnt += 1;

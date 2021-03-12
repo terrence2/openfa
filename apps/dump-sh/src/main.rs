@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Fallible;
+use anyhow::Result;
 use lib::CatalogBuilder;
 use reverse::b2h;
 use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
@@ -77,7 +77,7 @@ struct Opt {
 }
 
 #[allow(clippy::cognitive_complexity)] // Impossible to organize if you don't know what the goal is.
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
     let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     if inputs.is_empty() {
@@ -255,7 +255,7 @@ fn format_unk(xs: &[u8]) -> String {
     let mut out = Vec::new();
     for &x in xs.iter() {
         out.push(' ');
-        if x >= 0x21 && x <= 0x5E || x >= 0x61 && x <= 0x7E {
+        if (0x21..=0x5E).contains(&x) || (0x61..=0x7E).contains(&x) {
             out.push(' ');
             out.push(x as char);
         } else {

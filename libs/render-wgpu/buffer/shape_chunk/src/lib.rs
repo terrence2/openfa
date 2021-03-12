@@ -18,7 +18,7 @@ mod draw_state;
 mod texture_atlas;
 mod upload;
 
-pub use chunk::{ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId};
+pub use chunk::{ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId};
 pub use chunk_manager::ShapeChunkBuffer;
 pub use draw_state::DrawState;
 pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
@@ -26,21 +26,23 @@ pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 #[cfg(test)]
 mod test {
     use super::*;
-    use failure::Fallible;
+    use anyhow::Result;
     use gpu::GPU;
     use lib::CatalogBuilder;
     use log::trace;
+    use nitrous::Interpreter;
     use pal::Palette;
     use std::collections::HashMap;
     use winit::{event_loop::EventLoop, window::Window};
 
     #[cfg(unix)]
     #[test]
-    fn test_load_all() -> Fallible<()> {
+    fn test_load_all() -> Result<()> {
         use winit::platform::unix::EventLoopExtUnix;
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
-        let mut gpu = GPU::new(&window, Default::default())?;
+        let interpreter = Interpreter::new();
+        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -72,7 +74,7 @@ mod test {
             let game = label.split(':').last().unwrap();
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
 
-            let mut chunk_man = ShapeChunkBuffer::new(gpu.device())?;
+            let mut chunk_man = ShapeChunkBuffer::new(gpu.read().device())?;
             let mut all_shapes = Vec::new();
             for &fid in files {
                 let meta = catalog.stat_sync(fid)?;
@@ -92,12 +94,12 @@ mod test {
                     DrawSelection::NormalModel,
                     &palette,
                     &catalog,
-                    &mut gpu,
+                    &mut gpu.write(),
                 )?;
                 all_shapes.push(shape_id);
             }
-            chunk_man.finish_open_chunks(&mut gpu)?;
-            gpu.device().poll(wgpu::Maintain::Wait);
+            chunk_man.finish_open_chunks(&mut gpu.write())?;
+            gpu.read().device().poll(wgpu::Maintain::Wait);
 
             for shape_id in &all_shapes {
                 let lifetime = chunk_man.part(*shape_id).widgets();

@@ -5,8 +5,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "^ 0.1.2"
-image = "^ 0.21"
+anyhow = "^ 1"
+image = "^ 0.23"
 structopt = "^ 0.2"
 ansi = { path = "../../libs/nitrogen/system/ansi" }
 lib = { path = "../../libs/lib" }

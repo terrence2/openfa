@@ -16,7 +16,7 @@ mod envelope;
 
 pub use crate::envelope::Envelope;
 
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use nt::NpcType;
 use ot::{
     make_type_struct, parse,
@@ -32,7 +32,7 @@ enum PlaneTypeVersion {
 }
 
 impl PlaneTypeVersion {
-    fn from_len(cnt: usize) -> Fallible<Self> {
+    fn from_len(cnt: usize) -> Result<Self> {
         Ok(match cnt {
             146 => PlaneTypeVersion::V1,
             130 => PlaneTypeVersion::V0,
@@ -50,7 +50,7 @@ pub struct Envelopes {
 
 impl FromRow for Envelopes {
     type Produces = Envelopes;
-    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self::Produces> {
+    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         let (_name, lines) = row.value().pointer()?;
         let mut off = 0usize;
         let mut envs = Vec::new();
@@ -99,7 +99,7 @@ impl FromRows for SystemDamage {
     fn from_rows(
         rows: &[FieldRow],
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<(Self::Produces, usize)> {
+    ) -> Result<(Self::Produces, usize)> {
         let mut damage_limit = [0; 45];
         for (i, row) in rows[..45].iter().enumerate() {
             damage_limit[i] = row.value().numeric()?.byte()?;
@@ -123,7 +123,7 @@ impl FromRows for PhysBounds {
     fn from_rows(
         rows: &[FieldRow],
         _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<(Self::Produces, usize)> {
+    ) -> Result<(Self::Produces, usize)> {
         Ok((
             Self {
                 min: f32::from(rows[0].value().numeric()?.word()? as i16),
@@ -227,7 +227,7 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 }];
 
 impl PlaneType {
-    pub fn from_text(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Result<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -258,7 +258,7 @@ mod tests {
     use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
-    fn it_can_parse_all_plane_files() -> Fallible<()> {
+    fn it_can_parse_all_plane_files() -> Result<()> {
         let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PT".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;
