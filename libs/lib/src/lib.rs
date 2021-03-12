@@ -23,11 +23,11 @@ pub use crate::{
     game_info::{GameInfo, GAME_INFO},
 };
 
+use anyhow::{anyhow, ensure, Result};
 use async_trait::async_trait;
 use byteorder::{ByteOrder, LittleEndian};
 use catalog::{DrawerFileId, DrawerFileMetadata, DrawerInterface};
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
-use failure::{ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
 use log::trace;
 use memmap::{Mmap, MmapOptions};
@@ -51,7 +51,7 @@ pub enum CompressionType {
 }
 
 impl CompressionType {
-    fn from_byte(b: u8) -> Fallible<Self> {
+    fn from_byte(b: u8) -> Result<Self> {
         ensure!(
             b <= 4,
             "invalid compression type byte '{}'; expected 0-4",
@@ -83,7 +83,7 @@ pub struct Priority {
 }
 
 impl Priority {
-    fn from_path(path: &Path) -> Fallible<Self> {
+    fn from_path(path: &Path) -> Result<Self> {
         if path.ends_with("installdir") {
             return Ok(Self {
                 priority: 0,
@@ -96,16 +96,16 @@ impl Priority {
         }
         let filename = path
             .file_stem()
-            .ok_or_else(|| err_msg("priority: name must not start with a '.'"))?
+            .ok_or_else(|| anyhow!("priority: name must not start with a '.'"))?
             .to_str()
-            .ok_or_else(|| err_msg("priority: name not utf8"))?
+            .ok_or_else(|| anyhow!("priority: name not utf8"))?
             .to_owned();
         let caps = PRIO_RE
             .captures(&filename)
-            .ok_or_else(|| err_msg("priority: name must contain a number"))?;
+            .ok_or_else(|| anyhow!("priority: name must contain a number"))?;
         let priority = caps
             .get(1)
-            .ok_or_else(|| err_msg("priority: expected number match"))?
+            .ok_or_else(|| anyhow!("priority: expected number match"))?
             .as_str()
             .parse::<usize>()?;
         let version = Self::version_from_char(caps.get(2));
@@ -151,7 +151,7 @@ impl PackedFileInfo {
         start_offset: usize,
         end_offset: usize,
         compression: u8,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         Ok(Self {
             libkey,
             start_offset,
@@ -181,7 +181,7 @@ pub struct LibDrawer {
 }
 
 impl LibDrawer {
-    pub fn from_path(priority: i64, path: &Path) -> Fallible<Box<dyn DrawerInterface>> {
+    pub fn from_path(priority: i64, path: &Path) -> Result<Box<dyn DrawerInterface>> {
         trace!("opening lib file {:?} with priority {}", path, priority);
         let fp = fs::File::open(path)?;
         let map = unsafe { MmapOptions::new().map(&fp)? };
@@ -243,7 +243,7 @@ pub fn from_dos_string(input: Cow<[u8]>) -> Cow<str> {
 
 #[async_trait]
 impl DrawerInterface for LibDrawer {
-    fn index(&self) -> Fallible<HashMap<DrawerFileId, String>> {
+    fn index(&self) -> Result<HashMap<DrawerFileId, String>> {
         Ok(self.drawer_index.clone())
     }
 
@@ -255,7 +255,7 @@ impl DrawerInterface for LibDrawer {
         &self.name
     }
 
-    fn stat_sync(&self, id: DrawerFileId) -> Fallible<DrawerFileMetadata> {
+    fn stat_sync(&self, id: DrawerFileId) -> Result<DrawerFileMetadata> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -295,7 +295,7 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    fn read_sync(&self, id: DrawerFileId) -> Fallible<Cow<[u8]>> {
+    fn read_sync(&self, id: DrawerFileId) -> Result<Cow<[u8]>> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -320,7 +320,7 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    fn read_slice_sync(&self, id: DrawerFileId, extent: Range<usize>) -> Fallible<Cow<[u8]>> {
+    fn read_slice_sync(&self, id: DrawerFileId, extent: Range<usize>) -> Result<Cow<[u8]>> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -335,7 +335,7 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    async fn read(&self, id: DrawerFileId) -> Fallible<Vec<u8>> {
+    async fn read(&self, id: DrawerFileId) -> Result<Vec<u8>> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         // FIXME: make this more async friendly by spawn blocking off the io thread
@@ -369,7 +369,7 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    async fn read_slice(&self, id: DrawerFileId, extent: Range<usize>) -> Fallible<Vec<u8>> {
+    async fn read_slice(&self, id: DrawerFileId, extent: Range<usize>) -> Result<Vec<u8>> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -392,7 +392,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_catalog_builder() -> Fallible<()> {
+    fn test_catalog_builder() -> Result<()> {
         let _catalog = CatalogBuilder::build()?;
         Ok(())
     }

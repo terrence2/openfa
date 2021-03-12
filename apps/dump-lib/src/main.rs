@@ -15,7 +15,7 @@
 
 // Unpack lib files.
 use catalog::Catalog;
-use failure::Fallible;
+use anyhow::Result;
 use humansize::{file_size_opts as options, FileSize};
 use lib::LibDrawer;
 use std::{
@@ -50,7 +50,7 @@ enum Opt {
     },
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
 
     match opt {
@@ -62,7 +62,7 @@ fn main() -> Fallible<()> {
     }
 }
 
-fn handle_ls(inputs: Vec<PathBuf>) -> Fallible<()> {
+fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
     let multi_input = inputs.len() > 1;
     for (i, input) in inputs.iter().enumerate() {
         let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
@@ -105,7 +105,7 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Fallible<()> {
     Ok(())
 }
 
-fn handle_unpack(inputs: Vec<PathBuf>, output_path: PathBuf) -> Fallible<()> {
+fn handle_unpack(inputs: Vec<PathBuf>, output_path: PathBuf) -> Result<()> {
     for input in &inputs {
         let libname = input.file_name().expect("no filename in library");
         let outdir = output_path.join(libname);

@@ -108,7 +108,7 @@ Ukraine            {0, 1}
 */
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use lazy_static::lazy_static;
 use log::trace;
 use packed_struct::packed_struct;
@@ -201,7 +201,7 @@ pub struct Terrain {
 }
 
 impl Terrain {
-    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let magic = &data[0..4];
         if magic == MAGIC_BITE {
             return Self::from_bite(data);
@@ -216,7 +216,7 @@ impl Terrain {
         )
     }
 
-    fn from_bite(data: &[u8]) -> Fallible<Self> {
+    fn from_bite(data: &[u8]) -> Result<Self> {
         // Between USNF and MF, the format of the header changed without changing the
         // magic BITE, so we need to do a bit of digging to find out which header to use.
         // The newer format adds a description, so if there is a .PIC after the magic
@@ -229,7 +229,7 @@ impl Terrain {
     }
 }
 
-fn read_name(n: &[u8]) -> Fallible<String> {
+fn read_name(n: &[u8]) -> Result<String> {
     let end_offset: usize = n.iter().position(|&c| c == 0).unwrap_or(n.len() - 1);
     Ok(str::from_utf8(&n[..end_offset])?.to_owned())
 }
@@ -280,7 +280,7 @@ impl Terrain {
     // This format is used exclusively by the first game in the series: USNF.
     // It has the same BITE header as in later games, but is missing the name
     // field.
-    fn from_bite0(data: &[u8]) -> Fallible<Self> {
+    fn from_bite0(data: &[u8]) -> Result<Self> {
         let header_ptr: *const BITEHeader0 = data.as_ptr() as *const _;
         let header: &BITEHeader0 = unsafe { &*header_ptr };
         ensure!(header.magic() == MAGIC_BITE, "missing magic");
@@ -395,7 +395,7 @@ packed_struct!(BITEHeader1 {
 });
 
 impl Terrain {
-    fn from_bite1(data: &[u8]) -> Fallible<Self> {
+    fn from_bite1(data: &[u8]) -> Result<Self> {
         let header_ptr: *const BITEHeader1 = data.as_ptr() as *const _;
         let header: &BITEHeader1 = unsafe { &*header_ptr };
         ensure!(header.magic() == MAGIC_BITE, "missing magic");
@@ -527,7 +527,7 @@ packed_struct!(BIT2Header {
 });
 
 impl Terrain {
-    fn from_bit2(data: &[u8]) -> Fallible<Self> {
+    fn from_bit2(data: &[u8]) -> Result<Self> {
         let header_pointer: &[BIT2Header] = unsafe { mem::transmute(data) };
         let header = &header_pointer[0];
 
@@ -630,30 +630,26 @@ impl Terrain {
         0x001a0000 => 1703936   <- most likely is again feet
     */
     #[cfg(test)]
-    fn make_debug_images(&self, path: &str) -> Fallible<()> {
+    fn make_debug_images(&self, path: &str) -> Result<()> {
         use std::cmp;
 
         let mut metabuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
         let mut heightbuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
         for (pos, sample) in self.samples.iter().enumerate() {
             let mut metaclr = if sample.modifiers == 16 {
-                image::Rgb {
-                    data: [255, 0, 255],
-                }
+                image::Rgb([255, 0, 255])
             } else {
-                image::Rgb {
-                    data: [
-                        sample.modifiers * 18,
-                        sample.modifiers * 18,
-                        sample.modifiers * 18,
-                    ],
-                }
+                image::Rgb([
+                    sample.modifiers * 18,
+                    sample.modifiers * 18,
+                    sample.modifiers * 18,
+                ])
             };
             if sample.color == 0xFF {
                 if sample.modifiers <= 1 {
-                    metaclr.data[2] = 0xFF;
+                    metaclr[2] = 0xFF;
                 } else {
-                    metaclr.data = [0xff, 0x00, 0xff];
+                    metaclr = image::Rgb([0xff, 0x00, 0xff]);
                 }
             }
             let w = (pos % self.width as usize) as u32;
@@ -662,21 +658,15 @@ impl Terrain {
             heightbuf.put_pixel(
                 w,
                 h,
-                image::Rgb {
-                    data: [
-                        cmp::min(255usize, sample.height as usize * 4) as u8,
-                        cmp::min(255usize, sample.height as usize * 4) as u8,
-                        cmp::min(255usize, sample.height as usize * 4) as u8,
-                    ],
-                },
+                image::Rgb([
+                    cmp::min(255usize, sample.height as usize * 4) as u8,
+                    cmp::min(255usize, sample.height as usize * 4) as u8,
+                    cmp::min(255usize, sample.height as usize * 4) as u8,
+                ]),
             );
         }
-
-        let img = image::ImageRgb8(metabuf);
-        img.save(path.to_owned() + ".meta.png")?;
-
-        let img = image::ImageRgb8(heightbuf);
-        img.save(path.to_owned() + ".height.png")?;
+        metabuf.save(path.to_owned() + ".meta.png")?;
+        heightbuf.save(path.to_owned() + ".height.png")?;
 
         Ok(())
     }
@@ -718,7 +708,7 @@ mod test {
     const DUMP: bool = false;
 
     #[test]
-    fn it_can_parse_all_t2_files() -> Fallible<()> {
+    fn it_can_parse_all_t2_files() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.T2".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

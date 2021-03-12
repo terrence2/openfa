@@ -19,8 +19,9 @@ mod marker;
 mod mask;
 mod meta;
 
-use failure::{Fail, Fallible};
+use anyhow::Result;
 use std::str;
+use thiserror::Error;
 
 pub use crate::instr::{
     code::{X86Code, X86Message, X86Trampoline},
@@ -31,13 +32,13 @@ pub use crate::instr::{
     meta::{EndOfObject, EndOfShape, Pad1E, SourceRef},
 };
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum ShError {
-    #[fail(display = "name ran off end of file")]
+    #[error("name ran off end of file")]
     NameUnending {},
 }
 
-pub fn read_name(n: &[u8]) -> Fallible<String> {
+pub fn read_name(n: &[u8]) -> Result<String> {
     let end_offset: usize = n
         .iter()
         .position(|&c| c == 0)

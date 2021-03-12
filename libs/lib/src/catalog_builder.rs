@@ -13,9 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{LibDrawer, Priority, GAME_INFO};
+use anyhow::Result;
 use catalog::{Catalog, DirectoryDrawer, FileId};
-use failure::Fallible;
 use glob::{MatchOptions, Pattern};
+use log::debug;
 use std::{env, fs, path::PathBuf};
 
 // FA Engine aware lookup of asset files. This can run in several modes:
@@ -25,7 +26,7 @@ use std::{env, fs, path::PathBuf};
 pub struct CatalogBuilder;
 
 impl CatalogBuilder {
-    pub fn build() -> Fallible<Catalog> {
+    pub fn build() -> Result<Catalog> {
         let mut catalog = Catalog::empty();
 
         let cwd = env::current_dir()?;
@@ -46,6 +47,7 @@ impl CatalogBuilder {
 
         // Look up the test directories and load each in a label.
         let test_data_dir = Self::find_test_data_dir(cwd);
+        debug!("using test data directory: {:?}", test_data_dir);
         if let Some(test_dir) = test_data_dir {
             let base_pack_dir = test_dir.join("packed");
             let base_loose_dir = test_dir.join("unpacked");
@@ -103,8 +105,8 @@ impl CatalogBuilder {
         Ok(catalog)
     }
 
-    pub fn build_and_select(inputs: &[String]) -> Fallible<(Catalog, Vec<FileId>)> {
-        let catalog = Self::build()?;
+    pub fn build_and_select(inputs: &[String]) -> Result<(Catalog, Vec<FileId>)> {
+        let mut catalog = Self::build()?;
         let mut selected = Vec::new();
 
         let fuzzy = MatchOptions {
@@ -116,18 +118,16 @@ impl CatalogBuilder {
             // Expand input into a game match and a name match.
             let (game_input, name_input) = if input.contains(':') {
                 let parts = input.split(':').collect::<Vec<_>>();
-                (
-                    parts[parts.len() - 2].to_owned(),
-                    parts[parts.len() - 1].to_owned(),
-                )
+                (parts[parts.len() - 2], parts[parts.len() - 1].to_owned())
             } else {
-                (catalog.default_label().to_owned(), input.to_owned())
+                (catalog.default_label(), input.to_owned())
             };
 
             // Match against all games.
-            let game_pattern = Pattern::new(&game_input)?;
+            let game_pattern = Pattern::new(game_input)?;
             for game in &GAME_INFO {
                 let game_label = game.label();
+                catalog.set_default_label(&game_label);
                 if game_pattern.matches_with(game.test_dir, &fuzzy) {
                     let matching = catalog.find_labeled_matching(&game_label, &name_input, None)?;
                     selected.extend_from_slice(&matching);

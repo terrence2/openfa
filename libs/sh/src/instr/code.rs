@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{instr::read_name, Instr, RawShape, UnknownData, SHAPE_LOAD_BASE};
 use ansi::ansi;
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use i386::{ByteCode, Memonic, Operand};
 use lazy_static::lazy_static;
 use log::trace;
@@ -84,7 +84,7 @@ impl X86Trampoline {
             && pe.code[offset + 1] == 0x25
     }
 
-    pub fn from_pe(offset: usize, pe: &PE) -> Fallible<Self> {
+    pub fn from_pe(offset: usize, pe: &PE) -> Result<Self> {
         ensure!(Self::has_trampoline(offset, pe), "not a trampoline");
         let target = {
             let vp: &[u32] = unsafe { mem::transmute(&pe.code[offset + 2..offset + 6]) };
@@ -102,7 +102,7 @@ impl X86Trampoline {
         })
     }
 
-    fn find_matching_thunk(addr: u32, pe: &PE) -> Fallible<&Thunk> {
+    fn find_matching_thunk(addr: u32, pe: &PE) -> Result<&Thunk> {
         // The thunk table is code and therefore should have had a relocation entry
         // to move those pointers when we called relocate on the PE.
         trace!(
@@ -185,7 +185,7 @@ enum ReturnKind {
 }
 
 impl ReturnKind {
-    fn from_name(s: &str) -> Fallible<Self> {
+    fn from_name(s: &str) -> Result<Self> {
         Ok(match s {
             "do_start_interp" => ReturnKind::Interp,
             "_ErrorExit" => ReturnKind::Error,
@@ -281,7 +281,7 @@ impl X86Code {
         lowest
     }
 
-    fn find_pushed_address(target: &i386::Instr) -> Fallible<u32> {
+    fn find_pushed_address(target: &i386::Instr) -> Result<u32> {
         ensure!(target.memonic == i386::Memonic::Push, "expected push");
         ensure!(target.operands.len() == 1, "expected one operand");
         if let Operand::Imm32s(addr) = target.operands[0] {
@@ -294,7 +294,7 @@ impl X86Code {
     fn find_trampoline_for_target(
         target_addr: u32,
         trampolines: &[X86Trampoline],
-    ) -> Fallible<&X86Trampoline> {
+    ) -> Result<&X86Trampoline> {
         for tramp in trampolines {
             trace!(
                 "checking {:08X} against {:20} @ loc:{:08X}",
@@ -322,7 +322,7 @@ impl X86Code {
         code: &[u8],
         offset: usize,
         trampolines: &[X86Trampoline],
-    ) -> Fallible<(ByteCode, ReturnKind)> {
+    ) -> Result<(ByteCode, ReturnKind)> {
         // Note that there are internal calls that we need to filter out, so we
         // have to consult the list of trampolines to find the interpreter return.
         let maybe_bc =
@@ -413,7 +413,7 @@ impl X86Code {
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
         vinstrs: &mut Vec<Instr>,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let section = &pe.code[*offset..];
         assert_eq!(section[0], Self::MAGIC);
         assert_eq!(section[1], 0);

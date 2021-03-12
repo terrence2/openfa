@@ -23,7 +23,8 @@ pub use crate::instr::{
     XformUnmask4,
 };
 use ansi::{ansi, Color};
-use failure::{bail, ensure, err_msg, Fallible};
+use anyhow::{anyhow, bail, ensure, Result};
+use byteorder::{ByteOrder, LittleEndian};
 use lazy_static::lazy_static;
 use log::trace;
 use reverse::{bs2s, bs_2_i16, p2s};
@@ -71,12 +72,11 @@ pub struct Unk06 {
 impl Unk06 {
     pub const MAGIC: u8 = 0x06;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0, "not a word code instruction");
-        let words: &[u16] = unsafe { mem::transmute(&data[14..]) };
-        let count = words[0] as usize;
+        let count = LittleEndian::read_u16(&data[14..16]) as usize;
         let length = 16 + count;
         Ok(Self {
             offset,
@@ -135,12 +135,11 @@ pub struct Unk0C {
 impl Unk0C {
     pub const MAGIC: u8 = 0x0C;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0, "not a word code instruction");
-        let words: &[u16] = unsafe { mem::transmute(&data[10..]) };
-        let count = words[0] as usize;
+        let count = LittleEndian::read_u16(&data[10..12]) as usize;
         let length = 12 + count;
         Ok(Self {
             offset,
@@ -200,11 +199,10 @@ pub struct Unk0E {
 impl Unk0E {
     pub const MAGIC: u8 = 0x0E;
 
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0, "not a word code instruction");
-        let words: &[u16] = unsafe { mem::transmute(&data[10..]) };
-        let count = words[0] as usize;
+        let count = LittleEndian::read_u16(&data[10..12]) as usize;
         let length = 12 + count;
         Ok(Self {
             offset,
@@ -264,11 +262,10 @@ pub struct Unk10 {
 impl Unk10 {
     pub const MAGIC: u8 = 0x10;
 
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0, "not a word code instruction");
-        let words: &[u16] = unsafe { mem::transmute(&data[10..]) };
-        let count = words[0] as usize;
+        let count = LittleEndian::read_u16(&data[10..12]) as usize;
         let length = 12 + count;
         Ok(Self {
             offset,
@@ -326,7 +323,7 @@ pub struct Unk6C {
 impl Unk6C {
     pub const MAGIC: u8 = 0x6C;
 
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         ensure!(data[1] == 0, "not a word code instruction");
         let flag = data[10];
@@ -388,7 +385,7 @@ impl UnkCE {
     pub const MAGIC: u8 = 0xCE;
     pub const SIZE: usize = 40;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
@@ -438,7 +435,7 @@ pub struct UnkBC {
 impl UnkBC {
     pub const MAGIC: u8 = 0xBC;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
 
@@ -492,11 +489,10 @@ impl Unk38 {
     pub const MAGIC: u8 = 0x38;
     pub const SIZE: usize = 3;
 
-    fn from_bytes(offset: usize, code: &[u8]) -> Fallible<Self> {
+    fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
-        let word_ref: &[u16] = unsafe { mem::transmute(&data[1..]) };
-        let unk0 = word_ref[0] as usize;
+        let unk0 = LittleEndian::read_u16(&data[1..3]) as usize;
         Ok(Self {
             offset,
             unk0,
@@ -548,7 +544,7 @@ impl TrailerUnknown {
     // and the vast majority of file endings are 18 bytes followed by 12321.
     pub const SIZE: usize = 18;
 
-    fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         Ok(Self {
             offset,
             data: data.to_owned(),
@@ -773,7 +769,7 @@ macro_rules! opaque_instr {
             pub const MAGIC: u8 = $magic;
             pub const SIZE: usize = $size;
 
-            fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+            fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
                 assert_eq!(data[0], Self::MAGIC);
                 ensure!(
                     data[1] == 0 || data[1] == 0xFF,
@@ -1060,7 +1056,7 @@ impl Instr {
         impl_for_all_instr!(self, at_offset)
     }
 
-    pub fn unwrap_unmask_target(&self) -> Fallible<usize> {
+    pub fn unwrap_unmask_target(&self) -> Result<usize> {
         Ok(match self {
             Instr::Unmask(ref unmask) => unmask.target_byte_offset(),
             Instr::Unmask4(ref unmask) => unmask.target_byte_offset(),
@@ -1070,14 +1066,14 @@ impl Instr {
         })
     }
 
-    pub fn unwrap_x86(&self) -> Fallible<&X86Code> {
+    pub fn unwrap_x86(&self) -> Result<&X86Code> {
         Ok(match self {
             Instr::X86Code(ref x86) => x86,
             _ => bail!("not an x86 code instruction"),
         })
     }
 
-    pub fn unwrap_facet(&self) -> Fallible<&Facet> {
+    pub fn unwrap_facet(&self) -> Result<&Facet> {
         Ok(match self {
             Instr::Facet(ref facet) => facet,
             _ => bail!("not a facet instruction"),
@@ -1109,7 +1105,7 @@ pub struct RawShape {
 }
 
 impl RawShape {
-    pub fn from_bytes(data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let mut pe = peff::PE::from_bytes(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
@@ -1144,10 +1140,10 @@ impl RawShape {
         })
     }
 
-    pub fn bytes_to_index(&self, absolute_byte_offset: usize) -> Fallible<usize> {
+    pub fn bytes_to_index(&self, absolute_byte_offset: usize) -> Result<usize> {
         // FIXME: we need to handle ERRATA here?
         Ok(*self.offset_map.get(&absolute_byte_offset).ok_or_else(|| {
-            err_msg(format!(
+            anyhow!(format!(
                 "absolute byte offset {:04X} does not point to an instruction",
                 absolute_byte_offset
             ))
@@ -1164,7 +1160,7 @@ impl RawShape {
         uniq
     }
 
-    fn find_trampolines(pe: &peff::PE) -> Fallible<Vec<X86Trampoline>> {
+    fn find_trampolines(pe: &peff::PE) -> Result<Vec<X86Trampoline>> {
         if !pe.thunks.is_empty() {
             trace!("Looking for thunks in the following table:");
             for thunk in &pe.thunks {
@@ -1187,7 +1183,7 @@ impl RawShape {
         Ok(trampolines)
     }
 
-    fn find_end_of_shape(pe: &peff::PE, trampolines: &[X86Trampoline]) -> Fallible<EndOfShape> {
+    fn find_end_of_shape(pe: &peff::PE, trampolines: &[X86Trampoline]) -> Result<EndOfShape> {
         let end_offset = pe.code.len() - trampolines.len() * X86Trampoline::SIZE;
         let mut offset = end_offset - 1;
         while pe.code[offset] == 0 {
@@ -1219,7 +1215,7 @@ impl RawShape {
         pe: &peff::PE,
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
-    ) -> Fallible<Vec<Instr>> {
+    ) -> Result<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         let end_offset = pe.code.len() - Self::end_size(trailer);
@@ -1243,7 +1239,7 @@ impl RawShape {
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
         instrs: &mut Vec<Instr>,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let end_offset = pe.code.len() - Self::end_size(trailer);
         match pe.code[*offset] {
             Header::MAGIC => consume_instr2!(Header, pe, offset, end_offset, instrs),
@@ -1407,7 +1403,7 @@ impl RawShape {
 
     // Map an offset in bytes from the beginning of the virtual instruction stream
     // to an offset into the virtual instructions.
-    pub fn map_absolute_offset_to_instr_offset(&self, abs_offset: usize) -> Fallible<usize> {
+    pub fn map_absolute_offset_to_instr_offset(&self, abs_offset: usize) -> Result<usize> {
         for (instr_offset, instr) in self.instrs.iter().enumerate() {
             if instr.at_offset() == abs_offset {
                 return Ok(instr_offset);
@@ -1416,7 +1412,7 @@ impl RawShape {
         bail!("no instruction at absolute offset: {:08X}", abs_offset)
     }
 
-    pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Fallible<usize> {
+    pub fn map_interpreter_offset_to_instr_offset(&self, x86_offset: u32) -> Result<usize> {
         let mut b_offset = 0u32;
         for (offset, instr) in self.instrs.iter().enumerate() {
             if SHAPE_LOAD_BASE + b_offset == x86_offset {
@@ -1427,7 +1423,7 @@ impl RawShape {
         bail!("no instruction at x86_offset: {:08X}", x86_offset)
     }
 
-    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Fallible<&X86Trampoline> {
+    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Result<&X86Trampoline> {
         for tramp in &self.trampolines {
             if tramp.at_offset() == abs_offset as usize {
                 return Ok(tramp);
@@ -1436,7 +1432,7 @@ impl RawShape {
         bail!("no trampoline at absolute offset: {:08X}", abs_offset);
     }
 
-    pub fn lookup_trampoline_by_name(&self, name: &str) -> Fallible<&X86Trampoline> {
+    pub fn lookup_trampoline_by_name(&self, name: &str) -> Result<&X86Trampoline> {
         for tramp in &self.trampolines {
             if tramp.name == name {
                 return Ok(tramp);
@@ -1525,7 +1521,7 @@ mod tests {
     }
 
     #[test]
-    fn it_works() -> Fallible<()> {
+    fn it_works() -> Result<()> {
         TermLogger::init(LevelFilter::Info, Config::default())?;
 
         #[allow(unused_variables, unused_mut)]

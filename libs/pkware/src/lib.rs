@@ -39,12 +39,12 @@
 
  Mark Adler    madler@alumni.caltech.edu
 */
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use lazy_static::lazy_static;
 use log::trace;
 
 /// Simple interface: uncompress all of data at once from memory to memory.
-pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Fallible<Vec<u8>> {
+pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>> {
     let mut state = State {
         data,
         offset: 0,
@@ -151,7 +151,7 @@ lazy_static! {
  */
 // Note: constructing all 3 vectors takes ~1us; not really worth optimizating
 // further as they are cached by lazy_static!.
-fn construct(rep: &[u8]) -> Fallible<Huffman> {
+fn construct(rep: &[u8]) -> Result<Huffman> {
     trace!("constructing huffman tables");
 
     let mut length = [0usize; 256]; /* code lengths */
@@ -248,7 +248,7 @@ impl<'a> State<'a> {
      *   ignoring whether the length is greater than the distance or not implements
      *   this correctly.
      */
-    fn decomp(&mut self) -> Fallible<()> {
+    fn decomp(&mut self) -> Result<()> {
         /* read header */
         let lit = self.bits(8)?;
         ensure!(lit <= 1, "invalid header");
@@ -286,7 +286,7 @@ impl<'a> State<'a> {
                     u16::from(self.bits(8)?)
                 };
                 debug_assert!(symbol < 256);
-                self.outb(symbol as u8)?;
+                self.outb(symbol as u8);
             }
         }
 
@@ -314,7 +314,7 @@ impl<'a> State<'a> {
      *   this ordering, the bits pulled during decoding are inverted to apply the
      *   more "natural" ordering starting with all zeros and incrementing.
      */
-    fn decode(&mut self, h: &Huffman) -> Fallible<u16> {
+    fn decode(&mut self, h: &Huffman) -> Result<u16> {
         let mut bitbuf = self.bitbuf;
         let mut left = self.bitcnt;
         let mut code: usize = 0;
@@ -364,7 +364,7 @@ impl<'a> State<'a> {
      *   buffer, using shift right, and new bytes are appended to the top of the
      *   bit buffer, using shift left.
      */
-    fn bits(&mut self, need: u8) -> Fallible<u8> {
+    fn bits(&mut self, need: u8) -> Result<u8> {
         debug_assert!(need <= 8, "need too many bits");
 
         /* load at least `need` bits into val */
@@ -383,7 +383,7 @@ impl<'a> State<'a> {
     }
 
     // Read in one byte.
-    fn inb(&mut self) -> Fallible<u8> {
+    fn inb(&mut self) -> Result<u8> {
         ensure!(self.offset < self.data.len(), "overflowed buf");
         let out = self.data[self.offset];
         self.offset += 1;
@@ -391,9 +391,8 @@ impl<'a> State<'a> {
     }
 
     // Write out one byte.
-    fn outb(&mut self, symbol: u8) -> Fallible<()> {
+    fn outb(&mut self, symbol: u8) {
         self.out.push(symbol as u8);
-        Ok(())
     }
 }
 

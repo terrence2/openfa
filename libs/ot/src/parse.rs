@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub use failure::{bail, ensure, err_msg, Error, Fallible};
+pub use anyhow::{anyhow, bail, ensure, Result};
 pub use std::any::TypeId;
 use std::{collections::HashMap, str};
 
@@ -27,7 +27,7 @@ pub enum FieldType {
 }
 
 impl FieldType {
-    pub fn from_kind(s: &str) -> Fallible<Self> {
+    pub fn from_kind(s: &str) -> Result<Self> {
         Ok(match s {
             "byte" => FieldType::Byte,
             "word" => FieldType::Word,
@@ -51,7 +51,7 @@ pub enum FieldNumber {
 }
 
 impl FieldNumber {
-    fn from_kind_and_str(kind: &FieldType, s: &str) -> Fallible<(Repr, Self)> {
+    fn from_kind_and_str(kind: &FieldType, s: &str) -> Result<(Repr, Self)> {
         let (repr, v32) = Self::parse_numeric(s)?;
         let num = match kind {
             FieldType::Byte => FieldNumber::Byte(v32 as u8),
@@ -65,7 +65,7 @@ impl FieldNumber {
     // Note: some instances are marked as one size, but represented as 32 bits
     // anyway. The assumption appears to be that truncation will happen. At
     // least one of these instances implies sign extension as well.
-    fn parse_numeric(vs: &str) -> Fallible<(Repr, u32)> {
+    fn parse_numeric(vs: &str) -> Result<(Repr, u32)> {
         let tpl = if let Some(hex) = vs.strip_prefix('$') {
             (Repr::Hex, u32::from_str_radix(hex, 16)?)
         } else if let Some(short) = vs.strip_prefix('^') {
@@ -76,28 +76,28 @@ impl FieldNumber {
         Ok(tpl)
     }
 
-    pub fn byte(self) -> Fallible<u8> {
+    pub fn byte(self) -> Result<u8> {
         match self {
             FieldNumber::Byte(b) => Ok(b),
             _ => bail!("not a byte"),
         }
     }
 
-    pub fn word(self) -> Fallible<u16> {
+    pub fn word(self) -> Result<u16> {
         match self {
             FieldNumber::Word(w) => Ok(w),
             _ => bail!("not a word"),
         }
     }
 
-    pub fn dword(self) -> Fallible<u32> {
+    pub fn dword(self) -> Result<u32> {
         match self {
             FieldNumber::DWord(dw) => Ok(dw),
             _ => bail!("not a dword"),
         }
     }
 
-    pub fn unsigned(self) -> Fallible<u32> {
+    pub fn unsigned(self) -> Result<u32> {
         match self {
             FieldNumber::DWord(dw) => Ok(dw),
             FieldNumber::Word(w) => Ok(u32::from(w)),
@@ -126,7 +126,7 @@ impl FieldValue {
         kind: &FieldType,
         raw_values: Vec<&str>,
         pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         // In USNF, ptr names are represented inline as `byte NN NN NN NN NNN NN NN NNN`.
         // We want to upgrade these automatically to a FieldValue::Ptr when we see them.
         if raw_values.len() > 1 {
@@ -150,7 +150,7 @@ impl FieldValue {
 
         let s = raw_values
             .first()
-            .ok_or_else(|| err_msg("missing or incorrect field value"))?
+            .ok_or_else(|| anyhow!("missing or incorrect field value"))?
             .trim();
         let value = match kind {
             FieldType::Byte => FieldValue::Numeric(FieldNumber::from_kind_and_str(kind, s)?),
@@ -169,21 +169,21 @@ impl FieldValue {
         Ok(value)
     }
 
-    pub fn numeric(&self) -> Fallible<FieldNumber> {
+    pub fn numeric(&self) -> Result<FieldNumber> {
         match self {
             FieldValue::Numeric((_, num)) => Ok(*num),
             _ => bail!("not a number"),
         }
     }
 
-    pub fn pointer(&self) -> Fallible<(String, Vec<String>)> {
+    pub fn pointer(&self) -> Result<(String, Vec<String>)> {
         match self {
             FieldValue::Ptr(s, v) => Ok((s.clone(), v.clone())),
             _ => bail!("not a pointer"),
         }
     }
 
-    pub fn symbol(&self) -> Fallible<String> {
+    pub fn symbol(&self) -> Result<String> {
         match self {
             FieldValue::Symbol(s) => Ok(s.clone()),
             _ => bail!("not a symbol field"),
@@ -215,18 +215,18 @@ pub struct FieldRow {
 }
 
 impl FieldRow {
-    pub fn from_line(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self> {
+    pub fn from_line(line: &str, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self> {
         let mut parts = line.splitn(2, ';');
         let mut words = parts
             .next()
-            .ok_or_else(|| err_msg("empty line"))?
+            .ok_or_else(|| anyhow!("empty line"))?
             .split(' ')
             .filter(|s| !s.is_empty());
         let comment = parts.next().map(|s| s.trim().to_owned());
         let kind = FieldType::from_kind(
             words
                 .next()
-                .ok_or_else(|| err_msg("missing or incorrect field kind"))?
+                .ok_or_else(|| anyhow!("missing or incorrect field kind"))?
                 .trim(),
         )?;
         let raw_values = words.collect::<Vec<&str>>();
@@ -250,7 +250,7 @@ impl FieldRow {
     }
 }
 
-pub fn find_pointers<'a>(lines: &[&'a str]) -> Fallible<HashMap<&'a str, Vec<&'a str>>> {
+pub fn find_pointers<'a>(lines: &[&'a str]) -> Result<HashMap<&'a str, Vec<&'a str>>> {
     let mut pointers = HashMap::new();
     let pointer_names = lines
         .iter()
@@ -274,7 +274,7 @@ pub fn find_pointers<'a>(lines: &[&'a str]) -> Fallible<HashMap<&'a str, Vec<&'a
     Ok(pointers)
 }
 
-pub fn find_section<'a>(lines: &[&'a str], section_tag: &str) -> Fallible<Vec<&'a str>> {
+pub fn find_section<'a>(lines: &[&'a str], section_tag: &str) -> Result<Vec<&'a str>> {
     let start_pattern = format!("START OF {}", section_tag);
     let end_pattern = format!("END OF {}", section_tag);
     let out = lines
@@ -307,7 +307,7 @@ macro_rules! make_storage_type {
 
 pub trait FromRow {
     type Produces;
-    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self::Produces>;
+    fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces>;
 }
 
 pub trait FromRows {
@@ -315,7 +315,7 @@ pub trait FromRows {
     fn from_rows(
         rows: &[FieldRow],
         pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<(Self::Produces, usize)>;
+    ) -> Result<(Self::Produces, usize)>;
 }
 
 #[macro_export]
@@ -443,7 +443,7 @@ macro_rules! make_type_struct {
                 $parent: $parent_ty,
                 lines: &[&str],
                 pointers: &HashMap<&str, Vec<&str>>
-            ) -> Fallible<Self> {
+            ) -> Result<Self> {
                 let file_version = $version_ty::from_len(lines.len())?;
 
                 // Tokenize all rows and parse to value, capturing repr and size.
@@ -505,7 +505,7 @@ macro_rules! make_type_struct {
     }
 }
 
-pub fn parse_string(line: &str) -> Fallible<String> {
+pub fn parse_string(line: &str) -> Result<String> {
     let parts = line.splitn(2, ' ').collect::<Vec<&str>>();
     ensure!(parts.len() == 2, "expected 2 parts");
     ensure!(parts[0] == "string", "expected string type");

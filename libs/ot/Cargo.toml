@@ -6,7 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 bitflags = "^ 1"
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 nalgebra = "^ 0.24"
 
 [dev-dependencies]

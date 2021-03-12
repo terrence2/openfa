@@ -5,14 +5,14 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "^ 1"
 bitflags = "^ 1"
-failure = "^ 0.1.2"
 image = "^ 0.23"
 lazy_static = "^ 1"
 log = "^ 0.4"
 memoffset = "^ 0.6"
 nalgebra = "^ 0.24"
-wgpu = "^ 0.6"
+wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
 animate = { path = "../../../nitrogen/sim/animate" }
 catalog = { path = "../../../nitrogen/system/catalog" }
@@ -24,5 +24,6 @@ sh = { path = "../../../sh" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
-winit = "^ 0.23"
+winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../../lib" }
+nitrous = { path = "../../../nitrogen/system/nitrous" }

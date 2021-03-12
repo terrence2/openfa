@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer};
 use packed_struct::packed_struct;
 use pal::Palette;
@@ -47,7 +47,7 @@ pub enum PicFormat {
 }
 
 impl PicFormat {
-    pub fn from_word(format: u16) -> Fallible<Self> {
+    pub fn from_word(format: u16) -> Result<Self> {
         Ok(match format {
             0 => PicFormat::Format0,
             1 => PicFormat::Format1,
@@ -68,8 +68,8 @@ pub struct Pic {
 
 impl Pic {
     /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
-    pub fn from_bytes(data: &[u8]) -> Fallible<Pic> {
-        let header = Header::overlay(&data[..mem::size_of::<Header>()]);
+    pub fn from_bytes(data: &[u8]) -> Result<Pic> {
+        let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
         if format == PicFormat::JPEG {
             let img = image::load_from_memory(data)?;
@@ -102,8 +102,8 @@ impl Pic {
     }
 
     /// Render the PIC in `data` into a raster image. The given palette will be used if the image does not contain its own.
-    pub fn decode(palette: &Palette, data: &[u8]) -> Fallible<DynamicImage> {
-        let header = Header::overlay(&data[..mem::size_of::<Header>()]);
+    pub fn decode(palette: &Palette, data: &[u8]) -> Result<DynamicImage> {
+        let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
         Ok(match format {
             PicFormat::JPEG => image::load_from_memory(data)?,
@@ -136,7 +136,7 @@ impl Pic {
         offset_y: u32,
         pic: &Pic,
         data: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         match pic.format {
             PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
             PicFormat::Format0 => {
@@ -165,7 +165,7 @@ impl Pic {
         offset: [u32; 2],
         pic: &Pic,
         data: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         match pic.format {
             PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
             PicFormat::Format0 => {
@@ -191,7 +191,7 @@ impl Pic {
         header: &'a Header,
         data: &'a [u8],
         system_palette: &'a Palette,
-    ) -> Fallible<Cow<'a, Palette>> {
+    ) -> Result<Cow<'a, Palette>> {
         if header.palette_size() == 0 {
             return Ok(Cow::from(system_palette));
         }
@@ -209,7 +209,7 @@ impl Pic {
         height: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Fallible<DynamicImage> {
+    ) -> Result<DynamicImage> {
         let mut imgbuf = ImageBuffer::new(width, height);
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
@@ -229,7 +229,7 @@ impl Pic {
         width: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
@@ -249,7 +249,7 @@ impl Pic {
         width: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
@@ -274,13 +274,14 @@ impl Pic {
         palette: &Palette,
         spans: &[u8],
         pixels: &[u8],
-    ) -> Fallible<DynamicImage> {
+    ) -> Result<DynamicImage> {
         let mut imgbuf = ImageBuffer::new(width, height);
         assert_eq!(spans.len() % mem::size_of::<Span>(), 0);
         let span_cnt = spans.len() / mem::size_of::<Span>() - 1;
         for i in 0..span_cnt {
-            let span =
-                Span::overlay(&spans[i * mem::size_of::<Span>()..(i + 1) * mem::size_of::<Span>()]);
+            let span = Span::overlay(
+                &spans[i * mem::size_of::<Span>()..(i + 1) * mem::size_of::<Span>()],
+            )?;
             assert!(span.row() < height);
             assert!(span.index() < pixels.len());
             assert!(span.start() < width);
@@ -307,7 +308,7 @@ mod tests {
     use std::{fs, path::Path};
 
     #[test]
-    fn it_can_new_all_pics() -> Fallible<()> {
+    fn it_can_new_all_pics() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;
@@ -329,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn it_can_decode_all_pics() -> Fallible<()> {
+    fn it_can_decode_all_pics() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

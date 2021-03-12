@@ -16,7 +16,7 @@
 pub use universe::component::{Rotation, Scale, Transform};
 
 use catalog::Catalog;
-use failure::Fallible;
+use anyhow::Result;
 use legion::*;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
@@ -39,7 +39,7 @@ pub struct Galaxy {
 }
 
 impl Galaxy {
-    pub fn new(catalog: &Catalog) -> Fallible<Self> {
+    pub fn new(catalog: &Catalog) -> Result<Self> {
         let legion_world = World::new(Default::default());
 
         Ok(Self {
@@ -90,7 +90,7 @@ impl Galaxy {
         scale: f32,
         position: Point3<f32>,
         rotation: &UnitQuaternion<f32>,
-    ) -> Fallible<Entity> {
+    ) -> Result<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
         let entity = self.legion_world.push((
@@ -118,7 +118,7 @@ impl Galaxy {
         slot_id: SlotId,
         shape_id: ShapeId,
         position: Point3<f32>,
-    ) -> Fallible<Entity> {
+    ) -> Result<Entity> {
         Ok(self
             .ecs
             .create_entity()
@@ -133,7 +133,7 @@ impl Galaxy {
         shape_id: ShapeId,
         position: Point3<f64>,
         part: &ChunkPart,
-    ) -> Fallible<Entity> {
+    ) -> Result<Entity> {
         //let slot_id = self.shape_renderer.chunk_manager().reserve_slot()?;
 
         let widget_ref = part.widgets();
@@ -163,7 +163,7 @@ mod test {
     use lib::CatalogBuilder;
 
     #[test]
-    fn test_it_works() -> Fallible<()> {
+    fn test_it_works() -> Result<()> {
         // Note: rely on uniqueness of PALETTE.PAL to give us every game.
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["*:PALETTE.PAL".to_owned()])?;

@@ -5,7 +5,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 i386 = { path = "../../libs/i386" }

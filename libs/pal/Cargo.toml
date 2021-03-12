@@ -5,5 +5,5 @@ edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 image = "^ 0.23"

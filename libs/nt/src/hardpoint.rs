@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use nalgebra::Point3;
 use ot::{
     make_type_struct,
@@ -26,7 +26,8 @@ enum HardpointTypeVersion {
 }
 
 impl HardpointTypeVersion {
-    fn from_len(_: usize) -> Fallible<Self> {
+    #[allow(clippy::unnecessary_wraps)] // actually necessary
+    fn from_len(_: usize) -> Result<Self> {
         Ok(HardpointTypeVersion::V0)
     }
 }
@@ -49,10 +50,7 @@ impl HardpointDefault {
 
 impl FromRow for HardpointDefault {
     type Produces = HardpointDefault;
-    fn from_row(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Fallible<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         if field.value().pointer().is_err() {
             ensure!(
                 field.value().numeric()?.dword()? == 0u32,

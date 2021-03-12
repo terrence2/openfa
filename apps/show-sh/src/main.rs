@@ -13,12 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters};
+use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::ArcBallCamera;
 use catalog::DirectoryDrawer;
+use chrono::{TimeZone, Utc};
 use command::{Bindings, CommandHandler};
 use composite::CompositeRenderPass;
-use failure::{bail, Fallible};
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
@@ -120,7 +121,7 @@ macro_rules! update {
     }};
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     env_logger::init();
 
     let system_bindings = Bindings::new("system")
@@ -164,7 +165,7 @@ fn main() -> Fallible<()> {
     )
 }
 
-fn window_main(window: Window, input_controller: &InputController) -> Fallible<()> {
+fn window_main(window: Window, input_controller: &InputController) -> Result<()> {
     let opt = Opt::from_args();
 
     let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
@@ -262,7 +263,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
 
     shape_instance_buffer.ensure_uploaded(&mut gpu)?;
 
-    let mut orrery = Orrery::now();
+    let mut orrery = Orrery::new(Utc.ymd(1964, 2, 24).and_hms(12, 0, 0));
     let mut arcball = ArcBallCamera::new(gpu.aspect_ratio(), meters!(0.001));
     arcball.set_target(Graticule::<GeoSurface>::new(
         degrees!(0),
@@ -327,45 +328,48 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
 
     let catalog = Arc::new(AsyncRwLock::new(catalog));
 
-    let version_label = Label::new("OpenFA show-sh v0.0")
-        .with_color(Color::Green)
-        .with_size(8.0)
-        .wrapped();
-    frame_graph
-        .widgets
-        .root()
-        .write()
-        .add_child(version_label)
-        .set_float(PositionH::End, PositionV::Bottom);
+    // let version_label = Label::new("OpenFA show-sh v0.0")
+    //     .with_color(Color::Green)
+    //     .with_size(8.0)
+    //     .wrapped();
+    // frame_graph
+    //     .widgets
+    //     .root()
+    //     .write()
+    //     .add_child(version_label)
+    //     .set_float(PositionH::End, PositionV::Bottom);
 
-    let fps_label = Label::new("fps")
-        .with_color(Color::Red)
-        .with_size(13.0)
-        .wrapped();
-    frame_graph
-        .widgets
-        .root()
-        .write()
-        .add_child(fps_label.clone())
-        .set_float(PositionH::Start, PositionV::Top);
+    // let fps_label = Label::new("fps")
+    //     .with_color(Color::Red)
+    //     .with_size(13.0)
+    //     .wrapped();
+    // frame_graph
+    //     .widgets
+    //     .root()
+    //     .write()
+    //     .add_child(fps_label.clone())
+    //     .set_float(PositionH::Start, PositionV::Top);
 
-    let state_label = Label::new("state").with_color(Color::Orange).wrapped();
+    let state_label = Label::new("state")
+        .with_font(frame_graph.widgets.font_context().font_id_for_name("HUD11"))
+        .with_color(Color::Orange)
+        .wrapped();
     frame_graph
         .widgets
         .root()
         .write()
         .add_child(state_label.clone())
-        .set_float(PositionH::Start, PositionV::Bottom);
+        .set_float(PositionH::Start, PositionV::Center);
 
-    let terminal = Terminal::new(frame_graph.widgets.font_context())
-        .with_visible(false)
-        .wrapped();
-    frame_graph
-        .widgets
-        .root()
-        .write()
-        .add_child(terminal)
-        .set_float(PositionH::Start, PositionV::Top);
+    // let terminal = Terminal::new(frame_graph.widgets.font_context())
+    //     .with_visible(false)
+    //     .wrapped();
+    // frame_graph
+    //     .widgets
+    //     .root()
+    //     .write()
+    //     .add_child(terminal)
+    //     .set_float(PositionH::Start, PositionV::Top);
 
     // everest: 27.9880704,86.9245623
     arcball.set_target(Graticule::<GeoSurface>::new(
@@ -489,13 +493,13 @@ fn window_main(window: Window, input_controller: &InputController) -> Fallible<(
             arcball.camera_mut().set_aspect_ratio(gpu.aspect_ratio());
         }
 
-        let frame_time = loop_start.elapsed();
-        let time_str = format!(
-            "{}.{} ms",
-            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
-            frame_time.subsec_micros()
-        );
-        fps_label.write().set_text(&time_str);
+        // let frame_time = loop_start.elapsed();
+        // let time_str = format!(
+        //     "{}.{} ms",
+        //     frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
+        //     frame_time.subsec_micros()
+        // );
+        // fps_label.write().set_text(&time_str);
 
         let ds = galaxy
             .world_mut()

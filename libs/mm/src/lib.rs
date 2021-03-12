@@ -20,8 +20,8 @@ mod util;
 mod waypoint;
 
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
+use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
-use failure::{bail, ensure, err_msg, Fallible};
 use std::{collections::HashMap, str::FromStr};
 use xt::TypeManager;
 
@@ -56,7 +56,7 @@ pub enum MapOrientation {
 }
 
 impl MapOrientation {
-    pub fn from_byte(n: u8) -> Fallible<Self> {
+    pub fn from_byte(n: u8) -> Result<Self> {
         Ok(match n {
             0 => MapOrientation::Unk0,
             1 => MapOrientation::Unk1,
@@ -73,7 +73,7 @@ pub struct TMap {
     pub loc: TLoc,
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct TDic {
     n: usize,
     map: [[u8; 4]; 8],
@@ -94,9 +94,41 @@ pub struct MissionMap {
 }
 
 impl MissionMap {
-    pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Fallible<Self> {
-        let lines = s.lines().collect::<Vec<&str>>();
-        assert_eq!(lines[0], "textFormat");
+    pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Self> {
+        // Do a fast pre-pass to get array pre-sizing for allocations and check if we need a
+        // lexical pass to remove comments.
+        let mut obj_cnt = 0;
+        let mut special_cnt = 0;
+        let mut tmap_cnt = 0;
+        let mut tdic_cnt = 0;
+        let mut need_lexical_pass = false;
+        let init_tokens = s.split_ascii_whitespace();
+        let prepass_tokens = init_tokens.clone();
+        for token in prepass_tokens {
+            match token {
+                "obj" => obj_cnt += 1,
+                "special" => special_cnt += 1,
+                "tmap" => tmap_cnt += 1,
+                "tmap_named" => tmap_cnt += 1,
+                "tdic" => tdic_cnt += 1,
+                v => {
+                    if v.starts_with(';') {
+                        need_lexical_pass = true;
+                    }
+                }
+            }
+        }
+        let owned;
+        let mut tokens = if need_lexical_pass {
+            owned = s
+                .lines()
+                .filter(|l| !l.starts_with(';'))
+                .collect::<Vec<_>>()
+                .join("\n");
+            owned.split_ascii_whitespace()
+        } else {
+            init_tokens
+        };
 
         let mut map_name = None;
         let mut t2_name = None;
@@ -105,233 +137,173 @@ impl MissionMap {
         let mut wind = Some((0, 0));
         let mut view = None;
         let mut time = None;
-        let mut sides = Vec::new();
-        let mut objects = Vec::new();
-        let mut specials = Vec::new();
-        let mut tmaps = HashMap::new();
-        let mut tdics = Vec::new();
+        let mut sides: Vec<u8> = Vec::with_capacity(64);
+        let mut objects = Vec::with_capacity(obj_cnt);
+        let mut specials: Vec<SpecialInfo> = Vec::with_capacity(special_cnt);
+        let mut tmaps = HashMap::with_capacity(tmap_cnt);
+        let mut tdics = Vec::with_capacity(tdic_cnt);
 
-        let mut offset = 1;
-        while offset < lines.len() {
-            let line = if let Some(offset) = lines[offset].find(';') {
-                &lines[offset][0..offset]
-            } else {
-                lines[offset]
-            };
-            let parts = line.split(' ').collect::<Vec<&str>>();
-            if parts.is_empty() {
+        ensure!(
+            tokens.next() == Some("textFormat"),
+            "missing textFormat node in MM"
+        );
+        while let Some(token) = tokens.next() {
+            if token.starts_with(';') {
                 continue;
             }
-
-            match parts[0] {
+            match token {
                 "map" => {
                     assert!(map_name.is_none());
-                    map_name = Some(parts[1].to_owned());
-                    t2_name = Some(Self::find_t2_for_map(parts[1], catalog)?);
+                    map_name = Some(tokens.next().expect("map name").to_owned());
+                    t2_name = Some(Self::find_t2_for_map(map_name.as_ref().unwrap(), catalog)?);
                 }
                 "layer" => {
                     layer_name = Some(Self::find_layer(
                         map_name.as_ref().expect("map before layer"),
-                        parts[1],
+                        tokens.next().expect("layer name"),
                         catalog,
                     )?);
-                    layer_index = Some(parts[2].parse::<usize>()?);
+                    layer_index = Some(tokens.next().expect("layer index").parse::<usize>()?);
                 }
                 "clouds" => {
-                    ensure!(parts[1] == "0", "expected 0 clouds value");
+                    ensure!(
+                        tokens.next().expect("clouds") == "0",
+                        "expected 0 clouds value"
+                    );
                 }
                 "wind" => {
                     // The air is perfectly still in Ukraine.
-                    let x = str::parse::<i16>(parts[1])?;
-                    let z = str::parse::<i16>(parts[2])?;
+                    let x = str::parse::<i16>(tokens.next().expect("wind x"))?;
+                    let z = str::parse::<i16>(tokens.next().expect("wind z"))?;
                     wind = Some((x, z));
                 }
                 "view" => {
                     assert_eq!(view, None);
-                    let x = str::parse::<u32>(parts[1])?;
-                    let y = str::parse::<u32>(parts[2])?;
-                    let z = str::parse::<u32>(parts[3])?;
+                    let x = str::parse::<u32>(tokens.next().expect("view x"))?;
+                    let y = str::parse::<u32>(tokens.next().expect("view y"))?;
+                    let z = str::parse::<u32>(tokens.next().expect("view z"))?;
                     view = Some((x, y, z));
                 }
                 "time" => {
                     assert_eq!(time, None);
-                    let h = str::parse::<u8>(parts[1])?;
-                    let m = str::parse::<u8>(parts[2])?;
+                    let h = str::parse::<u8>(tokens.next().expect("time h"))?;
+                    let m = str::parse::<u8>(tokens.next().expect("time m"))?;
                     time = Some((h, m));
                 }
                 "sides" => {
                     // Only used by Ukraine.
                     assert!(sides.is_empty());
-                    loop {
-                        let next_offset = offset + 1;
-                        if let Ok(side) = str::parse::<u8>(lines[next_offset].trim()) {
-                            assert!(side == 0 || side == 128);
-                            sides.push(side);
-                            offset = next_offset;
-                        } else {
-                            break;
-                        }
+                    for _ in 0..18 {
+                        let side = str::parse::<u8>(tokens.next().expect("side"))?;
+                        ensure!(side == 0 || side == 128, "mm: unknown side flag");
+                        sides.push(side);
                     }
-                    //println!("S1: {}", sides.len());
                 }
                 "sides2" => {
-                    // Same as `sides`, but with hex values. Same 0 or 128 assertion.
+                    // Post USNF: one more nationality, now in hex format, 0 or $80
                     assert!(sides.is_empty());
-                    loop {
-                        let next_offset = offset + 1;
-                        let trimmed = lines[next_offset].trim();
-                        if !trimmed.starts_with('$') {
-                            break;
-                        }
-                        let side = u8::from_str_radix(&trimmed[1..], 16)?;
-                        assert!(side == 0 || side == 128);
+                    for _ in 0..19 {
+                        let side = u8::from_str_radix(&tokens.next().expect("side")[1..], 16)?;
+                        ensure!(side == 0 || side == 128, "mm: unknown side flag");
                         sides.push(side);
-                        offset = next_offset;
                     }
-                    //println!("S2: {}", sides.len());
                 }
                 "sides3" => {
-                    // Same as `sides2`.
+                    // Protocol bump for 24 nationalities.
                     assert!(sides.is_empty());
-                    loop {
-                        let next_offset = offset + 1;
-                        let trimmed = lines[next_offset].trim();
-                        if !trimmed.starts_with('$') {
-                            break;
-                        }
-                        let side = u8::from_str_radix(&trimmed[1..], 16)?;
-                        assert!(side == 0 || side == 128);
+                    for _ in 0..24 {
+                        let side = u8::from_str_radix(&tokens.next().expect("side")[1..], 16)?;
+                        ensure!(side == 0 || side == 128, "mm: unknown side flag");
                         sides.push(side);
-                        offset = next_offset;
                     }
-                    //println!("S3: {}", sides.len());
                 }
                 "sides4" => {
-                    // Same as `sides2`.
+                    // Protocol bump for 64 nationalities.
                     assert!(sides.is_empty());
-                    loop {
-                        let next_offset = offset + 1;
-                        let trimmed = lines[next_offset].trim();
-                        if !trimmed.starts_with('$') {
-                            break;
-                        }
-                        let side = u8::from_str_radix(&trimmed[1..], 16)?;
-                        assert!(side == 0 || side == 128);
+                    for _ in 0..64 {
+                        let side = u8::from_str_radix(&tokens.next().expect("side")[1..], 16)?;
+                        ensure!(side == 0 || side == 128, "mm: unknown side flag");
                         sides.push(side);
-                        offset = next_offset;
                     }
-                    //println!("S4: {}", sides.len());
                 }
                 "historicalera" => {
-                    let historical_era = u8::from_str(parts[1])?;
+                    let historical_era = u8::from_str(tokens.next().expect("historical era"))?;
                     assert_eq!(historical_era, 4);
                 }
                 "obj" => {
-                    offset += 1;
-                    let obj = ObjectInfo::from_lines(&lines, &mut offset, type_manager, catalog)?;
+                    let obj = ObjectInfo::from_tokens(&mut tokens, type_manager, catalog)?;
                     objects.push(obj);
                 }
                 "special" => {
-                    offset += 1;
-                    let special = SpecialInfo::from_lines(&lines, &mut offset)?;
+                    let special = SpecialInfo::from_tokens(&mut tokens)?;
                     specials.push(special);
                 }
                 "tmap" => {
-                    let x = parts[1].parse::<i16>()? as u32;
-                    let y = parts[2].parse::<i16>()? as u32;
+                    let x = tokens.next().expect("tmap x").parse::<i16>()? as u32;
+                    let y = tokens.next().expect("tmap y").parse::<i16>()? as u32;
                     ensure!(x % 4 == 0, "unaligned tmap x index");
                     ensure!(y % 4 == 0, "unaligned tmap y index");
+                    let index = tokens.next().expect("index").parse::<usize>()?;
+                    let orientation = tokens.next().expect("orientation").parse::<u8>()?;
                     tmaps.insert(
                         (x, y),
                         TMap {
-                            orientation: MapOrientation::from_byte(
-                                parts[4].trim_end().parse::<u8>()?,
-                            )?,
-                            loc: TLoc::Index(parts[3].parse::<usize>()?),
+                            orientation: MapOrientation::from_byte(orientation)?,
+                            loc: TLoc::Index(index),
                         },
                     );
                 }
                 "tmap_named" => {
-                    let x = parts[2].parse::<i16>()? as u32;
-                    let y = parts[3].parse::<i16>()? as u32;
+                    // TODO: maybe push to_uppercase lower?
+                    let tmp = tokens.next().expect("name");
+                    let name = (String::with_capacity(tmp.len() + 4) + tmp).to_uppercase() + ".PIC";
+                    let x = tokens.next().expect("tmap_named x").parse::<i16>()? as u32;
+                    let y = tokens.next().expect("tmap_named y").parse::<i16>()? as u32;
                     ensure!(x % 4 == 0, "unaligned tmap_named x index");
                     ensure!(y % 4 == 0, "unaligned tmap_named y index");
                     tmaps.insert(
                         (x, y),
                         TMap {
                             orientation: MapOrientation::from_byte(0)?,
-                            loc: TLoc::Name(format!("{}.PIC", parts[1].to_uppercase())),
+                            loc: TLoc::Name(name),
                         },
                     );
                 }
                 "tdic" => {
-                    offset += 1;
-                    fn line_to_bits(line: &str) -> Fallible<Vec<u8>> {
-                        let mut out = Vec::new();
-                        for s in line.split(' ') {
-                            out.push(s.trim().parse::<u8>()?);
+                    let n = tokens.next().expect("tdic n").parse::<usize>()?;
+                    let mut map = [[0u8; 4]; 8];
+                    for row in &mut map {
+                        for item in row {
+                            let t = tokens.next().expect("map");
+                            *item = (t == "1") as u8;
                         }
-                        Ok(out)
                     }
-                    let r0 = line_to_bits(lines[offset])?;
-                    let r1 = line_to_bits(lines[offset + 1])?;
-                    let r2 = line_to_bits(lines[offset + 2])?;
-                    let r3 = line_to_bits(lines[offset + 3])?;
-                    let r4 = line_to_bits(lines[offset + 4])?;
-                    let r5 = line_to_bits(lines[offset + 5])?;
-                    let r6 = line_to_bits(lines[offset + 6])?;
-                    let r7 = line_to_bits(lines[offset + 7])?;
-                    offset += 7;
-                    let tdic = TDic {
-                        n: parts[1].parse::<usize>()?,
-                        map: [
-                            [r0[0], r0[1], r0[2], r0[3]],
-                            [r1[0], r1[1], r1[2], r1[3]],
-                            [r2[0], r2[1], r2[2], r2[3]],
-                            [r3[0], r3[1], r3[2], r3[3]],
-                            [r4[0], r4[1], r4[2], r4[3]],
-                            [r5[0], r5[1], r5[2], r5[3]],
-                            [r6[0], r6[1], r6[2], r6[3]],
-                            [r7[0], r7[1], r7[2], r7[3]],
-                        ],
-                    };
+                    let tdic = TDic { n, map };
                     tdics.push(tdic);
                 }
                 "waypoint2" => {
-                    let cnt = parts[1].parse::<usize>()?;
-                    offset += 1;
-                    let mut waypoints = Vec::new();
+                    let cnt = tokens.next().expect("waypoint cnt").parse::<usize>()?;
+                    let mut waypoints = Vec::with_capacity(cnt);
                     for i in 0..cnt {
-                        let wp = Waypoint::from_lines(&lines, &mut offset)?;
+                        let wp = Waypoint::from_tokens(&mut tokens)?;
                         assert_eq!(wp.index as usize, i);
                         waypoints.push(wp);
                     }
-                    let wfor = lines[offset].split(' ').collect::<Vec<&str>>();
-                    ensure!(wfor[0] == "\tw_for", "expected w_for after waypoint list");
-                    let alias = wfor[1].parse::<i32>()?;
-                    let mut found = false;
-                    for obj in objects.iter_mut() {
-                        if obj.alias() == alias {
-                            found = true;
-                            obj.set_waypoints(waypoints);
-                            break;
-                        }
-                    }
-                    ensure!(found, "did not find the object with alias {}", alias);
-                    offset += 1;
-                    ensure!(lines[offset] == "\t.", "expected . after waypoint decl");
+                    let w_for_tok = tokens.next().expect("w_for");
+                    ensure!(w_for_tok == "w_for");
+                    // FIXME: this is probably an index into objects? Except it's negative?
+                    let _w_for = tokens.next().expect("w_for").parse::<i16>()?;
+                    let dot_tok = tokens.next().expect("dot");
+                    ensure!(dot_tok == ".");
                 }
-                "" => {}
                 "\0" | "\x1A" => {
-                    // Why not EOF? Or nothing at all?
+                    // DOS EOF char?
                 }
-                _ => {
-                    println!("line{}: {:?}", offset, parts);
-                    bail!("unknown mission map key: {}", parts[0]);
+                v => {
+                    println!("mm parse error near token: {:?} {:?}", v, tokens.next());
+                    bail!("unknown mission map key: {}", v);
                 }
             }
-
-            offset += 1;
         }
 
         for tmap in tmaps.iter() {
@@ -344,17 +316,21 @@ impl MissionMap {
         }
 
         Ok(MissionMap {
-            map_name: map_name.ok_or_else(|| err_msg("mm must have a 'map' key"))?,
-            t2_name: t2_name.ok_or_else(|| err_msg("mm must have a 'map' key"))?,
-            layer_name: layer_name.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
-            layer_index: layer_index.ok_or_else(|| err_msg("mm must have a 'layer' key"))?,
-            wind: wind.ok_or_else(|| err_msg("mm must have a 'wind' key"))?,
-            view: view.ok_or_else(|| err_msg("mm must have a 'view' key"))?,
-            time: time.ok_or_else(|| err_msg("mm must have a 'time' key"))?,
+            map_name: map_name.ok_or_else(|| anyhow!("mm must have a 'map' key"))?,
+            t2_name: t2_name.ok_or_else(|| anyhow!("mm must have a 'map' key"))?,
+            layer_name: layer_name.ok_or_else(|| anyhow!("mm must have a 'layer' key"))?,
+            layer_index: layer_index.ok_or_else(|| anyhow!("mm must have a 'layer' key"))?,
+            wind: wind.ok_or_else(|| anyhow!("mm must have a 'wind' key"))?,
+            view: view.ok_or_else(|| anyhow!("mm must have a 'view' key"))?,
+            time: time.ok_or_else(|| anyhow!("mm must have a 'time' key"))?,
             tmaps,
             tdics,
             objects,
         })
+    }
+
+    pub fn map_name(&self) -> &str {
+        &self.map_name
     }
 
     pub fn t2_name(&self) -> &str {
@@ -367,6 +343,10 @@ impl MissionMap {
 
     pub fn layer_index(&self) -> usize {
         self.layer_index
+    }
+
+    pub fn texture_dictionary(&self) -> &[TDic] {
+        &self.tdics
     }
 
     pub fn texture_maps(&self) -> std::collections::hash_map::Values<'_, (u32, u32), TMap> {
@@ -450,7 +430,7 @@ impl MissionMap {
     // USNF:
     //     installdir: UKR.T2, $UKR[1-8].T2
     //     MM+M refs: ukr.T2, $ukr[1-8].T2
-    fn find_t2_for_map(map_name: &str, catalog: &Catalog) -> Fallible<String> {
+    fn find_t2_for_map(map_name: &str, catalog: &Catalog) -> Result<String> {
         let raw = map_name.to_uppercase();
 
         if catalog.exists(&raw) {
@@ -484,7 +464,7 @@ impl MissionMap {
     // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
     // except when it is a modified version with the first (non-tilde) character of the MM name
     // appended to the end of the LAY name, before the dot.
-    fn find_layer(map_name: &str, layer_name: &str, catalog: &Catalog) -> Fallible<String> {
+    fn find_layer(map_name: &str, layer_name: &str, catalog: &Catalog) -> Result<String> {
         let first_char = map_name.chars().next().expect("the first character");
         let layer_parts = layer_name.split('.').collect::<Vec<&str>>();
         ensure!(layer_parts.len() == 2, "expected one dot in layer name");
@@ -501,12 +481,12 @@ impl MissionMap {
 
     // This is a slightly different problem then getting the T2, because even though ~ABCn.T2
     // might exist for ~ABCn.MM, we need to look up ABCi.PIC without the tilda.
-    pub fn get_base_texture_name(&self) -> Fallible<String> {
+    pub fn get_base_texture_name(&self) -> Result<String> {
         let raw = self.map_name.to_uppercase();
         let mut name = raw
             .split('.')
             .next()
-            .ok_or_else(|| err_msg("expected a dotted name"))?;
+            .ok_or_else(|| anyhow!("expected a dotted name"))?;
         if name.starts_with('~') || name.starts_with('$') {
             name = &name[1..];
         }
@@ -526,7 +506,7 @@ mod tests {
     use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
-    fn it_can_parse_all_mm_files() -> Fallible<()> {
+    fn it_can_parse_all_mm_files() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MM".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

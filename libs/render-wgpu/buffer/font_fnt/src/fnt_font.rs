@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
-use failure::{ensure, Fallible};
 use fnt::Fnt;
 use font_common::FontInterface;
 use gpu::GPU;
@@ -24,7 +24,9 @@ use log::trace;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 
-const SCREEN_SCALE: [f32; 2] = [320f32, 240f32];
+// FIXME: 11px at 240px tall is 4.583..% of the screen, which is what
+//        we target at a scaling of 1.0 below.
+//const SCREEN_SCALE: [f32; 2] = [320f32, 240f32];
 
 lazy_static! {
     static ref CP437_TO_CHAR: HashMap<u8, char> = {
@@ -34,11 +36,13 @@ lazy_static! {
     };
 }
 
+#[derive(Debug)]
 struct GlyphFrame {
     x_offset: u32,
     width: i32,
 }
 
+#[derive(Debug)]
 pub struct FntFont {
     // These get composited in software, then uploaded in a single texture.
     // texture_view: wgpu::TextureView,
@@ -55,36 +59,38 @@ pub struct FntFont {
 impl FontInterface for FntFont {
     // global metrics
     fn units_per_em(&self) -> f32 {
-        12f32
+        self.height as f32
     }
 
     // vertical metrics
     fn ascent(&self, scale: f32) -> f32 {
-        self.height as f32
+        self.height as f32 / self.units_per_em() * scale
     }
 
-    fn descent(&self, scale: f32) -> f32 {
+    fn descent(&self, _scale: f32) -> f32 {
         0f32
     }
 
-    fn line_gap(&self, scale: f32) -> f32 {
-        self.height as f32 * 1.1
+    fn line_gap(&self, _scale: f32) -> f32 {
+        0f32
     }
 
     // horizontal metrics
     fn advance_width(&self, c: char, scale: f32) -> f32 {
         if let Some(frame) = self.glyph_frames.get(&c) {
-            frame.width as f32
+            frame.width as f32 / self.units_per_em() * scale
+        } else if c == ' ' {
+            self.ascent(scale) * 0.6
         } else {
-            6f32
+            self.advance_width('?', scale)
         }
     }
 
-    fn left_side_bearing(&self, c: char, scale: f32) -> f32 {
+    fn left_side_bearing(&self, _c: char, _scale: f32) -> f32 {
         0f32
     }
 
-    fn pair_kerning(&self, a: char, b: char, scale: f32) -> f32 {
+    fn pair_kerning(&self, _a: char, _b: char, _scale: f32) -> f32 {
         0f32
     }
 
@@ -93,16 +99,20 @@ impl FontInterface for FntFont {
         ((x0 as f32, y0 as f32), (x1 as f32, y1 as f32))
     }
 
-    fn pixel_bounding_box(&self, c: char, _scale: f32) -> ((i32, i32), (i32, i32)) {
-        if let Some(frame) = self.glyph_frames.get(&c) {
-            ((0, 0), (frame.width, self.height as i32))
+    fn pixel_bounding_box(&self, c: char, scale: f32) -> ((i32, i32), (i32, i32)) {
+        if let Some(_) = self.glyph_frames.get(&c) {
+            let ascent = self.ascent(scale);
+            let advance = self.advance_width(c, scale);
+            ((0, 0), (advance.round() as i32, ascent.round() as i32))
         } else {
-            ((0, 0), (0, 0))
+            self.pixel_bounding_box('?', scale)
         }
     }
 
     // rendering
     fn render_glyph(&self, c: char, scale: f32) -> GrayImage {
+        // Note: Rendering is done via pic or x86 assembly, so we can't really scale effectively.
+        //       Instead we set up the above numbers so that upscaling works upscale well.
         if let Some(frame) = self.glyph_frames.get(&c) {
             let src = self
                 .glyphs
@@ -111,35 +121,13 @@ impl FontInterface for FntFont {
             out.copy_from(&src, 0, 0).unwrap();
             out
         } else {
-            GrayImage::from_pixel(1, 1, Luma([0]))
+            self.render_glyph('?', scale)
         }
     }
-
-    /*
-    fn gpu_resources(&self) -> (&wgpu::TextureView, &wgpu::Sampler) {
-        (&self.texture_view, &self.sampler)
-    }
-
-    fn render_height(&self) -> f32 {
-        self.render_height
-    }
-
-    fn can_render_char(&self, c: char) -> bool {
-        self.glyph_frames.contains_key(&c)
-    }
-
-    fn frame_for(&self, c: char) -> &GlyphFrame {
-        &self.glyph_frames[&c]
-    }
-
-    fn pair_kerning(&self, _a: char, _b: char) -> f32 {
-        0f32
-    }
-     */
 }
 
 impl FntFont {
-    pub fn from_fnt(fnt: &Fnt) -> Fallible<Arc<RwLock<dyn FontInterface>>> {
+    pub fn from_fnt(fnt: &Fnt) -> Result<Arc<RwLock<dyn FontInterface>>> {
         trace!("GlyphCacheFNT::new");
 
         let mut width = 0;

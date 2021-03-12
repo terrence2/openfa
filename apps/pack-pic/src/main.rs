@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
-use failure::{bail, ensure, err_msg, Fallible};
 use lib::CatalogBuilder;
 use pal::Palette;
 use pic::{Header, Pic};
@@ -102,17 +102,17 @@ struct Opt {
     source_image: PathBuf,
 }
 
-fn load_palette_from_resource(catalog: &Catalog, resource_name: &str) -> Fallible<Palette> {
+fn load_palette_from_resource(catalog: &Catalog, resource_name: &str) -> Result<Palette> {
     let data = catalog.read_name_sync(resource_name)?;
     if resource_name.to_uppercase().ends_with("PAL") {
         return Palette::from_bytes(&data);
     }
     Ok(Pic::from_bytes(&data)?
         .palette
-        .ok_or_else(|| err_msg("expected non-palette resource to contain a palette"))?)
+        .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))?)
 }
 
-fn load_palette(opt: &Opt) -> Fallible<Palette> {
+fn load_palette(opt: &Opt) -> Result<Palette> {
     if let Some(ref filename) = opt.palette_file {
         let pal_data = fs::read(&filename)?;
         return Palette::from_bytes(&pal_data);
@@ -152,7 +152,7 @@ fn find_closest_dithered(top: &[(usize, usize)]) -> usize {
     top[0].1
 }
 
-fn find_closest_in_palette(color: image::Rgba<u8>, pal: &Palette, quality: u8) -> Fallible<u8> {
+fn find_closest_in_palette(color: image::Rgba<u8>, pal: &Palette, quality: u8) -> u8 {
     let mut dists = pal
         .iter()
         .enumerate()
@@ -160,7 +160,7 @@ fn find_closest_in_palette(color: image::Rgba<u8>, pal: &Palette, quality: u8) -
         .collect::<Vec<(usize, usize)>>();
     dists.sort_by_key(|&(d, _)| d);
     let index = find_closest_dithered(&dists[0..quality as usize]);
-    Ok(index as u8)
+    index as u8
 }
 
 fn distance_squared(c: image::Rgba<u8>, p: image::Rgb<u8>) -> usize {
@@ -176,17 +176,17 @@ fn distance_squared(c: image::Rgba<u8>, p: image::Rgb<u8>) -> usize {
     (dr * dr + dg * dg + db * db) as usize
 }
 
-fn compute_pixels(buffer: image::RgbaImage, pal: &Palette, quality: u8) -> Fallible<Vec<u8>> {
+fn compute_pixels(buffer: image::RgbaImage, pal: &Palette, quality: u8) -> Vec<u8> {
     let dim = buffer.dimensions();
     let mut pix = Vec::with_capacity((dim.0 * dim.1) as usize);
     for c in buffer.pixels() {
-        let index = find_closest_in_palette(*c, &pal, quality)?;
+        let index = find_closest_in_palette(*c, &pal, quality);
         pix.push(index);
     }
-    Ok(pix)
+    pix
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
     ensure!(
         opt.dither_quality >= 1,
@@ -234,7 +234,7 @@ fn main() -> Fallible<()> {
         rh_offset,  // rowheads_offset: u32 as usize,
         rh_size,    // rowheads_size: u32 as usize
     )?;
-    let pix = compute_pixels(buffer, &pal, opt.dither_quality)?;
+    let pix = compute_pixels(buffer, &pal, opt.dither_quality);
 
     let mut fp = File::create(&opt.output)?;
     fp.write_all(pic_header.as_bytes())?;

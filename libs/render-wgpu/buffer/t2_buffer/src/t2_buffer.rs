@@ -13,9 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::texture_atlas::TextureAtlas;
+use anyhow::Result;
 use catalog::Catalog;
-use commandable::{commandable, Commandable};
-use failure::Fallible;
 use gpu::GPU;
 use lay::Layer;
 use log::trace;
@@ -44,31 +43,31 @@ pub struct Vertex {
 
 impl Vertex {
     #[allow(clippy::unneeded_field_pattern)]
-    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
-        let tmp = wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+    pub fn descriptor() -> wgpu::VertexBufferLayout<'static> {
+        let tmp = wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &[
                 // position
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float3,
                     offset: 0,
                     shader_location: 0,
                 },
                 // normal
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float3,
                     offset: 12,
                     shader_location: 1,
                 },
                 // color
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float4,
                     offset: 24,
                     shader_location: 2,
                 },
                 // tex_coord
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float2,
                     offset: 40,
                     shader_location: 3,
@@ -120,7 +119,7 @@ impl<'a> T2BufferFactory<'a> {
         }
     }
 
-    fn build(&mut self, gpu: &mut GPU) -> Fallible<T2Buffer> {
+    fn build(&mut self, gpu: &mut GPU) -> Result<T2Buffer> {
         let terrain = Terrain::from_bytes(&self.catalog.read_name_sync(&self.mm.t2_name())?)?;
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
@@ -145,7 +144,7 @@ impl<'a> T2BufferFactory<'a> {
         })
     }
 
-    fn load_palette(&self) -> Fallible<Palette> {
+    fn load_palette(&self) -> Result<Palette> {
         let layer = Layer::from_bytes(
             &self.catalog.read_name_sync(&self.mm.layer_name())?,
             &self.system_palette,
@@ -193,7 +192,7 @@ impl<'a> T2BufferFactory<'a> {
         &self,
         palette: &Palette,
         gpu: &mut GPU,
-    ) -> Fallible<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
+    ) -> Result<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
         // Load all images with our custom palette.
         let mut pics = Vec::new();
         {
@@ -281,6 +280,7 @@ impl<'a> T2BufferFactory<'a> {
             lod_max_clamp: 9_999_999f32,
             compare: None,
             anisotropy_clamp: None,
+            border_color: None,
         });
 
         let bind_group_layout =
@@ -291,17 +291,20 @@ impl<'a> T2BufferFactory<'a> {
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::SampledTexture {
+                            ty: wgpu::BindingType::Texture {
                                 multisampled: true,
-                                component_type: wgpu::TextureComponentType::Uint,
-                                dimension: wgpu::TextureViewDimension::D2,
+                                sample_type: wgpu::TextureSampleType::Uint,
+                                view_dimension: wgpu::TextureViewDimension::D2,
                             },
                             count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler { comparison: false },
+                            ty: wgpu::BindingType::Sampler {
+                                filtering: true,
+                                comparison: false,
+                            },
                             count: None,
                         },
                     ],
@@ -464,7 +467,7 @@ impl<'a> T2BufferFactory<'a> {
         atlas: &TextureAtlas,
         palette: &Palette,
         gpu: &GPU,
-    ) -> Fallible<(wgpu::Buffer, wgpu::Buffer, u32)> {
+    ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
 
@@ -523,7 +526,6 @@ impl<'a> T2BufferFactory<'a> {
     }
 }
 
-#[derive(Commandable)]
 pub struct T2Buffer {
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -537,14 +539,13 @@ pub struct T2Buffer {
     terrain: Terrain,
 }
 
-#[commandable]
 impl T2Buffer {
     pub fn new(
         mm: &MissionMap,
         system_palette: &Palette,
         catalog: &Catalog,
         gpu: &mut GPU,
-    ) -> Fallible<Self> {
+    ) -> Result<Self> {
         trace!("T2Renderer::new");
         T2BufferFactory::new(mm, system_palette, catalog).build(gpu)
     }
@@ -641,16 +642,18 @@ impl T2Buffer {
 mod test {
     use super::*;
     use lib::{from_dos_string, CatalogBuilder};
+    use nitrous::Interpreter;
     use winit::{event_loop::EventLoop, window::Window};
     use xt::TypeManager;
 
     #[cfg(unix)]
     #[test]
-    fn test_tile_to_earth() -> Fallible<()> {
+    fn test_tile_to_earth() -> Result<()> {
         use winit::platform::unix::EventLoopExtUnix;
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
-        let mut gpu = GPU::new(&window, Default::default())?;
+        let interpreter = Interpreter::new();
+        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
 
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["FA:PALETTE.PAL".to_owned()])?;
@@ -661,7 +664,7 @@ mod test {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
             let content = from_dos_string(catalog.read_name_sync("BAL.MM")?);
             let mm = MissionMap::from_str(&content, &types, &catalog)?;
-            let _t2_buffer = T2Buffer::new(&mm, &palette, &catalog, &mut gpu)?;
+            let _t2_buffer = T2Buffer::new(&mm, &palette, &catalog, &mut gpu.write())?;
         }
         Ok(())
     }

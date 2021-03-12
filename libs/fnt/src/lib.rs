@@ -15,7 +15,7 @@
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use codepage_437::{FromCp437, CP437_CONTROL};
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use i386::{ByteCode, Interpreter, Reg};
 use image::{ImageBuffer, LumaA};
 use peff::PE;
@@ -94,7 +94,7 @@ pub struct Fnt {
 const FNT_LOAD_BASE: u32 = 0x0000_0000;
 
 impl Fnt {
-    pub fn from_bytes(bytes: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let mut pe = PE::from_bytes(bytes)?;
         pe.relocate(FNT_LOAD_BASE)?;
 
@@ -155,7 +155,7 @@ impl Fnt {
         Ok(Self { height, glyphs })
     }
 
-    pub fn analyze(&self, game: &str, name: &str) -> Fallible<()> {
+    pub fn analyze(&self, game: &str, name: &str) -> Result<()> {
         const WIDTH: usize = 0x20;
 
         for glyph_index in 0..=255 {
@@ -202,7 +202,7 @@ impl Fnt {
         game: &str,
         name: &str,
         glyph: &GlyphInfo,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         if DUMP_CHARS {
             let mut ch = glyph.glyph_char.clone();
             if ch == "/" {
@@ -224,7 +224,7 @@ mod tests {
     use lib::CatalogBuilder;
 
     #[test]
-    fn it_can_parse_all_fnt_files() -> Fallible<()> {
+    fn it_can_parse_all_fnt_files() -> Result<()> {
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.FNT".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

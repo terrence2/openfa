@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::ansi;
-use failure::{ensure, Fallible};
+use anyhow::{ensure, Result};
 use reverse::p2s;
 use std::mem;
 
@@ -28,7 +28,7 @@ impl Jump {
     pub const MAGIC: u8 = 0x48;
     pub const SIZE: usize = 4;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
@@ -84,7 +84,7 @@ impl JumpToDamage {
     pub const MAGIC: u8 = 0xAC;
     pub const SIZE: usize = 4;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
@@ -146,7 +146,7 @@ impl JumpToDetail {
     pub const MAGIC: u8 = 0xA6;
     const SIZE: usize = 6;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[i16] = unsafe { mem::transmute(&data[2..]) };
@@ -209,7 +209,7 @@ impl JumpToFrame {
     pub const MAGIC: u8 = 0x40;
 
     // 40 00   04 00   08 00, 25 00, 42 00, 5F 00
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let words: &[u16] = unsafe { mem::transmute(&data[2..]) };
@@ -287,7 +287,7 @@ impl JumpToLOD {
     pub const MAGIC: u8 = 0xC8;
     pub const SIZE: usize = 8;
 
-    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Fallible<Self> {
+    pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0x00);
         let word_ref: &[u16] = unsafe { mem::transmute(&data[2..]) };

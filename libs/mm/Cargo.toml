@@ -5,7 +5,7 @@ edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 mint = "^ 0.5"
 nalgebra = "^ 0.24"
 num-traits = "^ 0.2"

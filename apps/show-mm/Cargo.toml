@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 env_logger = "^ 0.7"
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 image = "^ 0.21"
 legion = "= 0.2.4"
 log = "^ 0.4"
@@ -17,7 +17,7 @@ winit = "^ 0.23"
 absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
-command = { path = "../../libs/nitrogen/system/command" }
+nitrous = { path = "../../libs/nitrogen/system/nitrous" }
 fnt = { path = "../../libs/fnt" }
 fullscreen = { path = "../../libs/nitrogen/wgpu-buffer/fullscreen" }
 galaxy = { path = "../../libs/galaxy" }

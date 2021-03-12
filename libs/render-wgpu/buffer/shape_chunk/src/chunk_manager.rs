@@ -18,8 +18,8 @@ use crate::{
     texture_atlas::MegaAtlas,
     upload::DrawSelection,
 };
+use anyhow::{anyhow, Result};
 use catalog::Catalog;
-use failure::{err_msg, Fallible};
 use pal::Palette;
 use sh::RawShape;
 use std::collections::HashMap;
@@ -36,7 +36,7 @@ pub struct ShapeChunkBuffer {
 }
 
 impl ShapeChunkBuffer {
-    pub fn new(device: &wgpu::Device) -> Fallible<Self> {
+    pub fn new(device: &wgpu::Device) -> Result<Self> {
         Ok(Self {
             layout: MegaAtlas::make_bind_group_layout(device),
             sampler: MegaAtlas::make_sampler(device),
@@ -47,7 +47,7 @@ impl ShapeChunkBuffer {
         })
     }
 
-    pub fn finish_open_chunks(&mut self, gpu: &mut gpu::GPU) -> Fallible<()> {
+    pub fn finish_open_chunks(&mut self, gpu: &mut gpu::GPU) -> Result<()> {
         let keys = self.open_chunks.keys().cloned().collect::<Vec<_>>();
         for chunk_flags in &keys {
             self.finish_open_chunk(*chunk_flags, gpu)?;
@@ -55,11 +55,7 @@ impl ShapeChunkBuffer {
         Ok(())
     }
 
-    pub fn finish_open_chunk(
-        &mut self,
-        chunk_flags: ChunkFlags,
-        gpu: &mut gpu::GPU,
-    ) -> Fallible<()> {
+    pub fn finish_open_chunk(&mut self, chunk_flags: ChunkFlags, gpu: &mut gpu::GPU) -> Result<()> {
         let open_chunk = self.open_chunks.remove(&chunk_flags).expect("a chunk");
         if open_chunk.chunk_is_empty() {
             return Ok(());
@@ -76,7 +72,7 @@ impl ShapeChunkBuffer {
         palette: &Palette,
         catalog: &Catalog,
         gpu: &mut gpu::GPU,
-    ) -> Fallible<(ChunkId, ShapeId)> {
+    ) -> Result<(ChunkId, ShapeId)> {
         if let Some(&shape_id) = self.name_to_shape_map.get(name) {
             let chunk_id = self.shape_to_chunk_map[&shape_id];
             return Ok((chunk_id, shape_id));
@@ -109,11 +105,11 @@ impl ShapeChunkBuffer {
         Ok((chunk_id, shape_id))
     }
 
-    pub fn shape_for(&self, name: &str) -> Fallible<ShapeId> {
+    pub fn shape_for(&self, name: &str) -> Result<ShapeId> {
         Ok(*self
             .name_to_shape_map
             .get(name)
-            .ok_or_else(|| err_msg("no shape for the given name"))?)
+            .ok_or_else(|| anyhow!("no shape for the given name"))?)
     }
 
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
@@ -131,7 +127,7 @@ impl ShapeChunkBuffer {
         unreachable!()
     }
 
-    pub fn part_for(&self, name: &str) -> Fallible<&ChunkPart> {
+    pub fn part_for(&self, name: &str) -> Result<&ChunkPart> {
         Ok(self.part(self.shape_for(name)?))
     }
 

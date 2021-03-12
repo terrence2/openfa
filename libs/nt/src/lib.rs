@@ -16,7 +16,7 @@ mod hardpoint;
 
 pub use crate::hardpoint::HardpointType;
 
-use failure::{bail, ensure, Fallible};
+use anyhow::{bail, ensure, Result};
 use ot::{
     make_type_struct, parse,
     parse::{FieldRow, FromRow},
@@ -31,7 +31,7 @@ enum NpcTypeVersion {
 }
 
 impl NpcTypeVersion {
-    fn from_len(cnt: usize) -> Fallible<Self> {
+    fn from_len(cnt: usize) -> Result<Self> {
         Ok(match cnt {
             9 => NpcTypeVersion::V1,
             7 => NpcTypeVersion::V0,
@@ -55,7 +55,7 @@ impl Hardpoints {
 
 impl FromRow for Hardpoints {
     type Produces = Hardpoints;
-    fn from_row(field: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Fallible<Self::Produces> {
+    fn from_row(field: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         let (_name, lines) = field.value().pointer()?;
         let mut off = 0usize;
         let mut hards = Vec::new();
@@ -87,7 +87,7 @@ NpcType(ot: ObjectType, version: NpcTypeVersion) {    // SARAN.NT
 }];
 
 impl NpcType {
-    pub fn from_text(data: &str) -> Fallible<Self> {
+    pub fn from_text(data: &str) -> Result<Self> {
         let lines = data.lines().collect::<Vec<&str>>();
         ensure!(
             lines[0] == "[brent's_relocatable_format]",
@@ -111,7 +111,7 @@ mod tests {
     use lib::{from_dos_string, CatalogBuilder};
 
     #[test]
-    fn can_parse_all_npc_types() -> Fallible<()> {
+    fn can_parse_all_npc_types() -> Result<()> {
         let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.NT".to_owned()])?;
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;

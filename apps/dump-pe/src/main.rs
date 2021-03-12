@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::{ansi, terminal_size};
-use failure::Fallible;
+use anyhow::Result;
 use lib::CatalogBuilder;
 use peff::PE;
 use std::{collections::HashSet, iter};
@@ -26,7 +26,7 @@ struct Opt {
     inputs: Vec<String>,
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
     let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
 

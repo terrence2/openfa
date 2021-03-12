@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use failure::Fallible;
+use anyhow::Result;
 use i386::{ByteCode, DisassemblyError};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::{fs, io::prelude::*, path::PathBuf};
@@ -30,7 +30,7 @@ struct Opt {
     input: PathBuf,
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
 
     let level = if opt.verbose {

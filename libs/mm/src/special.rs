@@ -13,8 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::util::maybe_hex;
-use failure::{bail, err_msg, Fallible};
+use anyhow::{anyhow, bail, Result};
 use nalgebra::Point3;
+use std::str::SplitAsciiWhitespace;
 
 #[allow(dead_code)]
 pub struct SpecialInfo {
@@ -33,65 +34,56 @@ impl SpecialInfo {
     //         icon -1
     //         flags $0
     //         .
-    pub(crate) fn from_lines(lines: &[&str], offset: &mut usize) -> Fallible<Self> {
+    pub(crate) fn from_tokens(tokens: &mut SplitAsciiWhitespace) -> Result<Self> {
         let mut pos = None;
         let mut name = None;
         let mut color = None;
         let mut icon = None;
         let mut flags = None;
 
-        while lines[*offset].trim() != "." {
-            let parts = lines[*offset].trim().splitn(2, ' ').collect::<Vec<&str>>();
-            match parts[0].trim_start() {
+        while let Some(token) = tokens.next() {
+            match token {
                 "pos" => {
-                    let ns = parts[1].split(' ').collect::<Vec<&str>>();
-                    pos = Some(Point3::new(
-                        ns[0].parse::<i32>()? as f32,
-                        ns[1].parse::<i32>()? as f32,
-                        ns[2].parse::<i32>()? as f32,
-                    ));
+                    let x = tokens.next().expect("pos x").parse::<i32>()? as f32;
+                    let y = tokens.next().expect("pos y").parse::<i32>()? as f32;
+                    let z = tokens.next().expect("pos z").parse::<i32>()? as f32;
+                    pos = Some(Point3::new(x, y, z));
                 }
-                "name" => name = Some(parts[1].to_owned()),
-                "color" => color = Some(parts[1].parse::<u8>()?),
-                "icon" => icon = Some(parts[1].parse::<i32>()?),
-                "flags" => flags = Some(maybe_hex::<u16>(parts[1])?),
-                _ => {
-                    bail!("unknown special key: {}", parts[0]);
+                "name" => {
+                    // FIXME: share this code
+                    // Start of Header (0x01) marks delimiting the string? Must be a dos thing. :shrug:
+                    // Regardless, we need to accumulate tokens until we find one ending in a 1, since
+                    // we've split on spaces already.
+                    let tmp = tokens.next().expect("name");
+                    assert!(tmp.starts_with(1 as char));
+                    if tmp.ends_with(1 as char) {
+                        let end = tmp.len() - 1;
+                        name = Some(tmp[1..end].to_owned());
+                    } else {
+                        let mut tmp = tmp.to_owned();
+                        while let Some(next) = tokens.next() {
+                            tmp += next;
+                            if tmp.ends_with(1 as char) {
+                                break;
+                            }
+                        }
+                        let end = tmp.len() - 1;
+                        name = Some(tmp[1..end].to_owned());
+                    }
                 }
+                "color" => color = Some(tokens.next().expect("color").parse::<u8>()?),
+                "icon" => icon = Some(tokens.next().expect("icon").parse::<i32>()?),
+                "flags" => flags = Some(maybe_hex::<u16>(tokens.next().expect("flags"))?),
+                "." => break,
+                v => bail!("unknown special key: {}", v),
             }
-            *offset += 1;
         }
         Ok(SpecialInfo {
-            pos: pos.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: pos not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            name: name.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: name not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            color: color.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: color not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            icon: icon.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: icon not set in special ending {}",
-                    *offset
-                ))
-            })?,
-            flags: flags.ok_or_else(|| {
-                err_msg(format!(
-                    "mm:special: flags not set in special ending {}",
-                    *offset
-                ))
-            })?,
+            pos: pos.ok_or_else(|| anyhow!("mm:special: pos not set in special",))?,
+            name: name.ok_or_else(|| anyhow!("mm:special: name not set in special",))?,
+            color: color.ok_or_else(|| anyhow!("mm:special: color not set in special",))?,
+            icon: icon.ok_or_else(|| anyhow!("mm:special: icon not set in special",))?,
+            flags: flags.ok_or_else(|| anyhow!("mm:special: flags not set in special",))?,
         })
     }
 }

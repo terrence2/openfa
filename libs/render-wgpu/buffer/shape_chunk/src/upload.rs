@@ -16,9 +16,9 @@ use crate::{
     draw_state::DrawState,
     texture_atlas::{Frame, MegaAtlas},
 };
+use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
-use failure::{bail, ensure, err_msg, Fallible};
 use i386::Interpreter;
 use lazy_static::lazy_static;
 use log::trace;
@@ -114,9 +114,9 @@ bitflags! {
 }
 
 impl VertexFlags {
-    pub fn displacement(self, offset: usize) -> Fallible<Self> {
+    pub fn displacement(self, offset: usize) -> Result<Self> {
         VertexFlags::from_bits(self.bits() << offset).ok_or_else(|| {
-            err_msg(format!(
+            anyhow!(format!(
                 "offset {} from {:?} did not yield a valid vertex flags",
                 offset, self
             ))
@@ -137,43 +137,43 @@ pub struct Vertex {
 
 impl Vertex {
     #[allow(clippy::unneeded_field_pattern)]
-    pub fn descriptor() -> wgpu::VertexBufferDescriptor<'static> {
-        let tmp = wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+    pub fn descriptor() -> wgpu::VertexBufferLayout<'static> {
+        let tmp = wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &[
                 // position
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float3,
                     offset: 0,
                     shader_location: 0,
                 },
                 // color
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float4,
                     offset: 12,
                     shader_location: 1,
                 },
                 // tex_coord
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float2,
                     offset: 28,
                     shader_location: 2,
                 },
                 // flags0
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float,
                     offset: 36,
                     shader_location: 3,
                 },
                 // flags1
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float,
                     offset: 40,
                     shader_location: 4,
                 },
                 // xform_id
-                wgpu::VertexAttributeDescriptor {
+                wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float,
                     offset: 44,
                     shader_location: 5,
@@ -457,7 +457,7 @@ impl ProgramCounter {
     }
 
     // Move the pc to the given byte offset
-    fn set_byte_offset(&mut self, next_offset: usize, sh: &RawShape) -> Fallible<()> {
+    fn set_byte_offset(&mut self, next_offset: usize, sh: &RawShape) -> Result<()> {
         self.byte_offset = next_offset;
         self.instr_offset = sh.bytes_to_index(next_offset)?;
         ensure!(self.valid(), "pc jumped out of bounds");
@@ -518,7 +518,7 @@ impl BufferPropsManager {
         tgt: usize,
         flags: VertexFlags,
         context: &str,
-    ) -> Fallible<u32> {
+    ) -> Result<u32> {
         ensure!(
             !self.props.contains_key(&tgt),
             "have already transformed that buffer"
@@ -564,7 +564,7 @@ impl Transformer {
         draw_state: &DrawState,
         start: &Instant,
         now: &Instant,
-    ) -> Fallible<[f32; 6]> {
+    ) -> Result<[f32; 6]> {
         fn fa2r(d: f32) -> f32 {
             d * std::f32::consts::PI / 8192f32
         }
@@ -660,7 +660,7 @@ impl ShapeWidgets {
         start: &Instant,
         now: &Instant,
         buffer: &mut [[f32; 6]],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         assert!(buffer.len() >= self.num_xforms());
         for (offset, transformer) in self.transformers.iter_mut().enumerate() {
             let xform = transformer.transform(draw_state, start, now)?;
@@ -777,7 +777,7 @@ impl<'a> ShapeUploader<'a> {
         props.xform_id
     }
 
-    fn push_facet(&mut self, facet: &Facet, override_flags: Option<VertexFlags>) -> Fallible<()> {
+    fn push_facet(&mut self, facet: &Facet, override_flags: Option<VertexFlags>) -> Result<()> {
         // Load all vertices in this facet into the vertex upload
         // buffer, copying in the color and texture coords for each
         // face. The layout appears to be for triangle fans.
@@ -854,7 +854,7 @@ impl<'a> ShapeUploader<'a> {
     fn find_external_calls<'b>(
         x86: &X86Code,
         sh: &'b RawShape,
-    ) -> Fallible<HashMap<&'b str, &'b X86Trampoline>> {
+    ) -> Result<HashMap<&'b str, &'b X86Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
         for instr in &x86.bytecode.instrs {
@@ -878,7 +878,7 @@ impl<'a> ShapeUploader<'a> {
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
         transformers: &mut Vec<Transformer>,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let next_instr = pc.relative_instr(1, sh);
 
         if next_instr.magic() == "Unmask" {
@@ -899,7 +899,7 @@ impl<'a> ShapeUploader<'a> {
         x86: &X86Code,
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let memrefs = Self::find_external_references(x86, sh);
         ensure!(
             memrefs.len() == 1,
@@ -932,7 +932,7 @@ impl<'a> ShapeUploader<'a> {
         x86: &X86Code,
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let unmask = pc.relative_instr(1, sh);
         let trailer = pc.relative_instr(2, sh);
         ensure!(unmask.magic() == "Unmask", "expected unmask after flag x86");
@@ -969,7 +969,7 @@ impl<'a> ShapeUploader<'a> {
         x86: &X86Code,
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         ensure!(
             brent_obj_id.name == "brentObjId",
             "expected trampoline to be brentObjId"
@@ -1018,7 +1018,7 @@ impl<'a> ShapeUploader<'a> {
         sh: &RawShape,
         prop_man: &mut BufferPropsManager,
         transformers: &mut Vec<Transformer>,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let xform = pc.relative_instr(1, sh);
         let maybe_trailer = pc.relative_instr(2, sh);
         ensure!(xform.magic() == "XformUnmask", "expected xform after x86");
@@ -1149,7 +1149,7 @@ impl<'a> ShapeUploader<'a> {
         analysis: AnalysisResults,
         selection: &DrawSelection,
         atlas: &mut MegaAtlas,
-    ) -> Fallible<(Arc<RwLock<ShapeWidgets>>, Vec<Vertex>)> {
+    ) -> Result<(Arc<RwLock<ShapeWidgets>>, Vec<Vertex>)> {
         trace!("ShapeUploader::draw_model: {}", self.name);
         let mut callback = |_pc: &ProgramCounter, instr: &Instr| {
             match instr {
@@ -1212,7 +1212,7 @@ impl<'a> ShapeUploader<'a> {
         name: &str,
         sh: &RawShape,
         selection: &DrawSelection,
-    ) -> Fallible<AnalysisResults> {
+    ) -> Result<AnalysisResults> {
         let mut result: AnalysisResults = Default::default();
         let mut callback = |pc: &ProgramCounter, instr: &Instr| {
             match instr {
@@ -1250,9 +1250,9 @@ impl<'a> ShapeUploader<'a> {
         sh: &RawShape,
         selection: &DrawSelection,
         callback: &mut F,
-    ) -> Fallible<()>
+    ) -> Result<()>
     where
-        F: FnMut(&ProgramCounter, &Instr) -> Fallible<()>,
+        F: FnMut(&ProgramCounter, &Instr) -> Result<()>,
     {
         let mut section_close_byte_offset = None;
         let mut damage_model_byte_offset = None;

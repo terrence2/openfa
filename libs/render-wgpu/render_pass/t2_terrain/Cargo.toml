@@ -5,9 +5,9 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 log = "^ 0.4"
-wgpu = "^ 0.6"
+wgpu = "^ 0.7"
 atmosphere = { path = "../../../nitrogen/wgpu-buffer/atmosphere" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }

@@ -5,7 +5,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "^ 0.1.2"
+anyhow = "^ 1"
 legion = "^ 0.3"
 nalgebra = "^ 0.24"
 lib = { path = "../lib" }

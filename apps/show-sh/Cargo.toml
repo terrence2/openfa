@@ -5,10 +5,11 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "^ 1"
+chrono = "^ 0.4"
 env_logger = "^ 0.7"
-failure = "^ 0.1.2"
 image = "^ 0.23"
-legion = "^ 0.3"
+legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.24"
 structopt = "^ 0.3"
@@ -18,7 +19,7 @@ absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
 catalog = { path = "../../libs/nitrogen/system/catalog" }
-command = { path = "../../libs/nitrogen/system/command" }
+nitrous = { path = "../../libs/nitrogen/system/nitrous" }
 composite = { path = "../../libs/nitrogen/wgpu-buffer/composite" }
 fnt = { path = "../../libs/fnt" }
 font_fnt = { path = "../../libs/render-wgpu/buffer/font_fnt" }
