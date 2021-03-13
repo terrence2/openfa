@@ -99,7 +99,7 @@ shape_instance = { path = "libs/render-wgpu/buffer/shape_instance" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 t2_buffer = { path = "libs/render-wgpu/buffer/t2_buffer" }
 t2_terrain = { path = "libs/render-wgpu/render_pass/t2_terrain" }
-terrain_geo = { path = "libs/nitrogen/wgpu-buffer/terrain_geo" }
+terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 universe = { path = "libs/nitrogen/sim/universe" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }

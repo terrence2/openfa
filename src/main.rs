@@ -33,7 +33,7 @@ use parking_lot::RwLock;
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use terrain_geo::{CpuDetailLevel, GpuDetailLevel, TerrainGeoBuffer};
+use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
 use widget::{Color, EventMapper, Label, PositionH, PositionV, Terminal, WidgetBuffer};
@@ -147,29 +147,29 @@ make_frame_graph!(
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
             stars: StarsBuffer,
-            terrain_geo: TerrainGeoBuffer,
+            terrain: TerrainBuffer,
             widgets: WidgetBuffer,
             world: WorldRenderPass,
             ui: UiRenderPass,
             composite: CompositeRenderPass
         };
         passes: [
-            // terrain_geo
+            // terrain
             // Update the indices so we have correct height data to tessellate with and normal
             // and color data to accumulate.
-            paint_atlas_indices: Any() { terrain_geo() },
+            paint_atlas_indices: Any() { terrain() },
             // Apply heights to the terrain mesh.
-            tessellate: Compute() { terrain_geo() },
+            tessellate: Compute() { terrain() },
             // Render the terrain mesh's texcoords to an offscreen buffer.
-            deferred_texture: Render(terrain_geo, deferred_texture_target) {
-                terrain_geo( globals )
+            deferred_texture: Render(terrain, deferred_texture_target) {
+                terrain( globals )
             },
             // Accumulate normal and color data.
-            accumulate_normal_and_color: Compute() { terrain_geo( globals ) },
+            accumulate_normal_and_color: Compute() { terrain( globals ) },
 
             // world: Flatten terrain g-buffer into the final image and mix in stars.
             render_world: Render(world, offscreen_target) {
-                world( globals, fullscreen, atmosphere, stars, terrain_geo )
+                world( globals, fullscreen, atmosphere, stars, terrain )
             },
 
             // ui: Draw our widgets onto a buffer with resolution independent of the world.
@@ -225,7 +225,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let fullscreen_buffer = FullscreenBuffer::new(&gpu.read());
     let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
     let stars_buffer = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
-    let terrain_geo_buffer = TerrainGeoBuffer::new(
+    let terrain_buffer = TerrainBuffer::new(
         &catalog,
         cpu_detail,
         gpu_detail,
@@ -241,7 +241,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &globals.read(),
         &atmosphere_buffer.read(),
         &stars_buffer.read(),
-        &terrain_geo_buffer.read(),
+        &terrain_buffer.read(),
     )?;
     let ui = UiRenderPass::new(
         &mut gpu.write(),
@@ -261,7 +261,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         fullscreen_buffer,
         globals.clone(),
         stars_buffer,
-        terrain_geo_buffer,
+        terrain_buffer,
         widgets.clone(),
         world.clone(),
         ui,
@@ -366,7 +366,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &gpu.read(),
             &mut tracker,
         )?;
-        frame_graph.terrain_geo_mut().make_upload_buffer(
+        frame_graph.terrain_mut().make_upload_buffer(
             arcball.read().camera(),
             demo.write().get_camera(arcball.read().camera()),
             catalog.clone(),

@@ -128,7 +128,7 @@ impl InstanceBlock {
         chunk_id: ChunkId,
         layout: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
-    ) -> Result<Self> {
+    ) -> Self {
         // This class contains the fixed-size device local blocks that we will render from.
         trace!("InstanceBlock::new({:?})", block_id);
 
@@ -211,7 +211,7 @@ impl InstanceBlock {
             ],
         });
 
-        Ok(Self {
+        Self {
             block_id,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
@@ -234,7 +234,7 @@ impl InstanceBlock {
             xform_index_buffer,
             xform_buffer,
             bind_group,
-        })
+        }
     }
 
     pub fn id(&self) -> BlockId {
@@ -573,7 +573,7 @@ impl ShapeInstanceBuffer {
         } else {
             let block_id = self.allocate_block_id();
             let block =
-                InstanceBlock::new(block_id, chunk_id, &self.bind_group_layout, gpu.device())?;
+                InstanceBlock::new(block_id, chunk_id, &self.bind_group_layout, gpu.device());
             self.chunk_to_block_map
                 .entry(chunk_id)
                 .or_insert_with(Vec::new)

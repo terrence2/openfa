@@ -86,11 +86,11 @@ impl ShapeChunkBuffer {
             if chunk.chunk_is_full() {
                 self.finish_open_chunk(chunk_flags, gpu)?;
                 self.open_chunks
-                    .insert(chunk_flags, OpenChunk::new(chunk_flags)?);
+                    .insert(chunk_flags, OpenChunk::new(chunk_flags));
             }
         } else {
             self.open_chunks
-                .insert(chunk_flags, OpenChunk::new(chunk_flags)?);
+                .insert(chunk_flags, OpenChunk::new(chunk_flags));
         }
         let chunk_id = self.open_chunks[&chunk_flags].chunk_id();
 

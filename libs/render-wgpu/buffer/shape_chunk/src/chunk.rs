@@ -144,15 +144,15 @@ pub struct OpenChunk {
 }
 
 impl OpenChunk {
-    pub(crate) fn new(chunk_flags: ChunkFlags) -> Result<Self> {
-        Ok(Self {
+    pub(crate) fn new(chunk_flags: ChunkFlags) -> Self {
+        Self {
             chunk_id: allocate_chunk_id(),
             chunk_flags,
-            atlas_builder: MegaAtlas::new()?,
+            atlas_builder: MegaAtlas::default(),
             vertex_upload_buffer: Vec::with_capacity(VERTEX_CHUNK_COUNT),
             last_shape_id: 0,
             chunk_parts: HashMap::new(),
-        })
+        }
     }
 
     pub fn chunk_is_full(&self) -> bool {

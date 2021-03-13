@@ -100,7 +100,7 @@ impl FontInterface for FntFont {
     }
 
     fn pixel_bounding_box(&self, c: char, scale: f32) -> ((i32, i32), (i32, i32)) {
-        if let Some(_) = self.glyph_frames.get(&c) {
+        if self.glyph_frames.contains_key(&c) {
             let ascent = self.ascent(scale);
             let advance = self.advance_width(c, scale);
             ((0, 0), (advance.round() as i32, ascent.round() as i32))

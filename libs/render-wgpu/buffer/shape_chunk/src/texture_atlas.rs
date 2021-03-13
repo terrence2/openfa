@@ -76,6 +76,7 @@ const ATLAS_PLANE_SIZE: usize = ATLAS_STRIDE * ATLAS_HEIGHT;
 // Load padded/wrapped 256px wide strips into a 2048+ 2D image slices stacked into
 // a Texture2DArray for upload to the GPU. Each Atlas contains the textures for many
 // different shapes.
+#[derive(Default)]
 pub(crate) struct MegaAtlas {
     // The stack of images that we are building into.
     // Note: we cannot build directly into gpu mapped memory because Texture2DArray
@@ -91,14 +92,6 @@ pub(crate) struct MegaAtlas {
 }
 
 impl MegaAtlas {
-    pub(crate) fn new() -> Result<Self> {
-        Ok(Self {
-            images: vec![vec![0; ATLAS_PLANE_SIZE]],
-            utilization: vec![[0; 4]],
-            frames: HashMap::new(),
-        })
-    }
-
     // FIXME: we're using First-Fit, which is probably not optimal.
     fn find_first_fit(&self, height: usize) -> Option<(usize, usize)> {
         for (layer, util_array) in self.utilization.iter().enumerate() {

@@ -432,7 +432,7 @@ impl Operand {
             AddressingMethod::O => Self::from_bytes_mode_O(code, ip, desc, state),
             AddressingMethod::X => Self::from_bytes_mode_X(code, ip, desc, state),
             AddressingMethod::Y => Self::from_bytes_mode_Y(code, ip, desc, state),
-            AddressingMethod::Z => Self::from_bytes_mode_Z(state),
+            AddressingMethod::Z => Ok(Self::from_bytes_mode_Z(state)),
             AddressingMethod::Imp => Self::from_bytes_mode_Imp(desc, state),
         }
     }
@@ -605,11 +605,11 @@ impl Operand {
         )))
     }
 
-    fn from_bytes_mode_Z(state: &mut OperandDecodeState) -> Result<Self> {
-        Ok(Operand::Register(Self::maybe_toggle_reg_size(
+    fn from_bytes_mode_Z(state: &mut OperandDecodeState) -> Self {
+        Operand::Register(Self::maybe_toggle_reg_size(
             Self::register((state.op & 0b111) as u8),
             state.prefix.toggle_operand_size,
-        )))
+        ))
     }
 
     fn from_bytes_mode_Imp(desc: &OperandDef, state: &mut OperandDecodeState) -> Result<Self> {
@@ -625,7 +625,7 @@ impl Operand {
             OperandType::AL => Operand::Register(Reg::AL),
             OperandType::SS => Operand::Register(Reg::SS),
             OperandType::const1 => Operand::Imm32(1),
-            _ => unreachable!(),
+            unk => bail!("unexpected operand type for Imp mode: {:?}", unk),
         })
     }
 
