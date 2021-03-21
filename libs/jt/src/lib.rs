@@ -30,10 +30,7 @@ pub struct ProjectileNames {
 
 impl FromRow for ProjectileNames {
     type Produces = ProjectileNames;
-    fn from_row(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Result<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         let (name, values) = field.value().pointer()?;
         ensure!(name == "si_names", "expected pointer to si_names");
         ensure!(values.len() >= 2, "expected at least 2 names in si_names");
@@ -193,15 +190,15 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let contents = from_dos_string(catalog.read_sync(fid)?);
             let jt = ProjectileType::from_text(&contents)?;
             // Only one misspelling in 2500 files.
-            assert!(jt.ot.file_name() == meta.name || meta.name == "SMALLARM.JT");
+            assert!(jt.ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");
         }
 
         Ok(())

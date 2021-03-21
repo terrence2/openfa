@@ -67,11 +67,11 @@ fn main() -> Result<()> {
         let content = catalog.read_sync(fid)?;
         let image = Pic::from_bytes(&content)?;
 
-        println!("{}:{}", game, meta.name);
+        println!("{}:{}", game, meta.name());
         println!(
             "{}",
             iter::repeat("=")
-                .take(1 + game.len() + meta.name.len())
+                .take(1 + game.len() + meta.name().len())
                 .collect::<String>()
         );
         println!("format: {:?}", image.format);

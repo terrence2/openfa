@@ -131,7 +131,7 @@ fn load_palette(opt: &Opt) -> Result<Palette> {
     }
     let fid = *inputs.first().expect("one input");
     let meta = catalog.stat_sync(fid)?;
-    load_palette_from_resource(&catalog, &meta.name)
+    load_palette_from_resource(&catalog, &meta.name())
 }
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {

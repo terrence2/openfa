@@ -318,10 +318,10 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let _img = Pic::from_bytes(&catalog.read_sync(fid)?)?;
         }
@@ -340,10 +340,10 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
             let img = Pic::decode(&palette, &catalog.read_sync(fid)?)?;
@@ -352,7 +352,7 @@ mod tests {
                 let name = format!(
                     "dump/{}/{}.png",
                     game,
-                    meta.name.split('.').collect::<Vec<_>>().first().unwrap()
+                    meta.name().split('.').collect::<Vec<_>>().first().unwrap()
                 );
                 let path = Path::new(&name);
                 println!("Write: {}", path.display());

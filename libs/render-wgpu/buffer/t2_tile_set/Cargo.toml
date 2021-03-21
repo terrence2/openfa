@@ -6,5 +6,12 @@ edition = "2018"
 
 [dependencies]
 anyhow = "^ 1"
+tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
+wgpu = "^ 0.7"
+catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
+t2 = { path = "../../../t2" }
 terrain = { path = "../../../nitrogen/wgpu-buffer/terrain" }
+
+[dev-dependencies]
+lib = { path = "../../../lib" }

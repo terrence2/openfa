@@ -514,12 +514,14 @@ mod tests {
             let meta = catalog.stat_sync(fid)?;
 
             if game == "ATFGOLD"
-                && (meta.name.contains("UKR") || meta.name == "KURILE.MM" || meta.name == "VIET.MM")
+                && (meta.name().contains("UKR")
+                    || meta.name() == "KURILE.MM"
+                    || meta.name() == "VIET.MM")
             {
                 continue;
             }
 
-            if meta.name == "$VARF.MM" {
+            if meta.name() == "$VARF.MM" {
                 // This looks a fragment of an MM used for... something?
                 continue;
             }
@@ -527,10 +529,10 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
 
             catalog.set_default_label(&label);

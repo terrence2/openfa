@@ -16,7 +16,7 @@ use absolute_unit::{degrees, meters};
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
-use catalog::{Catalog, DirectoryDrawer};
+use catalog::DirectoryDrawer;
 use chrono::{TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fullscreen::FullscreenBuffer;
@@ -25,6 +25,8 @@ use global_data::GlobalParametersBuffer;
 use gpu::{make_frame_graph, GPU};
 use input::{InputController, InputSystem};
 use legion::world::World;
+use lib::{from_dos_string, CatalogBuilder};
+use mm::MissionMap;
 use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
@@ -33,12 +35,15 @@ use parking_lot::RwLock;
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer};
+use t2::Terrain as T2Terrain;
+use t2_tile_set::T2HeightTileSet;
+use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
-use widget::{Color, EventMapper, Label, PositionH, PositionV, Terminal, WidgetBuffer};
+use widget::{Color, Label, PositionH, PositionV, Terminal, WidgetBuffer};
 use winit::window::Window;
 use world::WorldRenderPass;
+use xt::TypeManager;
 
 /// Show the contents of an MM file
 #[derive(Debug, StructOpt)]
@@ -53,43 +58,33 @@ struct Opt {
 }
 
 #[derive(Debug, NitrousModule)]
-struct Demo {
+struct OFA {
     exit: bool,
     pin_camera: bool,
-    show_terminal: bool,
     camera: Camera,
-    widgets: Arc<RwLock<WidgetBuffer>>,
-    terminal: Arc<RwLock<Terminal>>,
 }
 
 #[inject_nitrous_module]
-impl Demo {
-    pub fn new(
-        widgets: Arc<RwLock<WidgetBuffer>>,
-        terminal: Arc<RwLock<Terminal>>,
-        interpreter: &mut Interpreter,
-    ) -> Arc<RwLock<Self>> {
-        let demo = Arc::new(RwLock::new(Self {
+impl OFA {
+    pub fn new(interpreter: &mut Interpreter) -> Arc<RwLock<Self>> {
+        let ofa = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
-            show_terminal: false,
             camera: Default::default(),
-            widgets,
-            terminal,
         }));
-        interpreter.put_global("demo", Value::Module(demo.clone()));
-        demo
+        interpreter.put_global("system", Value::Module(ofa.clone()));
+        ofa
     }
 
     pub fn add_default_bindings(&mut self, interpreter: &mut Interpreter) -> Result<()> {
         interpreter.interpret_once(
             r#"
-                let bindings := mapper.create_bindings("demo");
-                bindings.bind("quit", "demo.exit()");
-                bindings.bind("Escape", "demo.exit()");
-                bindings.bind("q", "demo.exit()");
-                bindings.bind("p", "demo.toggle_pin_camera(pressed)");
-                bindings.bind("Shift+Grave", "demo.toggle_terminal(pressed)");
+                let bindings := mapper.create_bindings("system");
+                bindings.bind("quit", "system.exit()");
+                bindings.bind("Escape", "system.exit()");
+                bindings.bind("q", "system.exit()");
+                bindings.bind("p", "system.toggle_pin_camera(pressed)");
+                bindings.bind("l", "widget.dump_glyphs(pressed)");
             "#,
         )?;
         Ok(())
@@ -103,8 +98,6 @@ impl Demo {
     #[method]
     pub fn toggle_pin_camera(&mut self, pressed: bool) {
         if pressed {
-            // println!("eye_rel: {}", arcball.read().get_eye_relative());
-            // println!("target:  {}", arcball.read().get_target());
             self.pin_camera = !self.pin_camera;
         }
     }
@@ -114,29 +107,6 @@ impl Demo {
             self.camera = camera.to_owned();
         }
         &self.camera
-    }
-
-    #[method]
-    pub fn toggle_terminal(&mut self, pressed: bool) -> Result<()> {
-        if pressed {
-            self.show_terminal = !self.show_terminal;
-            self.terminal.write().set_visible(self.show_terminal);
-            self.widgets
-                .read()
-                .queue_script("demo.toggle_terminal_bottom()");
-        }
-        Ok(())
-    }
-
-    #[method]
-    pub fn toggle_terminal_bottom(&self) -> Result<()> {
-        self.widgets
-            .read()
-            .set_keyboard_focus(if self.show_terminal {
-                "terminal"
-            } else {
-                "mapper"
-            })
     }
 }
 
@@ -201,14 +171,13 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let mut async_rt = Runtime::new()?;
     let mut _legion = World::default();
 
-    let mut catalog = Catalog::empty();
+    let mut catalog = CatalogBuilder::build()?;
+    let label = "unpacked:FA"; // TODO: detect or take from args
     for (i, d) in opt.libdir.iter().enumerate() {
         catalog.add_drawer(DirectoryDrawer::from_directory(100 + i as i64, d)?)?;
     }
 
     let interpreter = Interpreter::new();
-    let mapper = EventMapper::new(&mut interpreter.write());
-
     let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
 
     let orrery = Orrery::new(
@@ -233,8 +202,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &mut gpu.write(),
         &mut interpreter.write(),
     )?;
-    let widgets = WidgetBuffer::new(&mut gpu.write())?;
-    let catalog = Arc::new(AsyncRwLock::new(catalog));
+    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter.write())?;
     let world = WorldRenderPass::new(
         &mut gpu.write(),
         &mut interpreter.write(),
@@ -261,16 +229,15 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         fullscreen_buffer,
         globals.clone(),
         stars_buffer,
-        terrain_buffer,
+        terrain_buffer.clone(),
         widgets.clone(),
         world.clone(),
         ui,
         composite,
     )?;
+
     ///////////////////////////////////////////////////////////
-
-    widgets.read().root().write().add_child("mapper", mapper);
-
+    // UI Setup
     let version_label = Label::new("OpenFA v0.1")
         .with_color(Color::Green)
         .with_size(8.0)
@@ -302,8 +269,24 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .read()
         .root()
         .write()
-        .add_child("terminal", terminal.clone())
+        .add_child("terminal", terminal)
         .set_float(PositionH::Start, PositionV::Top);
+
+    ///////////////////////////////////////////////////////////
+    // Scene Setup
+    let start = Instant::now();
+    catalog.set_default_label(label);
+    let type_manager = TypeManager::empty();
+    for mm_fid in catalog.find_matching("*.MM", Some("MM"))? {
+        let raw = catalog.read_sync(mm_fid)?;
+        let mm_content = from_dos_string(raw);
+        let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
+        let t2_data = catalog.read_name_sync(mm.t2_name())?;
+        let t2 = T2Terrain::from_bytes(&t2_data)?;
+        let t2_tile_set = Box::new(T2HeightTileSet::from_t2(&t2)) as Box<dyn TileSet>;
+        terrain_buffer.write().add_tile_set(t2_tile_set);
+    }
+    println!("Loading scene took: {:?}", start.elapsed());
 
     /*
     let mut camera = UfoCamera::new(gpu.read().aspect_ratio(), 0.1f64, 3.4e+38f64);
@@ -335,23 +318,26 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     //     meters!(1308.7262),
     // ))?;
 
-    let demo = Demo::new(widgets.clone(), terminal, &mut interpreter.write());
+    let ofa = OFA::new(&mut interpreter.write());
 
     {
         let interp = &mut interpreter.write();
+        gpu.write().add_default_bindings(interp)?;
         orrery.write().add_default_bindings(interp)?;
         arcball.write().add_default_bindings(interp)?;
         globals.write().add_default_bindings(interp)?;
         world.write().add_default_bindings(interp)?;
-        demo.write().add_default_bindings(interp)?;
+        ofa.write().add_default_bindings(interp)?;
     }
 
-    while !demo.read().exit {
+    let catalog = Arc::new(AsyncRwLock::new(catalog));
+
+    while !ofa.read().exit {
         let loop_start = Instant::now();
 
         widgets
-            .read()
-            .handle_events(&input_controller.poll_events()?, &mut interpreter.write())?;
+            .write()
+            .handle_events(&input_controller.poll_events()?, interpreter.clone())?;
 
         arcball.write().think();
 
@@ -368,16 +354,17 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         )?;
         frame_graph.terrain_mut().make_upload_buffer(
             arcball.read().camera(),
-            demo.write().get_camera(arcball.read().camera()),
+            ofa.write().get_camera(arcball.read().camera()),
             catalog.clone(),
             &mut async_rt,
             &mut gpu.write(),
             &mut tracker,
         )?;
-        frame_graph
-            .widgets
-            .write()
-            .make_upload_buffer(&gpu.read(), &mut tracker)?;
+        frame_graph.widgets.write().make_upload_buffer(
+            &mut gpu.write(),
+            &async_rt,
+            &mut tracker,
+        )?;
         if !frame_graph.run(&mut gpu.write(), tracker)? {
             let sz = gpu.read().physical_size();
             gpu.write().on_resize(sz.width as i64, sz.height as i64)?;

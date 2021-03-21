@@ -492,16 +492,16 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
 
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
-            Dialog::explore(&meta.name, &catalog.read_sync(fid)?)?;
+            Dialog::explore(&meta.name(), &catalog.read_sync(fid)?)?;
             let _dlg = Dialog::from_bytes(&catalog.read_sync(fid)?)?;
         }
 

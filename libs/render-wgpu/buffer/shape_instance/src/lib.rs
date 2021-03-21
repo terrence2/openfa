@@ -810,13 +810,13 @@ mod test {
                 println!(
                     "At: {}:{:13} @ {}",
                     game,
-                    meta.name,
-                    meta.path
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
                         .unwrap_or_else(|| "<none>".into())
-                        .to_string_lossy()
                 );
-                let name = meta.name.clone();
-                if skipped.contains(&meta.name.as_str()) {
+                let name = meta.name().to_owned();
+                if skipped.contains(&meta.name()) {
                     continue;
                 }
 

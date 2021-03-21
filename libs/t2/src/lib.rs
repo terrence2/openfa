@@ -197,7 +197,7 @@ pub struct Terrain {
     height_ft: f32,
     origin_latitude: f32,
     origin_longitude: f32,
-    pub samples: Vec<Sample>,
+    samples: Vec<Sample>,
 }
 
 impl Terrain {
@@ -281,6 +281,7 @@ impl Terrain {
     // It has the same BITE header as in later games, but is missing the name
     // field.
     fn from_bite0(data: &[u8]) -> Result<Self> {
+        // FIXME: overlay
         let header_ptr: *const BITEHeader0 = data.as_ptr() as *const _;
         let header: &BITEHeader0 = unsafe { &*header_ptr };
         ensure!(header.magic() == MAGIC_BITE, "missing magic");
@@ -396,6 +397,7 @@ packed_struct!(BITEHeader1 {
 
 impl Terrain {
     fn from_bite1(data: &[u8]) -> Result<Self> {
+        // FIXME: overlay
         let header_ptr: *const BITEHeader1 = data.as_ptr() as *const _;
         let header: &BITEHeader1 = unsafe { &*header_ptr };
         ensure!(header.magic() == MAGIC_BITE, "missing magic");
@@ -528,6 +530,7 @@ packed_struct!(BIT2Header {
 
 impl Terrain {
     fn from_bit2(data: &[u8]) -> Result<Self> {
+        // FIXME: overlay
         let header_pointer: &[BIT2Header] = unsafe { mem::transmute(data) };
         let header = &header_pointer[0];
 
@@ -571,6 +574,7 @@ impl Terrain {
         let entries = &data[data_start..data_end];
         let mut samples = Vec::new();
         for i in 0..npix {
+            // FIXME: use the from_bytes constructor for Sample and drop new; no reason to dup the functionality poorly here.
             let color = entries[i * 3];
             let modifiers = entries[i * 3 + 1];
             let height = entries[i * 3 + 2];
@@ -698,6 +702,25 @@ impl Terrain {
     pub fn height(&self) -> u32 {
         self.height
     }
+
+    pub fn samples(&self) -> &[Sample] {
+        &self.samples
+    }
+
+    pub fn sample_at(&self, xi: u32, zi: u32) -> Sample {
+        let offset = (zi * self.width() + xi) as usize;
+        if offset < self.samples.len() {
+            self.samples[offset]
+        } else {
+            let offset = ((zi - 1) * self.width() + xi) as usize;
+            if offset < self.samples().len() {
+                self.samples[offset]
+            } else {
+                let offset = ((zi - 1) * self.width() + (xi - 1)) as usize;
+                self.samples[offset]
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -718,15 +741,15 @@ mod test {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let contents = catalog.read_sync(fid)?;
             let terrain = Terrain::from_bytes(&contents)?;
             if DUMP {
-                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, meta.name))?;
+                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, meta.name()))?;
             }
         }
 

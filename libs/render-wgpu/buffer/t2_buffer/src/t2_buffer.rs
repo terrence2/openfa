@@ -29,7 +29,7 @@ use std::{
     mem,
     ops::Range,
 };
-use t2::{Sample, Terrain};
+use t2::Terrain;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
@@ -327,27 +327,12 @@ impl<'a> T2BufferFactory<'a> {
         Ok((atlas, bind_group_layout, bind_group))
     }
 
-    fn sample_at(terrain: &Terrain, xi: u32, zi: u32) -> Sample {
-        let offset = (zi * terrain.width() + xi) as usize;
-        if offset < terrain.samples.len() {
-            terrain.samples[offset]
-        } else {
-            let offset = ((zi - 1) * terrain.width() + xi) as usize;
-            if offset < terrain.samples.len() {
-                terrain.samples[offset]
-            } else {
-                let offset = ((zi - 1) * terrain.width() + (xi - 1)) as usize;
-                terrain.samples[offset]
-            }
-        }
-    }
-
     fn position_at(&mut self, terrain: &Terrain, xi: u32, zi: u32) -> Vector3<f32> {
         if let Some(v) = self.memo_position.get(&(xi, zi)) {
             return *v;
         }
 
-        let sample = Self::sample_at(terrain, xi, zi);
+        let sample = terrain.sample_at(xi, zi);
 
         let xf = xi as f32 / terrain.width() as f32;
         let zf = zi as f32 / terrain.height() as f32;
@@ -416,7 +401,7 @@ impl<'a> T2BufferFactory<'a> {
             return;
         }
 
-        let sample = Self::sample_at(terrain, xi, zi);
+        let sample = terrain.sample_at(xi, zi);
 
         let x0 = xi.saturating_sub(1);
         let x1 = xi;

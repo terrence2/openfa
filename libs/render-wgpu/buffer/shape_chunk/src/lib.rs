@@ -81,16 +81,16 @@ mod test {
                 println!(
                     "At: {}:{:13} @ {}",
                     game,
-                    meta.name,
-                    meta.path
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
                         .unwrap_or_else(|| "<none>".into())
-                        .to_string_lossy()
                 );
-                if skipped.contains(&meta.name.as_str()) {
+                if skipped.contains(&meta.name()) {
                     continue;
                 }
                 let (_chunk_id, shape_id) = chunk_man.upload_shape(
-                    &meta.name,
+                    meta.name(),
                     DrawSelection::NormalModel,
                     &palette,
                     &catalog,

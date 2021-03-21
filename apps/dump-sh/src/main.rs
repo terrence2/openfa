@@ -141,7 +141,7 @@ fn main() -> Result<()> {
                     if opt.quiet {
                         println!("{}", out);
                     } else {
-                        println!("{:60}: {}", meta.name, out);
+                        println!("{:60}: {}", meta.name(), out);
                     }
                 }
             }
@@ -161,7 +161,7 @@ fn main() -> Result<()> {
                                             tramp.name,
                                             sh_instr.at_offset(),
                                             game,
-                                            meta.name,
+                                            meta.name(),
                                             instr.show_relative(sh_instr.at_offset() + pos)
                                         );
                                     }
@@ -179,12 +179,12 @@ fn main() -> Result<()> {
                 .map(sh::Instr::show)
                 .ok_or("NO INSTRUCTIONS")
                 .unwrap();
-            println!("{:20}: {}", meta.name, fmt);
+            println!("{:20}: {}", meta.name(), fmt);
         } else if opt.show_unknown {
             for i in shape.instrs.iter() {
                 if let sh::Instr::UnknownUnknown(unk) = i {
-                    //println!("{:20}: {}", meta.name, i.show());
-                    println!("{}, {:20}", format_unk(&unk.data), meta.name);
+                    //println!("{:20}: {}", meta.name(), i.show());
+                    println!("{}, {:20}", format_unk(&unk.data), meta.name());
                 }
             }
         } else if opt.show_memory {
@@ -216,7 +216,7 @@ fn main() -> Result<()> {
                     let filename = format!(
                         "dump/i386/{}/{}-{:04X}.i386",
                         game,
-                        meta.name,
+                        meta.name(),
                         vinstr.at_offset()
                     );
                     let mut v: Vec<u8> = Vec::new();
@@ -236,7 +236,7 @@ fn main() -> Result<()> {
                     if let sh::Instr::UnknownData(_) = suc {
                         let suc2 = &shape.instrs[offset + 2];
                         if let sh::Instr::X86Code(_) = suc2 {
-                            println!("{} - {:?}", suc.magic(), meta.name);
+                            println!("{} - {:?}", suc.magic(), meta.name());
                             //println!("{}", suc.magic());
                         }
                         offset += 1;

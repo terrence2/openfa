@@ -15,7 +15,7 @@
 use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use fnt::Fnt;
-use font_common::FontInterface;
+use font_common::{FontAdvance, FontInterface};
 use gpu::GPU;
 use i386::{Interpreter, Reg};
 use image::{GenericImage, GenericImageView, GrayImage, Luma};
@@ -60,6 +60,10 @@ impl FontInterface for FntFont {
     // global metrics
     fn units_per_em(&self) -> f32 {
         self.height as f32
+    }
+
+    fn advance_style(&self) -> FontAdvance {
+        FontAdvance::Mono
     }
 
     // vertical metrics
