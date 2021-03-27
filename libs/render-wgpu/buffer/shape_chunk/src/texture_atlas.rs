@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{ensure, Result};
-use gpu::GPU;
+use gpu::Gpu;
 use image::DynamicImage;
 use log::trace;
 use pal::Palette;
@@ -68,7 +68,7 @@ impl Frame {
 }
 
 const ATLAS_WIDTH0: usize = 1024 + 4 * 2 + 2;
-const ATLAS_STRIDE: usize = GPU::stride_for_row_size(ATLAS_WIDTH0 as u32 * 4) as usize;
+const ATLAS_STRIDE: usize = Gpu::stride_for_row_size(ATLAS_WIDTH0 as u32 * 4) as usize;
 const ATLAS_WIDTH: usize = ATLAS_STRIDE / 4;
 const ATLAS_HEIGHT: usize = 4098;
 const ATLAS_PLANE_SIZE: usize = ATLAS_STRIDE * ATLAS_HEIGHT;
@@ -149,7 +149,7 @@ impl MegaAtlas {
         Ok(self.frames[name].clone())
     }
 
-    pub(crate) fn finish(self, gpu: &mut gpu::GPU) -> Result<wgpu::TextureView> {
+    pub(crate) fn finish(self, gpu: &mut gpu::Gpu) -> Result<wgpu::TextureView> {
         if DUMP_ATLAS {
             for (layer, buffer) in self.images.iter().enumerate() {
                 let mut img = DynamicImage::new_rgba8(ATLAS_WIDTH as u32, ATLAS_HEIGHT as u32);

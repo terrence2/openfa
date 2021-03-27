@@ -15,7 +15,7 @@
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
 use global_data::GlobalParametersBuffer;
-use gpu::GPU;
+use gpu::Gpu;
 use log::trace;
 use ofa_groups::Group as OfaGroup;
 use shader_shared::Group;
@@ -27,7 +27,7 @@ pub struct T2TerrainRenderPass {
 
 impl T2TerrainRenderPass {
     pub fn new(
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
         globals_buffer: &GlobalParametersBuffer,
         atmosphere_buffer: &AtmosphereBuffer,
         t2_buffer: &T2Buffer,
@@ -69,7 +69,7 @@ impl T2TerrainRenderPass {
                     module: &frag_shader,
                     entry_point: "main",
                     targets: &[wgpu::ColorTargetState {
-                        format: GPU::SCREEN_FORMAT,
+                        format: Gpu::SCREEN_FORMAT,
                         color_blend: wgpu::BlendState {
                             src_factor: wgpu::BlendFactor::SrcAlpha,
                             dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -87,7 +87,7 @@ impl T2TerrainRenderPass {
                     polygon_mode: wgpu::PolygonMode::Fill,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: GPU::DEPTH_FORMAT,
+                    format: Gpu::DEPTH_FORMAT,
                     depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::Less,
                     stencil: wgpu::StencilState {

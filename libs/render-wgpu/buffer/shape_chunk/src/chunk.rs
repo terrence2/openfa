@@ -219,7 +219,7 @@ impl ClosedChunk {
         chunk: OpenChunk,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
-        gpu: &mut gpu::GPU,
+        gpu: &mut gpu::Gpu,
     ) -> Result<Self> {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
         let a_size = chunk.atlas_builder.atlas_size();

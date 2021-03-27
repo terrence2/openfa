@@ -19,7 +19,7 @@ use anyhow::Result;
 use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
 use gpu::wgpu::{BindGroup, ComputePass, Extent3d};
-use gpu::{UploadTracker, GPU};
+use gpu::{Gpu, UploadTracker};
 use shader_shared::Group;
 use std::{collections::HashMap, num::NonZeroU64, sync::Arc};
 use t2::Terrain as T2Terrain;
@@ -41,7 +41,7 @@ impl T2HeightTileSet {
     pub fn new(
         terrain: &TerrainBuffer,
         globals_buffer: &GlobalParametersBuffer,
-        gpu: &GPU,
+        gpu: &Gpu,
     ) -> Result<Self> {
         let bind_group_layout =
             gpu.device()
@@ -131,13 +131,13 @@ impl T2HeightTileSet {
         })
     }
 
-    pub fn add_t2(&mut self, t2: &T2Terrain, gpu: &mut GPU) {
+    pub fn add_t2(&mut self, t2: &T2Terrain, gpu: &mut Gpu) {
         if self.bind_groups.contains_key(t2.name()) {
             return;
         }
 
         // Extract height samples to a buffer.
-        let stride = GPU::stride_for_row_size(t2.width());
+        let stride = Gpu::stride_for_row_size(t2.width());
         let mut heights = vec![0u8; (stride * t2.height()) as usize];
         for y in 0..t2.height() {
             for x in 0..t2.width() {
@@ -258,12 +258,12 @@ impl TileSet for T2HeightTileSet {
         &mut self,
         _catalog: Arc<RwLock<Catalog>>,
         _async_rt: &Runtime,
-        _gpu: &GPU,
+        _gpu: &Gpu,
         _tracker: &mut UploadTracker,
     ) {
     }
 
-    fn snapshot_index(&mut self, _async_rt: &Runtime, _gpu: &mut GPU) {}
+    fn snapshot_index(&mut self, _async_rt: &Runtime, _gpu: &mut Gpu) {}
 
     fn paint_atlas_index(&self, _encoder: &mut wgpu::CommandEncoder) {}
 
@@ -319,6 +319,7 @@ mod tests {
     use super::*;
     use lib::CatalogBuilder;
     use nitrous::Interpreter;
+    use terrain::{CpuDetailLevel, GpuDetailLevel};
     use winit::{event_loop::EventLoop, window::Window};
 
     #[test]
@@ -327,9 +328,21 @@ mod tests {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
         let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.T2".to_owned()])?;
+
+        let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
+        let terrain = TerrainBuffer::new(
+            &catalog,
+            CpuDetailLevel::Low,
+            GpuDetailLevel::Low,
+            &globals.read(),
+            &mut gpu.write(),
+            &mut interpreter.write(),
+        )?;
+        let mut ts = T2HeightTileSet::new(&terrain.read(), &globals.read(), &gpu.read())?;
+
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;
             let game = label.split(':').last().unwrap();
@@ -346,9 +359,12 @@ mod tests {
 
             let content = catalog.read_sync(fid)?;
             let t2 = T2Terrain::from_bytes(&content)?;
-            let ts =
-                T2HeightTileSet::new(terrain_buffer.read().mesh_bind_group_layout(), &gpu.read())?;
+            ts.add_t2(&t2, &mut gpu.write())
         }
+
+        terrain
+            .write()
+            .add_tile_set(Box::new(ts) as Box<dyn TileSet>);
         Ok(())
     }
 }

@@ -22,7 +22,7 @@ use composite::CompositeRenderPass;
 use fullscreen::FullscreenBuffer;
 use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, GPU};
+use gpu::{make_frame_graph, Gpu};
 use input::{InputController, InputSystem};
 use legion::world::World;
 use lib::{from_dos_string, CatalogBuilder};
@@ -184,7 +184,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
 
     let interpreter = Interpreter::new();
-    let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+    let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
     let orrery = Orrery::new(
         Utc.ymd(1964, 2, 24).and_hms(12, 0, 0),

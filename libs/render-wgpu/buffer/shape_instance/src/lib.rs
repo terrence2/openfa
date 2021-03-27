@@ -19,7 +19,7 @@ pub use shape_chunk::{DrawSelection, DrawState};
 
 use anyhow::Result;
 use catalog::Catalog;
-use gpu::{UploadTracker, GPU};
+use gpu::{Gpu, UploadTracker};
 use legion::*;
 use log::trace;
 use pal::Palette;
@@ -560,7 +560,7 @@ impl ShapeInstanceBuffer {
         selection: DrawSelection,
         palette: &Palette,
         catalog: &Catalog,
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
     ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
@@ -596,7 +596,7 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(&mut self, gpu: &mut GPU) -> Result<()> {
+    pub fn ensure_uploaded(&mut self, gpu: &mut Gpu) -> Result<()> {
         self.chunk_man.finish_open_chunks(gpu)
     }
 
@@ -626,7 +626,7 @@ impl ShapeInstanceBuffer {
         &mut self,
         start: &Instant,
         world: &mut World,
-        gpu: &GPU,
+        gpu: &Gpu,
         tracker: &mut UploadTracker,
     ) -> Result<()> {
         let now = Instant::now();
@@ -770,7 +770,7 @@ mod test {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640

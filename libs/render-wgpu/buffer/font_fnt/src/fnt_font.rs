@@ -16,7 +16,7 @@ use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use fnt::Fnt;
 use font_common::{FontAdvance, FontInterface};
-use gpu::GPU;
+use gpu::Gpu;
 use i386::{Interpreter, Reg};
 use image::{GenericImage, GenericImageView, GrayImage, Luma};
 use lazy_static::lazy_static;
@@ -141,7 +141,7 @@ impl FntFont {
             }
             width += fnt.glyphs[&glyph_index].width;
         }
-        width = GPU::stride_for_row_size(width as u32) as i32;
+        width = Gpu::stride_for_row_size(width as u32) as i32;
 
         let buf = GrayImage::from_pixel(width as u32, fnt.height as u32, Luma([0]));
 

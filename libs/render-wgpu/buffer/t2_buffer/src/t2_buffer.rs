@@ -15,7 +15,7 @@
 use crate::texture_atlas::TextureAtlas;
 use anyhow::Result;
 use catalog::Catalog;
-use gpu::GPU;
+use gpu::Gpu;
 use lay::Layer;
 use log::trace;
 use memoffset::offset_of;
@@ -119,7 +119,7 @@ impl<'a> T2BufferFactory<'a> {
         }
     }
 
-    fn build(&mut self, gpu: &mut GPU) -> Result<T2Buffer> {
+    fn build(&mut self, gpu: &mut Gpu) -> Result<T2Buffer> {
         let terrain = Terrain::from_bytes(&self.catalog.read_name_sync(&self.mm.t2_name())?)?;
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
@@ -191,7 +191,7 @@ impl<'a> T2BufferFactory<'a> {
     fn create_atlas(
         &self,
         palette: &Palette,
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
     ) -> Result<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
         // Load all images with our custom palette.
         let mut pics = Vec::new();
@@ -451,7 +451,7 @@ impl<'a> T2BufferFactory<'a> {
         terrain: &Terrain,
         atlas: &TextureAtlas,
         palette: &Palette,
-        gpu: &GPU,
+        gpu: &Gpu,
     ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
@@ -529,7 +529,7 @@ impl T2Buffer {
         mm: &MissionMap,
         system_palette: &Palette,
         catalog: &Catalog,
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
     ) -> Result<Self> {
         trace!("T2Renderer::new");
         T2BufferFactory::new(mm, system_palette, catalog).build(gpu)
@@ -638,7 +638,7 @@ mod test {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["FA:PALETTE.PAL".to_owned()])?;

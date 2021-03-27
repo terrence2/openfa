@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{bail, ensure, Result};
+use gpu::Gpu;
 use image::{DynamicImage, GenericImage, GenericImageView};
 use log::trace;
 use mm::{MapOrientation, TLoc};
@@ -91,7 +92,7 @@ impl TextureAtlas {
         let num_down = num_across - (extra / num_across);
 
         let atlas_width0 = (num_across * PATCH_SIZE) + num_across + 1;
-        let atlas_stride = gpu::GPU::stride_for_row_size(atlas_width0 * 4);
+        let atlas_stride = Gpu::stride_for_row_size(atlas_width0 * 4);
         let atlas_width = atlas_stride / 4;
         let atlas_height = (num_down * PATCH_SIZE) + num_down + 1;
 
