@@ -55,6 +55,10 @@ struct Opt {
     /// Regenerate instead of loading cached items on startup
     #[structopt(long = "no-cache")]
     no_cache: bool,
+
+    /// The map file to view
+    #[structopt(name = "NAME", last = true)]
+    map_names: Vec<String>,
 }
 
 #[derive(Debug, NitrousModule)]
@@ -171,10 +175,12 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let mut async_rt = Runtime::new()?;
     let mut _legion = World::default();
 
-    let mut catalog = CatalogBuilder::build()?;
-    let label = "unpacked:FA"; // TODO: detect or take from args
+    let (mut catalog, input_fids) = CatalogBuilder::build_and_select(&opt.map_names)?;
     for (i, d) in opt.libdir.iter().enumerate() {
-        catalog.add_drawer(DirectoryDrawer::from_directory(100 + i as i64, d)?)?;
+        catalog.add_labeled_drawer(
+            "default",
+            DirectoryDrawer::from_directory(100 + i as i64, d)?,
+        )?;
     }
 
     let interpreter = Interpreter::new();
@@ -274,18 +280,21 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
+    let mut t2_tile_set =
+        T2HeightTileSet::new(&terrain_buffer.read(), &globals.read(), &gpu.read())?;
     let start = Instant::now();
-    catalog.set_default_label(label);
     let type_manager = TypeManager::empty();
-    for mm_fid in catalog.find_matching("*.MM", Some("MM"))? {
-        let raw = catalog.read_sync(mm_fid)?;
+    for mm_fid in &input_fids {
+        let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
         let t2_data = catalog.read_name_sync(mm.t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
-        let t2_tile_set = Box::new(T2HeightTileSet::from_t2(&t2)) as Box<dyn TileSet>;
-        terrain_buffer.write().add_tile_set(t2_tile_set);
+        t2_tile_set.add_t2(&t2, &mut gpu.write());
     }
+    terrain_buffer
+        .write()
+        .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);
     println!("Loading scene took: {:?}", start.elapsed());
 
     /*
