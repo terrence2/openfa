@@ -28,13 +28,11 @@ members = [
     "libs/jt",
     "libs/lay",
     "libs/lib",
-    "libs/lzss",
     "libs/mm",
     "libs/mnu",
     "libs/nt",
     "libs/ot",
     "libs/peff",
-    "libs/pkware",
     "libs/pt",
     "libs/render-wgpu/buffer/font_fnt",
     "libs/render-wgpu/buffer/shape_chunk",
@@ -48,6 +46,9 @@ members = [
     "libs/t2",
     "libs/wgpu-render/ofa_groups",
     "libs/xt",
+
+    "libs/util/lzss",
+    "libs/util/pkware",
 ]
 
 # Emit debugging symbols for tracing
