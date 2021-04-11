@@ -10,5 +10,5 @@ structopt = "^ 0.2"
 simplelog = "^ 0.5"
 i386 = { path = "../../libs/util/i386" }
 lib = { path = "../../libs/asset/lib" }
-reverse = { path = "../../libs/reverse" }
+reverse = { path = "../../libs/util/reverse" }
 sh = { path = "../../libs/asset/sh" }

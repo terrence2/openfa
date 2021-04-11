@@ -16,7 +16,7 @@
 #include <nitrogen/wgpu-buffer/shader_shared/include/buffer_helpers.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/terrain.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/layout_accumulate.glsl>
-#include <render-wgpu/buffer/t2_tile_set/include/t2_tile_set.glsl>
+#include <wgpu-buffer/t2_tile_set/include/t2_tile_set.glsl>
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 

@@ -9,4 +9,4 @@ anyhow = "^ 1"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
 lib = { path = "../../libs/asset/lib" }
-xt = { path = "../../libs/xt" }
+xt = { path = "../../libs/asset/xt" }

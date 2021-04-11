@@ -19,37 +19,40 @@ members = [
     # "apps/show-mm",
     # "apps/show-sh",
 
-    "libs/asset/pal",
-    "libs/asset/pic",
-    "libs/asset/fnt",
-    "libs/asset/lay",
-    "libs/asset/sh",
     "libs/asset/dlg",
+    "libs/asset/fnt",
     "libs/asset/jt",
+    "libs/asset/lay",
     "libs/asset/lib",
     "libs/asset/mm",
     "libs/asset/mnu",
     "libs/asset/nt",
     "libs/asset/ot",
+    "libs/asset/pal",
+    "libs/asset/pic",
     "libs/asset/pt",
+    "libs/asset/sh",
     "libs/asset/t2",
+    "libs/asset/xt",
 
     "libs/galaxy",
-    "libs/render-wgpu/buffer/font_fnt",
-    "libs/render-wgpu/buffer/shape_chunk",
-    "libs/render-wgpu/buffer/shape_instance",
-    "libs/render-wgpu/buffer/t2_buffer",
-    "libs/render-wgpu/buffer/t2_tile_set",
+
     "libs/render-wgpu/render_pass/shape",
-    "libs/render-wgpu/render_pass/t2_terrain",
-    "libs/reverse",
-    "libs/wgpu-render/ofa_groups",
-    "libs/xt",
+
+    "libs/wgpu-buffer/font_fnt",
+    "libs/wgpu-buffer/shape_chunk",
+    "libs/wgpu-buffer/shape_instance",
+    "libs/wgpu-buffer/t2_tile_set",
+    "libs/wgpu-buffer/ofa_groups",
+
+    # "libs/legacy/t2_buffer",
+    # "libs/legacy/t2_terrain",
 
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
     "libs/util/pkware",
+    "libs/util/reverse",
 ]
 
 # Emit debugging symbols for tracing
@@ -94,10 +97,6 @@ nitrous_injector = { path = "libs/nitrogen/system/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
 physical_constants = { path = "libs/nitrogen/sim/physical_constants" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
-shape_instance = { path = "libs/render-wgpu/buffer/shape_instance" }
-t2_tile_set = { path = "libs/render-wgpu/buffer/t2_tile_set" }
-t2_buffer = { path = "libs/render-wgpu/buffer/t2_buffer" }
-t2_terrain = { path = "libs/render-wgpu/render_pass/t2_terrain" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 universe = { path = "libs/nitrogen/sim/universe" }
@@ -109,5 +108,7 @@ lib = { path = "libs/asset/lib" }
 mm = { path = "libs/asset/mm" }
 pal = { path = "libs/asset/pal" }
 shape = { path = "libs/render-wgpu/render_pass/shape" }
+shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
 t2 = { path = "libs/asset/t2" }
-xt = { path = "libs/xt" }
+t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
+xt = { path = "libs/asset/xt" }

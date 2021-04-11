@@ -15,7 +15,7 @@ zerocopy = "^ 0.3"
 ansi = { path = "../../nitrogen/system/ansi" }
 i386 = { path = "../../util/i386" }
 peff = { path = "../../util/peff" }
-reverse = { path = "../../reverse" }
+reverse = { path = "../../util/reverse" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"

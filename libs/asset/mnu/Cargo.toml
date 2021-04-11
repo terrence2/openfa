@@ -8,7 +8,7 @@ edition = "2018"
 anyhow = "^ 1"
 ansi = { path = "../../nitrogen/system/ansi" }
 peff = { path = "../../util/peff" }
-reverse = { path = "../../reverse" }
+reverse = { path = "../../util/reverse" }
 
 [dev-dependencies]
 lib = { path = "../../asset/lib" }

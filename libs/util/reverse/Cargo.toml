@@ -6,5 +6,5 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = "^ 1"
-ansi = { path = "../nitrogen/system/ansi/" }
-peff = { path = "../util/peff/" }
+ansi = { path = "../../nitrogen/system/ansi/" }
+peff = { path = "../../util/peff/" }

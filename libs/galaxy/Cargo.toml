@@ -12,8 +12,8 @@ lib = { path = "../asset/lib" }
 pal = { path = "../asset/pal" }
 catalog = { path = "../nitrogen/system/catalog" }
 physical_constants = { path = "../nitrogen/sim/physical_constants" }
-shape_chunk = { path = "../render-wgpu/buffer/shape_chunk" }
-shape_instance = { path = "../render-wgpu/buffer/shape_instance" }
+shape_chunk = { path = "../wgpu-buffer/shape_chunk" }
+shape_instance = { path = "../wgpu-buffer/shape_instance" }
 universe = { path = "../nitrogen/sim/universe" }
 
 [dev-dependencies]

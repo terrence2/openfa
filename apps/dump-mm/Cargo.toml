@@ -10,4 +10,4 @@ env_logger = "^ 0.8"
 structopt = "^ 0.2"
 lib = { path = "../../libs/asset/lib" }
 mm = { path = "../../libs/asset/mm" }
-xt = { path = "../../libs/xt" }
+xt = { path = "../../libs/asset/xt" }
