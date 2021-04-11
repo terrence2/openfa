@@ -74,10 +74,10 @@ fn main() -> Result<()> {
                 .take(1 + game.len() + meta.name().len())
                 .collect::<String>()
         );
-        println!("format: {:?}", image.format);
-        println!("width:  {}px", image.width);
-        println!("height: {}px", image.height);
-        if let Some(pal) = image.palette {
+        println!("format: {:?}", image.format());
+        println!("width:  {}px", image.width());
+        println!("height: {}px", image.height());
+        if let Some(pal) = image.palette() {
             println!("colors: {:?}", pal.color_count);
 
             if let Some(ref path) = opt.show_palette {

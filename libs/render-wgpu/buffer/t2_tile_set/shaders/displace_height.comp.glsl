@@ -21,9 +21,9 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) buffer Vertices { TerrainVertex vertices[]; };
 
-layout(set = 1, binding = 0) uniform texture2D height_texture;
-layout(set = 1, binding = 1) uniform sampler height_sampler;
-layout(set = 1, binding = 2) uniform T2TerrainInfo { T2Info t2_info; };
+layout(set = 1, binding = 0) uniform T2TerrainInfo { T2Info t2_info; };
+layout(set = 1, binding = 1) uniform texture2D height_texture;
+layout(set = 1, binding = 2) uniform sampler height_sampler;
 
 void
 main()

@@ -19,15 +19,15 @@ use zerocopy::{AsBytes, FromBytes};
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Default, Debug)]
 pub struct T2Info {
-    tile_base_as: [f32; 2],
-    tile_extent_as: [f32; 2],
+    tile_base_rad: [f32; 2],
+    tile_extent_rad: [f32; 2],
 }
 
 impl T2Info {
-    pub fn new(tile_base_as: [f32; 2], tile_extent_as: [f32; 2]) -> Self {
+    pub fn new(tile_base_rad: [f32; 2], tile_extent_rad: [f32; 2]) -> Self {
         Self {
-            tile_base_as,
-            tile_extent_as,
+            tile_base_rad,
+            tile_extent_rad,
         }
     }
 

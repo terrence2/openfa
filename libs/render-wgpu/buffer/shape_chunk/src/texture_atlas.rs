@@ -44,11 +44,11 @@ impl Frame {
                 t: offset[1] as f32 / ATLAS_HEIGHT as f32,
             },
             coord1: TexCoord {
-                s: (offset[0] + pic.width) as f32 / ATLAS_WIDTH as f32,
-                t: (offset[1] + pic.height) as f32 / ATLAS_HEIGHT as f32,
+                s: (offset[0] + pic.width()) as f32 / ATLAS_WIDTH as f32,
+                t: (offset[1] + pic.height()) as f32 / ATLAS_HEIGHT as f32,
             },
-            width: pic.width as f32,
-            height: pic.height as f32,
+            width: pic.width() as f32,
+            height: pic.height() as f32,
         }
     }
 
@@ -117,11 +117,11 @@ impl MegaAtlas {
         }
 
         ensure!(
-            pic.width == 256,
-            format!("non-standard image width: {}", pic.width)
+            pic.width() == 256,
+            format!("non-standard image width: {}", pic.width())
         );
-        ensure!(pic.height + 2 < ATLAS_HEIGHT as u32, "source too tall");
-        let (layer, column) = if let Some(first_fit) = self.find_first_fit(pic.height as usize) {
+        ensure!(pic.height() + 2 < ATLAS_HEIGHT as u32, "source too tall");
+        let (layer, column) = if let Some(first_fit) = self.find_first_fit(pic.height() as usize) {
             first_fit
         } else {
             self.images.push(vec![0; ATLAS_PLANE_SIZE]);
@@ -140,7 +140,7 @@ impl MegaAtlas {
         // FIXME: fill in border with a copy of the other side.
 
         // Update the utilization.
-        self.utilization[layer][column] = (offset[1] + pic.height + 1) as usize;
+        self.utilization[layer][column] = (offset[1] + pic.height() + 1) as usize;
 
         // Build the frame.
         self.frames.insert(name.to_owned(), Frame::new(offset, pic));

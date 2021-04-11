@@ -228,7 +228,7 @@ impl Terrain {
         Self::from_bite1(data)
     }
 
-    /// Returns lat/lon as f32.
+    /// Returns best guess lat/lon at south-west corner in degrees as f32.
     pub fn base_graticule_degrees(&self) -> [f32; 2] {
         MAP_POSITIONS.get(self.name()).cloned().unwrap_or([0f32; 2])
     }

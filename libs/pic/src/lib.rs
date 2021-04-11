@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{bail, ensure, Result};
-use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer};
+use image::{DynamicImage, GenericImage, GenericImageView, RgbaImage};
 use packed_struct::packed_struct;
 use pal::Palette;
-use std::{borrow::Cow, mem};
+use std::{borrow::Cow, mem, ops::Range};
 
 packed_struct!(Header {
     _0 => format: u16,
@@ -39,7 +39,7 @@ packed_struct!(Span {
     _index => index: u32 as usize
 });
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PicFormat {
     Format0,
     Format1,
@@ -58,15 +58,20 @@ impl PicFormat {
 }
 
 pub struct Pic {
-    pub format: PicFormat,
-    pub width: u32,
-    pub height: u32,
-    pub palette: Option<Palette>,
-    pub pixels_offset: usize,
-    pub pixels_size: usize,
+    format: PicFormat,
+    width: u32,
+    height: u32,
+    palette: Option<Palette>,
+    pixels_offset: usize,
+    pixels_size: usize,
 }
 
 impl Pic {
+    pub fn read_format(data: &[u8]) -> Result<PicFormat> {
+        let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
+        PicFormat::from_word(header.format())
+    }
+
     /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
     pub fn from_bytes(data: &[u8]) -> Result<Pic> {
         let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
@@ -109,22 +114,22 @@ impl Pic {
             PicFormat::JPEG => image::load_from_memory(data)?,
             PicFormat::Format0 => {
                 let palette = Self::make_palette(header, data, palette)?;
-                Self::decode_format0(
+                DynamicImage::ImageRgba8(Self::decode_format0(
                     header.width(),
                     header.height(),
                     &palette,
                     &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
-                )?
+                ))
             }
             PicFormat::Format1 => {
                 let palette = Self::make_palette(header, data, palette)?;
-                Self::decode_format1(
+                DynamicImage::ImageRgba8(Self::decode_format1(
                     header.width(),
                     header.height(),
                     &palette,
                     &data[header.spans_offset()..header.spans_offset() + header.spans_size()],
                     &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
-                )?
+                )?)
             }
         })
     }
@@ -187,6 +192,26 @@ impl Pic {
         Ok(())
     }
 
+    pub fn format(&self) -> PicFormat {
+        self.format
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn pixel_span(&self) -> Range<usize> {
+        self.pixels_offset..self.pixels_offset + self.pixels_size
+    }
+
+    pub fn palette(&self) -> Option<&Palette> {
+        self.palette.as_ref()
+    }
+
     fn make_palette<'a>(
         header: &'a Header,
         data: &'a [u8],
@@ -204,22 +229,17 @@ impl Pic {
         Ok(Cow::from(palette))
     }
 
-    fn decode_format0(
-        width: u32,
-        height: u32,
-        palette: &Palette,
-        pixels: &[u8],
-    ) -> Result<DynamicImage> {
-        let mut imgbuf = ImageBuffer::new(width, height);
+    fn decode_format0(width: u32, height: u32, palette: &Palette, pixels: &[u8]) -> RgbaImage {
+        let mut imgbuf = RgbaImage::new(width, height);
         for (i, p) in imgbuf.pixels_mut().enumerate() {
             let pix = pixels[i] as usize;
-            let mut clr = palette.rgba(pix)?;
+            let mut clr = palette.rgba(pix);
             if pix == 0xFF {
                 clr[3] = 0x00;
             }
             *p = clr;
         }
-        Ok(DynamicImage::ImageRgba8(imgbuf))
+        imgbuf
     }
 
     fn decode_format0_into(
@@ -233,7 +253,7 @@ impl Pic {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
-            let mut clr = palette.rgba(pix)?;
+            let mut clr = palette.rgba(pix);
             if pix == 0xFF {
                 clr[3] = 0x00;
             }
@@ -253,7 +273,7 @@ impl Pic {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
-            let mut clr = palette.rgba(pix)?;
+            let mut clr = palette.rgba(pix);
             if pix == 0xFF {
                 clr[3] = 0x00;
             }
@@ -274,8 +294,8 @@ impl Pic {
         palette: &Palette,
         spans: &[u8],
         pixels: &[u8],
-    ) -> Result<DynamicImage> {
-        let mut imgbuf = ImageBuffer::new(width, height);
+    ) -> Result<RgbaImage> {
+        let mut imgbuf = RgbaImage::new(width, height);
         assert_eq!(spans.len() % mem::size_of::<Span>(), 0);
         let span_cnt = spans.len() / mem::size_of::<Span>() - 1;
         for i in 0..span_cnt {
@@ -292,12 +312,11 @@ impl Pic {
             for (j, column) in (span.start()..=span.end()).enumerate() {
                 let offset = span.index() + j;
                 let pix = pixels[offset] as usize;
-                let clr = palette.rgba(pix)?;
+                let clr = palette.rgba(pix);
                 imgbuf.put_pixel(column, span.row(), clr);
             }
         }
-        Ok(DynamicImage::ImageRgba8(imgbuf))
-        //Ok(RgbaImage::from(imgbuf))
+        Ok(imgbuf)
     }
 }
 

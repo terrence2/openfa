@@ -426,7 +426,7 @@ impl<'a> T2BufferFactory<'a> {
         }
         let normal = normal.normalize();
 
-        let mut color = palette.rgba(sample.color as usize).unwrap();
+        let mut color = palette.rgba(sample.color as usize);
         if sample.color == 0xFF {
             color[3] = 0;
         }

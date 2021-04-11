@@ -31,6 +31,7 @@ use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
+use pal::Palette;
 use parking_lot::RwLock;
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
@@ -187,7 +188,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
     let orrery = Orrery::new(
-        Utc.ymd(1964, 2, 24).and_hms(12, 0, 0),
+        Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
         &mut interpreter.write(),
     );
     let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter.write());
@@ -280,17 +281,27 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
+    let mut tracker = Default::default();
     let mut t2_tile_set =
         T2HeightTileSet::new(&terrain_buffer.read(), &globals.read(), &gpu.read())?;
     let start = Instant::now();
     let type_manager = TypeManager::empty();
     for mm_fid in &input_fids {
+        let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
         let t2_data = catalog.read_name_sync(mm.t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
-        t2_tile_set.add_t2(&t2, &mut gpu.write());
+        t2_tile_set.add_map(
+            &system_palette,
+            &mm,
+            &t2,
+            &catalog,
+            &mut gpu.write(),
+            &async_rt,
+            &mut tracker,
+        )?;
     }
     terrain_buffer
         .write()
@@ -304,10 +315,10 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    // everest: 27.9880704,86.9245623
+    // London: 51.5,-0.1
     arcball.write().set_target(Graticule::<GeoSurface>::new(
-        degrees!(27.9880704),
-        degrees!(-86.9245623), // FIXME: wat?
+        degrees!(51.5),
+        degrees!(-0.1),
         meters!(8000.),
     ));
     arcball.write().set_eye_relative(Graticule::<Target>::new(
@@ -315,6 +326,17 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         degrees!(869.5),
         meters!(67668.5053),
     ))?;
+    // everest: 27.9880704,86.9245623
+    // arcball.write().set_target(Graticule::<GeoSurface>::new(
+    //     degrees!(27.9880704),
+    //     degrees!(-86.9245623), // FIXME: wat?
+    //     meters!(8000.),
+    // ));
+    // arcball.write().set_eye_relative(Graticule::<Target>::new(
+    //     degrees!(11.5),
+    //     degrees!(869.5),
+    //     meters!(67668.5053),
+    // ))?;
     // ISS: 408km up
     // arcball.write().set_target(Graticule::<GeoSurface>::new(
     //     degrees!(27.9880704),

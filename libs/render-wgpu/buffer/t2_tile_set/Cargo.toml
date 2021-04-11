@@ -6,17 +6,26 @@ edition = "2018"
 
 [dependencies]
 anyhow = "^ 1"
+image = "^ 0.23"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
+absolute_unit = { path = "../../../nitrogen/sim/absolute_unit" }
+atlas = { path = "../../../nitrogen/wgpu-buffer/atlas" }
 catalog = { path = "../../../nitrogen/system/catalog" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
+lay = { path = "../../../lay" }
+mm = { path = "../../../mm" }
+pal = { path = "../../../pal" }
+pic = { path = "../../../pic" }
 shader_shared = { path = "../../../nitrogen/wgpu-buffer/shader_shared" }
 t2 = { path = "../../../t2" }
 terrain = { path = "../../../nitrogen/wgpu-buffer/terrain" }
+xt = { path = "../../../xt" }
 
 [dev-dependencies]
+env_logger = "^ 0.8"
 winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../../lib" }
 nitrous = { path = "../../../nitrogen/system/nitrous" }
