@@ -22,14 +22,13 @@ use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
 use gpu::wgpu::{BindGroup, ComputePass, Extent3d};
 use gpu::{Gpu, UploadTracker};
-use image::{GenericImage, Rgba, RgbaImage};
+use image::Rgba;
 use lay::Layer;
 use mm::{MissionMap, TLoc};
 use pal::Palette;
 use pic::{Pic, PicFormat};
 use shader_shared::Group;
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet},
     num::NonZeroU64,
     sync::Arc,
@@ -37,7 +36,6 @@ use std::{
 use t2::Terrain as T2Terrain;
 use terrain::{TerrainBuffer, TileSet, VisiblePatch};
 use tokio::{runtime::Runtime, sync::RwLock};
-use zerocopy::AsBytes;
 
 /*
 /// Upload Pic files direct from mmap to GPU and depalettize on GPU, when possible.
@@ -386,7 +384,7 @@ impl T2HeightTileSet {
             let pic = Pic::from_bytes(&data)?;
             ensure!(pic.format() == PicFormat::Format0);
             ensure!(pic.palette().is_none());
-            let palettized = &data[pic.pixel_span()];
+            let _palettized = &data[pic.pixel_span()];
             let pic = Pic::decode(&palette, &data)?;
             let frame = atlas_builder.push_image(&pic.into_rgba8(), gpu)?;
             frames.insert(loc, frame);
@@ -411,7 +409,7 @@ impl T2HeightTileSet {
 
         let (height_texture_view, height_sampler) = self._upload_heights(t2, gpu, tracker);
 
-        let (frames, (atlas_texture, atlas_texture_view, atlas_sampler)) =
+        let (_frames, (_atlas_texture, atlas_texture_view, atlas_sampler)) =
             self._build_atlas(system_palette, mm, catalog, gpu, async_rt, tracker)?;
 
         // Build an index texture. This is the size of the height map, with one sample per square
