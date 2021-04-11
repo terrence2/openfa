@@ -17,8 +17,8 @@ global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../lay" }
 mm = { path = "../../../mm" }
-pal = { path = "../../../pal" }
-pic = { path = "../../../pic" }
+pal = { path = "../../../asset/pal" }
+pic = { path = "../../../asset/pic" }
 shader_shared = { path = "../../../nitrogen/wgpu-buffer/shader_shared" }
 t2 = { path = "../../../t2" }
 terrain = { path = "../../../nitrogen/wgpu-buffer/terrain" }

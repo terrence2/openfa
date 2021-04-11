@@ -13,5 +13,5 @@ structopt = "^ 0.2"
 zerocopy = "^ 0.3"
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/lib" }
-pal = { path = "../../libs/pal" }
-pic = { path = "../../libs/pic" }
+pal = { path = "../../libs/asset/pal" }
+pic = { path = "../../libs/asset/pic" }

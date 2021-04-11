@@ -9,4 +9,4 @@ anyhow = "^ 1"
 image = "^ 0.23"
 structopt = "^ 0.2"
 lib = { path = "../../libs/lib" }
-pal = { path = "../../libs/pal" }
+pal = { path = "../../libs/asset/pal" }

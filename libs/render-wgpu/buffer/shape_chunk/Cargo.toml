@@ -18,8 +18,8 @@ animate = { path = "../../../nitrogen/sim/animate" }
 catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 i386 = { path = "../../../i386" }
-pal = { path = "../../../pal" }
-pic = { path = "../../../pic" }
+pal = { path = "../../../asset/pal" }
+pic = { path = "../../../asset/pic" }
 sh = { path = "../../../sh" }
 universe = { path = "../../../nitrogen/sim/universe" }
 

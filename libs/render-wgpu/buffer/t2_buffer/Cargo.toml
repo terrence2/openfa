@@ -16,9 +16,9 @@ catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../lay" }
 mm = { path = "../../../mm" }
-pal = { path = "../../../pal" }
+pal = { path = "../../../asset/pal" }
 physical_constants = { path = "../../../nitrogen/sim/physical_constants" }
-pic = { path = "../../../pic" }
+pic = { path = "../../../asset/pic" }
 t2 = { path = "../../../t2" }
 universe = { path = "../../../nitrogen/sim/universe" }
 

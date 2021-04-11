@@ -9,7 +9,7 @@ anyhow = "^ 1"
 legion = "^ 0.3"
 nalgebra = "^ 0.24"
 lib = { path = "../lib" }
-pal = { path = "../pal" }
+pal = { path = "../asset/pal" }
 catalog = { path = "../nitrogen/system/catalog" }
 physical_constants = { path = "../nitrogen/sim/physical_constants" }
 shape_chunk = { path = "../render-wgpu/buffer/shape_chunk" }

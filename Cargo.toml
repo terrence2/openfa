@@ -19,6 +19,8 @@ members = [
     # "apps/show-mm",
     # "apps/show-sh",
 
+    "libs/asset/pal",
+    "libs/asset/pic",
     "libs/dlg",
     "libs/fnt",
     "libs/galaxy",
@@ -31,9 +33,7 @@ members = [
     "libs/mnu",
     "libs/nt",
     "libs/ot",
-    "libs/pal",
     "libs/peff",
-    "libs/pic",
     "libs/pkware",
     "libs/pt",
     "libs/render-wgpu/buffer/font_fnt",
@@ -94,7 +94,7 @@ mm = { path = "libs/mm" }
 nitrous = { path = "libs/nitrogen/system/nitrous" }
 nitrous_injector = { path = "libs/nitrogen/system/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
-pal = { path = "libs/pal" }
+pal = { path = "libs/asset/pal" }
 physical_constants = { path = "libs/nitrogen/sim/physical_constants" }
 shape = { path = "libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "libs/render-wgpu/buffer/shape_instance" }
