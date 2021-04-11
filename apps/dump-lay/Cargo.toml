@@ -8,5 +8,5 @@ edition = "2018"
 anyhow = "^ 1"
 structopt = "^ 0.3"
 lib = { path = "../../libs/lib" }
-lay = { path = "../../libs/lay" }
+lay = { path = "../../libs/asset/lay" }
 pal = { path = "../../libs/asset/pal" }

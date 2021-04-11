@@ -17,10 +17,10 @@ zerocopy = "^ 0.3"
 animate = { path = "../../../nitrogen/sim/animate" }
 catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
-i386 = { path = "../../../i386" }
+i386 = { path = "../../../util/i386" }
 pal = { path = "../../../asset/pal" }
 pic = { path = "../../../asset/pic" }
-sh = { path = "../../../sh" }
+sh = { path = "../../../asset/sh" }
 universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]

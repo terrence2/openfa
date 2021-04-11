@@ -14,7 +14,7 @@ wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
 catalog = { path = "../../../nitrogen/system/catalog" }
 gpu = { path = "../../../nitrogen/system/gpu" }
-lay = { path = "../../../lay" }
+lay = { path = "../../../asset/lay" }
 mm = { path = "../../../mm" }
 pal = { path = "../../../asset/pal" }
 physical_constants = { path = "../../../nitrogen/sim/physical_constants" }

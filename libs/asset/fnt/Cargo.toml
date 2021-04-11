@@ -8,10 +8,10 @@ edition = "2018"
 codepage-437 = "^ 0.1.0"
 anyhow = "^ 1"
 image = "^ 0.23"
-ansi = { path = "../nitrogen/system/ansi" }
-i386 = { path = "../i386" }
-peff = { path = "../peff" }
-reverse = { path = "../reverse" }
+ansi = { path = "../../nitrogen/system/ansi" }
+i386 = { path = "../../util/i386" }
+peff = { path = "../../util/peff" }
+reverse = { path = "../../reverse" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../../lib" }

@@ -8,4 +8,4 @@ edition = "2018"
 anyhow = "^ 1"
 simplelog = "^ 0.5"
 structopt = "^ 0.2"
-i386 = { path = "../../libs/i386" }
+i386 = { path = "../../libs/util/i386" }

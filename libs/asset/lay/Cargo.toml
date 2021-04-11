@@ -9,9 +9,9 @@ bitflags = "^ 1"
 anyhow = "^ 1"
 md5 = "^ 0.3"
 zerocopy = "^ 0.3"
-packed_struct = { path = "../nitrogen/system/packed_struct" }
-pal = { path = "../asset/pal" }
-peff = { path = "../peff" }
+packed_struct = { path = "../../nitrogen/system/packed_struct" }
+pal = { path = "../../asset/pal" }
+peff = { path = "../../util/peff" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../../lib" }

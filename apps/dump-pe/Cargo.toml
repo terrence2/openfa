@@ -9,4 +9,4 @@ anyhow = "^ 1"
 structopt = "^ 0.2"
 ansi = { path = "../../libs/nitrogen/system/ansi" }
 lib = { path = "../../libs/lib" }
-peff = { path = "../../libs/peff" }
+peff = { path = "../../libs/util/peff" }

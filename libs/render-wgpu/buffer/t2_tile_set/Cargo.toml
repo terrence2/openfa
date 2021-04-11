@@ -15,7 +15,7 @@ atlas = { path = "../../../nitrogen/wgpu-buffer/atlas" }
 catalog = { path = "../../../nitrogen/system/catalog" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
-lay = { path = "../../../lay" }
+lay = { path = "../../../asset/lay" }
 mm = { path = "../../../mm" }
 pal = { path = "../../../asset/pal" }
 pic = { path = "../../../asset/pic" }

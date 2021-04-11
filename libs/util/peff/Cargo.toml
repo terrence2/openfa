@@ -1,13 +1,16 @@
 [package]
-name = "i386"
+name = "peff"
 version = "0.1.0"
 edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = "^ 1"
-lazy_static = "^ 1"
+bitflags = "^ 1"
 log = "^ 0.4"
 thiserror = "^ 1"
-ansi = { path = "../nitrogen/system/ansi" }
-reverse = { path = "../reverse" }
+zerocopy = "^ 0.3"
+packed_struct = { path = "../../nitrogen/system/packed_struct" }
+
+[dev-dependencies]
+lib = { path = "../../lib" }
