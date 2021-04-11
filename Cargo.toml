@@ -24,16 +24,17 @@ members = [
     "libs/asset/fnt",
     "libs/asset/lay",
     "libs/asset/sh",
+    "libs/asset/dlg",
+    "libs/asset/jt",
+    "libs/asset/lib",
+    "libs/asset/mm",
+    "libs/asset/mnu",
+    "libs/asset/nt",
+    "libs/asset/ot",
+    "libs/asset/pt",
+    "libs/asset/t2",
 
-    "libs/dlg",
     "libs/galaxy",
-    "libs/jt",
-    "libs/lib",
-    "libs/mm",
-    "libs/mnu",
-    "libs/nt",
-    "libs/ot",
-    "libs/pt",
     "libs/render-wgpu/buffer/font_fnt",
     "libs/render-wgpu/buffer/shape_chunk",
     "libs/render-wgpu/buffer/shape_instance",
@@ -42,7 +43,6 @@ members = [
     "libs/render-wgpu/render_pass/shape",
     "libs/render-wgpu/render_pass/t2_terrain",
     "libs/reverse",
-    "libs/t2",
     "libs/wgpu-render/ofa_groups",
     "libs/xt",
 
@@ -105,9 +105,9 @@ widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
 fnt = { path = "libs/asset/fnt" }
 galaxy = { path = "libs/galaxy" }
-lib = { path = "libs/lib" }
-mm = { path = "libs/mm" }
+lib = { path = "libs/asset/lib" }
+mm = { path = "libs/asset/mm" }
 pal = { path = "libs/asset/pal" }
 shape = { path = "libs/render-wgpu/render_pass/shape" }
-t2 = { path = "libs/t2" }
+t2 = { path = "libs/asset/t2" }
 xt = { path = "libs/xt" }

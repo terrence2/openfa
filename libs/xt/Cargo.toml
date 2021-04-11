@@ -8,8 +8,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 anyhow = "^ 1"
 log = "^ 0.4"
 catalog = { path = "../nitrogen/system/catalog" }
-jt = { path = "../jt" }
-lib = { path = "../lib" }
-nt = { path = "../nt" }
-ot = { path = "../ot" }
-pt = { path = "../pt" }
+jt = { path = "../asset/jt" }
+lib = { path = "../asset/lib" }
+nt = { path = "../asset/nt" }
+ot = { path = "../asset/ot" }
+pt = { path = "../asset/pt" }

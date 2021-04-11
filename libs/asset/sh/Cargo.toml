@@ -19,4 +19,4 @@ reverse = { path = "../../reverse" }
 
 [dev-dependencies]
 simplelog = "^ 0.5"
-lib = { path = "../../lib" }
+lib = { path = "../../asset/lib" }

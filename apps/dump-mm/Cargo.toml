@@ -8,6 +8,6 @@ edition = "2018"
 anyhow = "^ 1"
 env_logger = "^ 0.8"
 structopt = "^ 0.2"
-lib = { path = "../../libs/lib" }
-mm = { path = "../../libs/mm" }
+lib = { path = "../../libs/asset/lib" }
+mm = { path = "../../libs/asset/mm" }
 xt = { path = "../../libs/xt" }

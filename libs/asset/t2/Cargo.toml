@@ -10,8 +10,8 @@ image = "^ 0.23"
 lazy_static = "^ 1"
 log = "^ 0.4"
 zerocopy = "^ 0.3"
-packed_struct = { path = "../nitrogen/system/packed_struct" }
-reverse = { path = "../reverse/" }
+packed_struct = { path = "../../nitrogen/system/packed_struct" }
+reverse = { path = "../../reverse/" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../../asset/lib" }

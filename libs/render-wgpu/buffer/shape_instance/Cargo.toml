@@ -18,5 +18,5 @@ universe = { path = "../../../nitrogen/sim/universe" }
 
 [dev-dependencies]
 winit = { version = "^ 0.24", features = ["web-sys"] }
-lib = { path = "../../../lib" }
+lib = { path = "../../../asset/lib" }
 nitrous = { path = "../../../nitrogen/system/nitrous" }

@@ -8,7 +8,7 @@ edition = "2018"
 anyhow = "^ 1"
 legion = "^ 0.3"
 nalgebra = "^ 0.24"
-lib = { path = "../lib" }
+lib = { path = "../asset/lib" }
 pal = { path = "../asset/pal" }
 catalog = { path = "../nitrogen/system/catalog" }
 physical_constants = { path = "../nitrogen/sim/physical_constants" }
@@ -17,4 +17,4 @@ shape_instance = { path = "../render-wgpu/buffer/shape_instance" }
 universe = { path = "../nitrogen/sim/universe" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../asset/lib" }

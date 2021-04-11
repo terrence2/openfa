@@ -9,4 +9,4 @@ anyhow = "^ 1"
 humansize = ">= 1.0.1"
 structopt = "^ 0.2"
 catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/lib" }
+lib = { path = "../../libs/asset/lib" }

@@ -7,7 +7,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 anyhow = "^ 1"
 nalgebra = "^ 0.24"
-ot = { path = "../ot" }
+ot = { path = "../../asset/ot" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../../asset/lib" }

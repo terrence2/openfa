@@ -10,6 +10,6 @@ log = "^ 0.4"
 mint = "^ 0.5"
 nalgebra = "^ 0.24"
 num-traits = "^ 0.2"
-catalog = { path = "../nitrogen/system/catalog" }
-lib = { path = "../lib" }
-xt = { path = "../xt" }
+catalog = { path = "../../nitrogen/system/catalog" }
+lib = { path = "../../asset/lib" }
+xt = { path = "../../xt" }

@@ -1,13 +1,13 @@
 [package]
-name = "ot"
+name = "pt"
 version = "0.1.0"
 edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-bitflags = "^ 1"
 anyhow = "^ 1"
-nalgebra = "^ 0.24"
+nt = { path = "../../asset/nt" }
+ot = { path = "../../asset/ot" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../../asset/lib" }

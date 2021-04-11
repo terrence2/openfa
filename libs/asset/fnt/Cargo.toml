@@ -14,4 +14,4 @@ peff = { path = "../../util/peff" }
 reverse = { path = "../../reverse" }
 
 [dev-dependencies]
-lib = { path = "../../lib" }
+lib = { path = "../../asset/lib" }

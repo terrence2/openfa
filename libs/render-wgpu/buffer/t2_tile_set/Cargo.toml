@@ -16,18 +16,18 @@ catalog = { path = "../../../nitrogen/system/catalog" }
 global_data = { path = "../../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../asset/lay" }
-mm = { path = "../../../mm" }
+mm = { path = "../../../asset/mm" }
 pal = { path = "../../../asset/pal" }
 pic = { path = "../../../asset/pic" }
 shader_shared = { path = "../../../nitrogen/wgpu-buffer/shader_shared" }
-t2 = { path = "../../../t2" }
+t2 = { path = "../../../asset/t2" }
 terrain = { path = "../../../nitrogen/wgpu-buffer/terrain" }
 xt = { path = "../../../xt" }
 
 [dev-dependencies]
 env_logger = "^ 0.8"
 winit = { version = "^ 0.24", features = ["web-sys"] }
-lib = { path = "../../../lib" }
+lib = { path = "../../../asset/lib" }
 nitrous = { path = "../../../nitrogen/system/nitrous" }
 
 [build-dependencies]

@@ -14,4 +14,4 @@ pal = { path = "../../asset/pal" }
 peff = { path = "../../util/peff" }
 
 [dev-dependencies]
-lib = { path = "../../lib" }
+lib = { path = "../../asset/lib" }

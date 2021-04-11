@@ -13,4 +13,4 @@ zerocopy = "^ 0.3"
 packed_struct = { path = "../../nitrogen/system/packed_struct" }
 
 [dev-dependencies]
-lib = { path = "../../lib" }
+lib = { path = "../../asset/lib" }
