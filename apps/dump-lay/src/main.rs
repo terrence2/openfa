@@ -32,7 +32,7 @@ fn main() -> Result<()> {
     for &fid in &inputs {
         let label = catalog.file_label(fid)?;
         let game = label.split(':').last().unwrap();
-        let name = catalog.stat_sync(fid)?.name;
+        let name = catalog.stat_sync(fid)?.name().to_owned();
         fs::create_dir_all(&format!("dump/lay-pal/{}-{}", game, name))?;
 
         let system_palette_data = catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?;

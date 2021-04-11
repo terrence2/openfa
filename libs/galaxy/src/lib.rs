@@ -15,8 +15,8 @@
 //pub use legion::{entity::Entity, world::EntityStore};
 pub use universe::component::{Rotation, Scale, Transform};
 
-use catalog::Catalog;
 use anyhow::Result;
+use catalog::Catalog;
 use legion::*;
 use nalgebra::{Point3, UnitQuaternion};
 use pal::Palette;
@@ -175,10 +175,10 @@ mod test {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             //let _universe = Galaxy::new(omni.library("FA"))?;
         }

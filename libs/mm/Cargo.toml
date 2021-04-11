@@ -6,6 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = "^ 1"
+log = "^ 0.4"
 mint = "^ 0.5"
 nalgebra = "^ 0.24"
 num-traits = "^ 0.2"

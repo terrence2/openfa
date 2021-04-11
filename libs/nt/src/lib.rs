@@ -120,14 +120,14 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let contents = from_dos_string(catalog.read_sync(fid)?);
             let nt = NpcType::from_text(&contents)?;
-            assert_eq!(nt.ot.file_name(), meta.name);
+            assert_eq!(nt.ot.file_name(), meta.name());
         }
 
         Ok(())

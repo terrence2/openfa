@@ -47,7 +47,7 @@ impl ShapeChunkBuffer {
         })
     }
 
-    pub fn finish_open_chunks(&mut self, gpu: &mut gpu::GPU) -> Result<()> {
+    pub fn finish_open_chunks(&mut self, gpu: &mut gpu::Gpu) -> Result<()> {
         let keys = self.open_chunks.keys().cloned().collect::<Vec<_>>();
         for chunk_flags in &keys {
             self.finish_open_chunk(*chunk_flags, gpu)?;
@@ -55,7 +55,7 @@ impl ShapeChunkBuffer {
         Ok(())
     }
 
-    pub fn finish_open_chunk(&mut self, chunk_flags: ChunkFlags, gpu: &mut gpu::GPU) -> Result<()> {
+    pub fn finish_open_chunk(&mut self, chunk_flags: ChunkFlags, gpu: &mut gpu::Gpu) -> Result<()> {
         let open_chunk = self.open_chunks.remove(&chunk_flags).expect("a chunk");
         if open_chunk.chunk_is_empty() {
             return Ok(());
@@ -71,7 +71,7 @@ impl ShapeChunkBuffer {
         selection: DrawSelection,
         palette: &Palette,
         catalog: &Catalog,
-        gpu: &mut gpu::GPU,
+        gpu: &mut gpu::Gpu,
     ) -> Result<(ChunkId, ShapeId)> {
         if let Some(&shape_id) = self.name_to_shape_map.get(name) {
             let chunk_id = self.shape_to_chunk_map[&shape_id];
@@ -86,11 +86,11 @@ impl ShapeChunkBuffer {
             if chunk.chunk_is_full() {
                 self.finish_open_chunk(chunk_flags, gpu)?;
                 self.open_chunks
-                    .insert(chunk_flags, OpenChunk::new(chunk_flags)?);
+                    .insert(chunk_flags, OpenChunk::new(chunk_flags));
             }
         } else {
             self.open_chunks
-                .insert(chunk_flags, OpenChunk::new(chunk_flags)?);
+                .insert(chunk_flags, OpenChunk::new(chunk_flags));
         }
         let chunk_id = self.open_chunks[&chunk_flags].chunk_id();
 

@@ -15,8 +15,8 @@
 use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use fnt::Fnt;
-use font_common::FontInterface;
-use gpu::GPU;
+use font_common::{FontAdvance, FontInterface};
+use gpu::Gpu;
 use i386::{Interpreter, Reg};
 use image::{GenericImage, GenericImageView, GrayImage, Luma};
 use lazy_static::lazy_static;
@@ -62,6 +62,10 @@ impl FontInterface for FntFont {
         self.height as f32
     }
 
+    fn advance_style(&self) -> FontAdvance {
+        FontAdvance::Mono
+    }
+
     // vertical metrics
     fn ascent(&self, scale: f32) -> f32 {
         self.height as f32 / self.units_per_em() * scale
@@ -100,7 +104,7 @@ impl FontInterface for FntFont {
     }
 
     fn pixel_bounding_box(&self, c: char, scale: f32) -> ((i32, i32), (i32, i32)) {
-        if let Some(_) = self.glyph_frames.get(&c) {
+        if self.glyph_frames.contains_key(&c) {
             let ascent = self.ascent(scale);
             let advance = self.advance_width(c, scale);
             ((0, 0), (advance.round() as i32, ascent.round() as i32))
@@ -137,7 +141,7 @@ impl FntFont {
             }
             width += fnt.glyphs[&glyph_index].width;
         }
-        width = GPU::stride_for_row_size(width as u32) as i32;
+        width = Gpu::stride_for_row_size(width as u32) as i32;
 
         let buf = GrayImage::from_pixel(width as u32, fnt.height as u32, Luma([0]));
 

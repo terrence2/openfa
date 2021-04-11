@@ -37,14 +37,14 @@ fn main() -> Result<()> {
         println!(
             "At: {}:{:13} @ {}",
             game,
-            meta.name,
-            meta.path
+            meta.name(),
+            meta.path()
+                .map(|v| v.to_string_lossy())
                 .unwrap_or_else(|| "<none>".into())
-                .to_string_lossy()
         );
         let type_manager = TypeManager::empty();
         catalog.set_default_label(&label);
-        let xt = type_manager.load(&meta.name, &catalog)?;
+        let xt = type_manager.load(&meta.name(), &catalog)?;
 
         let ot = &xt.ot();
         println!("{:>25}", "ObjectType");

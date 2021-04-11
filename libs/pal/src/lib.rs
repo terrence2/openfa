@@ -72,14 +72,14 @@ impl Palette {
         self.entries.iter()
     }
 
-    pub fn rgba(&self, index: usize) -> Result<Rgba<u8>> {
-        ensure!(index < self.entries.len(), "index outside of palette");
-        Ok(Rgba([
+    #[inline]
+    pub fn rgba(&self, index: usize) -> Rgba<u8> {
+        Rgba([
             self.entries[index][0],
             self.entries[index][1],
             self.entries[index][2],
             255,
-        ]))
+        ])
     }
 
     pub fn rgba_f32(&self, index: usize) -> Result<[f32; 4]> {
@@ -92,6 +92,7 @@ impl Palette {
         ])
     }
 
+    #[inline]
     pub fn rgb(&self, index: usize) -> Result<Rgb<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
         Ok(self.entries[index])

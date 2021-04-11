@@ -67,17 +67,17 @@ fn main() -> Result<()> {
         let content = catalog.read_sync(fid)?;
         let image = Pic::from_bytes(&content)?;
 
-        println!("{}:{}", game, meta.name);
+        println!("{}:{}", game, meta.name());
         println!(
             "{}",
             iter::repeat("=")
-                .take(1 + game.len() + meta.name.len())
+                .take(1 + game.len() + meta.name().len())
                 .collect::<String>()
         );
-        println!("format: {:?}", image.format);
-        println!("width:  {}px", image.width);
-        println!("height: {}px", image.height);
-        if let Some(pal) = image.palette {
+        println!("format: {:?}", image.format());
+        println!("width:  {}px", image.width());
+        println!("height: {}px", image.height());
+        if let Some(pal) = image.palette() {
             println!("colors: {:?}", pal.color_count);
 
             if let Some(ref path) = opt.show_palette {

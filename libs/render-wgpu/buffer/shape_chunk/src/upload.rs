@@ -28,7 +28,6 @@ use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
     collections::{HashMap, HashSet},
-    f32::{INFINITY, NEG_INFINITY},
     mem,
     sync::{Arc, RwLock},
     time::Instant,
@@ -712,8 +711,8 @@ impl<'a> ShapeUploader<'a> {
             name,
             palette,
             catalog,
-            aabb_min: [INFINITY; 3],
-            aabb_max: [NEG_INFINITY; 3],
+            aabb_min: [f32::INFINITY; 3],
+            aabb_max: [f32::NEG_INFINITY; 3],
             vert_pool: Vec::new(),
             vertices: Vec::new(),
             active_frame: None,

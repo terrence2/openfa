@@ -15,7 +15,7 @@
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
 use global_data::GlobalParametersBuffer;
-use gpu::GPU;
+use gpu::Gpu;
 use ofa_groups::Group as LocalGroup;
 use shader_shared::Group;
 use shape_chunk::Vertex;
@@ -27,7 +27,7 @@ pub struct ShapeRenderPass {
 
 impl ShapeRenderPass {
     pub fn new(
-        gpu: &GPU,
+        gpu: &Gpu,
         globals_buffer: &GlobalParametersBuffer,
         atmosphere_buffer: &AtmosphereBuffer,
         inst_man: &ShapeInstanceBuffer,
@@ -64,7 +64,7 @@ impl ShapeRenderPass {
                     module: &frag_shader,
                     entry_point: "main",
                     targets: &[wgpu::ColorTargetState {
-                        format: GPU::SCREEN_FORMAT,
+                        format: Gpu::SCREEN_FORMAT,
                         color_blend: wgpu::BlendState::REPLACE,
                         alpha_blend: wgpu::BlendState::REPLACE,
                         write_mask: wgpu::ColorWrite::ALL,
@@ -78,7 +78,7 @@ impl ShapeRenderPass {
                     polygon_mode: wgpu::PolygonMode::Fill,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: GPU::DEPTH_FORMAT,
+                    format: Gpu::DEPTH_FORMAT,
                     depth_write_enabled: true,
                     // FIXME: do we need to swap this for inverted depth?
                     depth_compare: wgpu::CompareFunction::Less,
@@ -158,7 +158,7 @@ mod tests {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
         let atmosphere_buffer = AtmosphereBuffer::new(false, &mut gpu.write())?;
         let globals_buffer =
             GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());

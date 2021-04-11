@@ -27,7 +27,7 @@ pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 mod test {
     use super::*;
     use anyhow::Result;
-    use gpu::GPU;
+    use gpu::Gpu;
     use lib::CatalogBuilder;
     use log::trace;
     use nitrous::Interpreter;
@@ -42,7 +42,7 @@ mod test {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -81,16 +81,16 @@ mod test {
                 println!(
                     "At: {}:{:13} @ {}",
                     game,
-                    meta.name,
-                    meta.path
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
                         .unwrap_or_else(|| "<none>".into())
-                        .to_string_lossy()
                 );
-                if skipped.contains(&meta.name.as_str()) {
+                if skipped.contains(&meta.name()) {
                     continue;
                 }
                 let (_chunk_id, shape_id) = chunk_man.upload_shape(
-                    &meta.name,
+                    meta.name(),
                     DrawSelection::NormalModel,
                     &palette,
                     &catalog,

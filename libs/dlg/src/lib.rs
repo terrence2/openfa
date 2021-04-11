@@ -17,6 +17,7 @@
 
 use ansi::ansi;
 use anyhow::{bail, ensure, Result};
+use byteorder::{ByteOrder, LittleEndian};
 use packed_struct::packed_struct;
 use peff::PE;
 use reverse::bs2s;
@@ -363,8 +364,9 @@ impl Dialog {
         let mut targets = HashSet::new();
         for reloc in &pe.relocs {
             let r = *reloc as usize;
-            let dwords: &[u32] = unsafe { mem::transmute(&pe.code[r..]) };
-            let ptr = dwords[0]
+            ensure!(r + 4 < pe.code.len());
+            let raw = LittleEndian::read_u32(&pe.code[r..r + 4]);
+            let ptr = raw
                 .saturating_sub(pe.code_vaddr)
                 .saturating_sub(pe.image_base);
             if trampolines.contains_key(&ptr) {
@@ -490,16 +492,16 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
 
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
-            Dialog::explore(&meta.name, &catalog.read_sync(fid)?)?;
+            Dialog::explore(&meta.name(), &catalog.read_sync(fid)?)?;
             let _dlg = Dialog::from_bytes(&catalog.read_sync(fid)?)?;
         }
 

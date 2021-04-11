@@ -16,29 +16,35 @@ use absolute_unit::{degrees, meters};
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
-use catalog::{Catalog, DirectoryDrawer};
+use catalog::DirectoryDrawer;
 use chrono::{TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fullscreen::FullscreenBuffer;
 use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, GPU};
+use gpu::{make_frame_graph, Gpu};
 use input::{InputController, InputSystem};
 use legion::world::World;
+use lib::{from_dos_string, CatalogBuilder};
+use mm::MissionMap;
 use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
+use pal::Palette;
 use parking_lot::RwLock;
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use terrain_geo::{CpuDetailLevel, GpuDetailLevel, TerrainGeoBuffer};
+use t2::Terrain as T2Terrain;
+use t2_tile_set::T2HeightTileSet;
+use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
-use widget::{Color, EventMapper, Label, PositionH, PositionV, Terminal, WidgetBuffer};
+use widget::{Color, Label, PositionH, PositionV, Terminal, WidgetBuffer};
 use winit::window::Window;
 use world::WorldRenderPass;
+use xt::TypeManager;
 
 /// Show the contents of an MM file
 #[derive(Debug, StructOpt)]
@@ -50,46 +56,40 @@ struct Opt {
     /// Regenerate instead of loading cached items on startup
     #[structopt(long = "no-cache")]
     no_cache: bool,
+
+    /// The map file to view
+    #[structopt(name = "NAME", last = true)]
+    map_names: Vec<String>,
 }
 
 #[derive(Debug, NitrousModule)]
-struct Demo {
+struct OFA {
     exit: bool,
     pin_camera: bool,
-    show_terminal: bool,
     camera: Camera,
-    widgets: Arc<RwLock<WidgetBuffer>>,
-    terminal: Arc<RwLock<Terminal>>,
 }
 
 #[inject_nitrous_module]
-impl Demo {
-    pub fn new(
-        widgets: Arc<RwLock<WidgetBuffer>>,
-        terminal: Arc<RwLock<Terminal>>,
-        interpreter: &mut Interpreter,
-    ) -> Arc<RwLock<Self>> {
-        let demo = Arc::new(RwLock::new(Self {
+impl OFA {
+    pub fn new(interpreter: &mut Interpreter) -> Arc<RwLock<Self>> {
+        let ofa = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
-            show_terminal: false,
             camera: Default::default(),
-            widgets,
-            terminal,
         }));
-        interpreter.put_global("demo", Value::Module(demo.clone()));
-        demo
+        interpreter.put_global("system", Value::Module(ofa.clone()));
+        ofa
     }
 
     pub fn add_default_bindings(&mut self, interpreter: &mut Interpreter) -> Result<()> {
         interpreter.interpret_once(
             r#"
-                let bindings := mapper.create_bindings("demo");
-                bindings.bind("quit", "demo.exit()");
-                bindings.bind("Escape", "demo.exit()");
-                bindings.bind("q", "demo.exit()");
-                bindings.bind("p", "demo.toggle_pin_camera(pressed)");
-                bindings.bind("Shift+Grave", "demo.toggle_terminal(pressed)");
+                let bindings := mapper.create_bindings("system");
+                bindings.bind("quit", "system.exit()");
+                bindings.bind("Escape", "system.exit()");
+                bindings.bind("q", "system.exit()");
+                bindings.bind("p", "system.toggle_pin_camera(pressed)");
+                bindings.bind("l", "widget.dump_glyphs(pressed)");
             "#,
         )?;
         Ok(())
@@ -103,8 +103,6 @@ impl Demo {
     #[method]
     pub fn toggle_pin_camera(&mut self, pressed: bool) {
         if pressed {
-            // println!("eye_rel: {}", arcball.read().get_eye_relative());
-            // println!("target:  {}", arcball.read().get_target());
             self.pin_camera = !self.pin_camera;
         }
     }
@@ -115,29 +113,6 @@ impl Demo {
         }
         &self.camera
     }
-
-    #[method]
-    pub fn toggle_terminal(&mut self, pressed: bool) -> Result<()> {
-        if pressed {
-            self.show_terminal = !self.show_terminal;
-            self.terminal.write().set_visible(self.show_terminal);
-            self.widgets
-                .read()
-                .queue_script("demo.toggle_terminal_bottom()");
-        }
-        Ok(())
-    }
-
-    #[method]
-    pub fn toggle_terminal_bottom(&self) -> Result<()> {
-        self.widgets
-            .read()
-            .set_keyboard_focus(if self.show_terminal {
-                "terminal"
-            } else {
-                "mapper"
-            })
-    }
 }
 
 make_frame_graph!(
@@ -147,29 +122,29 @@ make_frame_graph!(
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
             stars: StarsBuffer,
-            terrain_geo: TerrainGeoBuffer,
+            terrain: TerrainBuffer,
             widgets: WidgetBuffer,
             world: WorldRenderPass,
             ui: UiRenderPass,
             composite: CompositeRenderPass
         };
         passes: [
-            // terrain_geo
+            // terrain
             // Update the indices so we have correct height data to tessellate with and normal
             // and color data to accumulate.
-            paint_atlas_indices: Any() { terrain_geo() },
+            paint_atlas_indices: Any() { terrain() },
             // Apply heights to the terrain mesh.
-            tessellate: Compute() { terrain_geo() },
+            tessellate: Compute() { terrain() },
             // Render the terrain mesh's texcoords to an offscreen buffer.
-            deferred_texture: Render(terrain_geo, deferred_texture_target) {
-                terrain_geo( globals )
+            deferred_texture: Render(terrain, deferred_texture_target) {
+                terrain( globals )
             },
             // Accumulate normal and color data.
-            accumulate_normal_and_color: Compute() { terrain_geo( globals ) },
+            accumulate_normal_and_color: Compute() { terrain( globals ) },
 
             // world: Flatten terrain g-buffer into the final image and mix in stars.
             render_world: Render(world, offscreen_target) {
-                world( globals, fullscreen, atmosphere, stars, terrain_geo )
+                world( globals, fullscreen, atmosphere, stars, terrain )
             },
 
             // ui: Draw our widgets onto a buffer with resolution independent of the world.
@@ -201,18 +176,19 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let mut async_rt = Runtime::new()?;
     let mut _legion = World::default();
 
-    let mut catalog = Catalog::empty();
+    let (mut catalog, input_fids) = CatalogBuilder::build_and_select(&opt.map_names)?;
     for (i, d) in opt.libdir.iter().enumerate() {
-        catalog.add_drawer(DirectoryDrawer::from_directory(100 + i as i64, d)?)?;
+        catalog.add_labeled_drawer(
+            "default",
+            DirectoryDrawer::from_directory(100 + i as i64, d)?,
+        )?;
     }
 
     let interpreter = Interpreter::new();
-    let mapper = EventMapper::new(&mut interpreter.write());
-
-    let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+    let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
     let orrery = Orrery::new(
-        Utc.ymd(1964, 2, 24).and_hms(12, 0, 0),
+        Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
         &mut interpreter.write(),
     );
     let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter.write());
@@ -225,7 +201,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let fullscreen_buffer = FullscreenBuffer::new(&gpu.read());
     let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
     let stars_buffer = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
-    let terrain_geo_buffer = TerrainGeoBuffer::new(
+    let terrain_buffer = TerrainBuffer::new(
         &catalog,
         cpu_detail,
         gpu_detail,
@@ -233,15 +209,14 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &mut gpu.write(),
         &mut interpreter.write(),
     )?;
-    let widgets = WidgetBuffer::new(&mut gpu.write())?;
-    let catalog = Arc::new(AsyncRwLock::new(catalog));
+    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter.write())?;
     let world = WorldRenderPass::new(
         &mut gpu.write(),
         &mut interpreter.write(),
         &globals.read(),
         &atmosphere_buffer.read(),
         &stars_buffer.read(),
-        &terrain_geo_buffer.read(),
+        &terrain_buffer.read(),
     )?;
     let ui = UiRenderPass::new(
         &mut gpu.write(),
@@ -261,16 +236,15 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         fullscreen_buffer,
         globals.clone(),
         stars_buffer,
-        terrain_geo_buffer,
+        terrain_buffer.clone(),
         widgets.clone(),
         world.clone(),
         ui,
         composite,
     )?;
+
     ///////////////////////////////////////////////////////////
-
-    widgets.read().root().write().add_child("mapper", mapper);
-
+    // UI Setup
     let version_label = Label::new("OpenFA v0.1")
         .with_color(Color::Green)
         .with_size(8.0)
@@ -302,8 +276,37 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .read()
         .root()
         .write()
-        .add_child("terminal", terminal.clone())
+        .add_child("terminal", terminal)
         .set_float(PositionH::Start, PositionV::Top);
+
+    ///////////////////////////////////////////////////////////
+    // Scene Setup
+    let mut tracker = Default::default();
+    let mut t2_tile_set =
+        T2HeightTileSet::new(&terrain_buffer.read(), &globals.read(), &gpu.read())?;
+    let start = Instant::now();
+    let type_manager = TypeManager::empty();
+    for mm_fid in &input_fids {
+        let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        let raw = catalog.read_sync(*mm_fid)?;
+        let mm_content = from_dos_string(raw);
+        let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
+        let t2_data = catalog.read_name_sync(mm.t2_name())?;
+        let t2 = T2Terrain::from_bytes(&t2_data)?;
+        t2_tile_set.add_map(
+            &system_palette,
+            &mm,
+            &t2,
+            &catalog,
+            &mut gpu.write(),
+            &async_rt,
+            &mut tracker,
+        )?;
+    }
+    terrain_buffer
+        .write()
+        .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);
+    println!("Loading scene took: {:?}", start.elapsed());
 
     /*
     let mut camera = UfoCamera::new(gpu.read().aspect_ratio(), 0.1f64, 3.4e+38f64);
@@ -312,10 +315,10 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    // everest: 27.9880704,86.9245623
+    // London: 51.5,-0.1
     arcball.write().set_target(Graticule::<GeoSurface>::new(
-        degrees!(27.9880704),
-        degrees!(-86.9245623), // FIXME: wat?
+        degrees!(51.5),
+        degrees!(-0.1),
         meters!(8000.),
     ));
     arcball.write().set_eye_relative(Graticule::<Target>::new(
@@ -323,6 +326,17 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         degrees!(869.5),
         meters!(67668.5053),
     ))?;
+    // everest: 27.9880704,86.9245623
+    // arcball.write().set_target(Graticule::<GeoSurface>::new(
+    //     degrees!(27.9880704),
+    //     degrees!(-86.9245623), // FIXME: wat?
+    //     meters!(8000.),
+    // ));
+    // arcball.write().set_eye_relative(Graticule::<Target>::new(
+    //     degrees!(11.5),
+    //     degrees!(869.5),
+    //     meters!(67668.5053),
+    // ))?;
     // ISS: 408km up
     // arcball.write().set_target(Graticule::<GeoSurface>::new(
     //     degrees!(27.9880704),
@@ -335,23 +349,26 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     //     meters!(1308.7262),
     // ))?;
 
-    let demo = Demo::new(widgets.clone(), terminal, &mut interpreter.write());
+    let ofa = OFA::new(&mut interpreter.write());
 
     {
         let interp = &mut interpreter.write();
+        gpu.write().add_default_bindings(interp)?;
         orrery.write().add_default_bindings(interp)?;
         arcball.write().add_default_bindings(interp)?;
         globals.write().add_default_bindings(interp)?;
         world.write().add_default_bindings(interp)?;
-        demo.write().add_default_bindings(interp)?;
+        ofa.write().add_default_bindings(interp)?;
     }
 
-    while !demo.read().exit {
+    let catalog = Arc::new(AsyncRwLock::new(catalog));
+
+    while !ofa.read().exit {
         let loop_start = Instant::now();
 
         widgets
-            .read()
-            .handle_events(&input_controller.poll_events()?, &mut interpreter.write())?;
+            .write()
+            .handle_events(&input_controller.poll_events()?, interpreter.clone())?;
 
         arcball.write().think();
 
@@ -366,18 +383,19 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &gpu.read(),
             &mut tracker,
         )?;
-        frame_graph.terrain_geo_mut().make_upload_buffer(
+        frame_graph.terrain_mut().make_upload_buffer(
             arcball.read().camera(),
-            demo.write().get_camera(arcball.read().camera()),
+            ofa.write().get_camera(arcball.read().camera()),
             catalog.clone(),
             &mut async_rt,
             &mut gpu.write(),
             &mut tracker,
         )?;
-        frame_graph
-            .widgets
-            .write()
-            .make_upload_buffer(&gpu.read(), &mut tracker)?;
+        frame_graph.widgets.write().make_upload_buffer(
+            &mut gpu.write(),
+            &async_rt,
+            &mut tracker,
+        )?;
         if !frame_graph.run(&mut gpu.write(), tracker)? {
             let sz = gpu.read().physical_size();
             gpu.write().on_resize(sz.width as i64, sz.height as i64)?;

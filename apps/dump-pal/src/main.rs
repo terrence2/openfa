@@ -43,7 +43,7 @@ fn main() -> Result<()> {
 
         let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
         if opt.dump {
-            println!("Dumping palette: {}:{}", label, meta.name);
+            println!("Dumping palette: {}:{}", label, meta.name());
 
             let size = 80;
             let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
@@ -57,8 +57,8 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            fs::create_dir_all(&format!("dump/palette/{}-{}", game, meta.name))?;
-            let output = format!("dump/palette/{}-{}/palette.png", game, meta.name);
+            fs::create_dir_all(&format!("dump/palette/{}-{}", game, meta.name()))?;
+            let output = format!("dump/palette/{}-{}/palette.png", game, meta.name());
             buf.save(&output)?;
 
             return Ok(());

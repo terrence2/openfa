@@ -108,7 +108,8 @@ fn load_palette_from_resource(catalog: &Catalog, resource_name: &str) -> Result<
         return Palette::from_bytes(&data);
     }
     Ok(Pic::from_bytes(&data)?
-        .palette
+        .palette()
+        .cloned()
         .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))?)
 }
 
@@ -131,7 +132,7 @@ fn load_palette(opt: &Opt) -> Result<Palette> {
     }
     let fid = *inputs.first().expect("one input");
     let meta = catalog.stat_sync(fid)?;
-    load_palette_from_resource(&catalog, &meta.name)
+    load_palette_from_resource(&catalog, &meta.name())
 }
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {

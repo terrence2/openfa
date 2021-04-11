@@ -18,8 +18,8 @@ pub use ot::parse;
 pub use ot::ObjectType;
 pub use pt::{Envelope, PlaneType};
 
-use catalog::Catalog;
 use anyhow::{bail, Result};
+use catalog::Catalog;
 use lib::from_dos_string;
 use log::trace;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -175,16 +175,16 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let types = TypeManager::empty();
             catalog.set_default_label(&label);
-            let ty = types.load(&meta.name, &catalog)?;
+            let ty = types.load(&meta.name(), &catalog)?;
             // Only one misspelling in 2500 files.
-            assert!(ty.ot().file_name() == meta.name || meta.name == "SMALLARM.JT");
+            assert!(ty.ot().file_name() == meta.name() || meta.name() == "SMALLARM.JT");
             // println!(
             //     "{}:{:13}> {:?} <> {}",
             //     game, name, ot.explosion_type, ot.long_name

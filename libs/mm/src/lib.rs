@@ -22,7 +22,8 @@ mod waypoint;
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
 use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
-use std::{collections::HashMap, str::FromStr};
+use log::debug;
+use std::{borrow::Cow, collections::HashMap, str::FromStr};
 use xt::TypeManager;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -32,10 +33,10 @@ pub enum TLoc {
 }
 
 impl TLoc {
-    pub fn pic_file(&self, base: &str) -> String {
+    pub fn pic_file(&self, base: &str) -> Cow<str> {
         match self {
-            TLoc::Index(ref i) => format!("{}{}.PIC", base, i),
-            TLoc::Name(ref s) => s.to_owned(),
+            TLoc::Index(ref i) => Cow::from(format!("{}{}.PIC", base, i)),
+            TLoc::Name(ref s) => Cow::from(s),
         }
     }
 
@@ -434,11 +435,13 @@ impl MissionMap {
         let raw = map_name.to_uppercase();
 
         if catalog.exists(&raw) {
+            debug!("A: using t2: {}", raw);
             return Ok(raw);
         }
 
         // ~KURILE.T2 && ~TVIET.T2
         if raw.starts_with('~') && catalog.exists(&raw[1..]) {
+            debug!("B: using t2: {}", &raw[1..]);
             return Ok(raw[1..].to_owned());
         }
 
@@ -455,6 +458,7 @@ impl MissionMap {
                 suffix == "F" || suffix.parse::<u8>().is_ok(),
                 "expected non-literal map name to end with f or a number"
             );
+            debug!("C: using t2: {}.T2", &base[1..=3]);
             return Ok(base[1..=3].to_owned() + ".T2");
         }
 
@@ -465,6 +469,7 @@ impl MissionMap {
     // except when it is a modified version with the first (non-tilde) character of the MM name
     // appended to the end of the LAY name, before the dot.
     fn find_layer(map_name: &str, layer_name: &str, catalog: &Catalog) -> Result<String> {
+        debug!("find_layer map:{}, layer:{}", map_name, layer_name);
         let first_char = map_name.chars().next().expect("the first character");
         let layer_parts = layer_name.split('.').collect::<Vec<&str>>();
         ensure!(layer_parts.len() == 2, "expected one dot in layer name");
@@ -474,8 +479,10 @@ impl MissionMap {
         );
         let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
         if catalog.exists(&alt_layer_name) {
+            debug!("B: using lay: {}", alt_layer_name);
             return Ok(alt_layer_name);
         }
+        debug!("A: using lay: {}", layer_name.to_uppercase());
         Ok(layer_name.to_uppercase())
     }
 
@@ -514,12 +521,14 @@ mod tests {
             let meta = catalog.stat_sync(fid)?;
 
             if game == "ATFGOLD"
-                && (meta.name.contains("UKR") || meta.name == "KURILE.MM" || meta.name == "VIET.MM")
+                && (meta.name().contains("UKR")
+                    || meta.name() == "KURILE.MM"
+                    || meta.name() == "VIET.MM")
             {
                 continue;
             }
 
-            if meta.name == "$VARF.MM" {
+            if meta.name() == "$VARF.MM" {
                 // This looks a fragment of an MM used for... something?
                 continue;
             }
@@ -527,10 +536,10 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
 
             catalog.set_default_label(&label);

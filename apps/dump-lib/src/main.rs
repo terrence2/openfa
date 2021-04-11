@@ -14,8 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Unpack lib files.
-use catalog::Catalog;
 use anyhow::Result;
+use catalog::Catalog;
 use humansize::{file_size_opts as options, FileSize};
 use lib::LibDrawer;
 use std::{
@@ -74,27 +74,27 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
         }
         for name in catalog.find_matching_names("*")?.iter() {
             let info = catalog.stat_name_sync(name)?;
-            let mut psize = info.packed_size.file_size(options::BINARY).unwrap();
+            let mut psize = info.packed_size().file_size(options::BINARY).unwrap();
             if psize.ends_with(" B") {
                 psize += "  ";
             }
-            let mut asize = info.unpacked_size.file_size(options::BINARY).unwrap();
+            let mut asize = info.unpacked_size().file_size(options::BINARY).unwrap();
             if asize.ends_with(" B") {
                 asize += "  ";
             }
-            let ratio = if info.packed_size == info.unpacked_size && info.unpacked_size > 0 {
+            let ratio = if info.packed_size() == info.unpacked_size() && info.unpacked_size() > 0 {
                 "~".to_owned()
             } else {
                 format!(
                     "{:0.3}x",
-                    info.packed_size as f64 / info.unpacked_size as f64
+                    info.packed_size() as f64 / info.unpacked_size() as f64
                 )
             };
 
             println!(
                 "{:15} {:<8} {:>12} {:>12}  {}",
-                info.name,
-                info.compression.unwrap_or("none"),
+                info.name(),
+                info.compression().unwrap_or("none"),
                 psize,
                 asize,
                 ratio

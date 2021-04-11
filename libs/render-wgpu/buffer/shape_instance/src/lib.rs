@@ -19,7 +19,7 @@ pub use shape_chunk::{DrawSelection, DrawState};
 
 use anyhow::Result;
 use catalog::Catalog;
-use gpu::{UploadTracker, GPU};
+use gpu::{Gpu, UploadTracker};
 use legion::*;
 use log::trace;
 use pal::Palette;
@@ -128,7 +128,7 @@ impl InstanceBlock {
         chunk_id: ChunkId,
         layout: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
-    ) -> Result<Self> {
+    ) -> Self {
         // This class contains the fixed-size device local blocks that we will render from.
         trace!("InstanceBlock::new({:?})", block_id);
 
@@ -211,7 +211,7 @@ impl InstanceBlock {
             ],
         });
 
-        Ok(Self {
+        Self {
             block_id,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
@@ -234,7 +234,7 @@ impl InstanceBlock {
             xform_index_buffer,
             xform_buffer,
             bind_group,
-        })
+        }
     }
 
     pub fn id(&self) -> BlockId {
@@ -560,7 +560,7 @@ impl ShapeInstanceBuffer {
         selection: DrawSelection,
         palette: &Palette,
         catalog: &Catalog,
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
     ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
@@ -573,7 +573,7 @@ impl ShapeInstanceBuffer {
         } else {
             let block_id = self.allocate_block_id();
             let block =
-                InstanceBlock::new(block_id, chunk_id, &self.bind_group_layout, gpu.device())?;
+                InstanceBlock::new(block_id, chunk_id, &self.bind_group_layout, gpu.device());
             self.chunk_to_block_map
                 .entry(chunk_id)
                 .or_insert_with(Vec::new)
@@ -596,7 +596,7 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(&mut self, gpu: &mut GPU) -> Result<()> {
+    pub fn ensure_uploaded(&mut self, gpu: &mut Gpu) -> Result<()> {
         self.chunk_man.finish_open_chunks(gpu)
     }
 
@@ -626,7 +626,7 @@ impl ShapeInstanceBuffer {
         &mut self,
         start: &Instant,
         world: &mut World,
-        gpu: &GPU,
+        gpu: &Gpu,
         tracker: &mut UploadTracker,
     ) -> Result<()> {
         let now = Instant::now();
@@ -770,7 +770,7 @@ mod test {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -810,13 +810,13 @@ mod test {
                 println!(
                     "At: {}:{:13} @ {}",
                     game,
-                    meta.name,
-                    meta.path
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
                         .unwrap_or_else(|| "<none>".into())
-                        .to_string_lossy()
                 );
-                let name = meta.name.clone();
-                if skipped.contains(&meta.name.as_str()) {
+                let name = meta.name().to_owned();
+                if skipped.contains(&meta.name()) {
                     continue;
                 }
 

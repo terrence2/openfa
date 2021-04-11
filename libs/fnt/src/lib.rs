@@ -14,8 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-use codepage_437::{FromCp437, CP437_CONTROL};
 use anyhow::{bail, ensure, Result};
+use codepage_437::{FromCp437, CP437_CONTROL};
 use i386::{ByteCode, Interpreter, Reg};
 use image::{ImageBuffer, LumaA};
 use peff::PE;
@@ -234,13 +234,13 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
-            fnt.analyze(game, &meta.name)?;
+            fnt.analyze(game, &meta.name())?;
         }
 
         Ok(())

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{ensure, Result};
-use gpu::GPU;
+use gpu::Gpu;
 use image::DynamicImage;
 use log::trace;
 use pal::Palette;
@@ -44,11 +44,11 @@ impl Frame {
                 t: offset[1] as f32 / ATLAS_HEIGHT as f32,
             },
             coord1: TexCoord {
-                s: (offset[0] + pic.width) as f32 / ATLAS_WIDTH as f32,
-                t: (offset[1] + pic.height) as f32 / ATLAS_HEIGHT as f32,
+                s: (offset[0] + pic.width()) as f32 / ATLAS_WIDTH as f32,
+                t: (offset[1] + pic.height()) as f32 / ATLAS_HEIGHT as f32,
             },
-            width: pic.width as f32,
-            height: pic.height as f32,
+            width: pic.width() as f32,
+            height: pic.height() as f32,
         }
     }
 
@@ -68,7 +68,7 @@ impl Frame {
 }
 
 const ATLAS_WIDTH0: usize = 1024 + 4 * 2 + 2;
-const ATLAS_STRIDE: usize = GPU::stride_for_row_size(ATLAS_WIDTH0 as u32 * 4) as usize;
+const ATLAS_STRIDE: usize = Gpu::stride_for_row_size(ATLAS_WIDTH0 as u32 * 4) as usize;
 const ATLAS_WIDTH: usize = ATLAS_STRIDE / 4;
 const ATLAS_HEIGHT: usize = 4098;
 const ATLAS_PLANE_SIZE: usize = ATLAS_STRIDE * ATLAS_HEIGHT;
@@ -76,6 +76,7 @@ const ATLAS_PLANE_SIZE: usize = ATLAS_STRIDE * ATLAS_HEIGHT;
 // Load padded/wrapped 256px wide strips into a 2048+ 2D image slices stacked into
 // a Texture2DArray for upload to the GPU. Each Atlas contains the textures for many
 // different shapes.
+#[derive(Default)]
 pub(crate) struct MegaAtlas {
     // The stack of images that we are building into.
     // Note: we cannot build directly into gpu mapped memory because Texture2DArray
@@ -91,14 +92,6 @@ pub(crate) struct MegaAtlas {
 }
 
 impl MegaAtlas {
-    pub(crate) fn new() -> Result<Self> {
-        Ok(Self {
-            images: vec![vec![0; ATLAS_PLANE_SIZE]],
-            utilization: vec![[0; 4]],
-            frames: HashMap::new(),
-        })
-    }
-
     // FIXME: we're using First-Fit, which is probably not optimal.
     fn find_first_fit(&self, height: usize) -> Option<(usize, usize)> {
         for (layer, util_array) in self.utilization.iter().enumerate() {
@@ -124,11 +117,11 @@ impl MegaAtlas {
         }
 
         ensure!(
-            pic.width == 256,
-            format!("non-standard image width: {}", pic.width)
+            pic.width() == 256,
+            format!("non-standard image width: {}", pic.width())
         );
-        ensure!(pic.height + 2 < ATLAS_HEIGHT as u32, "source too tall");
-        let (layer, column) = if let Some(first_fit) = self.find_first_fit(pic.height as usize) {
+        ensure!(pic.height() + 2 < ATLAS_HEIGHT as u32, "source too tall");
+        let (layer, column) = if let Some(first_fit) = self.find_first_fit(pic.height() as usize) {
             first_fit
         } else {
             self.images.push(vec![0; ATLAS_PLANE_SIZE]);
@@ -147,7 +140,7 @@ impl MegaAtlas {
         // FIXME: fill in border with a copy of the other side.
 
         // Update the utilization.
-        self.utilization[layer][column] = (offset[1] + pic.height + 1) as usize;
+        self.utilization[layer][column] = (offset[1] + pic.height() + 1) as usize;
 
         // Build the frame.
         self.frames.insert(name.to_owned(), Frame::new(offset, pic));
@@ -156,7 +149,7 @@ impl MegaAtlas {
         Ok(self.frames[name].clone())
     }
 
-    pub(crate) fn finish(self, gpu: &mut gpu::GPU) -> Result<wgpu::TextureView> {
+    pub(crate) fn finish(self, gpu: &mut gpu::Gpu) -> Result<wgpu::TextureView> {
         if DUMP_ATLAS {
             for (layer, buffer) in self.images.iter().enumerate() {
                 let mut img = DynamicImage::new_rgba8(ATLAS_WIDTH as u32, ATLAS_HEIGHT as u32);

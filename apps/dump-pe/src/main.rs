@@ -44,11 +44,11 @@ fn main() -> Result<()> {
         let content = catalog.read_sync(fid)?;
         let pe = PE::from_bytes(&content)?;
 
-        println!("{}:{}", game, meta.name);
+        println!("{}:{}", game, meta.name());
         println!(
             "{}",
             iter::repeat("=")
-                .take(1 + game.len() + meta.name.len())
+                .take(1 + game.len() + meta.name().len())
                 .collect::<String>()
         );
         println!("image base: 0x{:08X}", pe.image_base);

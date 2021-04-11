@@ -15,8 +15,8 @@
 pub mod parse;
 
 pub use crate::parse::{parse_string, FieldRow, FieldType, FromRow, Repr};
-use bitflags::bitflags;
 use anyhow::{bail, ensure, Result};
+use bitflags::bitflags;
 use nalgebra::Point3;
 use std::{collections::HashMap, mem};
 
@@ -40,10 +40,7 @@ impl TypeTag {
 
 impl FromRow for TypeTag {
     type Produces = TypeTag;
-    fn from_row(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Result<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         TypeTag::from_byte(field.value().numeric()?.byte()?)
     }
 }
@@ -84,10 +81,7 @@ impl ObjectKind {
 
 impl FromRow for ObjectKind {
     type Produces = ObjectKind;
-    fn from_row(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Result<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         ObjectKind::from_word(field.value().numeric()?.word()?)
     }
 }
@@ -122,10 +116,7 @@ impl ProcKind {
 
 impl FromRow for ProcKind {
     type Produces = ProcKind;
-    fn from_row(
-        field: &FieldRow,
-        _pointers: &HashMap<&str, Vec<&str>>,
-    ) -> Result<Self::Produces> {
+    fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         ProcKind::from_symbol(&field.value().symbol()?)
     }
 }
@@ -295,15 +286,15 @@ mod tests {
             println!(
                 "At: {}:{:13} @ {}",
                 game,
-                meta.name,
-                meta.path
+                meta.name(),
+                meta.path()
+                    .map(|v| v.to_string_lossy())
                     .unwrap_or_else(|| "<none>".into())
-                    .to_string_lossy()
             );
             let contents = from_dos_string(catalog.read_sync(fid)?);
             let ot = ObjectType::from_text(&contents)?;
             // Only one misspelling in 2500 files.
-            assert!(ot.file_name() == meta.name || meta.name == "SMALLARM.JT");
+            assert!(ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");
         }
         Ok(())
     }

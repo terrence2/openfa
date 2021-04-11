@@ -15,7 +15,7 @@
 use crate::texture_atlas::TextureAtlas;
 use anyhow::Result;
 use catalog::Catalog;
-use gpu::GPU;
+use gpu::Gpu;
 use lay::Layer;
 use log::trace;
 use memoffset::offset_of;
@@ -29,7 +29,7 @@ use std::{
     mem,
     ops::Range,
 };
-use t2::{Sample, Terrain};
+use t2::Terrain;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
@@ -119,7 +119,7 @@ impl<'a> T2BufferFactory<'a> {
         }
     }
 
-    fn build(&mut self, gpu: &mut GPU) -> Result<T2Buffer> {
+    fn build(&mut self, gpu: &mut Gpu) -> Result<T2Buffer> {
         let terrain = Terrain::from_bytes(&self.catalog.read_name_sync(&self.mm.t2_name())?)?;
         let palette = self.load_palette()?;
         let (atlas, bind_group_layout, bind_group) = self.create_atlas(&palette, gpu)?;
@@ -191,7 +191,7 @@ impl<'a> T2BufferFactory<'a> {
     fn create_atlas(
         &self,
         palette: &Palette,
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
     ) -> Result<(TextureAtlas, wgpu::BindGroupLayout, wgpu::BindGroup)> {
         // Load all images with our custom palette.
         let mut pics = Vec::new();
@@ -327,27 +327,12 @@ impl<'a> T2BufferFactory<'a> {
         Ok((atlas, bind_group_layout, bind_group))
     }
 
-    fn sample_at(terrain: &Terrain, xi: u32, zi: u32) -> Sample {
-        let offset = (zi * terrain.width() + xi) as usize;
-        if offset < terrain.samples.len() {
-            terrain.samples[offset]
-        } else {
-            let offset = ((zi - 1) * terrain.width() + xi) as usize;
-            if offset < terrain.samples.len() {
-                terrain.samples[offset]
-            } else {
-                let offset = ((zi - 1) * terrain.width() + (xi - 1)) as usize;
-                terrain.samples[offset]
-            }
-        }
-    }
-
     fn position_at(&mut self, terrain: &Terrain, xi: u32, zi: u32) -> Vector3<f32> {
         if let Some(v) = self.memo_position.get(&(xi, zi)) {
             return *v;
         }
 
-        let sample = Self::sample_at(terrain, xi, zi);
+        let sample = terrain.sample_at(xi, zi);
 
         let xf = xi as f32 / terrain.width() as f32;
         let zf = zi as f32 / terrain.height() as f32;
@@ -416,7 +401,7 @@ impl<'a> T2BufferFactory<'a> {
             return;
         }
 
-        let sample = Self::sample_at(terrain, xi, zi);
+        let sample = terrain.sample_at(xi, zi);
 
         let x0 = xi.saturating_sub(1);
         let x1 = xi;
@@ -441,7 +426,7 @@ impl<'a> T2BufferFactory<'a> {
         }
         let normal = normal.normalize();
 
-        let mut color = palette.rgba(sample.color as usize).unwrap();
+        let mut color = palette.rgba(sample.color as usize);
         if sample.color == 0xFF {
             color[3] = 0;
         }
@@ -466,7 +451,7 @@ impl<'a> T2BufferFactory<'a> {
         terrain: &Terrain,
         atlas: &TextureAtlas,
         palette: &Palette,
-        gpu: &GPU,
+        gpu: &Gpu,
     ) -> Result<(wgpu::Buffer, wgpu::Buffer, u32)> {
         let mut verts = Vec::new();
         let mut indices = Vec::new();
@@ -544,7 +529,7 @@ impl T2Buffer {
         mm: &MissionMap,
         system_palette: &Palette,
         catalog: &Catalog,
-        gpu: &mut GPU,
+        gpu: &mut Gpu,
     ) -> Result<Self> {
         trace!("T2Renderer::new");
         T2BufferFactory::new(mm, system_palette, catalog).build(gpu)
@@ -653,7 +638,7 @@ mod test {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = GPU::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
 
         let (mut catalog, inputs) =
             CatalogBuilder::build_and_select(&["FA:PALETTE.PAL".to_owned()])?;
