@@ -63,14 +63,14 @@ struct Opt {
 }
 
 #[derive(Debug, NitrousModule)]
-struct OFA {
+struct Ofa {
     exit: bool,
     pin_camera: bool,
     camera: Camera,
 }
 
 #[inject_nitrous_module]
-impl OFA {
+impl Ofa {
     pub fn new(interpreter: &mut Interpreter) -> Arc<RwLock<Self>> {
         let ofa = Arc::new(RwLock::new(Self {
             exit: false,
@@ -349,7 +349,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     //     meters!(1308.7262),
     // ))?;
 
-    let ofa = OFA::new(&mut interpreter.write());
+    let ofa = Ofa::new(&mut interpreter.write());
 
     {
         let interp = &mut interpreter.write();

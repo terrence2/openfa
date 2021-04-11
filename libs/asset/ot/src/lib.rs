@@ -24,7 +24,7 @@ use std::{collections::HashMap, mem};
 #[repr(u8)]
 pub enum TypeTag {
     Object = 1,
-    NPC = 3,
+    Npc = 3,
     Plane = 5,
     Projectile = 7,
 }
@@ -50,8 +50,8 @@ pub enum ObjectKind {
     Fighter = 0b1000_0000_0000_0000,
     Bomber = 0b0100_0000_0000_0000,
     Ship = 0b0010_0000_0000_0000,
-    SAM = 0b0001_0000_0000_0000,
-    AAA = 0b0000_1000_0000_0000,
+    Sam = 0b0001_0000_0000_0000,
+    Aaa = 0b0000_1000_0000_0000,
     Tank = 0b0000_0100_0000_0000,
     Vehicle = 0b0000_0010_0000_0000,
     Structure1 = 0b0000_0001_0000_0000,
@@ -65,8 +65,8 @@ impl ObjectKind {
             0b1000_0000_0000_0000 => Ok(ObjectKind::Fighter),
             0b0100_0000_0000_0000 => Ok(ObjectKind::Bomber),
             0b0010_0000_0000_0000 => Ok(ObjectKind::Ship),
-            0b0001_0000_0000_0000 => Ok(ObjectKind::SAM),
-            0b0000_1000_0000_0000 => Ok(ObjectKind::AAA),
+            0b0001_0000_0000_0000 => Ok(ObjectKind::Sam),
+            0b0000_1000_0000_0000 => Ok(ObjectKind::Aaa),
             0b0000_0100_0000_0000 => Ok(ObjectKind::Tank),
             0b0000_0010_0000_0000 => Ok(ObjectKind::Vehicle),
             0b0000_0001_0000_0000 => Ok(ObjectKind::Structure1),
@@ -86,6 +86,7 @@ impl FromRow for ObjectKind {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug)]
 pub enum ProcKind {
     OBJ,

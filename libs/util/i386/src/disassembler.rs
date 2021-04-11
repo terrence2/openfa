@@ -61,6 +61,7 @@ impl DisassemblyError {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug)]
 pub enum Reg {
     AL,

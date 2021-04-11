@@ -16,7 +16,7 @@
 
 use ansi::ansi;
 use anyhow::Result;
-use peff::PE;
+use peff::PortableExecutable;
 use reverse::bs2s;
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -25,7 +25,7 @@ pub struct Menu {}
 
 impl Menu {
     pub fn from_bytes(name: &str, bytes: &[u8]) -> Result<Self> {
-        let pe = PE::from_bytes(bytes)?;
+        let pe = PortableExecutable::from_bytes(bytes)?;
 
         if !pe.section_info.contains_key("CODE") {
             return Ok(Self {});

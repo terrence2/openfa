@@ -53,7 +53,7 @@ pub enum MapOrientation {
     Unk0,
     Unk1,
     FlipS,
-    RotateCCW,
+    RotateCcw,
 }
 
 impl MapOrientation {
@@ -62,7 +62,7 @@ impl MapOrientation {
             0 => MapOrientation::Unk0,
             1 => MapOrientation::Unk1,
             2 => MapOrientation::FlipS,
-            3 => MapOrientation::RotateCCW,
+            3 => MapOrientation::RotateCcw,
             _ => bail!("invalid orientation"),
         })
     }

@@ -376,6 +376,7 @@ impl Unk6C {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct UnkCE {
     pub offset: usize,
     pub data: [u8; 40 - 2],
@@ -385,6 +386,7 @@ impl UnkCE {
     pub const MAGIC: u8 = 0xCE;
     pub const SIZE: usize = 40;
 
+    #[allow(clippy::unnecessary_wraps)]
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
@@ -425,6 +427,7 @@ impl fmt::Debug for UnkCE {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub struct UnkBC {
     pub offset: usize,
@@ -435,6 +438,7 @@ pub struct UnkBC {
 impl UnkBC {
     pub const MAGIC: u8 = 0xBC;
 
+    #[allow(clippy::unnecessary_wraps)]
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
@@ -489,6 +493,7 @@ impl Unk38 {
     pub const MAGIC: u8 = 0x38;
     pub const SIZE: usize = 3;
 
+    #[allow(clippy::unnecessary_wraps)]
     fn from_bytes(offset: usize, code: &[u8]) -> Result<Self> {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
@@ -544,6 +549,7 @@ impl TrailerUnknown {
     // and the vast majority of file endings are 18 bytes followed by 12321.
     pub const SIZE: usize = 18;
 
+    #[allow(clippy::unnecessary_wraps)]
     fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
         Ok(Self {
             offset,
@@ -760,6 +766,7 @@ impl UnknownUnknown {
 
 macro_rules! opaque_instr {
     ($name:ident, $magic_str: expr, $magic:expr, $size:expr) => {
+        #[allow(clippy::upper_case_acronyms)]
         pub struct $name {
             pub offset: usize,
             pub data: *const u8,
@@ -893,7 +900,7 @@ opaque_instr!(UnkEA, "EA", 0xEA, 8);
 opaque_instr!(UnkEE, "EE", 0xEE, 2);
 
 #[derive(Debug)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 pub enum Instr {
     Header(Header),
     PtrToObjEnd(PtrToObjEnd),
@@ -1101,12 +1108,12 @@ pub struct RawShape {
     pub instrs: Vec<Instr>,
     pub trampolines: Vec<X86Trampoline>,
     offset_map: HashMap<usize, usize>,
-    pub pe: peff::PE,
+    pub pe: peff::PortableExecutable,
 }
 
 impl RawShape {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
-        let mut pe = peff::PE::from_bytes(data)?;
+        let mut pe = peff::PortableExecutable::from_bytes(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
         // 0-based and tags all local pointers with an obvious flag.
@@ -1160,7 +1167,7 @@ impl RawShape {
         uniq
     }
 
-    fn find_trampolines(pe: &peff::PE) -> Result<Vec<X86Trampoline>> {
+    fn find_trampolines(pe: &peff::PortableExecutable) -> Result<Vec<X86Trampoline>> {
         if !pe.thunks.is_empty() {
             trace!("Looking for thunks in the following table:");
             for thunk in &pe.thunks {
@@ -1183,7 +1190,10 @@ impl RawShape {
         Ok(trampolines)
     }
 
-    fn find_end_of_shape(pe: &peff::PE, trampolines: &[X86Trampoline]) -> Result<EndOfShape> {
+    fn find_end_of_shape(
+        pe: &peff::PortableExecutable,
+        trampolines: &[X86Trampoline],
+    ) -> Result<EndOfShape> {
         let end_offset = pe.code.len() - trampolines.len() * X86Trampoline::SIZE;
         let mut offset = end_offset - 1;
         while pe.code[offset] == 0 {
@@ -1212,7 +1222,7 @@ impl RawShape {
     }
 
     fn read_sections(
-        pe: &peff::PE,
+        pe: &peff::PortableExecutable,
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
     ) -> Result<Vec<Instr>> {
@@ -1235,7 +1245,7 @@ impl RawShape {
 
     fn read_instr(
         offset: &mut usize,
-        pe: &peff::PE,
+        pe: &peff::PortableExecutable,
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
         instrs: &mut Vec<Instr>,

@@ -45,9 +45,9 @@ use std::{
 #[derive(Clone, Debug)]
 pub enum CompressionType {
     None = 0,
-    LZSS = 1,   // Compressed with LZSS
-    PXPK = 3,   // No compression, but includes 4 byte inline header 'PXPK'
-    PKWare = 4, // Compressed with PKWare zip algorithm
+    Lzss = 1,   // Compressed with LZSS
+    PxPk = 3,   // No compression, but includes 4 byte inline header 'PXPK'
+    PkWare = 4, // Compressed with PKWare zip algorithm
 }
 
 impl CompressionType {
@@ -59,9 +59,9 @@ impl CompressionType {
         );
         Ok(match b {
             0 => CompressionType::None,
-            1 => CompressionType::LZSS,
-            3 => CompressionType::PXPK,
-            4 => CompressionType::PKWare,
+            1 => CompressionType::Lzss,
+            3 => CompressionType::PxPk,
+            4 => CompressionType::PkWare,
             _ => unreachable!(),
         })
     }
@@ -69,9 +69,9 @@ impl CompressionType {
     fn name(&self) -> Option<&'static str> {
         match self {
             Self::None => None,
-            Self::LZSS => Some("lzss"),
-            Self::PXPK => Some("pxpk"),
-            Self::PKWare => Some("pkware"),
+            Self::Lzss => Some("lzss"),
+            Self::PxPk => Some("pxpk"),
+            Self::PkWare => Some("pkware"),
         }
     }
 }
@@ -267,7 +267,7 @@ impl DrawerInterface for LibDrawer {
                 unpacked_size: (info.end_offset - info.start_offset) as u64,
                 path: None,
             },
-            CompressionType::PKWare => {
+            CompressionType::PkWare => {
                 let dwords: &[u32] =
                     unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
                 DrawerFileMetadata {
@@ -279,7 +279,7 @@ impl DrawerInterface for LibDrawer {
                     path: None,
                 }
             }
-            CompressionType::LZSS => {
+            CompressionType::Lzss => {
                 let dwords: &[u32] =
                     unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
                 DrawerFileMetadata {
@@ -291,7 +291,7 @@ impl DrawerInterface for LibDrawer {
                     path: None,
                 }
             }
-            CompressionType::PXPK => unimplemented!(),
+            CompressionType::PxPk => unimplemented!(),
         })
     }
 
@@ -300,7 +300,7 @@ impl DrawerInterface for LibDrawer {
         let info = &self.index[&id];
         Ok(match info.compression {
             CompressionType::None => Cow::from(&self.data[info.start_offset..info.end_offset]),
-            CompressionType::PKWare => {
+            CompressionType::PkWare => {
                 assert!(info.start_offset + 4 <= info.end_offset);
                 let expect_output_size = LittleEndian::read_u32(&self.data) as usize;
                 Cow::from(pkware::explode(
@@ -308,7 +308,7 @@ impl DrawerInterface for LibDrawer {
                     Some(expect_output_size),
                 )?)
             }
-            CompressionType::LZSS => {
+            CompressionType::Lzss => {
                 assert!(info.start_offset + 4 <= info.end_offset);
                 let expect_output_size = LittleEndian::read_u32(&self.data) as usize;
                 Cow::from(lzss::explode(
@@ -316,7 +316,7 @@ impl DrawerInterface for LibDrawer {
                     Some(expect_output_size),
                 )?)
             }
-            CompressionType::PXPK => unimplemented!(),
+            CompressionType::PxPk => unimplemented!(),
         })
     }
 
@@ -345,7 +345,7 @@ impl DrawerInterface for LibDrawer {
                 out.copy_from_slice(&self.data[info.start_offset..info.end_offset]);
                 out
             }
-            CompressionType::PKWare => {
+            CompressionType::PkWare => {
                 // FIXME: zerocopy
                 let dwords: &[u32] =
                     unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
@@ -355,7 +355,7 @@ impl DrawerInterface for LibDrawer {
                     expect_output_size,
                 )?
             }
-            CompressionType::LZSS => {
+            CompressionType::Lzss => {
                 // FIXME: zerocopy
                 let dwords: &[u32] =
                     unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
@@ -365,7 +365,7 @@ impl DrawerInterface for LibDrawer {
                     expect_output_size,
                 )?
             }
-            CompressionType::PXPK => unimplemented!(),
+            CompressionType::PxPk => unimplemented!(),
         })
     }
 

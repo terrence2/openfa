@@ -18,7 +18,7 @@ use anyhow::{bail, ensure, Result};
 use i386::{ByteCode, Memonic, Operand};
 use lazy_static::lazy_static;
 use log::trace;
-use peff::{Thunk, PE};
+use peff::{PortableExecutable, Thunk};
 use reverse::bs2s;
 use std::{cmp, collections::HashSet, mem};
 
@@ -77,14 +77,14 @@ pub struct X86Trampoline {
 impl X86Trampoline {
     pub const SIZE: usize = 6;
 
-    pub fn has_trampoline(offset: usize, pe: &PE) -> bool {
+    pub fn has_trampoline(offset: usize, pe: &PortableExecutable) -> bool {
         pe.section_info.contains_key(".idata")
             && pe.code.len() >= offset + 6
             && pe.code[offset] == 0xFF
             && pe.code[offset + 1] == 0x25
     }
 
-    pub fn from_pe(offset: usize, pe: &PE) -> Result<Self> {
+    pub fn from_pe(offset: usize, pe: &PortableExecutable) -> Result<Self> {
         ensure!(Self::has_trampoline(offset, pe), "not a trampoline");
         let target = {
             let vp: &[u32] = unsafe { mem::transmute(&pe.code[offset + 2..offset + 6]) };
@@ -102,7 +102,7 @@ impl X86Trampoline {
         })
     }
 
-    fn find_matching_thunk(addr: u32, pe: &PE) -> Result<&Thunk> {
+    fn find_matching_thunk(addr: u32, pe: &PortableExecutable) -> Result<&Thunk> {
         // The thunk table is code and therefore should have had a relocation entry
         // to move those pointers when we called relocate on the PE.
         trace!(
@@ -392,7 +392,7 @@ impl X86Code {
         Ok((bc, ReturnKind::from_name(&tramp.name)?))
     }
 
-    fn make_code(bc: ByteCode, pe: &PE, offset: usize) -> Instr {
+    fn make_code(bc: ByteCode, pe: &PortableExecutable, offset: usize) -> Instr {
         let bc_size = bc.size as usize;
         let have_header = pe.code[offset - 2] == 0xF0;
         let section_offset = if have_header { offset - 2 } else { offset };
@@ -409,7 +409,7 @@ impl X86Code {
     pub fn from_bytes(
         _name: &str,
         offset: &mut usize,
-        pe: &PE,
+        pe: &PortableExecutable,
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
         vinstrs: &mut Vec<Instr>,

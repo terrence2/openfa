@@ -25,6 +25,7 @@ use log::trace;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // A generic type.
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub enum Type {
     JT(Box<ProjectileType>),

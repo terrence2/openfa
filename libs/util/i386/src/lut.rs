@@ -65,7 +65,7 @@ pub enum AddressingMethod {
 
 // Specifies what size the operand is.
 #[derive(Clone, Copy, Debug)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 pub enum OperandType {
     // Byte, regardless of operand-size attribute.
     b,
@@ -113,6 +113,7 @@ macro_rules! make_operand {
     };
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FlagKind {
     ZF,
@@ -165,6 +166,7 @@ macro_rules! make_cc2 {
     };
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Memonic {
     Adc,

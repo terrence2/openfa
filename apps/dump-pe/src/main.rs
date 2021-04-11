@@ -15,7 +15,7 @@
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use lib::CatalogBuilder;
-use peff::PE;
+use peff::PortableExecutable;
 use std::{collections::HashSet, iter};
 use structopt::StructOpt;
 
@@ -42,7 +42,7 @@ fn main() -> Result<()> {
         //let lib = omni.library(&game);
         //let content = lib.load(&name)?;
         let content = catalog.read_sync(fid)?;
-        let pe = PE::from_bytes(&content)?;
+        let pe = PortableExecutable::from_bytes(&content)?;
 
         println!("{}:{}", game, meta.name());
         println!(

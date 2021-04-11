@@ -434,7 +434,7 @@ fn find_tags_in_section(section: &Section, tags: &[Tag]) -> Vec<Tag> {
         .collect::<Vec<Tag>>()
 }
 
-pub fn get_all_tags(pe: &peff::PE) -> Vec<Tag> {
+pub fn get_all_tags(pe: &peff::PortableExecutable) -> Vec<Tag> {
     // println!("PE: vaddr:{:04X}", pe.code_vaddr);
     // for (key, thunk) in pe.thunks.clone().unwrap().iter() {
     //     println!(

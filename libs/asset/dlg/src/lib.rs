@@ -19,7 +19,7 @@ use ansi::ansi;
 use anyhow::{bail, ensure, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use packed_struct::packed_struct;
-use peff::PE;
+use peff::PortableExecutable;
 use reverse::bs2s;
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -86,7 +86,7 @@ impl Preload {
     fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-        pe: &PE,
+        pe: &PortableExecutable,
         trampolines: &HashMap<u32, String>,
     ) -> Result<Preload> {
         let header_ptr: *const PreloadHeader = bytes.as_ptr() as *const _;
@@ -164,7 +164,7 @@ impl DrawAction {
     fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-        pe: &PE,
+        pe: &PortableExecutable,
         trampolines: &HashMap<u32, String>,
     ) -> Result<Self> {
         let header_ptr: *const DrawActionHeader = bytes.as_ptr() as *const _;
@@ -235,7 +235,7 @@ impl DrawRocker {
     fn from_bytes(
         bytes: &[u8],
         offset: &mut usize,
-        _pe: &PE,
+        _pe: &PortableExecutable,
         _trampolines: &HashMap<u32, String>,
     ) -> Result<Self> {
         let header_ptr: *const DrawRockerHeader = bytes.as_ptr() as *const _;
@@ -278,7 +278,7 @@ pub struct Dialog {
 
 impl Dialog {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let pe = PE::from_bytes(bytes)?;
+        let pe = PortableExecutable::from_bytes(bytes)?;
         if pe.code.is_empty() {
             return Ok(Self {
                 widgets: Vec::new(),
@@ -334,7 +334,7 @@ impl Dialog {
         Ok(Self { widgets })
     }
 
-    fn find_trampolines(pe: &PE) -> Result<HashMap<u32, String>> {
+    fn find_trampolines(pe: &PortableExecutable) -> Result<HashMap<u32, String>> {
         ensure!(pe.code.len() >= 6, "PE too short for trampolines");
         let mut tramps = HashMap::new();
         let mut tramp_offset = pe.code.len() - 6;
@@ -360,7 +360,10 @@ impl Dialog {
         Ok(tramps)
     }
 
-    fn find_targets(pe: &PE, trampolines: &HashMap<u32, String>) -> Result<HashSet<usize>> {
+    fn find_targets(
+        pe: &PortableExecutable,
+        trampolines: &HashMap<u32, String>,
+    ) -> Result<HashSet<usize>> {
         let mut targets = HashSet::new();
         for reloc in &pe.relocs {
             let r = *reloc as usize;
@@ -380,7 +383,7 @@ impl Dialog {
     #[allow(clippy::many_single_char_names)]
     #[allow(clippy::if_same_then_else)]
     pub fn explore(name: &str, bytes: &[u8]) -> Result<()> {
-        let pe = PE::from_bytes(bytes)?;
+        let pe = PortableExecutable::from_bytes(bytes)?;
         if pe.code.is_empty() {
             return Ok(());
         }

@@ -43,7 +43,7 @@ packed_struct!(Span {
 pub enum PicFormat {
     Format0,
     Format1,
-    JPEG,
+    Jpeg,
 }
 
 impl PicFormat {
@@ -51,7 +51,7 @@ impl PicFormat {
         Ok(match format {
             0 => PicFormat::Format0,
             1 => PicFormat::Format1,
-            0xD8FF => PicFormat::JPEG,
+            0xD8FF => PicFormat::Jpeg,
             _ => bail!("unknown pic format: 0x{:04X}", format),
         })
     }
@@ -76,10 +76,10 @@ impl Pic {
     pub fn from_bytes(data: &[u8]) -> Result<Pic> {
         let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
-        if format == PicFormat::JPEG {
+        if format == PicFormat::Jpeg {
             let img = image::load_from_memory(data)?;
             return Ok(Pic {
-                format: PicFormat::JPEG,
+                format: PicFormat::Jpeg,
                 width: img.width(),
                 height: img.height(),
                 palette: None,
@@ -111,7 +111,7 @@ impl Pic {
         let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
         Ok(match format {
-            PicFormat::JPEG => image::load_from_memory(data)?,
+            PicFormat::Jpeg => image::load_from_memory(data)?,
             PicFormat::Format0 => {
                 let palette = Self::make_palette(header, data, palette)?;
                 DynamicImage::ImageRgba8(Self::decode_format0(
@@ -143,7 +143,7 @@ impl Pic {
         data: &[u8],
     ) -> Result<()> {
         match pic.format {
-            PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
+            PicFormat::Jpeg => bail!("cannot load jpeg into a texture atlas"),
             PicFormat::Format0 => {
                 ensure!(
                     pic.palette.is_none(),
@@ -156,7 +156,7 @@ impl Pic {
                     pic.width,
                     system_palette,
                     &data[pic.pixels_offset..pic.pixels_offset + pic.pixels_size],
-                )?;
+                );
             }
             PicFormat::Format1 => bail!("cannot load format 1 pic into a texture atlas"),
         }
@@ -172,7 +172,7 @@ impl Pic {
         data: &[u8],
     ) -> Result<()> {
         match pic.format {
-            PicFormat::JPEG => bail!("cannot load jpeg into a texture atlas"),
+            PicFormat::Jpeg => bail!("cannot load jpeg into a texture atlas"),
             PicFormat::Format0 => {
                 ensure!(
                     pic.palette.is_none(),
@@ -185,7 +185,7 @@ impl Pic {
                     pic.width,
                     system_palette,
                     &data[pic.pixels_offset..pic.pixels_offset + pic.pixels_size],
-                )?;
+                );
             }
             PicFormat::Format1 => bail!("cannot load format 1 pic into a texture atlas"),
         }
@@ -249,7 +249,7 @@ impl Pic {
         width: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Result<()> {
+    ) {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
@@ -259,7 +259,6 @@ impl Pic {
             }
             into_image.put_pixel(offset_x + i % width, offset_y + i / width, clr);
         }
-        Ok(())
     }
 
     fn decode_format0_into_buffer(
@@ -269,7 +268,7 @@ impl Pic {
         width: u32,
         palette: &Palette,
         pixels: &[u8],
-    ) -> Result<()> {
+    ) {
         for (index, p) in pixels.iter().enumerate() {
             let i = index as u32;
             let pix = *p as usize;
@@ -285,7 +284,6 @@ impl Pic {
             // );
             into_buffer[base..base + 4].copy_from_slice(&clr.0);
         }
-        Ok(())
     }
 
     fn decode_format1(

@@ -273,6 +273,7 @@ impl JumpToFrame {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub struct JumpToLOD {
     pub offset: usize,

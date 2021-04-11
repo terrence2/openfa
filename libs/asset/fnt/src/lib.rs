@@ -18,7 +18,7 @@ use anyhow::{bail, ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use i386::{ByteCode, Interpreter, Reg};
 use image::{ImageBuffer, LumaA};
-use peff::PE;
+use peff::PortableExecutable;
 use std::{collections::HashMap, mem};
 
 // Save chars to png when testing.
@@ -68,13 +68,13 @@ const _FONT_BACKGROUNDS: [&str; 21] = [
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Font {
-    HUD11,
+    Hud11,
 }
 
 impl Font {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::HUD11 => "hud11",
+            Self::Hud11 => "hud11",
         }
     }
 }
@@ -95,7 +95,7 @@ const FNT_LOAD_BASE: u32 = 0x0000_0000;
 
 impl Fnt {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let mut pe = PE::from_bytes(bytes)?;
+        let mut pe = PortableExecutable::from_bytes(bytes)?;
         pe.relocate(FNT_LOAD_BASE)?;
 
         let dwords: &[u32] = unsafe { mem::transmute(&pe.code[0..1028]) };

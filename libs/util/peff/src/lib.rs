@@ -22,12 +22,12 @@ use std::{collections::HashMap, mem, str};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-enum PEError {
+enum PortableExecutableError {
     #[error("name ran off end of file")]
     NameUnending {},
 }
 
-pub struct PE {
+pub struct PortableExecutable {
     // Maps from vaddr (as we may see in CODE) to the function name to thunk to.
     pub thunks: Vec<Thunk>,
 
@@ -76,8 +76,8 @@ impl SectionInfo {
     }
 }
 
-impl PE {
-    pub fn from_bytes(data: &[u8]) -> Result<PE> {
+impl PortableExecutable {
+    pub fn from_bytes(data: &[u8]) -> Result<PortableExecutable> {
         assert_eq!(mem::size_of::<COFFHeader>(), 20);
         assert_eq!(mem::size_of::<OptionalHeader>(), 28);
         assert_eq!(mem::size_of::<WindowsHeader>(), 68);
@@ -281,13 +281,13 @@ impl PE {
         let mut thunks = Vec::new();
         if sections.contains_key(".idata") {
             let (idata_section, idata) = sections[".idata"];
-            thunks.append(&mut PE::parse_idata(idata_section, idata)?);
+            thunks.append(&mut PortableExecutable::parse_idata(idata_section, idata)?);
         }
 
         if !sections.contains_key("CODE") && !sections.contains_key(".text") {
             let (_, reloc_data) = sections[".reloc"];
-            let relocs = PE::parse_relocs(reloc_data, None)?;
-            return Ok(PE {
+            let relocs = PortableExecutable::parse_relocs(reloc_data, None)?;
+            return Ok(PortableExecutable {
                 thunks,
                 relocs,
                 code: Vec::new(),
@@ -304,9 +304,9 @@ impl PE {
             sections[".text"]
         };
         let (_, reloc_data) = sections[".reloc"];
-        let relocs = PE::parse_relocs(reloc_data, Some(code_section))?;
+        let relocs = PortableExecutable::parse_relocs(reloc_data, Some(code_section))?;
 
-        Ok(PE {
+        Ok(PortableExecutable {
             thunks,
             relocs,
             code: code.to_owned(),
@@ -428,7 +428,7 @@ impl PE {
         let end_offset: usize = n
             .iter()
             .position(|&c| c == 0)
-            .ok_or::<PEError>(PEError::NameUnending {})?;
+            .ok_or::<PortableExecutableError>(PortableExecutableError::NameUnending {})?;
         Ok(str::from_utf8(&n[..end_offset])?.to_owned())
     }
 
@@ -773,7 +773,7 @@ mod tests {
                     .unwrap_or_else(|| "<none>".into())
             );
             let data = catalog.read_sync(fid)?;
-            let _pe = PE::from_bytes(&data)?;
+            let _pe = PortableExecutable::from_bytes(&data)?;
         }
 
         Ok(())

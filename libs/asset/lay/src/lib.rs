@@ -15,7 +15,7 @@
 use anyhow::{ensure, Result};
 use packed_struct::packed_struct;
 use pal::Palette;
-use peff::PE;
+use peff::PortableExecutable;
 use std::{fs, mem, str};
 
 packed_struct!(LayerHeader {
@@ -90,12 +90,12 @@ impl Layer {
     }
 
     pub fn from_bytes(data: &[u8], palette: &Palette) -> Result<Layer> {
-        let mut pe = PE::from_bytes(data)?;
+        let mut pe = PortableExecutable::from_bytes(data)?;
         pe.relocate(0x0000_0000)?;
         Layer::from_pe("inval", &pe, palette)
     }
 
-    fn from_pe(prefix: &str, pe: &peff::PE, palette: &Palette) -> Result<Layer> {
+    fn from_pe(prefix: &str, pe: &peff::PortableExecutable, palette: &Palette) -> Result<Layer> {
         assert!(!prefix.is_empty());
 
         let mut frag_offsets = Vec::new();
