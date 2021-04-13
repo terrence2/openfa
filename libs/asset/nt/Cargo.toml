@@ -1,0 +1,13 @@
+[package]
+name = "nt"
+version = "0.1.0"
+edition = "2018"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+anyhow = "^ 1"
+nalgebra = "^ 0.24"
+ot = { path = "../../asset/ot" }
+
+[dev-dependencies]
+lib = { path = "../../asset/lib" }

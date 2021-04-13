@@ -8,13 +8,13 @@ edition = "2018"
 anyhow = "^ 1"
 legion = "^ 0.3"
 nalgebra = "^ 0.24"
-lib = { path = "../lib" }
-pal = { path = "../pal" }
+lib = { path = "../asset/lib" }
+pal = { path = "../asset/pal" }
 catalog = { path = "../nitrogen/system/catalog" }
 physical_constants = { path = "../nitrogen/sim/physical_constants" }
-shape_chunk = { path = "../render-wgpu/buffer/shape_chunk" }
-shape_instance = { path = "../render-wgpu/buffer/shape_instance" }
+shape_chunk = { path = "../wgpu-buffer/shape_chunk" }
+shape_instance = { path = "../wgpu-buffer/shape_instance" }
 universe = { path = "../nitrogen/sim/universe" }
 
 [dev-dependencies]
-lib = { path = "../lib" }
+lib = { path = "../asset/lib" }

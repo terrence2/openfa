@@ -19,35 +19,40 @@ members = [
     # "apps/show-mm",
     # "apps/show-sh",
 
-    "libs/dlg",
-    "libs/fnt",
+    "libs/asset/dlg",
+    "libs/asset/fnt",
+    "libs/asset/jt",
+    "libs/asset/lay",
+    "libs/asset/lib",
+    "libs/asset/mm",
+    "libs/asset/mnu",
+    "libs/asset/nt",
+    "libs/asset/ot",
+    "libs/asset/pal",
+    "libs/asset/pic",
+    "libs/asset/pt",
+    "libs/asset/sh",
+    "libs/asset/t2",
+    "libs/asset/xt",
+
     "libs/galaxy",
-    "libs/i386",
-    "libs/jt",
-    "libs/lay",
-    "libs/lib",
-    "libs/lzss",
-    "libs/mm",
-    "libs/mnu",
-    "libs/nt",
-    "libs/ot",
-    "libs/pal",
-    "libs/peff",
-    "libs/pic",
-    "libs/pkware",
-    "libs/pt",
-    "libs/render-wgpu/buffer/font_fnt",
-    "libs/render-wgpu/buffer/shape_chunk",
-    "libs/render-wgpu/buffer/shape_instance",
-    "libs/render-wgpu/buffer/t2_buffer",
-    "libs/render-wgpu/buffer/t2_tile_set",
+
     "libs/render-wgpu/render_pass/shape",
-    "libs/render-wgpu/render_pass/t2_terrain",
-    "libs/reverse",
-    "libs/sh",
-    "libs/t2",
-    "libs/wgpu-render/ofa_groups",
-    "libs/xt",
+
+    "libs/wgpu-buffer/font_fnt",
+    "libs/wgpu-buffer/shape_chunk",
+    "libs/wgpu-buffer/shape_instance",
+    "libs/wgpu-buffer/t2_tile_set",
+    "libs/wgpu-buffer/ofa_groups",
+
+    # "libs/legacy/t2_buffer",
+    # "libs/legacy/t2_terrain",
+
+    "libs/util/i386",
+    "libs/util/lzss",
+    "libs/util/peff",
+    "libs/util/pkware",
+    "libs/util/reverse",
 ]
 
 # Emit debugging symbols for tracing
@@ -82,30 +87,28 @@ atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
 composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
-fnt = { path = "libs/fnt" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
-galaxy = { path = "libs/galaxy" }
 geodesy = { path = "libs/nitrogen/sim/geodesy" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
-lib = { path = "libs/lib" }
-mm = { path = "libs/mm" }
 nitrous = { path = "libs/nitrogen/system/nitrous" }
 nitrous_injector = { path = "libs/nitrogen/system/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
-pal = { path = "libs/pal" }
 physical_constants = { path = "libs/nitrogen/sim/physical_constants" }
-shape = { path = "libs/render-wgpu/render_pass/shape" }
-shape_instance = { path = "libs/render-wgpu/buffer/shape_instance" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
-t2 = { path = "libs/t2" }
-t2_tile_set = { path = "libs/render-wgpu/buffer/t2_tile_set" }
-t2_buffer = { path = "libs/render-wgpu/buffer/t2_buffer" }
-t2_terrain = { path = "libs/render-wgpu/render_pass/t2_terrain" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 universe = { path = "libs/nitrogen/sim/universe" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
-xt = { path = "libs/xt" }
+fnt = { path = "libs/asset/fnt" }
+galaxy = { path = "libs/galaxy" }
+lib = { path = "libs/asset/lib" }
+mm = { path = "libs/asset/mm" }
+pal = { path = "libs/asset/pal" }
+shape = { path = "libs/render-wgpu/render_pass/shape" }
+shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
+t2 = { path = "libs/asset/t2" }
+t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
+xt = { path = "libs/asset/xt" }

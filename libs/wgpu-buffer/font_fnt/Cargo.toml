@@ -1,0 +1,18 @@
+[package]
+name = "font_fnt"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+codepage-437 = "^ 0.1"
+anyhow = "^ 1"
+image = "^ 0.23"
+lazy_static = "^ 1"
+log = "^ 0.4"
+parking_lot = "^ 0.11"
+wgpu = "^ 0.7"
+fnt = { path = "../../asset/fnt" }
+font_common = { path = "../../nitrogen/wgpu-buffer/font_common" }
+gpu = { path = "../../nitrogen/system/gpu" }
+i386 = { path = "../../util/i386" }

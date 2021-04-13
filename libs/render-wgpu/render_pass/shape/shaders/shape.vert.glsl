@@ -16,7 +16,7 @@
 
 #include <wgpu-buffer/shader_shared/include/consts.glsl>
 #include <wgpu-buffer/global_data/include/global_data.glsl>
-#include <buffer/shape_chunk/include/include_shape.glsl>
+#include <wgpu-buffer/shape_chunk/include/include_shape.glsl>
 
 // Vertex inputs
 layout(location = 0) in vec3 position;

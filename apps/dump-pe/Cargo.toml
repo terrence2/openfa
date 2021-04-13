@@ -8,5 +8,5 @@ edition = "2018"
 anyhow = "^ 1"
 structopt = "^ 0.2"
 ansi = { path = "../../libs/nitrogen/system/ansi" }
-lib = { path = "../../libs/lib" }
-peff = { path = "../../libs/peff" }
+lib = { path = "../../libs/asset/lib" }
+peff = { path = "../../libs/util/peff" }

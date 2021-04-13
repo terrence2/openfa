@@ -12,6 +12,6 @@ rand = "^ 0.7"
 structopt = "^ 0.2"
 zerocopy = "^ 0.3"
 catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/lib" }
-pal = { path = "../../libs/pal" }
-pic = { path = "../../libs/pic" }
+lib = { path = "../../libs/asset/lib" }
+pal = { path = "../../libs/asset/pal" }
+pic = { path = "../../libs/asset/pic" }

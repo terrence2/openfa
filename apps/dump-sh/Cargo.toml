@@ -8,7 +8,7 @@ edition = "2018"
 anyhow = "^ 1"
 structopt = "^ 0.2"
 simplelog = "^ 0.5"
-i386 = { path = "../../libs/i386" }
-lib = { path = "../../libs/lib" }
-reverse = { path = "../../libs/reverse" }
-sh = { path = "../../libs/sh" }
+i386 = { path = "../../libs/util/i386" }
+lib = { path = "../../libs/asset/lib" }
+reverse = { path = "../../libs/util/reverse" }
+sh = { path = "../../libs/asset/sh" }
