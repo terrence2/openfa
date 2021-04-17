@@ -57,23 +57,24 @@ impl PicFormat {
     }
 }
 
-pub struct Pic {
+pub struct Pic<'a> {
     format: PicFormat,
     width: u32,
     height: u32,
     palette: Option<Palette>,
     pixels_offset: usize,
     pixels_size: usize,
+    raw_data: &'a [u8],
 }
 
-impl Pic {
+impl<'a> Pic<'a> {
     pub fn read_format(data: &[u8]) -> Result<PicFormat> {
         let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         PicFormat::from_word(header.format())
     }
 
     /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
-    pub fn from_bytes(data: &[u8]) -> Result<Pic> {
+    pub fn from_bytes(data: &'a [u8]) -> Result<Pic> {
         let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
         if format == PicFormat::Jpeg {
@@ -85,6 +86,7 @@ impl Pic {
                 palette: None,
                 pixels_offset: 0,
                 pixels_size: 0,
+                raw_data: &[],
             });
         }
 
@@ -103,6 +105,7 @@ impl Pic {
             palette,
             pixels_offset: header.pixels_offset(),
             pixels_size: header.pixels_size(),
+            raw_data: &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
         })
     }
 
@@ -212,11 +215,15 @@ impl Pic {
         self.palette.as_ref()
     }
 
-    fn make_palette<'a>(
-        header: &'a Header,
-        data: &'a [u8],
-        system_palette: &'a Palette,
-    ) -> Result<Cow<'a, Palette>> {
+    pub fn raw_data(&self) -> &[u8] {
+        self.raw_data
+    }
+
+    fn make_palette<'b>(
+        header: &'b Header,
+        data: &'b [u8],
+        system_palette: &'b Palette,
+    ) -> Result<Cow<'b, Palette>> {
         if header.palette_size() == 0 {
             return Ok(Cow::from(system_palette));
         }

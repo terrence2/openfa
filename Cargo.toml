@@ -51,6 +51,7 @@ members = [
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
+    "libs/util/pic_uploader",
     "libs/util/pkware",
     "libs/util/reverse",
 ]

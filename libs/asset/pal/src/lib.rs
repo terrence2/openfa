@@ -16,7 +16,7 @@ use anyhow::{ensure, Result};
 use image::{ImageBuffer, Pixel, Rgb, Rgba};
 use std::{borrow::Cow, fs::File, io::Write};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Palette {
     pub color_count: usize,
     entries: Vec<Rgb<u8>>,
@@ -151,6 +151,14 @@ impl Palette {
             out.push(entry[0] >> 2);
             out.push(entry[1] >> 2);
             out.push(entry[2] >> 2);
+        }
+        out
+    }
+
+    pub fn as_gpu_buffer(&self) -> [u32; 256] {
+        let mut out = [0u32; 256];
+        for (i, entry) in self.entries.iter().enumerate() {
+            out[i] = (entry[0] as u32) << 24 | (entry[1] as u32) << 16 | (entry[0] as u32) << 8;
         }
         out
     }
