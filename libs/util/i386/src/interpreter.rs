@@ -766,32 +766,3 @@ impl Interpreter {
         bail!("no writable memory for address: {:08X}", addr)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // use std::fs;
-    // use std::io::prelude::*;
-
-    #[test]
-    fn it_works() -> Result<()> {
-        // TODO: this approach would basically needs the whole shape loader. See
-        // if we can craft a more targetted test in nasm.
-
-        //let path = "./test_data/x86/exp.asm-1035.x86";
-        // let path = "./test_data/x86/a10.asm-10399.x86";
-        // let mut fp = fs::File::open(path)?;
-        // let mut data = Vec::new();
-        // fp.read_to_end(&mut data)?;
-
-        // let bc = ByteCode::disassemble(&data, true)?;
-
-        // let memory = [0u8; 4096].to_vec();
-        // let mut interp = Interpreter::new();
-        // interp.map_writable(0x00005000, memory);
-        // interp.add_code(&bc);
-        // interp.interpret(0)?;
-
-        Ok(())
-    }
-}

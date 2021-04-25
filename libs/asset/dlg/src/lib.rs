@@ -290,8 +290,7 @@ impl Dialog {
         let targets = Self::find_targets(&pe, &trampolines)?;
 
         let preload = Preload::from_bytes(&pe.code, &mut offset, &pe, &trampolines)?;
-        let mut widgets = Vec::new();
-        widgets.push(Widget::Preload(preload));
+        let mut widgets = vec![Widget::Preload(preload)];
 
         loop {
             let code = &pe.code[offset..];
