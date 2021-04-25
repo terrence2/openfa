@@ -39,10 +39,7 @@ main()
     vec2 t2_base = t2_base_graticule(t2_info);
     vec2 t2_span = t2_span_graticule(t2_info);
 
-    if (
-        v_grat.x >= t2_base.x && v_grat.x < (t2_base.x + t2_span.x) &&
-        v_grat.y >= t2_base.y && v_grat.y < (t2_base.y + t2_span.y)
-    ) {
+    if (grat_in_t2(v_grat, t2_base, t2_span)) {
         v_position = arr_to_vec3(vertices[i].surface_position);
     }
 

@@ -332,12 +332,12 @@ impl T2HeightTileSet {
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<()> {
-        if self.bind_groups.contains_key(mm.t2_name()) {
-            return Ok(());
-        }
-
         let t2_data = catalog.read_name_sync(mm.t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
+
+        if self.bind_groups.contains_key(t2.name()) {
+            return Ok(());
+        }
 
         let (height_texture_view, height_sampler) = self._upload_heights(&t2, gpu, tracker);
 

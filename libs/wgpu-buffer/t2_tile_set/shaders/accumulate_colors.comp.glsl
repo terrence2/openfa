@@ -44,12 +44,9 @@ main()
         vec2 t2_base = t2_base_graticule(t2_info);
         vec2 t2_span = t2_span_graticule(t2_info);
 
-        if (
-            grat.x >= t2_base.x && grat.x < (t2_base.x + t2_span.x) &&
-            grat.y >= t2_base.y && grat.y < (t2_base.y + t2_span.y)
-        ) {
+        if (grat_in_t2(grat, t2_base, t2_span)) {
             vec2 uv = vec2(
-                (grat.x - t2_base.x) / t2_span.x,
+                (t2_base.x - grat.x) / t2_span.x,
                 (grat.y - t2_base.y) / t2_span.y
             );
             vec4 clr = texture(sampler2D(atlas_texture, atlas_sampler), uv);
