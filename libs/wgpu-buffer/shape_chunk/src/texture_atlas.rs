@@ -18,7 +18,7 @@ use image::DynamicImage;
 use log::trace;
 use pal::Palette;
 use pic::Pic;
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 const DUMP_ATLAS: bool = false;
 
@@ -108,7 +108,7 @@ impl MegaAtlas {
         &mut self,
         name: &str,
         pic: &Pic,
-        data: Cow<'_, [u8]>,
+        data: &[u8],
         palette: &Palette,
     ) -> Result<Frame> {
         // If we have already loaded the texture, just return the existing frame.
@@ -135,7 +135,7 @@ impl MegaAtlas {
             self.utilization[layer][column] as u32 + 1,
         ];
         let write_pointer = &mut self.images[layer];
-        Pic::decode_into_buffer(palette, write_pointer, ATLAS_WIDTH, offset, pic, &data)?;
+        Pic::decode_into_buffer(palette, write_pointer, ATLAS_WIDTH, offset, pic, data)?;
 
         // FIXME: fill in border with a copy of the other side.
 

@@ -16,7 +16,7 @@ use anyhow::{ensure, Result};
 use image::{ImageBuffer, Pixel, Rgb, Rgba};
 use std::{borrow::Cow, fs::File, io::Write};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Palette {
     pub color_count: usize,
     entries: Vec<Rgb<u8>>,
@@ -40,7 +40,7 @@ impl Palette {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         // The VGA palette contains 6 bit colors, so we need to scale by 4 and add the bottom 2 bits.
         ensure!(data.len() % 3 == 0, "expected data to divide cleanly by 3");
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(256);
         let color_count = data.len() / 3;
         for i in 0..color_count {
             entries.push(Rgb([
@@ -152,6 +152,16 @@ impl Palette {
             out.push(entry[1] >> 2);
             out.push(entry[2] >> 2);
         }
+        out
+    }
+
+    pub fn as_gpu_buffer(&self) -> [u32; 256] {
+        let mut out = [0u32; 256];
+        for (i, entry) in self.entries.iter().enumerate() {
+            out[i] =
+                (entry[0] as u32) | (entry[1] as u32) << 8 | (entry[2] as u32) << 16 | 0xFF << 24;
+        }
+        out[255] = 0;
         out
     }
 

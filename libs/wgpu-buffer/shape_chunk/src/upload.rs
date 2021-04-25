@@ -1176,7 +1176,7 @@ impl<'a> ShapeUploader<'a> {
                     let filename = texture.filename.to_uppercase();
                     let data = self.catalog.read_name_sync(&filename)?;
                     let pic = Pic::from_bytes(&data)?;
-                    self.active_frame = Some(atlas.push(&filename, &pic, data, self.palette)?);
+                    self.active_frame = Some(atlas.push(&filename, &pic, &data, self.palette)?);
                 }
 
                 Instr::VertexBuf(vert_buf) => {

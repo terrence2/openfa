@@ -51,6 +51,7 @@ members = [
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
+    "libs/util/pic_uploader",
     "libs/util/pkware",
     "libs/util/reverse",
 ]
@@ -109,6 +110,5 @@ mm = { path = "libs/asset/mm" }
 pal = { path = "libs/asset/pal" }
 shape = { path = "libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
-t2 = { path = "libs/asset/t2" }
 t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
 xt = { path = "libs/asset/xt" }

@@ -1,0 +1,25 @@
+[package]
+name = "pic_uploader"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "^ 1"
+wgpu = "^ 0.7"
+zerocopy = "^ 0.3"
+gpu = { path = "../../nitrogen/system/gpu" }
+pal = { path = "../../asset/pal" }
+pic = { path = "../../asset/pic" }
+
+[dev-dependencies]
+env_logger = "^ 0.8"
+image = "^ 0.23"
+tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
+winit = { version = "^ 0.24", features = ["web-sys"] }
+catalog = { path = "../../nitrogen/system/catalog" }
+lib = { path = "../../asset/lib" }
+nitrous = { path = "../../nitrogen/system/nitrous" }
+
+[build-dependencies]
+build_shaders = { path = "../../nitrogen/system/build_shaders" }
