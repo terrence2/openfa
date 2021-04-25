@@ -16,7 +16,7 @@ use anyhow::{bail, ensure, Result};
 use image::{DynamicImage, GenericImage, GenericImageView, RgbaImage};
 use packed_struct::packed_struct;
 use pal::Palette;
-use std::{borrow::Cow, mem, ops::Range};
+use std::{borrow::Cow, mem};
 
 packed_struct!(Header {
     _0 => format: u16,
@@ -51,6 +51,8 @@ impl PicFormat {
         Ok(match format {
             0 => PicFormat::Format0,
             1 => PicFormat::Format1,
+            // Note that this is a totally normal jpeg start-of-stream marker and we should pass
+            // the full data block to the jpeg decoder rather than trying to slice of the "header".
             0xD8FF => PicFormat::Jpeg,
             _ => bail!("unknown pic format: 0x{:04X}", format),
         })
@@ -62,9 +64,13 @@ pub struct Pic<'a> {
     width: u32,
     height: u32,
     palette: Option<Palette>,
+    spans: &'a [Span],
+    // TODO: remove offset and size as soon as we remove decode_to_buffer;
+    //       this is currently needed by shape's atlas; port to new atlas to do decode on GPU,
+    //       obviating the need to decode on CPU at all
     pixels_offset: usize,
     pixels_size: usize,
-    raw_data: &'a [u8],
+    pixels_data: &'a [u8],
 }
 
 impl<'a> Pic<'a> {
@@ -73,22 +79,12 @@ impl<'a> Pic<'a> {
         PicFormat::from_word(header.format())
     }
 
-    /// Returns metadata about the image. Call decode to get a DynamicImage for rendering.
-    pub fn from_bytes(data: &'a [u8]) -> Result<Pic> {
+    /// Returns metadata about the image. Fails if called on a jpeg format image.
+    /// Note: Useful for applications that want to e.g. use the palettized pixels bare.
+    pub fn from_bytes_non_jpeg(data: &'a [u8]) -> Result<Pic> {
         let header = Header::overlay(&data[..mem::size_of::<Header>()])?;
         let format = PicFormat::from_word(header.format())?;
-        if format == PicFormat::Jpeg {
-            let img = image::load_from_memory(data)?;
-            return Ok(Pic {
-                format: PicFormat::Jpeg,
-                width: img.width(),
-                height: img.height(),
-                palette: None,
-                pixels_offset: 0,
-                pixels_size: 0,
-                raw_data: &[],
-            });
-        }
+        ensure!(format != PicFormat::Jpeg);
 
         let palette = if header.palette_size() > 0 {
             let palette_data =
@@ -103,9 +99,35 @@ impl<'a> Pic<'a> {
             width: header.width(),
             height: header.height(),
             palette,
+            // Note: last span is always a marker.
+            spans: Span::overlay_slice(
+                &data[header.spans_offset()
+                    ..header.spans_offset() + header.spans_size() - mem::size_of::<Span>()],
+            )?,
             pixels_offset: header.pixels_offset(),
             pixels_size: header.pixels_size(),
-            raw_data: &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
+            pixels_data: &data
+                [header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
+        })
+    }
+
+    /// Returns metadata about the image. Call decode to get a DynamicImage.
+    /// Note: Does a full image decode if the image is a jpeg.
+    pub fn from_bytes(data: &'a [u8]) -> Result<Pic> {
+        Ok(if let Ok(meta) = Self::from_bytes_non_jpeg(data) {
+            meta
+        } else {
+            let img = image::load_from_memory(data)?;
+            Pic {
+                format: PicFormat::Jpeg,
+                width: img.width(),
+                height: img.height(),
+                palette: None,
+                spans: &[],
+                pixels_offset: 0,
+                pixels_size: 0,
+                pixels_data: &[],
+            }
         })
     }
 
@@ -207,16 +229,42 @@ impl<'a> Pic<'a> {
         self.height
     }
 
-    pub fn pixel_span(&self) -> Range<usize> {
-        self.pixels_offset..self.pixels_offset + self.pixels_size
-    }
-
     pub fn palette(&self) -> Option<&Palette> {
         self.palette.as_ref()
     }
 
     pub fn raw_data(&self) -> &[u8] {
-        self.raw_data
+        self.pixels_data
+    }
+
+    /// Return the raw, palettized pixels if stored directly, or build them from the spans data.
+    pub fn pixel_data(&self) -> Result<Cow<'a, [u8]>> {
+        Ok(match self.format {
+            PicFormat::Format0 => Cow::Borrowed(self.pixels_data),
+            PicFormat::Format1 => {
+                let mut out = vec![0u8; (self.width * self.height) as usize];
+                for span in self.spans {
+                    ensure!(span.row() < self.height);
+                    ensure!(span.index() < self.pixels_data.len());
+                    ensure!(span.start() < self.width);
+                    ensure!(span.end() < self.width);
+                    ensure!(span.start() <= span.end());
+                    ensure!(
+                        span.index() + ((span.end() - span.start()) as usize)
+                            < self.pixels_data.len()
+                    );
+
+                    let start_off = (span.row() * self.width + span.start()) as usize;
+                    let end_off = (span.row() * self.width + span.end()) as usize;
+                    let cnt = (span.end() - span.start() + 1) as usize;
+                    out[start_off..=end_off].copy_from_slice(
+                        &self.pixels_data[span.index() as usize..span.index() as usize + cnt],
+                    )
+                }
+                Cow::Owned(out)
+            }
+            PicFormat::Jpeg => panic!("pixel_data invalid when called on jpeg fmt images"),
+        })
     }
 
     fn make_palette<'b>(

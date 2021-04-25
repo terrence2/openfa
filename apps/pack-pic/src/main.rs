@@ -107,10 +107,10 @@ fn load_palette_from_resource(catalog: &Catalog, resource_name: &str) -> Result<
     if resource_name.to_uppercase().ends_with("PAL") {
         return Palette::from_bytes(&data);
     }
-    Ok(Pic::from_bytes(&data)?
+    Pic::from_bytes(&data)?
         .palette()
         .cloned()
-        .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))?)
+        .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))
 }
 
 fn load_palette(opt: &Opt) -> Result<Palette> {

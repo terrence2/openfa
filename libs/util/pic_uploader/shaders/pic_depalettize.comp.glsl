@@ -13,28 +13,20 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-struct PicUploadInfo {
-    uint width;
-    uint height;
-    uint stride;
-};
-
-layout(set = 0, binding = 0) uniform Info { PicUploadInfo info; };
-layout(set = 0, binding = 1) buffer Palette { uint palette[256]; };
-layout(set = 0, binding = 2) buffer PicData { uint raw_img[]; };
-layout(set = 0, binding = 3, rgba8) writeonly uniform image2D target_texture;
+layout(set = 0, binding = 0) readonly buffer Palette { uint palette[256]; };
+layout(set = 0, binding = 1) readonly buffer RawData { uint raw_img[]; };
+layout(set = 0, binding = 2) writeonly buffer TgtData { uint tgt_img[]; };
 
 void
 main() {
-    // Layout is over target coordinates, since those are always aligned to the block size.
-    uvec2 tgt_coord = gl_GlobalInvocationID.xy;
+    // Unpack 4 packed, 1 byte pixels
+    uint block_offset = gl_GlobalInvocationID.x;
+    uvec4 p = uvec4(unpackUnorm4x8(raw_img[block_offset]) * 255.0);
 
-    uint clr = 0;
-    if (tgt_coord.x < info.width && tgt_coord.y < info.height) {
-        // Note: source buffer is packed, stride is for target texture
-        uint src_coord = info.width * tgt_coord.y + tgt_coord.x;
+    // look up each pixel in the palette, then write back to the target.
+    for (uint i = 0; i < 4; ++i) {
+        tgt_img[4 * block_offset + i] = palette[p[i]];
     }
-
 }

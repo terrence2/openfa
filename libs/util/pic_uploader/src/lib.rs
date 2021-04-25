@@ -12,51 +12,33 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::Result;
-use gpu::{Gpu, UploadTracker};
-use image::{GenericImage, RgbaImage};
+use anyhow::{ensure, Result};
+use gpu::Gpu;
 use pal::Palette;
 use pic::{Pic, PicFormat};
-use std::{num::NonZeroU64, sync::Arc};
-use zerocopy::AsBytes;
-
-#[repr(C)]
-#[derive(AsBytes, Debug, Copy, Clone)]
-struct PicUploadInfo {
-    width: u32,
-    height: u32,
-    target_stride_px: u32,
-}
+use std::num::NonZeroU64;
 
 /// Upload Pic files direct from mmap to GPU and depalettize on GPU, when possible.
 #[derive(Debug)]
 pub struct PicUploader {
     depalettize_layout: wgpu::BindGroupLayout,
     depalettize_pipeline: wgpu::ComputePipeline,
-    depalettize: Vec<(PicUploadInfo, wgpu::BindGroup)>,
+    depalettize: Vec<(u32, wgpu::BindGroup)>,
+    shared_palette: Option<wgpu::Buffer>,
 }
 
 impl PicUploader {
+    const GROUP_SIZE: u32 = 64;
+
     pub fn new(gpu: &Gpu) -> Result<Self> {
         let depalettize_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("pic-upload-bind-group-layout"),
                     entries: &[
-                        // Info
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStage::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
                         // Palette
                         wgpu::BindGroupLayoutEntry {
-                            binding: 1,
+                            binding: 0,
                             visibility: wgpu::ShaderStage::COMPUTE,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -67,7 +49,7 @@ impl PicUploader {
                         },
                         // Unpalettized, unaligned buffer.
                         wgpu::BindGroupLayoutEntry {
-                            binding: 2,
+                            binding: 1,
                             visibility: wgpu::ShaderStage::COMPUTE,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -78,12 +60,12 @@ impl PicUploader {
                         },
                         // Target, aligned, texture
                         wgpu::BindGroupLayoutEntry {
-                            binding: 3,
+                            binding: 2,
                             visibility: wgpu::ShaderStage::COMPUTE,
-                            ty: wgpu::BindingType::StorageTexture {
-                                access: wgpu::StorageTextureAccess::WriteOnly,
-                                format: wgpu::TextureFormat::Rgba8Unorm,
-                                view_dimension: wgpu::TextureViewDimension::D2,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
                             },
                             count: None,
                         },
@@ -111,162 +93,93 @@ impl PicUploader {
             depalettize_layout,
             depalettize_pipeline,
             depalettize: Vec::new(),
+            shared_palette: None,
         })
     }
 
-    fn upload_cpu(
-        &self,
-        base_palette: &Palette,
-        data: &[u8],
-        gpu: &Gpu,
-        tracker: &mut UploadTracker,
-    ) -> Result<()> {
-        // Decode on CPU
-        let img = Pic::decode(base_palette, data)?.to_rgba8();
-        // Ensure width matches required width stride.
-        let stride = Gpu::stride_for_row_size(img.width() * 4) / 4;
-        let img = if stride == img.width() {
-            img
-        } else {
-            let mut aligned_img = RgbaImage::new(stride, img.height());
-            aligned_img.copy_from(&img, 0, 0)?;
-            aligned_img
-        };
-        // Upload to GPU and copy to a new texture.
-        let img_buffer = gpu.push_buffer(
-            "pic-uploader-img-buffer",
-            img.as_bytes(),
+    pub fn set_shared_palette(&mut self, palette: &Palette, gpu: &Gpu) {
+        let palette_buffer = gpu.push_slice(
+            "pic-upload-shared-palette",
+            &palette.as_gpu_buffer(),
             wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
         );
-        // Create the texture.
-        let size = wgpu::Extent3d {
-            width: img.width(),
-            height: img.height(),
-            depth: 1,
-        };
-        let texture = Arc::new(Box::new(gpu.device().create_texture(
-            &wgpu::TextureDescriptor {
-                label: Some("pic-uploader-img-texture"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
-            },
-        )));
-        tracker.upload_to_texture(
-            img_buffer,
-            texture,
-            size,
-            wgpu::TextureFormat::Rgba8Unorm,
-            1,
-            wgpu::Origin3d::ZERO,
-        );
-        Ok(())
+        self.shared_palette = Some(palette_buffer);
     }
 
     pub fn upload(
         &mut self,
-        base_palette: &Palette,
         data: &[u8],
         gpu: &Gpu,
-        tracker: &mut UploadTracker,
-    ) -> Result<()> {
-        match Pic::read_format(data)? {
-            PicFormat::Jpeg | PicFormat::Format1 => {
-                self.upload_cpu(base_palette, data, gpu, tracker)?;
+        usage: wgpu::BufferUsage,
+    ) -> Result<(wgpu::Buffer, u32, u32)> {
+        Ok(match Pic::read_format(data)? {
+            PicFormat::Jpeg => {
+                panic!("pic uploader jpeg support missing")
             }
-            PicFormat::Format0 => {
+            PicFormat::Format0 | PicFormat::Format1 => {
                 // Decode on GPU
                 let pic = Pic::from_bytes(data)?;
-                if let Some(_palette) = pic.palette() {
-                    // TODO: own-palette version
-                    self.upload_cpu(base_palette, data, gpu, tracker)?;
+                let owned;
+                let palette_buffer = if let Some(own_palette) = pic.palette() {
+                    owned = gpu.push_slice(
+                        "pic-upload-own-palette",
+                        &own_palette.as_gpu_buffer(),
+                        wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
+                    );
+                    &owned
                 } else {
-                    let info = PicUploadInfo {
-                        width: pic.width(),
-                        height: pic.height(),
-                        target_stride_px: Gpu::stride_for_row_size(pic.width() * 4) / 4,
-                    };
-                    let info_buffer = gpu.push_data(
-                        "pic-upload-info",
-                        &info,
-                        wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::UNIFORM,
-                    );
-                    let palette_buffer = gpu.push_slice(
-                        "pic-upload-palette",
-                        &base_palette.as_gpu_buffer(),
-                        wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
-                    );
-                    let raw_buffer = gpu.push_buffer(
-                        "pic-upload-palettized",
-                        pic.raw_data(),
-                        wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
-                    );
-                    let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
-                        label: Some("pic-upload-texture"),
-                        size: wgpu::Extent3d {
-                            width: info.target_stride_px,
-                            height: pic.height(),
-                            depth: 1,
+                    ensure!(self.shared_palette.is_some());
+                    self.shared_palette.as_ref().unwrap()
+                };
+                let raw_buffer = gpu.push_buffer(
+                    "pic-upload-palettized",
+                    &pic.pixel_data()?,
+                    wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
+                );
+                let tgt_buffer_size =
+                    Gpu::stride_for_row_size(pic.width() * pic.height() * 4) as u64;
+                let tgt_buffer = gpu.device().create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("pic-upload-tgt-buffer"),
+                    size: tgt_buffer_size,
+                    usage: usage | wgpu::BufferUsage::STORAGE,
+                    mapped_at_creation: false,
+                });
+                let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("pic-upload-bind-group"),
+                    layout: &self.depalettize_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::Buffer {
+                                buffer: &palette_buffer,
+                                offset: 0,
+                                size: NonZeroU64::new(4 * 256),
+                            },
                         },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        usage: wgpu::TextureUsage::STORAGE | wgpu::TextureUsage::SAMPLED,
-                    });
-                    let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("pic-upload-bind-group"),
-                        layout: &self.depalettize_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::Buffer {
-                                    buffer: &info_buffer,
-                                    offset: 0,
-                                    size: None,
-                                },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Buffer {
+                                buffer: &raw_buffer,
+                                offset: 0,
+                                size: NonZeroU64::new(pic.raw_data().len() as u64),
                             },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::Buffer {
-                                    buffer: &palette_buffer,
-                                    offset: 0,
-                                    size: NonZeroU64::new(4 * 256),
-                                },
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Buffer {
+                                buffer: &tgt_buffer,
+                                offset: 0,
+                                size: NonZeroU64::new(tgt_buffer_size),
                             },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::Buffer {
-                                    buffer: &raw_buffer,
-                                    offset: 0,
-                                    size: NonZeroU64::new(pic.raw_data().len() as u64),
-                                },
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 3,
-                                resource: wgpu::BindingResource::TextureView(&texture.create_view(
-                                    &wgpu::TextureViewDescriptor {
-                                        label: Some("pic-upload-target-texture-view"),
-                                        format: None,
-                                        dimension: None,
-                                        aspect: wgpu::TextureAspect::All,
-                                        base_mip_level: 0,
-                                        level_count: None,
-                                        base_array_layer: 0,
-                                        array_layer_count: None,
-                                    },
-                                )),
-                            },
-                        ],
-                    });
-                    self.depalettize.push((info, bind_group));
-                }
+                        },
+                    ],
+                });
+                let group_count = (pic.raw_data().len() as u32 / 4 + Self::GROUP_SIZE - 1)
+                    & !(Self::GROUP_SIZE as u32 - 1);
+                self.depalettize.push((group_count, bind_group));
+                (tgt_buffer, pic.width(), pic.height())
             }
-        }
-        Ok(())
+        })
     }
 
     pub fn dispatch_pass<'a>(
@@ -274,20 +187,19 @@ impl PicUploader {
         mut cpass: wgpu::ComputePass<'a>,
     ) -> Result<wgpu::ComputePass<'a>> {
         cpass.set_pipeline(&self.depalettize_pipeline);
-        for (info, bind_group) in self.depalettize.iter() {
+        for (dispatch_group_count, bind_group) in self.depalettize.iter() {
             cpass.set_bind_group(0, bind_group, &[]);
-            cpass.dispatch(info.target_stride_px / 16, info.height / 16 + 1, 1)
+            cpass.dispatch(*dispatch_group_count, 1, 1)
         }
         Ok(cpass)
     }
 
-    pub fn dispatch_singleton(&mut self, gpu: &mut Gpu, tracker: UploadTracker) -> Result<()> {
+    pub fn dispatch_singleton(&mut self, gpu: &mut Gpu) -> Result<()> {
         let mut encoder = gpu
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("test-encoder"),
             });
-        tracker.dispatch_uploads(&mut encoder);
         {
             let cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("test-encoder-compute-pass"),
@@ -302,14 +214,19 @@ impl PicUploader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::GenericImageView;
+    use image::RgbaImage;
     use lib::CatalogBuilder;
     use nitrous::Interpreter;
-    use std::time::Instant;
+    use std::{
+        env,
+        time::{Duration, Instant},
+    };
+    use tokio::runtime::Runtime;
     use winit::{event_loop::EventLoop, window::Window};
+    use zerocopy::AsBytes;
 
     #[test]
-    fn it_works() -> Result<()> {
+    fn it_works_quickly() -> Result<()> {
         env_logger::init();
 
         use winit::platform::unix::EventLoopExtUnix;
@@ -317,53 +234,74 @@ mod tests {
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
         let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
-        //let async_rt = Runtime::new()?;
-
-        let mut printed_value = 0;
 
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
         let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let start = Instant::now();
         let mut uploader = PicUploader::new(&gpu.read())?;
-        let mut tracker = UploadTracker::default();
+        uploader.set_shared_palette(&palette, &gpu.read());
         for &fid in &inputs {
             let label = catalog.file_label(fid)?;
             catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            // // println!(
-            // //     "At: {}:{:13} @ {}",
-            // //     game,
-            // //     meta.name(),
-            // //     meta.path()
-            // //         .map(|v| v.to_string_lossy())
-            // //         .unwrap_or_else(|| "<none>".into())
-            // // );
             let data = catalog.read_sync(fid)?;
-            let pic = Pic::from_bytes(&data)?;
-            println!(
-                "At: {}:{:13} @ {:?} p {}",
-                game,
-                meta.name(),
-                pic.format(),
-                pic.palette().is_some(),
-            );
-            let img = Pic::decode(&palette, &data)?;
-            printed_value += img.get_pixel(0, 0).0[0] as usize;
-            // uploader.upload(&palette, &data, &gpu.read(), &mut tracker)?;
-            printed_value += data[0] as usize;
+            let format = Pic::read_format(&data)?;
+            if format == PicFormat::Jpeg {
+                // Jpeg is not interesting for PicUploader since it's primary purpose is depalettizing.
+                continue;
+            }
+            uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::STORAGE)?;
         }
         println!("prepare time: {:?}", start.elapsed());
 
         let start = Instant::now();
-        uploader.dispatch_singleton(&mut gpu.write(), tracker)?;
+        uploader.dispatch_singleton(&mut gpu.write())?;
         println!("dispatch time: {:?}", start.elapsed());
 
         let start = Instant::now();
         gpu.read().device().poll(wgpu::Maintain::Wait);
         println!("execute time: {:?}", start.elapsed());
 
-        println!("through line: {}", printed_value);
+        Ok(())
+    }
+
+    #[test]
+    fn round_trip() -> Result<()> {
+        env_logger::init();
+
+        use winit::platform::unix::EventLoopExtUnix;
+        let event_loop = EventLoop::<()>::new_any_thread();
+        let window = Window::new(&event_loop)?;
+        let interpreter = Interpreter::new();
+        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
+        let async_rt = Runtime::new()?;
+
+        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["FA:CATB.PIC".to_owned()])?;
+        let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        let mut uploader = PicUploader::new(&gpu.read())?;
+        uploader.set_shared_palette(&palette, &gpu.read());
+        let fid = inputs.first().unwrap();
+        catalog.set_default_label(&catalog.file_label(*fid)?);
+        let data = catalog.read_sync(*fid)?;
+        let (buffer, width, height) =
+            uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::MAP_READ)?;
+        uploader.dispatch_singleton(&mut gpu.write())?;
+        gpu.read().device().poll(wgpu::Maintain::Wait);
+
+        if env::var("DUMP") == Ok("1".to_owned()) {
+            let task = async_rt.spawn(async move {
+                let slice = buffer.slice(..);
+                slice.map_async(wgpu::MapMode::Read).await.unwrap();
+                let view = slice.get_mapped_range();
+                let rgba = RgbaImage::from_raw(width, height, view.as_bytes().to_vec()).unwrap();
+                rgba.save("../../../__dump__/test_pic_uploader_catb.png")
+                    .unwrap();
+            });
+            for _ in 0..10 {
+                gpu.read().device().poll(wgpu::Maintain::Wait);
+                std::thread::sleep(Duration::from_millis(16));
+            }
+            async_rt.block_on(task)?;
+        }
 
         Ok(())
     }

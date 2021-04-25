@@ -36,7 +36,6 @@ use parking_lot::RwLock;
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use t2::Terrain as T2Terrain;
 use t2_tile_set::T2HeightTileSet;
 use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
@@ -287,16 +286,14 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let start = Instant::now();
     let type_manager = TypeManager::empty();
     for mm_fid in &input_fids {
+        catalog.set_default_label(&catalog.file_label(*mm_fid)?);
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
-        let t2_data = catalog.read_name_sync(mm.t2_name())?;
-        let t2 = T2Terrain::from_bytes(&t2_data)?;
         t2_tile_set.add_map(
             &system_palette,
             &mm,
-            &t2,
             &catalog,
             &mut gpu.write(),
             &async_rt,

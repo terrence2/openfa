@@ -16,7 +16,7 @@ mod t2_info;
 
 use crate::t2_info::T2Info;
 use absolute_unit::{degrees, radians};
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use atlas::{AtlasPacker, Frame};
 use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
@@ -26,7 +26,7 @@ use image::Rgba;
 use lay::Layer;
 use mm::{MissionMap, TLoc};
 use pal::Palette;
-use pic::{Pic, PicFormat};
+use pic_uploader::PicUploader;
 use shader_shared::Group;
 use std::{
     collections::{HashMap, HashSet},
@@ -36,9 +36,6 @@ use std::{
 use t2::Terrain as T2Terrain;
 use terrain::{TerrainBuffer, TileSet, VisiblePatch};
 use tokio::{runtime::Runtime, sync::RwLock};
-
-/*
- */
 
 #[derive(Debug)]
 pub struct T2HeightTileSet {
@@ -293,11 +290,11 @@ impl T2HeightTileSet {
         let extra = num_across * num_across - sources.len() as u32;
         let num_down = num_across - (extra / num_across);
 
-        const PATCH_SIZE: u32 = 256;
-        let atlas_width0 = (num_across * PATCH_SIZE) + num_across + 1;
+        let patch_size = AtlasPacker::<Rgba<u8>>::align(257);
+        let atlas_width0 = (num_across * patch_size) + num_across + 1;
         let atlas_stride = Gpu::stride_for_row_size(atlas_width0 * 4);
         let atlas_width = atlas_stride / 4;
-        let atlas_height = (num_down * PATCH_SIZE) + num_down + 1;
+        let atlas_height = (num_down * patch_size) + num_down + 1;
 
         // Build a texture atlas.
         let mut atlas_builder = AtlasPacker::<Rgba<u8>>::new(
@@ -310,20 +307,19 @@ impl T2HeightTileSet {
             wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
         )?;
 
+        let mut uploader = PicUploader::new(gpu)?;
+        uploader.set_shared_palette(&palette, gpu);
+
         let mut frames = HashMap::new();
         let texture_base_name = mm.get_base_texture_name()?;
         for loc in sources.drain() {
             let name = loc.pic_file(&texture_base_name);
             let data = catalog.read_name_sync(&name)?;
-            let pic = Pic::from_bytes(&data)?;
-            ensure!(pic.format() == PicFormat::Format0);
-            ensure!(pic.palette().is_none());
-            let _palettized = &data[pic.pixel_span()];
-            let pic = Pic::decode(&palette, &data)?;
-            let frame = atlas_builder.push_image(&pic.into_rgba8(), gpu)?;
+            let (buffer, w, h) = uploader.upload(&data, gpu, wgpu::BufferUsage::STORAGE)?;
+            let frame = atlas_builder.push_buffer(buffer, w, h, gpu)?;
             frames.insert(loc, frame);
         }
-
+        uploader.dispatch_singleton(gpu)?;
         Ok((frames, atlas_builder.finish(gpu, async_rt, tracker)?))
     }
 
@@ -331,17 +327,19 @@ impl T2HeightTileSet {
         &mut self,
         system_palette: &Palette,
         mm: &MissionMap,
-        t2: &T2Terrain,
         catalog: &Catalog,
         gpu: &mut Gpu,
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<()> {
-        if self.bind_groups.contains_key(t2.name()) {
+        if self.bind_groups.contains_key(mm.t2_name()) {
             return Ok(());
         }
 
-        let (height_texture_view, height_sampler) = self._upload_heights(t2, gpu, tracker);
+        let t2_data = catalog.read_name_sync(mm.t2_name())?;
+        let t2 = T2Terrain::from_bytes(&t2_data)?;
+
+        let (height_texture_view, height_sampler) = self._upload_heights(&t2, gpu, tracker);
 
         let (_frames, (_atlas_texture, atlas_texture_view, atlas_sampler)) =
             self._build_atlas(system_palette, mm, catalog, gpu, async_rt, tracker)?;
@@ -534,15 +532,10 @@ mod tests {
             let type_manager = TypeManager::empty();
             let contents = from_dos_string(catalog.read_sync(fid)?);
             let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
-
-            let t2_content = catalog.read_name_sync(mm.t2_name())?;
-            let t2 = T2Terrain::from_bytes(&t2_content)?;
-
             let mut tracker = Default::default();
             ts.add_map(
                 &system_palette,
                 &mm,
-                &t2,
                 &catalog,
                 &mut gpu.write(),
                 &async_rt,
