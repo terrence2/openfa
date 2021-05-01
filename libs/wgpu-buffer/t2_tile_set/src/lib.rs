@@ -220,11 +220,6 @@ impl T2HeightTileSet {
             }
         }
 
-        let phys_extent = wgpu::Extent3d {
-            width: stride,
-            height: t2.height(),
-            depth: 1,
-        };
         let logical_extent = wgpu::Extent3d {
             width: t2.width(),
             height: t2.height(),

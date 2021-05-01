@@ -286,6 +286,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let start = Instant::now();
     let type_manager = TypeManager::empty();
     for mm_fid in &input_fids {
+        let name = catalog.stat_sync(*mm_fid)?.name().to_owned();
+        if name.starts_with('~') || name.starts_with('$') {
+            continue;
+        }
+        println!("Loading {}...", name);
         catalog.set_default_label(&catalog.file_label(*mm_fid)?);
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let raw = catalog.read_sync(*mm_fid)?;
