@@ -98,6 +98,12 @@ impl Palette {
         Ok(self.entries[index])
     }
 
+    #[inline]
+    pub fn pack_unorm(&self, index: usize) -> u32 {
+        let entry = &self.entries[index];
+        (entry[0] as u32) | (entry[1] as u32) << 8 | (entry[2] as u32) << 16 | 0xFF << 24
+    }
+
     pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Result<()> {
         let mut dst_i = offset;
         for src_i in 0..other.entries.len() {
@@ -157,9 +163,8 @@ impl Palette {
 
     pub fn as_gpu_buffer(&self) -> [u32; 256] {
         let mut out = [0u32; 256];
-        for (i, entry) in self.entries.iter().enumerate() {
-            out[i] =
-                (entry[0] as u32) | (entry[1] as u32) << 8 | (entry[2] as u32) << 16 | 0xFF << 24;
+        for (i, _) in self.entries.iter().enumerate() {
+            out[i] = self.pack_unorm(i);
         }
         out[255] = 0;
         out

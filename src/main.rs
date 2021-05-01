@@ -184,7 +184,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
 
     let interpreter = Interpreter::new();
-    let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
+    let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
 
     let orrery = Orrery::new(
         Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
@@ -300,6 +300,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
     }
+    tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()
         .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);

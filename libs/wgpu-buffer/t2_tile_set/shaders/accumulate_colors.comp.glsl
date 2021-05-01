@@ -25,6 +25,8 @@ layout(set = 2, binding = 1) uniform texture2D height_texture;
 layout(set = 2, binding = 2) uniform sampler height_sampler;
 layout(set = 2, binding = 3) uniform texture2D atlas_texture;
 layout(set = 2, binding = 4) uniform sampler atlas_sampler;
+layout(set = 2, binding = 5) uniform utexture2D index_texture;
+layout(set = 2, binding = 6) uniform sampler index_sampler;
 
 
 void
@@ -46,17 +48,18 @@ main()
 
         if (grat_in_t2(grat, t2_base, t2_span)) {
             vec2 uv = vec2(
-                (t2_base.x - grat.x) / t2_span.x,
-                (grat.y - t2_base.y) / t2_span.y
+                (grat.y - t2_base.y) / t2_span.y,
+                1. - (t2_base.x - grat.x) / t2_span.x
             );
-            vec4 clr = texture(sampler2D(atlas_texture, atlas_sampler), uv);
+            //vec4 clr = texture(sampler2D(atlas_texture, atlas_sampler), uv);
+            uint clr = texture(usampler2D(index_texture, index_sampler), uv).r;
 
             // TODO: take advantage of the existing color at all, or just replace with FA? Make it an option maybe?
-            // Write back blended normal.
+            // Write back blended color.
             imageStore(
                 terrain_color_acc,
                 coord,
-                clr
+                unpackUnorm4x8(clr)
             );
         }
     }
