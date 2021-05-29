@@ -110,7 +110,7 @@ Ukraine            {0, 1}
 
 use anyhow::{bail, ensure, Result};
 use lazy_static::lazy_static;
-use log::trace;
+use log::{trace, warn};
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
 
@@ -229,7 +229,11 @@ impl Terrain {
 
     /// Returns best guess lat/lon at south-west corner in degrees as f32.
     pub fn base_graticule_degrees(&self) -> [f32; 2] {
-        MAP_POSITIONS.get(self.name()).cloned().unwrap_or([0f32; 2])
+        if let Some(p) = MAP_POSITIONS.get(self.name()) {
+            return *p;
+        }
+        warn!("unknown base_graticule_degrees for map {}", self.name());
+        [0f32; 2]
     }
 }
 
