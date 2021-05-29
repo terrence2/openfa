@@ -53,9 +53,9 @@ struct MemMap {
 impl MemMap {
     fn new(start: u32, mem: Vec<u8>, protection: MapProtection) -> Self {
         Self {
-            start,
             mem,
             protection,
+            start,
         }
     }
 }

@@ -35,12 +35,10 @@ impl CatalogBuilder {
         catalog.add_drawer(DirectoryDrawer::from_directory_with_extension(
             101, &cwd, "t2",
         )?)?;
-        for raw_entry in fs::read_dir(&cwd)? {
-            if let Ok(entry) = raw_entry {
-                if let Some(ext) = entry.path().extension() {
-                    if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
-                        catalog.add_drawer(LibDrawer::from_path(100, &entry.path())?)?;
-                    }
+        for entry in (fs::read_dir(&cwd)?).flatten() {
+            if let Some(ext) = entry.path().extension() {
+                if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
+                    catalog.add_drawer(LibDrawer::from_path(100, &entry.path())?)?;
                 }
             }
         }
@@ -77,25 +75,22 @@ impl CatalogBuilder {
                 }
 
                 let loose_dir = base_loose_dir.join(game.test_dir);
-                for raw_entry in fs::read_dir(&loose_dir)? {
-                    if let Ok(entry) = raw_entry {
-                        if let Some(ext) = entry.path().extension() {
-                            if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
-                                let priority =
-                                    Priority::from_path(&entry.path())?.as_drawer_priority();
-                                catalog.add_labeled_drawer(
-                                    &game.unpacked_label(),
-                                    DirectoryDrawer::from_directory(priority, &entry.path())?,
-                                )?;
-                            }
+                for entry in (fs::read_dir(&loose_dir)?).flatten() {
+                    if let Some(ext) = entry.path().extension() {
+                        if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
+                            let priority = Priority::from_path(&entry.path())?.as_drawer_priority();
+                            catalog.add_labeled_drawer(
+                                &game.unpacked_label(),
+                                DirectoryDrawer::from_directory(priority, &entry.path())?,
+                            )?;
                         }
-                        if let Some(name) = entry.path().file_name() {
-                            if name.to_string_lossy() == "installdir" {
-                                catalog.add_labeled_drawer(
-                                    &game.unpacked_label(),
-                                    DirectoryDrawer::from_directory(102, &entry.path())?,
-                                )?;
-                            }
+                    }
+                    if let Some(name) = entry.path().file_name() {
+                        if name.to_string_lossy() == "installdir" {
+                            catalog.add_labeled_drawer(
+                                &game.unpacked_label(),
+                                DirectoryDrawer::from_directory(102, &entry.path())?,
+                            )?;
                         }
                     }
                 }
