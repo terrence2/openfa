@@ -18,6 +18,7 @@ struct T2Info {
     float base_graticule_lon;
     float span_graticule_lat;
     float span_graticule_lon;
+    float height_scale;
 };
 
 vec2

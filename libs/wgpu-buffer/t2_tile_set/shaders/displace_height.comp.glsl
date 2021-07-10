@@ -25,9 +25,6 @@ layout(set = 1, binding = 0) uniform T2TerrainInfo { T2Info t2_info; };
 layout(set = 1, binding = 1) uniform texture2D height_texture;
 layout(set = 1, binding = 2) uniform sampler height_sampler;
 
-// Todo: pass in t2_info and allow updating
-#define HEIGHT_SCALE 30.
-
 void
 main()
 {
@@ -36,21 +33,17 @@ main()
     vec2 grat = arr_to_vec2(vertices[i].graticule);
     vec3 v_normal = arr_to_vec3(vertices[i].normal);
 
-    float adj_height = 0;
-    vec3 adj_position = arr_to_vec3(vertices[i].position);
+    vec3 old_position = arr_to_vec3(vertices[i].position);
 
     vec2 t2_base = t2_base_graticule(t2_info);
     vec2 t2_span = t2_span_graticule(t2_info);
+    vec2 uv = vec2(
+        ((grat.y - t2_base.y) / t2_span.y) * cos(grat.x),
+        1. - (t2_base.x - grat.x) / t2_span.x
+    );
 
-    if (grat_in_t2(grat, t2_base, t2_span)) {
-        vec2 uv = vec2(
-            (grat.y - t2_base.y) / t2_span.y,
-            (t2_base.x - grat.x) / t2_span.x
-        );
-        // Note: interpret as unorm so that we get filtering
-        adj_height = texture(sampler2D(height_texture, height_sampler), uv).r * 255. * HEIGHT_SCALE;
-        adj_position = arr_to_vec3(vertices[i].surface_position);
-    }
-
-    vertices[i].position = vec3_to_arr(adj_position + (float(adj_height) * v_normal));
+    bool inside = all(bvec4(greaterThanEqual(uv, vec2(0)), lessThanEqual(uv, vec2(1))));
+    float new_height = texture(sampler2D(height_texture, height_sampler), uv).r * 255. * t2_info.height_scale;
+    vec3 new_position = arr_to_vec3(vertices[i].surface_position) + (float(new_height) * v_normal);
+    vertices[i].position = vec3_to_arr(mix(old_position, new_position, vec3(inside)));
 }

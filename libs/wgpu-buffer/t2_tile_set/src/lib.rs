@@ -18,6 +18,7 @@ use crate::t2_info::T2Info;
 use absolute_unit::{degrees, radians};
 use anyhow::Result;
 use atlas::{AtlasPacker, Frame};
+use camera::Camera;
 use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
 use gpu::wgpu::{BindGroup, ComputePass, Extent3d};
@@ -541,6 +542,7 @@ impl TileSet for T2HeightTileSet {
 
     fn finish_update(
         &mut self,
+        _camera: &Camera,
         _catalog: Arc<RwLock<Catalog>>,
         _async_rt: &Runtime,
         _gpu: &Gpu,

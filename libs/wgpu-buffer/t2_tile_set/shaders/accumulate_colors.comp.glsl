@@ -14,6 +14,7 @@
 // along with Nitrogen.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
 #include <nitrogen/wgpu-buffer/shader_shared/include/buffer_helpers.glsl>
+#include <nitrogen/wgpu-buffer/shader_shared/include/consts.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/terrain.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/layout_accumulate.glsl>
 #include <wgpu-buffer/t2_tile_set/include/t2_tile_set.glsl>
@@ -37,30 +38,20 @@ main()
     // Do a depth check to see if we're even looking at terrain.
     float depth = texelFetch(sampler2D(terrain_deferred_depth, terrain_linear_sampler), coord, 0).x;
     if (depth > -1) {
-        // Load the relevant color sample.
+        // Project the graticule into uv for the given t2 tile.
         vec2 grat = texelFetch(sampler2D(terrain_deferred_texture, terrain_linear_sampler), coord, 0).xy;
-
-        // For now just sub in F0F... we'll need to find the atlas and do smart stuff to sample correctly.
-        // uint atlas_slot = terrain_atlas_slot_for_graticule(grat, index_texture, index_sampler);
-        // vec4 raw_color = terrain_color_in_tile(grat, tile_info[atlas_slot], atlas_texture, atlas_sampler);
         vec2 t2_base = t2_base_graticule(t2_info);
         vec2 t2_span = t2_span_graticule(t2_info);
+        vec2 uv = vec2(
+            ((grat.y - t2_base.y) / t2_span.y) * cos(grat.x),
+            1. - (t2_base.x - grat.x) / t2_span.x
+        );
 
-        if (grat_in_t2(grat, t2_base, t2_span)) {
-            vec2 uv = vec2(
-                (grat.y - t2_base.y) / t2_span.y,
-                1. - (t2_base.x - grat.x) / t2_span.x
-            );
-            //vec4 clr = texture(sampler2D(atlas_texture, atlas_sampler), uv);
-            uint clr = texture(usampler2D(index_texture, index_sampler), uv).r;
-
-            // TODO: take advantage of the existing color at all, or just replace with FA? Make it an option maybe?
-            // Write back blended color.
-            imageStore(
-                terrain_color_acc,
-                coord,
-                unpackUnorm4x8(clr)
-            );
-        }
+        // Blend based on whether we are inside.
+        bool inside = all(bvec4(greaterThanEqual(uv, vec2(0)), lessThanEqual(uv, vec2(1))));
+        vec4 old = imageLoad(terrain_color_acc, coord);
+        vec4 new = unpackUnorm4x8(texture(usampler2D(index_texture, index_sampler), uv).r);
+        vec4 result = mix(old, new, vec4(inside));
+        imageStore(terrain_color_acc, coord, result);
     }
 }

@@ -12,6 +12,7 @@ wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
 absolute_unit = { path = "../../nitrogen/sim/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
+camera = { path = "../../nitrogen/sim/camera" }
 catalog = { path = "../../nitrogen/system/catalog" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../nitrogen/system/gpu" }
