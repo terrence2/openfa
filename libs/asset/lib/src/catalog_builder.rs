@@ -51,25 +51,22 @@ impl CatalogBuilder {
             let base_loose_dir = test_dir.join("unpacked");
             for &game in &GAME_INFO {
                 let pack_dir = base_pack_dir.join(game.test_dir);
-                for raw_entry in fs::read_dir(&pack_dir)? {
-                    if let Ok(entry) = raw_entry {
-                        if let Some(ext) = entry.path().extension() {
-                            if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
-                                let priority =
-                                    Priority::from_path(&entry.path())?.as_drawer_priority();
-                                catalog.add_labeled_drawer(
-                                    &game.packed_label(),
-                                    LibDrawer::from_path(priority, &entry.path())?,
-                                )?;
-                            }
+                for entry in fs::read_dir(&pack_dir)?.flatten() {
+                    if let Some(ext) = entry.path().extension() {
+                        if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
+                            let priority = Priority::from_path(&entry.path())?.as_drawer_priority();
+                            catalog.add_labeled_drawer(
+                                &game.packed_label(),
+                                LibDrawer::from_path(priority, &entry.path())?,
+                            )?;
                         }
-                        if let Some(name) = entry.path().file_name() {
-                            if name.to_string_lossy() == "installdir" {
-                                catalog.add_labeled_drawer(
-                                    &game.packed_label(),
-                                    DirectoryDrawer::from_directory(102, &entry.path())?,
-                                )?;
-                            }
+                    }
+                    if let Some(name) = entry.path().file_name() {
+                        if name.to_string_lossy() == "installdir" {
+                            catalog.add_labeled_drawer(
+                                &game.packed_label(),
+                                DirectoryDrawer::from_directory(102, &entry.path())?,
+                            )?;
                         }
                     }
                 }
