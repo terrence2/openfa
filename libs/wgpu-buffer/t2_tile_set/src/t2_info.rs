@@ -21,6 +21,7 @@ use zerocopy::{AsBytes, FromBytes};
 pub struct T2Info {
     tile_base_rad: [f32; 2],
     tile_extent_rad: [f32; 2],
+    height_scale: f32,
 }
 
 impl T2Info {
@@ -28,6 +29,7 @@ impl T2Info {
         Self {
             tile_base_rad,
             tile_extent_rad,
+            height_scale: 30.0,
         }
     }
 

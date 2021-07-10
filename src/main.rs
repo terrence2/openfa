@@ -184,7 +184,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
 
     let interpreter = Interpreter::new();
-    let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
+    let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
 
     let orrery = Orrery::new(
         Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
@@ -286,6 +286,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let start = Instant::now();
     let type_manager = TypeManager::empty();
     for mm_fid in &input_fids {
+        let name = catalog.stat_sync(*mm_fid)?.name().to_owned();
+        if name.starts_with('~') || name.starts_with('$') {
+            continue;
+        }
+        println!("Loading {}...", name);
         catalog.set_default_label(&catalog.file_label(*mm_fid)?);
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let raw = catalog.read_sync(*mm_fid)?;
@@ -300,6 +305,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
     }
+    tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()
         .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);

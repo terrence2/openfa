@@ -30,28 +30,20 @@ main()
 {
     // One invocation per vertex.
     uint i = gl_GlobalInvocationID.x;
-    vec2 v_grat = arr_to_vec2(vertices[i].graticule);
+    vec2 grat = arr_to_vec2(vertices[i].graticule);
     vec3 v_normal = arr_to_vec3(vertices[i].normal);
 
-    float height = 0;
-    vec3 v_position = arr_to_vec3(vertices[i].position);
+    vec3 old_position = arr_to_vec3(vertices[i].position);
 
     vec2 t2_base = t2_base_graticule(t2_info);
     vec2 t2_span = t2_span_graticule(t2_info);
+    vec2 uv = vec2(
+        ((grat.y - t2_base.y) / t2_span.y) * cos(grat.x),
+        1. - (t2_base.x - grat.x) / t2_span.x
+    );
 
-    if (
-        v_grat.x >= t2_base.x && v_grat.x < (t2_base.x + t2_span.x) &&
-        v_grat.y >= t2_base.y && v_grat.y < (t2_base.y + t2_span.y)
-    ) {
-        v_position = arr_to_vec3(vertices[i].surface_position);
-    }
-
-    /*
-    if (vertices[i].graticule[0] > t2_info.base_graticule[0] &&
-        vertices[i].graticule[0] <= (t2_info.base_graticule[0] + t2_info.span_graticule[0])) {
-        v_position = arr_to_vec3(vertices[i].surface_position);
-    }
-    */
-
-    vertices[i].position = vec3_to_arr(v_position + (float(height) * v_normal));
+    bool inside = all(bvec4(greaterThanEqual(uv, vec2(0)), lessThanEqual(uv, vec2(1))));
+    float new_height = texture(sampler2D(height_texture, height_sampler), uv).r * 255. * t2_info.height_scale;
+    vec3 new_position = arr_to_vec3(vertices[i].surface_position) + (float(new_height) * v_normal);
+    vertices[i].position = vec3_to_arr(mix(old_position, new_position, vec3(inside)));
 }

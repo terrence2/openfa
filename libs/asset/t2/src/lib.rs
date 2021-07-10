@@ -110,7 +110,7 @@ Ukraine            {0, 1}
 
 use anyhow::{bail, ensure, Result};
 use lazy_static::lazy_static;
-use log::trace;
+use log::{trace, warn};
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
 
@@ -191,8 +191,10 @@ impl Sample {
 pub struct Terrain {
     name: String,
     _pic_file: String,
-    width: u32,
-    height: u32,
+    phys_width: u32,
+    _phys_height: u32,
+    logical_width: u32,
+    logical_height: u32,
     width_ft: f32,
     height_ft: f32,
     origin_latitude: f32,
@@ -203,17 +205,14 @@ pub struct Terrain {
 impl Terrain {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let magic = &data[0..4];
-        if magic == MAGIC_BITE {
-            return Self::from_bite(data);
-        }
-        if magic == MAGIC_BIT2 {
-            return Self::from_bit2(data);
-        }
-
-        bail!(
-            "do not know how to parse a T2 with magic header of {:?}",
-            magic
-        )
+        Ok(match magic {
+            MAGIC_BITE => Self::from_bite(data)?,
+            MAGIC_BIT2 => Self::from_bit2(data)?,
+            _ => bail!(
+                "do not know how to parse a T2 with magic header of {:?}",
+                magic
+            ),
+        })
     }
 
     fn from_bite(data: &[u8]) -> Result<Self> {
@@ -230,7 +229,11 @@ impl Terrain {
 
     /// Returns best guess lat/lon at south-west corner in degrees as f32.
     pub fn base_graticule_degrees(&self) -> [f32; 2] {
-        MAP_POSITIONS.get(self.name()).cloned().unwrap_or([0f32; 2])
+        if let Some(p) = MAP_POSITIONS.get(self.name()) {
+            return *p;
+        }
+        warn!("unknown base_graticule_degrees for map {}", self.name());
+        [0f32; 2]
     }
 }
 
@@ -273,8 +276,8 @@ packed_struct!(BITEHeader0 {
 
     _c => unk5: [u8; 5],
 
-    _d => width: u16 as usize,
-    _e => height: u16 as usize,
+    _d => phys_width: u16 as usize,
+    _e => phys_height: u16 as usize,
 
     _f => block_size: u16 as usize,
     _10 => block_count_x: u16 as usize,
@@ -308,17 +311,23 @@ impl Terrain {
             header.width_ft(),
             header.height_ft(),
             header.unk5(),
-            header.width(),
-            header.height(),
+            header.phys_width(),
+            header.phys_height(),
             header.block_size(),
             header.block_count_x(),
             header.block_count_z(),
         );
 
+        // Note physical decode size is always 208x208, but we need to display as 200x200.
+        // Presumably this allows the software renderer to wrap at edges efficiently while
+        // only loading relevant blocks, but it makes the decode process a bit confusing.
+        ensure!(header.phys_width() == 208, "expected 208 wide bite0");
+        ensure!(header.phys_height() == 208, "expected 208 high bite0");
+
         // We can now skip the row offsets block to get to the height entries.
         let offsets_start = mem::size_of::<BITEHeader0>();
-        let offsets_size = header.height() * mem::size_of::<u32>();
-        let num_pix = header.width() * header.height();
+        let offsets_size = header.phys_height() * mem::size_of::<u32>();
+        let num_pix = header.phys_width() * header.phys_height();
         let data_start = offsets_start + offsets_size;
         let entries = &data[data_start..];
 
@@ -326,11 +335,11 @@ impl Terrain {
         ensure!(blk_size == 16, "expect block size of 16");
         let block_count_z = header.block_count_z();
         let block_count_x = header.block_count_x();
+        ensure!(block_count_x == 13, "can't handle other sizes");
         ensure!(block_count_x == block_count_z, "only support square maps");
 
         let mut samples = vec![Default::default(); num_pix];
 
-        ensure!(block_count_x == 13, "can't handle other sizes");
         let mut off = 12 * 3; // Looks like there's 4 uints?
         for blkz in 0..block_count_z {
             for blkx in 0..block_count_x {
@@ -347,7 +356,7 @@ impl Terrain {
                                 z_pos = (z_pos + 16) % 208;
                             }
                         }
-                        let index = z_pos * header.width() as usize + x_pos;
+                        let index = z_pos * header.phys_width() as usize + x_pos;
                         samples[index] = Sample::from_bytes(data);
                     }
                 }
@@ -362,8 +371,10 @@ impl Terrain {
             _pic_file: pic_file,
             width_ft: ((header.width_ft() as u32) << 8) as f32,
             height_ft: ((header.height_ft() as u32) << 8) as f32,
-            width: header.width() as u32,
-            height: header.height() as u32,
+            phys_width: header.phys_width() as u32,
+            _phys_height: header.phys_height() as u32,
+            logical_width: 200,
+            logical_height: 200,
             origin_latitude: *lat_deg,
             origin_longitude: *lon_deg,
             samples,
@@ -392,8 +403,8 @@ packed_struct!(BITEHeader1 {
 
     _9a => unk_after: [u8; 5],
 
-    _14 => width: u16 as usize,
-    _15 => height: u16 as usize,
+    _14 => phys_width: u16 as usize,
+    _15 => phys_height: u16 as usize,
 
     _16 => block_size: u16 as usize,
     _17 => block_count_z: u16 as usize,
@@ -414,13 +425,14 @@ impl Terrain {
         let [lat_deg, lon_deg] = MAP_POSITIONS.get::<str>(&name).unwrap_or(&[0f32, 0f32]);
 
         trace!(
-            "T2:BITE1: {:?} {:?} {:04X} {:?}- {}x{} ({:04X}x{:04X}ft) [{}, {}, {}]",
+            "T2:BITE1: {} {:?} {:?} {:04X} {:?}- {}x{} ({:04X}x{:04X}ft) [{}, {}, {}]",
+            name,
             header.unk0(),
             header.unk_pad0(),
             header.unk_a(),
             header.unk_after(),
-            header.width(),
-            header.height(),
+            header.phys_width(),
+            header.phys_height(),
             header.width_ft(),
             header.height_ft(),
             header.block_size(),
@@ -430,8 +442,8 @@ impl Terrain {
 
         // We can now skip the row offsets block to get to the height entries.
         let offsets_start = mem::size_of::<BITEHeader1>();
-        let offsets_size = header.height() * mem::size_of::<u32>();
-        let num_pix = header.width() * header.height();
+        let offsets_size = header.phys_height() * mem::size_of::<u32>();
+        let num_pix = header.phys_width() * header.phys_height();
         let data_start = offsets_start + offsets_size;
         let entries = &data[data_start..];
 
@@ -456,7 +468,7 @@ impl Terrain {
                             off += 3;
                             let x_pos = blkx * blk_size + i;
                             let z_pos = blkz * blk_size + j;
-                            let index = z_pos * header.width() as usize + x_pos;
+                            let index = z_pos * header.phys_width() as usize + x_pos;
                             samples[index] = Sample::from_bytes(data);
                         }
                     }
@@ -481,7 +493,7 @@ impl Terrain {
                                     z_pos = (z_pos + 16) % 208;
                                 }
                             }
-                            let index = z_pos * header.width() as usize + x_pos;
+                            let index = z_pos * header.phys_width() as usize + x_pos;
                             samples[index] = Sample::from_bytes(data);
                         }
                     }
@@ -489,13 +501,24 @@ impl Terrain {
             }
         }
 
+        // Seems to be legacy from bite0. I expect they translated the weird wrapping layout
+        // into a more reasonable block layout and forgot to clean up the 8px fringe.
+        let mut logical_width = header.phys_width();
+        let mut logical_height = header.phys_height();
+        if logical_width == 208 {
+            logical_width = 200;
+            logical_height = 200;
+        }
+
         let terrain = Terrain {
             name,
             _pic_file: pic_file,
             width_ft: ((header.width_ft() as u32) << 8) as f32,
             height_ft: ((header.height_ft() as u32) << 8) as f32,
-            width: header.width() as u32,
-            height: header.height() as u32,
+            phys_width: header.phys_width() as u32,
+            _phys_height: header.phys_height() as u32,
+            logical_width: logical_width as u32,
+            logical_height: logical_height as u32,
             origin_latitude: *lat_deg,
             origin_longitude: *lon_deg,
             samples,
@@ -562,7 +585,7 @@ impl Terrain {
             ensure!(header.height() == 256, "if 3, expect 256");
         }
         trace!(
-            "unk: {:?} {:08X} {:?}; {}x{} (0x{:06X}x{:06X}ft)",
+            "BITE2: {:?} {:08X} {:?}; {}x{} (0x{:06X}x{:06X}ft)",
             header.unk0(),
             header.unk1(),
             header.unk_small(),
@@ -591,8 +614,10 @@ impl Terrain {
             _pic_file: pic_file,
             width_ft: header.width_ft() as f32,
             height_ft: header.height_ft() as f32,
-            width: header.width(),
-            height: header.height(),
+            phys_width: header.width(),
+            _phys_height: header.height(),
+            logical_width: header.width().min(header.height()),
+            logical_height: header.height().min(header.width()),
             origin_latitude: *lat_deg,
             origin_longitude: *lon_deg,
             samples,
@@ -642,8 +667,9 @@ impl Terrain {
     fn make_debug_images(&self, path: &str) -> Result<()> {
         use std::cmp;
 
-        let mut metabuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
-        let mut heightbuf = image::ImageBuffer::new(self.width as u32, self.height as u32);
+        let mut metabuf = image::ImageBuffer::new(self.phys_width as u32, self._phys_height as u32);
+        let mut heightbuf =
+            image::ImageBuffer::new(self.phys_width as u32, self._phys_height as u32);
         for (pos, sample) in self.samples.iter().enumerate() {
             let mut metaclr = if sample.modifiers == 16 {
                 image::Rgb([255, 0, 255])
@@ -661,8 +687,8 @@ impl Terrain {
                     metaclr = image::Rgb([0xff, 0x00, 0xff]);
                 }
             }
-            let w = (pos % self.width as usize) as u32;
-            let h = (self.height as usize - (pos / self.width as usize) - 1) as u32;
+            let w = (pos % self.phys_width as usize) as u32;
+            let h = (self._phys_height as usize - (pos / self.phys_width as usize) - 1) as u32;
             metabuf.put_pixel(w, h, metaclr);
             heightbuf.put_pixel(
                 w,
@@ -701,11 +727,11 @@ impl Terrain {
     }
 
     pub fn width(&self) -> u32 {
-        self.width
+        self.logical_width
     }
 
     pub fn height(&self) -> u32 {
-        self.height
+        self.logical_height
     }
 
     pub fn samples(&self) -> &[Sample] {
@@ -713,15 +739,15 @@ impl Terrain {
     }
 
     pub fn sample_at(&self, xi: u32, zi: u32) -> Sample {
-        let offset = (zi * self.width() + xi) as usize;
+        let offset = (zi * self.phys_width + xi) as usize;
         if offset < self.samples.len() {
             self.samples[offset]
         } else {
-            let offset = ((zi - 1) * self.width() + xi) as usize;
+            let offset = ((zi - 1) * self.phys_width + xi) as usize;
             if offset < self.samples().len() {
                 self.samples[offset]
             } else {
-                let offset = ((zi - 1) * self.width() + (xi - 1)) as usize;
+                let offset = ((zi - 1) * self.phys_width + (xi - 1)) as usize;
                 self.samples[offset]
             }
         }
@@ -756,6 +782,7 @@ mod test {
             if DUMP {
                 terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, meta.name()))?;
             }
+            println!("SZ: {}x{}", terrain.phys_width, terrain._phys_height);
         }
 
         Ok(())

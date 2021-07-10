@@ -233,7 +233,7 @@ mod tests {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
 
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
         let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
@@ -272,7 +272,7 @@ mod tests {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
         let async_rt = Runtime::new()?;
 
         let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["FA:CATB.PIC".to_owned()])?;

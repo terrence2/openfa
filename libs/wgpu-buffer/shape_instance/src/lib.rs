@@ -770,7 +770,7 @@ mod test {
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
-        let gpu = Gpu::new(&window, Default::default(), &mut interpreter.write())?;
+        let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
