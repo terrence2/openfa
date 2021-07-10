@@ -46,12 +46,15 @@ main()
             ((grat.y - t2_base.y) / t2_span.y) * cos(grat.x),
             1. - (t2_base.x - grat.x) / t2_span.x
         );
+        bool inside = all(bvec4(greaterThanEqual(uv, vec2(0)), lessThanEqual(uv, vec2(1))));
+
+
+        vec4 new = unpackUnorm4x8(texture(usampler2D(index_texture, index_sampler), uv).r);
+
 
         // Blend based on whether we are inside.
-        bool inside = all(bvec4(greaterThanEqual(uv, vec2(0)), lessThanEqual(uv, vec2(1))));
         vec4 old = imageLoad(terrain_color_acc, coord);
-        vec4 new = unpackUnorm4x8(texture(usampler2D(index_texture, index_sampler), uv).r);
-        vec4 result = mix(old, new, vec4(inside));
+        vec4 result = mix(old, new, vec4(min(min(float(inside), new.a), t2_info.blend_factor)));
         imageStore(terrain_color_acc, coord, result);
     }
 }

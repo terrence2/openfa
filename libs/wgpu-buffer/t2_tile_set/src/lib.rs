@@ -15,7 +15,7 @@
 mod t2_info;
 
 use crate::t2_info::T2Info;
-use absolute_unit::{degrees, radians};
+use absolute_unit::{degrees, meters, radians, Angle, Degrees, Length, Meters};
 use anyhow::Result;
 use atlas::{AtlasPacker, Frame};
 use camera::Camera;
@@ -27,30 +27,73 @@ use image::Rgba;
 use lay::Layer;
 use mm::{MissionMap, TLoc};
 use pal::Palette;
+use parking_lot::RwLock;
 use pic_uploader::PicUploader;
 use shader_shared::Group;
 use std::{
     collections::{HashMap, HashSet},
+    mem,
     num::NonZeroU64,
     sync::Arc,
 };
 use t2::Terrain as T2Terrain;
 use terrain::{TerrainBuffer, TileSet, VisiblePatch};
-use tokio::{runtime::Runtime, sync::RwLock};
+use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use zerocopy::AsBytes;
 
 #[derive(Debug)]
-pub struct T2HeightTileSet {
+pub struct T2Adjustment {
+    pub base_offset: [Angle<Degrees>; 2],
+    pub span_offset: [Length<Meters>; 2],
+    pub blend_factor: f32,
+}
+
+impl Default for T2Adjustment {
+    fn default() -> Self {
+        Self {
+            base_offset: [degrees!(0); 2],
+            span_offset: [meters!(0); 2],
+            blend_factor: 1.0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct T2LayoutInfo {
+    t2: T2Terrain,
+    adjust: Arc<RwLock<T2Adjustment>>,
+    t2_info_buffer: Arc<Box<wgpu::Buffer>>,
+    bind_group: wgpu::BindGroup,
+}
+
+impl T2LayoutInfo {
+    fn new(
+        t2: T2Terrain,
+        adjust: Arc<RwLock<T2Adjustment>>,
+        t2_info_buffer: Arc<Box<wgpu::Buffer>>,
+        bind_group: wgpu::BindGroup,
+    ) -> Self {
+        Self {
+            t2,
+            adjust,
+            t2_info_buffer,
+            bind_group,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct T2TileSet {
     // Shared shader routine.
     displace_height_pipeline: wgpu::ComputePipeline,
     accumulate_color_pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
 
     // One bind group for each t2 we want to render.
-    bind_groups: HashMap<String, wgpu::BindGroup>,
+    layouts: HashMap<String, T2LayoutInfo>,
 }
 
-impl T2HeightTileSet {
+impl T2TileSet {
     pub fn new(
         terrain: &TerrainBuffer,
         globals_buffer: &GlobalParametersBuffer,
@@ -191,7 +234,7 @@ impl T2HeightTileSet {
             displace_height_pipeline,
             accumulate_color_pipeline,
             bind_group_layout,
-            bind_groups: HashMap::new(),
+            layouts: HashMap::new(),
         })
     }
 
@@ -382,6 +425,7 @@ impl T2HeightTileSet {
         palette.overlay_at(&r0, 0xE0 - 1)?;
         palette.overlay_at(&r3, 0xD0)?;
         palette.overlay_at(&r2, 0xC0)?;
+        palette.override_one(0xFF, [0; 4]);
 
         Ok(palette)
     }
@@ -445,6 +489,7 @@ impl T2HeightTileSet {
         &mut self,
         system_palette: &Palette,
         mm: &MissionMap,
+        adjust: Arc<RwLock<T2Adjustment>>,
         catalog: &Catalog,
         gpu: &mut Gpu,
         async_rt: &Runtime,
@@ -453,7 +498,7 @@ impl T2HeightTileSet {
         let t2_data = catalog.read_name_sync(mm.t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
 
-        if self.bind_groups.contains_key(t2.name()) {
+        if self.layouts.contains_key(t2.name()) {
             return Ok(());
         }
 
@@ -480,11 +525,11 @@ impl T2HeightTileSet {
             radians!(degrees!(t2.extent_north_south_in_ft() / 364_000.)).f32(),
             radians!(degrees!(t2.extent_east_west_in_ft() / 288_200.)).f32(),
         ];
-        let t2_info_buffer = gpu.push_data(
+        let t2_info_buffer = Arc::new(Box::new(gpu.push_data(
             "t2-info-buffer",
             &T2Info::new(base, extent),
-            wgpu::BufferUsage::UNIFORM,
-        );
+            wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        )));
 
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("t2-height-bind-group"),
@@ -528,14 +573,17 @@ impl T2HeightTileSet {
             ],
         });
 
-        assert!(!self.bind_groups.contains_key(t2.name()));
-        self.bind_groups.insert(t2.name().to_owned(), bind_group);
+        assert!(!self.layouts.contains_key(t2.name()));
+        self.layouts.insert(
+            t2.name().to_owned(),
+            T2LayoutInfo::new(t2, adjust, t2_info_buffer, bind_group),
+        );
 
         Ok(())
     }
 }
 
-impl TileSet for T2HeightTileSet {
+impl TileSet for T2TileSet {
     fn begin_update(&mut self) {}
 
     fn note_required(&mut self, _visible_patch: &VisiblePatch) {}
@@ -543,11 +591,40 @@ impl TileSet for T2HeightTileSet {
     fn finish_update(
         &mut self,
         _camera: &Camera,
-        _catalog: Arc<RwLock<Catalog>>,
+        _catalog: Arc<AsyncRwLock<Catalog>>,
         _async_rt: &Runtime,
-        _gpu: &Gpu,
-        _tracker: &mut UploadTracker,
+        gpu: &Gpu,
+        tracker: &mut UploadTracker,
     ) {
+        for layout in self.layouts.values() {
+            // FIXME: Test with a lat/lon span as if we're at the equator, even though that's wrong
+            //        we don't know what's right yet.
+            let base_deg = layout.t2.base_graticule_degrees();
+            let base = [
+                radians!(degrees!(base_deg[0]) + layout.adjust.read().base_offset[0]).f32(),
+                radians!(degrees!(base_deg[1]) + layout.adjust.read().base_offset[1]).f32(),
+            ];
+            let lat_span_adj = layout.adjust.read().span_offset[0].f32();
+            let lon_span_adj = layout.adjust.read().span_offset[1].f32();
+            let lat_ft = layout.t2.extent_north_south_in_ft(); // + layout.adjust.read().span_offset[0].f32();
+            let lon_ft = layout.t2.extent_east_west_in_ft(); // + layout.adjust.read().span_offset[1].f32();
+            let extent = [
+                radians!(degrees!(lat_ft / (364_000. + lat_span_adj))).f32(),
+                radians!(degrees!(lon_ft / (364_000. + lon_span_adj))).f32(),
+            ];
+            let mut info = T2Info::new(base, extent);
+            info.blend_factor = layout.adjust.read().blend_factor;
+            let new_info_buffer = gpu.push_data(
+                "t2-info-upload",
+                &info,
+                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_SRC,
+            );
+            tracker.upload(
+                new_info_buffer,
+                layout.t2_info_buffer.clone(),
+                mem::size_of::<T2Info>(),
+            )
+        }
     }
 
     fn snapshot_index(&mut self, _async_rt: &Runtime, _gpu: &mut Gpu) {}
@@ -562,8 +639,12 @@ impl TileSet for T2HeightTileSet {
     ) -> Result<wgpu::ComputePass<'a>> {
         cpass.set_pipeline(&self.displace_height_pipeline);
         cpass.set_bind_group(Group::TerrainDisplaceMesh.index(), mesh_bind_group, &[]);
-        for bind_group in self.bind_groups.values() {
-            cpass.set_bind_group(Group::TerrainDisplaceTileSet.index(), bind_group, &[]);
+        for layout in self.layouts.values() {
+            cpass.set_bind_group(
+                Group::TerrainDisplaceTileSet.index(),
+                &layout.bind_group,
+                &[],
+            );
             cpass.dispatch(vertex_count, 1, 1);
         }
         Ok(cpass)
@@ -593,8 +674,12 @@ impl TileSet for T2HeightTileSet {
             accumulate_common_bind_group,
             &[],
         );
-        for bind_group in self.bind_groups.values() {
-            cpass.set_bind_group(Group::TerrainAccumulateTileSet.index(), bind_group, &[]);
+        for layout in self.layouts.values() {
+            cpass.set_bind_group(
+                Group::TerrainAccumulateTileSet.index(),
+                &layout.bind_group,
+                &[],
+            );
             cpass.dispatch(extent.width / 8, extent.height / 8, 1);
         }
         Ok(cpass)
@@ -659,7 +744,7 @@ mod tests {
                 &mut gpu.write(),
                 &mut interpreter.write(),
             )?;
-            let mut ts = T2HeightTileSet::new(&terrain.read(), &globals.read(), &gpu.read())?;
+            let mut ts = T2TileSet::new(&terrain.read(), &globals.read(), &gpu.read())?;
 
             catalog.set_default_label(&label);
             let type_manager = TypeManager::empty();
@@ -669,6 +754,7 @@ mod tests {
             ts.add_map(
                 &system_palette,
                 &mm,
+                Arc::new(RwLock::new(T2Adjustment::default())),
                 &catalog,
                 &mut gpu.write(),
                 &async_rt,

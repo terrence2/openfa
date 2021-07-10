@@ -19,6 +19,7 @@ struct T2Info {
     float span_graticule_lat;
     float span_graticule_lon;
     float height_scale;
+    float blend_factor;
 };
 
 vec2

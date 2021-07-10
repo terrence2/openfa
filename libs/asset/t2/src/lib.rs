@@ -120,10 +120,10 @@ lazy_static! {
     static ref MAP_POSITIONS: HashMap<&'static str, [f32; 2]> = {
         let mut table = HashMap::new();
         table.insert("Panama", [11.77, -82.86]);
-        table.insert("The Baltics", [63.60, 21.20]);
+        table.insert("The Baltics", [59.60, 20.80]);
         table.insert("Cuba", [26.11, -85.43]); // ^^ UL ^^
-        table.insert("Egypt", [33.54, 30.5]);
-        table.insert("France", [53.97, 0.04]);
+        table.insert("Egypt", [32.95, 30.3]);
+        table.insert("France", [51.57, -0.56]);
         table.insert("Greece", [41.84, 21.04]);
         table.insert("Iraq", [33.44, 44.75]);
         table.insert("Kuril Islands", [52.53, 146.82]); // vv LL vv
@@ -133,7 +133,7 @@ lazy_static! {
     };
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Sample {
     pub color: u8,
     pub modifiers: u8,
@@ -188,6 +188,7 @@ impl Sample {
     }
 }
 
+#[derive(Debug)]
 pub struct Terrain {
     name: String,
     _pic_file: String,

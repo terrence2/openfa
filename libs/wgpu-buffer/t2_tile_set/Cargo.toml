@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 anyhow = "^ 1"
 image = "^ 0.23"
+parking_lot = "^ 0.11"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
