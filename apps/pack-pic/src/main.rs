@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
+use image::Pixel;
 use lib::CatalogBuilder;
 use pal::Palette;
 use pic::{Header, Pic};
@@ -157,7 +158,7 @@ fn find_closest_in_palette(color: image::Rgba<u8>, pal: &Palette, quality: u8) -
     let mut dists = pal
         .iter()
         .enumerate()
-        .map(|(i, pal_color)| (distance_squared(color, *pal_color), i))
+        .map(|(i, pal_color)| (distance_squared(color, pal_color.to_rgb()), i))
         .collect::<Vec<(usize, usize)>>();
     dists.sort_by_key(|&(d, _)| d);
     let index = find_closest_dithered(&dists[0..quality as usize]);
