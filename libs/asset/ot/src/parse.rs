@@ -279,8 +279,8 @@ pub fn find_section<'a>(lines: &[&'a str], section_tag: &str) -> Result<Vec<&'a 
     let end_pattern = format!("END OF {}", section_tag);
     let out = lines
         .iter()
-        .skip_while(|&l| l.contains(&start_pattern))
-        .take_while(|&l| l.contains(&end_pattern))
+        .skip_while(|&l| !l.contains(&start_pattern))
+        .take_while(|&l| !l.contains(&end_pattern))
         .map(|&l| l.trim())
         .filter(|&l| !l.is_empty() && !l.starts_with(';'))
         .collect::<Vec<&str>>();
