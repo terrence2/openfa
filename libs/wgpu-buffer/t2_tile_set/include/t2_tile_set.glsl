@@ -37,11 +37,3 @@ t2_span_graticule(T2Info t2_info) {
         t2_info.span_graticule_lon
     );
 }
-
-bool
-grat_in_t2(vec2 grat, vec2 base, vec2 span) {
-    return  grat.x <= base.x &&
-            grat.x > (base.x - span.x) &&
-            grat.y >= base.y &&
-            grat.y < (base.y + span.y);
-}

@@ -102,7 +102,7 @@ impl T2TileSet {
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("t2-height-bind-group-layout"),
+                    label: Some("t2-tile-set-bind-group-layout"),
                     entries: &[
                         // T2 Info
                         wgpu::BindGroupLayoutEntry {
@@ -155,6 +155,26 @@ impl T2TileSet {
                             },
                             count: None,
                         },
+                        // Base color
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 5,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 6,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::Sampler {
+                                filtering: true,
+                                comparison: false,
+                            },
+                            count: None,
+                        },
                         // Index
                         //   Color - 32
                         //   Orientation - 8
@@ -166,7 +186,7 @@ impl T2TileSet {
                         //     4) look up color in tile or use index's color
                         //
                         wgpu::BindGroupLayoutEntry {
-                            binding: 5,
+                            binding: 7,
                             visibility: wgpu::ShaderStage::COMPUTE,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
@@ -176,7 +196,7 @@ impl T2TileSet {
                             count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
-                            binding: 6,
+                            binding: 8,
                             visibility: wgpu::ShaderStage::COMPUTE,
                             ty: wgpu::BindingType::Sampler {
                                 filtering: false,
@@ -250,23 +270,29 @@ impl T2TileSet {
         wgpu::Sampler,
         wgpu::TextureView,
         wgpu::Sampler,
+        wgpu::TextureView,
+        wgpu::Sampler,
     ) {
         // Extract height samples to a buffer.
         let stride = Gpu::stride_for_row_size(t2.width());
         let mut heights = vec![0u8; (stride * t2.height()) as usize];
-        let mut indices = vec![0u32; (stride * t2.height()) as usize];
+        let mut base_colors = vec![0u32; (stride * t2.height()) as usize];
         for y in 0..t2.height() {
             for x in 0..t2.width() {
                 let sample = t2.sample_at(x, y);
                 heights[(stride * y + x) as usize] = sample.height;
-                //indices[(stride * y + x) as usize] = [palette.pack_unorm(sample.color as usize), 0];
-                indices[(stride * y + x) as usize] = palette.pack_unorm(sample.color as usize);
+                base_colors[(stride * y + x) as usize] = palette.pack_unorm(sample.color as usize);
             }
         }
 
         let logical_extent = wgpu::Extent3d {
             width: t2.width(),
             height: t2.height(),
+            depth: 1,
+        };
+        let index_extent = wgpu::Extent3d {
+            width: t2.width() / 4,
+            height: t2.height() / 4,
             depth: 1,
         };
 
@@ -324,17 +350,72 @@ impl T2TileSet {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            wgpu::Extent3d {
-                width: t2.width(),
-                height: t2.height(),
-                depth: 1,
+            logical_extent,
+        );
+
+        // Upload base colors
+        // FIXME: mipmap this!
+        let base_color_copy_buffer = gpu.push_buffer(
+            "t2-base-color-upload",
+            &base_colors.as_bytes(),
+            wgpu::BufferUsage::COPY_SRC,
+        );
+        let base_color_format = wgpu::TextureFormat::Rgba8Unorm;
+        let base_color_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("t2-base-color"),
+            size: logical_extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: base_color_format,
+            usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+        });
+        let base_color_texture_view =
+            base_color_texture.create_view(&wgpu::TextureViewDescriptor {
+                label: Some("t2-base-color-view"),
+                format: None,
+                dimension: None,
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                level_count: None,
+                base_array_layer: 0,
+                array_layer_count: None,
+            });
+        let base_color_sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("t2-base-color-sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToBorder,
+            address_mode_v: wgpu::AddressMode::ClampToBorder,
+            address_mode_w: wgpu::AddressMode::ClampToBorder,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
+            compare: None,
+            anisotropy_clamp: None,
+            border_color: Some(wgpu::SamplerBorderColor::TransparentBlack),
+        });
+        tracker.copy_owned_buffer_to_arc_texture(
+            OwnedBufferCopyView {
+                buffer: base_color_copy_buffer,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: texture_format_size(base_color_format) * stride,
+                    rows_per_image: t2.height(),
+                },
             },
+            ArcTextureCopyView {
+                texture: Arc::new(Box::new(base_color_texture)),
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            logical_extent,
         );
 
         // Upload index
         let index_copy_buffer = gpu.push_buffer(
-            "t2-index-tile-upload",
-            &indices.as_bytes(),
+            "t2-index-upload",
+            &base_colors.as_bytes(),
             wgpu::BufferUsage::COPY_SRC,
         );
         let index_format = wgpu::TextureFormat::R32Uint;
@@ -395,6 +476,8 @@ impl T2TileSet {
         (
             height_texture_view,
             height_sampler,
+            base_color_texture_view,
+            base_color_sampler,
             index_texture_view,
             index_sampler,
         )
@@ -507,8 +590,14 @@ impl T2TileSet {
         let (frames, (atlas_texture_view, atlas_sampler)) =
             self._build_atlas(&palette, mm, catalog, gpu, async_rt, tracker)?;
 
-        let (height_texture_view, height_sampler, index_texture_view, index_sampler) =
-            self._upload_heights_and_index(&palette, &t2, &frames, gpu, tracker);
+        let (
+            height_texture_view,
+            height_sampler,
+            base_color_texture_view,
+            base_color_sampler,
+            index_texture_view,
+            index_sampler,
+        ) = self._upload_heights_and_index(&palette, &t2, &frames, gpu, tracker);
 
         // Build an index texture. This is the size of the height map, with one sample per square
         // indicating the properties of that square. We'll use this to index into frames, which let
@@ -561,13 +650,22 @@ impl T2TileSet {
                     binding: 4,
                     resource: wgpu::BindingResource::Sampler(&atlas_sampler),
                 },
-                // Index
+                // Base Color
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&index_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&base_color_texture_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 6,
+                    resource: wgpu::BindingResource::Sampler(&base_color_sampler),
+                },
+                // Index
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&index_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
                     resource: wgpu::BindingResource::Sampler(&index_sampler),
                 },
             ],

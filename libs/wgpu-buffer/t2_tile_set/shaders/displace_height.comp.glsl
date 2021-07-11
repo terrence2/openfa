@@ -24,6 +24,7 @@ layout(set = 0, binding = 0) buffer Vertices { TerrainVertex vertices[]; };
 layout(set = 1, binding = 0) uniform T2TerrainInfo { T2Info t2_info; };
 layout(set = 1, binding = 1) uniform texture2D height_texture;
 layout(set = 1, binding = 2) uniform sampler height_sampler;
+// ...
 
 void
 main()

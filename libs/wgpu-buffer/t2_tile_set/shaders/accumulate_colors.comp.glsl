@@ -26,8 +26,10 @@ layout(set = 2, binding = 1) uniform texture2D height_texture;
 layout(set = 2, binding = 2) uniform sampler height_sampler;
 layout(set = 2, binding = 3) uniform texture2D atlas_texture;
 layout(set = 2, binding = 4) uniform sampler atlas_sampler;
-layout(set = 2, binding = 5) uniform utexture2D index_texture;
-layout(set = 2, binding = 6) uniform sampler index_sampler;
+layout(set = 2, binding = 5) uniform texture2D base_color_texture;
+layout(set = 2, binding = 6) uniform sampler base_color_sampler;
+//layout(set = 2, binding = 7) uniform utexture2D index_texture;
+//layout(set = 2, binding = 8) uniform sampler index_sampler;
 
 
 void
@@ -49,7 +51,7 @@ main()
         bool inside = all(bvec4(greaterThanEqual(uv, vec2(0)), lessThanEqual(uv, vec2(1))));
 
 
-        vec4 new = unpackUnorm4x8(texture(usampler2D(index_texture, index_sampler), uv).r);
+        vec4 new = texture(sampler2D(base_color_texture, base_color_sampler), uv);
 
 
         // Blend based on whether we are inside.
