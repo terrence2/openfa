@@ -16,8 +16,8 @@ mod t2_info;
 
 use crate::t2_info::T2Info;
 use absolute_unit::{degrees, meters, radians, Angle, Degrees, Length, Meters};
-use anyhow::Result;
-use atlas::{AtlasPacker, Frame};
+use anyhow::{ensure, Result};
+use atlas::AtlasPacker;
 use camera::Camera;
 use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
@@ -60,6 +60,7 @@ impl Default for T2Adjustment {
 
 #[derive(Debug)]
 pub struct T2LayoutInfo {
+    t2_info: T2Info,
     t2: T2Terrain,
     adjust: Arc<RwLock<T2Adjustment>>,
     t2_info_buffer: Arc<Box<wgpu::Buffer>>,
@@ -68,12 +69,14 @@ pub struct T2LayoutInfo {
 
 impl T2LayoutInfo {
     fn new(
+        t2_info: T2Info,
         t2: T2Terrain,
         adjust: Arc<RwLock<T2Adjustment>>,
         t2_info_buffer: Arc<Box<wgpu::Buffer>>,
         bind_group: wgpu::BindGroup,
     ) -> Self {
         Self {
+            t2_info,
             t2,
             adjust,
             t2_info_buffer,
@@ -204,6 +207,17 @@ impl T2TileSet {
                             },
                             count: None,
                         },
+                        // Frames
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 9,
+                            visibility: wgpu::ShaderStage::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
                     ],
                 });
 
@@ -261,40 +275,56 @@ impl T2TileSet {
     fn _upload_heights_and_index(
         &mut self,
         palette: &Palette,
+        mm: &MissionMap,
         t2: &T2Terrain,
-        _frames: &HashMap<TLoc, Frame>,
+        frame_map: &HashMap<TLoc, u16>,
         gpu: &mut Gpu,
         tracker: &mut UploadTracker,
-    ) -> (
-        wgpu::TextureView,
-        wgpu::Sampler,
-        wgpu::TextureView,
-        wgpu::Sampler,
-        wgpu::TextureView,
-        wgpu::Sampler,
-    ) {
-        // Extract height samples to a buffer.
-        let stride = Gpu::stride_for_row_size(t2.width());
-        let mut heights = vec![0u8; (stride * t2.height()) as usize];
-        let mut base_colors = vec![0u32; (stride * t2.height()) as usize];
-        for y in 0..t2.height() {
-            for x in 0..t2.width() {
-                let sample = t2.sample_at(x, y);
-                heights[(stride * y + x) as usize] = sample.height;
-                base_colors[(stride * y + x) as usize] = palette.pack_unorm(sample.color as usize);
-            }
-        }
-
+    ) -> Result<(
+        (wgpu::TextureView, wgpu::Sampler),
+        (wgpu::TextureView, wgpu::Sampler),
+        (wgpu::TextureView, wgpu::Sampler, [f32; 2]),
+    )> {
+        // Extract height samples and base colors to a buffer.
         let logical_extent = wgpu::Extent3d {
             width: t2.width(),
             height: t2.height(),
             depth: 1,
         };
+        let logical_stride = Gpu::stride_for_row_size(t2.width());
+        let mut heights = vec![0u8; (logical_stride * t2.height()) as usize];
+        let mut base_colors = vec![0u32; (logical_stride * t2.height()) as usize];
+        for y in 0..t2.height() {
+            for x in 0..t2.width() {
+                let sample = t2.sample_at(x, y);
+                heights[(logical_stride * y + x) as usize] = sample.height;
+                base_colors[(logical_stride * y + x) as usize] =
+                    palette.pack_unorm(sample.color as usize);
+            }
+        }
+
+        // Pull index texture from the frames.
+        ensure!(t2.width() % 4 == 0);
+        ensure!(t2.height() % 4 == 0);
+        let index_width = t2.width() / 4;
+        let index_height = t2.height() / 4;
         let index_extent = wgpu::Extent3d {
-            width: t2.width() / 4,
-            height: t2.height() / 4,
+            width: index_width,
+            height: index_height,
             depth: 1,
         };
+        let index_stride = Gpu::stride_for_row_size(index_width);
+        let mut indices = vec![[0u16; 2]; (index_stride * index_height) as usize];
+        for zi in 0..index_height {
+            for xi in 0..index_width {
+                indices[(index_stride * zi + xi) as usize] =
+                    if let Some(tmap) = mm.texture_map(xi * 4, zi * 4) {
+                        [frame_map[&tmap.loc], tmap.orientation.as_byte() as u16]
+                    } else {
+                        [0, 0]
+                    };
+            }
+        }
 
         // Upload heights
         let height_copy_buffer = gpu.push_buffer(
@@ -341,7 +371,7 @@ impl T2TileSet {
                 buffer: height_copy_buffer,
                 layout: wgpu::TextureDataLayout {
                     offset: 0,
-                    bytes_per_row: texture_format_size(height_format) * stride,
+                    bytes_per_row: texture_format_size(height_format) * logical_stride,
                     rows_per_image: t2.height(),
                 },
             },
@@ -400,7 +430,7 @@ impl T2TileSet {
                 buffer: base_color_copy_buffer,
                 layout: wgpu::TextureDataLayout {
                     offset: 0,
-                    bytes_per_row: texture_format_size(base_color_format) * stride,
+                    bytes_per_row: texture_format_size(base_color_format) * logical_stride,
                     rows_per_image: t2.height(),
                 },
             },
@@ -415,13 +445,13 @@ impl T2TileSet {
         // Upload index
         let index_copy_buffer = gpu.push_buffer(
             "t2-index-upload",
-            &base_colors.as_bytes(),
+            &indices.as_bytes(),
             wgpu::BufferUsage::COPY_SRC,
         );
-        let index_format = wgpu::TextureFormat::R32Uint;
+        let index_format = wgpu::TextureFormat::Rg16Uint;
         let index_texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("t2-index"),
-            size: logical_extent,
+            size: index_extent,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -457,7 +487,7 @@ impl T2TileSet {
                 buffer: index_copy_buffer,
                 layout: wgpu::TextureDataLayout {
                     offset: 0,
-                    bytes_per_row: texture_format_size(index_format) * stride,
+                    bytes_per_row: texture_format_size(index_format) * index_stride,
                     rows_per_image: t2.height(),
                 },
             },
@@ -466,21 +496,18 @@ impl T2TileSet {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            wgpu::Extent3d {
-                width: t2.width(),
-                height: t2.height(),
-                depth: 1,
-            },
+            index_extent,
         );
 
-        (
-            height_texture_view,
-            height_sampler,
-            base_color_texture_view,
-            base_color_sampler,
-            index_texture_view,
-            index_sampler,
-        )
+        Ok((
+            (height_texture_view, height_sampler),
+            (base_color_texture_view, base_color_sampler),
+            (
+                index_texture_view,
+                index_sampler,
+                [(index_width) as f32, (index_height) as f32],
+            ),
+        ))
     }
 
     fn _load_palette(
@@ -521,7 +548,12 @@ impl T2TileSet {
         gpu: &mut Gpu,
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
-    ) -> Result<(HashMap<TLoc, Frame>, (wgpu::TextureView, wgpu::Sampler))> {
+    ) -> Result<(
+        HashMap<TLoc, u16>,
+        wgpu::Buffer,
+        (wgpu::TextureView, wgpu::Sampler),
+    )> {
+        // De-duplicate the tmaps to get all unique TLocs for upload.
         let mut sources = HashSet::new();
         for tmap in mm.texture_maps() {
             if sources.contains(&tmap.loc) {
@@ -540,7 +572,7 @@ impl T2TileSet {
         let atlas_width = atlas_stride / 4;
         let atlas_height = (num_down * patch_size) + num_down + 1;
 
-        // Build a texture atlas.
+        // Build a texture atlas, doing all work on the gpu.
         let mut atlas_builder = AtlasPacker::<Rgba<u8>>::new(
             mm.map_name(),
             gpu,
@@ -554,18 +586,44 @@ impl T2TileSet {
         let mut uploader = PicUploader::new(gpu)?;
         uploader.set_shared_palette(&palette, gpu);
 
-        let mut frames = HashMap::new();
+        // Set up upload for each TLoc, mapping it to a frame.
+        let mut frames = Vec::new();
         let texture_base_name = mm.get_base_texture_name()?;
         for loc in sources.drain() {
             let name = loc.pic_file(&texture_base_name);
             let data = catalog.read_name_sync(&name)?;
             let (buffer, w, h) = uploader.upload(&data, gpu, wgpu::BufferUsage::STORAGE)?;
             let frame = atlas_builder.push_buffer(buffer, w, h, gpu)?;
-            frames.insert(loc, frame);
+            frames.push((loc, frame));
         }
+
+        // For each TLoc, map the frame to the final size and upload that buffer to the GPU.
+        // Our index texture will contain the offset into the frames. The frame at that offset
+        // has the s/t needed to extract the right TMap from the atlas_texture.
+        // Note: reserve index zero for NULL TMap. We use 0 instead of MAX so that we can `mix`
+        //       with the index to determine our final color.
+        let mut frame_refs = HashMap::new();
+        let mut frame_buf = vec![[0f32; 4]; frames.len() + 1];
+        for (i, (tloc, frame)) in frames.drain(..).enumerate() {
+            frame_buf[i + 1] = [
+                frame.s0(atlas_builder.width()),
+                frame.s1(atlas_builder.width()),
+                frame.t0(atlas_builder.height()),
+                frame.t1(atlas_builder.height()),
+            ];
+            ensure!(i + 1 < u16::MAX as usize, "too many frames");
+            frame_refs.insert(tloc, (i + 1) as u16);
+        }
+        let frame_buffer = gpu.push_buffer(
+            "t2-frames",
+            frame_buf.as_bytes(),
+            wgpu::BufferUsage::STORAGE,
+        );
+
         uploader.dispatch_singleton(gpu)?;
         let (_, view, sampler) = atlas_builder.finish(gpu, async_rt, tracker)?;
-        Ok((frames, (view, sampler)))
+
+        Ok((frame_refs, frame_buffer, (view, sampler)))
     }
 
     pub fn add_map(
@@ -587,17 +645,14 @@ impl T2TileSet {
 
         let palette = self._load_palette(system_palette, mm, catalog)?;
 
-        let (frames, (atlas_texture_view, atlas_sampler)) =
+        let (frame_map, frame_buffer, (atlas_texture_view, atlas_sampler)) =
             self._build_atlas(&palette, mm, catalog, gpu, async_rt, tracker)?;
 
         let (
-            height_texture_view,
-            height_sampler,
-            base_color_texture_view,
-            base_color_sampler,
-            index_texture_view,
-            index_sampler,
-        ) = self._upload_heights_and_index(&palette, &t2, &frames, gpu, tracker);
+            (height_texture_view, height_sampler),
+            (base_color_texture_view, base_color_sampler),
+            (index_texture_view, index_sampler, index_size),
+        ) = self._upload_heights_and_index(&palette, &mm, &t2, &frame_map, gpu, tracker)?;
 
         // Build an index texture. This is the size of the height map, with one sample per square
         // indicating the properties of that square. We'll use this to index into frames, which let
@@ -614,9 +669,10 @@ impl T2TileSet {
             radians!(degrees!(t2.extent_north_south_in_ft() / 364_000.)).f32(),
             radians!(degrees!(t2.extent_east_west_in_ft() / 288_200.)).f32(),
         ];
+        let t2_info = T2Info::new(base, extent, index_size);
         let t2_info_buffer = Arc::new(Box::new(gpu.push_data(
             "t2-info-buffer",
-            &T2Info::new(base, extent),
+            &t2_info,
             wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         )));
 
@@ -668,13 +724,22 @@ impl T2TileSet {
                     binding: 8,
                     resource: wgpu::BindingResource::Sampler(&index_sampler),
                 },
+                // Frames
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &frame_buffer,
+                        offset: 0,
+                        size: None,
+                    },
+                },
             ],
         });
 
         assert!(!self.layouts.contains_key(t2.name()));
         self.layouts.insert(
             t2.name().to_owned(),
-            T2LayoutInfo::new(t2, adjust, t2_info_buffer, bind_group),
+            T2LayoutInfo::new(t2_info, t2, adjust, t2_info_buffer, bind_group),
         );
 
         Ok(())
@@ -710,7 +775,7 @@ impl TileSet for T2TileSet {
                 radians!(degrees!(lat_ft / (364_000. + lat_span_adj))).f32(),
                 radians!(degrees!(lon_ft / (364_000. + lon_span_adj))).f32(),
             ];
-            let mut info = T2Info::new(base, extent);
+            let mut info = T2Info::new(base, extent, layout.t2_info.index_size);
             info.blend_factor = layout.adjust.read().blend_factor;
             let new_info_buffer = gpu.push_data(
                 "t2-info-upload",

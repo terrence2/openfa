@@ -66,6 +66,15 @@ impl MapOrientation {
             _ => bail!("invalid orientation"),
         })
     }
+
+    pub fn as_byte(&self) -> u8 {
+        match self {
+            MapOrientation::Unk0 => 0,
+            MapOrientation::Unk1 => 1,
+            MapOrientation::FlipS => 2,
+            MapOrientation::RotateCcw => 3,
+        }
+    }
 }
 
 #[derive(Debug)]

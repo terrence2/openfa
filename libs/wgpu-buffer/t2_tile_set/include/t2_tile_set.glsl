@@ -13,11 +13,20 @@
 // You should have received a copy of the GNU General Public License
 // along with Nitrogen.  If not, see <http://www.gnu.org/licenses/>.
 
+struct T2Frame {
+    float s0;
+    float s1;
+    float t0;
+    float t1;
+};
+
 struct T2Info {
     float base_graticule_lat;
     float base_graticule_lon;
     float span_graticule_lat;
     float span_graticule_lon;
+    float index_width;
+    float index_height;
     float height_scale;
     float blend_factor;
 };
