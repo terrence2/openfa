@@ -25,6 +25,7 @@ use gpu::wgpu::{BindGroup, ComputePass, Extent3d};
 use gpu::{texture_format_size, ArcTextureCopyView, Gpu, OwnedBufferCopyView, UploadTracker};
 use image::Rgba;
 use lay::Layer;
+use log::warn;
 use mm::{MissionMap, TLoc};
 use pal::Palette;
 use parking_lot::RwLock;
@@ -626,6 +627,7 @@ impl T2TileSet {
         Ok((frame_refs, frame_buffer, (view, sampler)))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_map(
         &mut self,
         system_palette: &Palette,
@@ -640,6 +642,7 @@ impl T2TileSet {
         let t2 = T2Terrain::from_bytes(&t2_data)?;
 
         if self.layouts.contains_key(t2.name()) {
+            warn!("Skipping duplicate add_map for {}", t2.name());
             return Ok(());
         }
 

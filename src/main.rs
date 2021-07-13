@@ -103,6 +103,10 @@ impl System {
                 bindings.bind("shift+l", "system.terrain_adjust_lon_base(pressed, 0.1)");
                 bindings.bind("shift+i", "system.terrain_adjust_lat_base(pressed, 0.1)");
                 bindings.bind("shift+k", "system.terrain_adjust_lat_base(pressed, -0.1)");
+                bindings.bind("control+j", "system.terrain_adjust_lon_base(pressed, -0.01)");
+                bindings.bind("control+l", "system.terrain_adjust_lon_base(pressed, 0.01)");
+                bindings.bind("control+i", "system.terrain_adjust_lat_base(pressed, 0.01)");
+                bindings.bind("control+k", "system.terrain_adjust_lat_base(pressed, -0.01)");
 
                 bindings.bind("o", "system.terrain_adjust_lon_scale(pressed, 1000.0)");
                 bindings.bind("u", "system.terrain_adjust_lon_scale(pressed, -1000.0)");

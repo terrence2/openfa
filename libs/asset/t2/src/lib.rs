@@ -119,16 +119,22 @@ use std::{collections::HashMap, mem, str};
 lazy_static! {
     static ref MAP_POSITIONS: HashMap<&'static str, [f32; 2]> = {
         let mut table = HashMap::new();
-        table.insert("Panama", [11.77, -82.86]);
-        table.insert("The Baltics", [59.60, 20.80]);
-        table.insert("Cuba", [26.11, -85.43]); // ^^ UL ^^
-        table.insert("Egypt", [32.95, 30.3]);
+        table.insert("Cuba", [25.11, -85.63]);
+        table.insert("Egypt", [32.96, 30.35]);
+        table.insert("Falkland Islands", [-48.96, -64.75]);
         table.insert("France", [51.57, -0.56]);
-        table.insert("Greece", [41.84, 21.04]);
-        table.insert("Iraq", [33.44, 44.75]);
-        table.insert("Kuril Islands", [52.53, 146.82]); // vv LL vv
-        table.insert("Ukraine", [48.50, 24.1]);
-        table.insert("Taiwan", [27.93, 117.6]);
+        table.insert("Greece", [40.58, 21.24]);
+        table.insert("Iraq", [32.44, 44.05]);
+        table.insert("Kuril Islands", [52.53, 146.82]);
+        table.insert("North Vietnam", [22.35, 105.17]);
+        table.insert("North/South Korea", [41.21, 123.98]);
+        table.insert("Pakistan", [29.74, 66.46]);
+        table.insert("Panama", [11.75, -83.31]);
+        table.insert("Persian Gulf", [29.41, 52.72]);
+        table.insert("Taiwan", [26.83, 116.7]);
+        table.insert("The Baltics", [59.60, 20.80]);
+        table.insert("Ukraine", [48.30, 26.70]);
+        table.insert("Vladivostok", [45.21, 128.83]);
         table
     };
 }
