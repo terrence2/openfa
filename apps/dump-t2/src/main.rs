@@ -13,11 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use lib::{from_dos_string, CatalogBuilder};
-use mm::MissionMap;
+use lib::CatalogBuilder;
 use std::time::Instant;
 use structopt::StructOpt;
-use xt::TypeManager;
+use t2::Terrain;
 
 /// Print contents of MM files, with various options.
 #[derive(Debug, StructOpt)]
@@ -41,19 +40,17 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let type_manager = TypeManager::empty();
     for &fid in &inputs {
         let label = catalog.file_label(fid)?;
         let _game = label.split(':').last().unwrap();
         let meta = catalog.stat_sync(fid)?;
 
         let raw = catalog.read_sync(fid)?;
-        let content = from_dos_string(raw).to_owned();
 
         if opt.profile {
             let start = Instant::now();
             for _ in 0..PROFILE_COUNT {
-                let _ = MissionMap::from_str(&content, &type_manager, &catalog)?;
+                let _ = Terrain::from_bytes(&raw)?;
             }
             println!(
                 "load time: {}ms",
@@ -61,15 +58,13 @@ fn main() -> Result<()> {
             );
             return Ok(());
         }
-        let mm = MissionMap::from_str(&content, &type_manager, &catalog)?;
+        let t2 = Terrain::from_bytes(&raw)?;
         println!("{}:{} =>", label, meta.name());
-        println!("map name:    {}", mm.map_name());
-        println!("t2 name:     {}", mm.t2_name());
-        println!("layer name:  {}", mm.layer_name());
-        println!("layer index: {}", mm.layer_index());
-        println!("tmap count:  {}", mm.texture_maps().len());
-        println!("tdic count:  {}", mm.texture_dictionary().len());
-        println!("obj count:   {}", mm.objects().len());
+        println!("map name:    {}", t2.name());
+        println!("width:       {}", t2.width());
+        println!("height:      {}", t2.height());
+        println!("extent e-w:  {}", t2.extent_east_west_in_ft());
+        println!("extent n-s:  {}", t2.extent_north_south_in_ft());
         println!();
     }
 

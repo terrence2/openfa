@@ -13,12 +13,22 @@
 // You should have received a copy of the GNU General Public License
 // along with Nitrogen.  If not, see <http://www.gnu.org/licenses/>.
 
+struct T2Frame {
+    float s0;
+    float s1;
+    float t0;
+    float t1;
+};
+
 struct T2Info {
     float base_graticule_lat;
     float base_graticule_lon;
     float span_graticule_lat;
     float span_graticule_lon;
+    float index_width;
+    float index_height;
     float height_scale;
+    float blend_factor;
 };
 
 vec2
@@ -35,12 +45,4 @@ t2_span_graticule(T2Info t2_info) {
         t2_info.span_graticule_lat,
         t2_info.span_graticule_lon
     );
-}
-
-bool
-grat_in_t2(vec2 grat, vec2 base, vec2 span) {
-    return  grat.x <= base.x &&
-            grat.x > (base.x - span.x) &&
-            grat.y >= base.y &&
-            grat.y < (base.y + span.y);
 }

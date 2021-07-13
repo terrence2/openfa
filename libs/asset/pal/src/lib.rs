@@ -19,7 +19,7 @@ use std::{borrow::Cow, fs::File, io::Write};
 #[derive(Clone, Debug)]
 pub struct Palette {
     pub color_count: usize,
-    entries: Vec<Rgb<u8>>,
+    entries: Vec<Rgba<u8>>,
 }
 
 impl Palette {
@@ -43,10 +43,11 @@ impl Palette {
         let mut entries = Vec::with_capacity(256);
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgb([
+            entries.push(Rgba([
                 (data[i * 3] << 2) | (data[i * 3] >> 6),
                 (data[i * 3 + 1] << 2) | (data[i * 3 + 1] >> 6),
                 (data[i * 3 + 2] << 2) | (data[i * 3 + 2] >> 6),
+                0xFF,
             ]));
         }
         Ok(Self {
@@ -60,7 +61,7 @@ impl Palette {
         let mut entries = Vec::new();
         let color_count = data.len() / 3;
         for i in 0..color_count {
-            entries.push(Rgb([data[i * 3], data[i * 3 + 1], data[i * 3 + 2]]));
+            entries.push(Rgba([data[i * 3], data[i * 3 + 1], data[i * 3 + 2], 0xFF]));
         }
         Ok(Self {
             color_count,
@@ -68,40 +69,39 @@ impl Palette {
         })
     }
 
-    pub fn iter(&self) -> std::slice::Iter<Rgb<u8>> {
+    pub fn iter(&self) -> std::slice::Iter<Rgba<u8>> {
         self.entries.iter()
     }
 
     #[inline]
     pub fn rgba(&self, index: usize) -> Rgba<u8> {
-        Rgba([
-            self.entries[index][0],
-            self.entries[index][1],
-            self.entries[index][2],
-            255,
-        ])
+        self.entries[index]
     }
 
+    #[inline]
     pub fn rgba_f32(&self, index: usize) -> Result<[f32; 4]> {
-        let c = self.rgb(index)?;
+        let c = self.rgba(index);
         Ok([
             f32::from(c[0]) / 256f32,
             f32::from(c[1]) / 256f32,
             f32::from(c[2]) / 256f32,
-            1f32,
+            f32::from(c[3]) / 256f32,
         ])
     }
 
     #[inline]
     pub fn rgb(&self, index: usize) -> Result<Rgb<u8>> {
         ensure!(index < self.entries.len(), "index outside of palette");
-        Ok(self.entries[index])
+        Ok(self.entries[index].to_rgb())
     }
 
     #[inline]
     pub fn pack_unorm(&self, index: usize) -> u32 {
         let entry = &self.entries[index];
-        (entry[0] as u32) | (entry[1] as u32) << 8 | (entry[2] as u32) << 16 | 0xFF << 24
+        (entry[0] as u32)
+            | (entry[1] as u32) << 8
+            | (entry[2] as u32) << 16
+            | (entry[3] as u32) << 24
     }
 
     pub fn overlay_at(&mut self, other: &Palette, offset: usize) -> Result<()> {
@@ -116,10 +116,11 @@ impl Palette {
         Ok(())
     }
 
-    pub fn override_one(&mut self, offset: usize, color: [u8; 3]) {
+    pub fn override_one(&mut self, offset: usize, color: [u8; 4]) {
         self.entries[offset][0] = color[0];
         self.entries[offset][1] = color[1];
         self.entries[offset][2] = color[2];
+        self.entries[offset][3] = color[3];
     }
 
     // Slice from [start to end), half-open.
@@ -141,7 +142,7 @@ impl Palette {
                 let off = (j << 4 | i) as usize;
                 for ip in 0..size {
                     for jp in 0..size {
-                        buf.put_pixel(i * size + ip, j * size + jp, self.rgb(off)?);
+                        buf.put_pixel(i * size + ip, j * size + jp, self.rgba(off));
                     }
                 }
             }

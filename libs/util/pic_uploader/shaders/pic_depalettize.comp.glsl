@@ -26,7 +26,8 @@ main() {
     uvec4 p = uvec4(unpackUnorm4x8(raw_img[block_offset]) * 255.0);
 
     // look up each pixel in the palette, then write back to the target.
-    for (uint i = 0; i < 4; ++i) {
-        tgt_img[4 * block_offset + i] = palette[p[i]];
-    }
+    tgt_img[4 * block_offset + 0] = palette[p[0]];
+    tgt_img[4 * block_offset + 1] = palette[p[1]];
+    tgt_img[4 * block_offset + 2] = palette[p[2]];
+    tgt_img[4 * block_offset + 3] = palette[p[3]];
 }

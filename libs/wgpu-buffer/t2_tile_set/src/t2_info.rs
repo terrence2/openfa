@@ -21,15 +21,19 @@ use zerocopy::{AsBytes, FromBytes};
 pub struct T2Info {
     tile_base_rad: [f32; 2],
     tile_extent_rad: [f32; 2],
-    height_scale: f32,
+    pub index_size: [f32; 2],
+    pub height_scale: f32,
+    pub blend_factor: f32,
 }
 
 impl T2Info {
-    pub fn new(tile_base_rad: [f32; 2], tile_extent_rad: [f32; 2]) -> Self {
+    pub fn new(tile_base_rad: [f32; 2], tile_extent_rad: [f32; 2], index_size: [f32; 2]) -> Self {
         Self {
             tile_base_rad,
             tile_extent_rad,
+            index_size,
             height_scale: 30.0,
+            blend_factor: 1.0,
         }
     }
 

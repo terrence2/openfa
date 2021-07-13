@@ -36,11 +36,11 @@ use parking_lot::RwLock;
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use t2_tile_set::T2HeightTileSet;
+use t2_tile_set::{T2Adjustment, T2TileSet};
 use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
-use widget::{Color, Label, PositionH, PositionV, Terminal, WidgetBuffer};
+use widget::{Color, Label, PositionH, PositionV, WidgetBuffer};
 use winit::window::Window;
 use world::WorldRenderPass;
 use xt::TypeManager;
@@ -62,22 +62,27 @@ struct Opt {
 }
 
 #[derive(Debug, NitrousModule)]
-struct Ofa {
+struct System {
     exit: bool,
     pin_camera: bool,
     camera: Camera,
+    adjust: Arc<RwLock<T2Adjustment>>,
 }
 
 #[inject_nitrous_module]
-impl Ofa {
-    pub fn new(interpreter: &mut Interpreter) -> Arc<RwLock<Self>> {
-        let ofa = Arc::new(RwLock::new(Self {
+impl System {
+    pub fn new(
+        interpreter: &mut Interpreter,
+        adjust: Arc<RwLock<T2Adjustment>>,
+    ) -> Arc<RwLock<Self>> {
+        let system = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
             camera: Default::default(),
+            adjust,
         }));
-        interpreter.put_global("system", Value::Module(ofa.clone()));
-        ofa
+        interpreter.put_global("system", Value::Module(system.clone()));
+        system
     }
 
     pub fn add_default_bindings(&mut self, interpreter: &mut Interpreter) -> Result<()> {
@@ -89,9 +94,74 @@ impl Ofa {
                 bindings.bind("q", "system.exit()");
                 bindings.bind("p", "system.toggle_pin_camera(pressed)");
                 bindings.bind("l", "widget.dump_glyphs(pressed)");
+
+                bindings.bind("j", "system.terrain_adjust_lon_base(pressed, -1.0)");
+                bindings.bind("l", "system.terrain_adjust_lon_base(pressed, 1.0)");
+                bindings.bind("i", "system.terrain_adjust_lat_base(pressed, 1.0)");
+                bindings.bind("k", "system.terrain_adjust_lat_base(pressed, -1.0)");
+                bindings.bind("shift+j", "system.terrain_adjust_lon_base(pressed, -0.1)");
+                bindings.bind("shift+l", "system.terrain_adjust_lon_base(pressed, 0.1)");
+                bindings.bind("shift+i", "system.terrain_adjust_lat_base(pressed, 0.1)");
+                bindings.bind("shift+k", "system.terrain_adjust_lat_base(pressed, -0.1)");
+                bindings.bind("control+j", "system.terrain_adjust_lon_base(pressed, -0.01)");
+                bindings.bind("control+l", "system.terrain_adjust_lon_base(pressed, 0.01)");
+                bindings.bind("control+i", "system.terrain_adjust_lat_base(pressed, 0.01)");
+                bindings.bind("control+k", "system.terrain_adjust_lat_base(pressed, -0.01)");
+
+                bindings.bind("o", "system.terrain_adjust_lon_scale(pressed, 1000.0)");
+                bindings.bind("u", "system.terrain_adjust_lon_scale(pressed, -1000.0)");
+
+                bindings.bind("f", "system.terrain_adjust_toggle_hide(pressed)");
             "#,
         )?;
         Ok(())
+    }
+
+    #[method]
+    pub fn terrain_adjust_lon_scale(&self, pressed: bool, f: f64) {
+        if pressed {
+            self.adjust.write().span_offset[1] += meters!(f);
+            println!(
+                "span offset: {}x{}",
+                self.adjust.read().span_offset[0],
+                self.adjust.read().span_offset[1]
+            );
+        }
+    }
+
+    #[method]
+    pub fn terrain_adjust_lon_base(&self, pressed: bool, f: f64) {
+        if pressed {
+            self.adjust.write().base_offset[1] += degrees!(f);
+            println!(
+                "base offset: {}x{}",
+                self.adjust.read().base_offset[0],
+                self.adjust.read().base_offset[1]
+            );
+        }
+    }
+
+    #[method]
+    pub fn terrain_adjust_lat_base(&self, pressed: bool, f: f64) {
+        if pressed {
+            self.adjust.write().base_offset[0] += degrees!(f);
+            println!(
+                "base offset: {}x{}",
+                self.adjust.read().base_offset[0],
+                self.adjust.read().base_offset[1]
+            );
+        }
+    }
+
+    #[method]
+    pub fn terrain_adjust_toggle_hide(&self, pressed: bool) {
+        if pressed {
+            if self.adjust.read().blend_factor < 1.0 {
+                self.adjust.write().blend_factor = 1.0;
+            } else {
+                self.adjust.write().blend_factor = 0.2;
+            }
+        }
     }
 
     #[method]
@@ -128,6 +198,9 @@ make_frame_graph!(
             composite: CompositeRenderPass
         };
         passes: [
+            // widget
+            maintain_font_atlas: Compute() { widgets() },
+
             // terrain
             // Update the indices so we have correct height data to tessellate with and normal
             // and color data to accumulate.
@@ -208,7 +281,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &mut gpu.write(),
         &mut interpreter.write(),
     )?;
-    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter.write())?;
     let world = WorldRenderPass::new(
         &mut gpu.write(),
         &mut interpreter.write(),
@@ -217,6 +289,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &stars_buffer.read(),
         &terrain_buffer.read(),
     )?;
+    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter.write())?;
     let ui = UiRenderPass::new(
         &mut gpu.write(),
         &globals.read(),
@@ -245,6 +318,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     ///////////////////////////////////////////////////////////
     // UI Setup
     let version_label = Label::new("OpenFA v0.1")
+        .with_font(widgets.read().font_context().font_id_for_name("fira-sans"))
         .with_color(Color::Green)
         .with_size(8.0)
         .with_pre_blended_text()
@@ -257,6 +331,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .set_float(PositionH::End, PositionV::Top);
 
     let fps_label = Label::new("fps")
+        .with_font(widgets.read().font_context().font_id_for_name("sans"))
         .with_color(Color::Red)
         .with_size(13.0)
         .with_pre_blended_text()
@@ -268,21 +343,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .add_child("fps", fps_label.clone())
         .set_float(PositionH::Start, PositionV::Bottom);
 
-    let terminal = Terminal::new(frame_graph.widgets.read().font_context())
-        .with_visible(false)
-        .wrapped();
-    widgets
-        .read()
-        .root()
-        .write()
-        .add_child("terminal", terminal)
-        .set_float(PositionH::Start, PositionV::Top);
-
     ///////////////////////////////////////////////////////////
     // Scene Setup
+    let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
     let mut tracker = Default::default();
-    let mut t2_tile_set =
-        T2HeightTileSet::new(&terrain_buffer.read(), &globals.read(), &gpu.read())?;
+    let mut t2_tile_set = T2TileSet::new(&terrain_buffer.read(), &globals.read(), &gpu.read())?;
     let start = Instant::now();
     let type_manager = TypeManager::empty();
     for mm_fid in &input_fids {
@@ -299,6 +364,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         t2_tile_set.add_map(
             &system_palette,
             &mm,
+            t2_adjustment.clone(),
             &catalog,
             &mut gpu.write(),
             &async_rt,
@@ -352,7 +418,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     //     meters!(1308.7262),
     // ))?;
 
-    let ofa = Ofa::new(&mut interpreter.write());
+    let system = System::new(&mut interpreter.write(), t2_adjustment);
 
     {
         let interp = &mut interpreter.write();
@@ -361,12 +427,12 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         arcball.write().add_default_bindings(interp)?;
         globals.write().add_default_bindings(interp)?;
         world.write().add_default_bindings(interp)?;
-        ofa.write().add_default_bindings(interp)?;
+        system.write().add_default_bindings(interp)?;
     }
 
     let catalog = Arc::new(AsyncRwLock::new(catalog));
 
-    while !ofa.read().exit {
+    while !system.read().exit {
         let loop_start = Instant::now();
 
         widgets
@@ -388,7 +454,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         )?;
         frame_graph.terrain_mut().make_upload_buffer(
             arcball.read().camera(),
-            ofa.write().get_camera(arcball.read().camera()),
+            system.write().get_camera(arcball.read().camera()),
             catalog.clone(),
             &mut async_rt,
             &mut gpu.write(),

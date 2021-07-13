@@ -1,0 +1,11 @@
+[package]
+name = "dump-t2"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+anyhow = "^ 1"
+env_logger = "^ 0.8"
+structopt = "^ 0.2"
+lib = { path = "../../libs/asset/lib" }
+t2 = { path = "../../libs/asset/t2" }
