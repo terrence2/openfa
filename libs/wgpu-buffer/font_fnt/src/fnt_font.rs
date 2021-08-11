@@ -16,7 +16,10 @@ use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use fnt::Fnt;
 use font_common::{FontAdvance, FontInterface};
-use gpu::Gpu;
+use gpu::{
+    size::{AbsSize, LeftBound},
+    Gpu,
+};
 use i386::{Interpreter, Reg};
 use image::{GenericImage, GenericImageView, GrayImage, Luma};
 use lazy_static::lazy_static;
@@ -67,22 +70,22 @@ impl FontInterface for FntFont {
     }
 
     // vertical metrics
-    fn ascent(&self, scale: f32) -> f32 {
-        self.height as f32 / self.units_per_em() * scale
+    fn ascent(&self, scale: AbsSize) -> AbsSize {
+        scale * (self.height as f32 / self.units_per_em())
     }
 
-    fn descent(&self, _scale: f32) -> f32 {
-        0f32
+    fn descent(&self, _scale: AbsSize) -> AbsSize {
+        AbsSize::zero()
     }
 
-    fn line_gap(&self, _scale: f32) -> f32 {
-        0f32
+    fn line_gap(&self, _scale: AbsSize) -> AbsSize {
+        AbsSize::zero()
     }
 
     // horizontal metrics
-    fn advance_width(&self, c: char, scale: f32) -> f32 {
+    fn advance_width(&self, c: char, scale: AbsSize) -> AbsSize {
         if let Some(frame) = self.glyph_frames.get(&c) {
-            frame.width as f32 / self.units_per_em() * scale
+            scale * (frame.width as f32 / self.units_per_em())
         } else if c == ' ' {
             self.ascent(scale) * 0.6
         } else {
@@ -90,31 +93,41 @@ impl FontInterface for FntFont {
         }
     }
 
-    fn left_side_bearing(&self, _c: char, _scale: f32) -> f32 {
-        0f32
+    fn left_side_bearing(&self, _c: char, _scale: AbsSize) -> AbsSize {
+        AbsSize::zero()
     }
 
-    fn pair_kerning(&self, _a: char, _b: char, _scale: f32) -> f32 {
-        0f32
+    fn pair_kerning(&self, _a: char, _b: char, _scale: AbsSize) -> AbsSize {
+        AbsSize::zero()
     }
 
-    fn exact_bounding_box(&self, c: char, scale: f32) -> ((f32, f32), (f32, f32)) {
-        let ((x0, y0), (x1, y1)) = self.pixel_bounding_box(c, scale);
-        ((x0 as f32, y0 as f32), (x1 as f32, y1 as f32))
+    fn exact_bounding_box(
+        &self,
+        c: char,
+        scale: AbsSize,
+    ) -> ((AbsSize, AbsSize), (AbsSize, AbsSize)) {
+        self.pixel_bounding_box(c, scale)
     }
 
-    fn pixel_bounding_box(&self, c: char, scale: f32) -> ((i32, i32), (i32, i32)) {
+    fn pixel_bounding_box(
+        &self,
+        c: char,
+        scale: AbsSize,
+    ) -> ((AbsSize, AbsSize), (AbsSize, AbsSize)) {
         if self.glyph_frames.contains_key(&c) {
             let ascent = self.ascent(scale);
             let advance = self.advance_width(c, scale);
-            ((0, 0), (advance.round() as i32, ascent.round() as i32))
+            (
+                (AbsSize::zero(), AbsSize::zero()),
+                (advance.round(), ascent.round()),
+            )
         } else {
             self.pixel_bounding_box('?', scale)
         }
     }
 
     // rendering
-    fn render_glyph(&self, c: char, scale: f32) -> GrayImage {
+    fn render_glyph(&self, c: char, scale: AbsSize) -> GrayImage {
         // Note: Rendering is done via pic or x86 assembly, so we can't really scale effectively.
         //       Instead we set up the above numbers so that upscaling works upscale well.
         if let Some(frame) = self.glyph_frames.get(&c) {
