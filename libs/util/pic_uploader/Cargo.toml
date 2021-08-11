@@ -19,7 +19,7 @@ tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util",
 winit = { version = "^ 0.24", features = ["web-sys"] }
 catalog = { path = "../../nitrogen/system/catalog" }
 lib = { path = "../../asset/lib" }
-nitrous = { path = "../../nitrogen/system/nitrous" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/system/build_shaders" }
+build_shaders = { path = "../../nitrogen/util/build_shaders" }

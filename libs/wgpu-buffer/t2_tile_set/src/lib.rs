@@ -59,6 +59,10 @@ impl Default for T2Adjustment {
     }
 }
 
+/// Converts between FightersAnthology cartesian offsets within a tile
+/// to Geodesic coordinates for use with the nitrogen engine.
+pub struct T2PositionMapper {}
+
 #[derive(Debug)]
 pub struct T2LayoutInfo {
     t2_info: T2Info,
@@ -94,11 +98,13 @@ pub struct T2TileSet {
     bind_group_layout: wgpu::BindGroupLayout,
 
     // One bind group for each t2 we want to render.
+    shared_adjustment: Arc<RwLock<T2Adjustment>>,
     layouts: HashMap<String, T2LayoutInfo>,
 }
 
 impl T2TileSet {
     pub fn new(
+        shared_adjustment: Arc<RwLock<T2Adjustment>>,
         terrain: &TerrainBuffer,
         globals_buffer: &GlobalParametersBuffer,
         gpu: &Gpu,
@@ -269,6 +275,7 @@ impl T2TileSet {
             displace_height_pipeline,
             accumulate_color_pipeline,
             bind_group_layout,
+            shared_adjustment,
             layouts: HashMap::new(),
         })
     }
@@ -627,12 +634,10 @@ impl T2TileSet {
         Ok((frame_refs, frame_buffer, (view, sampler)))
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn add_map(
         &mut self,
         system_palette: &Palette,
         mm: &MissionMap,
-        adjust: Arc<RwLock<T2Adjustment>>,
         catalog: &Catalog,
         gpu: &mut Gpu,
         async_rt: &Runtime,
@@ -739,10 +744,15 @@ impl T2TileSet {
             ],
         });
 
-        assert!(!self.layouts.contains_key(t2.name()));
         self.layouts.insert(
             t2.name().to_owned(),
-            T2LayoutInfo::new(t2_info, t2, adjust, t2_info_buffer, bind_group),
+            T2LayoutInfo::new(
+                t2_info,
+                t2,
+                self.shared_adjustment.clone(),
+                t2_info_buffer,
+                bind_group,
+            ),
         );
 
         Ok(())

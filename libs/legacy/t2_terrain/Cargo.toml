@@ -16,4 +16,4 @@ shader_shared = { path = "../../../nitrogen/wgpu-buffer/shader_shared" }
 t2_buffer = { path = "../../../render-wgpu/buffer/t2_buffer" }
 
 [build-dependencies]
-build_shaders = { path = "../../../nitrogen/system/build_shaders" }
+build_shaders = { path = "../../../nitrogen/util/build_shaders" }

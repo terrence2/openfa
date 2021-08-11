@@ -23,6 +23,7 @@ use gpu::{Gpu, UploadTracker};
 use legion::*;
 use log::trace;
 use pal::Palette;
+use parking_lot::RwLock;
 use shape_chunk::{
     ChunkId, ChunkPart, DrawIndirectCommand, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets,
 };
@@ -463,7 +464,7 @@ pub struct ShapeInstanceBuffer {
 }
 
 impl ShapeInstanceBuffer {
-    pub fn new(device: &wgpu::Device) -> Result<Self> {
+    pub fn new(device: &wgpu::Device) -> Result<Arc<RwLock<Self>>> {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shape-instance-bind-group-layout"),
             entries: &[
@@ -510,13 +511,13 @@ impl ShapeInstanceBuffer {
             ],
         });
 
-        Ok(Self {
+        Ok(Arc::new(RwLock::new(Self {
             chunk_man: ShapeChunkBuffer::new(device)?,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
             bind_group_layout,
-        })
+        })))
     }
 
     pub fn block(&self, id: &BlockId) -> &InstanceBlock {

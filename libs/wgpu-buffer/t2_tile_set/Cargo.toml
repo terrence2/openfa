@@ -12,7 +12,7 @@ parking_lot = "^ 0.11"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
-absolute_unit = { path = "../../nitrogen/sim/absolute_unit" }
+absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 camera = { path = "../../nitrogen/sim/camera" }
 catalog = { path = "../../nitrogen/system/catalog" }
@@ -32,7 +32,7 @@ xt = { path = "../../asset/xt" }
 env_logger = "^ 0.8"
 winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../asset/lib" }
-nitrous = { path = "../../nitrogen/system/nitrous" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/system/build_shaders" }
+build_shaders = { path = "../../nitrogen/util/build_shaders" }

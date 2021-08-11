@@ -14,7 +14,7 @@ memoffset = "^ 0.6"
 nalgebra = "^ 0.24"
 wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
-animate = { path = "../../nitrogen/sim/animate" }
+animate = { path = "../../nitrogen/util/animate" }
 catalog = { path = "../../nitrogen/system/catalog" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
@@ -26,4 +26,4 @@ universe = { path = "../../nitrogen/sim/universe" }
 [dev-dependencies]
 winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../asset/lib" }
-nitrous = { path = "../../nitrogen/system/nitrous" }
+nitrous = { path = "../../nitrogen/util/nitrous" }

@@ -18,7 +18,7 @@ shape_instance = { path = "../../../wgpu-buffer/shape_instance" }
 
 [dev-dependencies]
 winit = { version = "^ 0.24", features = ["web-sys"] }
-nitrous = { path = "../../../nitrogen/system/nitrous" }
+nitrous = { path = "../../../nitrogen/util/nitrous" }
 
 [build-dependencies]
-build_shaders = { path = "../../../nitrogen/system/build_shaders" }
+build_shaders = { path = "../../../nitrogen/util/build_shaders" }

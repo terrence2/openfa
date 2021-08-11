@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
 use catalog::DirectoryDrawer;
@@ -33,6 +33,7 @@ use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
 use pal::Palette;
 use parking_lot::RwLock;
+use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -190,6 +191,7 @@ make_frame_graph!(
             atmosphere: AtmosphereBuffer,
             fullscreen: FullscreenBuffer,
             globals: GlobalParametersBuffer,
+            shapes: ShapeInstanceBuffer,
             stars: StarsBuffer,
             terrain: TerrainBuffer,
             widgets: WidgetBuffer,
@@ -281,6 +283,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &mut gpu.write(),
         &mut interpreter.write(),
     )?;
+    let shapes = ShapeInstanceBuffer::new(&gpu.read().device())?;
     let world = WorldRenderPass::new(
         &mut gpu.write(),
         &mut interpreter.write(),
@@ -307,6 +310,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         atmosphere_buffer,
         fullscreen_buffer,
         globals.clone(),
+        shapes.clone(),
         stars_buffer,
         terrain_buffer.clone(),
         widgets.clone(),
@@ -347,7 +351,12 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     // Scene Setup
     let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
     let mut tracker = Default::default();
-    let mut t2_tile_set = T2TileSet::new(&terrain_buffer.read(), &globals.read(), &gpu.read())?;
+    let mut t2_tile_set = T2TileSet::new(
+        t2_adjustment.clone(),
+        &terrain_buffer.read(),
+        &globals.read(),
+        &gpu.read(),
+    )?;
     let start = Instant::now();
     let type_manager = TypeManager::empty();
     for mm_fid in &input_fids {
@@ -361,15 +370,92 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
-        t2_tile_set.add_map(
+        let t2_layout = t2_tile_set.add_map(
             &system_palette,
             &mm,
-            t2_adjustment.clone(),
             &catalog,
             &mut gpu.write(),
             &async_rt,
             &mut tracker,
         )?;
+
+        for info in mm.objects() {
+            if info.xt().ot().shape.is_none() {
+                // FIXME: this still needs to add the entity.
+                // I believe these are only for hidden flak guns in TVIET.
+                continue;
+            }
+
+            let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
+                info.xt().ot().shape.as_ref().expect("a shape file"),
+                DrawSelection::NormalModel,
+                &system_palette,
+                &catalog,
+                &mut gpu.write(),
+            )?;
+            let aabb = *shapes
+                .read()
+                .part(shape_id)
+                .widgets()
+                .read()
+                .unwrap()
+                .aabb();
+
+            if let Ok(_pt) = info.xt().pt() {
+                //galaxy.create_flyer(pt, shape_id, slot_id)?
+                //unimplemented!()
+            } else if let Ok(_nt) = info.xt().nt() {
+                //galaxy.create_ground_mover(nt)
+                //unimplemented!()
+            } else if info.xt().jt().is_ok() {
+                bail!("did not expect a projectile in MM objects")
+            } else {
+                let p = info.position();
+                println!("{:?}: {}", info.name(), p);
+                /*
+                   println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
+                   let scale = if info
+                       .xt()
+                       .ot()
+                       .shape
+                       .as_ref()
+                       .expect("a shape file")
+                       .starts_with("BNK")
+                   {
+                       2f32
+                   } else {
+                       4f32
+                   };
+                   let mut p = info.position();
+                   let ns_ft = t2_buffer.t2().extent_north_south_in_ft();
+                   p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
+                   p *= FEET_TO_HM_32;
+                   p.coords[1] = /*t2_buffer.borrow().ground_height_at_tile(&p)*/
+                       -aabb[1][1] * scale * FEET_TO_HM_32;
+                   positions.push(p);
+                   let sh_name = info
+                       .xt()
+                       .ot()
+                       .shape
+                       .as_ref()
+                       .expect("a shape file")
+                       .to_owned();
+                   if let Some(n) = info.name() {
+                       names.push(n + " (" + &sh_name + ")");
+                   } else {
+                       names.push(sh_name);
+                   }
+                   galaxy.create_building(
+                       slot_id,
+                       shape_id,
+                       shape_instance_buffer.part(shape_id),
+                       scale,
+                       p,
+                       info.angle(),
+                   )?;
+                */
+            };
+        }
     }
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer

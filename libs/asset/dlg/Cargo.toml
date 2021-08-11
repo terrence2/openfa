@@ -8,8 +8,8 @@ edition = "2018"
 anyhow = "^ 1"
 byteorder = "^ 1"
 zerocopy = "^ 0.3"
-ansi = { path = "../../nitrogen/system/ansi" }
-packed_struct = { path = "../../nitrogen/system/packed_struct" }
+ansi = { path = "../../nitrogen/util/ansi" }
+packed_struct = { path = "../../nitrogen/util/packed_struct" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }
 

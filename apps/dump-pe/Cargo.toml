@@ -7,6 +7,6 @@ edition = "2018"
 [dependencies]
 anyhow = "^ 1"
 structopt = "^ 0.2"
-ansi = { path = "../../libs/nitrogen/system/ansi" }
+ansi = { path = "../../libs/nitrogen/util/ansi" }
 lib = { path = "../../libs/asset/lib" }
 peff = { path = "../../libs/util/peff" }
