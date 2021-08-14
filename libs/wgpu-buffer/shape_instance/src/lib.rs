@@ -13,516 +13,190 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod components;
+mod instance_block;
 
+pub use crate::instance_block::SlotId;
 pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
+use crate::instance_block::{BlockId, InstanceBlock, TransformType};
+use absolute_unit::Kilometers;
 use anyhow::Result;
+use atmosphere::AtmosphereBuffer;
+use camera::Camera;
 use catalog::Catalog;
+use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, UploadTracker};
 use legion::*;
-use log::trace;
+use nalgebra::Matrix4;
+use ofa_groups::Group as LocalGroup;
 use pal::Palette;
 use parking_lot::RwLock;
+use shader_shared::Group;
 use shape_chunk::{
-    ChunkId, ChunkPart, DrawIndirectCommand, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets,
+    ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets, Vertex,
 };
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
-    mem,
-    num::NonZeroU64,
     sync::Arc,
     time::Instant,
 };
 use universe::component::{Rotation, Scale, Transform};
 
-pub const SHAPE_UNIT_TO_FEET: f32 = 4f32;
-
-const BLOCK_SIZE: usize = 1 << 10;
-
-type TransformType = [f32; 8];
-
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct BlockId(u32);
-
-impl BlockId {
-    pub fn new(id: u32) -> Self {
-        Self(id)
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct SlotId {
-    block_id: BlockId,
-    offset: u32,
-}
-
-impl SlotId {
-    fn new(block_id: BlockId, offset: u32) -> Self {
-        Self { block_id, offset }
-    }
-
-    fn index(self) -> usize {
-        self.offset as usize
-    }
-}
-
-// Fixed reservation blocks for upload of a number of entities. Unfortunately, because of
-// xforms, we don't know exactly how many instances will fit in any given block.
-pub struct InstanceBlock {
-    // Our own block id, for creating slots.
-    block_id: BlockId,
-
-    // Weak reference to the associated chunk in the Manager.
-    chunk_id: ChunkId,
-
-    // Current allocation head.
-    next_slot: u32,
-
-    // Map from slot offset to the actual storage location. This must be derefed to
-    // know the actual offset into the relevant buffer.
-    slot_map: Box<[usize; BLOCK_SIZE]>,
-
-    // Flag set whenever the slot map changes and we need to re-up the command_buffer.
-    slots_dirty: bool,
-
-    // Cursor for insertion into the xforms buffer.
-    xform_cursor: usize,
-
-    // Map from the entity to the stored offset and from the offset to the entity.
-    //    reservation_offset: usize,       // bump head
-    //    mark_buffer: [bool; BLOCK_SIZE], // GC marked set
-    //    descriptor_set: Arc<dyn DescriptorSet + Send + Sync>,
-    //
-    pub command_buffer_scratch: [DrawIndirectCommand; BLOCK_SIZE],
-    transform_buffer_scratch: Box<[TransformType; BLOCK_SIZE]>,
-    flag_buffer_scratch: Box<[[u32; 2]; BLOCK_SIZE]>,
-    xform_index_buffer_scratch: Box<[u32; BLOCK_SIZE]>,
-    xform_buffer_scratch: Box<[[f32; 6]; 14 * BLOCK_SIZE]>,
-
-    command_buffer: Arc<Box<wgpu::Buffer>>,
-    transform_buffer: Arc<Box<wgpu::Buffer>>,
-    flag_buffer: Arc<Box<wgpu::Buffer>>,
-    xform_index_buffer: Arc<Box<wgpu::Buffer>>,
-    xform_buffer: Arc<Box<wgpu::Buffer>>,
-
-    bind_group: wgpu::BindGroup,
-}
-
-impl InstanceBlock {
-    const TRANSFORM_BUFFER_SIZE: wgpu::BufferAddress =
-        (mem::size_of::<TransformType>() * BLOCK_SIZE) as wgpu::BufferAddress;
-    const FLAG_BUFFER_SIZE: wgpu::BufferAddress =
-        (mem::size_of::<[u32; 2]>() * BLOCK_SIZE) as wgpu::BufferAddress;
-    const XFORM_INDEX_BUFFER_SIZE: wgpu::BufferAddress =
-        (mem::size_of::<u32>() * BLOCK_SIZE) as wgpu::BufferAddress;
-    const XFORM_BUFFER_SIZE: wgpu::BufferAddress =
-        (mem::size_of::<[f32; 6]>() * 14 * BLOCK_SIZE) as wgpu::BufferAddress;
-
-    fn new(
-        block_id: BlockId,
-        chunk_id: ChunkId,
-        layout: &wgpu::BindGroupLayout,
-        device: &wgpu::Device,
-    ) -> Self {
-        // This class contains the fixed-size device local blocks that we will render from.
-        trace!("InstanceBlock::new({:?})", block_id);
-
-        let command_buffer_size =
-            (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
-        let command_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("shape-instance-command-buffer"),
-            size: command_buffer_size,
-            usage: wgpu::BufferUsage::all(),
-            mapped_at_creation: false,
-        })));
-
-        let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("shape-instance-xform-buffer"),
-            size: Self::TRANSFORM_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
-            mapped_at_creation: false,
-        })));
-
-        // TODO: Only allocate flag and xform buffers if the block requires them
-
-        let flag_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("shape-instance-flag-buffer"),
-            size: Self::FLAG_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
-            mapped_at_creation: false,
-        })));
-
-        let xform_index_buffer =
-            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("shape-instance-xform-index-buffer"),
-                size: Self::XFORM_INDEX_BUFFER_SIZE,
-                usage: wgpu::BufferUsage::all(),
-                mapped_at_creation: false,
-            })));
-
-        let xform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("shape-instance-xform-buffer"),
-            size: Self::XFORM_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
-            mapped_at_creation: false,
-        })));
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("shape-instance-bind-group"),
-            layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &transform_buffer,
-                        offset: 0,
-                        size: None,
-                    },
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &flag_buffer,
-                        offset: 0,
-                        size: None,
-                    },
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &xform_index_buffer,
-                        offset: 0,
-                        size: None,
-                    },
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &xform_buffer,
-                        offset: 0,
-                        size: None,
-                    },
-                },
-            ],
-        });
-
-        Self {
-            block_id,
-            next_slot: 0,
-            slot_map: Box::new([0; BLOCK_SIZE]),
-            slots_dirty: false,
-            xform_cursor: 0,
-            chunk_id,
-            command_buffer_scratch: [DrawIndirectCommand {
-                vertex_count: 0,
-                instance_count: 0,
-                first_vertex: 0,
-                first_instance: 0,
-            }; BLOCK_SIZE],
-            transform_buffer_scratch: Box::new([[0f32; 8]; BLOCK_SIZE]),
-            flag_buffer_scratch: Box::new([[0u32; 2]; BLOCK_SIZE]),
-            xform_index_buffer_scratch: Box::new([0u32; BLOCK_SIZE]),
-            xform_buffer_scratch: Box::new([[0f32; 6]; 14 * BLOCK_SIZE]),
-            command_buffer,
-            transform_buffer,
-            flag_buffer,
-            xform_index_buffer,
-            xform_buffer,
-            bind_group,
-        }
-    }
-
-    pub fn id(&self) -> BlockId {
-        self.block_id
-    }
-
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
-    pub fn command_buffer(&self) -> &wgpu::Buffer {
-        &self.command_buffer
-    }
-
-    fn has_open_slot(&self) -> bool {
-        self.len() < BLOCK_SIZE
-    }
-
-    fn allocate_slot(&mut self, draw_cmd: DrawIndirectCommand) -> SlotId {
-        assert!(self.has_open_slot());
-        let slot_id = SlotId::new(self.block_id, self.next_slot);
-        self.next_slot += 1;
-
-        // Slots always start pointing at themselves -- as we remove entities and GC,
-        // stuff will get mixed around. Also mark ourself as dirty so that we will get
-        // uploaded, once we enter the draw portion.
-        self.slot_map[slot_id.index()] = slot_id.index();
-        self.command_buffer_scratch[slot_id.index()] = draw_cmd;
-        self.slots_dirty = true;
-
-        slot_id
-    }
-
-    #[inline]
-    fn begin_frame(&mut self) {
-        self.xform_cursor = 0;
-    }
-
-    #[inline]
-    fn push_values(
-        &mut self,
-        slot_id: SlotId,
-        transform: &TransformType,
-        flags: [u32; 2],
-        xforms: &Option<[[f32; 6]; 14]>,
-        xform_count: usize,
-    ) {
-        let offset = self.slot_map[slot_id.index()];
-        self.transform_buffer_scratch[offset] = *transform;
-        self.flag_buffer_scratch[offset] = flags;
-        if let Some(xf) = xforms {
-            self.xform_index_buffer_scratch[offset] = self.xform_cursor as u32;
-            self.xform_buffer_scratch[self.xform_cursor..self.xform_cursor + xform_count]
-                .copy_from_slice(&xf[0..xform_count]);
-            self.xform_cursor += xform_count;
-        }
-    }
-
-    pub fn chunk_id(&self) -> ChunkId {
-        self.chunk_id
-    }
-
-    pub fn len(&self) -> usize {
-        self.next_slot as usize
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.next_slot == 0
-    }
-
-    /*
-    // We expect entities to be added and removed frequently, but not every entity on every frame.
-    // We take some pains here to make sure we only copy change entities up to the GPU each frame.
-    fn allocate_entity_slot(
-        &mut self,
-        chunk_part: &ChunkPart,
-        mut draw_command: DrawIndirectCommand,
-    ) -> Option<SlotId> {
-        if chunk_index != self.chunk_index {
-            return None; // block not for this chunk
-        }
-
-        // GC compacts all ids so that allocation can just bump.
-        if self.reservation_offset >= BLOCK_SIZE {
-            return None; // block full
-        }
-        let slot = SlotId(self.reservation_offset);
-        self.reservation_offset += 1;
-
-        // Update the draw commands and add an upload slot for the new one.
-        draw_command.first_instance = slot.0 as u32;
-        self.command_buffer_scratch[slot.0] = draw_command;
-        self.command_upload_set.push(slot.0);
-
-        Some(slot)
-    }
-
-    // Lookup the existing slot (may be newly created), return the slot index for direct O(1)
-    // access to all of the scratch buffers we need to update. Also marks the entity as alive.
-    fn get_existing_slot(&mut self, id: EntityId) -> SlotId {
-        let slot = self.entity_to_slot_map[&id];
-        self.mark_buffer[slot.0] = true;
-        slot
-    }
-
-    // Maintain is our GC routine. It must be called at the end of every frame.
-    fn maintain(&mut self, removed: &mut Vec<EntityId>) -> bool {
-        fn swap<T>(arr: &mut [T], a: usize, b: usize)
-        where
-            T: Copy,
-        {
-            let tmp = arr[a];
-            arr[a] = arr[b];
-            arr[b] = tmp;
-        }
-
-        let mut head = 0;
-        let mut tail = self.reservation_offset - 1;
-
-        // Already empty; should not be reachable because we should already be cleaned.
-        assert!(tail >= head);
-
-        // Since we're using swapping, we need to handle the last element specially.
-        if head == tail && !self.mark_buffer[head] {
-            return true;
-        }
-
-        // Walk from the front of the buffer to the end of the buffer. If an entity is not marked,
-        // swap it with the tail and shrink the buffer.
-        while head < tail {
-            if !self.mark_buffer[head] {
-                swap(&mut self.mark_buffer, head, tail);
-                swap(&mut self.command_buffer_scratch, head, tail);
-                swap(&mut self.transform_buffer_scratch, head, tail);
-                swap(&mut self.flag_buffer_scratch, head, tail);
-                swap(&mut self.xform_index_buffer_scratch, head, tail);
-                tail -= 1;
-            } else {
-                // Note that this is an `else` because we need to re-check head in case tail
-                // was itself unmarked.
-                self.mark_buffer[head] = false;
-                head += 1;
-            }
-        }
-
-        self.reservation_offset = tail + 1;
-        return false;
-    }
-
-    fn get_transform_buffer_slot(&mut self, slot_index: SlotId) -> &mut [f32; 6] {
-        &mut self.transform_buffer_scratch[slot_index.0]
-    }
-
-    fn get_flag_buffer_slot(&mut self, slot_index: SlotId) -> &mut [u32; 2] {
-        &mut self.flag_buffer_scratch[slot_index.0]
-    }
-
-    fn get_xform_buffer_slot(&mut self, slot_index: SlotId) -> &mut [f32] {
-        &mut self.xform_buffer_scratch[self.xform_index_buffer_scratch[slot_index.0] as usize]
-    }
-
-    fn update_buffers(
-        &self,
-        mut cbb: AutoCommandBufferBuilder,
-    ) -> Result<AutoCommandBufferBuilder> {
-        let dic = self.command_buffer_scratch.to_vec();
-        let command_buffer_upload = self.command_buffer_pool.chunk(dic)?;
-        cbb = cbb.copy_buffer(command_buffer_upload, self.command_buffer.clone())?;
-
-        let tr = self.transform_buffer_scratch.to_vec();
-        let transform_buffer_upload = self.transform_buffer_pool.chunk(tr)?;
-        cbb = cbb.copy_buffer(transform_buffer_upload, self.transform_buffer.clone())?;
-
-        let fl = self.flag_buffer_scratch.to_vec();
-        let flag_buffer_upload = self.flag_buffer_pool.chunk(fl)?;
-        cbb = cbb.copy_buffer(flag_buffer_upload, self.flag_buffer.clone())?;
-
-        let xfi = self.xform_index_buffer_scratch.to_vec();
-        let xform_index_buffer_upload = self.xform_index_buffer_pool.chunk(xfi)?;
-        cbb = cbb.copy_buffer(xform_index_buffer_upload, self.xform_index_buffer.clone())?;
-
-        Ok(cbb)
-    }
-
-    pub fn render(
-        &self,
-        cbb: AutoCommandBufferBuilder,
-        pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-        chunk: &ClosedChunk,
-        camera: &dyn CameraAbstract,
-        window: &GraphicsWindow,
-    ) -> Result<AutoCommandBufferBuilder> {
-        let mut push_constants = vs::ty::PushConstantData::new();
-        push_constants.set_projection(&camera.projection_matrix());
-        push_constants.set_view(&camera.view_matrix());
-
-        let ib = self.command_buffer.clone();
-        Ok(cbb.draw_indirect(
-            pipeline.clone(),
-            &window.dynamic_state,
-            vec![chunk.vertex_buffer()],
-            ib.into_buffer_slice()
-                .slice(0..self.reservation_offset)
-                .unwrap(),
-            (
-                self.pds0.clone(),
-                self.pds1.clone(),
-                self.pds2.clone(),
-                self.descriptor_set.clone(),
-                chunk.atlas_descriptor_set_ref(),
-            ),
-            push_constants,
-        )?)
-    }
-    */
 }
 
 pub struct ShapeInstanceBuffer {
     pub chunk_man: ShapeChunkBuffer,
 
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
-    pub blocks: HashMap<BlockId, InstanceBlock>,
+    blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
 
     bind_group_layout: wgpu::BindGroupLayout,
+    pipeline: wgpu::RenderPipeline,
 }
 
 impl ShapeInstanceBuffer {
-    pub fn new(device: &wgpu::Device) -> Result<Arc<RwLock<Self>>> {
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("shape-instance-bind-group-layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: NonZeroU64::new(InstanceBlock::TRANSFORM_BUFFER_SIZE),
-                    },
-                    count: None,
+    pub fn new(
+        globals_buffer: &GlobalParametersBuffer,
+        atmosphere_buffer: &AtmosphereBuffer,
+        gpu: &Gpu,
+    ) -> Result<Arc<RwLock<Self>>> {
+        let bind_group_layout =
+            gpu.device()
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("shape-instance-bind-group-layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStage::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: InstanceBlock::transform_buffer_size(),
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStage::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: InstanceBlock::flag_buffer_size(),
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStage::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: InstanceBlock::xform_index_buffer_size(),
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStage::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: InstanceBlock::xform_buffer_size(),
+                            },
+                            count: None,
+                        },
+                    ],
+                });
+
+        let chunk_man = ShapeChunkBuffer::new(gpu.device())?;
+
+        let vert_shader =
+            gpu.create_shader_module("shape.vert", include_bytes!("../target/shape.vert.spirv"))?;
+        let frag_shader =
+            gpu.create_shader_module("shape.frag", include_bytes!("../target/shape.frag.spirv"))?;
+
+        let pipeline_layout =
+            gpu.device()
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("shape-render-pipeline-layout"),
+                    push_constant_ranges: &[],
+                    bind_group_layouts: &[
+                        globals_buffer.bind_group_layout(),
+                        atmosphere_buffer.bind_group_layout(),
+                        chunk_man.bind_group_layout(),
+                        &bind_group_layout,
+                    ],
+                });
+
+        let pipeline = gpu
+            .device()
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("shape-render-pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &vert_shader,
+                    entry_point: "main",
+                    buffers: &[Vertex::descriptor()],
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: NonZeroU64::new(InstanceBlock::FLAG_BUFFER_SIZE),
-                    },
-                    count: None,
+                fragment: Some(wgpu::FragmentState {
+                    module: &frag_shader,
+                    entry_point: "main",
+                    targets: &[wgpu::ColorTargetState {
+                        format: Gpu::SCREEN_FORMAT,
+                        color_blend: wgpu::BlendState::REPLACE,
+                        alpha_blend: wgpu::BlendState::REPLACE,
+                        write_mask: wgpu::ColorWrite::ALL,
+                    }],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: wgpu::CullMode::None,
+                    polygon_mode: wgpu::PolygonMode::Fill,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: NonZeroU64::new(InstanceBlock::XFORM_INDEX_BUFFER_SIZE),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: Gpu::DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Greater,
+                    stencil: wgpu::StencilState {
+                        front: wgpu::StencilFaceState::IGNORE,
+                        back: wgpu::StencilFaceState::IGNORE,
+                        read_mask: 0,
+                        write_mask: 0,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: NonZeroU64::new(InstanceBlock::XFORM_BUFFER_SIZE),
+                    bias: wgpu::DepthBiasState {
+                        constant: 0,
+                        slope_scale: 0.0,
+                        clamp: 0.0,
                     },
-                    count: None,
+                    clamp_depth: false,
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
                 },
-            ],
-        });
+            });
 
         Ok(Arc::new(RwLock::new(Self {
-            chunk_man: ShapeChunkBuffer::new(device)?,
+            chunk_man,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
             bind_group_layout,
+            pipeline,
         })))
     }
 
-    pub fn block(&self, id: &BlockId) -> &InstanceBlock {
-        &self.blocks[id]
-    }
+    // pub fn block(&self, id: &BlockId) -> &InstanceBlock {
+    //     &self.blocks[id]
+    // }
 
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         self.chunk_man.part(shape_id)
@@ -541,7 +215,7 @@ impl ShapeInstanceBuffer {
         assert!(self.next_block_id < std::u32::MAX);
         let bid = self.next_block_id;
         self.next_block_id += 1;
-        BlockId(bid)
+        BlockId::new(bid)
     }
 
     fn find_open_block(&mut self, chunk_id: ChunkId) -> Option<BlockId> {
@@ -610,13 +284,10 @@ impl ShapeInstanceBuffer {
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
     ) {
-        self.blocks.get_mut(&slot_id.block_id).unwrap().push_values(
-            slot_id,
-            transform,
-            flags,
-            xforms,
-            xform_count,
-        );
+        self.blocks
+            .get_mut(slot_id.block_id())
+            .unwrap()
+            .push_values(slot_id, transform, flags, xforms, xform_count);
     }
 
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
@@ -626,12 +297,12 @@ impl ShapeInstanceBuffer {
     pub fn make_upload_buffer(
         &mut self,
         start: &Instant,
+        now: &Instant,
+        camera: &Camera,
         world: &mut World,
         gpu: &Gpu,
         tracker: &mut UploadTracker,
     ) -> Result<()> {
-        let now = Instant::now();
-
         // Reset cursor for our next upload.
         for block in self.blocks.values_mut() {
             block.begin_frame();
@@ -642,6 +313,8 @@ impl ShapeInstanceBuffer {
         <Write<ShapeState>>::query()
             .par_for_each_mut(world, |shape_state| shape_state.draw_state.animate(&now));
 
+        let km2m = Matrix4::new_scaling(1_000.0);
+        let view = camera.view::<Kilometers>().to_homogeneous();
         let mut query = <(
             Read<Transform>,
             Read<Rotation>,
@@ -651,7 +324,13 @@ impl ShapeInstanceBuffer {
         // TODO: distinguish first run, as it doesn't seem to see "new" as changed.
         //    .filter(changed::<Transform>() | changed::<Rotation>());
         query.par_for_each_mut(world, |(transform, rotation, scale, transform_buffer)| {
-            (&mut transform_buffer.buffer[0..3]).copy_from_slice(&transform.compact());
+            // Transform must be performed in f64, then moved into view space (where precision
+            // errors are at least far away), before being truncated to f32.
+            let pos = transform.cartesian().point64().to_homogeneous();
+            let pos_view = km2m * view * pos;
+            let pos_compact = [pos_view.x as f32, pos_view.y as f32, pos_view.z as f32];
+
+            (&mut transform_buffer.buffer[0..3]).copy_from_slice(&pos_compact);
             (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
             (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
         });
@@ -716,42 +395,47 @@ impl ShapeInstanceBuffer {
         }
 
         for block in self.blocks.values() {
-            gpu.upload_slice_to(
-                "shape-instance-command-buffer-scratch",
-                &block.command_buffer_scratch[..block.len()],
-                block.command_buffer.clone(),
-                tracker,
-            );
-
-            gpu.upload_slice_to(
-                "shape-instance-transform-buffer-scratch",
-                &block.transform_buffer_scratch[..block.len()],
-                block.transform_buffer.clone(),
-                tracker,
-            );
-
-            gpu.upload_slice_to(
-                "shape-instance-flag-buffer-scratch",
-                &block.flag_buffer_scratch[..block.len()],
-                block.flag_buffer.clone(),
-                tracker,
-            );
-
-            gpu.upload_slice_to(
-                "shape-instance-xform-index-buffer-scratch",
-                &block.xform_index_buffer_scratch[..block.len()],
-                block.xform_index_buffer.clone(),
-                tracker,
-            );
-
-            gpu.upload_slice_to(
-                "shape-instance-xform-buffer-scratch",
-                &block.xform_buffer_scratch[..block.xform_cursor],
-                block.xform_buffer.clone(),
-                tracker,
-            );
+            block.make_upload_buffer(gpu, tracker);
         }
         Ok(())
+    }
+
+    pub fn draw_shapes<'a>(
+        &'a self,
+        mut rpass: wgpu::RenderPass<'a>,
+        globals_buffer: &'a GlobalParametersBuffer,
+        atmosphere_buffer: &'a AtmosphereBuffer,
+    ) -> Result<wgpu::RenderPass<'a>> {
+        assert_ne!(LocalGroup::ShapeChunk.index(), Group::Globals.index());
+        assert_ne!(LocalGroup::ShapeChunk.index(), Group::Atmosphere.index());
+        assert_ne!(LocalGroup::ShapeBlock.index(), Group::Globals.index());
+        assert_ne!(LocalGroup::ShapeBlock.index(), Group::Atmosphere.index());
+        rpass.set_pipeline(&self.pipeline);
+        rpass.set_bind_group(Group::Globals.index(), globals_buffer.bind_group(), &[]);
+        rpass.set_bind_group(
+            Group::Atmosphere.index(),
+            atmosphere_buffer.bind_group(),
+            &[],
+        );
+
+        for block in self.blocks.values() {
+            let chunk = self.chunk_man.chunk(block.chunk_id());
+
+            // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
+            rpass.set_bind_group(LocalGroup::ShapeChunk.index(), chunk.bind_group(), &[]);
+            rpass.set_bind_group(LocalGroup::ShapeBlock.index(), block.bind_group(), &[]);
+            rpass.set_vertex_buffer(0, chunk.vertex_buffer());
+            for i in 0..block.len() {
+                //rpass.draw_indirect(block.command_buffer(), i as u64);
+                let cmd = block.command_buffer_scratch[i];
+                #[allow(clippy::range_plus_one)]
+                rpass.draw(
+                    cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
+                    i as u32..i as u32 + 1,
+                );
+            }
+        }
+        Ok(rpass)
     }
 }
 
@@ -803,7 +487,14 @@ mod test {
             let game = label.split(':').last().unwrap();
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
 
-            let mut inst_man = ShapeInstanceBuffer::new(gpu.read().device())?;
+            let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
+            let globals_buffer =
+                GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
+            let inst_man = ShapeInstanceBuffer::new(
+                &globals_buffer.read(),
+                &atmosphere_buffer.read(),
+                &gpu.read(),
+            )?;
             let mut all_chunks = Vec::new();
             let mut all_slots = Vec::new();
             for &fid in files {
@@ -822,7 +513,7 @@ mod test {
                 }
 
                 for _ in 0..1 {
-                    let (chunk_id, slot_id) = inst_man.upload_and_allocate_slot(
+                    let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
                         &name,
                         DrawSelection::NormalModel,
                         &palette,

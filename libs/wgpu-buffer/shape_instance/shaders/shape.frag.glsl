@@ -23,7 +23,7 @@ layout(location = 3) flat in uint f_flags1;
 // Output
 layout(location = 0) out vec4 f_color;
 
-layout(set = 2, binding = 0) uniform texture2DArray chunk_mega_atlas_texture;
+layout(set = 2, binding = 0) uniform texture2D chunk_mega_atlas_texture;
 layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
 
 //layout(set = 6, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
@@ -32,15 +32,15 @@ layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
 //layout(set = 6, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
 
 void main() {
-    if ((f_flags0 & 0xFFFFFFFE) == 0 && f_flags1 == 0) {
+    if ((f_flags0 & 0xFFFFFFFEu) == 0 && f_flags1 == 0) {
         discard;
     } else if (v_tex_coord.x == 0.0) {
         f_color = v_color;
     } else {
         // FIXME: I think this breaks if our mega-atlas spills into a second layer. The layer should be part
         // FIXME: of the texture coordinate we are uploading.
-        vec4 tex_color = texture(sampler2DArray(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), vec3(v_tex_coord, 0));
-        if ((f_flags0 & 1) == 1) {
+        vec4 tex_color = texture(sampler2D(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), v_tex_coord);
+        if ((f_flags0 & 1u) == 1u) {
             f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
         } else {
             if (tex_color.a < 0.5)

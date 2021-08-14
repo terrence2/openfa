@@ -161,19 +161,19 @@ impl Vertex {
                 },
                 // flags0
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float,
+                    format: wgpu::VertexFormat::Uint,
                     offset: 36,
                     shader_location: 3,
                 },
                 // flags1
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float,
+                    format: wgpu::VertexFormat::Uint,
                     offset: 40,
                     shader_location: 4,
                 },
                 // xform_id
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float,
+                    format: wgpu::VertexFormat::Uint,
                     offset: 44,
                     shader_location: 5,
                 },

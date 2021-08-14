@@ -15,12 +15,13 @@
 //pub use legion::{entity::Entity, world::EntityStore};
 pub use universe::component::{Rotation, Scale, Transform};
 
+use absolute_unit::{feet, meters};
 use anyhow::Result;
 use catalog::Catalog;
+use geodesy::{GeoSurface, Graticule};
 use legion::*;
-use nalgebra::{Point3, UnitQuaternion};
+use nalgebra::UnitQuaternion;
 use pal::Palette;
-use physical_constants::FEET_TO_HM_32;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
     ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,
@@ -88,15 +89,17 @@ impl Galaxy {
         shape_id: ShapeId,
         part: &ChunkPart,
         scale: f32,
-        position: Point3<f32>,
+        position: Graticule<GeoSurface>,
         rotation: &UnitQuaternion<f32>,
     ) -> Result<Entity> {
         let widget_ref = part.widgets();
         let widgets = widget_ref.read().unwrap();
         let entity = self.legion_world.push((
-            Transform::new(position.coords),
+            Transform::new(position),
             Rotation::new(*rotation),
-            Scale::new(/*SHAPE_UNIT_TO_FEET */ scale * FEET_TO_HM_32),
+            Scale::new(
+                /*SHAPE_UNIT_TO_FEET */ scale * feet!(meters!(1.0)).f32(),
+            ),
             ShapeRef::new(shape_id),
             ShapeSlot::new(slot_id),
             ShapeState::new(widgets.errata()),

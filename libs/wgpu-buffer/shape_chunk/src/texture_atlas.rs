@@ -177,12 +177,12 @@ impl MegaAtlas {
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("shape-chunk-atlas-texture-view"),
             format: None,
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            dimension: None,
             aspect: wgpu::TextureAspect::All,
             base_mip_level: 0,
             level_count: None,
             base_array_layer: 0,
-            array_layer_count: None, //NonZeroU32::new(self.images.len() as u32),
+            array_layer_count: None,
         });
 
         let mut encoder = gpu
@@ -254,9 +254,9 @@ impl MegaAtlas {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        multisampled: true,
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
                 },

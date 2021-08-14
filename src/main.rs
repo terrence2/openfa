@@ -13,21 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
 use catalog::DirectoryDrawer;
-use chrono::{TimeZone, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fullscreen::FullscreenBuffer;
+use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule, Target};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, Gpu};
+use gpu::{
+    make_frame_graph,
+    size::{AbsSize, Size},
+    Gpu,
+};
 use input::{InputController, InputSystem};
-use legion::world::World;
 use lib::{from_dos_string, CatalogBuilder};
 use mm::MissionMap;
-use nalgebra::convert;
+use nalgebra::{convert, UnitQuaternion};
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
@@ -41,7 +45,7 @@ use t2_tile_set::{T2Adjustment, T2TileSet};
 use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
-use widget::{Color, Label, PositionH, PositionV, WidgetBuffer};
+use widget::{Color, Extent, Label, Labeled, PositionH, PositionV, WidgetBuffer};
 use winit::window::Window;
 use world::WorldRenderPass;
 use xt::TypeManager;
@@ -52,10 +56,6 @@ struct Opt {
     /// Extra directories to treat as libraries
     #[structopt(short, long)]
     libdir: Vec<PathBuf>,
-
-    /// Regenerate instead of loading cached items on startup
-    #[structopt(long = "no-cache")]
-    no_cache: bool,
 
     /// The map file to view
     #[structopt(name = "NAME", last = true)]
@@ -217,8 +217,13 @@ make_frame_graph!(
             accumulate_normal_and_color: Compute() { terrain( globals ) },
 
             // world: Flatten terrain g-buffer into the final image and mix in stars.
-            render_world: Render(world, offscreen_target) {
+            render_world: Render(world, offscreen_target_cleared) {
                 world( globals, fullscreen, atmosphere, stars, terrain )
+            },
+
+            // FIXME: can we get away with doing this before terrain so we don't overdraw?
+            draw_shapes: Render(world, offscreen_target_preserved) {
+                shapes( globals, atmosphere )
             },
 
             // ui: Draw our widgets onto a buffer with resolution independent of the world.
@@ -248,7 +253,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     };
 
     let mut async_rt = Runtime::new()?;
-    let mut _legion = World::default();
 
     let (mut catalog, input_fids) = CatalogBuilder::build_and_select(&opt.map_names)?;
     for (i, d) in opt.libdir.iter().enumerate() {
@@ -260,6 +264,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let interpreter = Interpreter::new();
     let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
+    let mut galaxy = Galaxy::new(&catalog)?;
 
     let orrery = Orrery::new(
         Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
@@ -268,10 +273,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter.write());
 
     ///////////////////////////////////////////////////////////
-    let atmosphere_buffer = Arc::new(RwLock::new(AtmosphereBuffer::new(
-        opt.no_cache,
-        &mut gpu.write(),
-    )?));
+    let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
     let fullscreen_buffer = FullscreenBuffer::new(&gpu.read());
     let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
     let stars_buffer = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
@@ -283,7 +285,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &mut gpu.write(),
         &mut interpreter.write(),
     )?;
-    let shapes = ShapeInstanceBuffer::new(&gpu.read().device())?;
+    let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere_buffer.read(), &gpu.read())?;
     let world = WorldRenderPass::new(
         &mut gpu.write(),
         &mut interpreter.write(),
@@ -324,7 +326,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let version_label = Label::new("OpenFA v0.1")
         .with_font(widgets.read().font_context().font_id_for_name("fira-sans"))
         .with_color(Color::Green)
-        .with_size(8.0)
+        .with_size(Size::from_pts(8.))
         .with_pre_blended_text()
         .wrapped();
     widgets
@@ -337,7 +339,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let fps_label = Label::new("fps")
         .with_font(widgets.read().font_context().font_id_for_name("sans"))
         .with_color(Color::Red)
-        .with_size(13.0)
+        .with_size(Size::from_pts(13.))
         .with_pre_blended_text()
         .wrapped();
     widgets
@@ -370,7 +372,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
-        let t2_layout = t2_tile_set.add_map(
+        let _t2_mapper = t2_tile_set.add_map(
             &system_palette,
             &mm,
             &catalog,
@@ -379,6 +381,24 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
 
+        let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
+            "BNK2.SH",
+            DrawSelection::NormalModel,
+            &system_palette,
+            &catalog,
+            &mut gpu.write(),
+        )?;
+        shapes.write().ensure_uploaded(&mut gpu.write())?;
+        galaxy.create_building(
+            slot_id,
+            shape_id,
+            shapes.read().part(shape_id),
+            4.,
+            Graticule::new(degrees!(0), degrees!(0), meters!(0)),
+            &UnitQuaternion::identity(),
+        )?;
+
+        /*
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
                 // FIXME: this still needs to add the entity.
@@ -410,8 +430,17 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             } else if info.xt().jt().is_ok() {
                 bail!("did not expect a projectile in MM objects")
             } else {
-                let p = info.position();
-                println!("{:?}: {}", info.name(), p);
+                let grat = t2_mapper.fa2grat(info.position());
+                println!("{:?}: {}", info.name(), grat);
+                let scale = 4f32;
+                galaxy.create_building(
+                    slot_id,
+                    shape_id,
+                    shapes.read().part(shape_id),
+                    scale,
+                    grat,
+                    info.angle(),
+                )?;
                 /*
                    println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
                    let scale = if info
@@ -456,6 +485,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 */
             };
         }
+         */
     }
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
@@ -470,17 +500,27 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
     */
 
-    // London: 51.5,-0.1
     arcball.write().set_target(Graticule::<GeoSurface>::new(
-        degrees!(51.5),
-        degrees!(-0.1),
-        meters!(8000.),
+        degrees!(0),
+        degrees!(0),
+        meters!(2),
     ));
     arcball.write().set_eye_relative(Graticule::<Target>::new(
-        degrees!(11.5),
-        degrees!(869.5),
-        meters!(67668.5053),
+        degrees!(10),
+        degrees!(0),
+        meters!(15),
     ))?;
+    // London: 51.5,-0.1
+    // arcball.write().set_target(Graticule::<GeoSurface>::new(
+    //     degrees!(51.5),
+    //     degrees!(-0.1),
+    //     meters!(8000.),
+    // ));
+    // arcball.write().set_eye_relative(Graticule::<Target>::new(
+    //     degrees!(11.5),
+    //     degrees!(869.5),
+    //     meters!(67668.5053),
+    // ))?;
     // everest: 27.9880704,86.9245623
     // arcball.write().set_target(Graticule::<GeoSurface>::new(
     //     degrees!(27.9880704),
@@ -518,12 +558,29 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let catalog = Arc::new(AsyncRwLock::new(catalog));
 
+    let mut now = Instant::now();
+    let system_start = now;
     while !system.read().exit {
-        let loop_start = Instant::now();
-
-        widgets
+        orrery
             .write()
-            .handle_events(&input_controller.poll_events()?, interpreter.clone())?;
+            .adjust_time(Duration::from_std(now.elapsed())?);
+        now = Instant::now();
+
+        {
+            let logical_extent: Extent<AbsSize> = gpu.read().logical_size().into();
+            let scale_factor = { gpu.read().scale_factor() };
+            frame_graph.widgets.write().handle_events(
+                now,
+                &input_controller.poll_events()?,
+                interpreter.clone(),
+                scale_factor,
+                logical_extent,
+            )?;
+            frame_graph
+                .widgets
+                .write()
+                .layout_for_frame(now, &mut gpu.write())?;
+        }
 
         arcball.write().think();
 
@@ -546,7 +603,16 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut gpu.write(),
             &mut tracker,
         )?;
+        frame_graph.shapes_mut().make_upload_buffer(
+            &system_start,
+            &now,
+            arcball.read().camera(),
+            galaxy.world_mut(),
+            &gpu.read(),
+            &mut tracker,
+        )?;
         frame_graph.widgets.write().make_upload_buffer(
+            now,
             &mut gpu.write(),
             &async_rt,
             &mut tracker,
@@ -556,7 +622,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             gpu.write().on_resize(sz.width as i64, sz.height as i64)?;
         }
 
-        let frame_time = loop_start.elapsed();
+        let frame_time = now.elapsed();
         let ts = format!(
             "eye_rel: {} | tgt: {} | asl: {}, fov: {} || Date: {:?} || frame: {}.{}ms",
             arcball.read().get_eye_relative(),

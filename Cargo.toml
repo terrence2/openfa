@@ -38,8 +38,6 @@ members = [
 
     "libs/galaxy",
 
-    "libs/render-wgpu/render_pass/shape",
-
     "libs/wgpu-buffer/font_fnt",
     "libs/wgpu-buffer/shape_chunk",
     "libs/wgpu-buffer/shape_instance",
@@ -74,7 +72,7 @@ chrono = "^ 0.4"
 anyhow = "^ 1"
 env_logger = "^ 0.7"
 image = "^ 0.23"
-legion = "= 0.2.4"
+legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.24"
 parking_lot = "^ 0.11"
@@ -108,7 +106,6 @@ galaxy = { path = "libs/galaxy" }
 lib = { path = "libs/asset/lib" }
 mm = { path = "libs/asset/mm" }
 pal = { path = "libs/asset/pal" }
-shape = { path = "libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
 t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
 xt = { path = "libs/asset/xt" }

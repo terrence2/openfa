@@ -8,6 +8,7 @@ edition = "2018"
 anyhow = "^ 1"
 log = "^ 0.4"
 image = "^ 0.23"
+nalgebra = "^ 0.24"
 parking_lot = "^ 0.11"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
@@ -16,6 +17,7 @@ absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 camera = { path = "../../nitrogen/sim/camera" }
 catalog = { path = "../../nitrogen/system/catalog" }
+geodesy = { path = "../../nitrogen/util/geodesy"}
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../nitrogen/system/gpu" }
 lay = { path = "../../asset/lay" }

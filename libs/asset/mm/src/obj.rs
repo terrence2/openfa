@@ -110,7 +110,7 @@ impl Nationality {
 pub struct ObjectInfo {
     xt: TypeRef,
     name: Option<String>,
-    pos: Point3<f32>,
+    pos: Point3<i32>,
     angle: UnitQuaternion<f32>,
     nationality: Nationality,
     flags: u16,
@@ -174,14 +174,14 @@ impl ObjectInfo {
                     }
                 }
                 "pos" => {
-                    let x = tokens.next().expect("pos x").parse::<i32>()? as f32;
-                    let y = tokens.next().expect("pos y").parse::<i32>()? as f32;
-                    let z = tokens.next().expect("pos z").parse::<i32>()? as f32;
+                    let x = tokens.next().expect("pos x").parse::<i32>()?;
+                    let y = tokens.next().expect("pos y").parse::<i32>()?;
+                    let z = tokens.next().expect("pos z").parse::<i32>()?;
                     pos = Some(Point3::new(x, y, z));
                     // All non-plane entities are at height 0 and need to be moved
                     // to the right elevation at startup.
                     if !xt.as_ref().expect("xt").is_pt() {
-                        assert!(y.abs() < f32::EPSILON);
+                        assert_eq!(y, 0);
                     }
                 }
                 "angle" => {
@@ -264,8 +264,8 @@ impl ObjectInfo {
         self.xt.clone()
     }
 
-    pub fn position(&self) -> Point3<f32> {
-        self.pos
+    pub fn position(&self) -> &Point3<i32> {
+        &self.pos
     }
 
     pub fn angle(&self) -> &UnitQuaternion<f32> {
