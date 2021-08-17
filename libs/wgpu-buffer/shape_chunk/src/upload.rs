@@ -16,6 +16,7 @@ use crate::{
     draw_state::DrawState,
     texture_atlas::{Frame, MegaAtlas},
 };
+use absolute_unit::{feet, Feet, Length};
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
@@ -24,12 +25,13 @@ use lazy_static::lazy_static;
 use log::trace;
 use memoffset::offset_of;
 use pal::Palette;
+use parking_lot::RwLock;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
     collections::{HashMap, HashSet},
     mem,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::Instant,
 };
 use zerocopy::{AsBytes, FromBytes};
@@ -687,6 +689,10 @@ impl ShapeWidgets {
     // In shape units.
     pub fn height(&self) -> f32 {
         self.aabb[1][1] - self.aabb[0][1]
+    }
+
+    pub fn offset_to_ground(&self) -> Length<Feet> {
+        feet!(self.aabb[1][1])
     }
 
     pub fn aabb(&self) -> &[[f32; 3]; 2] {

@@ -28,7 +28,7 @@ use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, UploadTracker};
 use legion::*;
-use nalgebra::Matrix4;
+use nalgebra::{convert, Matrix4, UnitQuaternion};
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
 use parking_lot::RwLock;
@@ -156,8 +156,8 @@ impl ShapeInstanceBuffer {
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
-                    front_face: wgpu::FrontFace::Cw,
-                    cull_mode: wgpu::CullMode::None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: wgpu::CullMode::Back,
                     polygon_mode: wgpu::PolygonMode::Fill,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
@@ -203,12 +203,7 @@ impl ShapeInstanceBuffer {
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
-        self.chunk_man
-            .part(shape_id)
-            .widgets()
-            .read()
-            .unwrap()
-            .errata()
+        self.chunk_man.part(shape_id).widgets().read().errata()
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
@@ -315,6 +310,7 @@ impl ShapeInstanceBuffer {
 
         let km2m = Matrix4::new_scaling(1_000.0);
         let view = camera.view::<Kilometers>().to_homogeneous();
+        let view_look_at: UnitQuaternion<f32> = convert(camera.look_at_rh::<Kilometers>());
         let mut query = <(
             Read<Transform>,
             Read<Rotation>,
@@ -330,8 +326,15 @@ impl ShapeInstanceBuffer {
             let pos_view = km2m * view * pos;
             let pos_compact = [pos_view.x as f32, pos_view.y as f32, pos_view.z as f32];
 
+            // Since we are uploading with eye space rotations applied, we need to "undo"
+            // the eye-space rotation before uploading so that we will be world aligned.
+            let rot = rotation.quaternion();
+            let rot_view = view_look_at * rot;
+            let (a, b, c) = rot_view.euler_angles();
+            let rot_compact = [a, b, c];
+
             (&mut transform_buffer.buffer[0..3]).copy_from_slice(&pos_compact);
-            (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rotation.compact());
+            (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rot_compact);
             (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
         });
 
@@ -359,7 +362,7 @@ impl ShapeInstanceBuffer {
                             .unwrap();
                     }
                     Entry::Vacant(e) => {
-                        let mut widgets = part.widgets().read().unwrap().clone();
+                        let mut widgets = part.widgets().read().clone();
                         widgets
                             .animate_into(
                                 &shape_state.draw_state,

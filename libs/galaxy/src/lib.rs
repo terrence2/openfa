@@ -15,12 +15,12 @@
 //pub use legion::{entity::Entity, world::EntityStore};
 pub use universe::component::{Rotation, Scale, Transform};
 
-use absolute_unit::{feet, meters};
+use absolute_unit::{degrees, feet, meters, radians, Degrees, Radians};
 use anyhow::Result;
 use catalog::Catalog;
 use geodesy::{GeoSurface, Graticule};
 use legion::*;
-use nalgebra::UnitQuaternion;
+use nalgebra::{Unit, UnitQuaternion, Vector3};
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
@@ -92,13 +92,29 @@ impl Galaxy {
         position: Graticule<GeoSurface>,
         rotation: &UnitQuaternion<f32>,
     ) -> Result<Entity> {
+        // For buildings we need to adjust the frame for "up" to be relative
+        // to the position when uploading.
+        let r_lon =
+            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -position.lon::<Radians>().f32());
+        let lat_axis = r_lon * Vector3::x_axis();
+        let q_lat = UnitQuaternion::from_axis_angle(
+            &lat_axis,
+            radians!(degrees!(270) - position.lat::<Degrees>()).f32(),
+        );
+        let rotation: UnitQuaternion<f32> = q_lat * rotation;
+
+        // vec4 r_lon = quat_from_axis_angle(vec3(0, 1, 0), latlon.y);
+        // vec3 lat_axis = quat_rotate(r_lon, vec3(1, 0, 0)).xyz;
+        // vec4 r_lat = quat_from_axis_angle(lat_axis, PI / 2.0 - latlon.x);
+        // vec3 ground_normal_w = quat_rotate(r_lat, quat_rotate(r_lon, ground_normal_local).xyz).xyz;
+
         let widget_ref = part.widgets();
-        let widgets = widget_ref.read().unwrap();
+        let widgets = widget_ref.read();
         let entity = self.legion_world.push((
             Transform::new(position),
-            Rotation::new(*rotation),
+            Rotation::new(rotation),
             Scale::new(
-                /*SHAPE_UNIT_TO_FEET */ scale * feet!(meters!(1.0)).f32(),
+                /* SHAPE_UNIT_TO_FEET */ scale * meters!(feet!(1.0)).f32(),
             ),
             ShapeRef::new(shape_id),
             ShapeSlot::new(slot_id),

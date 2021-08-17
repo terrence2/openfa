@@ -15,7 +15,7 @@
 mod t2_info;
 
 use crate::t2_info::T2Info;
-use absolute_unit::{degrees, meters, radians, Angle, Degrees, Length, Meters};
+use absolute_unit::{degrees, meters, radians, Angle, Degrees, Feet, Length, Meters};
 use anyhow::{ensure, Result};
 use atlas::AtlasPacker;
 use camera::Camera;
@@ -103,17 +103,23 @@ impl T2Mapper {
         ]
     }
 
-    pub fn fa2grat(&self, pos: &Point3<i32>) -> Graticule<GeoSurface> {
-        // FIXME: totally untested
+    pub fn fa2grat(
+        &self,
+        pos: &Point3<i32>,
+        offset_from_ground: Length<Feet>,
+    ) -> Graticule<GeoSurface> {
         // vec2 tile_uv = vec2(
         //     ((grat.y - t2_base.y) / t2_span.y) * cos(grat.x),
         //     1. - (t2_base.x - grat.x) / t2_span.x
         // );
+        // lon_f = ((pos.lon() - base.lon) / span.lon) * cos(pos.lat)
+        // lon_f / cos(pos.lat) * span.lon = (pos.lon - base.lon)
+        // pos.lon = (lon_f / cos(pos.lat) * span.lon) + base.lon
         let lat_f = pos[2] as f32 / self.extent_ft[0];
         let lon_f = pos[0] as f32 / self.extent_ft[1];
-        let lat = self.base[0] - (self.extent[0] * lat_f);
-        let lon = self.base[1] + ((self.extent[1] * lon_f) / lat.cos());
-        Graticule::new(lat, lon, meters!(0))
+        let lat = self.base[0] + (self.extent[0] * lat_f) - self.extent[0];
+        let lon = -((self.extent[1] * lon_f / lat.cos() as f32) + self.base[1]);
+        Graticule::new(lat, lon, meters!(offset_from_ground))
     }
 }
 

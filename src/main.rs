@@ -12,8 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters};
-use anyhow::Result;
+use absolute_unit::{degrees, feet, meters};
+use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
 use catalog::DirectoryDrawer;
@@ -66,21 +66,27 @@ struct Opt {
 struct System {
     exit: bool,
     pin_camera: bool,
+    arcball: Arc<RwLock<ArcBallCamera>>,
     camera: Camera,
     adjust: Arc<RwLock<T2Adjustment>>,
+    target_offset: isize,
+    targets: Vec<(String, Graticule<GeoSurface>)>,
 }
 
 #[inject_nitrous_module]
 impl System {
     pub fn new(
         interpreter: &mut Interpreter,
-        adjust: Arc<RwLock<T2Adjustment>>,
+        arcball: Arc<RwLock<ArcBallCamera>>,
     ) -> Arc<RwLock<Self>> {
         let system = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
+            arcball,
             camera: Default::default(),
-            adjust,
+            adjust: Arc::new(RwLock::new(T2Adjustment::default())),
+            target_offset: 0,
+            targets: Vec::new(),
         }));
         interpreter.put_global("system", Value::Module(system.clone()));
         system
@@ -109,6 +115,9 @@ impl System {
                 bindings.bind("control+i", "system.terrain_adjust_lat_base(pressed, 0.01)");
                 bindings.bind("control+k", "system.terrain_adjust_lat_base(pressed, -0.01)");
 
+                bindings.bind("n", "system.next_target(pressed)");
+                bindings.bind("shift+n", "system.previous_target(pressed)");
+
                 bindings.bind("o", "system.terrain_adjust_lon_scale(pressed, 1000.0)");
                 bindings.bind("u", "system.terrain_adjust_lon_scale(pressed, -1000.0)");
 
@@ -116,6 +125,14 @@ impl System {
             "#,
         )?;
         Ok(())
+    }
+
+    pub fn t2_adjustment(&self) -> Arc<RwLock<T2Adjustment>> {
+        self.adjust.clone()
+    }
+
+    pub fn add_target(&mut self, name: &str, grat: Graticule<GeoSurface>) {
+        self.targets.push((name.to_owned(), grat));
     }
 
     #[method]
@@ -162,6 +179,32 @@ impl System {
             } else {
                 self.adjust.write().blend_factor = 0.2;
             }
+        }
+    }
+
+    #[method]
+    pub fn next_target(&mut self, pressed: bool) {
+        if pressed {
+            self.target_offset += 1;
+            self.target_offset %= self.targets.len() as isize;
+
+            let (name, pos) = &self.targets[self.target_offset as usize];
+            self.arcball.write().set_target(*pos);
+            println!("target: {}", name);
+        }
+    }
+
+    #[method]
+    pub fn previous_target(&mut self, pressed: bool) {
+        if pressed {
+            self.target_offset -= 1;
+            if self.target_offset < 0 {
+                self.target_offset = self.targets.len() as isize - 1;
+            }
+
+            let (name, pos) = &self.targets[self.target_offset as usize];
+            self.arcball.write().set_target(*pos);
+            println!("target: {}", name);
         }
     }
 
@@ -321,6 +364,8 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         composite,
     )?;
 
+    let system = System::new(&mut interpreter.write(), arcball.clone());
+
     ///////////////////////////////////////////////////////////
     // UI Setup
     let version_label = Label::new("OpenFA v0.1")
@@ -351,10 +396,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
-    let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
     let mut tracker = Default::default();
     let mut t2_tile_set = T2TileSet::new(
-        t2_adjustment.clone(),
+        system.read().t2_adjustment(),
         &terrain_buffer.read(),
         &globals.read(),
         &gpu.read(),
@@ -372,7 +416,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
-        let _t2_mapper = t2_tile_set.add_map(
+        let t2_mapper = t2_tile_set.add_map(
             &system_palette,
             &mm,
             &catalog,
@@ -398,7 +442,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &UnitQuaternion::identity(),
         )?;
 
-        /*
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
                 // FIXME: this still needs to add the entity.
@@ -413,13 +456,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 &catalog,
                 &mut gpu.write(),
             )?;
-            let aabb = *shapes
-                .read()
-                .part(shape_id)
-                .widgets()
-                .read()
-                .unwrap()
-                .aabb();
 
             if let Ok(_pt) = info.xt().pt() {
                 //galaxy.create_flyer(pt, shape_id, slot_id)?
@@ -430,9 +466,35 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             } else if info.xt().jt().is_ok() {
                 bail!("did not expect a projectile in MM objects")
             } else {
-                let grat = t2_mapper.fa2grat(info.position());
-                println!("{:?}: {}", info.name(), grat);
+                // let scale = if info
+                //     .xt()
+                //     .ot()
+                //     .shape
+                //     .as_ref()
+                //     .expect("a shape file")
+                //     .starts_with("BNK")
+                // {
+                //     2f32
+                // } else {
+                //     4f32
+                // };
                 let scale = 4f32;
+                let grat = t2_mapper.fa2grat(
+                    info.position(),
+                    shapes
+                        .read()
+                        .part(shape_id)
+                        .widgets()
+                        .read()
+                        .offset_to_ground()
+                        * scale,
+                );
+                system
+                    .write()
+                    .add_target(&info.name().unwrap_or_else(|| "<unknown>".to_owned()), grat);
+                if let Some(n) = info.name() {
+                    println!("{}: {} * {}", n, grat, info.position());
+                }
                 galaxy.create_building(
                     slot_id,
                     shape_id,
@@ -485,8 +547,8 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 */
             };
         }
-         */
     }
+    shapes.write().ensure_uploaded(&mut gpu.write())?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()
@@ -543,8 +605,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     //     degrees!(668.0),
     //     meters!(1308.7262),
     // ))?;
-
-    let system = System::new(&mut interpreter.write(), t2_adjustment);
 
     {
         let interp = &mut interpreter.write();

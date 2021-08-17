@@ -20,11 +20,12 @@ use anyhow::Result;
 use catalog::Catalog;
 use lazy_static::lazy_static;
 use pal::Palette;
+use parking_lot::RwLock;
 use sh::RawShape;
 use std::{
     collections::HashMap,
     mem,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 use zerocopy::{AsBytes, FromBytes};
 
@@ -103,7 +104,7 @@ impl ChunkPart {
         vertex_end: usize,
         shape_widgets: Arc<RwLock<ShapeWidgets>>,
     ) -> Self {
-        let xform_count = shape_widgets.read().unwrap().num_xforms();
+        let xform_count = shape_widgets.read().num_xforms();
         ChunkPart {
             vertex_start,
             vertex_count: vertex_end - vertex_start,

@@ -69,26 +69,9 @@ void main() {
         }
     }
 
-    float t0 = transform[0];
-    float t1 = transform[1];
-    float t2 = transform[2];
-    mat4 trans = mat4(
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        t0,  t1,  t2,  1.0
-    );
-    float r0 = transform[3];
-    float r1 = transform[4];
-    float r2 = transform[5];
-    mat4 rot = mat4(from_euler_angles(r0, r1, r2));
-
     gl_Position = camera_perspective_m *
-//                  camera_view_m *
-                    (trans * rot) *
-//                  matrix_for_xform(transform) *
-//                  matrix_for_xform(xform) *
-//                  camera_inverse_view_m *
+                  matrix_for_xform(transform) *
+                  matrix_for_xform(xform) *
                   vec4(position, 1.0);
 
     v_color = color;
