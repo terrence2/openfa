@@ -8,7 +8,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 anyhow = "^ 1"
 lazy_static = "^ 1"
 log = "^ 0.4"
-zerocopy = "^ 0.3"
+zerocopy = "^ 0.5"
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 
 [dev-dependencies]

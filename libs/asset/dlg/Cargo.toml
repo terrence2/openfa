@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 anyhow = "^ 1"
 byteorder = "^ 1"
-zerocopy = "^ 0.3"
+zerocopy = "^ 0.5"
 ansi = { path = "../../nitrogen/util/ansi" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 peff = { path = "../../util/peff" }
