@@ -20,7 +20,7 @@ use anyhow::Result;
 use catalog::Catalog;
 use geodesy::{GeoSurface, Graticule};
 use legion::*;
-use nalgebra::{Unit, UnitQuaternion, Vector3};
+use nalgebra::{UnitQuaternion, Vector3};
 use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
@@ -99,9 +99,14 @@ impl Galaxy {
         let lat_axis = r_lon * Vector3::x_axis();
         let q_lat = UnitQuaternion::from_axis_angle(
             &lat_axis,
-            radians!(degrees!(270) - position.lat::<Degrees>()).f32(),
+            radians!(degrees!(90) - position.lat::<Degrees>()).f32(),
         );
-        let rotation: UnitQuaternion<f32> = q_lat * rotation;
+        let rotation: UnitQuaternion<f32> = q_lat
+            * UnitQuaternion::from_axis_angle(
+                &Vector3::y_axis(),
+                (-position.lon::<Radians>()).f32(),
+            )
+            * rotation;
 
         // vec4 r_lon = quat_from_axis_angle(vec3(0, 1, 0), latlon.y);
         // vec3 lat_axis = quat_rotate(r_lon, vec3(1, 0, 0)).xyz;

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters};
+use absolute_unit::{degrees, meters};
 use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
@@ -190,7 +190,7 @@ impl System {
 
             let (name, pos) = &self.targets[self.target_offset as usize];
             self.arcball.write().set_target(*pos);
-            println!("target: {}", name);
+            println!("target: {}, {}", self.target_offset, name);
         }
     }
 
@@ -466,19 +466,18 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             } else if info.xt().jt().is_ok() {
                 bail!("did not expect a projectile in MM objects")
             } else {
-                // let scale = if info
-                //     .xt()
-                //     .ot()
-                //     .shape
-                //     .as_ref()
-                //     .expect("a shape file")
-                //     .starts_with("BNK")
-                // {
-                //     2f32
-                // } else {
-                //     4f32
-                // };
-                let scale = 4f32;
+                let scale = if info
+                    .xt()
+                    .ot()
+                    .shape
+                    .as_ref()
+                    .expect("a shape file")
+                    .starts_with("BNK")
+                {
+                    2f32
+                } else {
+                    4f32
+                };
                 let grat = t2_mapper.fa2grat(
                     info.position(),
                     shapes
@@ -492,9 +491,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 system
                     .write()
                     .add_target(&info.name().unwrap_or_else(|| "<unknown>".to_owned()), grat);
-                if let Some(n) = info.name() {
-                    println!("{}: {} * {}", n, grat, info.position());
-                }
                 galaxy.create_building(
                     slot_id,
                     shape_id,

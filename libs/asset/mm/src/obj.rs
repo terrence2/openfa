@@ -16,8 +16,8 @@ use crate::{util::maybe_hex, waypoint::Waypoint};
 use absolute_unit::{degrees, radians};
 use anyhow::{anyhow, bail, Result};
 use catalog::Catalog;
-use nalgebra::{Point3, Unit, UnitQuaternion, Vector3};
-use std::{f32::consts::PI, str::SplitAsciiWhitespace};
+use nalgebra::{Point3, UnitQuaternion, Vector3};
+use std::str::SplitAsciiWhitespace;
 use xt::{TypeManager, TypeRef};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -194,7 +194,7 @@ impl ObjectInfo {
                     assert_eq!(z, 0);
                     angle = UnitQuaternion::from_axis_angle(
                         &Vector3::y_axis(),
-                        radians!(degrees!(x)).f32(),
+                        -radians!(degrees!(x)).f32(),
                     );
                 }
                 "nationality" => {

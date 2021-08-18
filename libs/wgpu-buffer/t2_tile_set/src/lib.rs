@@ -118,7 +118,7 @@ impl T2Mapper {
         let lat_f = pos[2] as f32 / self.extent_ft[0];
         let lon_f = pos[0] as f32 / self.extent_ft[1];
         let lat = self.base[0] + (self.extent[0] * lat_f) - self.extent[0];
-        let lon = -((self.extent[1] * lon_f / lat.cos() as f32) + self.base[1]);
+        let lon = -((self.extent[1] / lat.cos() as f32 * lon_f) + self.base[1]);
         Graticule::new(lat, lon, meters!(offset_from_ground))
     }
 }
