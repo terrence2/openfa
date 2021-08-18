@@ -15,17 +15,17 @@ nalgebra = "^ 0.24"
 structopt = "^ 0.3"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
-absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
+absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
 catalog = { path = "../../libs/nitrogen/system/catalog" }
-nitrous = { path = "../../libs/nitrogen/system/nitrous" }
+nitrous = { path = "../../libs/nitrogen/util/nitrous" }
 composite = { path = "../../libs/nitrogen/wgpu-buffer/composite" }
 fnt = { path = "../../libs/fnt" }
 font_fnt = { path = "../../libs/render-wgpu/buffer/font_fnt" }
 fullscreen = { path = "../../libs/nitrogen/wgpu-buffer/fullscreen" }
 galaxy = { path = "../../libs/galaxy" }
-geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
+geodesy = { path = "../../libs/nitrogen/util/geodesy" }
 global_data = { path = "../../libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }

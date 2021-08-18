@@ -15,18 +15,19 @@
 mod t2_info;
 
 use crate::t2_info::T2Info;
-use absolute_unit::{degrees, meters, radians, Angle, Degrees, Length, Meters};
+use absolute_unit::{degrees, meters, radians, Angle, Degrees, Feet, Length, Meters};
 use anyhow::{ensure, Result};
 use atlas::AtlasPacker;
 use camera::Camera;
 use catalog::Catalog;
+use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::wgpu::{BindGroup, ComputePass, Extent3d};
 use gpu::{texture_format_size, ArcTextureCopyView, Gpu, OwnedBufferCopyView, UploadTracker};
 use image::Rgba;
 use lay::Layer;
 use log::warn;
 use mm::{MissionMap, TLoc};
+use nalgebra::Point3;
 use pal::Palette;
 use parking_lot::RwLock;
 use pic_uploader::PicUploader;
@@ -40,6 +41,7 @@ use std::{
 use t2::Terrain as T2Terrain;
 use terrain::{TerrainBuffer, TileSet, VisiblePatch};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
+use wgpu::{BindGroup, ComputePass, Extent3d};
 use zerocopy::AsBytes;
 
 #[derive(Debug)]
@@ -56,6 +58,68 @@ impl Default for T2Adjustment {
             span_offset: [meters!(0); 2],
             blend_factor: 1.0,
         }
+    }
+}
+
+/// Converts between FightersAnthology cartesian offsets within a tile
+/// to Geodesic coordinates for use with the nitrogen engine.
+pub struct T2Mapper {
+    base: [Angle<Degrees>; 2],
+    extent: [Angle<Degrees>; 2],
+    extent_ft: [f32; 2],
+}
+
+impl T2Mapper {
+    pub fn new(t2: &T2Terrain, adjust: &T2Adjustment) -> Self {
+        // Treating lat/lon span as if we're at the equator seems to work, even for tiles that
+        // are far off the equator.
+        let base_deg = t2.base_graticule_degrees();
+        let base = [
+            degrees!(base_deg[0]) + adjust.base_offset[0],
+            degrees!(base_deg[1]) + adjust.base_offset[1],
+        ];
+        let lat_span_adj = adjust.span_offset[0].f32();
+        let lon_span_adj = adjust.span_offset[1].f32();
+        let extent_ft = [t2.extent_north_south_in_ft(), t2.extent_east_west_in_ft()];
+        let extent = [
+            degrees!(extent_ft[0] / (364_000. + lat_span_adj)),
+            degrees!(extent_ft[1] / (364_000. + lon_span_adj)),
+        ];
+        Self {
+            base,
+            extent,
+            extent_ft,
+        }
+    }
+
+    pub fn base_rad_f32(&self) -> [f32; 2] {
+        [radians!(self.base[0]).f32(), radians!(self.base[1]).f32()]
+    }
+
+    pub fn extent_rad_f32(&self) -> [f32; 2] {
+        [
+            radians!(self.extent[0]).f32(),
+            radians!(self.extent[1]).f32(),
+        ]
+    }
+
+    pub fn fa2grat(
+        &self,
+        pos: &Point3<i32>,
+        offset_from_ground: Length<Feet>,
+    ) -> Graticule<GeoSurface> {
+        // vec2 tile_uv = vec2(
+        //     ((grat.y - t2_base.y) / t2_span.y) * cos(grat.x),
+        //     1. - (t2_base.x - grat.x) / t2_span.x
+        // );
+        // lon_f = ((pos.lon() - base.lon) / span.lon) * cos(pos.lat)
+        // lon_f / cos(pos.lat) * span.lon = (pos.lon - base.lon)
+        // pos.lon = (lon_f / cos(pos.lat) * span.lon) + base.lon
+        let lat_f = pos[2] as f32 / self.extent_ft[0];
+        let lon_f = pos[0] as f32 / self.extent_ft[1];
+        let lat = self.base[0] + (self.extent[0] * lat_f) - self.extent[0];
+        let lon = -((self.extent[1] / lat.cos() as f32 * lon_f) + self.base[1]);
+        Graticule::new(lat, lon, meters!(offset_from_ground))
     }
 }
 
@@ -94,11 +158,13 @@ pub struct T2TileSet {
     bind_group_layout: wgpu::BindGroupLayout,
 
     // One bind group for each t2 we want to render.
+    shared_adjustment: Arc<RwLock<T2Adjustment>>,
     layouts: HashMap<String, T2LayoutInfo>,
 }
 
 impl T2TileSet {
     pub fn new(
+        shared_adjustment: Arc<RwLock<T2Adjustment>>,
         terrain: &TerrainBuffer,
         globals_buffer: &GlobalParametersBuffer,
         gpu: &Gpu,
@@ -269,6 +335,7 @@ impl T2TileSet {
             displace_height_pipeline,
             accumulate_color_pipeline,
             bind_group_layout,
+            shared_adjustment,
             layouts: HashMap::new(),
         })
     }
@@ -627,23 +694,22 @@ impl T2TileSet {
         Ok((frame_refs, frame_buffer, (view, sampler)))
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn add_map(
         &mut self,
         system_palette: &Palette,
         mm: &MissionMap,
-        adjust: Arc<RwLock<T2Adjustment>>,
         catalog: &Catalog,
         gpu: &mut Gpu,
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
-    ) -> Result<()> {
+    ) -> Result<T2Mapper> {
         let t2_data = catalog.read_name_sync(mm.t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
 
         if self.layouts.contains_key(t2.name()) {
             warn!("Skipping duplicate add_map for {}", t2.name());
-            return Ok(());
+            let layout = &self.layouts[t2.name()];
+            return Ok(T2Mapper::new(&layout.t2, &layout.adjust.read()));
         }
 
         let palette = self._load_palette(system_palette, mm, catalog)?;
@@ -657,22 +723,8 @@ impl T2TileSet {
             (index_texture_view, index_sampler, index_size),
         ) = self._upload_heights_and_index(&palette, &mm, &t2, &frame_map, gpu, tracker)?;
 
-        // Build an index texture. This is the size of the height map, with one sample per square
-        // indicating the properties of that square. We'll use this to index into frames, which let
-        // us know the bounds and to select the orientation of that frame.
-
-        // FIXME: Test with a lat/lon span as if we're at the equator, even though that's wrong
-        //        we don't know what's right yet.
-        let base_deg = t2.base_graticule_degrees();
-        let base = [
-            radians!(degrees!(base_deg[0])).f32(),
-            radians!(degrees!(base_deg[1])).f32(),
-        ];
-        let extent = [
-            radians!(degrees!(t2.extent_north_south_in_ft() / 364_000.)).f32(),
-            radians!(degrees!(t2.extent_east_west_in_ft() / 288_200.)).f32(),
-        ];
-        let t2_info = T2Info::new(base, extent, index_size);
+        let mapper = T2Mapper::new(&t2, &self.shared_adjustment.read());
+        let t2_info = T2Info::new(mapper.base_rad_f32(), mapper.extent_rad_f32(), index_size);
         let t2_info_buffer = Arc::new(Box::new(gpu.push_data(
             "t2-info-buffer",
             &t2_info,
@@ -739,13 +791,18 @@ impl T2TileSet {
             ],
         });
 
-        assert!(!self.layouts.contains_key(t2.name()));
         self.layouts.insert(
             t2.name().to_owned(),
-            T2LayoutInfo::new(t2_info, t2, adjust, t2_info_buffer, bind_group),
+            T2LayoutInfo::new(
+                t2_info,
+                t2,
+                self.shared_adjustment.clone(),
+                t2_info_buffer,
+                bind_group,
+            ),
         );
 
-        Ok(())
+        Ok(mapper)
     }
 }
 
@@ -763,22 +820,12 @@ impl TileSet for T2TileSet {
         tracker: &mut UploadTracker,
     ) {
         for layout in self.layouts.values() {
-            // FIXME: Test with a lat/lon span as if we're at the equator, even though that's wrong
-            //        we don't know what's right yet.
-            let base_deg = layout.t2.base_graticule_degrees();
-            let base = [
-                radians!(degrees!(base_deg[0]) + layout.adjust.read().base_offset[0]).f32(),
-                radians!(degrees!(base_deg[1]) + layout.adjust.read().base_offset[1]).f32(),
-            ];
-            let lat_span_adj = layout.adjust.read().span_offset[0].f32();
-            let lon_span_adj = layout.adjust.read().span_offset[1].f32();
-            let lat_ft = layout.t2.extent_north_south_in_ft(); // + layout.adjust.read().span_offset[0].f32();
-            let lon_ft = layout.t2.extent_east_west_in_ft(); // + layout.adjust.read().span_offset[1].f32();
-            let extent = [
-                radians!(degrees!(lat_ft / (364_000. + lat_span_adj))).f32(),
-                radians!(degrees!(lon_ft / (364_000. + lon_span_adj))).f32(),
-            ];
-            let mut info = T2Info::new(base, extent, layout.t2_info.index_size);
+            let mapper_p = T2Mapper::new(&layout.t2, &layout.adjust.read());
+            let mut info = T2Info::new(
+                mapper_p.base_rad_f32(),
+                mapper_p.extent_rad_f32(),
+                layout.t2_info.index_size,
+            );
             info.blend_factor = layout.adjust.read().blend_factor;
             let new_info_buffer = gpu.push_data(
                 "t2-info-upload",
@@ -910,7 +957,9 @@ mod tests {
                 &mut gpu.write(),
                 &mut interpreter.write(),
             )?;
-            let mut ts = T2TileSet::new(&terrain.read(), &globals.read(), &gpu.read())?;
+            let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
+            let mut ts =
+                T2TileSet::new(t2_adjustment, &terrain.read(), &globals.read(), &gpu.read())?;
 
             catalog.set_default_label(&label);
             let type_manager = TypeManager::empty();
@@ -920,7 +969,6 @@ mod tests {
             ts.add_map(
                 &system_palette,
                 &mm,
-                Arc::new(RwLock::new(T2Adjustment::default())),
                 &catalog,
                 &mut gpu.write(),
                 &async_rt,

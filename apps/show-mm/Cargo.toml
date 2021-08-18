@@ -14,21 +14,21 @@ nalgebra = "^ 0.20"
 rand = "^ 0.3"
 structopt = "^ 0.2"
 winit = "^ 0.23"
-absolute_unit = { path = "../../libs/nitrogen/sim/absolute_unit" }
+absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../libs/nitrogen/sim/camera" }
-nitrous = { path = "../../libs/nitrogen/system/nitrous" }
+nitrous = { path = "../../libs/nitrogen/util/nitrous" }
 fnt = { path = "../../libs/fnt" }
 fullscreen = { path = "../../libs/nitrogen/wgpu-buffer/fullscreen" }
 galaxy = { path = "../../libs/galaxy" }
-geodesy = { path = "../../libs/nitrogen/sim/geodesy" }
+geodesy = { path = "../../libs/nitrogen/util/geodesy" }
 global_data = { path = "../../libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../libs/nitrogen/system/gpu" }
 input = { path = "../../libs/nitrogen/system/input" }
 lib = { path = "../../libs/lib" }
 mm = { path = "../../libs/mm" }
 orrery = { path = "../../libs/nitrogen/sim/orrery" }
-physical_constants = { path = "../../libs/nitrogen/sim/physical_constants" }
+physical_constants = { path = "../../libs/nitrogen/util/physical_constants" }
 shape = { path = "../../libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "../../libs/render-wgpu/buffer/shape_instance" }
 stars = { path = "../../libs/nitrogen/wgpu-buffer/stars" }

@@ -17,7 +17,7 @@ gpu = { path = "../../../nitrogen/system/gpu" }
 lay = { path = "../../../asset/lay" }
 mm = { path = "../../../asset/mm" }
 pal = { path = "../../../asset/pal" }
-physical_constants = { path = "../../../nitrogen/sim/physical_constants" }
+physical_constants = { path = "../../../nitrogen/util/physical_constants" }
 pic = { path = "../../../asset/pic" }
 t2 = { path = "../../../asset/t2" }
 universe = { path = "../../../nitrogen/sim/universe" }
@@ -26,4 +26,4 @@ universe = { path = "../../../nitrogen/sim/universe" }
 winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../../asset/lib" }
 xt = { path = "../../../asset/xt" }
-nitrous = { path = "../../../nitrogen/system/nitrous" }
+nitrous = { path = "../../../nitrogen/util/nitrous" }

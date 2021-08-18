@@ -8,7 +8,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 anyhow = "^ 1"
 image = "^ 0.23"
 zerocopy = "^ 0.3"
-packed_struct = { path = "../../nitrogen/system/packed_struct" }
+packed_struct = { path = "../../nitrogen/util/packed_struct" }
 pal = { path = "../../asset/pal" }
 
 [dev-dependencies]

@@ -6,12 +6,14 @@ edition = "2018"
 
 [dependencies]
 anyhow = "^ 1"
-legion = "^ 0.3"
+legion = "^ 0.4"
 nalgebra = "^ 0.24"
 lib = { path = "../asset/lib" }
 pal = { path = "../asset/pal" }
+absolute_unit = { path = "../nitrogen/util/absolute_unit" }
 catalog = { path = "../nitrogen/system/catalog" }
-physical_constants = { path = "../nitrogen/sim/physical_constants" }
+geodesy = { path = "../nitrogen/util/geodesy" }
+physical_constants = { path = "../nitrogen/util/physical_constants" }
 shape_chunk = { path = "../wgpu-buffer/shape_chunk" }
 shape_instance = { path = "../wgpu-buffer/shape_instance" }
 universe = { path = "../nitrogen/sim/universe" }

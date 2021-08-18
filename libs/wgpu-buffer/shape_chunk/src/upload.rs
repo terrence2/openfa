@@ -16,20 +16,23 @@ use crate::{
     draw_state::DrawState,
     texture_atlas::{Frame, MegaAtlas},
 };
+use absolute_unit::{feet, Feet, Length};
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
+use geometry::Aabb;
 use i386::Interpreter;
 use lazy_static::lazy_static;
 use log::trace;
 use memoffset::offset_of;
 use pal::Palette;
+use parking_lot::RwLock;
 use pic::Pic;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
     collections::{HashMap, HashSet},
     mem,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::Instant,
 };
 use zerocopy::{AsBytes, FromBytes};
@@ -161,19 +164,19 @@ impl Vertex {
                 },
                 // flags0
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float,
+                    format: wgpu::VertexFormat::Uint,
                     offset: 36,
                     shader_location: 3,
                 },
                 // flags1
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float,
+                    format: wgpu::VertexFormat::Uint,
                     offset: 40,
                     shader_location: 4,
                 },
                 // xform_id
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float,
+                    format: wgpu::VertexFormat::Uint,
                     offset: 44,
                     shader_location: 5,
                 },
@@ -635,7 +638,7 @@ pub struct ShapeWidgets {
     errata: ShapeErrata,
 
     // Bounding box
-    aabb: [[f32; 3]; 2],
+    aabb: Aabb<f32, 3>,
 }
 
 impl ShapeWidgets {
@@ -643,7 +646,7 @@ impl ShapeWidgets {
         name: &str,
         errata: ShapeErrata,
         transformers: Vec<Transformer>,
-        aabb: [[f32; 3]; 2],
+        aabb: Aabb<f32, 3>,
     ) -> Self {
         Self {
             shape_name: name.to_owned(),
@@ -686,10 +689,14 @@ impl ShapeWidgets {
 
     // In shape units.
     pub fn height(&self) -> f32 {
-        self.aabb[1][1] - self.aabb[0][1]
+        self.aabb.span(1)
     }
 
-    pub fn aabb(&self) -> &[[f32; 3]; 2] {
+    pub fn offset_to_ground(&self) -> Length<Feet> {
+        feet!(-self.aabb.low(1))
+    }
+
+    pub fn aabb(&self) -> &Aabb<f32, 3> {
         &self.aabb
     }
 }
@@ -746,7 +753,7 @@ impl<'a> ShapeUploader<'a> {
                 xform_id: MAX_XFORM_ID,
             });
         for v in vert_buf.vertices() {
-            let position = [f32::from(v[0]), f32::from(-v[2]), f32::from(-v[1])];
+            let position = [f32::from(v[0]), f32::from(v[2]), f32::from(-v[1])];
             for (i, &p) in position.iter().enumerate() {
                 if p > self.aabb_max[i] {
                     self.aabb_max[i] = p;
@@ -1201,7 +1208,7 @@ impl<'a> ShapeUploader<'a> {
                 self.name,
                 ShapeErrata::from_flags(&analysis),
                 analysis.transformers,
-                [self.aabb_min, self.aabb_max],
+                Aabb::new(self.aabb_min, self.aabb_max),
             ))),
             verts,
         ))

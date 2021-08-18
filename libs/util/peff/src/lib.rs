@@ -322,9 +322,7 @@ impl PortableExecutable {
     ) -> HashMap<String, SectionInfo> {
         sections
             .iter()
-            .map(|(ref name, (ref header, _))| {
-                ((*name).to_owned(), SectionInfo::from_header(header))
-            })
+            .map(|(name, (header, _))| ((*name).to_owned(), SectionInfo::from_header(header)))
             .collect::<HashMap<String, SectionInfo>>()
     }
 

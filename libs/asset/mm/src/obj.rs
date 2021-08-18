@@ -13,10 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{util::maybe_hex, waypoint::Waypoint};
+use absolute_unit::{degrees, radians};
 use anyhow::{anyhow, bail, Result};
 use catalog::Catalog;
-use nalgebra::{Point3, Unit, UnitQuaternion, Vector3};
-use std::{f32::consts::PI, str::SplitAsciiWhitespace};
+use nalgebra::{Point3, UnitQuaternion, Vector3};
+use std::str::SplitAsciiWhitespace;
 use xt::{TypeManager, TypeRef};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -110,7 +111,7 @@ impl Nationality {
 pub struct ObjectInfo {
     xt: TypeRef,
     name: Option<String>,
-    pos: Point3<f32>,
+    pos: Point3<i32>,
     angle: UnitQuaternion<f32>,
     nationality: Nationality,
     flags: u16,
@@ -174,26 +175,26 @@ impl ObjectInfo {
                     }
                 }
                 "pos" => {
-                    let x = tokens.next().expect("pos x").parse::<i32>()? as f32;
-                    let y = tokens.next().expect("pos y").parse::<i32>()? as f32;
-                    let z = tokens.next().expect("pos z").parse::<i32>()? as f32;
+                    let x = tokens.next().expect("pos x").parse::<i32>()?;
+                    let y = tokens.next().expect("pos y").parse::<i32>()?;
+                    let z = tokens.next().expect("pos z").parse::<i32>()?;
                     pos = Some(Point3::new(x, y, z));
                     // All non-plane entities are at height 0 and need to be moved
                     // to the right elevation at startup.
                     if !xt.as_ref().expect("xt").is_pt() {
-                        assert!(y.abs() < f32::EPSILON);
+                        assert_eq!(y, 0);
                     }
                 }
                 "angle" => {
-                    let x = tokens.next().expect("pos x").parse::<i32>()? as f32;
-                    let y = tokens.next().expect("pos y").parse::<i32>()?;
-                    let z = tokens.next().expect("pos z").parse::<i32>()?;
+                    let x = tokens.next().expect("ang x").parse::<i32>()?;
+                    let y = tokens.next().expect("ang y").parse::<i32>()?;
+                    let z = tokens.next().expect("ang z").parse::<i32>()?;
                     // No entities are tilted or pitched, only rotated.
                     assert_eq!(y, 0);
                     assert_eq!(z, 0);
                     angle = UnitQuaternion::from_axis_angle(
-                        &Unit::new_unchecked(Vector3::new(0f32, 1f32, 0f32)),
-                        -(x as f32 * PI / 180f32),
+                        &Vector3::y_axis(),
+                        -radians!(degrees!(x)).f32(),
                     );
                 }
                 "nationality" => {
@@ -231,6 +232,7 @@ impl ObjectInfo {
                 }
             }
         }
+
         Ok(ObjectInfo {
             xt: xt.ok_or_else(|| anyhow!("mm:obj: type not set in obj"))?,
             name,
@@ -264,8 +266,8 @@ impl ObjectInfo {
         self.xt.clone()
     }
 
-    pub fn position(&self) -> Point3<f32> {
-        self.pos
+    pub fn position(&self) -> &Point3<i32> {
+        &self.pos
     }
 
     pub fn angle(&self) -> &UnitQuaternion<f32> {

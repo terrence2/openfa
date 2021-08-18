@@ -38,8 +38,6 @@ members = [
 
     "libs/galaxy",
 
-    "libs/render-wgpu/render_pass/shape",
-
     "libs/wgpu-buffer/font_fnt",
     "libs/wgpu-buffer/shape_chunk",
     "libs/wgpu-buffer/shape_instance",
@@ -74,7 +72,7 @@ chrono = "^ 0.4"
 anyhow = "^ 1"
 env_logger = "^ 0.7"
 image = "^ 0.23"
-legion = "= 0.2.4"
+legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.24"
 parking_lot = "^ 0.11"
@@ -83,20 +81,20 @@ rand = "^ 0.3"
 structopt = "^ 0.3"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
-absolute_unit = { path = "libs/nitrogen/sim/absolute_unit" }
+absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
 atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
 composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
-geodesy = { path = "libs/nitrogen/sim/geodesy" }
+geodesy = { path = "libs/nitrogen/util/geodesy" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
-nitrous = { path = "libs/nitrogen/system/nitrous" }
-nitrous_injector = { path = "libs/nitrogen/system/nitrous_injector" }
+nitrous = { path = "libs/nitrogen/util/nitrous" }
+nitrous_injector = { path = "libs/nitrogen/util/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
-physical_constants = { path = "libs/nitrogen/sim/physical_constants" }
+physical_constants = { path = "libs/nitrogen/util/physical_constants" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
@@ -108,7 +106,6 @@ galaxy = { path = "libs/galaxy" }
 lib = { path = "libs/asset/lib" }
 mm = { path = "libs/asset/mm" }
 pal = { path = "libs/asset/pal" }
-shape = { path = "libs/render-wgpu/render_pass/shape" }
 shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
 t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
 xt = { path = "libs/asset/xt" }

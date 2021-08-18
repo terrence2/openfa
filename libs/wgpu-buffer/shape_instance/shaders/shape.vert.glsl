@@ -70,7 +70,6 @@ void main() {
     }
 
     gl_Position = camera_perspective_m *
-                  camera_view_m *
                   matrix_for_xform(transform) *
                   matrix_for_xform(xform) *
                   vec4(position, 1.0);

@@ -9,5 +9,5 @@ anyhow = "^ 1"
 lazy_static = "^ 1"
 log = "^ 0.4"
 thiserror = "^ 1"
-ansi = { path = "../../nitrogen/system/ansi" }
+ansi = { path = "../../nitrogen/util/ansi" }
 reverse = { path = "../../util/reverse" }

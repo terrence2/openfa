@@ -21,5 +21,5 @@ tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util",
 zerocopy = "^ 0.3"
 lzss = { path = "../../util/lzss" }
 catalog = { path = "../../nitrogen/system/catalog" }
-packed_struct = { path = "../../nitrogen/system/packed_struct" }
+packed_struct = { path = "../../nitrogen/util/packed_struct" }
 pkware = { path = "../../util/pkware" }

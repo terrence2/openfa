@@ -12,10 +12,13 @@ lazy_static = "^ 1"
 log = "^ 0.4"
 memoffset = "^ 0.6"
 nalgebra = "^ 0.24"
+parking_lot = "^ 0.11"
 wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
-animate = { path = "../../nitrogen/sim/animate" }
+absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+animate = { path = "../../nitrogen/util/animate" }
 catalog = { path = "../../nitrogen/system/catalog" }
+geometry = { path = "../../nitrogen/util/geometry" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
 pal = { path = "../../asset/pal" }
@@ -26,4 +29,4 @@ universe = { path = "../../nitrogen/sim/universe" }
 [dev-dependencies]
 winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../asset/lib" }
-nitrous = { path = "../../nitrogen/system/nitrous" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
