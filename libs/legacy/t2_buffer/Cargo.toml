@@ -9,7 +9,7 @@ anyhow = "^ 1"
 image = "^ 0.23"
 log = "^ 0.4"
 memoffset = "^ 0.6"
-nalgebra = "^ 0.24"
+nalgebra = "^ 0.29"
 wgpu = "^ 0.7"
 zerocopy = "^ 0.3"
 catalog = { path = "../../../nitrogen/system/catalog" }

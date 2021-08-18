@@ -7,7 +7,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 bitflags = "^ 1"
 anyhow = "^ 1"
-nalgebra = "^ 0.24"
+nalgebra = "^ 0.29"
 
 [dev-dependencies]
 lib = { path = "../../asset/lib" }
