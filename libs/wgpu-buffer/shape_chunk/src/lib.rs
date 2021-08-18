@@ -103,7 +103,7 @@ mod test {
 
             for shape_id in &all_shapes {
                 let lifetime = chunk_man.part(*shape_id).widgets();
-                let widgets = lifetime.read().unwrap();
+                let widgets = lifetime.read();
                 trace!("{} - {}", widgets.num_xforms(), widgets.name());
             }
         }

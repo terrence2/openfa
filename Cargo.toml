@@ -77,7 +77,6 @@ log = "^ 0.4"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
 paste = "^ 1"
-rand = "^ 0.3"
 structopt = "^ 0.3"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
@@ -101,7 +100,6 @@ ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 universe = { path = "libs/nitrogen/sim/universe" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
-fnt = { path = "libs/asset/fnt" }
 galaxy = { path = "libs/galaxy" }
 lib = { path = "libs/asset/lib" }
 mm = { path = "libs/asset/mm" }

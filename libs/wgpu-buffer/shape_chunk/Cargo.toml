@@ -24,7 +24,6 @@ i386 = { path = "../../util/i386" }
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
 sh = { path = "../../asset/sh" }
-universe = { path = "../../nitrogen/sim/universe" }
 
 [dev-dependencies]
 winit = { version = "^ 0.24", features = ["web-sys"] }

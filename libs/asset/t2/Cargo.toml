@@ -6,12 +6,11 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = "^ 1"
-image = "^ 0.23"
 lazy_static = "^ 1"
 log = "^ 0.4"
 zerocopy = "^ 0.3"
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
-reverse = { path = "../../util/reverse/" }
 
 [dev-dependencies]
+image = "^ 0.23"
 lib = { path = "../../asset/lib" }

@@ -8,7 +8,6 @@ edition = "2018"
 anyhow = "^ 1"
 legion = "^ 0.4"
 nalgebra = "^ 0.29"
-lib = { path = "../asset/lib" }
 pal = { path = "../asset/pal" }
 absolute_unit = { path = "../nitrogen/util/absolute_unit" }
 catalog = { path = "../nitrogen/system/catalog" }
