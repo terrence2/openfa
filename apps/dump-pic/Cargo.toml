@@ -8,7 +8,6 @@ edition = "2018"
 anyhow = "^ 1"
 image = "^ 0.23"
 structopt = "^ 0.2"
-ansi = { path = "../../libs/nitrogen/util/ansi" }
 lib = { path = "../../libs/asset/lib" }
 pal = { path = "../../libs/asset/pal" }
 pic = { path = "../../libs/asset/pic" }
