@@ -1228,7 +1228,7 @@ impl<'a> ShapeUploader<'a> {
                 Instr::X86Code(ref x86) => {
                     Self::maybe_update_buffer_properties(
                         name,
-                        &pc,
+                        pc,
                         x86,
                         sh,
                         &mut result.prop_man,

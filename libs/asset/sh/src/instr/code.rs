@@ -344,7 +344,7 @@ impl X86Code {
                 false
             });
         if let Err(e) = maybe_bc {
-            i386::DisassemblyError::maybe_show(&e, &code);
+            i386::DisassemblyError::maybe_show(&e, code);
             bail!("Don't know how to disassemble at {}: {:?}", offset, e);
         }
         let mut bc = maybe_bc?;
@@ -435,8 +435,8 @@ impl X86Code {
 
             // If we've found an external jump, that's good evidence that this is x86 code, so just
             // go ahead and decode that.
-            if external_jumps.contains(&offset) {
-                external_jumps.remove(&offset);
+            if external_jumps.contains(offset) {
+                external_jumps.remove(offset);
                 trace!("ip reached external jump");
 
                 let (bc, return_state) =
@@ -477,7 +477,7 @@ impl X86Code {
             }
 
             // If three is a Return in the middle of code, we'll get here; jump back in.
-            if external_jumps.contains(&offset) {
+            if external_jumps.contains(offset) {
                 continue;
             }
 

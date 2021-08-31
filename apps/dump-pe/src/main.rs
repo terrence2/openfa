@@ -16,7 +16,7 @@ use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use lib::CatalogBuilder;
 use peff::PortableExecutable;
-use std::{collections::HashSet, iter};
+use std::collections::HashSet;
 use structopt::StructOpt;
 
 /// Dump PE files
@@ -45,12 +45,7 @@ fn main() -> Result<()> {
         let pe = PortableExecutable::from_bytes(&content)?;
 
         println!("{}:{}", game, meta.name());
-        println!(
-            "{}",
-            iter::repeat("=")
-                .take(1 + game.len() + meta.name().len())
-                .collect::<String>()
-        );
+        println!("{}", "=".repeat(1 + game.len() + meta.name().len()));
         println!("image base: 0x{:08X}", pe.image_base);
 
         for (name, section) in &pe.section_info {

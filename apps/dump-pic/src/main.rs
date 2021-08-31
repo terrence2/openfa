@@ -17,7 +17,7 @@ use image::GenericImageView;
 use lib::CatalogBuilder;
 use pal::Palette;
 use pic::Pic;
-use std::{fs, iter};
+use std::fs;
 use structopt::StructOpt;
 
 /// Extract PICs to PNG files and show PIC metadata
@@ -68,12 +68,7 @@ fn main() -> Result<()> {
         let image = Pic::from_bytes(&content)?;
 
         println!("{}:{}", game, meta.name());
-        println!(
-            "{}",
-            iter::repeat("=")
-                .take(1 + game.len() + meta.name().len())
-                .collect::<String>()
-        );
+        println!("{}", "=".repeat(1 + game.len() + meta.name().len()));
         println!("format: {:?}", image.format());
         println!("width:  {}px", image.width());
         println!("height: {}px", image.height());
@@ -81,11 +76,11 @@ fn main() -> Result<()> {
             println!("colors: {:?}", pal.color_count);
 
             if let Some(ref path) = opt.show_palette {
-                pal.dump_png(&path)?;
+                pal.dump_png(path)?;
             }
 
             if let Some(ref path) = opt.dump_palette {
-                pal.dump_pal(&path)?;
+                pal.dump_pal(path)?;
             }
         }
 

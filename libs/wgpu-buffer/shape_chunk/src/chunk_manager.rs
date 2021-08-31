@@ -78,7 +78,7 @@ impl ShapeChunkBuffer {
             return Ok((chunk_id, shape_id));
         }
 
-        let sh = RawShape::from_bytes(&catalog.read_name_sync(&name)?)?;
+        let sh = RawShape::from_bytes(&catalog.read_name_sync(name)?)?;
         let analysis = ShapeUploader::analyze_model(name, &sh, &selection)?;
         let chunk_flags = ChunkFlags::for_analysis(&analysis);
 

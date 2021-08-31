@@ -151,7 +151,7 @@ impl PicUploader {
                         wgpu::BindGroupEntry {
                             binding: 0,
                             resource: wgpu::BindingResource::Buffer {
-                                buffer: &palette_buffer,
+                                buffer: palette_buffer,
                                 offset: 0,
                                 size: NonZeroU64::new(4 * 256),
                             },

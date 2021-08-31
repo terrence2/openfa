@@ -164,6 +164,7 @@ impl ObjectInfo {
                         name = Some(tmp[1..end].to_owned());
                     } else {
                         let mut tmp = tmp.to_owned();
+                        #[allow(clippy::while_let_on_iterator)]
                         while let Some(next) = tokens.next() {
                             tmp += next;
                             if tmp.ends_with(1 as char) {

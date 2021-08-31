@@ -44,7 +44,7 @@ fn main() -> Result<()> {
         );
         let type_manager = TypeManager::empty();
         catalog.set_default_label(&label);
-        let xt = type_manager.load(&meta.name(), &catalog)?;
+        let xt = type_manager.load(meta.name(), &catalog)?;
 
         let ot = &xt.ot();
         println!("{:>25}", "ObjectType");

@@ -133,7 +133,7 @@ fn load_palette(opt: &Opt) -> Result<Palette> {
     }
     let fid = *inputs.first().expect("one input");
     let meta = catalog.stat_sync(fid)?;
-    load_palette_from_resource(&catalog, &meta.name())
+    load_palette_from_resource(&catalog, meta.name())
 }
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {
@@ -182,7 +182,7 @@ fn compute_pixels(buffer: image::RgbaImage, pal: &Palette, quality: u8) -> Vec<u
     let dim = buffer.dimensions();
     let mut pix = Vec::with_capacity((dim.0 * dim.1) as usize);
     for c in buffer.pixels() {
-        let index = find_closest_in_palette(*c, &pal, quality);
+        let index = find_closest_in_palette(*c, pal, quality);
         pix.push(index);
     }
     pix
