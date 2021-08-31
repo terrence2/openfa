@@ -44,9 +44,6 @@ members = [
     "libs/wgpu-buffer/t2_tile_set",
     "libs/wgpu-buffer/ofa_groups",
 
-    # "libs/legacy/t2_buffer",
-    # "libs/legacy/t2_terrain",
-
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
