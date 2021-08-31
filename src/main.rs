@@ -13,11 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters};
+use animate::Timeline;
 use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
 use catalog::DirectoryDrawer;
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
@@ -39,7 +40,11 @@ use pal::Palette;
 use parking_lot::RwLock;
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use structopt::StructOpt;
 use t2_tile_set::{T2Adjustment, T2TileSet};
 use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
@@ -56,6 +61,14 @@ struct Opt {
     /// Extra directories to treat as libraries
     #[structopt(short, long)]
     libdir: Vec<PathBuf>,
+
+    /// Run a command after startup
+    #[structopt(short, long)]
+    command: Option<String>,
+
+    /// Run given file after startup
+    #[structopt(short, long)]
+    execute: Option<PathBuf>,
 
     /// The map file to view
     #[structopt(name = "NAME", last = true)]
@@ -244,7 +257,7 @@ make_frame_graph!(
         };
         passes: [
             // widget
-            maintain_font_atlas: Compute() { widgets() },
+            maintain_font_atlas: Any() { widgets() },
 
             // terrain
             // Update the indices so we have correct height data to tessellate with and normal
@@ -306,6 +319,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
 
     let interpreter = Interpreter::new();
+    let timeline = Timeline::new(&mut interpreter.write());
     let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
     let mut galaxy = Galaxy::new(&catalog)?;
 
@@ -614,13 +628,40 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let catalog = Arc::new(AsyncRwLock::new(catalog));
 
+    if let Some(command) = opt.command.as_ref() {
+        let rv = interpreter.write().interpret_once(command)?;
+        println!("{}", rv);
+    }
+
+    if let Ok(code) = std::fs::read_to_string("autoexec.n2o") {
+        let rv = interpreter.write().interpret_async(code);
+        println!("Execution Completed: {:?}", rv);
+    }
+
+    if let Some(exec_file) = opt.execute {
+        match std::fs::read_to_string(&exec_file) {
+            Ok(code) => {
+                let rv = interpreter.write().interpret_async(code);
+                println!("Execution Completed: {:?}", rv);
+            }
+            Err(e) => {
+                println!("Read file for {:?}: {}", exec_file, e);
+            }
+        }
+    }
+
+    const STEP: Duration = Duration::from_micros(16_666);
     let mut now = Instant::now();
     let system_start = now;
     while !system.read().exit {
-        orrery
-            .write()
-            .adjust_time(Duration::from_std(now.elapsed())?);
-        now = Instant::now();
+        // Catch up to system time.
+        let next_now = Instant::now();
+        while now + STEP < next_now {
+            orrery.write().step_time(ChronoDuration::from_std(STEP)?);
+            timeline.write().step_time(&now)?;
+            now += STEP;
+        }
+        now = next_now;
 
         {
             let logical_extent: Extent<AbsSize> = gpu.read().logical_size().into();

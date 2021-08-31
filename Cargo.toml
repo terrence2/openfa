@@ -81,6 +81,7 @@ structopt = "^ 0.3"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
+animate = { path = "libs/nitrogen/util/animate" }
 atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
