@@ -19,6 +19,17 @@ layout(set = 0, binding = 0) readonly buffer Palette { uint palette[256]; };
 layout(set = 0, binding = 1) readonly buffer RawData { uint raw_img[]; };
 layout(set = 0, binding = 2) writeonly buffer TgtData { uint tgt_img[]; };
 
+vec4
+unpackUnorm4x8(uint v)
+{
+    return vec4(
+        ((v >> 0) & 0xFFu) / 255.0,
+        ((v >> 8) & 0xFFu) / 255.0,
+        ((v >> 16) & 0xFFu) / 255.0,
+        ((v >> 24) & 0xFFu) / 255.0
+    );
+}
+
 void
 main() {
     // Unpack 4 packed, 1 byte pixels
