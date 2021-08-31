@@ -660,8 +660,9 @@ impl T2TileSet {
         for loc in sources.drain() {
             let name = loc.pic_file(&texture_base_name);
             let data = catalog.read_name_sync(&name)?;
-            let (buffer, w, h) = uploader.upload(&data, gpu, wgpu::BufferUsage::STORAGE)?;
-            let frame = atlas_builder.push_buffer(buffer, w, h, gpu)?;
+            let (buffer, w, h, stride) =
+                uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
+            let frame = atlas_builder.push_buffer(buffer, w, h, stride)?;
             frames.push((loc, frame));
         }
 

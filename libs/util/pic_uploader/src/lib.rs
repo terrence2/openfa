@@ -111,7 +111,7 @@ impl PicUploader {
         data: &[u8],
         gpu: &Gpu,
         usage: wgpu::BufferUsage,
-    ) -> Result<(wgpu::Buffer, u32, u32)> {
+    ) -> Result<(wgpu::Buffer, u32, u32, u32)> {
         Ok(match Pic::read_format(data)? {
             PicFormat::Jpeg => {
                 panic!("pic uploader jpeg support missing")
@@ -136,8 +136,8 @@ impl PicUploader {
                     &pic.pixel_data()?,
                     wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
                 );
-                let tgt_buffer_size =
-                    Gpu::stride_for_row_size(pic.width() * pic.height() * 4) as u64;
+                let tgt_buffer_stride = Gpu::stride_for_row_size(pic.width() * 4);
+                let tgt_buffer_size = (tgt_buffer_stride * pic.height()) as u64;
                 let tgt_buffer = gpu.device().create_buffer(&wgpu::BufferDescriptor {
                     label: Some("pic-upload-tgt-buffer"),
                     size: tgt_buffer_size,
@@ -177,7 +177,7 @@ impl PicUploader {
                 let group_count = (pic.raw_data().len() as u32 / 4 + Self::GROUP_SIZE - 1)
                     & !(Self::GROUP_SIZE as u32 - 1);
                 self.depalettize.push((group_count, bind_group));
-                (tgt_buffer, pic.width(), pic.height())
+                (tgt_buffer, pic.width(), pic.height(), tgt_buffer_stride)
             }
         })
     }
@@ -282,7 +282,7 @@ mod tests {
         let fid = inputs.first().unwrap();
         catalog.set_default_label(&catalog.file_label(*fid)?);
         let data = catalog.read_sync(*fid)?;
-        let (buffer, width, height) =
+        let (buffer, width, height, _stride) =
             uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::MAP_READ)?;
         uploader.dispatch_singleton(&mut gpu.write())?;
         gpu.read().device().poll(wgpu::Maintain::Wait);
