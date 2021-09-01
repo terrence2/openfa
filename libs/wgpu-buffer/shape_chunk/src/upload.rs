@@ -600,7 +600,7 @@ impl Transformer {
         let words: &[i16] = unsafe { std::mem::transmute(xformed.as_slice()) };
         let arr = [
             f32::from(words[0]),
-            -f32::from(words[1]),
+            f32::from(words[1]),
             -f32::from(words[2]),
             -fa2r(f32::from(words[4])),
             -fa2r(f32::from(words[3])),
