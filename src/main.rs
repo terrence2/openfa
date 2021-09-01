@@ -32,7 +32,7 @@ use gpu::{
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogBuilder};
 use mm::MissionMap;
-use nalgebra::{convert, UnitQuaternion};
+use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
@@ -439,22 +439,23 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
 
-        let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
-            "BNK2.SH",
-            DrawSelection::NormalModel,
-            &system_palette,
-            &catalog,
-            &mut gpu.write(),
-        )?;
+        // let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
+        //     "BNK2.SH",
+        //     DrawSelection::NormalModel,
+        //     &system_palette,
+        //     &catalog,
+        //     &mut gpu.write(),
+        // )?;
         shapes.write().ensure_uploaded(&mut gpu.write())?;
-        galaxy.create_building(
-            slot_id,
-            shape_id,
-            shapes.read().part(shape_id),
-            4.,
-            Graticule::new(degrees!(0), degrees!(0), meters!(0)),
-            &UnitQuaternion::identity(),
-        )?;
+        // use nalgebra::UnitQuaternion;
+        // galaxy.create_building(
+        //     slot_id,
+        //     shape_id,
+        //     shapes.read().part(shape_id),
+        //     4.,
+        //     Graticule::new(degrees!(0), degrees!(0), meters!(0)),
+        //     &UnitQuaternion::identity(),
+        // )?;
 
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
@@ -634,7 +635,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
 
     if let Ok(code) = std::fs::read_to_string("autoexec.n2o") {
-        let rv = interpreter.write().interpret_async(code);
+        let rv = interpreter.write().interpret_once(&code);
         println!("Execution Completed: {:?}", rv);
     }
 
