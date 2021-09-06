@@ -153,7 +153,7 @@ impl MegaAtlas {
         if DUMP_ATLAS {
             for (layer, buffer) in self.images.iter().enumerate() {
                 let mut img = DynamicImage::new_rgba8(ATLAS_WIDTH as u32, ATLAS_HEIGHT as u32);
-                img.as_mut_rgba8().unwrap().copy_from_slice(&buffer);
+                img.as_mut_rgba8().unwrap().copy_from_slice(buffer);
                 println!("saving...");
                 img.save(&format!("./mega-atlas-{}.png", layer))?;
                 println!("saved!");
@@ -193,7 +193,7 @@ impl MegaAtlas {
         for (_i, layer) in self.images.iter().enumerate() {
             let buffer = gpu.push_buffer(
                 "shape-chunk-texture-atlas-upload-buffer",
-                &layer,
+                layer,
                 wgpu::BufferUsage::COPY_SRC,
             );
 

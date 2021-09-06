@@ -1,6 +1,6 @@
 [package]
 name = "lib"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
@@ -18,7 +18,7 @@ log = "^ 0.4"
 memmap = "^ 0.6"
 regex = "^ 1"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
-zerocopy = "^ 0.3"
+zerocopy = "^ 0.5"
 lzss = { path = "../../util/lzss" }
 catalog = { path = "../../nitrogen/system/catalog" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }

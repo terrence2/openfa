@@ -124,7 +124,7 @@ impl Fnt {
 
             let maybe_bytecode = ByteCode::disassemble_until(0, span, |_| false);
             if let Err(e) = maybe_bytecode {
-                i386::DisassemblyError::maybe_show(&e, &span);
+                i386::DisassemblyError::maybe_show(&e, span);
                 bail!("Don't know how to disassemble at {}: {:?}", 0, e);
             }
             let bytecode = maybe_bytecode?;
@@ -240,7 +240,7 @@ mod tests {
                     .unwrap_or_else(|| "<none>".into())
             );
             let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
-            fnt.analyze(game, &meta.name())?;
+            fnt.analyze(game, meta.name())?;
         }
 
         Ok(())

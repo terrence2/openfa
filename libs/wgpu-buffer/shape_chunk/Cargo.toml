@@ -1,6 +1,6 @@
 [package]
 name = "shape_chunk"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
@@ -11,10 +11,10 @@ image = "^ 0.23"
 lazy_static = "^ 1"
 log = "^ 0.4"
 memoffset = "^ 0.6"
-nalgebra = "^ 0.24"
+nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
 wgpu = "^ 0.7"
-zerocopy = "^ 0.3"
+zerocopy = "^ 0.5"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 animate = { path = "../../nitrogen/util/animate" }
 catalog = { path = "../../nitrogen/system/catalog" }
@@ -24,7 +24,6 @@ i386 = { path = "../../util/i386" }
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
 sh = { path = "../../asset/sh" }
-universe = { path = "../../nitrogen/sim/universe" }
 
 [dev-dependencies]
 winit = { version = "^ 0.24", features = ["web-sys"] }

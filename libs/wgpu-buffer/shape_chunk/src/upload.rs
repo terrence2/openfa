@@ -600,7 +600,7 @@ impl Transformer {
         let words: &[i16] = unsafe { std::mem::transmute(xformed.as_slice()) };
         let arr = [
             f32::from(words[0]),
-            -f32::from(words[1]),
+            f32::from(words[1]),
             -f32::from(words[2]),
             -fa2r(f32::from(words[4])),
             -fa2r(f32::from(words[3])),
@@ -1203,12 +1203,18 @@ impl<'a> ShapeUploader<'a> {
         let mut verts = Vec::new();
         mem::swap(&mut verts, &mut self.vertices);
 
+        let aabb = if !verts.is_empty() {
+            Aabb::new(self.aabb_min, self.aabb_max)
+        } else {
+            Aabb::new([0.; 3], [0.; 3])
+        };
+
         Ok((
             Arc::new(RwLock::new(ShapeWidgets::new(
                 self.name,
                 ShapeErrata::from_flags(&analysis),
                 analysis.transformers,
-                Aabb::new(self.aabb_min, self.aabb_max),
+                aabb,
             ))),
             verts,
         ))
@@ -1228,7 +1234,7 @@ impl<'a> ShapeUploader<'a> {
                 Instr::X86Code(ref x86) => {
                     Self::maybe_update_buffer_properties(
                         name,
-                        &pc,
+                        pc,
                         x86,
                         sh,
                         &mut result.prop_man,

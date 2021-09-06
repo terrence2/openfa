@@ -1,14 +1,13 @@
 [package]
 name = "galaxy"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 anyhow = "^ 1"
 legion = "^ 0.4"
-nalgebra = "^ 0.24"
-lib = { path = "../asset/lib" }
+nalgebra = "^ 0.29"
 pal = { path = "../asset/pal" }
 absolute_unit = { path = "../nitrogen/util/absolute_unit" }
 catalog = { path = "../nitrogen/system/catalog" }

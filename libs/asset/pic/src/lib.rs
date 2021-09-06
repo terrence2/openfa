@@ -89,7 +89,7 @@ impl<'a> Pic<'a> {
         let palette = if header.palette_size() > 0 {
             let palette_data =
                 &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
-            Some(Palette::from_bytes(&palette_data)?)
+            Some(Palette::from_bytes(palette_data)?)
         } else {
             None
         };
@@ -278,7 +278,7 @@ impl<'a> Pic<'a> {
 
         let palette_data =
             &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
-        let local_palette = Palette::from_bytes(&palette_data)?;
+        let local_palette = Palette::from_bytes(palette_data)?;
         let mut palette = system_palette.clone();
         palette.overlay_at(&local_palette, 0)?;
         Ok(Cow::from(palette))

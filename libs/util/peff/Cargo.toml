@@ -1,6 +1,6 @@
 [package]
 name = "peff"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
@@ -9,7 +9,7 @@ anyhow = "^ 1"
 bitflags = "^ 1"
 log = "^ 0.4"
 thiserror = "^ 1"
-zerocopy = "^ 0.3"
+zerocopy = "^ 0.5"
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 
 [dev-dependencies]

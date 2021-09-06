@@ -1,6 +1,6 @@
 [package]
 name = "openfa"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
@@ -44,9 +44,6 @@ members = [
     "libs/wgpu-buffer/t2_tile_set",
     "libs/wgpu-buffer/ofa_groups",
 
-    # "libs/legacy/t2_buffer",
-    # "libs/legacy/t2_terrain",
-
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
@@ -74,14 +71,14 @@ env_logger = "^ 0.7"
 image = "^ 0.23"
 legion = "^ 0.4"
 log = "^ 0.4"
-nalgebra = "^ 0.24"
+nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
 paste = "^ 1"
-rand = "^ 0.3"
 structopt = "^ 0.3"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
+animate = { path = "libs/nitrogen/util/animate" }
 atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
@@ -101,7 +98,6 @@ ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 universe = { path = "libs/nitrogen/sim/universe" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
-fnt = { path = "libs/asset/fnt" }
 galaxy = { path = "libs/galaxy" }
 lib = { path = "libs/asset/lib" }
 mm = { path = "libs/asset/mm" }

@@ -503,7 +503,7 @@ mod tests {
             //let palette = Palette::from_bytes(&omni.library(&game).load("PALETTE.PAL")?)?;
             //let img = decode_pic(&palette, &omni.library(&game).load(&name)?)?;
 
-            Dialog::explore(&meta.name(), &catalog.read_sync(fid)?)?;
+            Dialog::explore(meta.name(), &catalog.read_sync(fid)?)?;
             let _dlg = Dialog::from_bytes(&catalog.read_sync(fid)?)?;
         }
 

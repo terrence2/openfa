@@ -455,7 +455,7 @@ impl T2TileSet {
         // FIXME: mipmap this!
         let base_color_copy_buffer = gpu.push_buffer(
             "t2-base-color-upload",
-            &base_colors.as_bytes(),
+            base_colors.as_bytes(),
             wgpu::BufferUsage::COPY_SRC,
         );
         let base_color_format = wgpu::TextureFormat::Rgba8Unorm;
@@ -513,7 +513,7 @@ impl T2TileSet {
         // Upload index
         let index_copy_buffer = gpu.push_buffer(
             "t2-index-upload",
-            &indices.as_bytes(),
+            indices.as_bytes(),
             wgpu::BufferUsage::COPY_SRC,
         );
         let index_format = wgpu::TextureFormat::Rg16Uint;
@@ -584,7 +584,7 @@ impl T2TileSet {
         mm: &MissionMap,
         catalog: &Catalog,
     ) -> Result<Palette> {
-        let layer = Layer::from_bytes(&catalog.read_name_sync(&mm.layer_name())?, &system_palette)?;
+        let layer = Layer::from_bytes(&catalog.read_name_sync(mm.layer_name())?, system_palette)?;
         let layer_index = if mm.layer_index() != 0 {
             mm.layer_index()
         } else {
@@ -652,7 +652,7 @@ impl T2TileSet {
         )?;
 
         let mut uploader = PicUploader::new(gpu)?;
-        uploader.set_shared_palette(&palette, gpu);
+        uploader.set_shared_palette(palette, gpu);
 
         // Set up upload for each TLoc, mapping it to a frame.
         let mut frames = Vec::new();
@@ -660,8 +660,9 @@ impl T2TileSet {
         for loc in sources.drain() {
             let name = loc.pic_file(&texture_base_name);
             let data = catalog.read_name_sync(&name)?;
-            let (buffer, w, h) = uploader.upload(&data, gpu, wgpu::BufferUsage::STORAGE)?;
-            let frame = atlas_builder.push_buffer(buffer, w, h, gpu)?;
+            let (buffer, w, h, stride) =
+                uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
+            let frame = atlas_builder.push_buffer(buffer, w, h, stride)?;
             frames.push((loc, frame));
         }
 
@@ -721,7 +722,7 @@ impl T2TileSet {
             (height_texture_view, height_sampler),
             (base_color_texture_view, base_color_sampler),
             (index_texture_view, index_sampler, index_size),
-        ) = self._upload_heights_and_index(&palette, &mm, &t2, &frame_map, gpu, tracker)?;
+        ) = self._upload_heights_and_index(&palette, mm, &t2, &frame_map, gpu, tracker)?;
 
         let mapper = T2Mapper::new(&t2, &self.shared_adjustment.read());
         let t2_info = T2Info::new(mapper.base_rad_f32(), mapper.extent_rad_f32(), index_size);

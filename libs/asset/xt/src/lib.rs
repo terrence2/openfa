@@ -37,7 +37,7 @@ pub enum Type {
 impl Type {
     pub fn ot(&self) -> &ObjectType {
         match self {
-            Type::OT(ref ot) => &ot,
+            Type::OT(ref ot) => ot,
             Type::JT(ref jt) => &jt.ot,
             Type::NT(ref nt) => &nt.ot,
             Type::PT(ref pt) => &pt.nt.ot,
@@ -46,14 +46,14 @@ impl Type {
 
     pub fn jt(&self) -> Result<&ProjectileType> {
         Ok(match self {
-            Type::JT(ref jt) => &jt,
+            Type::JT(ref jt) => jt,
             _ => bail!("Type: not a projectile"),
         })
     }
 
     pub fn nt(&self) -> Result<&NpcType> {
         Ok(match self {
-            Type::NT(ref nt) => &nt,
+            Type::NT(ref nt) => nt,
             Type::PT(ref pt) => &pt.nt,
             _ => bail!("Type: not an npc"),
         })
@@ -61,7 +61,7 @@ impl Type {
 
     pub fn pt(&self) -> Result<&PlaneType> {
         Ok(match self {
-            Type::PT(ref pt) => &pt,
+            Type::PT(ref pt) => pt,
             _ => bail!("Type: not a plane"),
         })
     }
@@ -183,7 +183,7 @@ mod tests {
             );
             let types = TypeManager::empty();
             catalog.set_default_label(&label);
-            let ty = types.load(&meta.name(), &catalog)?;
+            let ty = types.load(meta.name(), &catalog)?;
             // Only one misspelling in 2500 files.
             assert!(ty.ot().file_name() == meta.name() || meta.name() == "SMALLARM.JT");
             // println!(

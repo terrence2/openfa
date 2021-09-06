@@ -1314,7 +1314,7 @@ impl RawShape {
 
             X86Code::MAGIC => {
                 let name =
-                    if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, &instrs) {
+                    if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, instrs) {
                         source.source.clone()
                     } else {
                         "unknown_source".to_owned()
@@ -1329,7 +1329,7 @@ impl RawShape {
                     let mut target = None;
                     {
                         if let Some(&Instr::PtrToObjEnd(ref end_ptr)) =
-                            find_first_instr(0xF2, &instrs)
+                            find_first_instr(0xF2, instrs)
                         {
                             target = Some(end_ptr.end_byte_offset());
                         }
@@ -1353,7 +1353,7 @@ impl RawShape {
                     let mut target = None;
                     {
                         if let Some(&Instr::PtrToObjEnd(ref end_ptr)) =
-                            find_first_instr(0xF2, &instrs)
+                            find_first_instr(0xF2, instrs)
                         {
                             target = Some(end_ptr.end_byte_offset());
                         }

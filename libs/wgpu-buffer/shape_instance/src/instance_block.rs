@@ -169,7 +169,7 @@ impl InstanceBlock {
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-instance-bind-group"),
-            layout: &layout,
+            layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,

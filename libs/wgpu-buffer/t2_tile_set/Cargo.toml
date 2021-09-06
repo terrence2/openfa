@@ -1,6 +1,6 @@
 [package]
 name = "t2_tile_set"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
@@ -8,11 +8,11 @@ edition = "2018"
 anyhow = "^ 1"
 log = "^ 0.4"
 image = "^ 0.23"
-nalgebra = "^ 0.24"
+nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
-zerocopy = "^ 0.3"
+zerocopy = "^ 0.5"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 camera = { path = "../../nitrogen/sim/camera" }

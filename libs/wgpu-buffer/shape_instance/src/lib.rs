@@ -235,7 +235,7 @@ impl ShapeInstanceBuffer {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
             .chunk_man
-            .upload_shape(name, selection, &palette, &catalog, gpu)?;
+            .upload_shape(name, selection, palette, catalog, gpu)?;
 
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -306,7 +306,7 @@ impl ShapeInstanceBuffer {
         // Animate the draw_state. We'll use the updated values below when computing
         // xform and frame based animation states.
         <Write<ShapeState>>::query()
-            .par_for_each_mut(world, |shape_state| shape_state.draw_state.animate(&now));
+            .par_for_each_mut(world, |shape_state| shape_state.draw_state.animate(now));
 
         let km2m = Matrix4::new_scaling(1_000.0);
         let view = camera.view::<Kilometers>().to_homogeneous();
@@ -342,7 +342,7 @@ impl ShapeInstanceBuffer {
         query.par_for_each_mut(world, |(shape_state, flag_buffer)| {
             shape_state
                 .draw_state
-                .build_mask_into(&start, &mut flag_buffer.buffer)
+                .build_mask_into(start, &mut flag_buffer.buffer)
                 .unwrap();
         });
 
@@ -355,8 +355,8 @@ impl ShapeInstanceBuffer {
                         e.get_mut()
                             .animate_into(
                                 &shape_state.draw_state,
-                                &start,
-                                &now,
+                                start,
+                                now,
                                 &mut xform_buffer.buffer,
                             )
                             .unwrap();
@@ -366,8 +366,8 @@ impl ShapeInstanceBuffer {
                         widgets
                             .animate_into(
                                 &shape_state.draw_state,
-                                &start,
-                                &now,
+                                start,
+                                now,
                                 &mut xform_buffer.buffer,
                             )
                             .unwrap();
