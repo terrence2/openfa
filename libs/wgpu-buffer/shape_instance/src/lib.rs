@@ -310,7 +310,6 @@ impl ShapeInstanceBuffer {
 
         let km2m = Matrix4::new_scaling(1_000.0);
         let view = camera.view::<Kilometers>().to_homogeneous();
-        let view_look_at: UnitQuaternion<f32> = convert(camera.look_at_rh::<Kilometers>());
         let mut query = <(
             Read<Transform>,
             Read<Rotation>,
@@ -324,18 +323,18 @@ impl ShapeInstanceBuffer {
             // errors are at least far away), before being truncated to f32.
             let pos = transform.cartesian().point64().to_homogeneous();
             let pos_view = km2m * view * pos;
-            let pos_compact = [pos_view.x as f32, pos_view.y as f32, pos_view.z as f32];
+            transform_buffer.buffer[0] = pos_view.x as f32;
+            transform_buffer.buffer[1] = pos_view.y as f32;
+            transform_buffer.buffer[2] = pos_view.z as f32;
 
             // Since we are uploading with eye space rotations applied, we need to "undo"
             // the eye-space rotation before uploading so that we will be world aligned.
-            let rot = rotation.quaternion();
-            let rot_view = view_look_at * rot;
-            let (a, b, c) = rot_view.euler_angles();
-            let rot_compact = [a, b, c];
+            let (a, b, c) = rotation.quaternion().euler_angles();
+            transform_buffer.buffer[3] = a;
+            transform_buffer.buffer[4] = b;
+            transform_buffer.buffer[5] = c;
 
-            (&mut transform_buffer.buffer[0..3]).copy_from_slice(&pos_compact);
-            (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rot_compact);
-            (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+            transform_buffer.buffer[6] = scale.scale();
         });
 
         let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();

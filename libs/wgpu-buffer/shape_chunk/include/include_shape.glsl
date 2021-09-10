@@ -41,7 +41,14 @@ mat3 from_euler_angles(float roll, float pitch, float yaw)
     );
 }
 
-mat4 matrix_for_xform(float xform[8]) {
+mat4 rotation_for_xform(float xform[8]) {
+    float r0 = xform[3];
+    float r1 = xform[4];
+    float r2 = xform[5];
+    return mat4(from_euler_angles(r0, r1, r2));
+}
+
+mat4 matrix_for_transform(float xform[8]) {
     float t0 = xform[0];
     float t1 = xform[1];
     float t2 = xform[2];
@@ -54,6 +61,24 @@ mat4 matrix_for_xform(float xform[8]) {
         0.0,   s, 0.0, 0.0,
         0.0, 0.0,   s, 0.0,
          t0,  t1,  t2, 1.0
+    );
+    mat4 rot = camera_look_at_rhs_m * mat4(from_euler_angles(r0, r1, r2));
+    return trans * rot;
+}
+
+mat4 matrix_for_xform(float xform[8]) {
+    float t0 = xform[0];
+    float t1 = xform[1];
+    float t2 = xform[2];
+    float r0 = xform[3];
+    float r1 = xform[4];
+    float r2 = xform[5];
+    float s = xform[6];
+    mat4 trans = mat4(
+        s,   0.0, 0.0, 0.0,
+        0.0,   s, 0.0, 0.0,
+        0.0, 0.0,   s, 0.0,
+        t0,   t1,  t2, 1.0
     );
     mat4 rot = mat4(from_euler_angles(r0, r1, r2));
     return trans * rot;

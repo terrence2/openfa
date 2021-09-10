@@ -16,12 +16,19 @@
 
 // Inputs
 layout(location = 0) smooth in vec4 v_color;
-layout(location = 1) smooth in vec2 v_tex_coord;
-layout(location = 2) flat in uint f_flags0;
-layout(location = 3) flat in uint f_flags1;
+layout(location = 1) smooth in vec3 v_normal_w;
+layout(location = 2) smooth in vec2 v_tex_coord;
+layout(location = 3) flat in uint f_flags0;
+layout(location = 4) flat in uint f_flags1;
 
 // Output
 layout(location = 0) out vec4 f_color;
+
+#include <wgpu-buffer/shader_shared/include/consts.glsl>
+#include <wgpu-buffer/atmosphere/include/global.glsl>
+#include <wgpu-buffer/atmosphere/include/descriptorset.glsl>
+#include <wgpu-buffer/atmosphere/include/library.glsl>
+#include <wgpu-buffer/global_data/include/global_data.glsl>
 
 layout(set = 2, binding = 0) uniform texture2D chunk_mega_atlas_texture;
 layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
@@ -31,22 +38,36 @@ layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
 //layout(set = 6, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
 //layout(set = 6, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
 
-void main() {
+vec4 diffuse_color(out bool should_discard) {
+    should_discard = false;
     if ((f_flags0 & 0xFFFFFFFEu) == 0 && f_flags1 == 0) {
-        discard;
+        should_discard = true;
+        return vec4(0);
     } else if (v_tex_coord.x == 0.0) {
-        f_color = v_color;
+        return v_color;
     } else {
         // FIXME: I think this breaks if our mega-atlas spills into a second layer. The layer should be part
         // FIXME: of the texture coordinate we are uploading.
         vec4 tex_color = texture(sampler2D(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), v_tex_coord);
         if ((f_flags0 & 1u) == 1u) {
-            f_color = vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
+            return vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
+        } else if (tex_color.a < 0.5) {
+            should_discard = true;
+            return vec4(0);
         } else {
-            if (tex_color.a < 0.5)
-                discard;
-            else
-                f_color = tex_color;
+            return tex_color;
         }
     }
 }
+
+void main() {
+    bool should_discard;
+    vec4 diffuse = diffuse_color(should_discard);
+    if (should_discard) {
+        discard;
+    }
+
+    float cos_ang = dot(v_normal_w, sun_direction.xyz);
+    f_color = cos_ang * diffuse;
+}
+

@@ -15,22 +15,25 @@
 #version 450
 
 #include <wgpu-buffer/shader_shared/include/consts.glsl>
+#include <wgpu-buffer/shader_shared/include/quaternion.glsl>
 #include <wgpu-buffer/global_data/include/global_data.glsl>
 #include <wgpu-buffer/shape_chunk/include/include_shape.glsl>
 
 // Vertex inputs
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec4 color;
-layout(location = 2) in vec2 tex_coord;
-layout(location = 3) in uint flags0;
-layout(location = 4) in uint flags1;
-layout(location = 5) in uint xform_id;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec4 color;
+layout(location = 3) in vec2 tex_coord;
+layout(location = 4) in uint flags0;
+layout(location = 5) in uint flags1;
+layout(location = 6) in uint xform_id;
 
 // Outputs
 layout(location = 0) smooth out vec4 v_color;
-layout(location = 1) smooth out vec2 v_tex_coord;
-layout(location = 2) flat out uint f_flags0;
-layout(location = 3) flat out uint f_flags1;
+layout(location = 1) smooth out vec3 v_normal_w;
+layout(location = 2) smooth out vec2 v_tex_coord;
+layout(location = 3) flat out uint f_flags0;
+layout(location = 4) flat out uint f_flags1;
 
 // Per shape input
 const uint MAX_XFORM_ID = 32;
@@ -70,9 +73,13 @@ void main() {
     }
 
     gl_Position = camera_perspective_m *
-                  matrix_for_xform(transform) *
+                  matrix_for_transform(transform) *
                   matrix_for_xform(xform) *
                   vec4(position, 1.0);
+
+    v_normal_w = (rotation_for_xform(transform) *
+                  rotation_for_xform(xform) *
+                  vec4(normal, 1.0)).xyz;
 
     v_color = color;
     v_tex_coord = tex_coord;
