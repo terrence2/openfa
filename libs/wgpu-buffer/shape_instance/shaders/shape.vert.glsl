@@ -29,11 +29,12 @@ layout(location = 5) in uint flags1;
 layout(location = 6) in uint xform_id;
 
 // Outputs
-layout(location = 0) smooth out vec4 v_color;
-layout(location = 1) smooth out vec3 v_normal_w;
-layout(location = 2) smooth out vec2 v_tex_coord;
-layout(location = 3) flat out uint f_flags0;
-layout(location = 4) flat out uint f_flags1;
+layout(location = 0) smooth out vec4 v_position_w_m;
+layout(location = 1) smooth out vec4 v_color;
+layout(location = 2) smooth out vec3 v_normal_w;
+layout(location = 3) smooth out vec2 v_tex_coord;
+layout(location = 4) flat out uint f_flags0;
+layout(location = 5) flat out uint f_flags1;
 
 // Per shape input
 const uint MAX_XFORM_ID = 32;
@@ -72,10 +73,10 @@ void main() {
         }
     }
 
-    gl_Position = camera_perspective_m *
-                  matrix_for_transform(transform) *
-                  matrix_for_xform(xform) *
-                  vec4(position, 1.0);
+    v_position_w_m = camera_perspective_m *
+                     matrix_for_transform(transform) *
+                     matrix_for_xform(xform) *
+                     vec4(position, 1.0);
 
     v_normal_w = (rotation_for_xform(transform) *
                   rotation_for_xform(xform) *
@@ -87,4 +88,6 @@ void main() {
     uint base_flag = gl_InstanceIndex * 2;
     f_flags0 = flags0 & shape_flags[base_flag + 0];
     f_flags1 = flags1 & shape_flags[base_flag + 1];
+
+    gl_Position = v_position_w_m;
 }

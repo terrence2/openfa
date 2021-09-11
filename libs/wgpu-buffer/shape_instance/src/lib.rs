@@ -28,7 +28,7 @@ use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, UploadTracker};
 use legion::*;
-use nalgebra::{convert, Matrix4, UnitQuaternion};
+use nalgebra::Matrix4;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
 use parking_lot::RwLock;

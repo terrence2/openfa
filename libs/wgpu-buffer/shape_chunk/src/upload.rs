@@ -25,6 +25,7 @@ use i386::Interpreter;
 use lazy_static::lazy_static;
 use log::trace;
 use memoffset::offset_of;
+use nalgebra::Vector3;
 use pal::Palette;
 use parking_lot::RwLock;
 use pic::Pic;
@@ -130,6 +131,7 @@ impl VertexFlags {
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
 pub struct Vertex {
     position: [f32; 3],
+    normal: [f32; 3],
     color: [f32; 4],
     tex_coord: [f32; 2],
     flags0: u32,
@@ -150,35 +152,41 @@ impl Vertex {
                     offset: 0,
                     shader_location: 0,
                 },
+                // normal
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float3,
+                    offset: 12,
+                    shader_location: 1,
+                },
                 // color
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float4,
-                    offset: 12,
-                    shader_location: 1,
+                    offset: 24,
+                    shader_location: 2,
                 },
                 // tex_coord
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Float2,
-                    offset: 28,
-                    shader_location: 2,
+                    offset: 40,
+                    shader_location: 3,
                 },
                 // flags0
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint,
-                    offset: 36,
-                    shader_location: 3,
+                    offset: 48,
+                    shader_location: 4,
                 },
                 // flags1
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint,
-                    offset: 40,
-                    shader_location: 4,
+                    offset: 52,
+                    shader_location: 5,
                 },
                 // xform_id
                 wgpu::VertexAttribute {
                     format: wgpu::VertexFormat::Uint,
-                    offset: 44,
-                    shader_location: 5,
+                    offset: 56,
+                    shader_location: 6,
                 },
             ],
         };
@@ -189,22 +197,26 @@ impl Vertex {
         );
         assert_eq!(
             tmp.attributes[1].offset,
-            offset_of!(Vertex, color) as wgpu::BufferAddress
+            offset_of!(Vertex, normal) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[2].offset,
-            offset_of!(Vertex, tex_coord) as wgpu::BufferAddress
+            offset_of!(Vertex, color) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[3].offset,
-            offset_of!(Vertex, flags0) as wgpu::BufferAddress
+            offset_of!(Vertex, tex_coord) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[4].offset,
-            offset_of!(Vertex, flags1) as wgpu::BufferAddress
+            offset_of!(Vertex, flags0) as wgpu::BufferAddress
         );
         assert_eq!(
             tmp.attributes[5].offset,
+            offset_of!(Vertex, flags1) as wgpu::BufferAddress
+        );
+        assert_eq!(
+            tmp.attributes[6].offset,
             offset_of!(Vertex, xform_id) as wgpu::BufferAddress
         );
 
@@ -215,9 +227,10 @@ impl Vertex {
 impl Default for Vertex {
     fn default() -> Self {
         Self {
-            position: [0f32, 0f32, 0f32],
+            position: [0f32; 3],
+            normal: [0f32; 3],
             color: [0.75f32, 0.5f32, 0f32, 1f32],
-            tex_coord: [0f32, 0f32],
+            tex_coord: [0f32; 2],
             flags0: 0,
             flags1: 0,
             xform_id: 0,
@@ -767,6 +780,8 @@ impl<'a> ShapeUploader<'a> {
                 // face when we move this into the verts list.
                 color: [0.75f32, 0.5f32, 0f32, 1f32],
                 tex_coord: [0f32, 0f32],
+                // Normal may be a vertex normal or face normal, depending.
+                normal: [0f32; 3],
                 // Base position, flags, and the xform are constant
                 // for this entire buffer, independent of the face.
                 position,
@@ -784,6 +799,16 @@ impl<'a> ShapeUploader<'a> {
     }
 
     fn push_facet(&mut self, facet: &Facet, override_flags: Option<VertexFlags>) -> Result<()> {
+        // Compute face normal
+        let p0 = &self.vert_pool[facet.indices[0] as usize].position;
+        let p1 = &self.vert_pool[facet.indices[1] as usize].position;
+        let p2 = &self.vert_pool[facet.indices[2] as usize].position;
+        let v0 = Vector3::new(p0[0], p0[1], p0[2]);
+        let v1 = Vector3::new(p1[0], p1[1], p1[2]);
+        let v2 = Vector3::new(p2[0], p2[1], p2[2]);
+        let n = (v0 - v1).cross(&(v2 - v1)).normalize();
+        let normal = [n.x, n.y, n.z];
+
         // Load all vertices in this facet into the vertex upload
         // buffer, copying in the color and texture coords for each
         // face. The layout appears to be for triangle fans.
@@ -814,6 +839,10 @@ impl<'a> ShapeUploader<'a> {
                 if let Some(flags) = override_flags {
                     v.flags0 = (flags.bits() & 0xFFFF_FFFF) as u32;
                     v.flags1 = (flags.bits() >> 32) as u32;
+                }
+                // Set normal if not set by vertex normals
+                if v.normal[0] == 0. && v.normal[1] == 0. && v.normal[2] == 0. {
+                    v.normal = normal;
                 }
                 v.color = self.palette.rgba_f32(facet.color as usize)?;
                 if facet.flags.contains(FacetFlags::FILL_BACKGROUND)
@@ -1188,6 +1217,16 @@ impl<'a> ShapeUploader<'a> {
 
                 Instr::VertexBuf(vert_buf) => {
                     self.load_vertex_buffer(&analysis.prop_man.props, vert_buf);
+                }
+
+                Instr::VertexNormal(vert_extra) => {
+                    let n = Vector3::new(
+                        f32::from(vert_extra.norm[0]),
+                        f32::from(vert_extra.norm[1]),
+                        f32::from(vert_extra.norm[2]),
+                    )
+                    .normalize();
+                    self.vert_pool[vert_extra.index].normal = [n.x, n.y, n.z];
                 }
 
                 Instr::Facet(facet) => {
