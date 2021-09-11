@@ -128,7 +128,7 @@ pub struct T2LayoutInfo {
     t2_info: T2Info,
     t2: T2Terrain,
     adjust: Arc<RwLock<T2Adjustment>>,
-    t2_info_buffer: Arc<Box<wgpu::Buffer>>,
+    t2_info_buffer: Arc<wgpu::Buffer>,
     bind_group: wgpu::BindGroup,
 }
 
@@ -137,7 +137,7 @@ impl T2LayoutInfo {
         t2_info: T2Info,
         t2: T2Terrain,
         adjust: Arc<RwLock<T2Adjustment>>,
-        t2_info_buffer: Arc<Box<wgpu::Buffer>>,
+        t2_info_buffer: Arc<wgpu::Buffer>,
         bind_group: wgpu::BindGroup,
     ) -> Self {
         Self {
@@ -444,7 +444,7 @@ impl T2TileSet {
                 },
             },
             ArcTextureCopyView {
-                texture: Arc::new(Box::new(height_texture)),
+                texture: Arc::new(height_texture),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
@@ -503,7 +503,7 @@ impl T2TileSet {
                 },
             },
             ArcTextureCopyView {
-                texture: Arc::new(Box::new(base_color_texture)),
+                texture: Arc::new(base_color_texture),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
@@ -560,7 +560,7 @@ impl T2TileSet {
                 },
             },
             ArcTextureCopyView {
-                texture: Arc::new(Box::new(index_texture)),
+                texture: Arc::new(index_texture),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
@@ -726,11 +726,11 @@ impl T2TileSet {
 
         let mapper = T2Mapper::new(&t2, &self.shared_adjustment.read());
         let t2_info = T2Info::new(mapper.base_rad_f32(), mapper.extent_rad_f32(), index_size);
-        let t2_info_buffer = Arc::new(Box::new(gpu.push_data(
+        let t2_info_buffer = Arc::new(gpu.push_data(
             "t2-info-buffer",
             &t2_info,
             wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        )));
+        ));
 
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("t2-height-bind-group"),
