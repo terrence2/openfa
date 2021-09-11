@@ -22,11 +22,11 @@ use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
-use geodesy::{GeoSurface, Graticule, Target};
+use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::{
     make_frame_graph,
-    size::{AbsSize, Size},
+    size::{AbsSize, LeftBound, Size},
     Gpu,
 };
 use input::{InputController, InputSystem};
@@ -50,7 +50,10 @@ use t2_tile_set::{T2Adjustment, T2TileSet};
 use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
-use widget::{Color, Extent, Label, Labeled, PositionH, PositionV, WidgetBuffer};
+use widget::{
+    Border, Color, Expander, Extent, Label, Labeled, PositionH, PositionV, VerticalBox,
+    WidgetBuffer,
+};
 use winit::window::Window;
 use world::WorldRenderPass;
 use xt::TypeManager;
@@ -382,23 +385,56 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     ///////////////////////////////////////////////////////////
     // UI Setup
-    let version_label = Label::new("OpenFA v0.1")
-        .with_font(widgets.read().font_context().font_id_for_name("fira-sans"))
-        .with_color(Color::Green)
-        .with_size(Size::from_pts(8.))
-        .with_pre_blended_text()
+    let sim_time = Label::new("").with_color(Color::White).wrapped();
+    let camera_direction = Label::new("").with_color(Color::White).wrapped();
+    let camera_position = Label::new("").with_color(Color::White).wrapped();
+    let camera_fov = Label::new("").with_color(Color::White).wrapped();
+    let controls_box = VerticalBox::new_with_children(&[
+        sim_time.clone(),
+        camera_direction.clone(),
+        camera_position.clone(),
+        camera_fov.clone(),
+    ])
+    .with_background_color(Color::Gray.darken(3.).opacity(0.8))
+    .with_glass_background()
+    .with_padding(Border::new(
+        Size::zero(),
+        Size::from_px(8.),
+        Size::from_px(24.),
+        Size::from_px(8.),
+    ))
+    .wrapped();
+    let expander = Expander::new_with_child("☰ OpenFA v0.0", controls_box)
+        .with_color(Color::White)
+        .with_background_color(Color::Gray.darken(3.).opacity(0.8))
+        .with_glass_background()
+        .with_border(
+            Color::Black,
+            Border::new(
+                Size::zero(),
+                Size::from_px(2.),
+                Size::from_px(2.),
+                Size::zero(),
+            ),
+        )
+        .with_padding(Border::new(
+            Size::from_px(2.),
+            Size::from_px(3.),
+            Size::from_px(3.),
+            Size::from_px(2.),
+        ))
         .wrapped();
     widgets
         .read()
         .root()
         .write()
-        .add_child("version", version_label)
+        .add_child("controls", expander)
         .set_float(PositionH::End, PositionV::Top);
 
-    let fps_label = Label::new("fps")
+    let fps_label = Label::new("")
         .with_font(widgets.read().font_context().font_id_for_name("sans"))
         .with_color(Color::Red)
-        .with_size(Size::from_pts(13.))
+        .with_size(Size::from_pts(13.0))
         .with_pre_blended_text()
         .wrapped();
     widgets
@@ -516,25 +552,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 )?;
                 /*
                    println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
-                   let scale = if info
-                       .xt()
-                       .ot()
-                       .shape
-                       .as_ref()
-                       .expect("a shape file")
-                       .starts_with("BNK")
-                   {
-                       2f32
-                   } else {
-                       4f32
-                   };
-                   let mut p = info.position();
-                   let ns_ft = t2_buffer.t2().extent_north_south_in_ft();
-                   p.coords[2] = ns_ft - p.coords[2]; // flip z for vulkan
-                   p *= FEET_TO_HM_32;
-                   p.coords[1] = /*t2_buffer.borrow().ground_height_at_tile(&p)*/
-                       -aabb[1][1] * scale * FEET_TO_HM_32;
-                   positions.push(p);
                    let sh_name = info
                        .xt()
                        .ot()
@@ -547,14 +564,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                    } else {
                        names.push(sh_name);
                    }
-                   galaxy.create_building(
-                       slot_id,
-                       shape_id,
-                       shape_instance_buffer.part(shape_id),
-                       scale,
-                       p,
-                       info.angle(),
-                   )?;
                 */
             };
         }
@@ -565,57 +574,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .write()
         .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);
     println!("Loading scene took: {:?}", start.elapsed());
-
-    /*
-    let mut camera = UfoCamera::new(gpu.read().aspect_ratio(), 0.1f64, 3.4e+38f64);
-    camera.set_position(6_378.0, 0.0, 0.0);
-    camera.set_rotation(&Vector3::new(0.0, 0.0, 1.0), PI / 2.0);
-    camera.apply_rotation(&Vector3::new(0.0, 1.0, 0.0), PI);
-    */
-
-    arcball.write().set_target(Graticule::<GeoSurface>::new(
-        degrees!(0),
-        degrees!(0),
-        meters!(2),
-    ));
-    arcball.write().set_eye_relative(Graticule::<Target>::new(
-        degrees!(10),
-        degrees!(0),
-        meters!(15),
-    ))?;
-    // London: 51.5,-0.1
-    // arcball.write().set_target(Graticule::<GeoSurface>::new(
-    //     degrees!(51.5),
-    //     degrees!(-0.1),
-    //     meters!(8000.),
-    // ));
-    // arcball.write().set_eye_relative(Graticule::<Target>::new(
-    //     degrees!(11.5),
-    //     degrees!(869.5),
-    //     meters!(67668.5053),
-    // ))?;
-    // everest: 27.9880704,86.9245623
-    // arcball.write().set_target(Graticule::<GeoSurface>::new(
-    //     degrees!(27.9880704),
-    //     degrees!(-86.9245623), // FIXME: wat?
-    //     meters!(8000.),
-    // ));
-    // arcball.write().set_eye_relative(Graticule::<Target>::new(
-    //     degrees!(11.5),
-    //     degrees!(869.5),
-    //     meters!(67668.5053),
-    // ))?;
-    // ISS: 408km up
-    // arcball.write().set_target(Graticule::<GeoSurface>::new(
-    //     degrees!(27.9880704),
-    //     degrees!(-86.9245623), // FIXME: wat?
-    //     meters!(408_000.),
-    // ));
-    // arcball.write().set_eye_relative(Graticule::<Target>::new(
-    //     degrees!(58),
-    //     degrees!(668.0),
-    //     meters!(1308.7262),
-    // ))?;
 
     {
         let interp = &mut interpreter.write();
@@ -720,14 +678,22 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             gpu.write().on_resize(sz.width as i64, sz.height as i64)?;
         }
 
+        sim_time
+            .write()
+            .set_text(format!("Date: {}", orrery.read().get_time()));
+        camera_direction
+            .write()
+            .set_text(format!("Eye: {}", arcball.read().eye()));
+        camera_position
+            .write()
+            .set_text(format!("Position: {}", arcball.read().target(),));
+        camera_fov.write().set_text(format!(
+            "FoV: {}",
+            degrees!(arcball.read().camera().fov_y()),
+        ));
         let frame_time = now.elapsed();
         let ts = format!(
-            "eye_rel: {} | tgt: {} | asl: {}, fov: {} || Date: {:?} || frame: {}.{}ms",
-            arcball.read().get_eye_relative(),
-            arcball.read().get_target(),
-            arcball.read().get_target().distance,
-            degrees!(arcball.read().camera().fov_y()),
-            orrery.read().get_time(),
+            "frame: {}.{}ms",
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
         );
