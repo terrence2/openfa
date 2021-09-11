@@ -6,3 +6,6 @@ camera.set_eye_latitude_radians(0.174531);
 camera.set_eye_longitude_radians(17.514379);
 camera.set_eye_distance_meters(1081.399373);
 orrery.set_unix_ms(-168993517833.82);
+
+// make it less dawn
+await timeline.ease_out_to(orrery.set_unix_ms, -168993517833.82, -169016546484.274, 10.0);
