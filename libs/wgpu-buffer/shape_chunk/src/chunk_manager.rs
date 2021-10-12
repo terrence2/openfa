@@ -73,7 +73,8 @@ impl ShapeChunkBuffer {
         catalog: &Catalog,
         gpu: &mut gpu::Gpu,
     ) -> Result<(ChunkId, ShapeId)> {
-        if let Some(&shape_id) = self.name_to_shape_map.get(name) {
+        let cache_key = format!("{}:{}", catalog.default_label(), name);
+        if let Some(&shape_id) = self.name_to_shape_map.get(&cache_key) {
             let chunk_id = self.shape_to_chunk_map[&shape_id];
             return Ok((chunk_id, shape_id));
         }
@@ -100,7 +101,7 @@ impl ShapeChunkBuffer {
             .expect("an open chunk")
             .upload_shape(name, analysis, &sh, &selection, palette, catalog)?;
 
-        self.name_to_shape_map.insert(name.to_owned(), shape_id);
+        self.name_to_shape_map.insert(cache_key, shape_id);
         self.shape_to_chunk_map.insert(shape_id, chunk_id);
         Ok((chunk_id, shape_id))
     }

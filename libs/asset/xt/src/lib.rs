@@ -124,7 +124,8 @@ impl TypeManager {
     }
 
     pub fn load(&self, name: &str, catalog: &Catalog) -> Result<TypeRef> {
-        if let Some(item) = self.cache.borrow().get(name) {
+        let cache_key = format!("{}:{}", catalog.default_label(), name);
+        if let Some(item) = self.cache.borrow().get(&cache_key) {
             trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());
         };
@@ -151,13 +152,9 @@ impl TypeManager {
             }
             _ => bail!("resource: unknown type {}", name),
         };
-        self.cache
-            .borrow_mut()
-            .insert(name.to_owned(), TypeRef::new(item));
-        if let Some(item) = self.cache.borrow().get(name) {
-            return Ok(item.clone());
-        }
-        panic!("unreachable")
+        let xt = TypeRef::new(item);
+        self.cache.borrow_mut().insert(cache_key, xt.clone());
+        Ok(xt)
     }
 }
 

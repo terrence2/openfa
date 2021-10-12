@@ -20,6 +20,8 @@ use camera::{ArcBallCamera, Camera};
 use catalog::DirectoryDrawer;
 use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
+use fnt::Fnt;
+use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
@@ -87,13 +89,16 @@ struct System {
     adjust: Arc<RwLock<T2Adjustment>>,
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
+    interpreter: Arc<RwLock<Interpreter>>,
+    demo_label: Arc<RwLock<Label>>,
 }
 
 #[inject_nitrous_module]
 impl System {
     pub fn new(
-        interpreter: &mut Interpreter,
+        interpreter: Arc<RwLock<Interpreter>>,
         arcball: Arc<RwLock<ArcBallCamera>>,
+        demo_label: Arc<RwLock<Label>>,
     ) -> Arc<RwLock<Self>> {
         let system = Arc::new(RwLock::new(Self {
             exit: false,
@@ -103,8 +108,15 @@ impl System {
             adjust: Arc::new(RwLock::new(T2Adjustment::default())),
             target_offset: 0,
             targets: Vec::new(),
+            interpreter: interpreter.clone(),
+            demo_label: demo_label.clone(),
         }));
-        interpreter.put_global("system", Value::Module(system.clone()));
+        interpreter
+            .write()
+            .put_global("demo", Value::Module(demo_label.clone()));
+        interpreter
+            .write()
+            .put_global("system", Value::Module(system.clone()));
         system
     }
 
@@ -117,6 +129,7 @@ impl System {
                 bindings.bind("q", "system.exit()");
                 bindings.bind("p", "system.toggle_pin_camera(pressed)");
                 bindings.bind("l", "widget.dump_glyphs(pressed)");
+                bindings.bind("d", "system.replay_demo(pressed)");
 
                 bindings.bind("j", "system.terrain_adjust_lon_base(pressed, -1.0)");
                 bindings.bind("l", "system.terrain_adjust_lon_base(pressed, 1.0)");
@@ -221,6 +234,26 @@ impl System {
             let (name, pos) = &self.targets[self.target_offset as usize];
             self.arcball.write().set_target(*pos);
             println!("target: {}", name);
+        }
+    }
+
+    #[method]
+    pub fn replay_demo(&mut self, pressed: bool) {
+        if pressed {
+            self.exec_async("demo.n2o");
+        }
+    }
+
+    #[method]
+    pub fn exec_async(&mut self, exec_file: &str) {
+        match std::fs::read_to_string(exec_file) {
+            Ok(code) => {
+                let rv = self.interpreter.write().interpret_async(code);
+                println!("Execution Completed: {:?}", rv);
+            }
+            Err(e) => {
+                println!("Read file for {:?}: {}", exec_file, e);
+            }
         }
     }
 
@@ -381,10 +414,12 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         composite,
     )?;
 
-    let system = System::new(&mut interpreter.write(), arcball.clone());
-
     ///////////////////////////////////////////////////////////
     // UI Setup
+    let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
+    let font = FntFont::from_fnt(&fnt)?;
+    widgets.write().add_font("HUD11", font);
+
     let sim_time = Label::new("").with_color(Color::White).wrapped();
     let camera_direction = Label::new("").with_color(Color::White).wrapped();
     let camera_position = Label::new("").with_color(Color::White).wrapped();
@@ -426,7 +461,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .wrapped();
     widgets
         .read()
-        .root()
+        .root_container()
         .write()
         .add_child("controls", expander)
         .set_float(PositionH::End, PositionV::Top);
@@ -439,10 +474,36 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         .wrapped();
     widgets
         .read()
-        .root()
+        .root_container()
         .write()
         .add_child("fps", fps_label.clone())
         .set_float(PositionH::Start, PositionV::Bottom);
+
+    let demo_label = Label::new("")
+        .with_font(widgets.read().font_context().font_id_for_name("HUD11"))
+        .with_color(Color::White)
+        .with_size(Size::from_pts(18.0))
+        .wrapped();
+    let demo_box = VerticalBox::new_with_children(&[demo_label.clone()])
+        .with_background_color(Color::Gray.darken(3.).opacity(0.8))
+        .with_glass_background()
+        .with_border(Color::Black, Border::new_uniform(Size::from_px(2.)))
+        .with_padding(Border::new_uniform(Size::from_px(8.)))
+        .wrapped();
+    widgets
+        .read()
+        .root_container()
+        .write()
+        .add_child("demo", demo_box.clone())
+        .set_float(PositionH::Start, PositionV::Bottom);
+    widgets
+        .read()
+        .root_container()
+        .write()
+        .packing_mut("demo")?
+        .set_expand(false);
+
+    let system = System::new(interpreter.clone(), arcball.clone(), demo_label);
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
@@ -475,23 +536,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
 
-        // let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
-        //     "BNK2.SH",
-        //     DrawSelection::NormalModel,
-        //     &system_palette,
-        //     &catalog,
-        //     &mut gpu.write(),
-        // )?;
         shapes.write().ensure_uploaded(&mut gpu.write())?;
-        // use nalgebra::UnitQuaternion;
-        // galaxy.create_building(
-        //     slot_id,
-        //     shape_id,
-        //     shapes.read().part(shape_id),
-        //     4.,
-        //     Graticule::new(degrees!(0), degrees!(0), meters!(0)),
-        //     &UnitQuaternion::identity(),
-        // )?;
 
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
@@ -514,6 +559,39 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             } else if let Ok(_nt) = info.xt().nt() {
                 //galaxy.create_ground_mover(nt)
                 //unimplemented!()
+                let scale = if info
+                    .xt()
+                    .ot()
+                    .shape
+                    .as_ref()
+                    .expect("a shape file")
+                    .starts_with("BNK")
+                {
+                    2f32
+                } else {
+                    4f32
+                };
+                let grat = t2_mapper.fa2grat(
+                    info.position(),
+                    shapes
+                        .read()
+                        .part(shape_id)
+                        .widgets()
+                        .read()
+                        .offset_to_ground()
+                        * scale,
+                );
+                system
+                    .write()
+                    .add_target(&info.name().unwrap_or_else(|| "<unknown>".to_owned()), grat);
+                galaxy.create_building(
+                    slot_id,
+                    shape_id,
+                    shapes.read().part(shape_id),
+                    scale,
+                    grat,
+                    info.angle(),
+                )?;
             } else if info.xt().jt().is_ok() {
                 bail!("did not expect a projectile in MM objects")
             } else {
@@ -568,6 +646,61 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             };
         }
     }
+
+    for (offset, label) in [
+        "unpacked:USNF",
+        "unpacked:MF",
+        "unpacked:USNF97",
+        "unpacked:ATF",
+        "unpacked:ATFNATO",
+        "unpacked:ATFGOLD",
+        "unpacked:FA",
+    ]
+    .iter()
+    .enumerate()
+    {
+        catalog.set_default_label(label);
+        let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        let mut pts = catalog.find_matching_names("*.PT")?;
+        let side_len = (pts.len() as f64).sqrt().ceil() as usize;
+        const KEY: &str = "F22.PT";
+        pts.sort_by(|a, b| {
+            if a == KEY {
+                std::cmp::Ordering::Less
+            } else if b == KEY {
+                std::cmp::Ordering::Greater
+            } else {
+                a.cmp(b)
+            }
+        });
+        for (i, pt_name) in pts.iter().enumerate() {
+            let xi = i % side_len;
+            let yi = i / side_len;
+            let xt = type_manager.load(pt_name, &catalog)?;
+            let pt = xt.pt()?;
+            let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
+                pt.nt.ot.shape.as_ref().unwrap(),
+                DrawSelection::NormalModel,
+                &system_palette,
+                &catalog,
+                &mut gpu.write(),
+            )?;
+            galaxy.create_building(
+                slot_id,
+                shape_id,
+                shapes.read().part(shape_id),
+                2.,
+                Graticule::new(
+                    degrees!(0.003 * xi as f64),
+                    degrees!(0.003 * yi as f64),
+                    meters!(1500.0 - 200.0 * offset as f64),
+                ),
+                &nalgebra::UnitQuaternion::identity(),
+            )?;
+        }
+        shapes.write().ensure_uploaded(&mut gpu.write())?;
+    }
+
     shapes.write().ensure_uploaded(&mut gpu.write())?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
@@ -652,8 +785,8 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
         frame_graph.terrain_mut().make_upload_buffer(
-            arcball.read().camera(),
-            system.write().get_camera(arcball.read().camera()),
+            arcball.read_recursive().camera(),
+            system.write().get_camera(arcball.read_recursive().camera()),
             catalog.clone(),
             &mut async_rt,
             &mut gpu.write(),
@@ -692,11 +825,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             degrees!(arcball.read().camera().fov_y()),
         ));
         let frame_time = now.elapsed();
-        let ts = format!(
-            "frame: {}.{}ms",
-            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
-            frame_time.subsec_micros(),
-        );
+        let ts = format!("fps: {:0.2}", 1. / frame_time.as_secs_f64());
         fps_label.write().set_text(ts);
     }
 

@@ -83,6 +83,8 @@ atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
 composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
+fnt = { path = "libs/asset/fnt" }
+font_fnt = { path = "libs/wgpu-buffer/font_fnt" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
 geodesy = { path = "libs/nitrogen/util/geodesy" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
