@@ -860,11 +860,14 @@ impl<'a> ShapeUploader<'a> {
                     );
                     let frame = self.active_frame.as_ref().unwrap();
                     let (base_s, base_t) = frame.raw_base();
-                    println!(
-                        "Base: {}x{} TC: {}x{}",
-                        base_s, base_t, tex_coord[0], tex_coord[1]
-                    );
-                    v.tex_coord = [base_s + tex_coord[0] as u32, base_t - tex_coord[1] as u32];
+                    // println!(
+                    //     "Base: {}x{} TC: {}x{}",
+                    //     base_s, base_t, tex_coord[0], tex_coord[1]
+                    // );
+                    v.tex_coord = [
+                        base_s + tex_coord[0] as u32,
+                        base_t.saturating_sub(tex_coord[1] as u32),
+                    ];
                 }
                 self.vertices.push(v);
             }
