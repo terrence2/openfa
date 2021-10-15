@@ -23,7 +23,7 @@
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec4 color;
-layout(location = 3) in vec2 tex_coord;
+layout(location = 3) in uvec2 tex_coord;
 layout(location = 4) in uint flags0;
 layout(location = 5) in uint flags1;
 layout(location = 6) in uint xform_id;
@@ -35,6 +35,13 @@ layout(location = 2) smooth out vec3 v_normal_w;
 layout(location = 3) smooth out vec2 v_tex_coord;
 layout(location = 4) flat out uint f_flags0;
 layout(location = 5) flat out uint f_flags1;
+
+// Chunk group
+//layout(set = 2, binding = 0) uniform texture2D chunk_mega_atlas_texture;
+//layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
+layout(set = 2, binding = 2) uniform ChunkMegaAtlasProperties {
+    uvec4 chunk_atlas_size;
+};
 
 // Per shape input
 const uint MAX_XFORM_ID = 32;
@@ -83,7 +90,10 @@ void main() {
                   vec4(normal, 1.0)).xyz;
 
     v_color = color;
-    v_tex_coord = tex_coord;
+    v_tex_coord = vec2(
+        float(tex_coord.x) / float(chunk_atlas_size.x),
+        float(tex_coord.y) / float(chunk_atlas_size.y)
+    );
 
     uint base_flag = gl_InstanceIndex * 2;
     f_flags0 = flags0 & shape_flags[base_flag + 0];

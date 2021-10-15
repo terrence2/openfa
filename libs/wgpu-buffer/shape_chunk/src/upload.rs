@@ -12,23 +12,23 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{
-    draw_state::DrawState,
-    texture_atlas::{Frame, MegaAtlas},
-};
+use crate::draw_state::DrawState;
 use absolute_unit::{feet, Feet, Length};
 use anyhow::{anyhow, bail, ensure, Result};
+use atlas::{AtlasPacker, Frame};
 use bitflags::bitflags;
 use catalog::Catalog;
 use geometry::Aabb;
+use gpu::Gpu;
 use i386::Interpreter;
+use image::Rgba;
 use lazy_static::lazy_static;
 use log::trace;
 use memoffset::offset_of;
 use nalgebra::Vector3;
 use pal::Palette;
 use parking_lot::RwLock;
-use pic::Pic;
+use pic_uploader::PicUploader;
 use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
 use std::{
     collections::{HashMap, HashSet},
@@ -133,7 +133,7 @@ pub struct Vertex {
     position: [f32; 3],
     normal: [f32; 3],
     color: [f32; 4],
-    tex_coord: [f32; 2],
+    tex_coord: [u32; 2], // pixel offset
     flags0: u32,
     flags1: u32,
     xform_id: u32,
@@ -166,7 +166,7 @@ impl Vertex {
                 },
                 // tex_coord
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float2,
+                    format: wgpu::VertexFormat::Uint2,
                     offset: 40,
                     shader_location: 3,
                 },
@@ -230,7 +230,7 @@ impl Default for Vertex {
             position: [0f32; 3],
             normal: [0f32; 3],
             color: [0.75f32, 0.5f32, 0f32, 1f32],
-            tex_coord: [0f32; 2],
+            tex_coord: [0u32; 2],
             flags0: 0,
             flags1: 0,
             xform_id: 0,
@@ -722,6 +722,7 @@ pub struct ShapeUploader<'a> {
     aabb_max: [f32; 3],
     vert_pool: Vec<Vertex>,
     vertices: Vec<Vertex>,
+    loaded_frames: HashMap<String, Frame>,
     active_frame: Option<Frame>,
 }
 
@@ -735,6 +736,7 @@ impl<'a> ShapeUploader<'a> {
             aabb_max: [f32::NEG_INFINITY; 3],
             vert_pool: Vec::new(),
             vertices: Vec::new(),
+            loaded_frames: HashMap::new(),
             active_frame: None,
         }
     }
@@ -779,7 +781,7 @@ impl<'a> ShapeUploader<'a> {
                 // Color and Tex Coords will be filled out by the
                 // face when we move this into the verts list.
                 color: [0.75f32, 0.5f32, 0f32, 1f32],
-                tex_coord: [0f32, 0f32],
+                tex_coord: [0u32; 2],
                 // Normal may be a vertex normal or face normal, depending.
                 normal: [0f32; 3],
                 // Base position, flags, and the xform are constant
@@ -857,7 +859,12 @@ impl<'a> ShapeUploader<'a> {
                         "no frame active at facet with texcoords defined"
                     );
                     let frame = self.active_frame.as_ref().unwrap();
-                    v.tex_coord = frame.tex_coord_at(tex_coord);
+                    let (base_s, base_t) = frame.raw_base();
+                    println!(
+                        "Base: {}x{} TC: {}x{}",
+                        base_s, base_t, tex_coord[0], tex_coord[1]
+                    );
+                    v.tex_coord = [base_s + tex_coord[0] as u32, base_t - tex_coord[1] as u32];
                 }
                 self.vertices.push(v);
             }
@@ -1183,7 +1190,9 @@ impl<'a> ShapeUploader<'a> {
         sh: &RawShape,
         analysis: AnalysisResults,
         selection: &DrawSelection,
-        atlas: &mut MegaAtlas,
+        pic_uploader: &mut PicUploader,
+        atlas_packer: &mut AtlasPacker<Rgba<u8>>,
+        gpu: &Gpu,
     ) -> Result<(Arc<RwLock<ShapeWidgets>>, Vec<Vertex>)> {
         trace!("ShapeUploader::draw_model: {}", self.name);
         let mut callback = |_pc: &ProgramCounter, instr: &Instr| {
@@ -1210,9 +1219,16 @@ impl<'a> ShapeUploader<'a> {
 
                 Instr::TextureRef(texture) => {
                     let filename = texture.filename.to_uppercase();
-                    let data = self.catalog.read_name_sync(&filename)?;
-                    let pic = Pic::from_bytes(&data)?;
-                    self.active_frame = Some(atlas.push(&filename, &pic, &data, self.palette)?);
+                    if let Some(frame) = self.loaded_frames.get(&filename) {
+                        self.active_frame = Some(*frame);
+                    } else {
+                        let data = self.catalog.read_name_sync(&filename)?;
+                        let (buffer, w, h, stride) =
+                            pic_uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
+                        let frame = atlas_packer.push_buffer(buffer, w, h, stride)?;
+                        self.loaded_frames.insert(filename, frame);
+                        self.active_frame = Some(frame);
+                    }
                 }
 
                 Instr::VertexBuf(vert_buf) => {

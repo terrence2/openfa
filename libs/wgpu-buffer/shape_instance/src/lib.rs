@@ -42,6 +42,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use tokio::runtime::Runtime;
 use universe::component::{Rotation, Scale, Transform};
 
 thread_local! {
@@ -113,7 +114,7 @@ impl ShapeInstanceBuffer {
                     ],
                 });
 
-        let chunk_man = ShapeChunkBuffer::new(gpu.device())?;
+        let chunk_man = ShapeChunkBuffer::new(gpu)?;
 
         let vert_shader =
             gpu.create_shader_module("shape.vert", include_bytes!("../target/shape.vert.spirv"))?;
@@ -224,18 +225,23 @@ impl ShapeInstanceBuffer {
         None
     }
 
+    pub fn set_shared_palette(&mut self, palette: &Palette, gpu: &Gpu) {
+        self.chunk_man.set_shared_palette(palette, gpu);
+    }
+
     pub fn upload_and_allocate_slot(
         &mut self,
         name: &str,
         selection: DrawSelection,
-        palette: &Palette,
         catalog: &Catalog,
         gpu: &mut Gpu,
+        async_rt: &Runtime,
+        tracker: &mut UploadTracker,
     ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
             .chunk_man
-            .upload_shape(name, selection, palette, catalog, gpu)?;
+            .upload_shape(name, selection, catalog, gpu, async_rt, tracker)?;
 
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -266,8 +272,13 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(&mut self, gpu: &mut Gpu) -> Result<()> {
-        self.chunk_man.finish_open_chunks(gpu)
+    pub fn ensure_uploaded(
+        &mut self,
+        gpu: &mut Gpu,
+        async_rt: &Runtime,
+        tracker: &mut UploadTracker,
+    ) -> Result<()> {
+        self.chunk_man.finish_open_chunks(gpu, async_rt, tracker)
     }
 
     #[inline]
@@ -458,6 +469,7 @@ mod test {
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
         let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
+        let async_rt = Runtime::new()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -497,6 +509,8 @@ mod test {
                 &atmosphere_buffer.read(),
                 &gpu.read(),
             )?;
+            inst_man.write().set_shared_palette(&palette, &gpu.read());
+            let mut tracker = UploadTracker::default();
             let mut all_chunks = Vec::new();
             let mut all_slots = Vec::new();
             for &fid in files {
@@ -518,9 +532,10 @@ mod test {
                     let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
                         &name,
                         DrawSelection::NormalModel,
-                        &palette,
                         &catalog,
                         &mut gpu.write(),
+                        &async_rt,
+                        &mut tracker,
                     )?;
                     all_chunks.push(chunk_id);
                     all_slots.push(slot_id);

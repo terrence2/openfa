@@ -524,6 +524,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         println!("Loading {}...", name);
         catalog.set_default_label(&catalog.file_label(*mm_fid)?);
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        shapes
+            .write()
+            .set_shared_palette(&system_palette, &gpu.read());
         let raw = catalog.read_sync(*mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
@@ -536,7 +539,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
 
-        shapes.write().ensure_uploaded(&mut gpu.write())?;
+        // shapes.write().ensure_uploaded(&mut gpu.write())?;
 
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
@@ -548,9 +551,10 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 info.xt().ot().shape.as_ref().expect("a shape file"),
                 DrawSelection::NormalModel,
-                &system_palette,
                 &catalog,
                 &mut gpu.write(),
+                &async_rt,
+                &mut tracker,
             )?;
 
             if let Ok(_pt) = info.xt().pt() {
@@ -661,6 +665,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     {
         catalog.set_default_label(label);
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        shapes
+            .write()
+            .set_shared_palette(&system_palette, &gpu.read());
         let mut pts = catalog.find_matching_names("*.PT")?;
         let side_len = (pts.len() as f64).sqrt().ceil() as usize;
         const KEY: &str = "F22.PT";
@@ -681,9 +688,10 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 pt.nt.ot.shape.as_ref().unwrap(),
                 DrawSelection::NormalModel,
-                &system_palette,
                 &catalog,
                 &mut gpu.write(),
+                &async_rt,
+                &mut tracker,
             )?;
             galaxy.create_building(
                 slot_id,
@@ -698,10 +706,12 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 &nalgebra::UnitQuaternion::identity(),
             )?;
         }
-        shapes.write().ensure_uploaded(&mut gpu.write())?;
+        //shapes.write().ensure_uploaded(&mut gpu.write())?;
     }
 
-    shapes.write().ensure_uploaded(&mut gpu.write())?;
+    shapes
+        .write()
+        .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()

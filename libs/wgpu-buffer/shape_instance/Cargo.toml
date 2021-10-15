@@ -10,6 +10,7 @@ legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
+tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }

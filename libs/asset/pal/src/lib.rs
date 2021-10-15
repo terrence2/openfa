@@ -23,8 +23,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn empty() -> Result<Self> {
-        Self::from_bytes(&[])
+    pub fn empty() -> Self {
+        Self::from_bytes(&[]).expect("empty array is infallible")
     }
 
     pub fn grayscale() -> Result<Self> {

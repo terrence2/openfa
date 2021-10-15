@@ -34,13 +34,20 @@ layout(location = 0) out vec4 f_color;
 
 layout(set = 2, binding = 0) uniform texture2D chunk_mega_atlas_texture;
 layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
+//layout(set = 2, binding = 2) uniform ChunkMegaAtlasProperties {
+//    uint chunk_mega_atlas_width;
+//    uint chunk_mega_atlas_height;
+//    uint padding[2];
+//};
 
 //layout(set = 6, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
 //layout(set = 6, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
 //layout(set = 6, binding = 3) uniform sampler2DArray right_tail_art; RIGHT\\d\\d.PIC
 //layout(set = 6, binding = 4) uniform sampler2DArray round_art; ROUND\\d\\d.PIC
 
-vec4 diffuse_color(out bool should_discard) {
+vec4
+diffuse_color(out bool should_discard)
+{
     should_discard = false;
     if ((f_flags0 & 0xFFFFFFFEu) == 0 && f_flags1 == 0) {
         should_discard = true;

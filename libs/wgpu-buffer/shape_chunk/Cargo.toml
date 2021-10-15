@@ -13,16 +13,19 @@ log = "^ 0.4"
 memoffset = "^ 0.6"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
+tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
 zerocopy = "^ 0.5"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 animate = { path = "../../nitrogen/util/animate" }
+atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 catalog = { path = "../../nitrogen/system/catalog" }
 geometry = { path = "../../nitrogen/util/geometry" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
+pic_uploader = { path = "../../util/pic_uploader" }
 sh = { path = "../../asset/sh" }
 
 [dev-dependencies]
