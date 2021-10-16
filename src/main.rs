@@ -17,7 +17,7 @@ use animate::Timeline;
 use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
-use catalog::DirectoryDrawer;
+use catalog::{Catalog, DirectoryDrawer};
 use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fnt::Fnt;
@@ -75,49 +75,63 @@ struct Opt {
     #[structopt(short, long)]
     execute: Option<PathBuf>,
 
-    /// The map file to view
-    #[structopt(name = "NAME", last = true)]
+    /// The map file(s) to view
+    #[structopt(short, long, name = "NAME")]
     map_names: Vec<String>,
+}
+
+#[derive(Debug)]
+struct VisibleWidgets {
+    demo_label: Arc<RwLock<Label>>,
+    sim_time: Arc<RwLock<Label>>,
+    camera_direction: Arc<RwLock<Label>>,
+    camera_position: Arc<RwLock<Label>>,
+    camera_fov: Arc<RwLock<Label>>,
+    fps_label: Arc<RwLock<Label>>,
 }
 
 #[derive(Debug, NitrousModule)]
 struct System {
     exit: bool,
     pin_camera: bool,
-    arcball: Arc<RwLock<ArcBallCamera>>,
-    camera: Camera,
+    visibility_camera: Camera,
+    maybe_update_view: Option<Graticule<GeoSurface>>,
     adjust: Arc<RwLock<T2Adjustment>>,
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
     interpreter: Arc<RwLock<Interpreter>>,
-    demo_label: Arc<RwLock<Label>>,
+    widgets: Arc<RwLock<WidgetBuffer>>,
+    visible_widgets: VisibleWidgets,
 }
 
 #[inject_nitrous_module]
 impl System {
     pub fn new(
+        catalog: &Catalog,
         interpreter: Arc<RwLock<Interpreter>>,
-        arcball: Arc<RwLock<ArcBallCamera>>,
-        demo_label: Arc<RwLock<Label>>,
-    ) -> Arc<RwLock<Self>> {
+        widgets: Arc<RwLock<WidgetBuffer>>,
+    ) -> Result<Arc<RwLock<Self>>> {
+        let visible_widgets = Self::build_gui(catalog, widgets.clone())?;
         let system = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
-            arcball,
-            camera: Default::default(),
+            maybe_update_view: None,
+            visibility_camera: Default::default(),
             adjust: Arc::new(RwLock::new(T2Adjustment::default())),
             target_offset: 0,
             targets: Vec::new(),
             interpreter: interpreter.clone(),
-            demo_label: demo_label.clone(),
+            widgets: widgets.clone(),
+            visible_widgets,
         }));
-        interpreter
-            .write()
-            .put_global("demo", Value::Module(demo_label.clone()));
+        interpreter.write().put_global(
+            "demo",
+            Value::Module(system.read().visible_widgets.demo_label.clone()),
+        );
         interpreter
             .write()
             .put_global("system", Value::Module(system.clone()));
-        system
+        Ok(system)
     }
 
     pub fn add_default_bindings(&mut self, interpreter: &mut Interpreter) -> Result<()> {
@@ -154,6 +168,139 @@ impl System {
             "#,
         )?;
         Ok(())
+    }
+
+    pub fn build_gui(
+        catalog: &Catalog,
+        widgets: Arc<RwLock<WidgetBuffer>>,
+    ) -> Result<VisibleWidgets> {
+        let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
+        let font = FntFont::from_fnt(&fnt)?;
+        widgets.write().add_font("HUD11", font);
+
+        let sim_time = Label::new("").with_color(Color::White).wrapped();
+        let camera_direction = Label::new("").with_color(Color::White).wrapped();
+        let camera_position = Label::new("").with_color(Color::White).wrapped();
+        let camera_fov = Label::new("").with_color(Color::White).wrapped();
+        let controls_box = VerticalBox::new_with_children(&[
+            sim_time.clone(),
+            camera_direction.clone(),
+            camera_position.clone(),
+            camera_fov.clone(),
+        ])
+        .with_background_color(Color::Gray.darken(3.).opacity(0.8))
+        .with_glass_background()
+        .with_padding(Border::new(
+            Size::zero(),
+            Size::from_px(8.),
+            Size::from_px(24.),
+            Size::from_px(8.),
+        ))
+        .wrapped();
+        let expander = Expander::new_with_child("☰ OpenFA v0.0", controls_box)
+            .with_color(Color::White)
+            .with_background_color(Color::Gray.darken(3.).opacity(0.8))
+            .with_glass_background()
+            .with_border(
+                Color::Black,
+                Border::new(
+                    Size::zero(),
+                    Size::from_px(2.),
+                    Size::from_px(2.),
+                    Size::zero(),
+                ),
+            )
+            .with_padding(Border::new(
+                Size::from_px(2.),
+                Size::from_px(3.),
+                Size::from_px(3.),
+                Size::from_px(2.),
+            ))
+            .wrapped();
+        widgets
+            .read()
+            .root_container()
+            .write()
+            .add_child("controls", expander)
+            .set_float(PositionH::End, PositionV::Top);
+
+        let fps_label = Label::new("")
+            .with_font(widgets.read().font_context().font_id_for_name("sans"))
+            .with_color(Color::Red)
+            .with_size(Size::from_pts(13.0))
+            .with_pre_blended_text()
+            .wrapped();
+        widgets
+            .read()
+            .root_container()
+            .write()
+            .add_child("fps", fps_label.clone())
+            .set_float(PositionH::Start, PositionV::Bottom);
+
+        let demo_label = Label::new("")
+            .with_font(widgets.read().font_context().font_id_for_name("HUD11"))
+            .with_color(Color::White)
+            .with_size(Size::from_pts(18.0))
+            .wrapped();
+        let demo_box = VerticalBox::new_with_children(&[demo_label.clone()])
+            .with_background_color(Color::Gray.darken(3.).opacity(0.8))
+            .with_glass_background()
+            .with_border(Color::Black, Border::new_uniform(Size::from_px(2.)))
+            .with_padding(Border::new_uniform(Size::from_px(8.)))
+            .wrapped();
+        widgets
+            .read()
+            .root_container()
+            .write()
+            .add_child("demo", demo_box.clone())
+            .set_float(PositionH::Start, PositionV::Bottom);
+        widgets
+            .read()
+            .root_container()
+            .write()
+            .packing_mut("demo")?
+            .set_expand(false);
+
+        Ok(VisibleWidgets {
+            demo_label,
+            sim_time,
+            camera_direction,
+            camera_position,
+            camera_fov,
+            fps_label,
+        })
+    }
+
+    pub fn track_visible_state(
+        &mut self,
+        frame_time: Duration,
+        orrery: &Orrery,
+        arcball: &mut ArcBallCamera,
+    ) {
+        if let Some(grat) = self.maybe_update_view {
+            arcball.set_target(grat);
+        }
+        self.maybe_update_view = None;
+        self.visible_widgets
+            .sim_time
+            .write()
+            .set_text(format!("Date: {}", orrery.get_time()));
+        self.visible_widgets
+            .camera_direction
+            .write()
+            .set_text(format!("Eye: {}", arcball.eye()));
+        self.visible_widgets
+            .camera_position
+            .write()
+            .set_text(format!("Position: {}", arcball.target(),));
+        self.visible_widgets
+            .camera_fov
+            .write()
+            .set_text(format!("FoV: {}", degrees!(arcball.camera().fov_y()),));
+        self.visible_widgets
+            .fps_label
+            .write()
+            .set_text(format!("fps: {:0.2}", 1. / frame_time.as_secs_f64()));
     }
 
     pub fn t2_adjustment(&self) -> Arc<RwLock<T2Adjustment>> {
@@ -218,7 +365,7 @@ impl System {
             self.target_offset %= self.targets.len() as isize;
 
             let (name, pos) = &self.targets[self.target_offset as usize];
-            self.arcball.write().set_target(*pos);
+            self.maybe_update_view = Some(*pos);
             println!("target: {}, {}", self.target_offset, name);
         }
     }
@@ -232,7 +379,7 @@ impl System {
             }
 
             let (name, pos) = &self.targets[self.target_offset as usize];
-            self.arcball.write().set_target(*pos);
+            self.maybe_update_view = Some(*pos);
             println!("target: {}", name);
         }
     }
@@ -269,11 +416,12 @@ impl System {
         }
     }
 
-    pub fn get_camera(&mut self, camera: &Camera) -> &Camera {
+    /// Maybe update visibility computation camera from the current view camera.
+    pub fn get_camera(&mut self, view_camera: &Camera) -> &Camera {
         if !self.pin_camera {
-            self.camera = camera.to_owned();
+            self.visibility_camera = view_camera.to_owned();
         }
-        &self.camera
+        &self.visibility_camera
     }
 }
 
@@ -346,7 +494,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let mut async_rt = Runtime::new()?;
 
-    let (mut catalog, input_fids) = CatalogBuilder::build_and_select(&opt.map_names)?;
+    let mut catalog = CatalogBuilder::build()?;
     for (i, d) in opt.libdir.iter().enumerate() {
         catalog.add_labeled_drawer(
             "default",
@@ -414,99 +562,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         composite,
     )?;
 
-    ///////////////////////////////////////////////////////////
-    // UI Setup
-    let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
-    let font = FntFont::from_fnt(&fnt)?;
-    widgets.write().add_font("HUD11", font);
-
-    let sim_time = Label::new("").with_color(Color::White).wrapped();
-    let camera_direction = Label::new("").with_color(Color::White).wrapped();
-    let camera_position = Label::new("").with_color(Color::White).wrapped();
-    let camera_fov = Label::new("").with_color(Color::White).wrapped();
-    let controls_box = VerticalBox::new_with_children(&[
-        sim_time.clone(),
-        camera_direction.clone(),
-        camera_position.clone(),
-        camera_fov.clone(),
-    ])
-    .with_background_color(Color::Gray.darken(3.).opacity(0.8))
-    .with_glass_background()
-    .with_padding(Border::new(
-        Size::zero(),
-        Size::from_px(8.),
-        Size::from_px(24.),
-        Size::from_px(8.),
-    ))
-    .wrapped();
-    let expander = Expander::new_with_child("☰ OpenFA v0.0", controls_box)
-        .with_color(Color::White)
-        .with_background_color(Color::Gray.darken(3.).opacity(0.8))
-        .with_glass_background()
-        .with_border(
-            Color::Black,
-            Border::new(
-                Size::zero(),
-                Size::from_px(2.),
-                Size::from_px(2.),
-                Size::zero(),
-            ),
-        )
-        .with_padding(Border::new(
-            Size::from_px(2.),
-            Size::from_px(3.),
-            Size::from_px(3.),
-            Size::from_px(2.),
-        ))
-        .wrapped();
-    widgets
-        .read()
-        .root_container()
-        .write()
-        .add_child("controls", expander)
-        .set_float(PositionH::End, PositionV::Top);
-
-    let fps_label = Label::new("")
-        .with_font(widgets.read().font_context().font_id_for_name("sans"))
-        .with_color(Color::Red)
-        .with_size(Size::from_pts(13.0))
-        .with_pre_blended_text()
-        .wrapped();
-    widgets
-        .read()
-        .root_container()
-        .write()
-        .add_child("fps", fps_label.clone())
-        .set_float(PositionH::Start, PositionV::Bottom);
-
-    let demo_label = Label::new("")
-        .with_font(widgets.read().font_context().font_id_for_name("HUD11"))
-        .with_color(Color::White)
-        .with_size(Size::from_pts(18.0))
-        .wrapped();
-    let demo_box = VerticalBox::new_with_children(&[demo_label.clone()])
-        .with_background_color(Color::Gray.darken(3.).opacity(0.8))
-        .with_glass_background()
-        .with_border(Color::Black, Border::new_uniform(Size::from_px(2.)))
-        .with_padding(Border::new_uniform(Size::from_px(8.)))
-        .wrapped();
-    widgets
-        .read()
-        .root_container()
-        .write()
-        .add_child("demo", demo_box.clone())
-        .set_float(PositionH::Start, PositionV::Bottom);
-    widgets
-        .read()
-        .root_container()
-        .write()
-        .packing_mut("demo")?
-        .set_expand(false);
-
-    let system = System::new(interpreter.clone(), arcball.clone(), demo_label);
+    let system = System::new(&catalog, interpreter.clone(), widgets.clone())?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
+    let start = Instant::now();
     let mut tracker = Default::default();
     let mut t2_tile_set = T2TileSet::new(
         system.read().t2_adjustment(),
@@ -514,15 +574,16 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &globals.read(),
         &gpu.read(),
     )?;
-    let start = Instant::now();
     let type_manager = TypeManager::empty();
-    for mm_fid in &input_fids {
+    let map_fids = CatalogBuilder::select(&mut catalog, &opt.map_names)?;
+    for mm_fid in &map_fids {
         let name = catalog.stat_sync(*mm_fid)?.name().to_owned();
         if name.starts_with('~') || name.starts_with('$') {
             continue;
         }
         println!("Loading {}...", name);
         catalog.set_default_label(&catalog.file_label(*mm_fid)?);
+        println!("FILE LABEL: {}", catalog.file_label(*mm_fid)?);
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         shapes
             .write()
@@ -821,22 +882,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             gpu.write().on_resize(sz.width as i64, sz.height as i64)?;
         }
 
-        sim_time
+        system
             .write()
-            .set_text(format!("Date: {}", orrery.read().get_time()));
-        camera_direction
-            .write()
-            .set_text(format!("Eye: {}", arcball.read().eye()));
-        camera_position
-            .write()
-            .set_text(format!("Position: {}", arcball.read().target(),));
-        camera_fov.write().set_text(format!(
-            "FoV: {}",
-            degrees!(arcball.read().camera().fov_y()),
-        ));
-        let frame_time = now.elapsed();
-        let ts = format!("fps: {:0.2}", 1. / frame_time.as_secs_f64());
-        fps_label.write().set_text(ts);
+            .track_visible_state(now.elapsed(), &orrery.read(), &mut arcball.write());
     }
 
     Ok(())

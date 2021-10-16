@@ -97,10 +97,9 @@ impl CatalogBuilder {
         Ok(catalog)
     }
 
-    pub fn build_and_select(inputs: &[String]) -> Result<(Catalog, Vec<FileId>)> {
-        let mut catalog = Self::build()?;
+    /// Label-aware matching of diverse inputs, with globbing.
+    pub fn select(catalog: &mut Catalog, inputs: &[String]) -> Result<Vec<FileId>> {
         let mut selected = Vec::new();
-
         let fuzzy = MatchOptions {
             case_sensitive: false,
             require_literal_leading_dot: false,
@@ -126,7 +125,12 @@ impl CatalogBuilder {
                 }
             }
         }
+        Ok(selected)
+    }
 
+    pub fn build_and_select(inputs: &[String]) -> Result<(Catalog, Vec<FileId>)> {
+        let mut catalog = Self::build()?;
+        let selected = Self::select(&mut catalog, inputs)?;
         Ok((catalog, selected))
     }
 
