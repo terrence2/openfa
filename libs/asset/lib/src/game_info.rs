@@ -46,42 +46,6 @@ impl GameInfo {
     }
 }
 
-const ATF: GameInfo = GameInfo {
-    name: "ATF",
-    long_name: "Jane's ATF: Advanced Tactical Fighters",
-    developer: "Jane's Combat Simulations",
-    publisher: "Electronic Arts Inc.",
-    test_dir: "ATF",
-    release_year: 1996,
-    release_month: 3,
-    release_day: 31,
-    allow_packed_t2: false,
-};
-
-const ATF_NATO: GameInfo = GameInfo {
-    name: "ATF Nato Fighters",
-    long_name: "Jane's ATF: Nato Fighters",
-    developer: "Jane's Combat Simulations",
-    publisher: "Electronic Arts Inc.",
-    release_year: 1996,
-    release_month: 9,
-    release_day: 30,
-    test_dir: "ATFNATO",
-    allow_packed_t2: false,
-};
-
-const ATF_GOLD: GameInfo = GameInfo {
-    name: "ATF Gold",
-    long_name: "Jane's ATF: Gold Edition",
-    developer: "Jane's Combat Simulations",
-    publisher: "Electronic Arts Inc.",
-    release_year: 1997,
-    release_month: 0,
-    release_day: 0,
-    test_dir: "ATFGOLD",
-    allow_packed_t2: true,
-};
-
 const USNF: GameInfo = GameInfo {
     name: "USNF",
     long_name: "U.S. Navy Fighters",
@@ -106,6 +70,30 @@ const USMF: GameInfo = GameInfo {
     allow_packed_t2: false,
 };
 
+const ATF: GameInfo = GameInfo {
+    name: "ATF",
+    long_name: "Jane's ATF: Advanced Tactical Fighters",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    test_dir: "ATF",
+    release_year: 1996,
+    release_month: 3,
+    release_day: 31,
+    allow_packed_t2: false,
+};
+
+const ATF_NATO: GameInfo = GameInfo {
+    name: "ATF Nato Fighters",
+    long_name: "Jane's ATF: Nato Fighters",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1996,
+    release_month: 9,
+    release_day: 30,
+    test_dir: "ATFNATO",
+    allow_packed_t2: false,
+};
+
 const USNF97: GameInfo = GameInfo {
     name: "US Navy Fighters '97",
     long_name: "Jane's US Navy Fighters '97",
@@ -115,6 +103,18 @@ const USNF97: GameInfo = GameInfo {
     release_month: 11,
     release_day: 0,
     test_dir: "USNF97",
+    allow_packed_t2: true,
+};
+
+const ATF_GOLD: GameInfo = GameInfo {
+    name: "ATF Gold",
+    long_name: "Jane's ATF: Gold Edition",
+    developer: "Jane's Combat Simulations",
+    publisher: "Electronic Arts Inc.",
+    release_year: 1997,
+    release_month: 0,
+    release_day: 0,
+    test_dir: "ATFGOLD",
     allow_packed_t2: true,
 };
 
