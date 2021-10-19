@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 env_logger = "^ 0.7"
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 image = "^ 0.21"
 legion = "= 0.2.4"
 log = "^ 0.4"

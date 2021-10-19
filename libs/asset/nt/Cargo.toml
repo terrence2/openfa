@@ -5,7 +5,7 @@ edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 nalgebra = "^ 0.29"
 ot = { path = "../../asset/ot" }
 

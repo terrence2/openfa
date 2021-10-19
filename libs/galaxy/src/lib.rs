@@ -31,25 +31,16 @@ use std::{sync::Arc, time::Instant};
 
 pub struct Galaxy {
     start_time: Instant,
-
     legion_world: World,
-
-    // Resources
-    //lib: Arc<Box<Library>>,
-    palette: Arc<Palette>,
 }
 
 impl Galaxy {
-    pub fn new(catalog: &Catalog) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let legion_world = World::new(Default::default());
 
         Ok(Self {
             start_time: Instant::now(),
             legion_world,
-            palette: Arc::new(Palette::from_bytes(
-                &catalog.read_name_sync("PALETTE.PAL")?,
-            )?),
-            //lib,
         })
     }
 
@@ -59,20 +50,6 @@ impl Galaxy {
 
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.legion_world
-    }
-
-    /*
-    pub fn library(&self) -> &Library {
-        &self.lib
-    }
-
-    pub fn library_owned(&self) -> Arc<Box<Library>> {
-        self.lib.clone()
-    }
-     */
-
-    pub fn palette(&self) -> &Palette {
-        &self.palette
     }
 
     pub fn start_time(&self) -> &Instant {

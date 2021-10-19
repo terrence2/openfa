@@ -5,7 +5,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 ansi = { path = "../../nitrogen/util/ansi" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }

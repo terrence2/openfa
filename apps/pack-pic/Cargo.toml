@@ -5,7 +5,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 image = "^ 0.23"
 rand = "^ 0.7"
 structopt = "^ 0.2"

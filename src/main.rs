@@ -505,7 +505,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let interpreter = Interpreter::new();
     let timeline = Timeline::new(&mut interpreter.write());
     let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
-    let mut galaxy = Galaxy::new(&catalog)?;
+    let mut galaxy = Galaxy::new()?;
 
     let orrery = Orrery::new(
         Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
