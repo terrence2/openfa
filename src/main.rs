@@ -32,7 +32,7 @@ use gpu::{
     Gpu,
 };
 use input::{InputController, InputSystem};
-use lib::{from_dos_string, CatalogBuilder};
+use lib::{from_dos_string, CatalogBuilder, CatalogManager};
 use mm::MissionMap;
 use nalgebra::convert;
 use nitrous::{Interpreter, Value};
@@ -63,16 +63,31 @@ use xt::TypeManager;
 /// Show the contents of an MM file
 #[derive(Debug, StructOpt)]
 struct Opt {
+    /// The path to look in for game files (default: pwd)
+    #[structopt(short, long)]
+    game_path: Option<PathBuf>,
+
+    /// If not all required libs are found in the game path, look here. If the CD's LIB files have
+    /// been copied into the game directory, this is unused.
+    #[structopt(short, long)]
+    cd_path: Option<PathBuf>,
+
+    /// For Fighter's Anthology, if the second disk's LIB files have not been copied into the game
+    /// directory, and you want to use the reference materials, also provide this path. There is no
+    /// ability to switch the disk, currently. (Note: reference still WIP, so not much point yet.)
+    #[structopt(long)]
+    cd2_path: Option<PathBuf>,
+
     /// Extra directories to treat as libraries
     #[structopt(short, long)]
-    libdir: Vec<PathBuf>,
+    lib_paths: Vec<PathBuf>,
 
     /// Run a command after startup
     #[structopt(short, long)]
-    command: Option<String>,
+    run_command: Option<String>,
 
     /// Run given file after startup
-    #[structopt(short, long)]
+    #[structopt(short = "x", long)]
     execute: Option<PathBuf>,
 
     /// The map file(s) to view
@@ -491,11 +506,15 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     } else {
         (CpuDetailLevel::Medium, GpuDetailLevel::High)
     };
+    let catman =
+        CatalogManager::bootstrap(opt.game_path, opt.cd_path, opt.cd2_path, &opt.lib_paths)?;
+
+    return Ok(());
 
     let mut async_rt = Runtime::new()?;
 
     let mut catalog = CatalogBuilder::build()?;
-    for (i, d) in opt.libdir.iter().enumerate() {
+    for (i, d) in opt.lib_paths.iter().enumerate() {
         catalog.add_labeled_drawer(
             "default",
             DirectoryDrawer::from_directory(100 + i as i64, d)?,
@@ -791,7 +810,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let catalog = Arc::new(AsyncRwLock::new(catalog));
 
-    if let Some(command) = opt.command.as_ref() {
+    if let Some(command) = opt.run_command.as_ref() {
         let rv = interpreter.write().interpret_once(command)?;
         println!("{}", rv);
     }

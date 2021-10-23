@@ -54,7 +54,8 @@ impl CatalogBuilder {
                 for entry in fs::read_dir(&pack_dir)?.flatten() {
                     if let Some(ext) = entry.path().extension() {
                         if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
-                            let priority = Priority::from_path(&entry.path())?.as_drawer_priority();
+                            let priority =
+                                Priority::from_path(&entry.path(), 0)?.as_drawer_priority();
                             catalog.add_labeled_drawer(
                                 &game.packed_label(),
                                 LibDrawer::from_path(priority, &entry.path())?,
@@ -75,7 +76,8 @@ impl CatalogBuilder {
                 for entry in (fs::read_dir(&loose_dir)?).flatten() {
                     if let Some(ext) = entry.path().extension() {
                         if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
-                            let priority = Priority::from_path(&entry.path())?.as_drawer_priority();
+                            let priority =
+                                Priority::from_path(&entry.path(), 0)?.as_drawer_priority();
                             catalog.add_labeled_drawer(
                                 &game.unpacked_label(),
                                 DirectoryDrawer::from_directory(priority, &entry.path())?,

@@ -25,6 +25,8 @@ pub struct GameInfo {
     pub release_day: usize,
     pub test_dir: &'static str,
     pub allow_packed_t2: bool,
+    pub unique_files: &'static [&'static str],
+    pub cd_libs: &'static [&'static str],
 }
 
 impl GameInfo {
@@ -56,10 +58,13 @@ const USNF: GameInfo = GameInfo {
     release_day: 1,
     test_dir: "USNF",
     allow_packed_t2: false,
+    unique_files: &["USNF.EXE"],
+    cd_libs: &["1.LIB", "2.LIB", "3.LIB", "5.LIB", "6.LIB", "7.LIB"],
 };
 
 const USMF: GameInfo = GameInfo {
-    name: "MF",
+    name: "Marine Fighters",
+    unique_files: &["42.2D", "KURILE.T2"],
     long_name: "U.S. Navy Fighters Expansion Disk: Marine Fighters",
     developer: "Electronic Arts Inc.",
     publisher: "Electronic Arts Inc.",
@@ -68,10 +73,12 @@ const USMF: GameInfo = GameInfo {
     release_day: 0,
     test_dir: "MF",
     allow_packed_t2: false,
+    cd_libs: &["8.LIB"],
 };
 
 const ATF: GameInfo = GameInfo {
     name: "ATF",
+    unique_files: &["ATF.BAT"],
     long_name: "Jane's ATF: Advanced Tactical Fighters",
     developer: "Jane's Combat Simulations",
     publisher: "Electronic Arts Inc.",
@@ -80,10 +87,12 @@ const ATF: GameInfo = GameInfo {
     release_month: 3,
     release_day: 31,
     allow_packed_t2: false,
+    cd_libs: &["4C.LIB", "9.LIB"],
 };
 
 const ATF_NATO: GameInfo = GameInfo {
     name: "ATF Nato Fighters",
+    unique_files: &["NATO.BAT", "BAL.T2"],
     long_name: "Jane's ATF: Nato Fighters",
     developer: "Jane's Combat Simulations",
     publisher: "Electronic Arts Inc.",
@@ -92,10 +101,12 @@ const ATF_NATO: GameInfo = GameInfo {
     release_day: 30,
     test_dir: "ATFNATO",
     allow_packed_t2: false,
+    cd_libs: &["4C.LIB", "10.LIB"],
 };
 
 const USNF97: GameInfo = GameInfo {
     name: "US Navy Fighters '97",
+    unique_files: &["USNF.EXE", "USNF_1.LIB"],
     long_name: "Jane's US Navy Fighters '97",
     developer: "Jane's Combat Simulations",
     publisher: "Electronic Arts Inc.",
@@ -104,10 +115,12 @@ const USNF97: GameInfo = GameInfo {
     release_day: 0,
     test_dir: "USNF97",
     allow_packed_t2: true,
+    cd_libs: &["USNF_3.LIB", "USNF_7.LIB", "USNF_8.LIB", "USNF_10.LIB"],
 };
 
 const ATF_GOLD: GameInfo = GameInfo {
     name: "ATF Gold",
+    unique_files: &["ATF.EXE", "ATF_1.LIB"],
     long_name: "Jane's ATF: Gold Edition",
     developer: "Jane's Combat Simulations",
     publisher: "Electronic Arts Inc.",
@@ -116,6 +129,7 @@ const ATF_GOLD: GameInfo = GameInfo {
     release_day: 0,
     test_dir: "ATFGOLD",
     allow_packed_t2: true,
+    cd_libs: &["ATF_3.LIB", "ATF_4C.LIB", "ATF_10.LIB"],
 };
 
 const FIGHTERS_ANTHOLOGY: GameInfo = GameInfo {
@@ -128,14 +142,26 @@ const FIGHTERS_ANTHOLOGY: GameInfo = GameInfo {
     release_day: 0,
     test_dir: "FA",
     allow_packed_t2: true,
+    unique_files: &["FA.EXE"],
+    cd_libs: &[
+        // CD1
+        "FA_4C.LIB",
+        "FA_7.LIB",
+        // CD2
+        "FA_3.LIB",
+        "FA_10.LIB",
+        "FA_10B.LIB",
+        "FA_11.LIB",
+        "FA_11B.LIB",
+    ],
 };
 
 pub const GAME_INFO: [&GameInfo; 7] = [
-    &USNF,
-    &USMF,
-    &ATF,
-    &ATF_NATO,
-    &USNF97,
-    &ATF_GOLD,
     &FIGHTERS_ANTHOLOGY,
+    &ATF_GOLD,
+    &USNF97,
+    &ATF_NATO,
+    &ATF,
+    &USMF,
+    &USNF,
 ];
