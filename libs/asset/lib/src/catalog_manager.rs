@@ -16,7 +16,7 @@ use crate::{
     game_info::{GameInfo, GAME_INFO},
     LibDrawer, Priority,
 };
-use anyhow::{bail, Result};
+use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, DirectoryDrawer};
 use std::{
     collections::{HashMap, HashSet},
@@ -38,6 +38,8 @@ impl CatalogManager {
         cd2_path: Option<PathBuf>,
         lib_paths: &[PathBuf],
     ) -> Result<Self> {
+        let mut catalogs = HashMap::new();
+
         // If we didn't specify a path, use cwd.
         let game_path = if let Some(path) = game_path {
             path
@@ -50,7 +52,7 @@ impl CatalogManager {
         if let Some(game) = Self::detect_game_from_files(&game_files) {
             // Load libs from the installdir
             let mut catalog = Catalog::empty();
-            Self::populate_catalog(&game_path, &game_files, 0, &mut catalog)?;
+            Self::populate_catalog(game, &game_path, 0, &mut catalog)?;
 
             // If the user has not copied over the CD libs, we need to search for them.
             if !game.cd_libs.iter().all(|&name| game_files.contains(name)) {
@@ -69,10 +71,10 @@ impl CatalogManager {
 
                 if game.cd_libs.iter().all(|&path| all_cd_files.contains(path)) {
                     if let Some(cd_path) = &cd_path {
-                        Self::populate_catalog(cd_path, &all_cd_files, -10, &mut catalog)?;
+                        Self::populate_catalog(game, cd_path, -10, &mut catalog)?;
                     }
                     if let Some(cd2_path) = &cd2_path {
-                        Self::populate_catalog(cd2_path, &all_cd_files, -20, &mut catalog)?;
+                        Self::populate_catalog(game, cd2_path, -20, &mut catalog)?;
                     }
                 } else {
                     match (&cd_path, &cd2_path) {
@@ -94,7 +96,6 @@ impl CatalogManager {
                         (None, Some(_)) => bail!("You must provide a CD1 path before a CD2 path!"),
                     }
                 }
-
                 println!("Detected {} in game and CD paths...", game.name);
             } else {
                 println!("Detected {} in game path...", game.name);
@@ -104,27 +105,54 @@ impl CatalogManager {
             for (i, lib_path) in lib_paths.iter().enumerate() {
                 catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
             }
+
+            catalogs.insert(game.test_dir.to_owned(), catalog);
         } else {
             println!(
                 "Did not detect any games in {}",
                 game_path.to_string_lossy()
             );
 
-            // Look for test directorys
+            // Look for test directories
+            let mut test_path = env::current_dir()?;
+            test_path.push("disk_dumps");
+            for game in GAME_INFO {
+                let mut game_path = test_path.clone();
+                game_path.push(game.test_dir);
+                let mut installdir = game_path.clone();
+                installdir.push("installdir");
+                let mut cdrom1dir = game_path.clone();
+                cdrom1dir.push("cdrom1");
+                let mut cdrom2dir = game_path.clone();
+                cdrom2dir.push("cdrom2");
+                if let Ok(game_files) = Self::list_directory_canonical(&installdir) {
+                    if let Some(detected_game) = Self::detect_game_from_files(&game_files) {
+                        ensure!(
+                            detected_game.name == game.name,
+                            "unexpected game in game's test_dir"
+                        );
+                        let mut game_catalog = Catalog::empty();
+                        Self::populate_catalog(game, &installdir, 1, &mut game_catalog)?;
+                        Self::populate_catalog(game, &cdrom1dir, 0, &mut game_catalog)?;
+                        if cdrom2dir.exists() {
+                            Self::populate_catalog(game, &cdrom2dir, 0, &mut game_catalog)?;
+                        }
+                        catalogs.insert(game.test_dir.to_owned(), game_catalog);
+                    }
+                }
+            }
         }
 
-        Ok(Self {
-            catalogs: HashMap::new(),
-        })
+        return Ok(Self { catalogs });
     }
 
     fn populate_catalog(
+        game: &'static GameInfo,
         path: &Path,
-        entries: &HashSet<String>,
         priority_adjust: i64,
         catalog: &mut Catalog,
     ) -> Result<()> {
-        if entries.iter().any(|name| name.ends_with(".T2")) {
+        if !game.allow_packed_t2 {
             catalog.add_drawer(DirectoryDrawer::from_directory_with_extension(
                 Priority::from_path(path, priority_adjust)?.as_drawer_priority(),
                 &path,

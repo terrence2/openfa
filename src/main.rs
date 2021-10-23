@@ -509,8 +509,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let catman =
         CatalogManager::bootstrap(opt.game_path, opt.cd_path, opt.cd2_path, &opt.lib_paths)?;
 
-    return Ok(());
-
     let mut async_rt = Runtime::new()?;
 
     let mut catalog = CatalogBuilder::build()?;
