@@ -9,7 +9,7 @@ apps/**/target/
 apps/**/test_data/
 **/*.rs.bk
 dump/
-disk_dumps/
+disk_dumps
 test_data/
 research/
 .__openfa_cache__
