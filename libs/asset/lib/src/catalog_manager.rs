@@ -76,7 +76,7 @@ impl CatalogManager {
         let game_files = Self::list_directory_canonical(&game_path)?;
 
         // Search for the game so we can figure out what is required to be loaded.
-        if let Some(game) = Self::detect_game_from_files(&game_files) {
+        let mut catalogs = if let Some(game) = Self::detect_game_from_files(&game_files) {
             // Load libs from the installdir
             let mut catalog = Catalog::empty();
             Self::populate_catalog(game, &game_path, 0, &mut catalog)?;
@@ -128,26 +128,42 @@ impl CatalogManager {
                 println!("Detected {} in game path...", game.name);
             }
 
-            // Load any additional libdirs into the catalog
-            for (i, lib_path) in opts.lib_paths.iter().enumerate() {
-                catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
-            }
-
-            Ok(Self {
+            Self {
                 selected_game: Some(0),
                 catalogs: vec![(game, catalog)],
-            })
+            }
         } else {
             println!(
                 "Did not detect any games in {}, falling back to test mode...",
                 game_path.to_string_lossy()
             );
-            Self::for_testing(opts)
+
+            let mut catalogs = Self::for_testing()?;
+
+            if let Some(selected) = &opts.select_game {
+                for (i, (game, _)) in catalogs.catalogs.iter().enumerate() {
+                    if game.test_dir == selected {
+                        catalogs.selected_game = Some(i);
+                        break;
+                    }
+                }
+            }
+
+            catalogs
+        };
+
+        // Load any additional libdirs into the catalog
+        for (_, catalog) in catalogs.catalogs.iter_mut() {
+            for (i, lib_path) in opts.lib_paths.iter().enumerate() {
+                catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
+            }
         }
+
+        Ok(catalogs)
     }
 
     /// Build a new catalog manager with whatever test data we can scrounge up.
-    pub fn for_testing(opts: &CatalogOpts) -> Result<Self> {
+    pub fn for_testing() -> Result<Self> {
         // Look up until we find the disk_dumps directory or run out of up.
         let mut test_path = env::current_dir()?;
         test_path.push("disk_dumps");
@@ -187,18 +203,8 @@ impl CatalogManager {
             }
         }
 
-        let mut selected_game = None;
-        if let Some(selected) = &opts.select_game {
-            for (i, (game, _)) in catalogs.iter().enumerate() {
-                if game.test_dir == selected {
-                    selected_game = Some(i);
-                    break;
-                }
-            }
-        }
-
         Ok(Self {
-            selected_game,
+            selected_game: None,
             catalogs,
         })
     }
@@ -217,6 +223,11 @@ impl CatalogManager {
 
     pub fn best(&self) -> &Catalog {
         &self.catalogs[self.selected_game.unwrap_or(0)].1
+    }
+
+    pub fn steal_best(&mut self) -> Catalog {
+        let (_, catalog) = self.catalogs.remove(self.selected_game.unwrap_or(0));
+        catalog
     }
 
     fn populate_catalog(

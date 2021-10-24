@@ -17,7 +17,7 @@ use animate::Timeline;
 use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
-use catalog::{Catalog, DirectoryDrawer};
+use catalog::Catalog;
 use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
 use fnt::Fnt;
@@ -32,7 +32,7 @@ use gpu::{
     Gpu,
 };
 use input::{InputController, InputSystem};
-use lib::{from_dos_string, CatalogBuilder, CatalogManager, CatalogOpts};
+use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mm::MissionMap;
 use nalgebra::convert;
 use nitrous::{Interpreter, Value};
@@ -490,17 +490,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     } else {
         (CpuDetailLevel::Medium, GpuDetailLevel::High)
     };
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    let catalog = catalogs.best();
+    let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
 
     let mut async_rt = Runtime::new()?;
-
-    let mut catalog = CatalogBuilder::build()?;
-    // for (i, d) in opt.lib_paths.iter().enumerate() {
-    //     catalog.add_labeled_drawer(
-    //         "default",
-    //         DirectoryDrawer::from_directory(100 + i as i64, d)?,
-    //     )?;
-    // }
 
     let interpreter = Interpreter::new();
     let timeline = Timeline::new(&mut interpreter.write());
@@ -519,7 +513,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
     let stars_buffer = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
     let terrain_buffer = TerrainBuffer::new(
-        &catalog,
+        catalog,
         cpu_detail,
         gpu_detail,
         &globals.read(),
@@ -562,11 +556,14 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         composite,
     )?;
 
-    let system = System::new(&catalog, interpreter.clone(), widgets.clone())?;
+    let system = System::new(catalog, interpreter.clone(), widgets.clone())?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
     let start = Instant::now();
+    shapes
+        .write()
+        .set_shared_palette(&system_palette, &gpu.read());
     let mut tracker = Default::default();
     let mut t2_tile_set = T2TileSet::new(
         system.read().t2_adjustment(),
@@ -575,20 +572,13 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         &gpu.read(),
     )?;
     let type_manager = TypeManager::empty();
-    let map_fids = CatalogBuilder::select(&mut catalog, &opt.map_names)?;
-    for mm_fid in &map_fids {
-        let name = catalog.stat_sync(*mm_fid)?.name().to_owned();
+    for mm_fid in catalog.find_with_extension("MM")? {
+        let name = catalog.stat_sync(mm_fid)?.name().to_owned();
         if name.starts_with('~') || name.starts_with('$') {
             continue;
         }
         println!("Loading {}...", name);
-        catalog.set_default_label(&catalog.file_label(*mm_fid)?);
-        println!("FILE LABEL: {}", catalog.file_label(*mm_fid)?);
-        let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-        shapes
-            .write()
-            .set_shared_palette(&system_palette, &gpu.read());
-        let raw = catalog.read_sync(*mm_fid)?;
+        let raw = catalog.read_sync(mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
         let t2_mapper = t2_tile_set.add_map(
@@ -712,19 +702,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         }
     }
 
-    for (offset, label) in [
-        "unpacked:USNF",
-        "unpacked:MF",
-        "unpacked:USNF97",
-        "unpacked:ATF",
-        "unpacked:ATFNATO",
-        "unpacked:ATFGOLD",
-        "unpacked:FA",
-    ]
-    .iter()
-    .enumerate()
-    {
-        catalog.set_default_label(label);
+    for (offset, (_game, catalog)) in catalogs.all().enumerate() {
         let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         shapes
             .write()
@@ -767,9 +745,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 &nalgebra::UnitQuaternion::identity(),
             )?;
         }
-        //shapes.write().ensure_uploaded(&mut gpu.write())?;
     }
-
     shapes
         .write()
         .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
@@ -789,7 +765,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         system.write().add_default_bindings(interp)?;
     }
 
-    let catalog = Arc::new(AsyncRwLock::new(catalog));
+    let catalog = Arc::new(AsyncRwLock::new(catalogs.steal_best()));
 
     if let Some(command) = opt.run_command.as_ref() {
         let rv = interpreter.write().interpret_once(command)?;

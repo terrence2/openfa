@@ -455,7 +455,7 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
     use nitrous::Interpreter;
     use pal::Palette;
     use shape_chunk::DrawSelection;
@@ -487,62 +487,54 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
-        let mut shapes = HashMap::new();
-        for &fid in &inputs {
-            shapes
-                .entry(catalog.file_label(fid).unwrap())
-                .or_insert_with(Vec::new)
-                .push(fid)
-        }
+        let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
+        let globals_buffer =
+            GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
+        let inst_man = ShapeInstanceBuffer::new(
+            &globals_buffer.read(),
+            &atmosphere_buffer.read(),
+            &gpu.read(),
+        )?;
 
-        for (label, files) in &shapes {
-            catalog.set_default_label(label);
-            let game = label.split(':').last().unwrap();
+        let catalogs = CatalogManager::for_testing()?;
+
+        let mut tracker = UploadTracker::default();
+        let mut all_chunks = Vec::new();
+        let mut all_slots = Vec::new();
+        for (game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-
-            let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
-            let globals_buffer =
-                GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
-            let inst_man = ShapeInstanceBuffer::new(
-                &globals_buffer.read(),
-                &atmosphere_buffer.read(),
-                &gpu.read(),
-            )?;
             inst_man.write().set_shared_palette(&palette, &gpu.read());
-            let mut tracker = UploadTracker::default();
-            let mut all_chunks = Vec::new();
-            let mut all_slots = Vec::new();
-            for &fid in files {
+            for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
                 println!(
                     "At: {}:{:13} @ {}",
-                    game,
+                    game.test_dir,
                     meta.name(),
                     meta.path()
                         .map(|v| v.to_string_lossy())
                         .unwrap_or_else(|| "<none>".into())
                 );
-                let name = meta.name().to_owned();
                 if skipped.contains(&meta.name()) {
                     continue;
                 }
-
-                for _ in 0..1 {
-                    let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
-                        &name,
-                        DrawSelection::NormalModel,
-                        &catalog,
-                        &mut gpu.write(),
-                        &async_rt,
-                        &mut tracker,
-                    )?;
-                    all_chunks.push(chunk_id);
-                    all_slots.push(slot_id);
-                }
-                gpu.read().device().poll(wgpu::Maintain::Wait);
+                let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
+                    meta.name(),
+                    DrawSelection::NormalModel,
+                    &catalog,
+                    &mut gpu.write(),
+                    &async_rt,
+                    &mut tracker,
+                )?;
+                all_chunks.push(chunk_id);
+                all_slots.push(slot_id);
+                all_chunks.push(chunk_id);
+                all_slots.push(slot_id);
             }
         }
+        inst_man
+            .write()
+            .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
+        gpu.read().device().poll(wgpu::Maintain::Wait);
 
         Ok(())
     }

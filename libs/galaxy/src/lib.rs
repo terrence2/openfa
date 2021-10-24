@@ -17,17 +17,15 @@ pub use universe::component::{Rotation, Scale, Transform};
 
 use absolute_unit::{degrees, feet, meters, radians, Degrees, Radians};
 use anyhow::Result;
-use catalog::Catalog;
 use geodesy::{GeoSurface, Graticule};
 use legion::*;
 use nalgebra::{UnitQuaternion, Vector3};
-use pal::Palette;
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
     ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,
     SlotId,
 };
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 pub struct Galaxy {
     start_time: Instant,
@@ -161,29 +159,10 @@ impl Galaxy {
 #[cfg(test)]
 mod test {
     use super::*;
-    use lib::CatalogBuilder;
 
     #[test]
     fn test_it_works() -> Result<()> {
-        // Note: rely on uniqueness of PALETTE.PAL to give us every game.
-        let (mut catalog, inputs) =
-            CatalogBuilder::build_and_select(&["*:PALETTE.PAL".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            //let _universe = Galaxy::new(omni.library("FA"))?;
-        }
-
+        let _galaxy = Galaxy::new();
         Ok(())
     }
 }

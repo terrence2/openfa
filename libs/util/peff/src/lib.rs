@@ -747,31 +747,31 @@ const DOSX_HEADER: &[u8] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
 
     #[test]
     fn it_works() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&[
-            "*:*.SH".to_owned(),
-            "*:*.LAY".to_owned(),
-            "*:*.DLG".to_owned(),
-            "*:*.MNU".to_owned(),
-        ])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let data = catalog.read_sync(fid)?;
-            let _pe = PortableExecutable::from_bytes(&data)?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.selected() {
+            for fid in catalog
+                .find_with_extension("SH")?
+                .iter()
+                .chain(catalog.find_with_extension("LAY")?.iter())
+                .chain(catalog.find_with_extension("DLG")?.iter())
+                .chain(catalog.find_with_extension("MNU")?.iter())
+            {
+                let meta = catalog.stat_sync(*fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let data = catalog.read_sync(*fid)?;
+                let _pe = PortableExecutable::from_bytes(&data)?;
+            }
         }
 
         Ok(())
