@@ -92,7 +92,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
                   point.
   * Sound
     * [ ] 11K, 8K, 5K: Raw PCM with the given sample rate
-    * [ ] XMI: eXtended MIdi
+    * [ ] XMI: eXtended MIdi, probably
   * AI
     * [ ] BI: compiled AI program
     * [ ] AI: a textual version of the BI
@@ -118,65 +118,32 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
     * [ ] FBC: binary
     
 * Game Engine
-  * Graphics / Input Engine
-    * [x] Webgpu-rs
-    * [x] Simple frame management and buffer upload system
-    * [ ] Sophisticated frame graph
-    * [x] Robust key binding support
-    * [x] Basic command system
-    * [ ] Extensible command system
-    * [ ] drop-down console
-    * [ ] VR support
-    * [ ] Joystick support
-    * [ ] Gamepad support
-  * Atmospheric Simulation
-    * [x] Basic precomputed scattering: Uses [Bruneton's method](https://github.com/ebruneton/precomputed_atmospheric_scattering).
-    * [ ] Dynamically changing atmospheric conditions
-    * [ ] Spatially variable atmospheric parameters
-  * Entity System
-    * [x] Legion
-    * [ ] Save/Load system
-    * [ ] Replay recording
-    * [ ] Network syncing
   * Shape System
     * SH
       * [x] Chunked SH upload
       * [x] Chunked Texture atlases
       * [ ] Linear filtering support
+      * [ ] Mipmapping support
       * [ ] Regalia support
       * [ ] Correct scaling
       * [x] Instance data uploads in blocks
       * [x] Legion Integration
-      * [x] Parallel simulation of embedded 386 code
+      * [x] Parallel simulation of embedded i386 code
       * [x] Shape classes to limit uploads depending on entity type; e.g. no per-frame positions for buildings
       * [ ] Self shadowing
     * Modern format: we want to be able to do optimistic replacement with higher quality models at some point.
       * [ ] Do discovery around modern shape formats
   * Terrain System
     * T2 Rendering
-      * [x] Texture Atlas
       * [ ] Linear filtering
-      * [ ] Correct alignment with globe
-      * [ ] Eye relative uploads
+      * [x] Correct alignment with globe
+      * [x] Eye relative uploads
       * [x] Atmospheric blending
       * [ ] Self shadowing
       * [ ] Shape shadowing
-    * Planetary Scale Rendering; Using [Kooima's thesis](https://www.evl.uic.edu/documents/kooima-dissertation-uic.pdf).
-      * [x] Patch management
-      * [x] Patch tesselation
-      * [ ] Heightmap generator
-      * [ ] Heightmap memory manager
-      * [ ] Colormap generator
-      * [ ] Colormap memory manager
-      * [ ] Atmospheric blending
-      * [ ] Self shadowing
-      * [ ] Unified T2/Kooima terrain rendering
   * Text
-    * [x] Layout management
-    * [x] FNT loading
-    * [x] TTF loading
+    * [\] FNT loading; not yet supporting pre-blended text
     * [x] 2d screen-space rendering
-    * [ ] in-world text rendering
   * Basic Flight Dynamics Model
     * [ ] Basic input and reactions
     * [ ] Apply envelope data to reactions
@@ -191,17 +158,11 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
   * Inventory Management
     * [ ] Add information to legion
     * [ ] integrate stores with MFD
-  * Sound
-    * [ ] Pick a framework
-    * [ ] Sample management
-    * [ ] Channel management and blending
-    * [ ] Positional audio
-    * [ ] Frequency scaling (e.g. for wind and engine noises)
-    * [ ] Doppler effects
-    * [ ] XMI decode and rendering
   * AI
     * [ ] Action / goal system
     * [ ] Parallel simulation
+  * Sound
+    * [ ] XMI Decode
   * Menu Bar
     * [ ] Implement menu-mode in the game loop
     * [ ] Render top-level
@@ -228,20 +189,35 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
     * [ ] Image carousel
     * [ ] Video viewer
   * Opening Videos
+    * [ ] VDO decode
 
 ## Development Environment Setup
 
-1) `git clone https://github.com/terrence2/openfa.git`
-1) `cd openfa`
-1) `mkdir -p test_data/{un,}packed/{USNF,USMF,ATF,ATFNATO,ATFGOLD,USNF97,FA}/installdir`
-1) Copy *.LIB from the CD and Installation directory into `test_data/packed/<GAME>/`
-1) Copy any loose T2 files from the Installation directory (ATFNATO and earlier only) into `test_data/packed/<GAME>/installdir/`
-1) Install the Rust language via rustup.rs
-1) (Optional) cd into apps/unlib and run `cargo run -- -o ../../test_data/unpacked/<GAME>/<LIB> ../../test_data/packed/<GAME>/<LIB>`
-    on each of the libs that you would like to have available as raw files. Loose files generally faster and easier to
-    work with when developing than the raw LIB files.
-1) Run sh_explorer by changing directory into `apps/sh_explorer/` and running `cargo run -- -t <GAME>:<FILE.SH>` (for example `cargo run -- -t FA:F18.SH`)
-1) Run mm_explorer by changing directory into `apps/mm_explorer/` and running `cargo run -- -t <GAME>:<FILE.MM>` (for example `cargo run -- -t FA:UKR.MM`)
+1) Pull from git. The [main branch](https://gitlab.com/terrence_too/openfa.git) if you do not plan to submit changes, 
+   or your own fork if you do.
+   1) `git clone --recursive https://gitlab.com/terrence_too/openfa.git`
+2) Move into the newly downloaded directory.
+   1) `cd openfa`
+3) Install the Rust language via rustup.rs
+4) Prepare your testing environment. OpenFA expects a `disk_dumps` directory with subdirectories for
+   each of the games you own, each containing a cdrom1 and installdir folder (and cdrom2 for FA). No
+   game is required, but you must have at least one game.
+   1) `mkdir -p disk_dumps/{USNF,MF,ATF,ATFNATO,ATFGOLD,USNF97,FA}/{cdrom1,installdir} disk_dumps/FA/cdrom2`
+   2) Mount and copy the CD-ROM contents into the cdrom1 and cdrom2 (for FA) directories
+   3) Install each game either natively or using dosbox/wine and copy the install folder into installdir.
+5) *Optional*: Unpack any LIBs that you will need to work on directly. OpenFA will automatically detect
+   unpacked LIB directories that have the same name as the game libs, but with the extension L_B (e.g. 
+   with the 'I' folded down into a '_'). So the `USNF_3.LIB` would have a `USNF_3.L_B` library. OpenFA's
+   dump-lib utility will automatically make this rename. OpenFA will automatically prefer files in the
+   directory, over the lib if both are present.
+   1) `cd disk_dumps/FA/installdir`
+   2) `cargo run -p dump-lib -- unpack FA_1.LIB`
+6) Run through the setup process in Nitrogen's readme. You will (for the moment) need to download and
+   build terrain data locally.
+7) `cargo run`; by default OpenFA will use the latest game in test_data if it does not find a game in
+   the current directory. You can use the `--game-path`, `--cd-path`, and `--cd2-path` to select the
+   relevant directories, if needed. CD paths are not needed if you copy the LIBs on the CD into the
+   game directory.
 
 #### Specific Format Notes
 
