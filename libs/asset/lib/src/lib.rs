@@ -16,12 +16,10 @@
 // Load LIB files; find files in them; hand out immutable pointers on request.
 #![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
-mod catalog_builder;
 mod catalog_manager;
 mod game_info;
 
 pub use crate::{
-    catalog_builder::CatalogBuilder,
     catalog_manager::{CatalogManager, CatalogOpts},
     game_info::{GameInfo, GAME_INFO},
 };
@@ -400,7 +398,7 @@ mod tests {
 
     #[test]
     fn test_catalog_builder() -> Result<()> {
-        let _catalog = CatalogBuilder::build()?;
+        let _catalog = CatalogManager::for_testing()?;
         Ok(())
     }
 }
