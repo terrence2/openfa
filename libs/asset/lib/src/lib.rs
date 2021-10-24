@@ -22,7 +22,7 @@ mod game_info;
 
 pub use crate::{
     catalog_builder::CatalogBuilder,
-    catalog_manager::CatalogManager,
+    catalog_manager::{CatalogManager, CatalogOpts},
     game_info::{GameInfo, GAME_INFO},
 };
 

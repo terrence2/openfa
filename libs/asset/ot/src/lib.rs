@@ -275,27 +275,27 @@ impl ObjectType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogBuilder};
+    use lib::{from_dos_string, CatalogManager};
 
     #[test]
     fn can_parse_all_entity_types() -> Result<()> {
-        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.[OJNP]T".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let contents = from_dos_string(catalog.read_sync(fid)?);
-            let ot = ObjectType::from_text(&contents)?;
-            // Only one misspelling in 2500 files.
-            assert!(ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_matching("*.[OJNP]T", None)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let ot = ObjectType::from_text(&contents)?;
+                // Only one misspelling in 2500 files.
+                assert!(ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");
+            }
         }
         Ok(())
     }

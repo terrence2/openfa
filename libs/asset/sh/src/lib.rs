@@ -1482,7 +1482,7 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
     use simplelog::{Config, LevelFilter, TermLogger};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
@@ -1537,73 +1537,73 @@ mod tests {
         #[allow(unused_variables, unused_mut)]
         let mut freq: HashMap<&'static str, usize> = HashMap::new();
 
-        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("SH")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
 
-            let data = catalog.read_sync(fid)?;
-            let shape = RawShape::from_bytes(&data)?;
+                let data = catalog.read_sync(fid)?;
+                let shape = RawShape::from_bytes(&data)?;
 
-            // Ensure that f2 points to the trailer if it exists.
-            // And conversely that we found the trailer in the right place.
-            if let Some(offset) = offset_of_trailer(&shape) {
-                if let Some(f2_target) = find_f2_target(&shape) {
-                    assert_eq!(offset, f2_target);
+                // Ensure that f2 points to the trailer if it exists.
+                // And conversely that we found the trailer in the right place.
+                if let Some(offset) = offset_of_trailer(&shape) {
+                    if let Some(f2_target) = find_f2_target(&shape) {
+                        assert_eq!(offset, f2_target);
+                    }
                 }
-            }
 
-            // Ensure that all Unmask(12) and Jump(48) point to a valid instruction.
-            for instr in &shape.instrs {
-                match instr {
-                    Instr::Unmask(unk) => {
-                        let index = shape.bytes_to_index(unk.target_byte_offset())?;
-                        let _target_instr = &shape.instrs[index];
-                    }
-                    Instr::Jump(j) => {
-                        let index = shape.bytes_to_index(j.target_byte_offset())?;
-                        let _target_instr = &shape.instrs[index];
-                    }
-                    Instr::JumpToFrame(jf) => {
-                        let mut all_final_targets = HashSet::new();
-                        ensure!(
-                            [2, 3, 4, 6].contains(&jf.num_frames()),
-                            "only 2, 3, 4, & 6 frame count supported"
-                        );
-                        for frame_num in 0..jf.num_frames() {
-                            // All frames must point to a single facet.
-                            let index = shape.bytes_to_index(jf.target_for_frame(frame_num))?;
-                            let target_instr = &shape.instrs[index];
-                            assert_eq!(target_instr.magic(), "Facet(FC)");
-                            // All frames must jump to the end or fall off the end.
-                            if let Instr::Jump(ref j) = &shape.instrs[index + 1] {
-                                all_final_targets.insert(j.target_byte_offset());
-                            } else {
-                                assert_eq!(frame_num, jf.num_frames() - 1);
-                                all_final_targets.insert(shape.instrs[index + 1].at_offset());
-                            }
-                            // All frames must end at the same instruction.
-                            assert_eq!(all_final_targets.len(), 1);
+                // Ensure that all Unmask(12) and Jump(48) point to a valid instruction.
+                for instr in &shape.instrs {
+                    match instr {
+                        Instr::Unmask(unk) => {
+                            let index = shape.bytes_to_index(unk.target_byte_offset())?;
+                            let _target_instr = &shape.instrs[index];
                         }
+                        Instr::Jump(j) => {
+                            let index = shape.bytes_to_index(j.target_byte_offset())?;
+                            let _target_instr = &shape.instrs[index];
+                        }
+                        Instr::JumpToFrame(jf) => {
+                            let mut all_final_targets = HashSet::new();
+                            ensure!(
+                                [2, 3, 4, 6].contains(&jf.num_frames()),
+                                "only 2, 3, 4, & 6 frame count supported"
+                            );
+                            for frame_num in 0..jf.num_frames() {
+                                // All frames must point to a single facet.
+                                let index = shape.bytes_to_index(jf.target_for_frame(frame_num))?;
+                                let target_instr = &shape.instrs[index];
+                                assert_eq!(target_instr.magic(), "Facet(FC)");
+                                // All frames must jump to the end or fall off the end.
+                                if let Instr::Jump(ref j) = &shape.instrs[index + 1] {
+                                    all_final_targets.insert(j.target_byte_offset());
+                                } else {
+                                    assert_eq!(frame_num, jf.num_frames() - 1);
+                                    all_final_targets.insert(shape.instrs[index + 1].at_offset());
+                                }
+                                // All frames must end at the same instruction.
+                                assert_eq!(all_final_targets.len(), 1);
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
 
-            // Ensure that all offsets and sizes line up.
-            let mut expect_offset = 0;
-            for instr in &shape.instrs {
-                assert_eq!(expect_offset, instr.at_offset());
-                expect_offset += instr.size();
+                // Ensure that all offsets and sizes line up.
+                let mut expect_offset = 0;
+                for instr in &shape.instrs {
+                    assert_eq!(expect_offset, instr.at_offset());
+                    expect_offset += instr.size();
+                }
             }
         }
 

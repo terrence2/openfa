@@ -12,7 +12,7 @@ legion = "= 0.2.4"
 log = "^ 0.4"
 nalgebra = "^ 0.20"
 rand = "^ 0.3"
-structopt = "^ 0.2"
+structopt = "^ 0.3"
 winit = "^ 0.23"
 absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
 atmosphere = { path = "../../libs/nitrogen/wgpu-buffer/atmosphere" }

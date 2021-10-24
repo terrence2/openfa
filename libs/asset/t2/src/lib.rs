@@ -764,32 +764,35 @@ impl Terrain {
 #[cfg(test)]
 mod test {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
 
     const DUMP: bool = false;
 
     #[test]
     fn it_can_parse_all_t2_files() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.T2".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let contents = catalog.read_sync(fid)?;
-            let terrain = Terrain::from_bytes(&contents)?;
-            if DUMP {
-                terrain.make_debug_images(&format!("../../dump/t2/{}_{}", game, meta.name()))?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("T2")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let contents = catalog.read_sync(fid)?;
+                let terrain = Terrain::from_bytes(&contents)?;
+                if DUMP {
+                    terrain.make_debug_images(&format!(
+                        "../../dump/t2/{}_{}",
+                        game.test_dir,
+                        meta.name()
+                    ))?;
+                }
+                // println!("SZ: {}x{}", terrain.phys_width, terrain._phys_height);
             }
-            println!("SZ: {}x{}", terrain.phys_width, terrain._phys_height);
         }
 
         Ok(())

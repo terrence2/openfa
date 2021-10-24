@@ -32,7 +32,7 @@ use gpu::{
     Gpu,
 };
 use input::{InputController, InputSystem};
-use lib::{from_dos_string, CatalogBuilder, CatalogManager};
+use lib::{from_dos_string, CatalogBuilder, CatalogManager, CatalogOpts};
 use mm::MissionMap;
 use nalgebra::convert;
 use nitrous::{Interpreter, Value};
@@ -63,25 +63,6 @@ use xt::TypeManager;
 /// Show the contents of an MM file
 #[derive(Debug, StructOpt)]
 struct Opt {
-    /// The path to look in for game files (default: pwd)
-    #[structopt(short, long)]
-    game_path: Option<PathBuf>,
-
-    /// If not all required libs are found in the game path, look here. If the CD's LIB files have
-    /// been copied into the game directory, this is unused.
-    #[structopt(short, long)]
-    cd_path: Option<PathBuf>,
-
-    /// For Fighter's Anthology, if the second disk's LIB files have not been copied into the game
-    /// directory, and you want to use the reference materials, also provide this path. There is no
-    /// ability to switch the disk, currently. (Note: reference still WIP, so not much point yet.)
-    #[structopt(long)]
-    cd2_path: Option<PathBuf>,
-
-    /// Extra directories to treat as libraries
-    #[structopt(short, long)]
-    lib_paths: Vec<PathBuf>,
-
     /// Run a command after startup
     #[structopt(short, long)]
     run_command: Option<String>,
@@ -93,6 +74,9 @@ struct Opt {
     /// The map file(s) to view
     #[structopt(short, long, name = "NAME")]
     map_names: Vec<String>,
+
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 #[derive(Debug)]
@@ -506,18 +490,17 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     } else {
         (CpuDetailLevel::Medium, GpuDetailLevel::High)
     };
-    let catman =
-        CatalogManager::bootstrap(opt.game_path, opt.cd_path, opt.cd2_path, &opt.lib_paths)?;
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
 
     let mut async_rt = Runtime::new()?;
 
     let mut catalog = CatalogBuilder::build()?;
-    for (i, d) in opt.lib_paths.iter().enumerate() {
-        catalog.add_labeled_drawer(
-            "default",
-            DirectoryDrawer::from_directory(100 + i as i64, d)?,
-        )?;
-    }
+    // for (i, d) in opt.lib_paths.iter().enumerate() {
+    //     catalog.add_labeled_drawer(
+    //         "default",
+    //         DirectoryDrawer::from_directory(100 + i as i64, d)?,
+    //     )?;
+    // }
 
     let interpreter = Interpreter::new();
     let timeline = Timeline::new(&mut interpreter.write());

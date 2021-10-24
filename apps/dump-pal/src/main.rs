@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use lib::CatalogBuilder;
+use catalog::{Catalog, FileId};
+use lib::{CatalogManager, CatalogOpts, GameInfo};
 use pal::Palette;
 use std::fs;
 use structopt::StructOpt;
@@ -31,48 +32,72 @@ struct Opt {
 
     /// PAL file to analyze
     inputs: Vec<String>,
+
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
-    for &fid in &inputs {
-        let label = catalog.file_label(fid)?;
-        let game = label.split(':').last().unwrap();
-        let meta = catalog.stat_sync(fid)?;
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    for (game, catalog) in catalogs.selected() {
+        for input in &opt.inputs {
+            for fid in catalog.find_matching(input, None)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "{}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                println!(
+                    "{}",
+                    "=".repeat(1 + game.test_dir.len() + meta.name().len())
+                );
+                show_pal(fid, game, catalog, &opt)?;
+            }
+        }
+    }
 
-        let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
-        if opt.dump {
-            println!("Dumping palette: {}:{}", label, meta.name());
+    Ok(())
+}
 
-            let size = 80;
-            let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
-            for i in 0..16 {
-                for j in 0..16 {
-                    let off = (j << 4 | i) as usize;
-                    for ip in 0..size {
-                        for jp in 0..size {
-                            buf.put_pixel(i * size + ip, j * size + jp, pal.rgb(off)?);
-                        }
+fn show_pal(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
+    let meta = catalog.stat_sync(fid)?;
+    let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
+    if opt.dump {
+        println!("Dumping palette: {}:{}", game.test_dir, meta.name());
+
+        let size = 80;
+        let mut buf = image::ImageBuffer::new(16u32 * size, 16u32 * size);
+        for i in 0..16 {
+            for j in 0..16 {
+                let off = (j << 4 | i) as usize;
+                for ip in 0..size {
+                    for jp in 0..size {
+                        buf.put_pixel(i * size + ip, j * size + jp, pal.rgb(off)?);
                     }
                 }
             }
-            fs::create_dir_all(&format!("dump/palette/{}-{}", game, meta.name()))?;
-            let output = format!("dump/palette/{}-{}/palette.png", game, meta.name());
-            buf.save(&output)?;
-
-            return Ok(());
         }
+        fs::create_dir_all(&format!("dump/palette/{}-{}", game.test_dir, meta.name()))?;
+        let output = format!("dump/palette/{}-{}/palette.png", game.test_dir, meta.name());
+        buf.save(&output)?;
 
-        if let Some(pos_str) = opt.position.clone() {
-            let pos = if let Some(hex) = pos_str.strip_prefix("0x") {
-                usize::from_str_radix(hex, 16)?
-            } else {
-                pos_str.parse::<usize>()?
-            };
-            println!("{:02X} => {:?}", pos, pal.rgb(pos)?);
-        }
+        return Ok(());
     }
+
+    if let Some(pos_str) = opt.position.clone() {
+        let pos = if let Some(hex) = pos_str.strip_prefix("0x") {
+            usize::from_str_radix(hex, 16)?
+        } else {
+            pos_str.parse::<usize>()?
+        };
+        println!("{:02X} => {:?}", pos, pal.rgb(pos)?);
+    }
+    println!();
 
     Ok(())
 }

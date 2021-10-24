@@ -255,26 +255,26 @@ impl PlaneType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogBuilder};
+    use lib::{from_dos_string, CatalogManager};
 
     #[test]
     fn it_can_parse_all_plane_files() -> Result<()> {
-        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PT".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let contents = from_dos_string(catalog.read_sync(fid)?);
-            let pt = PlaneType::from_text(&contents)?;
-            assert_eq!(pt.nt.ot.file_name(), meta.name());
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("PT")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let pt = PlaneType::from_text(&contents)?;
+                assert_eq!(pt.nt.ot.file_name(), meta.name());
+            }
         }
 
         Ok(())

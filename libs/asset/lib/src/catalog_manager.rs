@@ -19,30 +19,57 @@ use crate::{
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, DirectoryDrawer};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
 };
+use structopt::StructOpt;
+
+/// Include this with #[structopt(flatten)] to provide cli arguments to CatalogManager for game discovery.
+#[derive(Debug, StructOpt)]
+pub struct CatalogOpts {
+    /// The path to look in for game files (default: pwd)
+    #[structopt(short, long)]
+    game_path: Option<PathBuf>,
+
+    /// If not all required libs are found in the game path, look here. If the CD's LIB files have
+    /// been copied into the game directory, this is unused.
+    #[structopt(short, long)]
+    cd_path: Option<PathBuf>,
+
+    /// For Fighter's Anthology, if the second disk's LIB files have not been copied into the game
+    /// directory, and you want to use the reference materials, also provide this path. There is no
+    /// ability to switch the disk, currently. (Note: reference still WIP, so not much point yet.)
+    #[structopt(long)]
+    cd2_path: Option<PathBuf>,
+
+    /// Extra directories to treat as libraries
+    #[structopt(short, long)]
+    lib_paths: Vec<PathBuf>,
+
+    /// Select the game, if there is more than one available (e.g. in test mode)
+    #[structopt(short = "S", long)]
+    select_game: Option<String>,
+}
 
 /// Search for artifacts and create catalogs for any and every game we
 /// can get our hands on.
 pub struct CatalogManager {
-    catalogs: HashMap<String, Catalog>,
+    selected_game: Option<usize>,
+    catalogs: Vec<(&'static GameInfo, Catalog)>,
 }
 
 impl CatalogManager {
     /// Find out what we have to work with.
     pub fn bootstrap(
-        game_path: Option<PathBuf>,
-        cd_path: Option<PathBuf>,
-        cd2_path: Option<PathBuf>,
-        lib_paths: &[PathBuf],
+        opts: &CatalogOpts, // game_path: Option<PathBuf>,
+                            // cd_path: Option<PathBuf>,
+                            // cd2_path: Option<PathBuf>,
+                            // lib_paths: &[PathBuf]
     ) -> Result<Self> {
-        let mut catalogs = HashMap::new();
-
         // If we didn't specify a path, use cwd.
-        let game_path = if let Some(path) = game_path {
-            path
+        let game_path = if let Some(path) = &opts.game_path {
+            path.to_owned()
         } else {
             env::current_dir()?
         };
@@ -58,26 +85,26 @@ impl CatalogManager {
             if !game.cd_libs.iter().all(|&name| game_files.contains(name)) {
                 // Accumulate all CD files we can find so we check if we have everything.
                 let mut all_cd_files = HashSet::new();
-                if let Some(cd_path) = &cd_path {
+                if let Some(cd_path) = &opts.cd_path {
                     for name in Self::list_directory_canonical(cd_path)?.drain() {
                         all_cd_files.insert(name);
                     }
                 }
-                if let Some(cd2_path) = &cd2_path {
+                if let Some(cd2_path) = &opts.cd2_path {
                     for name in Self::list_directory_canonical(cd2_path)?.drain() {
                         all_cd_files.insert(name);
                     }
                 }
 
                 if game.cd_libs.iter().all(|&path| all_cd_files.contains(path)) {
-                    if let Some(cd_path) = &cd_path {
+                    if let Some(cd_path) = &opts.cd_path {
                         Self::populate_catalog(game, cd_path, -10, &mut catalog)?;
                     }
-                    if let Some(cd2_path) = &cd2_path {
+                    if let Some(cd2_path) = &opts.cd2_path {
                         Self::populate_catalog(game, cd2_path, -20, &mut catalog)?;
                     }
                 } else {
-                    match (&cd_path, &cd2_path) {
+                    match (&opts.cd_path, &opts.cd2_path) {
                         (Some(p1), Some(p2)) => bail!(
                             "Did not find all expected CD LIBs in {} and {} for {}",
                             p1.to_string_lossy(),
@@ -102,48 +129,94 @@ impl CatalogManager {
             }
 
             // Load any additional libdirs into the catalog
-            for (i, lib_path) in lib_paths.iter().enumerate() {
+            for (i, lib_path) in opts.lib_paths.iter().enumerate() {
                 catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
             }
 
-            catalogs.insert(game.test_dir.to_owned(), catalog);
+            Ok(Self {
+                selected_game: Some(0),
+                catalogs: vec![(game, catalog)],
+            })
         } else {
             println!(
-                "Did not detect any games in {}",
+                "Did not detect any games in {}, falling back to test mode...",
                 game_path.to_string_lossy()
             );
+            Self::for_testing(opts)
+        }
+    }
 
-            // Look for test directories
-            let mut test_path = env::current_dir()?;
+    /// Build a new catalog manager with whatever test data we can scrounge up.
+    pub fn for_testing(opts: &CatalogOpts) -> Result<Self> {
+        // Look up until we find the disk_dumps directory or run out of up.
+        let mut test_path = env::current_dir()?;
+        test_path.push("disk_dumps");
+        while !test_path.exists() && test_path.to_string_lossy() != "/disk_dumps" {
+            test_path.pop();
+            test_path.pop();
             test_path.push("disk_dumps");
-            for game in GAME_INFO {
-                let mut game_path = test_path.clone();
-                game_path.push(game.test_dir);
-                let mut installdir = game_path.clone();
-                installdir.push("installdir");
-                let mut cdrom1dir = game_path.clone();
-                cdrom1dir.push("cdrom1");
-                let mut cdrom2dir = game_path.clone();
-                cdrom2dir.push("cdrom2");
-                if let Ok(game_files) = Self::list_directory_canonical(&installdir) {
-                    if let Some(detected_game) = Self::detect_game_from_files(&game_files) {
-                        ensure!(
-                            detected_game.name == game.name,
-                            "unexpected game in game's test_dir"
-                        );
-                        let mut game_catalog = Catalog::empty();
-                        Self::populate_catalog(game, &installdir, 1, &mut game_catalog)?;
-                        Self::populate_catalog(game, &cdrom1dir, 0, &mut game_catalog)?;
-                        if cdrom2dir.exists() {
-                            Self::populate_catalog(game, &cdrom2dir, 0, &mut game_catalog)?;
-                        }
-                        catalogs.insert(game.test_dir.to_owned(), game_catalog);
+        }
+        ensure!(test_path.to_string_lossy() != "/disk_dumps");
+
+        let mut catalogs = vec![];
+
+        // Find games under disk_dumps
+        for game in GAME_INFO {
+            let mut game_path = test_path.clone();
+            game_path.push(game.test_dir);
+            let mut installdir = game_path.clone();
+            installdir.push("installdir");
+            let mut cdrom1dir = game_path.clone();
+            cdrom1dir.push("cdrom1");
+            let mut cdrom2dir = game_path.clone();
+            cdrom2dir.push("cdrom2");
+            if let Ok(game_files) = Self::list_directory_canonical(&installdir) {
+                if let Some(detected_game) = Self::detect_game_from_files(&game_files) {
+                    ensure!(
+                        detected_game.name == game.name,
+                        "unexpected game in game's test_dir"
+                    );
+                    let mut game_catalog = Catalog::empty();
+                    Self::populate_catalog(game, &installdir, 1, &mut game_catalog)?;
+                    Self::populate_catalog(game, &cdrom1dir, 0, &mut game_catalog)?;
+                    if cdrom2dir.exists() {
+                        Self::populate_catalog(game, &cdrom2dir, 0, &mut game_catalog)?;
                     }
+                    catalogs.push((game, game_catalog));
                 }
             }
         }
 
-        return Ok(Self { catalogs });
+        let mut selected_game = None;
+        if let Some(selected) = &opts.select_game {
+            for (i, (game, _)) in catalogs.iter().enumerate() {
+                if game.test_dir == selected {
+                    selected_game = Some(i);
+                    break;
+                }
+            }
+        }
+
+        Ok(Self {
+            selected_game,
+            catalogs,
+        })
+    }
+
+    pub fn all(&self) -> impl Iterator<Item = &(&'static GameInfo, Catalog)> + '_ {
+        self.catalogs.iter()
+    }
+
+    pub fn selected(&self) -> Box<dyn Iterator<Item = &(&'static GameInfo, Catalog)> + '_> {
+        if let Some(selected) = self.selected_game {
+            Box::new(self.catalogs.iter().skip(selected).take(1))
+        } else {
+            Box::new(self.all())
+        }
+    }
+
+    pub fn best(&self) -> &Catalog {
+        &self.catalogs[self.selected_game.unwrap_or(0)].1
     }
 
     fn populate_catalog(

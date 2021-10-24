@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 image = "^ 0.23"
-structopt = "^ 0.2"
+structopt = "^ 0.3"
+catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/asset/lib" }
 pal = { path = "../../libs/asset/pal" }

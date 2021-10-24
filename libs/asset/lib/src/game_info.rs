@@ -30,6 +30,7 @@ pub struct GameInfo {
 }
 
 impl GameInfo {
+    // FIXME: we should remove all of this
     pub fn packed_label(&self) -> String {
         format!("packed:{}", self.test_dir)
     }

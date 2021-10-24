@@ -221,26 +221,25 @@ impl Fnt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
 
     #[test]
     fn it_can_parse_all_fnt_files() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.FNT".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
-            fnt.analyze(game, meta.name())?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("FNT")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
+                fnt.analyze(game.test_dir, meta.name())?;
+            }
         }
 
         Ok(())

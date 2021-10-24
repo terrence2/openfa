@@ -17,6 +17,7 @@ lazy_static = "^ 1"
 log = "^ 0.4"
 memmap = "^ 0.6"
 regex = "^ 1"
+structopt = "^ 0.3"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 zerocopy = "^ 0.5"
 lzss = { path = "../../util/lzss" }

@@ -178,27 +178,27 @@ impl ProjectileType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogBuilder};
+    use lib::{from_dos_string, CatalogManager};
 
     #[test]
     fn it_can_parse_all_projectile_files() -> Result<()> {
-        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.JT".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let contents = from_dos_string(catalog.read_sync(fid)?);
-            let jt = ProjectileType::from_text(&contents)?;
-            // Only one misspelling in 2500 files.
-            assert!(jt.ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("JT")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let jt = ProjectileType::from_text(&contents)?;
+                // Only one misspelling in 2500 files.
+                assert!(jt.ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");
+            }
         }
 
         Ok(())
