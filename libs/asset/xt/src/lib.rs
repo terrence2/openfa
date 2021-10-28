@@ -124,7 +124,7 @@ impl TypeManager {
     }
 
     pub fn load(&self, name: &str, catalog: &Catalog) -> Result<TypeRef> {
-        let cache_key = format!("{}:{}", catalog.default_label(), name);
+        let cache_key = format!("{}:{}", catalog.label(), name);
         if let Some(item) = self.cache.borrow().get(&cache_key) {
             trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());

@@ -707,10 +707,14 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         shapes
             .write()
             .set_shared_palette(&system_palette, &gpu.read());
-        let mut pts = catalog.find_matching_names("*.PT")?;
+        let mut pts = catalog.find_with_extension("PT")?;
         let side_len = (pts.len() as f64).sqrt().ceil() as usize;
         const KEY: &str = "F22.PT";
-        pts.sort_by(|a, b| {
+        pts.sort_by(|a_fid, b_fid| {
+            let a_stat = catalog.stat_sync(*a_fid).unwrap();
+            let b_stat = catalog.stat_sync(*b_fid).unwrap();
+            let a = a_stat.name();
+            let b = b_stat.name();
             if a == KEY {
                 std::cmp::Ordering::Less
             } else if b == KEY {
@@ -719,9 +723,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 a.cmp(b)
             }
         });
-        for (i, pt_name) in pts.iter().enumerate() {
+        for (i, pt_fid) in pts.iter().enumerate() {
             let xi = i % side_len;
             let yi = i / side_len;
+            let pt_stat = catalog.stat_sync(*pt_fid)?;
+            let pt_name = pt_stat.name();
             let xt = type_manager.load(pt_name, &catalog)?;
             let pt = xt.pt()?;
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(

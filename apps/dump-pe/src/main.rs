@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
     for (game, catalog) in catalogs.selected() {
         for input in &opt.inputs {
-            for fid in catalog.find_matching(input, None)? {
+            for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat_sync(fid)?;
                 println!(
                     "{}:{:13} @ {}",

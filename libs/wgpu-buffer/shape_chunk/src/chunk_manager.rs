@@ -186,7 +186,7 @@ impl ShapeChunkBuffer {
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<(ChunkId, ShapeId)> {
-        let cache_key = format!("{}:{}", catalog.default_label(), name);
+        let cache_key = format!("{}:{}", catalog.label(), name);
         if let Some(&shape_id) = self.name_to_shape_map.get(&cache_key) {
             let chunk_id = self.shape_to_chunk_map[&shape_id];
             return Ok((chunk_id, shape_id));

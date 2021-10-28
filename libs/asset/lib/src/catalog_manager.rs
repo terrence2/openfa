@@ -78,7 +78,7 @@ impl CatalogManager {
         // Search for the game so we can figure out what is required to be loaded.
         let mut catalogs = if let Some(game) = Self::detect_game_from_files(&game_files) {
             // Load libs from the installdir
-            let mut catalog = Catalog::empty();
+            let mut catalog = Catalog::empty(game.test_dir);
             Self::populate_catalog(game, &game_path, 0, &mut catalog)?;
 
             // If the user has not copied over the CD libs, we need to search for them.
@@ -192,7 +192,7 @@ impl CatalogManager {
                         detected_game.name == game.name,
                         "unexpected game in game's test_dir"
                     );
-                    let mut game_catalog = Catalog::empty();
+                    let mut game_catalog = Catalog::empty(game.test_dir);
                     Self::populate_catalog(game, &installdir, 1, &mut game_catalog)?;
                     Self::populate_catalog(game, &cdrom1dir, 0, &mut game_catalog)?;
                     if cdrom2dir.exists() {

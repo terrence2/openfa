@@ -65,15 +65,15 @@ fn main() -> Result<()> {
 fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
     let multi_input = inputs.len() > 1;
     for (i, input) in inputs.iter().enumerate() {
-        let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
+        let catalog = Catalog::with_drawers("main", vec![LibDrawer::from_path(0, input)?])?;
         if multi_input {
             if i != 0 {
                 println!();
             }
             println!("{}:", input.to_string_lossy());
         }
-        for name in catalog.find_matching_names("*")?.iter() {
-            let info = catalog.stat_name_sync(name)?;
+        for &fid in catalog.find_glob("*")?.iter() {
+            let info = catalog.stat_sync(fid)?;
             let mut psize = info.packed_size().file_size(options::BINARY).unwrap();
             if psize.ends_with(" B") {
                 psize += "  ";
@@ -126,11 +126,13 @@ fn handle_unpack(inputs: Vec<PathBuf>, output_path: Option<PathBuf>) -> Result<(
             );
             parent
         };
-        let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
+        let catalog = Catalog::with_drawers("main", vec![LibDrawer::from_path(0, input)?])?;
         if !outdir.exists() {
             create_dir_all(&outdir)?;
         }
-        for name in catalog.find_matching_names("*")?.iter() {
+        for &fid in catalog.find_glob("*")?.iter() {
+            let stat = catalog.stat_sync(fid)?;
+            let name = stat.name();
             let outfilename = outdir.join(name);
             println!(
                 "{}:{} -> {}",
