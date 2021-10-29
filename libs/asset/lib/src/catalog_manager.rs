@@ -279,15 +279,13 @@ impl CatalogManager {
         // Filename capitalization is :shrug: so list and canonicalize everything all instead of
         // trying to rely on sane or predicable behavior.
         let mut game_files = HashSet::new();
-        for p in fs::read_dir(path)? {
-            if let Ok(p) = p {
-                game_files.insert(
-                    p.file_name()
-                        .to_ascii_uppercase()
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-            }
+        for p in (fs::read_dir(path)?).flatten() {
+            game_files.insert(
+                p.file_name()
+                    .to_ascii_uppercase()
+                    .to_string_lossy()
+                    .into_owned(),
+            );
         }
         Ok(game_files)
     }

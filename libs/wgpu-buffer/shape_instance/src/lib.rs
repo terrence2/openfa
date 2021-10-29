@@ -520,7 +520,7 @@ mod test {
                 let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
                     meta.name(),
                     DrawSelection::NormalModel,
-                    &catalog,
+                    catalog,
                     &mut gpu.write(),
                     &async_rt,
                     &mut tracker,

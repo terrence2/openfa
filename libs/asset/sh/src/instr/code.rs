@@ -521,6 +521,7 @@ impl X86Code {
             let saved_offset = *offset;
             let mut have_vinstr = true;
             let maybe = RawShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
+            #[allow(clippy::if_same_then_else)]
             if let Err(_e) = maybe {
                 have_vinstr = false;
             } else if let Some(&Instr::UnknownUnknown(_)) = vinstrs.last() {

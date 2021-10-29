@@ -294,7 +294,6 @@ pub fn format_sections(
                                 accumulate_section(code, &sections[i - 1], tags, &mut line)
                             }
                             accumulate_section(code, &sections[i], tags, &mut line);
-                            out.push(line.iter().collect::<String>());
                         } else {
                             line.push('1');
                             line.push('|');
@@ -304,8 +303,8 @@ pub fn format_sections(
                             } else {
                                 accumulate_section(code, &sections[i - 1], tags, &mut line)
                             }
-                            out.push(line.iter().collect::<String>());
                         }
+                        out.push(line.iter().collect::<String>());
                     }
                 }
             }

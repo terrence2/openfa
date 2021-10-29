@@ -64,7 +64,7 @@ fn show_t2(fid: FileId, profile: bool, catalog: &Catalog) -> Result<()> {
     if profile {
         let start = Instant::now();
         for _ in 0..PROFILE_COUNT {
-            let _ = Terrain::from_bytes(&raw)?;
+            let _ = Terrain::from_bytes(raw)?;
         }
         println!(
             "load time: {}ms",
@@ -72,7 +72,7 @@ fn show_t2(fid: FileId, profile: bool, catalog: &Catalog) -> Result<()> {
         );
         return Ok(());
     }
-    let t2 = Terrain::from_bytes(&raw)?;
+    let t2 = Terrain::from_bytes(raw)?;
     println!("map name:    {}", t2.name());
     println!("width:       {}", t2.width());
     println!("height:      {}", t2.height());

@@ -281,7 +281,7 @@ mod tests {
     fn can_parse_all_entity_types() -> Result<()> {
         let catalogs = CatalogManager::for_testing()?;
         for (game, catalog) in catalogs.all() {
-            for fid in catalog.find_matching("*.[OJNP]T", None)? {
+            for fid in catalog.find_glob("*.[OJNP]T")? {
                 let meta = catalog.stat_sync(fid)?;
                 println!(
                     "At: {}:{:13} @ {}",

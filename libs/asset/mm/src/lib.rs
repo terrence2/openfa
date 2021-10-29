@@ -554,7 +554,7 @@ mod tests {
 
                 let type_manager = TypeManager::empty();
                 let contents = from_dos_string(catalog.read_sync(fid)?);
-                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
+                let mm = MissionMap::from_str(&contents, &type_manager, catalog)?;
                 assert_eq!(mm.get_base_texture_name()?.len(), 3);
                 assert!(mm.t2_name.ends_with(".T2"));
             }

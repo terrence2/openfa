@@ -120,7 +120,7 @@ impl System {
             target_offset: 0,
             targets: Vec::new(),
             interpreter: interpreter.clone(),
-            widgets: widgets.clone(),
+            widgets,
             visible_widgets,
         }));
         interpreter.write().put_global(
@@ -251,7 +251,7 @@ impl System {
             .read()
             .root_container()
             .write()
-            .add_child("demo", demo_box.clone())
+            .add_child("demo", demo_box)
             .set_float(PositionH::Start, PositionV::Bottom);
         widgets
             .read()
@@ -556,7 +556,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         composite,
     )?;
 
-    let system = System::new(catalog, interpreter.clone(), widgets.clone())?;
+    let system = System::new(catalog, interpreter.clone(), widgets)?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
@@ -580,11 +580,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         println!("Loading {}...", name);
         let raw = catalog.read_sync(mm_fid)?;
         let mm_content = from_dos_string(raw);
-        let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
+        let mm = MissionMap::from_str(&mm_content, &type_manager, catalog)?;
         let t2_mapper = t2_tile_set.add_map(
             &system_palette,
             &mm,
-            &catalog,
+            catalog,
             &mut gpu.write(),
             &async_rt,
             &mut tracker,
@@ -602,7 +602,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 info.xt().ot().shape.as_ref().expect("a shape file"),
                 DrawSelection::NormalModel,
-                &catalog,
+                catalog,
                 &mut gpu.write(),
                 &async_rt,
                 &mut tracker,
@@ -728,12 +728,12 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             let yi = i / side_len;
             let pt_stat = catalog.stat_sync(*pt_fid)?;
             let pt_name = pt_stat.name();
-            let xt = type_manager.load(pt_name, &catalog)?;
+            let xt = type_manager.load(pt_name, catalog)?;
             let pt = xt.pt()?;
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 pt.nt.ot.shape.as_ref().unwrap(),
                 DrawSelection::NormalModel,
-                &catalog,
+                catalog,
                 &mut gpu.write(),
                 &async_rt,
                 &mut tracker,

@@ -26,9 +26,12 @@ use pal::Palette;
 use parking_lot::RwLock;
 use pic_uploader::PicUploader;
 use sh::RawShape;
+use std::fmt::Formatter;
 use std::{
     collections::HashMap,
+    fmt::Display,
     mem,
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 use tokio::runtime::Runtime;
@@ -56,6 +59,12 @@ pub struct DrawIndirectCommand {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ChunkId(u32);
+
+impl Display for ChunkId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ShapeId((ChunkId, u32));
@@ -230,6 +239,7 @@ impl OpenChunk {
 pub struct ClosedChunk {
     vertex_buffer: wgpu::Buffer,
     vertex_count: u32,
+
     atlas_bind_group: wgpu::BindGroup,
 
     chunk_id: ChunkId,
@@ -238,11 +248,12 @@ pub struct ClosedChunk {
 }
 
 impl ClosedChunk {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        chunk: OpenChunk,
+        mut chunk: OpenChunk,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
-        dump_atlas_textures: bool,
+        dump_path: Option<PathBuf>,
         pic_uploader: &mut PicUploader,
         gpu: &mut gpu::Gpu,
         async_rt: &Runtime,
@@ -268,48 +279,16 @@ impl ClosedChunk {
             TextureAtlasProperties::new(chunk.atlas_packer.width(), chunk.atlas_packer.height());
         let atlas_properties = gpu.push_buffer(
             "chunk-atlas-properties",
-            &atlas_properties.as_bytes(),
+            atlas_properties.as_bytes(),
             wgpu::BufferUsage::UNIFORM,
         );
 
         pic_uploader.dispatch_singleton(gpu)?;
-        let atlas_view = if dump_atlas_textures {
-            let extent = wgpu::Extent3d {
-                width: chunk.atlas_packer.width(),
-                height: chunk.atlas_packer.height(),
-                depth: 1,
-            };
-            let name = format!(
-                "/home/terrence/Projects/openfa/__dump__/chunk-{}.png",
-                chunk.chunk_id.0
-            );
-
-            let (atlas_texture, atlas_view, _atlas_sampler) =
-                chunk.atlas_packer.finish(gpu, async_rt, tracker)?;
-
-            Gpu::dump_texture(
-                &atlas_texture,
-                extent,
-                wgpu::TextureFormat::Rgba8Unorm,
-                async_rt,
-                gpu,
-                Box::new(move |extent, _fmt, data| {
-                    let buffer = image::ImageBuffer::<Rgba<u8>, Vec<u8>>::from_vec(
-                        extent.width,
-                        extent.height,
-                        data,
-                    )
-                    .unwrap();
-                    buffer.save(&name).unwrap();
-                }),
-            )?;
-
-            atlas_view
-        } else {
-            let (_atlas_texture, atlas_view, _atlas_sampler) =
-                chunk.atlas_packer.finish(gpu, async_rt, tracker)?;
-            atlas_view
-        };
+        if let Some(path) = dump_path {
+            chunk.atlas_packer.dump(path);
+        }
+        let (_atlas_texture, atlas_view, _atlas_sampler) =
+            chunk.atlas_packer.finish(gpu, async_rt, tracker)?;
 
         let atlas_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-chunk-atlas-bind-group"),
@@ -338,10 +317,10 @@ impl ClosedChunk {
         Ok(ClosedChunk {
             vertex_buffer,
             vertex_count: chunk.vertex_upload_buffer.len() as u32,
+            atlas_bind_group,
             chunk_id: chunk.chunk_id,
             chunk_flags: chunk.chunk_flags,
             chunk_parts: chunk.chunk_parts,
-            atlas_bind_group,
         })
     }
 
