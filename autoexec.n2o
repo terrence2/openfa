@@ -1,1 +1,8 @@
-system.next_target(True);
+// KuumNi, dawn
+camera.set_target_latitude_radians(0.687693);
+camera.set_target_longitude_radians(-2.245564);
+camera.set_target_height_meters(0.0);
+camera.set_eye_latitude_radians(0.174531);
+camera.set_eye_longitude_radians(17.514379);
+camera.set_eye_distance_meters(1081.399373);
+orrery.set_unix_ms(-168993517833.82);

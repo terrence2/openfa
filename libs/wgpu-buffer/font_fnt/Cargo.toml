@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 codepage-437 = "^ 0.1"
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 image = "^ 0.23"
 lazy_static = "^ 1"
 log = "^ 0.4"

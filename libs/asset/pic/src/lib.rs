@@ -376,26 +376,25 @@ impl<'a> Pic<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
     use std::{fs, path::Path};
 
     #[test]
     fn it_can_new_all_pics() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let _img = Pic::from_bytes(&catalog.read_sync(fid)?)?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("PIC")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let _img = Pic::from_bytes(&catalog.read_sync(fid)?)?;
+            }
         }
 
         Ok(())
@@ -403,34 +402,33 @@ mod tests {
 
     #[test]
     fn it_can_decode_all_pics() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            let img = Pic::decode(&palette, &catalog.read_sync(fid)?)?;
-
-            if false {
-                let name = format!(
-                    "dump/{}/{}.png",
-                    game,
-                    meta.name().split('.').collect::<Vec<_>>().first().unwrap()
+            for fid in catalog.find_with_extension("PIC")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
                 );
-                let path = Path::new(&name);
-                println!("Write: {}", path.display());
-                let _ = fs::create_dir("dump");
-                let _ = fs::create_dir(path.parent().unwrap());
-                img.save(path)?;
+                let img = Pic::decode(&palette, &catalog.read_sync(fid)?)?;
+
+                if false {
+                    let name = format!(
+                        "dump/{}/{}.png",
+                        game.test_dir,
+                        meta.name().split('.').collect::<Vec<_>>().first().unwrap()
+                    );
+                    let path = Path::new(&name);
+                    println!("Write: {}", path.display());
+                    let _ = fs::create_dir("dump");
+                    let _ = fs::create_dir(path.parent().unwrap());
+                    img.save(path)?;
+                }
             }
         }
 

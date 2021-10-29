@@ -13,8 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
+use catalog::{Catalog, FileId};
 use image::GenericImageView;
-use lib::CatalogBuilder;
+use lib::{CatalogManager, CatalogOpts, GameInfo};
 use pal::Palette;
 use pic::Pic;
 use std::fs;
@@ -49,63 +50,79 @@ struct Opt {
 
     /// One or more PIC files to process
     inputs: Vec<String>,
+
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
-    if inputs.is_empty() {
-        println!("No inputs found!");
-        return Ok(());
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    for (game, catalog) in catalogs.selected() {
+        for input in &opt.inputs {
+            for fid in catalog.find_glob(input)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "{}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                show_pic(fid, game, catalog, &opt)?;
+            }
+        }
     }
 
-    for &fid in &inputs {
-        let label = catalog.file_label(fid)?;
-        let game = label.split(':').last().unwrap();
-        let meta = catalog.stat_sync(fid)?;
+    Ok(())
+}
 
-        let content = catalog.read_sync(fid)?;
-        let image = Pic::from_bytes(&content)?;
+fn show_pic(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
+    let meta = catalog.stat_sync(fid)?;
+    let content = catalog.read_sync(fid)?;
+    let image = Pic::from_bytes(&content)?;
 
-        println!("{}:{}", game, meta.name());
-        println!("{}", "=".repeat(1 + game.len() + meta.name().len()));
-        println!("format: {:?}", image.format());
-        println!("width:  {}px", image.width());
-        println!("height: {}px", image.height());
-        if let Some(pal) = image.palette() {
-            println!("colors: {:?}", pal.color_count);
+    println!(
+        "{}",
+        "=".repeat(1 + game.test_dir.len() + meta.name().len())
+    );
+    println!("format: {:?}", image.format());
+    println!("width:  {}px", image.width());
+    println!("height: {}px", image.height());
+    if let Some(pal) = image.palette() {
+        println!("colors: {:?}", pal.color_count);
 
-            if let Some(ref path) = opt.show_palette {
-                pal.dump_png(path)?;
-            }
-
-            if let Some(ref path) = opt.dump_palette {
-                pal.dump_pal(path)?;
-            }
+        if let Some(ref path) = opt.show_palette {
+            pal.dump_png(path)?;
         }
 
-        if let Some(target) = &opt.write_image {
-            let palette = if let Some(path) = &opt.use_palette {
-                Palette::from_bytes(&fs::read(path)?)?
-            } else if opt.grayscale {
-                Palette::grayscale()?
-            } else {
-                Palette::from_bytes(&catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?)?
-            };
-            let image = Pic::decode(&palette, &content)?;
-            image.save(target)?;
+        if let Some(ref path) = opt.dump_palette {
+            pal.dump_pal(path)?;
         }
+    }
 
-        if opt.show_ascii {
-            let palette = Palette::grayscale()?;
-            let image = Pic::decode(&palette, &content)?;
-            let (width, height) = image.dimensions();
-            for h in 0..height {
-                for w in 0..width {
-                    print!("{:02X} ", image.get_pixel(w, h)[0]);
-                }
-                println!();
+    if let Some(target) = &opt.write_image {
+        let palette = if let Some(path) = &opt.use_palette {
+            Palette::from_bytes(&fs::read(path)?)?
+        } else if opt.grayscale {
+            Palette::grayscale()?
+        } else {
+            Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?
+        };
+        let image = Pic::decode(&palette, &content)?;
+        image.save(target)?;
+    }
+
+    if opt.show_ascii {
+        let palette = Palette::grayscale()?;
+        let image = Pic::decode(&palette, &content)?;
+        let (width, height) = image.dimensions();
+        for h in 0..height {
+            for w in 0..width {
+                print!("{:02X} ", image.get_pixel(w, h)[0]);
             }
+            println!();
         }
     }
 

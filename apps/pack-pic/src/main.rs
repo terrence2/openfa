@@ -12,10 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::{anyhow, bail, ensure, Result};
-use catalog::Catalog;
+use anyhow::{anyhow, ensure, Result};
 use image::Pixel;
-use lib::CatalogBuilder;
+use lib::{CatalogManager, CatalogOpts};
 use pal::Palette;
 use pic::{Header, Pic};
 use rand::Rng;
@@ -77,10 +76,6 @@ struct Opt {
     #[structopt(short = "f", long = "palette-file", parse(from_os_str))]
     palette_file: Option<PathBuf>,
 
-    /// Use a palette from assets in the game directory at path
-    #[structopt(short = "g", long = "game-path")]
-    game_path: Option<PathBuf>,
-
     /// Use a palette from the given resource
     #[structopt(short = "r", long = "palette-resource")]
     palette_resource: Option<String>,
@@ -101,17 +96,9 @@ struct Opt {
     /// A source image to encode into a PIC
     #[structopt(parse(from_os_str))]
     source_image: PathBuf,
-}
 
-fn load_palette_from_resource(catalog: &Catalog, resource_name: &str) -> Result<Palette> {
-    let data = catalog.read_name_sync(resource_name)?;
-    if resource_name.to_uppercase().ends_with("PAL") {
-        return Palette::from_bytes(&data);
-    }
-    Pic::from_bytes(&data)?
-        .palette()
-        .cloned()
-        .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 fn load_palette(opt: &Opt) -> Result<Palette> {
@@ -120,20 +107,15 @@ fn load_palette(opt: &Opt) -> Result<Palette> {
         return Palette::from_bytes(&pal_data);
     }
 
-    let resource_name = if let Some(ref s) = opt.palette_resource {
-        s
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    if let Some(ref s) = opt.palette_resource {
+        Pic::from_bytes(&catalogs.best().read_name_sync(s)?)?
+            .palette()
+            .cloned()
+            .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))
     } else {
-        "PALETTE.PAL"
-    };
-
-    // FIXME: support a game dir properly
-    let (catalog, inputs) = CatalogBuilder::build_and_select(&[resource_name.to_owned()])?;
-    if inputs.len() != 1 {
-        bail!("expected exactly one input");
+        Palette::from_bytes(&catalogs.best().read_name_sync("PALETTE.PAL")?)
     }
-    let fid = *inputs.first().expect("one input");
-    let meta = catalog.stat_sync(fid)?;
-    load_palette_from_resource(&catalog, meta.name())
 }
 
 fn find_closest_dithered(top: &[(usize, usize)]) -> usize {

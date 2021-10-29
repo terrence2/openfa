@@ -6,7 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 bitflags = "^ 1"
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 md5 = "^ 0.3"
 zerocopy = "^ 0.5"
 packed_struct = { path = "../../nitrogen/util/packed_struct" }

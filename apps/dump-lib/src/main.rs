@@ -19,7 +19,7 @@ use catalog::Catalog;
 use humansize::{file_size_opts as options, FileSize};
 use lib::LibDrawer;
 use std::{
-    fs::{create_dir, remove_file, File},
+    fs::{create_dir_all, remove_file, File},
     io::Write,
     path::PathBuf,
 };
@@ -41,8 +41,8 @@ enum Opt {
     /// Unpack the given lib file
     Unpack {
         #[structopt(short = "-o", long = "--output", parse(from_os_str))]
-        /// Output unpacked libs into this directory
-        output_path: PathBuf,
+        /// Output unpacked files into this directory
+        output_path: Option<PathBuf>,
 
         #[structopt(parse(from_os_str))]
         /// The lib files to unpack
@@ -65,15 +65,15 @@ fn main() -> Result<()> {
 fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
     let multi_input = inputs.len() > 1;
     for (i, input) in inputs.iter().enumerate() {
-        let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
+        let catalog = Catalog::with_drawers("main", vec![LibDrawer::from_path(0, input)?])?;
         if multi_input {
             if i != 0 {
                 println!();
             }
             println!("{}:", input.to_string_lossy());
         }
-        for name in catalog.find_matching_names("*")?.iter() {
-            let info = catalog.stat_name_sync(name)?;
+        for &fid in catalog.find_glob("*")?.iter() {
+            let info = catalog.stat_sync(fid)?;
             let mut psize = info.packed_size().file_size(options::BINARY).unwrap();
             if psize.ends_with(" B") {
                 psize += "  ";
@@ -105,17 +105,41 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn handle_unpack(inputs: Vec<PathBuf>, output_path: PathBuf) -> Result<()> {
+fn handle_unpack(inputs: Vec<PathBuf>, output_path: Option<PathBuf>) -> Result<()> {
     for input in &inputs {
-        let libname = input.file_name().expect("no filename in library");
-        let outdir = output_path.join(libname);
-        let catalog = Catalog::with_drawers(vec![LibDrawer::from_path(0, input)?])?;
+        let outdir = if let Some(p) = &output_path {
+            p.to_owned()
+        } else {
+            let mut parent = if let Some(p) = input.parent() {
+                p.to_owned()
+            } else {
+                PathBuf::from(".")
+            };
+            parent.push(
+                input
+                    .file_name()
+                    .expect("no filename in input")
+                    .to_owned()
+                    .to_string_lossy()
+                    .replace(".LIB", ".L_B")
+                    .replace(".lib", ".l_b"),
+            );
+            parent
+        };
+        let catalog = Catalog::with_drawers("main", vec![LibDrawer::from_path(0, input)?])?;
         if !outdir.exists() {
-            create_dir(&outdir)?;
+            create_dir_all(&outdir)?;
         }
-        for name in catalog.find_matching_names("*")?.iter() {
+        for &fid in catalog.find_glob("*")?.iter() {
+            let stat = catalog.stat_sync(fid)?;
+            let name = stat.name();
             let outfilename = outdir.join(name);
-            println!("{:?}:{} -> {:?}", input, name, outfilename);
+            println!(
+                "{}:{} -> {}",
+                input.to_string_lossy(),
+                name,
+                outfilename.to_string_lossy()
+            );
             let content = catalog.read_name_sync(name)?;
             if outfilename.exists() {
                 remove_file(&outfilename)?;

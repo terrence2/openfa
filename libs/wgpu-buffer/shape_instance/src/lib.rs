@@ -28,7 +28,7 @@ use catalog::Catalog;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, UploadTracker};
 use legion::*;
-use nalgebra::{convert, Matrix4, UnitQuaternion};
+use nalgebra::Matrix4;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
 use parking_lot::RwLock;
@@ -42,6 +42,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use tokio::runtime::Runtime;
 use universe::component::{Rotation, Scale, Transform};
 
 thread_local! {
@@ -113,7 +114,7 @@ impl ShapeInstanceBuffer {
                     ],
                 });
 
-        let chunk_man = ShapeChunkBuffer::new(gpu.device())?;
+        let chunk_man = ShapeChunkBuffer::new(gpu)?;
 
         let vert_shader =
             gpu.create_shader_module("shape.vert", include_bytes!("../target/shape.vert.spirv"))?;
@@ -224,18 +225,23 @@ impl ShapeInstanceBuffer {
         None
     }
 
+    pub fn set_shared_palette(&mut self, palette: &Palette, gpu: &Gpu) {
+        self.chunk_man.set_shared_palette(palette, gpu);
+    }
+
     pub fn upload_and_allocate_slot(
         &mut self,
         name: &str,
         selection: DrawSelection,
-        palette: &Palette,
         catalog: &Catalog,
         gpu: &mut Gpu,
+        async_rt: &Runtime,
+        tracker: &mut UploadTracker,
     ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
             .chunk_man
-            .upload_shape(name, selection, palette, catalog, gpu)?;
+            .upload_shape(name, selection, catalog, gpu, async_rt, tracker)?;
 
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -266,8 +272,13 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(&mut self, gpu: &mut Gpu) -> Result<()> {
-        self.chunk_man.finish_open_chunks(gpu)
+    pub fn ensure_uploaded(
+        &mut self,
+        gpu: &mut Gpu,
+        async_rt: &Runtime,
+        tracker: &mut UploadTracker,
+    ) -> Result<()> {
+        self.chunk_man.finish_open_chunks(gpu, async_rt, tracker)
     }
 
     #[inline]
@@ -310,7 +321,6 @@ impl ShapeInstanceBuffer {
 
         let km2m = Matrix4::new_scaling(1_000.0);
         let view = camera.view::<Kilometers>().to_homogeneous();
-        let view_look_at: UnitQuaternion<f32> = convert(camera.look_at_rh::<Kilometers>());
         let mut query = <(
             Read<Transform>,
             Read<Rotation>,
@@ -324,18 +334,18 @@ impl ShapeInstanceBuffer {
             // errors are at least far away), before being truncated to f32.
             let pos = transform.cartesian().point64().to_homogeneous();
             let pos_view = km2m * view * pos;
-            let pos_compact = [pos_view.x as f32, pos_view.y as f32, pos_view.z as f32];
+            transform_buffer.buffer[0] = pos_view.x as f32;
+            transform_buffer.buffer[1] = pos_view.y as f32;
+            transform_buffer.buffer[2] = pos_view.z as f32;
 
             // Since we are uploading with eye space rotations applied, we need to "undo"
             // the eye-space rotation before uploading so that we will be world aligned.
-            let rot = rotation.quaternion();
-            let rot_view = view_look_at * rot;
-            let (a, b, c) = rot_view.euler_angles();
-            let rot_compact = [a, b, c];
+            let (a, b, c) = rotation.quaternion().euler_angles();
+            transform_buffer.buffer[3] = a;
+            transform_buffer.buffer[4] = b;
+            transform_buffer.buffer[5] = c;
 
-            (&mut transform_buffer.buffer[0..3]).copy_from_slice(&pos_compact);
-            (&mut transform_buffer.buffer[3..6]).copy_from_slice(&rot_compact);
-            (&mut transform_buffer.buffer[6..7]).copy_from_slice(&scale.compact());
+            transform_buffer.buffer[6] = scale.scale();
         });
 
         let mut query = <(Read<ShapeState>, Write<ShapeFlagBuffer>)>::query();
@@ -445,7 +455,7 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
     use nitrous::Interpreter;
     use pal::Palette;
     use shape_chunk::DrawSelection;
@@ -459,6 +469,7 @@ mod test {
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
         let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
+        let async_rt = Runtime::new()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -476,59 +487,54 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
-        let mut shapes = HashMap::new();
-        for &fid in &inputs {
-            shapes
-                .entry(catalog.file_label(fid).unwrap())
-                .or_insert_with(Vec::new)
-                .push(fid)
-        }
+        let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
+        let globals_buffer =
+            GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
+        let inst_man = ShapeInstanceBuffer::new(
+            &globals_buffer.read(),
+            &atmosphere_buffer.read(),
+            &gpu.read(),
+        )?;
 
-        for (label, files) in &shapes {
-            catalog.set_default_label(label);
-            let game = label.split(':').last().unwrap();
+        let catalogs = CatalogManager::for_testing()?;
+
+        let mut tracker = UploadTracker::default();
+        let mut all_chunks = Vec::new();
+        let mut all_slots = Vec::new();
+        for (game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-
-            let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
-            let globals_buffer =
-                GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
-            let inst_man = ShapeInstanceBuffer::new(
-                &globals_buffer.read(),
-                &atmosphere_buffer.read(),
-                &gpu.read(),
-            )?;
-            let mut all_chunks = Vec::new();
-            let mut all_slots = Vec::new();
-            for &fid in files {
+            inst_man.write().set_shared_palette(&palette, &gpu.read());
+            for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
                 println!(
                     "At: {}:{:13} @ {}",
-                    game,
+                    game.test_dir,
                     meta.name(),
                     meta.path()
                         .map(|v| v.to_string_lossy())
                         .unwrap_or_else(|| "<none>".into())
                 );
-                let name = meta.name().to_owned();
                 if skipped.contains(&meta.name()) {
                     continue;
                 }
-
-                for _ in 0..1 {
-                    let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
-                        &name,
-                        DrawSelection::NormalModel,
-                        &palette,
-                        &catalog,
-                        &mut gpu.write(),
-                    )?;
-                    all_chunks.push(chunk_id);
-                    all_slots.push(slot_id);
-                }
-                gpu.read().device().poll(wgpu::Maintain::Wait);
+                let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
+                    meta.name(),
+                    DrawSelection::NormalModel,
+                    &catalog,
+                    &mut gpu.write(),
+                    &async_rt,
+                    &mut tracker,
+                )?;
+                all_chunks.push(chunk_id);
+                all_slots.push(slot_id);
+                all_chunks.push(chunk_id);
+                all_slots.push(slot_id);
             }
         }
+        inst_man
+            .write()
+            .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
+        gpu.read().device().poll(wgpu::Maintain::Wait);
 
         Ok(())
     }

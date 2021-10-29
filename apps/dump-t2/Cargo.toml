@@ -4,8 +4,9 @@ version = "0.0.0"
 edition = "2018"
 
 [dependencies]
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 env_logger = "^ 0.8"
-structopt = "^ 0.2"
+structopt = "^ 0.3"
+catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/asset/lib" }
 t2 = { path = "../../libs/asset/t2" }

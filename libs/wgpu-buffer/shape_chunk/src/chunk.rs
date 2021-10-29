@@ -13,20 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::{
-    texture_atlas::MegaAtlas,
+    chunk_manager::TextureAtlasProperties,
     upload::{AnalysisResults, DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };
 use anyhow::Result;
+use atlas::AtlasPacker;
 use catalog::Catalog;
+use gpu::{Gpu, UploadTracker};
+use image::Rgba;
 use lazy_static::lazy_static;
 use pal::Palette;
 use parking_lot::RwLock;
+use pic_uploader::PicUploader;
 use sh::RawShape;
 use std::{
     collections::HashMap,
     mem,
     sync::{Arc, Mutex},
 };
+use tokio::runtime::Runtime;
 use zerocopy::{AsBytes, FromBytes};
 
 const CHUNK_MODEL_TARGET_COUNT: usize = 512;
@@ -38,6 +43,7 @@ const VERTEX_CHUNK_HIGH_WATER_COUNT: usize =
     VERTEX_CHUNK_HIGH_WATER_BYTES / mem::size_of::<Vertex>();
 const VERTEX_CHUNK_BYTES: usize = VERTEX_CHUNK_HIGH_WATER_BYTES + MAX_VERTEX_BYTES;
 const VERTEX_CHUNK_COUNT: usize = VERTEX_CHUNK_BYTES / mem::size_of::<Vertex>();
+const MAX_ATLAS_BYTES: usize = 64 * 1024 * 1024;
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
@@ -136,7 +142,7 @@ pub struct OpenChunk {
     chunk_flags: ChunkFlags,
 
     vertex_upload_buffer: Vec<Vertex>,
-    atlas_builder: MegaAtlas,
+    atlas_packer: AtlasPacker<Rgba<u8>>,
 
     // So we can give out unique ids to each shape in this chunk.
     last_shape_id: u32,
@@ -145,20 +151,32 @@ pub struct OpenChunk {
 }
 
 impl OpenChunk {
-    pub(crate) fn new(chunk_flags: ChunkFlags) -> Self {
-        Self {
+    pub(crate) fn new(chunk_flags: ChunkFlags, gpu: &Gpu) -> Result<Self> {
+        let atlas_size0 = 1024 + 4;
+        let atlas_stride = Gpu::stride_for_row_size(atlas_size0 * 4);
+        let atlas_size = atlas_stride / 4;
+        Ok(Self {
             chunk_id: allocate_chunk_id(),
             chunk_flags,
-            atlas_builder: MegaAtlas::default(),
+            atlas_packer: AtlasPacker::<Rgba<u8>>::new(
+                "open-shape-chunk",
+                gpu,
+                atlas_size,
+                atlas_size,
+                [0, 0, 0, 0],
+                wgpu::TextureFormat::Rgba8Unorm,
+                wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
+            )?,
             vertex_upload_buffer: Vec::with_capacity(VERTEX_CHUNK_COUNT),
             last_shape_id: 0,
             chunk_parts: HashMap::new(),
-        }
+        })
     }
 
     pub fn chunk_is_full(&self) -> bool {
         // TODO: also check on atlas?
         self.vertex_upload_buffer.len() >= VERTEX_CHUNK_HIGH_WATER_COUNT
+            || self.atlas_packer.atlas_size() > MAX_ATLAS_BYTES
     }
 
     pub fn chunk_is_empty(&self) -> bool {
@@ -173,13 +191,17 @@ impl OpenChunk {
         selection: &DrawSelection,
         palette: &Palette,
         catalog: &Catalog,
+        pic_uploader: &mut PicUploader,
+        gpu: &Gpu,
     ) -> Result<ShapeId> {
         let start_vertex = self.vertex_upload_buffer.len();
         let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, catalog).draw_model(
             sh,
             analysis,
             selection,
-            &mut self.atlas_builder,
+            pic_uploader,
+            &mut self.atlas_packer,
+            gpu,
         )?;
         self.vertex_upload_buffer.append(&mut verts);
 
@@ -220,10 +242,14 @@ impl ClosedChunk {
         chunk: OpenChunk,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
+        dump_atlas_textures: bool,
+        pic_uploader: &mut PicUploader,
         gpu: &mut gpu::Gpu,
+        async_rt: &Runtime,
+        tracker: &mut UploadTracker,
     ) -> Result<Self> {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
-        let a_size = chunk.atlas_builder.atlas_size();
+        let a_size = chunk.atlas_packer.atlas_size();
         println!(
             "uploading vertex/atlas buffer {:?} size {} / {} ({} total) bytes",
             chunk.chunk_flags,
@@ -238,7 +264,53 @@ impl ClosedChunk {
             wgpu::BufferUsage::VERTEX,
         );
 
-        let atlas_view = chunk.atlas_builder.finish(gpu)?;
+        let atlas_properties =
+            TextureAtlasProperties::new(chunk.atlas_packer.width(), chunk.atlas_packer.height());
+        let atlas_properties = gpu.push_buffer(
+            "chunk-atlas-properties",
+            &atlas_properties.as_bytes(),
+            wgpu::BufferUsage::UNIFORM,
+        );
+
+        pic_uploader.dispatch_singleton(gpu)?;
+        let atlas_view = if dump_atlas_textures {
+            let extent = wgpu::Extent3d {
+                width: chunk.atlas_packer.width(),
+                height: chunk.atlas_packer.height(),
+                depth: 1,
+            };
+            let name = format!(
+                "/home/terrence/Projects/openfa/__dump__/chunk-{}.png",
+                chunk.chunk_id.0
+            );
+
+            let (atlas_texture, atlas_view, _atlas_sampler) =
+                chunk.atlas_packer.finish(gpu, async_rt, tracker)?;
+
+            Gpu::dump_texture(
+                &atlas_texture,
+                extent,
+                wgpu::TextureFormat::Rgba8Unorm,
+                async_rt,
+                gpu,
+                Box::new(move |extent, _fmt, data| {
+                    let buffer = image::ImageBuffer::<Rgba<u8>, Vec<u8>>::from_vec(
+                        extent.width,
+                        extent.height,
+                        data,
+                    )
+                    .unwrap();
+                    buffer.save(&name).unwrap();
+                }),
+            )?;
+
+            atlas_view
+        } else {
+            let (_atlas_texture, atlas_view, _atlas_sampler) =
+                chunk.atlas_packer.finish(gpu, async_rt, tracker)?;
+            atlas_view
+        };
+
         let atlas_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-chunk-atlas-bind-group"),
             layout,
@@ -251,6 +323,14 @@ impl ClosedChunk {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &atlas_properties,
+                        offset: 0,
+                        size: None,
+                    },
                 },
             ],
         });

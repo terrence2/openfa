@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use lib::{from_dos_string, CatalogBuilder};
+use catalog::{Catalog, FileId};
+use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mm::MissionMap;
 use std::time::Instant;
 use structopt::StructOpt;
@@ -28,6 +29,9 @@ struct Opt {
 
     /// One or more MM files to process
     inputs: Vec<String>,
+
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 const PROFILE_COUNT: usize = 10000;
@@ -35,42 +39,59 @@ const PROFILE_COUNT: usize = 10000;
 fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
-    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
-    if inputs.is_empty() {
-        println!("No inputs found!");
-        return Ok(());
+    let type_manager = TypeManager::empty();
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    for (game, catalog) in catalogs.selected() {
+        for input in &opt.inputs {
+            for fid in catalog.find_glob(input)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "{}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                println!(
+                    "{}",
+                    "=".repeat(1 + game.test_dir.len() + meta.name().len())
+                );
+                show_mm(fid, &type_manager, catalog, &opt)?;
+            }
+        }
     }
 
-    let type_manager = TypeManager::empty();
-    for &fid in &inputs {
-        let label = catalog.file_label(fid)?;
-        let _game = label.split(':').last().unwrap();
-        let meta = catalog.stat_sync(fid)?;
+    Ok(())
+}
 
-        let raw = catalog.read_sync(fid)?;
-        let content = from_dos_string(raw).to_owned();
+fn show_mm(fid: FileId, type_manager: &TypeManager, catalog: &Catalog, opt: &Opt) -> Result<()> {
+    let raw = catalog.read_sync(fid)?;
+    let content = from_dos_string(raw).to_owned();
 
-        if opt.profile {
-            let start = Instant::now();
-            for _ in 0..PROFILE_COUNT {
-                let _ = MissionMap::from_str(&content, &type_manager, &catalog)?;
-            }
-            println!(
-                "load time: {}ms",
-                (start.elapsed().as_micros() / PROFILE_COUNT as u128) as f64 / 1000.0
-            );
-            return Ok(());
+    if opt.profile {
+        let start = Instant::now();
+        for _ in 0..PROFILE_COUNT {
+            let _ = MissionMap::from_str(&content, &type_manager, &catalog)?;
         }
-        let mm = MissionMap::from_str(&content, &type_manager, &catalog)?;
-        println!("{}:{} =>", label, meta.name());
-        println!("map name:    {}", mm.map_name());
-        println!("t2 name:     {}", mm.t2_name());
-        println!("layer name:  {}", mm.layer_name());
-        println!("layer index: {}", mm.layer_index());
-        println!("tmap count:  {}", mm.texture_maps().len());
-        println!("tdic count:  {}", mm.texture_dictionary().len());
-        println!("obj count:   {}", mm.objects().len());
-        println!();
+        println!(
+            "load time: {}ms",
+            (start.elapsed().as_micros() / PROFILE_COUNT as u128) as f64 / 1000.0
+        );
+        return Ok(());
+    }
+    match MissionMap::from_str(&content, &type_manager, &catalog) {
+        Ok(mm) => {
+            println!("map name:    {}", mm.map_name());
+            println!("t2 name:     {}", mm.t2_name());
+            println!("layer name:  {}", mm.layer_name());
+            println!("layer index: {}", mm.layer_index());
+            println!("tmap count:  {}", mm.texture_maps().len());
+            println!("tdic count:  {}", mm.texture_dictionary().len());
+            println!("obj count:   {}", mm.objects().len());
+            println!();
+        }
+        Err(e) => println!("Load failed: {}\n", e),
     }
 
     Ok(())

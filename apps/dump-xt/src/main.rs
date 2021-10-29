@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use lib::CatalogBuilder;
+use catalog::Catalog;
+use lib::{CatalogManager, CatalogOpts};
 use simplelog::{Config, LevelFilter, TermLogger};
 use structopt::StructOpt;
 use xt::{Envelope, HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
@@ -23,81 +24,90 @@ use xt::{Envelope, HardpointType, NpcType, ObjectType, PlaneType, ProjectileType
 struct Opt {
     /// The XT files to load
     inputs: Vec<String>,
+
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 fn main() -> Result<()> {
-    let opt = Opt::from_args();
-    let (mut catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
     TermLogger::init(LevelFilter::Warn, Config::default())?;
+    let opt = Opt::from_args();
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    for (game, catalog) in catalogs.selected() {
+        for input in &opt.inputs {
+            for fid in catalog.find_matching(input, None)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                show_xt(meta.name(), catalog)?;
+            }
+        }
+    }
 
-    for &fid in &inputs {
-        let label = catalog.file_label(fid)?;
-        let game = label.split(':').last().unwrap();
-        let meta = catalog.stat_sync(fid)?;
-        println!(
-            "At: {}:{:13} @ {}",
-            game,
-            meta.name(),
-            meta.path()
-                .map(|v| v.to_string_lossy())
-                .unwrap_or_else(|| "<none>".into())
-        );
-        let type_manager = TypeManager::empty();
-        catalog.set_default_label(&label);
-        let xt = type_manager.load(meta.name(), &catalog)?;
+    Ok(())
+}
 
-        let ot = &xt.ot();
-        println!("{:>25}", "ObjectType");
-        println!("{:>25}", "==========");
-        for field in ObjectType::fields() {
-            println!("{:>25}: {}", field, ot.get_field(field));
+fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
+    let type_manager = TypeManager::empty();
+    let xt = type_manager.load(name, &catalog)?;
+
+    let ot = &xt.ot();
+    println!("{:>25}", "ObjectType");
+    println!("{:>25}", "==========");
+    for field in ObjectType::fields() {
+        println!("{:>25}: {}", field, ot.get_field(field));
+    }
+    println!();
+
+    if let Ok(nt) = xt.nt() {
+        println!("{:>25}", "NPC Type");
+        println!("{:>25}", "========");
+        for field in NpcType::fields() {
+            if field == &"hards" {
+                continue;
+            }
+            println!("{:>25}: {}", field, nt.get_field(field));
+        }
+        for (i, hp) in nt.hards.iter().enumerate() {
+            println!();
+            println!("{:>25}: {:02}", "Hardpoint", i + 1);
+            println!("{:>25}====", "=========");
+            for field in HardpointType::fields() {
+                println!("{:>25}: {}", field, hp.get_field(field));
+            }
         }
         println!();
+    }
 
-        if let Ok(nt) = xt.nt() {
-            println!("{:>25}", "NPC Type");
-            println!("{:>25}", "========");
-            for field in NpcType::fields() {
-                if field == &"hards" {
-                    continue;
-                }
-                println!("{:>25}: {}", field, nt.get_field(field));
+    if let Ok(jt) = xt.jt() {
+        println!("{:>25}", "Projectile Type");
+        println!("{:>25}", "===============");
+        for field in ProjectileType::fields() {
+            println!("{:>25}: {}", field, jt.get_field(field));
+        }
+    }
+
+    if let Ok(pt) = xt.pt() {
+        println!("{:>25}", "Plane Type");
+        println!("{:>25}", "==========");
+        for field in PlaneType::fields() {
+            if field == &"envelopes" {
+                continue;
             }
-            for (i, hp) in nt.hards.iter().enumerate() {
-                println!();
-                println!("{:>25}: {:02}", "Hardpoint", i + 1);
-                println!("{:>25}====", "=========");
-                for field in HardpointType::fields() {
-                    println!("{:>25}: {}", field, hp.get_field(field));
-                }
-            }
+            println!("{:>25}: {}", field, pt.get_field(field));
+        }
+        for (i, env) in pt.envelopes.iter().enumerate() {
             println!();
-        }
-
-        if let Ok(jt) = xt.jt() {
-            println!("{:>25}", "Projectile Type");
-            println!("{:>25}", "===============");
-            for field in ProjectileType::fields() {
-                println!("{:>25}: {}", field, jt.get_field(field));
-            }
-        }
-
-        if let Ok(pt) = xt.pt() {
-            println!("{:>25}", "Plane Type");
-            println!("{:>25}", "==========");
-            for field in PlaneType::fields() {
-                if field == &"envelopes" {
-                    continue;
-                }
-                println!("{:>25}: {}", field, pt.get_field(field));
-            }
-            for (i, env) in pt.envelopes.iter().enumerate() {
-                println!();
-                println!("{:>25}: {:02}", "Envelope", i + 1);
-                println!("{:>25}====", "========");
-                for field in Envelope::fields() {
-                    println!("{:>25}: {}", field, env.get_field(field));
-                }
+            println!("{:>25}: {:02}", "Envelope", i + 1);
+            println!("{:>25}====", "========");
+            for field in Envelope::fields() {
+                println!("{:>25}: {}", field, env.get_field(field));
             }
         }
     }

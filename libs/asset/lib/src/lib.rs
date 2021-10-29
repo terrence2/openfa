@@ -16,10 +16,11 @@
 // Load LIB files; find files in them; hand out immutable pointers on request.
 #![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
-mod catalog_builder;
+mod catalog_manager;
 mod game_info;
+
 pub use crate::{
-    catalog_builder::CatalogBuilder,
+    catalog_manager::{CatalogManager, CatalogOpts},
     game_info::{GameInfo, GAME_INFO},
 };
 
@@ -80,16 +81,11 @@ impl CompressionType {
 pub struct Priority {
     priority: usize,
     version: usize,
+    adjust: i64,
 }
 
 impl Priority {
-    fn from_path(path: &Path) -> Result<Self> {
-        if path.ends_with("installdir") {
-            return Ok(Self {
-                priority: 0,
-                version: 0,
-            });
-        }
+    fn from_path(path: &Path, adjust: i64) -> Result<Self> {
         lazy_static! {
             static ref PRIO_RE: Regex =
                 Regex::new(r"(\d+)([a-zA-Z]?)").expect("failed to create regex");
@@ -100,16 +96,25 @@ impl Priority {
             .to_str()
             .ok_or_else(|| anyhow!("priority: name not utf8"))?
             .to_owned();
-        let caps = PRIO_RE
-            .captures(&filename)
-            .ok_or_else(|| anyhow!("priority: name must contain a number"))?;
-        let priority = caps
-            .get(1)
-            .ok_or_else(|| anyhow!("priority: expected number match"))?
-            .as_str()
-            .parse::<usize>()?;
-        let version = Self::version_from_char(caps.get(2));
-        Ok(Self { priority, version })
+        if let Some(caps) = PRIO_RE.captures(&filename) {
+            let priority = caps
+                .get(1)
+                .ok_or_else(|| anyhow!("priority: expected number match"))?
+                .as_str()
+                .parse::<usize>()?;
+            let version = Self::version_from_char(caps.get(2));
+            Ok(Self {
+                priority,
+                version,
+                adjust,
+            })
+        } else {
+            Ok(Self {
+                priority: 0,
+                version: 0,
+                adjust,
+            })
+        }
     }
 
     fn version_from_char(opt: Option<regex::Match>) -> usize {
@@ -123,9 +128,9 @@ impl Priority {
         (1u8 + c.unwrap() as u8 - b'A') as usize
     }
 
-    fn as_drawer_priority(&self) -> i64 {
+    pub fn as_drawer_priority(&self) -> i64 {
         let offset = (self.priority * 26 + self.version) as i64;
-        -offset
+        -offset - self.adjust
     }
 }
 
@@ -393,7 +398,7 @@ mod tests {
 
     #[test]
     fn test_catalog_builder() -> Result<()> {
-        let _catalog = CatalogBuilder::build()?;
+        let _catalog = CatalogManager::for_testing()?;
         Ok(())
     }
 }

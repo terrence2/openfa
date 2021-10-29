@@ -15,7 +15,6 @@
 mod chunk;
 mod chunk_manager;
 mod draw_state;
-mod texture_atlas;
 mod upload;
 
 pub use chunk::{ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId};
@@ -27,12 +26,12 @@ pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 mod test {
     use super::*;
     use anyhow::Result;
-    use gpu::Gpu;
-    use lib::CatalogBuilder;
+    use gpu::{Gpu, UploadTracker};
+    use lib::CatalogManager;
     use log::trace;
     use nitrous::Interpreter;
     use pal::Palette;
-    use std::collections::HashMap;
+    use tokio::runtime::Runtime;
     use winit::{event_loop::EventLoop, window::Window};
 
     #[cfg(unix)]
@@ -43,6 +42,7 @@ mod test {
         let window = Window::new(&event_loop)?;
         let interpreter = Interpreter::new();
         let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
+        let async_rt = Runtime::new()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -60,27 +60,19 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.SH".to_owned()])?;
-        let mut shapes = HashMap::new();
-        for &fid in &inputs {
-            shapes
-                .entry(catalog.file_label(fid).unwrap())
-                .or_insert_with(Vec::new)
-                .push(fid)
-        }
+        let catalogs = CatalogManager::for_testing()?;
 
-        for (label, files) in &shapes {
-            catalog.set_default_label(label);
-            let game = label.split(':').last().unwrap();
+        let mut chunk_man = ShapeChunkBuffer::new(&gpu.read())?;
+        let mut tracker = UploadTracker::default();
+        let mut all_shapes = Vec::new();
+        for (game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-
-            let mut chunk_man = ShapeChunkBuffer::new(gpu.read().device())?;
-            let mut all_shapes = Vec::new();
-            for &fid in files {
+            chunk_man.set_shared_palette(&palette, &gpu.read());
+            for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
                 println!(
                     "At: {}:{:13} @ {}",
-                    game,
+                    game.test_dir,
                     meta.name(),
                     meta.path()
                         .map(|v| v.to_string_lossy())
@@ -92,20 +84,21 @@ mod test {
                 let (_chunk_id, shape_id) = chunk_man.upload_shape(
                     meta.name(),
                     DrawSelection::NormalModel,
-                    &palette,
                     &catalog,
                     &mut gpu.write(),
+                    &async_rt,
+                    &mut tracker,
                 )?;
                 all_shapes.push(shape_id);
             }
-            chunk_man.finish_open_chunks(&mut gpu.write())?;
-            gpu.read().device().poll(wgpu::Maintain::Wait);
+        }
+        chunk_man.finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
+        gpu.read().device().poll(wgpu::Maintain::Wait);
 
-            for shape_id in &all_shapes {
-                let lifetime = chunk_man.part(*shape_id).widgets();
-                let widgets = lifetime.read();
-                trace!("{} - {}", widgets.num_xforms(), widgets.name());
-            }
+        for shape_id in &all_shapes {
+            let lifetime = chunk_man.part(*shape_id).widgets();
+            let widgets = lifetime.read();
+            trace!("{} - {}", widgets.num_xforms(), widgets.name());
         }
 
         Ok(())

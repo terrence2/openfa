@@ -5,7 +5,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-anyhow = "^ 1"
+anyhow = { version = "^ 1", features = ["backtrace"] }
 wgpu = "^ 0.7"
 zerocopy = "^ 0.5"
 gpu = { path = "../../nitrogen/system/gpu" }

@@ -215,7 +215,7 @@ impl PicUploader {
 mod tests {
     use super::*;
     use image::RgbaImage;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
     use nitrous::Interpreter;
     use std::{
         env,
@@ -235,21 +235,21 @@ mod tests {
         let interpreter = Interpreter::new();
         let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
 
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.PIC".to_owned()])?;
-        let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-        let start = Instant::now();
+        let catalogs = CatalogManager::for_testing()?;
         let mut uploader = PicUploader::new(&gpu.read())?;
-        uploader.set_shared_palette(&palette, &gpu.read());
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let data = catalog.read_sync(fid)?;
-            let format = Pic::read_format(&data)?;
-            if format == PicFormat::Jpeg {
-                // Jpeg is not interesting for PicUploader since it's primary purpose is depalettizing.
-                continue;
+        let start = Instant::now();
+        for (_game, catalog) in catalogs.selected() {
+            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+            uploader.set_shared_palette(&palette, &gpu.read());
+            for fid in catalog.find_with_extension("PIC")? {
+                let data = catalog.read_sync(fid)?;
+                let format = Pic::read_format(&data)?;
+                if format == PicFormat::Jpeg {
+                    // Jpeg is not interesting for PicUploader since it's primary purpose is depalettizing.
+                    continue;
+                }
+                uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::STORAGE)?;
             }
-            uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::STORAGE)?;
         }
         println!("prepare time: {:?}", start.elapsed());
 
@@ -275,13 +275,12 @@ mod tests {
         let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
         let async_rt = Runtime::new()?;
 
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["FA:CATB.PIC".to_owned()])?;
-        let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        let catalogs = CatalogManager::for_testing()?;
+
+        let palette = Palette::from_bytes(&catalogs.best().read_name_sync("PALETTE.PAL")?)?;
         let mut uploader = PicUploader::new(&gpu.read())?;
         uploader.set_shared_palette(&palette, &gpu.read());
-        let fid = inputs.first().unwrap();
-        catalog.set_default_label(&catalog.file_label(*fid)?);
-        let data = catalog.read_sync(*fid)?;
+        let data = catalogs.best().read_name_sync("CATB.PIC")?;
         let (buffer, width, height, _stride) =
             uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::MAP_READ)?;
         uploader.dispatch_singleton(&mut gpu.write())?;

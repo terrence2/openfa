@@ -13,12 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use lib::CatalogBuilder;
+use catalog::{Catalog, FileId};
+use lib::{CatalogManager, CatalogOpts};
 use std::time::Instant;
 use structopt::StructOpt;
 use t2::Terrain;
 
-/// Print contents of MM files, with various options.
+/// Print contents of T2 files, with various options.
 #[derive(Debug, StructOpt)]
 struct Opt {
     /// Back of the envelop profiling.
@@ -27,6 +28,9 @@ struct Opt {
 
     /// One or more MM files to process
     inputs: Vec<String>,
+
+    #[structopt(flatten)]
+    catalog_opts: CatalogOpts,
 }
 
 const PROFILE_COUNT: usize = 10000;
@@ -34,39 +38,47 @@ const PROFILE_COUNT: usize = 10000;
 fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
-    let (catalog, inputs) = CatalogBuilder::build_and_select(&opt.inputs)?;
-    if inputs.is_empty() {
-        println!("No inputs found!");
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    for (game, catalog) in catalogs.selected() {
+        for input in &opt.inputs {
+            for fid in catalog.find_glob(input)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "{}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                show_t2(fid, opt.profile, catalog)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn show_t2(fid: FileId, profile: bool, catalog: &Catalog) -> Result<()> {
+    let raw = &catalog.read_sync(fid)?;
+    if profile {
+        let start = Instant::now();
+        for _ in 0..PROFILE_COUNT {
+            let _ = Terrain::from_bytes(&raw)?;
+        }
+        println!(
+            "load time: {}ms",
+            (start.elapsed().as_micros() / PROFILE_COUNT as u128) as f64 / 1000.0
+        );
         return Ok(());
     }
-
-    for &fid in &inputs {
-        let label = catalog.file_label(fid)?;
-        let _game = label.split(':').last().unwrap();
-        let meta = catalog.stat_sync(fid)?;
-
-        let raw = catalog.read_sync(fid)?;
-
-        if opt.profile {
-            let start = Instant::now();
-            for _ in 0..PROFILE_COUNT {
-                let _ = Terrain::from_bytes(&raw)?;
-            }
-            println!(
-                "load time: {}ms",
-                (start.elapsed().as_micros() / PROFILE_COUNT as u128) as f64 / 1000.0
-            );
-            return Ok(());
-        }
-        let t2 = Terrain::from_bytes(&raw)?;
-        println!("{}:{} =>", label, meta.name());
-        println!("map name:    {}", t2.name());
-        println!("width:       {}", t2.width());
-        println!("height:      {}", t2.height());
-        println!("extent e-w:  {}", t2.extent_east_west_in_ft());
-        println!("extent n-s:  {}", t2.extent_north_south_in_ft());
-        println!();
-    }
+    let t2 = Terrain::from_bytes(&raw)?;
+    println!("map name:    {}", t2.name());
+    println!("width:       {}", t2.width());
+    println!("height:      {}", t2.height());
+    println!("extent e-w:  {}", t2.extent_east_west_in_ft());
+    println!("extent n-s:  {}", t2.extent_north_south_in_ft());
+    println!();
 
     Ok(())
 }

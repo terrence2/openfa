@@ -23,8 +23,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn empty() -> Result<Self> {
-        Self::from_bytes(&[])
+    pub fn empty() -> Self {
+        Self::from_bytes(&[]).expect("empty array is infallible")
     }
 
     pub fn grayscale() -> Result<Self> {
@@ -244,17 +244,27 @@ impl<'a> From<Palette> for Cow<'a, Palette> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::io::prelude::*;
+    use lib::CatalogManager;
 
     #[test]
     fn it_works_with_normal_palette() -> Result<()> {
-        // FIXME: use test loader to find and load all PAL files.
-        let mut fp = fs::File::open("test_data/PALETTE.PAL")?;
-        let mut data = Vec::new();
-        fp.read_to_end(&mut data)?;
-        let pal = Palette::from_bytes(&data)?;
-        assert_eq!(pal.rgb(1)?, Rgb([252, 0, 252]));
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("PAL")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
+                assert_eq!(pal.rgb(1)?, Rgb([252, 0, 252]));
+            }
+        }
+
         Ok(())
     }
 

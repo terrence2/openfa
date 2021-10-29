@@ -519,78 +519,46 @@ impl MissionMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogBuilder};
+    use lib::{from_dos_string, CatalogManager};
 
     #[test]
     fn it_can_parse_all_mm_files() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MM".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("MM")? {
+                let meta = catalog.stat_sync(fid)?;
 
-            if game == "ATFGOLD"
-                && (meta.name().contains("UKR")
-                    || meta.name() == "KURILE.MM"
-                    || meta.name() == "VIET.MM")
-            {
-                continue;
-            }
+                // For some reason, the ATF Gold disks contain USNF missions, but
+                // do not contain the USNF assets. Not sure how that works.
+                if game.test_dir == "ATFGOLD"
+                    && (meta.name().contains("UKR")
+                        || meta.name() == "KURILE.MM"
+                        || meta.name() == "VIET.MM")
+                {
+                    continue;
+                }
 
-            if meta.name() == "$VARF.MM" {
                 // This looks a fragment of an MM used for... something?
-                continue;
+                if meta.name() == "$VARF.MM" {
+                    continue;
+                }
+
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+
+                let type_manager = TypeManager::empty();
+                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
+                assert_eq!(mm.get_base_texture_name()?.len(), 3);
+                assert!(mm.t2_name.ends_with(".T2"));
             }
-
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-
-            catalog.set_default_label(&label);
-            let type_manager = TypeManager::empty();
-            let contents = from_dos_string(catalog.read_sync(fid)?);
-            let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
-            assert_eq!(mm.get_base_texture_name()?.len(), 3);
-            assert!(mm.t2_name.ends_with(".T2"));
         }
-
-        /*
-        let omni = OmniLib::new_for_test_in_games(&[
-            "FA", "USNF97", "ATFGOLD", "ATFNATO", "ATF", "MF", "USNF",
-        ])?;
-        for (game, name) in omni.find_matching("*.MM")?.iter() {
-            if game == "ATFGOLD"
-                && (name.contains("UKR") || name == "KURILE.MM" || name == "VIET.MM")
-            {
-                continue;
-            }
-
-            if name == "$VARF.MM" {
-                // This looks a fragment of an MM used for... something?
-                continue;
-            }
-
-            println!(
-                "At: {}:{} @ {}",
-                game,
-                name,
-                omni.path(game, name)
-                    .unwrap_or_else(|_| "<unknown>".to_owned())
-            );
-            let lib = omni.library(game);
-            let type_manager = TypeManager::new(lib.clone());
-            let contents = lib.load_text(name)?;
-            let mm = MissionMap::from_str(&contents, &type_manager, &lib)?;
-            assert_eq!(mm.get_base_texture_name()?.len(), 3);
-            assert!(mm.t2_name.ends_with(".T2"));
-        }
-
-         */
 
         Ok(())
     }

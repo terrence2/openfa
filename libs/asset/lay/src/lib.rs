@@ -223,18 +223,26 @@ impl Layer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
 
     #[test]
     fn it_can_parse_all_lay_files() -> Result<()> {
-        let (catalog, inputs) = CatalogBuilder::build_and_select(&["*.LAY".to_owned()])?;
-
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let system_palette_data = catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?;
-            let system_palette = Palette::from_bytes(&system_palette_data)?;
-            let layer_data = catalog.read_sync(fid)?;
-            let _layer = Layer::from_bytes(&layer_data, &system_palette)?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            let system_palette_data = catalog.read_name_sync("PALETTE.PAL")?;
+            for fid in catalog.find_with_extension("LAY")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let system_palette = Palette::from_bytes(&system_palette_data)?;
+                let _layer = Layer::from_bytes(&catalog.read_sync(fid)?, &system_palette)?;
+            }
         }
 
         Ok(())

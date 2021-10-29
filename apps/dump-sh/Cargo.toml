@@ -5,9 +5,10 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-anyhow = "^ 1"
-structopt = "^ 0.2"
+anyhow = { version = "^ 1", features = ["backtrace"] }
+structopt = "^ 0.3"
 simplelog = "^ 0.5"
+catalog = { path = "../../libs/nitrogen/system/catalog" }
 i386 = { path = "../../libs/util/i386" }
 lib = { path = "../../libs/asset/lib" }
 reverse = { path = "../../libs/util/reverse" }

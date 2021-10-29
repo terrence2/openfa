@@ -150,28 +150,27 @@ impl Menu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
 
     #[test]
     fn it_can_load_all_menus() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MNU".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            catalog.set_default_label(&label);
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let _mnu = Menu::from_bytes(
-                &format!("{}:{}", game, meta.name()),
-                &catalog.read_sync(fid)?,
-            )?;
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("MNU")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let _mnu = Menu::from_bytes(
+                    &format!("{}:{}", game.test_dir, meta.name()),
+                    &catalog.read_sync(fid)?,
+                )?;
+            }
         }
 
         Ok(())

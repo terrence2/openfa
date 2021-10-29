@@ -124,7 +124,8 @@ impl TypeManager {
     }
 
     pub fn load(&self, name: &str, catalog: &Catalog) -> Result<TypeRef> {
-        if let Some(item) = self.cache.borrow().get(name) {
+        let cache_key = format!("{}:{}", catalog.label(), name);
+        if let Some(item) = self.cache.borrow().get(&cache_key) {
             trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());
         };
@@ -151,45 +152,40 @@ impl TypeManager {
             }
             _ => bail!("resource: unknown type {}", name),
         };
-        self.cache
-            .borrow_mut()
-            .insert(name.to_owned(), TypeRef::new(item));
-        if let Some(item) = self.cache.borrow().get(name) {
-            return Ok(item.clone());
-        }
-        panic!("unreachable")
+        let xt = TypeRef::new(item);
+        self.cache.borrow_mut().insert(cache_key, xt.clone());
+        Ok(xt)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogBuilder;
+    use lib::CatalogManager;
 
     #[test]
     fn can_parse_all_entity_types() -> Result<()> {
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.[OJNP]T".to_owned()])?;
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-            let types = TypeManager::empty();
-            catalog.set_default_label(&label);
-            let ty = types.load(meta.name(), &catalog)?;
-            // Only one misspelling in 2500 files.
-            assert!(ty.ot().file_name() == meta.name() || meta.name() == "SMALLARM.JT");
-            // println!(
-            //     "{}:{:13}> {:?} <> {}",
-            //     game, name, ot.explosion_type, ot.long_name
-            // );
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_matching("*.[OJNP]T", None)? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                let types = TypeManager::empty();
+                let ty = types.load(meta.name(), &catalog)?;
+                // Only one misspelling in 2500 files.
+                assert!(ty.ot().file_name() == meta.name() || meta.name() == "SMALLARM.JT");
+                // println!(
+                //     "{}:{:13}> {:?} <> {}",
+                //     game, name, ot.explosion_type, ot.long_name
+                // );
+            }
         }
         Ok(())
     }

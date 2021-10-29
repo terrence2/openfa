@@ -114,7 +114,7 @@ impl FontInterface for FntFont {
         c: char,
         scale: AbsSize,
     ) -> ((AbsSize, AbsSize), (AbsSize, AbsSize)) {
-        if self.glyph_frames.contains_key(&c) {
+        if self.glyph_frames.contains_key(&c) || c == ' ' {
             let ascent = self.ascent(scale);
             let advance = self.advance_width(c, scale);
             (
@@ -137,6 +137,8 @@ impl FontInterface for FntFont {
             let mut out = GrayImage::from_pixel(frame.width as u32, self.height, Luma([0]));
             out.copy_from(&src, 0, 0).unwrap();
             out
+        } else if c == ' ' {
+            GrayImage::new(1, 1)
         } else {
             self.render_glyph('?', scale)
         }

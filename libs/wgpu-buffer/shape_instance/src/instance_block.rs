@@ -83,11 +83,11 @@ pub struct InstanceBlock {
     xform_index_buffer_scratch: Box<[u32; BLOCK_SIZE]>,
     xform_buffer_scratch: Box<[[f32; 6]; 14 * BLOCK_SIZE]>,
 
-    command_buffer: Arc<Box<wgpu::Buffer>>,
-    transform_buffer: Arc<Box<wgpu::Buffer>>,
-    flag_buffer: Arc<Box<wgpu::Buffer>>,
-    xform_index_buffer: Arc<Box<wgpu::Buffer>>,
-    xform_buffer: Arc<Box<wgpu::Buffer>>,
+    command_buffer: Arc<wgpu::Buffer>,
+    transform_buffer: Arc<wgpu::Buffer>,
+    flag_buffer: Arc<wgpu::Buffer>,
+    xform_index_buffer: Arc<wgpu::Buffer>,
+    xform_buffer: Arc<wgpu::Buffer>,
 
     bind_group: wgpu::BindGroup,
 }
@@ -129,43 +129,42 @@ impl InstanceBlock {
 
         let command_buffer_size =
             (mem::size_of::<DrawIndirectCommand>() * BLOCK_SIZE) as wgpu::BufferAddress;
-        let command_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+        let command_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-command-buffer"),
             size: command_buffer_size,
             usage: wgpu::BufferUsage::all(),
             mapped_at_creation: false,
-        })));
+        }));
 
-        let transform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+        let transform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
             size: Self::TRANSFORM_BUFFER_SIZE,
             usage: wgpu::BufferUsage::all(),
             mapped_at_creation: false,
-        })));
+        }));
 
         // TODO: Only allocate flag and xform buffers if the block requires them
 
-        let flag_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+        let flag_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-flag-buffer"),
             size: Self::FLAG_BUFFER_SIZE,
             usage: wgpu::BufferUsage::all(),
             mapped_at_creation: false,
-        })));
+        }));
 
-        let xform_index_buffer =
-            Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("shape-instance-xform-index-buffer"),
-                size: Self::XFORM_INDEX_BUFFER_SIZE,
-                usage: wgpu::BufferUsage::all(),
-                mapped_at_creation: false,
-            })));
+        let xform_index_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("shape-instance-xform-index-buffer"),
+            size: Self::XFORM_INDEX_BUFFER_SIZE,
+            usage: wgpu::BufferUsage::all(),
+            mapped_at_creation: false,
+        }));
 
-        let xform_buffer = Arc::new(Box::new(device.create_buffer(&wgpu::BufferDescriptor {
+        let xform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
             size: Self::XFORM_BUFFER_SIZE,
             usage: wgpu::BufferUsage::all(),
             mapped_at_creation: false,
-        })));
+        }));
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-instance-bind-group"),

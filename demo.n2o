@@ -1,0 +1,153 @@
+ let root := widget.root();
+ //root.child_float("demo", "center", "center");
+
+ let time0 := -168993517833.82;
+ let time1 := -169019463550.89;
+ //-169016546484.274
+
+// // KuumNi, dawn
+// camera.set_target_latitude_radians(0.687686);
+// camera.set_target_longitude_radians(-2.245538);
+// camera.set_target_height_meters(0.0);
+// camera.set_eye_latitude_radians(0.148351);
+// camera.set_eye_longitude_radians(17.950711);
+// camera.set_eye_distance_meters(1231.0);
+// orrery.set_unix_ms(time0);
+//
+// // make it less dawn
+// let sunrise_fut := timeline.ease_out_to(orrery.set_unix_ms, time0, time1, 48.0);
+//
+// await timeline.sleep(2.0);
+// demo.show("Welcome to OpenFA!");
+// await timeline.sleep(4.0);
+//
+// root.child_offset("demo", -10.0, -10.0);
+// demo.show("This is the Kuum Ni airbase in NSK.MM");
+// await timeline.sleep(5.0);
+//
+// demo.show("Kuum Ni contains quite a few different SH models");
+// await timeline.sleep(5.0);
+//
+// root.child_offset("demo", -46.0, -1.0);
+// demo.show("TANKER.NT");
+// await timeline.sleep(1.5);
+//
+// root.child_offset("demo", -34.0, -2.0);
+// demo.show("BNK8.OT");
+// await timeline.sleep(1.5);
+//
+// root.child_offset("demo", -9.0, 4.0);
+// demo.show("ZSU23.NT");
+// await timeline.sleep(1.5);
+//
+// root.child_offset("demo", -4.0, 4.0);
+// demo.show("SUPPLY.OT");
+// await timeline.sleep(1.5);
+//
+// root.child_offset("demo", 20.0, -10.0);
+// demo.show("And TOWER.SH, which demonstrates correctly animated and transformed parts");
+// await timeline.sleep(5.0);
+//
+// root.child_offset("demo", -10.0, -10.0);
+// demo.show("OpenFA also understands sprite sheet animations and various toggles for flaps, hook, gear, etc");
+// await timeline.sleep(5.0);
+//
+// demo.show("But much work still remains to fully decode SH files");
+// await timeline.sleep(5.0);
+//
+// demo.show("The sunrise, and other atmospheric effects, are provided by Nitrogen");
+// await timeline.sleep(5.0);
+// demo.show("Nitrogen contains an implementation of Bruneton's reality-focused atmosphere rendering model");
+// await timeline.sleep(5.0);
+// root.child_offset("demo", 0.0, 25.0);
+// demo.show("Let's climb now to angles 120 to show the view half way to space");
+// await sunrise_fut;
+//
+// // CHECKPOINT
+// // orrery.set_unix_ms(time1);
+// // root.child_offset("demo", 0.0, 25.0);
+// // CHECKPOINT
+//
+// // Climb to high altitude, with a pan
+// timeline.ease_in_out_to(camera.set_target_height_meters, 0., 36576., 10.);
+// timeline.ease_to(camera.set_eye_latitude_radians, camera.eye_latitude_radians(), 0.209437, 10.);
+// await timeline.ease_to(camera.set_eye_longitude_radians, camera.eye_longitude_radians(), 14.629422, 10.);
+// demo.show("Pretty nice!");
+// await timeline.sleep(2.0);
+// demo.show("The stars are visible here; Let's go to space to get a better view!");
+// await timeline.sleep(4.0);
+//
+// // Keep going to space
+// let space_fut := timeline.ease_bezier_to(camera.set_target_height_meters, camera.target_height_meters(), 3000000., 16., 0.95, 0.0, 0.7, 0.87);
+//
+// demo.show("Surprisingly, there are only 9110 stars visible to the naked eye, not billions");
+// await timeline.sleep(6.0);
+//
+// demo.show("Nitrogen has all of them, in the right places, with the right color and brightness");
+// await timeline.sleep(6.0);
+//
+// root.child_offset("demo", 0.0, 0.0);
+// demo.show("Now that's a view");
+// await space_fut;
+//
+// demo.show("Let's see what NSK.MM looks like... but from space!");
+// await timeline.sleep(1.0);
+//
+// timeline.ease_in_out_to(camera.set_eye_latitude_radians, camera.eye_latitude_radians(), 1.57, 4.0);
+// await timeline.ease_in_out_to(camera.set_eye_longitude_radians, camera.eye_longitude_radians(), 12.566, 4.);
+// await timeline.sleep(2.0);
+//
+// root.child_offset("demo", -23.0, -38.0);
+// demo.show("Oh, hi there, WTA.MM");
+// await timeline.sleep(2.0);
+//
+// root.child_offset("demo", 12.0, 15.0);
+// demo.show("And VLA.MM");
+// await timeline.sleep(2.0);
+//
+// // CHECKPOINT
+// // orrery.set_unix_ms(time1);
+// // root.child_offset("demo", 0.0, 0.0);
+// // demo.show("Let's see what NSK.MM looks like... but from space!");
+// // camera.set_target_height_meters(3000000.);
+// // camera.set_eye_latitude_radians(1.57);
+// // camera.set_eye_longitude_radians(12.566);
+// // CHECKPOINT
+//
+// root.child_offset("demo", 0.0, -15.0);
+// demo.show("Actually, all of FA's maps are loaded right now...");
+//
+// // to FRA.MM
+// timeline.ease_to(camera.set_target_latitude_radians, camera.target_latitude_radians(), 0.825996, 20.);
+// let globe_fut := timeline.ease_to(camera.set_target_longitude_radians, camera.target_longitude_radians(), -0.075668, 20.);
+// await timeline.sleep(10.0);
+// demo.show("Let's take a quick look at FRA.MM");
+// let height_fut := timeline.ease_bezier_to(camera.set_target_height_meters, camera.target_height_meters(), 400., 10., 0.48, 0.01, 0.15, 1.0);
+// await timeline.sleep(5.0);
+// timeline.ease_bezier_to(camera.set_eye_latitude_radians, camera.eye_latitude_radians(), 0.209437, 5., 0.48, 0.01, 0.15, 1.0);
+// await timeline.ease_bezier_to(camera.set_eye_longitude_radians, camera.eye_longitude_radians(), 14.053463, 5., 0.48, 0.01, 0.15, 1.0);
+// demo.show("The Massif mountain range seems to have nice sunsets");
+// await timeline.sleep(4.0);
+
+ // CHECKPOINT
+ orrery.set_unix_ms(time1);
+ root.child_offset("demo", 0.0, 0.0);
+ camera.set_target_latitude_radians(0.825996);
+ camera.set_target_longitude_radians(-0.075668);
+ camera.set_target_height_meters(400.);
+ camera.set_eye_latitude_radians(0.209437);
+ camera.set_eye_longitude_radians(14.053463);
+ // CHECKPOINT
+
+ camera.set_target_latitude_radians(0.0);
+ camera.set_target_longitude_radians(0.0);
+
+ demo.show("But we can do better...");
+ await timeline.sleep(4.0);
+
+ // to Everest
+// timeline.ease_in_out_to(camera.set_target, camera.target(), camera.notable_location("Everest"), 10.0);
+// timeline.ease_in_out_to(camera.set_target_height_meters, camera.target_height_meters(), 24000., 2.5);
+// timeline.ease_in_out_to(camera.set_eye_distance_meters, camera.eye_distance_meters(), 10000., 2.5);
+// await timeline.sleep(10.0);
+

@@ -128,7 +128,7 @@ pub struct T2LayoutInfo {
     t2_info: T2Info,
     t2: T2Terrain,
     adjust: Arc<RwLock<T2Adjustment>>,
-    t2_info_buffer: Arc<Box<wgpu::Buffer>>,
+    t2_info_buffer: Arc<wgpu::Buffer>,
     bind_group: wgpu::BindGroup,
 }
 
@@ -137,7 +137,7 @@ impl T2LayoutInfo {
         t2_info: T2Info,
         t2: T2Terrain,
         adjust: Arc<RwLock<T2Adjustment>>,
-        t2_info_buffer: Arc<Box<wgpu::Buffer>>,
+        t2_info_buffer: Arc<wgpu::Buffer>,
         bind_group: wgpu::BindGroup,
     ) -> Self {
         Self {
@@ -444,7 +444,7 @@ impl T2TileSet {
                 },
             },
             ArcTextureCopyView {
-                texture: Arc::new(Box::new(height_texture)),
+                texture: Arc::new(height_texture),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
@@ -503,7 +503,7 @@ impl T2TileSet {
                 },
             },
             ArcTextureCopyView {
-                texture: Arc::new(Box::new(base_color_texture)),
+                texture: Arc::new(base_color_texture),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
@@ -560,7 +560,7 @@ impl T2TileSet {
                 },
             },
             ArcTextureCopyView {
-                texture: Arc::new(Box::new(index_texture)),
+                texture: Arc::new(index_texture),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
@@ -726,11 +726,11 @@ impl T2TileSet {
 
         let mapper = T2Mapper::new(&t2, &self.shared_adjustment.read());
         let t2_info = T2Info::new(mapper.base_rad_f32(), mapper.extent_rad_f32(), index_size);
-        let t2_info_buffer = Arc::new(Box::new(gpu.push_data(
+        let t2_info_buffer = Arc::new(gpu.push_data(
             "t2-info-buffer",
             &t2_info,
             wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        )));
+        ));
 
         let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("t2-height-bind-group"),
@@ -903,7 +903,7 @@ impl TileSet for T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogBuilder};
+    use lib::{from_dos_string, CatalogManager};
     use nitrous::Interpreter;
     use terrain::{CpuDetailLevel, GpuDetailLevel};
     use winit::{event_loop::EventLoop, window::Window};
@@ -920,34 +920,9 @@ mod tests {
         let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
         let async_rt = Runtime::new()?;
 
-        let (mut catalog, inputs) = CatalogBuilder::build_and_select(&["*:*.MM".to_owned()])?;
-
-        for &fid in &inputs {
-            let label = catalog.file_label(fid)?;
-            let game = label.split(':').last().unwrap();
-            let meta = catalog.stat_sync(fid)?;
-
-            let system_palette =
-                Palette::from_bytes(&catalog.read_labeled_name_sync(&label, "PALETTE.PAL")?)?;
-
-            if meta.name() == "$VARF.MM"
-                || (game == "ATFGOLD"
-                    && (meta.name() == "VIET.MM"
-                        || meta.name() == "KURILE.MM"
-                        || meta.name().contains("UKR")))
-            {
-                continue;
-            }
-
-            println!(
-                "At: {}:{:13} @ {}",
-                game,
-                meta.name(),
-                meta.path()
-                    .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| "<none>".into())
-            );
-
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.selected() {
+            let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
             let globals =
                 GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
             let terrain = TerrainBuffer::new(
@@ -961,21 +936,45 @@ mod tests {
             let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
             let mut ts =
                 T2TileSet::new(t2_adjustment, &terrain.read(), &globals.read(), &gpu.read())?;
-
-            catalog.set_default_label(&label);
             let type_manager = TypeManager::empty();
-            let contents = from_dos_string(catalog.read_sync(fid)?);
-            let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
-            let mut tracker = Default::default();
-            ts.add_map(
-                &system_palette,
-                &mm,
-                &catalog,
-                &mut gpu.write(),
-                &async_rt,
-                &mut tracker,
-            )?;
-            tracker.dispatch_uploads_one_shot(&mut gpu.write());
+
+            for fid in catalog.find_with_extension("MM")? {
+                let meta = catalog.stat_sync(fid)?;
+                println!(
+                    "{}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+                println!(
+                    "{}",
+                    "=".repeat(1 + game.test_dir.len() + meta.name().len())
+                );
+                if meta.name() == "$VARF.MM"
+                    || (game.test_dir == "ATFGOLD"
+                        && (meta.name() == "VIET.MM"
+                            || meta.name() == "KURILE.MM"
+                            || meta.name().contains("UKR")))
+                {
+                    println!("skipping broken asset");
+                    continue;
+                }
+
+                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
+                let mut tracker = Default::default();
+                ts.add_map(
+                    &system_palette,
+                    &mm,
+                    &catalog,
+                    &mut gpu.write(),
+                    &async_rt,
+                    &mut tracker,
+                )?;
+                tracker.dispatch_uploads_one_shot(&mut gpu.write());
+            }
             terrain
                 .write()
                 .add_tile_set(Box::new(ts) as Box<dyn TileSet>);
