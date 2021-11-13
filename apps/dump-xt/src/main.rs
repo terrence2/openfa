@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
     for (game, catalog) in catalogs.selected() {
         for input in &opt.inputs {
-            for fid in catalog.find_matching(input, None)? {
+            for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat_sync(fid)?;
                 println!(
                     "At: {}:{:13} @ {}",
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
 
 fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
     let type_manager = TypeManager::empty();
-    let xt = type_manager.load(name, &catalog)?;
+    let xt = type_manager.load(name, catalog)?;
 
     let ot = &xt.ot();
     println!("{:>25}", "ObjectType");

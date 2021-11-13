@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters};
+use absolute_unit::{degrees, meters, radians};
 use animate::Timeline;
 use anyhow::{bail, Result};
 use atmosphere::AtmosphereBuffer;
@@ -98,7 +98,7 @@ struct System {
     adjust: Arc<RwLock<T2Adjustment>>,
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
-    interpreter: Arc<RwLock<Interpreter>>,
+    interpreter: Interpreter,
     widgets: Arc<RwLock<WidgetBuffer>>,
     visible_widgets: VisibleWidgets,
 }
@@ -107,7 +107,7 @@ struct System {
 impl System {
     pub fn new(
         catalog: &Catalog,
-        interpreter: Arc<RwLock<Interpreter>>,
+        interpreter: Interpreter,
         widgets: Arc<RwLock<WidgetBuffer>>,
     ) -> Result<Arc<RwLock<Self>>> {
         let visible_widgets = Self::build_gui(catalog, widgets.clone())?;
@@ -119,16 +119,15 @@ impl System {
             adjust: Arc::new(RwLock::new(T2Adjustment::default())),
             target_offset: 0,
             targets: Vec::new(),
-            interpreter: interpreter.clone(),
-            widgets: widgets.clone(),
+            interpreter,
+            widgets,
             visible_widgets,
         }));
-        interpreter.write().put_global(
-            "demo",
-            Value::Module(system.read().visible_widgets.demo_label.clone()),
-        );
-        interpreter
+        let demo = Value::Module(system.read().visible_widgets.demo_label.clone());
+        system.write().interpreter.put_global("demo", demo);
+        system
             .write()
+            .interpreter
             .put_global("system", Value::Module(system.clone()));
         Ok(system)
     }
@@ -251,7 +250,7 @@ impl System {
             .read()
             .root_container()
             .write()
-            .add_child("demo", demo_box.clone())
+            .add_child("demo", demo_box)
             .set_float(PositionH::Start, PositionV::Bottom);
         widgets
             .read()
@@ -384,21 +383,14 @@ impl System {
     }
 
     #[method]
-    pub fn replay_demo(&mut self, pressed: bool) {
-        if pressed {
-            self.exec_async("demo.n2o");
-        }
-    }
-
-    #[method]
-    pub fn exec_async(&mut self, exec_file: &str) {
+    pub fn exec_file(&mut self, exec_file: &str) {
         match std::fs::read_to_string(exec_file) {
             Ok(code) => {
-                let rv = self.interpreter.write().interpret_async(code);
+                let rv = self.interpreter.interpret_async(code);
                 println!("Execution Completed: {:?}", rv);
             }
             Err(e) => {
-                println!("Read file for {:?}: {}", exec_file, e);
+                println!("Unable to read file '{:?}': {}", exec_file, e);
             }
         }
     }
@@ -496,21 +488,18 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let mut async_rt = Runtime::new()?;
 
-    let interpreter = Interpreter::new();
-    let timeline = Timeline::new(&mut interpreter.write());
-    let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
+    let mut interpreter = Interpreter::default();
+    let timeline = Timeline::new(&mut interpreter);
+    let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
     let mut galaxy = Galaxy::new()?;
 
-    let orrery = Orrery::new(
-        Utc.ymd(1964, 8, 24).and_hms(0, 0, 0),
-        &mut interpreter.write(),
-    );
-    let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter.write());
+    let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter);
+    let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter);
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
     let fullscreen_buffer = FullscreenBuffer::new(&gpu.read());
-    let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
+    let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter);
     let stars_buffer = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
     let terrain_buffer = TerrainBuffer::new(
         catalog,
@@ -518,18 +507,18 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         gpu_detail,
         &globals.read(),
         &mut gpu.write(),
-        &mut interpreter.write(),
+        &mut interpreter,
     )?;
     let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere_buffer.read(), &gpu.read())?;
     let world = WorldRenderPass::new(
         &mut gpu.write(),
-        &mut interpreter.write(),
+        &mut interpreter,
         &globals.read(),
         &atmosphere_buffer.read(),
         &stars_buffer.read(),
         &terrain_buffer.read(),
     )?;
-    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter.write())?;
+    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter)?;
     let ui = UiRenderPass::new(
         &mut gpu.write(),
         &globals.read(),
@@ -556,7 +545,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         composite,
     )?;
 
-    let system = System::new(catalog, interpreter.clone(), widgets.clone())?;
+    let system = System::new(catalog, interpreter.clone(), widgets)?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
@@ -580,11 +569,11 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         println!("Loading {}...", name);
         let raw = catalog.read_sync(mm_fid)?;
         let mm_content = from_dos_string(raw);
-        let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
+        let mm = MissionMap::from_str(&mm_content, &type_manager, catalog)?;
         let t2_mapper = t2_tile_set.add_map(
             &system_palette,
             &mm,
-            &catalog,
+            catalog,
             &mut gpu.write(),
             &async_rt,
             &mut tracker,
@@ -602,7 +591,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 info.xt().ot().shape.as_ref().expect("a shape file"),
                 DrawSelection::NormalModel,
-                &catalog,
+                catalog,
                 &mut gpu.write(),
                 &async_rt,
                 &mut tracker,
@@ -709,7 +698,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             .set_shared_palette(&system_palette, &gpu.read());
         let mut pts = catalog.find_with_extension("PT")?;
         let side_len = (pts.len() as f64).sqrt().ceil() as usize;
-        const KEY: &str = "F22.PT";
+        const KEY: &str = "AV8.PT";
         pts.sort_by(|a_fid, b_fid| {
             let a_stat = catalog.stat_sync(*a_fid).unwrap();
             let b_stat = catalog.stat_sync(*b_fid).unwrap();
@@ -723,17 +712,20 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 a.cmp(b)
             }
         });
+
+        let base_lat = 0.16217;
+        let base_lon = 1.379419;
         for (i, pt_fid) in pts.iter().enumerate() {
             let xi = i % side_len;
             let yi = i / side_len;
             let pt_stat = catalog.stat_sync(*pt_fid)?;
             let pt_name = pt_stat.name();
-            let xt = type_manager.load(pt_name, &catalog)?;
+            let xt = type_manager.load(pt_name, catalog)?;
             let pt = xt.pt()?;
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 pt.nt.ot.shape.as_ref().unwrap(),
                 DrawSelection::NormalModel,
-                &catalog,
+                catalog,
                 &mut gpu.write(),
                 &async_rt,
                 &mut tracker,
@@ -744,9 +736,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 shapes.read().part(shape_id),
                 2.,
                 Graticule::new(
-                    degrees!(0.003 * xi as f64),
-                    degrees!(0.003 * yi as f64),
-                    meters!(1500.0 - 200.0 * offset as f64),
+                    degrees!(0.003 * xi as f64) + radians!(base_lat),
+                    degrees!(0.003 * yi as f64) + radians!(base_lon),
+                    meters!(1500.0 - 150.0 * offset as f64),
                 ),
                 &nalgebra::UnitQuaternion::identity(),
             )?;
@@ -762,7 +754,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     println!("Loading scene took: {:?}", start.elapsed());
 
     {
-        let interp = &mut interpreter.write();
+        let interp = &mut interpreter;
         gpu.write().add_default_bindings(interp)?;
         orrery.write().add_default_bindings(interp)?;
         arcball.write().add_default_bindings(interp)?;
@@ -774,23 +766,23 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     let catalog = Arc::new(AsyncRwLock::new(catalogs.steal_best()));
 
     if let Some(command) = opt.run_command.as_ref() {
-        let rv = interpreter.write().interpret_once(command)?;
+        let rv = interpreter.interpret_once(command)?;
         println!("{}", rv);
     }
 
     if let Ok(code) = std::fs::read_to_string("autoexec.n2o") {
-        let rv = interpreter.write().interpret_once(&code);
+        let rv = interpreter.interpret_once(&code);
         println!("Execution Completed: {:?}", rv);
     }
 
     if let Some(exec_file) = opt.execute {
         match std::fs::read_to_string(&exec_file) {
             Ok(code) => {
-                let rv = interpreter.write().interpret_async(code);
+                let rv = interpreter.interpret_async(code);
                 println!("Execution Completed: {:?}", rv);
             }
             Err(e) => {
-                println!("Read file for {:?}: {}", exec_file, e);
+                println!("Unable to read file '{:?}': {}", exec_file, e);
             }
         }
     }

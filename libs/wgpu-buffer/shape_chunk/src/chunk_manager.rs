@@ -156,11 +156,20 @@ impl ShapeChunkBuffer {
         if open_chunk.chunk_is_empty() {
             return Ok(());
         }
+        let dump_path = if self.dump_atlas_textures {
+            let mut path = env::current_dir()?;
+            path.push("__dump__");
+            path.push("shape_chunk");
+            path.push(&format!("chunk-{}.png", open_chunk.chunk_id()));
+            Some(path)
+        } else {
+            None
+        };
         let chunk = ClosedChunk::new(
             open_chunk,
             &self.chunk_bind_group_layout,
             &self.shared_sampler,
-            self.dump_atlas_textures,
+            dump_path,
             &mut self.pic_uploader,
             gpu,
             async_rt,
