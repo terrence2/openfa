@@ -3,10 +3,25 @@ camera.set_target(camera.notable_location(location));
 camera.set_eye(camera.eye_for(location));
 
 // KuumNi, dawn
-//camera.set_target_latitude_radians(0.687693);
-//camera.set_target_longitude_radians(-2.245564);
-//camera.set_target_height_meters(0.0);
-//camera.set_eye_latitude_radians(0.174531);
-//camera.set_eye_longitude_radians(17.514379);
-//camera.set_eye_distance_meters(1081.399373);
-//orrery.set_unix_ms(-168993517833.82);
+// camera.set_target_latitude_radians(0.687693);
+// camera.set_target_longitude_radians(-2.245564);
+// camera.set_target_height_meters(0.0);
+// camera.set_eye_latitude_radians(0.174531);
+// camera.set_eye_longitude_radians(17.514379);
+// camera.set_eye_distance_meters(1081.399373);
+// orrery.set_unix_ms(-168993517833.82);
+
+// Panama, shape demo
+// let tgt_lat := 0.162171181505292;
+// let tgt_lon := 1.379423469142956;
+// let tgt_height := 1500. - 6. * 150.;
+// let eye_lat := 0.29670346;
+// let eye_lon := 14.5683351;
+// let eye_dist := 56.595;
+// camera.set_target_latitude_radians(tgt_lat);
+// camera.set_target_longitude_radians(tgt_lon);
+// camera.set_target_height_meters(tgt_height);
+// camera.set_eye_latitude_radians(eye_lat);
+// camera.set_eye_longitude_radians(eye_lon);
+// camera.set_eye_distance_meters(eye_dist);
+// orrery.set_unix_ms(-168993517833.82);

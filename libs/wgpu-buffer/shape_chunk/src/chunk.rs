@@ -192,6 +192,7 @@ impl OpenChunk {
         self.vertex_upload_buffer.is_empty()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn upload_shape(
         &mut self,
         name: &str,

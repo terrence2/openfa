@@ -916,22 +916,21 @@ mod tests {
         use winit::platform::unix::EventLoopExtUnix;
         let event_loop = EventLoop::<()>::new_any_thread();
         let window = Window::new(&event_loop)?;
-        let interpreter = Interpreter::new();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter.write())?;
+        let mut interpreter = Interpreter::default();
+        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
         let async_rt = Runtime::new()?;
 
         let catalogs = CatalogManager::for_testing()?;
         for (game, catalog) in catalogs.selected() {
             let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            let globals =
-                GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter.write());
+            let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter);
             let terrain = TerrainBuffer::new(
                 catalog,
                 CpuDetailLevel::Low,
                 GpuDetailLevel::Low,
                 &globals.read(),
                 &mut gpu.write(),
-                &mut interpreter.write(),
+                &mut interpreter,
             )?;
             let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
             let mut ts =
