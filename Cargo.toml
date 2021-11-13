@@ -17,8 +17,6 @@ members = [
     "apps/dump-t2",
     "apps/dump-xt",
     "apps/pack-pic",
-    # "apps/show-mm",
-    # "apps/show-sh",
 
     "libs/asset/dlg",
     "libs/asset/fnt",
