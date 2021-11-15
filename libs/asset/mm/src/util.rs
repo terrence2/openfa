@@ -28,3 +28,31 @@ where
         n.parse::<T>()?
     })
 }
+
+pub fn parse_header_delimited<'a, 'b, I: Iterator<Item = &'a str>>(
+    tokens: &'b mut I,
+) -> Option<String>
+where
+    'a: 'b,
+{
+    // Start of Header (0x01) marks delimiting the string? Must be a dos thing. :shrug:
+    // Regardless, we need to accumulate tokens until we find one ending in a 1, since
+    // we've split on spaces already.
+    let tmp = tokens.next().expect("name");
+    assert!(tmp.starts_with(1 as char));
+    Some(if tmp.ends_with(1 as char) {
+        let end = tmp.len() - 1;
+        tmp[1..end].to_owned()
+    } else {
+        let mut tmp = tmp.to_owned();
+        #[allow(clippy::while_let_on_iterator)]
+        while let Some(next) = tokens.next() {
+            tmp = tmp + " " + next;
+            if tmp.ends_with(1 as char) {
+                break;
+            }
+        }
+        let end = tmp.len() - 1;
+        tmp[1..end].to_owned()
+    })
+}

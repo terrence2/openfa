@@ -6,6 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bitflags = "^ 1"
 log = "^ 0.4"
 nalgebra = "^ 0.29"
 num-traits = "^ 0.2"

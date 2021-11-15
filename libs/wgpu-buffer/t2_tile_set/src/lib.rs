@@ -642,7 +642,7 @@ impl T2TileSet {
 
         // Build a texture atlas, doing all work on the gpu.
         let mut atlas_builder = AtlasPacker::<Rgba<u8>>::new(
-            mm.map_name(),
+            mm.map_name().meta_name(),
             gpu,
             atlas_width,
             atlas_height,
@@ -656,7 +656,7 @@ impl T2TileSet {
 
         // Set up upload for each TLoc, mapping it to a frame.
         let mut frames = Vec::new();
-        let texture_base_name = mm.get_base_texture_name()?;
+        let texture_base_name = mm.map_name().base_texture_name();
         for loc in sources.drain() {
             let name = loc.pic_file(&texture_base_name);
             let data = catalog.read_name_sync(&name)?;
@@ -704,7 +704,7 @@ impl T2TileSet {
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<T2Mapper> {
-        let t2_data = catalog.read_name_sync(mm.t2_name())?;
+        let t2_data = catalog.read_name_sync(&mm.map_name().t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
 
         if self.layouts.contains_key(t2.name()) {

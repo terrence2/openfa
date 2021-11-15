@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::util::maybe_hex;
+use crate::util::{maybe_hex, parse_header_delimited};
 use anyhow::{anyhow, bail, Result};
 use nalgebra::Point3;
 use std::str::SplitAsciiWhitespace;
@@ -50,27 +50,7 @@ impl SpecialInfo {
                     pos = Some(Point3::new(x, y, z));
                 }
                 "name" => {
-                    // FIXME: share this code
-                    // Start of Header (0x01) marks delimiting the string? Must be a dos thing. :shrug:
-                    // Regardless, we need to accumulate tokens until we find one ending in a 1, since
-                    // we've split on spaces already.
-                    let tmp = tokens.next().expect("name");
-                    assert!(tmp.starts_with(1 as char));
-                    if tmp.ends_with(1 as char) {
-                        let end = tmp.len() - 1;
-                        name = Some(tmp[1..end].to_owned());
-                    } else {
-                        let mut tmp = tmp.to_owned();
-                        #[allow(clippy::while_let_on_iterator)]
-                        while let Some(next) = tokens.next() {
-                            tmp += next;
-                            if tmp.ends_with(1 as char) {
-                                break;
-                            }
-                        }
-                        let end = tmp.len() - 1;
-                        name = Some(tmp[1..end].to_owned());
-                    }
+                    name = parse_header_delimited(tokens);
                 }
                 "color" => color = Some(tokens.next().expect("color").parse::<u8>()?),
                 "icon" => icon = Some(tokens.next().expect("icon").parse::<i32>()?),

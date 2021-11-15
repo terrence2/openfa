@@ -12,7 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::{anyhow, bail, Result};
+use crate::{
+    formation::WingFormation,
+    util::{maybe_hex, parse_header_delimited},
+};
+use anyhow::{anyhow, bail, ensure, Result};
 use nalgebra::Vector3;
 use std::str::SplitAsciiWhitespace;
 
@@ -36,11 +40,11 @@ pub struct Waypoint {
     next: bool,
     pos: Vector3<f32>,
     speed: usize,
-    wng: [u16; 4],
+    wng_formation: WingFormation,
     react: [u32; 3],
     search_dist: u8,
-    // preferred_target_id: 0
-    // name: ""
+    name: Option<String>,
+    preferred_target_id: Option<u32>,
 }
 
 impl Waypoint {
@@ -51,56 +55,68 @@ impl Waypoint {
         let mut next = None;
         let mut pos = None;
         let mut speed = None;
-        let mut wng = None;
+        let mut wng_formation = None;
         let mut react = None;
+        let mut name = None;
         let mut search_dist = None;
+        let mut preferred_target_id = None;
 
-        while let Some(token) = tokens.next() {
+        // Take the index, peek until we find the end or the next index, signaling next waypoint
+        ensure!(tokens.next().expect("w_index") == "w_index");
+        index = Some(tokens.next().expect("w_index").parse::<u8>()?);
+
+        let mut wp_tokens = tokens.take_while(|&tok| tok != "w_index");
+        while let Some(token) = wp_tokens.next() {
+            println!("WP TOK: {}", token);
             match token {
-                "w_index" => index = Some(tokens.next().expect("w_index").parse::<u8>()?),
-                "w_flags" => flags = Some(tokens.next().expect("w_flags").parse::<u8>()?),
-                "w_goal" => goal = Some(tokens.next().expect("w_goal") == "1"),
-                "w_next" => next = Some(tokens.next().expect("w_next") == "1"),
+                "w_index" => panic!("w_index in main loop"),
+                "w_flags" => flags = Some(maybe_hex::<u8>(wp_tokens.next().expect("w_flags"))?),
+                "w_goal" => goal = Some(wp_tokens.next().expect("w_goal") == "1"),
+                "w_next" => next = Some(wp_tokens.next().expect("w_next") == "1"),
                 "w_pos2" => {
-                    assert_eq!(tokens.next().expect("pos2 a").parse::<u8>()?, 0);
-                    assert_eq!(tokens.next().expect("pos2 b").parse::<u8>()?, 0);
+                    let a = wp_tokens.next().expect("pos2 a").parse::<u8>()?;
+                    let b = wp_tokens.next().expect("pos2 b").parse::<u8>()?;
+                    ensure!(a == 0 || a == 1);
+                    ensure!(b == 0);
                     pos = Some(Vector3::new(
-                        tokens.next().expect("x").parse::<f32>()?,
-                        tokens.next().expect("y").parse::<f32>()?,
-                        tokens.next().expect("z").parse::<f32>()?,
+                        wp_tokens.next().expect("x").parse::<f32>()?,
+                        wp_tokens.next().expect("y").parse::<f32>()?,
+                        wp_tokens.next().expect("z").parse::<f32>()?,
                     ));
                 }
-                "w_speed" => speed = Some(tokens.next().expect("w_speed").parse::<usize>()?),
+                "w_speed" => speed = Some(wp_tokens.next().expect("w_speed").parse::<usize>()?),
                 "w_wng" => {
-                    wng = Some([
-                        tokens.next().expect("wng a").parse::<u16>()?,
-                        tokens.next().expect("wng b").parse::<u16>()?,
-                        tokens.next().expect("wng c").parse::<u16>()?,
-                        tokens.next().expect("wng d").parse::<u16>()?,
-                    ]);
+                    wng_formation = Some(WingFormation::from_tokens(&mut wp_tokens)?);
                 }
                 "w_react" => {
                     react = Some([
-                        tokens.next().expect("a").parse::<u32>()?,
-                        tokens.next().expect("b").parse::<u32>()?,
-                        tokens.next().expect("c").parse::<u32>()?,
+                        maybe_hex::<u32>(wp_tokens.next().expect("a"))?,
+                        maybe_hex::<u32>(wp_tokens.next().expect("b"))?,
+                        maybe_hex::<u32>(wp_tokens.next().expect("c"))?,
                     ]);
                 }
                 "w_searchDist" => {
-                    search_dist = Some(tokens.next().expect("w_searchDist").parse::<u8>()?)
-                }
-                "w_preferredTargetId" => {
-                    assert_eq!(tokens.next().expect("w_preferredTargetId"), "0")
+                    search_dist = Some(wp_tokens.next().expect("w_searchDist").parse::<u8>()?)
                 }
                 "w_name" => {
-                    assert_eq!(tokens.next().expect("w_name"), "\x01\x01");
-                    break;
+                    name = parse_header_delimited(&mut wp_tokens);
+                    println!("NAME: {:?}", name);
+                    //wp_tokens.next().unwrap();
+                }
+                "w_preferredTargetId" => {
+                    let v = str::parse::<u32>(wp_tokens.next().expect("w_preferredTargetId v"))?;
+                    preferred_target_id = Some(v);
+                }
+                "w_preferredTargetId2" => {
+                    let v = maybe_hex::<u32>(wp_tokens.next().expect("w_preferredTargetId2 $v"))?;
+                    preferred_target_id = Some(v);
                 }
                 v => {
                     bail!("unknown waypoint key: {}", v);
                 }
             }
         }
+
         Ok(Waypoint {
             index: index.ok_or_else(|| anyhow!("mm:waypoint: index not set in waypoint",))?,
             flags: flags.ok_or_else(|| anyhow!("mm:waypoint: flags not set in waypoint",))?,
@@ -108,10 +124,13 @@ impl Waypoint {
             next: next.ok_or_else(|| anyhow!("mm:waypoint: next not set in waypoint",))?,
             pos: pos.ok_or_else(|| anyhow!("mm:waypoint: pos not set in waypoint",))?,
             speed: speed.ok_or_else(|| anyhow!("mm:waypoint: speed not set in waypoint",))?,
-            wng: wng.ok_or_else(|| anyhow!("mm:waypoint: wng not set in waypoint",))?,
+            wng_formation: wng_formation
+                .ok_or_else(|| anyhow!("mm:waypoint: wng not set in waypoint",))?,
             react: react.ok_or_else(|| anyhow!("mm:waypoint: react not set in waypoint",))?,
             search_dist: search_dist
                 .ok_or_else(|| anyhow!("mm:waypoint: searchDist not set in waypoint",))?,
+            name,
+            preferred_target_id,
         })
     }
 }

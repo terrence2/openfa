@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::cognitive_complexity)]
 
+mod formation;
 mod obj;
 mod special;
 mod util;
@@ -21,6 +22,7 @@ mod waypoint;
 
 use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
 use anyhow::{anyhow, bail, ensure, Result};
+use bitflags::bitflags;
 use catalog::Catalog;
 use log::debug;
 use std::{borrow::Cow, collections::HashMap, str::FromStr};
@@ -48,7 +50,7 @@ impl TLoc {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MapOrientation {
     Unk0,
     Unk1,
@@ -77,34 +79,196 @@ impl MapOrientation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TMap {
     pub orientation: MapOrientation,
     pub loc: TLoc,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TDic {
     n: usize,
     map: [[u8; 4]; 8],
 }
 
-#[allow(dead_code)]
-pub struct MissionMap {
-    map_name: String,
-    t2_name: String,
-    layer_name: String,
-    layer_index: usize,
-    tmaps: HashMap<(u32, u32), TMap>,
-    tdics: Vec<TDic>,
-    wind: (i16, i16),
-    view: (u32, u32, u32),
-    time: (u8, u8),
-    objects: Vec<ObjectInfo>,
+#[derive(Debug, Eq, PartialEq)]
+pub struct MapName {
+    raw: String,
+    prefix: Option<char>,
+    name: String,
+    number: Option<u32>,
+    ext: String,
 }
 
-impl MissionMap {
-    pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Self> {
+impl MapName {
+    // These are all of the terrains and map references in the base games.
+    // FA:
+    //     FA_2.LIB:
+    //         EGY.T2, FRA.T2, VLA.T2, BAL.T2, UKR.T2, KURILE.T2, TVIET.T2
+    //         APA.T2, CUB.T2, GRE.T2, IRA.T2, LFA.T2, NSK.T2, PGU.T2, SPA.T2, WTA.T2
+    //     MM refs:
+    //         // Campaign missions?
+    //         $bal[0-7].T2
+    //         $egy[1-9].T2
+    //         $fra[0-9].T2
+    //         $vla[1-8].T2
+    //         ~ukr[1-8].T2
+    //         // Freeform missions and ???; map editor layouts maybe?
+    //         ~apaf.T2, apa.T2
+    //         ~balf.T2, bal.T2
+    //         ~cubf.T2, cub.T2
+    //         ~egyf.T2, egy.T2
+    //         ~fraf.T2, fra.T2
+    //         ~gref.T2, gre.T2
+    //         ~iraf.T2, ira.T2
+    //         ~kurile.T2, kurile.T2
+    //         ~lfaf.T2, lfa.T2
+    //         ~nskf.T2, nsk.T2
+    //         ~pguf.T2, pgu.T2
+    //         ~spaf.T2, spa.T2
+    //         ~tviet.T2, tviet.T2
+    //         ~ukrf.T2, ukr.T2
+    //         ~vlaf.T2, vla.T2
+    //         ~wtaf.T2, wta.T2
+    //    M refs:
+    //         $bal[0-7].T2
+    //         $egy[1-8].T2
+    //         $fra[0-3,6-9].T2
+    //         $vla[1-8].T2
+    //         ~bal[0,2,3,6,7].T2
+    //         ~egy[1,2,4,7].T2
+    //         ~fra[3,9].T2
+    //         ~ukr[1-8].T2
+    //         ~vla[1,2,5].T2
+    //         bal.T2, cub.T2, egy.T2, fra.T2, kurile.T2, tviet.T2, ukr.T2, vla.T2
+    // USNF97:
+    //     USNF_2.LIB: UKR.T2, ~UKR[1-8].T2, KURILE.T2, VIET.T2
+    //     MM refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
+    //     M  refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
+    // ATFGOLD:
+    //     ATF_2.LIB: EGY.T2, FRA.T2, VLA.T2, BAL.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2
+    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    //     INVALID: kurile.T2, ~ukr[1-8].T2, ukr.T2, viet.T2
+    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2,
+    //              ~bal[2,6].T2, bal.T2, ~egy4.T2, egy.T2, fra.T2, vla.T2
+    //     INVALID: ukr.T2
+    // ATFNATO:
+    //     installdir: EGY.T2, FRA.T2, VLA.T2, BAL.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2,
+    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    //     M  refs: egy.T2, fra.T2, vla.T2, bal.T2,
+    //              $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2
+    // ATF:
+    //     installdir: EGY.T2, FRA.T2, VLA.T2
+    //     MM refs: egy.T2, fra.T2, vla.T2,
+    //              $egy[1-8].T2, $fra[0-9].T2, $vla[1-8].T2
+    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, egy.T2
+    // MF:
+    //     installdir: UKR.T2, $UKR[1-8].T2, KURILE.T2
+    //     MM+M refs: ukr.T2, $ukr[1-8].T2, kurile.T2
+    // USNF:
+    //     installdir: UKR.T2, $UKR[1-8].T2
+    //     MM+M refs: ukr.T2, $ukr[1-8].T2
+    fn parse(map_name: &str) -> Result<Self> {
+        let raw = map_name.to_uppercase();
+
+        let (name, ext) = raw
+            .rsplit_once('.')
+            .ok_or_else(|| anyhow!("invalid map_name; must be a t2 metafile"))?;
+
+        let mut name = name.to_owned();
+        ensure!(!name.is_empty());
+        let maybe_prefix = name.chars().next().unwrap();
+        let maybe_number = name.chars().last().unwrap();
+
+        let mut prefix = None;
+        if ['~', '$'].contains(&maybe_prefix) {
+            prefix = Some(maybe_prefix);
+            name = name[1..].to_owned();
+        }
+
+        let mut number = None;
+        if let Some(digit) = maybe_number.to_digit(10) {
+            number = Some(digit);
+            name = name[..name.len() - 1].to_owned();
+        }
+
+        Ok(Self {
+            ext: ext.to_owned(),
+            raw,
+            prefix,
+            name,
+            number,
+        })
+    }
+
+    pub fn meta_name(&self) -> &str {
+        &self.raw
+    }
+
+    pub fn base_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn base_texture_name(&self) -> &str {
+        &self.name[..3]
+    }
+
+    pub fn t2_name(&self) -> String {
+        format!("{}.T2", self.name)
+    }
+
+    /// The first character of the name section of the metaname. The LAY data may have a
+    /// map-specific version of a layer that should be preferred over the base LAY. This
+    /// verison has this token appended to the non-extention part of the name.
+    pub fn layer_token(&self) -> char {
+        self.name.chars().next().expect("non-empty map name")
+    }
+
+    pub fn parent(&self) -> String {
+        format!("{}.MM", self.name)
+    }
+}
+
+bitflags! {
+    struct ScreenSet : u8 {
+        const Briefing = 0x01;
+        const BriefingMap = 0x02;
+        const SelectPlane = 0x04;
+        const ArmPlane = 0x08;
+    }
+}
+
+#[derive(Debug)]
+enum MValue {
+    TextFormat,
+    Brief,
+    BriefMap,
+    SelectPlane,
+    ArmPlane,
+    AllowRearmRefuel(bool),
+    MapName(MapName),
+    Layer((String, usize)),
+    Clouds(u32),
+    Wind((i16, i16)),
+    View((u32, u32, u32)),
+    Time((u8, u8)),
+    UsAirSkill(u8),
+    UsGroundSkill(u8),
+    ThemAirSkill(u8),
+    ThemGroundSkill(u8),
+    Sides(Vec<u8>),
+    HistoricalEra(u8),
+    TMaps(HashMap<(u32, u32), TMap>),
+    TDics(Vec<TDic>),
+    Objects(Vec<ObjectInfo>),
+}
+
+impl MValue {
+    fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Vec<MValue>> {
+        let mut mm = Vec::new();
+
         // Do a fast pre-pass to get array pre-sizing for allocations and check if we need a
         // lexical pass to remove comments.
         let mut obj_cnt = 0;
@@ -140,65 +304,79 @@ impl MissionMap {
             init_tokens
         };
 
-        let mut map_name = None;
-        let mut t2_name = None;
-        let mut layer_name = None;
-        let mut layer_index = None;
-        let mut wind = Some((0, 0));
-        let mut view = None;
-        let mut time = None;
+        let mut layer_token = None;
         let mut sides: Vec<u8> = Vec::with_capacity(64);
         let mut objects = Vec::with_capacity(obj_cnt);
         let mut specials: Vec<SpecialInfo> = Vec::with_capacity(special_cnt);
         let mut tmaps = HashMap::with_capacity(tmap_cnt);
         let mut tdics = Vec::with_capacity(tdic_cnt);
 
-        ensure!(
-            tokens.next() == Some("textFormat"),
-            "missing textFormat node in MM"
-        );
         while let Some(token) = tokens.next() {
-            if token.starts_with(';') {
-                continue;
-            }
+            assert!(!token.starts_with(';'));
+            println!("TOKEN: {}", token);
             match token {
+                "allowrearmrefuel" => {
+                    let v = str::parse::<u8>(tokens.next().expect("allow rearm value"))?;
+                    ensure!(v == 0);
+                    mm.push(MValue::AllowRearmRefuel(false));
+                }
+                "textFormat" => mm.push(MValue::TextFormat),
+                "brief" => mm.push(MValue::Brief),
+                "briefmap" => mm.push(MValue::BriefMap),
+                "selectplane" => mm.push(MValue::SelectPlane),
+                "armplane" => mm.push(MValue::ArmPlane),
                 "map" => {
-                    assert!(map_name.is_none());
-                    map_name = Some(tokens.next().expect("map name").to_owned());
-                    t2_name = Some(Self::find_t2_for_map(map_name.as_ref().unwrap(), catalog)?);
+                    let raw_map_name = tokens.next().ok_or_else(|| anyhow!("map name expected"))?;
+                    let map_name = MapName::parse(raw_map_name)?;
+                    layer_token = Some(map_name.layer_token().to_owned());
+                    mm.push(MValue::MapName(map_name));
                 }
                 "layer" => {
-                    layer_name = Some(Self::find_layer(
-                        map_name.as_ref().expect("map before layer"),
-                        tokens.next().expect("layer name"),
+                    let raw_layer_name = tokens.next().expect("layer name");
+                    let layer_index = tokens.next().expect("layer index").parse::<usize>()?;
+                    let layer_name = Self::find_layer(
+                        layer_token.expect("map name must come before layer"),
+                        &raw_layer_name,
                         catalog,
-                    )?);
-                    layer_index = Some(tokens.next().expect("layer index").parse::<usize>()?);
+                    )?;
+                    mm.push(MValue::Layer((layer_name, layer_index)));
                 }
                 "clouds" => {
-                    ensure!(
-                        tokens.next().expect("clouds") == "0",
-                        "expected 0 clouds value"
-                    );
+                    mm.push(MValue::Clouds(
+                        tokens.next().expect("clouds").parse::<u32>()?,
+                    ));
                 }
                 "wind" => {
-                    // The air is perfectly still in Ukraine.
                     let x = str::parse::<i16>(tokens.next().expect("wind x"))?;
                     let z = str::parse::<i16>(tokens.next().expect("wind z"))?;
-                    wind = Some((x, z));
+                    mm.push(MValue::Wind((x, z)));
                 }
                 "view" => {
-                    assert_eq!(view, None);
                     let x = str::parse::<u32>(tokens.next().expect("view x"))?;
                     let y = str::parse::<u32>(tokens.next().expect("view y"))?;
                     let z = str::parse::<u32>(tokens.next().expect("view z"))?;
-                    view = Some((x, y, z));
+                    mm.push(MValue::View((x, y, z)));
                 }
                 "time" => {
-                    assert_eq!(time, None);
                     let h = str::parse::<u8>(tokens.next().expect("time h"))?;
                     let m = str::parse::<u8>(tokens.next().expect("time m"))?;
-                    time = Some((h, m));
+                    mm.push(MValue::Time((h, m)));
+                }
+                "usGroundSkill" => {
+                    let skill = str::parse::<u8>(tokens.next().expect("skill"))?;
+                    mm.push(MValue::UsGroundSkill(skill));
+                }
+                "usAirSkill" => {
+                    let skill = str::parse::<u8>(tokens.next().expect("skill"))?;
+                    mm.push(MValue::UsAirSkill(skill));
+                }
+                "themGroundSkill" => {
+                    let skill = str::parse::<u8>(tokens.next().expect("skill"))?;
+                    mm.push(MValue::ThemGroundSkill(skill));
+                }
+                "themAirSkill" => {
+                    let skill = str::parse::<u8>(tokens.next().expect("skill"))?;
+                    mm.push(MValue::ThemAirSkill(skill));
                 }
                 "sides" => {
                     // Only used by Ukraine.
@@ -238,7 +416,7 @@ impl MissionMap {
                 }
                 "historicalera" => {
                     let historical_era = u8::from_str(tokens.next().expect("historical era"))?;
-                    assert_eq!(historical_era, 4);
+                    mm.push(MValue::HistoricalEra(historical_era));
                 }
                 "obj" => {
                     let obj = ObjectInfo::from_tokens(&mut tokens, type_manager, catalog)?;
@@ -325,26 +503,128 @@ impl MissionMap {
             }
         }
 
+        if !specials.is_empty() {
+            //mm.push(MValue::Specials(specials));
+        }
+        if !objects.is_empty() {
+            mm.push(MValue::Objects(objects));
+        }
+        if !tmaps.is_empty() {
+            mm.push(MValue::TMaps(tmaps));
+        }
+        if !tdics.is_empty() {
+            mm.push(MValue::TDics(tdics));
+        }
+
+        Ok(mm)
+    }
+
+    // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
+    // except when it is a modified version with the first (non-tilde) character of the MM name
+    // appended to the end of the LAY name, before the dot.
+    fn find_layer(layer_token: char, raw_layer_name: &str, catalog: &Catalog) -> Result<String> {
+        debug!("find_layer token:{}, layer:{}", layer_token, raw_layer_name);
+        let layer_name = raw_layer_name.to_uppercase();
+        let (layer_prefix, layer_ext) = layer_name
+            .rsplit_once('.')
+            .ok_or_else(|| anyhow!("layer must have extension"))?;
+        let alt_layer_name = format!("{}{}.{}", layer_prefix, layer_token, layer_ext);
+        if catalog.exists(&alt_layer_name) {
+            debug!("B: using lay: {}", alt_layer_name);
+            return Ok(alt_layer_name);
+        }
+        debug!("A: using lay: {}", layer_name);
+        Ok(layer_name)
+    }
+}
+
+#[allow(dead_code)]
+pub struct MissionMap {
+    map_name: MapName,
+    layer_name: String,
+    layer_index: usize,
+    tmaps: HashMap<(u32, u32), TMap>,
+    tdics: Vec<TDic>,
+    wind: (i16, i16),
+    view: (u32, u32, u32),
+    time: (u8, u8),
+    objects: Vec<ObjectInfo>,
+}
+
+impl MissionMap {
+    pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Self> {
+        let mut mm = MValue::from_str(s, type_manager, catalog)?;
+
+        let mut map_name = None;
+        let mut layer_name = None;
+        let mut layer_index = None;
+        let mut wind = Some((0, 0));
+        let mut view = None;
+        let mut time = None;
+        // let mut sides: Vec<u8> = Vec::with_capacity(64);
+        // let mut specials: Vec<SpecialInfo> = Vec::with_capacity(special_cnt);
+        let mut tmaps = None;
+        let mut tdics = None;
+        let mut objects = None;
+
+        ensure!(
+            matches!(mm[0], MValue::TextFormat),
+            "missing textFormat node in MM"
+        );
+        for key in mm.drain(..) {
+            match key {
+                MValue::TextFormat => {}
+                MValue::MapName(map) => {
+                    //ensure!(map_name.parent(name.chars().next().unwrap()) == name);
+                    map_name = Some(map);
+                    /*
+                    assert!(raw_map_name.is_none());
+                    raw_map_name = Some(tokens.next().expect("map name").to_owned());
+                    let parent_name = raw_map_name
+                        .as_ref()
+                        .unwrap()
+                        .replace('$', &name.chars().next().unwrap().to_string())
+                        .replace(".T2", ".MM")
+                        .to_uppercase();
+                    //if name.ends_with("MM") {
+                    ensure!(parent_name == name);
+                    //}
+                    t2_name = Some(Self::find_t2_for_map(
+                        raw_map_name.as_ref().unwrap(),
+                        catalog,
+                    )?);
+                     */
+                }
+                MValue::Layer((name, index)) => {
+                    layer_name = Some(name);
+                    layer_index = Some(index);
+                }
+                MValue::View(v) => view = Some(v),
+                MValue::Time(t) => time = Some(t),
+                MValue::Clouds(clouds) => ensure!(clouds == 0),
+                MValue::HistoricalEra(historical_era) => ensure!(historical_era == 4),
+                MValue::TMaps(tm) => tmaps = Some(tm),
+                MValue::TDics(td) => tdics = Some(td),
+                MValue::Objects(objs) => objects = Some(objs),
+                _ => {}
+            }
+        }
+
         Ok(MissionMap {
             map_name: map_name.ok_or_else(|| anyhow!("mm must have a 'map' key"))?,
-            t2_name: t2_name.ok_or_else(|| anyhow!("mm must have a 'map' key"))?,
             layer_name: layer_name.ok_or_else(|| anyhow!("mm must have a 'layer' key"))?,
             layer_index: layer_index.ok_or_else(|| anyhow!("mm must have a 'layer' key"))?,
             wind: wind.ok_or_else(|| anyhow!("mm must have a 'wind' key"))?,
             view: view.ok_or_else(|| anyhow!("mm must have a 'view' key"))?,
             time: time.ok_or_else(|| anyhow!("mm must have a 'time' key"))?,
-            tmaps,
-            tdics,
-            objects,
+            tmaps: tmaps.ok_or_else(|| anyhow!("mm must have 'tmaps' keys"))?,
+            tdics: tdics.ok_or_else(|| anyhow!("mm must have 'tdics' keys"))?,
+            objects: objects.ok_or_else(|| anyhow!("mm must have 'object' keys"))?,
         })
     }
 
-    pub fn map_name(&self) -> &str {
+    pub fn map_name(&self) -> &MapName {
         &self.map_name
-    }
-
-    pub fn t2_name(&self) -> &str {
-        &self.t2_name
     }
 
     pub fn layer_name(&self) -> &str {
@@ -371,75 +651,7 @@ impl MissionMap {
         &self.objects
     }
 
-    // These are all of the terrains and map references in the base games.
-    // FA:
-    //     FA_2.LIB:
-    //         EGY.T2, FRA.T2, VLA.T2, BAL.T2, UKR.T2, KURILE.T2, TVIET.T2
-    //         APA.T2, CUB.T2, GRE.T2, IRA.T2, LFA.T2, NSK.T2, PGU.T2, SPA.T2, WTA.T2
-    //     MM refs:
-    //         // Campaign missions?
-    //         $bal[0-7].T2
-    //         $egy[1-9].T2
-    //         $fra[0-9].T2
-    //         $vla[1-8].T2
-    //         ~ukr[1-8].T2
-    //         // Freeform missions and ???; map editor layouts maybe?
-    //         ~apaf.T2, apa.T2
-    //         ~balf.T2, bal.T2
-    //         ~cubf.T2, cub.T2
-    //         ~egyf.T2, egy.T2
-    //         ~fraf.T2, fra.T2
-    //         ~gref.T2, gre.T2
-    //         ~iraf.T2, ira.T2
-    //         ~kurile.T2, kurile.T2
-    //         ~lfaf.T2, lfa.T2
-    //         ~nskf.T2, nsk.T2
-    //         ~pguf.T2, pgu.T2
-    //         ~spaf.T2, spa.T2
-    //         ~tviet.T2, tviet.T2
-    //         ~ukrf.T2, ukr.T2
-    //         ~vlaf.T2, vla.T2
-    //         ~wtaf.T2, wta.T2
-    //    M refs:
-    //         $bal[0-7].T2
-    //         $egy[1-8].T2
-    //         $fra[0-3,6-9].T2
-    //         $vla[1-8].T2
-    //         ~bal[0,2,3,6,7].T2
-    //         ~egy[1,2,4,7].T2
-    //         ~fra[3,9].T2
-    //         ~ukr[1-8].T2
-    //         ~vla[1,2,5].T2
-    //         bal.T2, cub.T2, egy.T2, fra.T2, kurile.T2, tviet.T2, ukr.T2, vla.T2
-    // USNF97:
-    //     USNF_2.LIB: UKR.T2, ~UKR[1-8].T2, KURILE.T2, VIET.T2
-    //     MM refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
-    //     M  refs: ukr.T2, ~ukr[1-8].T2, kurile.T2, viet.T2
-    // ATFGOLD:
-    //     ATF_2.LIB: EGY.T2, FRA.T2, VLA.T2, BAL.T2
-    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2
-    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
-    //     INVALID: kurile.T2, ~ukr[1-8].T2, ukr.T2, viet.T2
-    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2,
-    //              ~bal[2,6].T2, bal.T2, ~egy4.T2, egy.T2, fra.T2, vla.T2
-    //     INVALID: ukr.T2
-    // ATFNATO:
-    //     installdir: EGY.T2, FRA.T2, VLA.T2, BAL.T2
-    //     MM refs: egy.T2, fra.T2, vla.T2, bal.T2,
-    //              $egy[1-9].T2, $fra[0-9].T2, $vla[1-8].T2, $bal[0-7].T2
-    //     M  refs: egy.T2, fra.T2, vla.T2, bal.T2,
-    //              $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, $bal[0-7].T2
-    // ATF:
-    //     installdir: EGY.T2, FRA.T2, VLA.T2
-    //     MM refs: egy.T2, fra.T2, vla.T2,
-    //              $egy[1-8].T2, $fra[0-9].T2, $vla[1-8].T2
-    //     M  refs: $egy[1-8].T2, $fra[0-3,6-9].T2, $vla[1-8].T2, egy.T2
-    // MF:
-    //     installdir: UKR.T2, $UKR[1-8].T2, KURILE.T2
-    //     MM+M refs: ukr.T2, $ukr[1-8].T2, kurile.T2
-    // USNF:
-    //     installdir: UKR.T2, $UKR[1-8].T2
-    //     MM+M refs: ukr.T2, $ukr[1-8].T2
+    /*
     fn find_t2_for_map(map_name: &str, catalog: &Catalog) -> Result<String> {
         let raw = map_name.to_uppercase();
 
@@ -473,6 +685,7 @@ impl MissionMap {
 
         bail!("no map file matching {} found", raw)
     }
+     */
 
     // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
     // except when it is a modified version with the first (non-tilde) character of the MM name
@@ -497,6 +710,7 @@ impl MissionMap {
 
     // This is a slightly different problem then getting the T2, because even though ~ABCn.T2
     // might exist for ~ABCn.MM, we need to look up ABCi.PIC without the tilda.
+    /*
     pub fn get_base_texture_name(&self) -> Result<String> {
         let raw = self.map_name.to_uppercase();
         let mut name = raw
@@ -513,6 +727,17 @@ impl MissionMap {
         }
 
         Ok(name.to_owned())
+    }
+     */
+}
+
+/// Represents an M file.
+pub struct Mission {}
+
+impl Mission {
+    pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Self> {
+        let mkeys = MValue::from_str(s, type_manager, catalog)?;
+        Ok(Mission {})
     }
 }
 
@@ -555,8 +780,55 @@ mod tests {
                 let type_manager = TypeManager::empty();
                 let contents = from_dos_string(catalog.read_sync(fid)?);
                 let mm = MissionMap::from_str(&contents, &type_manager, catalog)?;
-                assert_eq!(mm.get_base_texture_name()?.len(), 3);
-                assert!(mm.t2_name.ends_with(".T2"));
+                assert_eq!(mm.map_name().base_texture_name().len(), 3);
+                assert!(mm.map_name().t2_name().ends_with(".T2"));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn it_can_parse_all_m_files() -> Result<()> {
+        let catalogs = CatalogManager::for_testing()?;
+        for (game, catalog) in catalogs.all() {
+            for fid in catalog.find_with_extension("M")? {
+                let meta = catalog.stat_sync(fid)?;
+
+                // Quick mission fragments...
+                if meta.name().starts_with("~Q") {
+                    continue;
+                }
+
+                // For some reason, the ATF Gold disks contain USNF missions, but
+                // do not contain the USNF assets. Not sure how that works.
+                // if game.test_dir == "ATFGOLD"
+                //     && (meta.name().contains("UKR")
+                //     || meta.name() == "KURILE.MM"
+                //     || meta.name() == "VIET.MM")
+                // {
+                //     continue;
+                // }
+
+                // This looks a fragment of an MM used for... something?
+                // if meta.name() == "$VARF.MM" {
+                //     continue;
+                // }
+
+                println!(
+                    "At: {}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                        .map(|v| v.to_string_lossy())
+                        .unwrap_or_else(|| "<none>".into())
+                );
+
+                let type_manager = TypeManager::empty();
+                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let mm = Mission::from_str(&contents, &type_manager, catalog)?;
+                // assert_eq!(mm.get_base_texture_name()?.len(), 3);
+                // assert!(mm.t2_name.ends_with(".T2"));
             }
         }
 

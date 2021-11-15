@@ -82,8 +82,8 @@ fn show_mm(fid: FileId, type_manager: &TypeManager, catalog: &Catalog, opt: &Opt
     }
     match MissionMap::from_str(&content, type_manager, catalog) {
         Ok(mm) => {
-            println!("map name:    {}", mm.map_name());
-            println!("t2 name:     {}", mm.t2_name());
+            println!("map name:    {}", mm.map_name().meta_name());
+            println!("t2 name:     {}", mm.map_name().t2_name());
             println!("layer name:  {}", mm.layer_name());
             println!("layer index: {}", mm.layer_index());
             println!("tmap count:  {}", mm.texture_maps().len());

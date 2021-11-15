@@ -12,9 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{util::maybe_hex, waypoint::Waypoint};
+use crate::{
+    formation::WingFormation,
+    util::{maybe_hex, parse_header_delimited},
+    waypoint::Waypoint,
+};
 use absolute_unit::{degrees, radians};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
 use nalgebra::{Point3, UnitQuaternion, Vector3};
 use std::str::SplitAsciiWhitespace;
@@ -36,6 +40,7 @@ pub enum Nationality {
     Unk15 = 15,
     Unk16 = 16,
     Unk17 = 17,
+    Unk18 = 18,
     Unk21 = 21,
     Unk22 = 22,
     Unk25 = 25,
@@ -78,6 +83,7 @@ impl Nationality {
             15 => Nationality::Unk15,
             16 => Nationality::Unk16,
             17 => Nationality::Unk17,
+            18 => Nationality::Unk18,
             21 => Nationality::Unk21,
             22 => Nationality::Unk22,
             25 => Nationality::Unk25,
@@ -106,7 +112,7 @@ impl Nationality {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct ObjectInfo {
     xt: TypeRef,
@@ -123,6 +129,12 @@ pub struct ObjectInfo {
     search_dist: Option<u32>,
     // PT only.
     waypoints: Option<Vec<Waypoint>>,
+    wing: Option<(u8, u8)>,
+    wng_formation: Option<WingFormation>,
+    start_time: u32,
+    controller: u8,
+    preferred_target_id: Option<u32>,
+    npc_flags: Option<u8>,
 }
 
 impl ObjectInfo {
@@ -143,6 +155,13 @@ impl ObjectInfo {
         let mut skill = None;
         let mut react = None;
         let mut search_dist = None;
+        // PT only.
+        let mut wing = None;
+        let mut wng_formation = None;
+        let mut start_time = 0;
+        let mut controller = 0;
+        let mut preferred_target_id = None;
+        let mut npc_flags = None;
 
         while let Some(token) = tokens.next() {
             match token {
@@ -153,27 +172,7 @@ impl ObjectInfo {
                     );
                 }
                 "name" => {
-                    // FIXME: share with code in special
-                    // Start of Header (0x01) marks delimiting the string? Must be a dos thing. :shrug:
-                    // Regardless, we need to accumulate tokens until we find one ending in a 1, since
-                    // we've split on spaces already.
-                    let tmp = tokens.next().expect("name");
-                    assert!(tmp.starts_with(1 as char));
-                    if tmp.ends_with(1 as char) {
-                        let end = tmp.len() - 1;
-                        name = Some(tmp[1..end].to_owned());
-                    } else {
-                        let mut tmp = tmp.to_owned();
-                        #[allow(clippy::while_let_on_iterator)]
-                        while let Some(next) = tokens.next() {
-                            tmp += next;
-                            if tmp.ends_with(1 as char) {
-                                break;
-                            }
-                        }
-                        let end = tmp.len() - 1;
-                        name = Some(tmp[1..end].to_owned());
-                    }
+                    name = parse_header_delimited(tokens);
                 }
                 "pos" => {
                     let x = tokens.next().expect("pos x").parse::<i32>()?;
@@ -227,12 +226,43 @@ impl ObjectInfo {
                 "searchDist" => {
                     search_dist = Some(tokens.next().expect("search dist").parse::<u32>()?)
                 }
+                "wing" => {
+                    let squad = str::parse::<u8>(tokens.next().expect("wing squad"))?;
+                    let offset = str::parse::<u8>(tokens.next().expect("wing offset"))?;
+                    wing = Some((squad, offset));
+                }
+                "wng" => {
+                    wng_formation = Some(WingFormation::from_tokens(tokens)?);
+                }
+                "startTime" => {
+                    let t = str::parse::<u32>(tokens.next().expect("startTime t"))?;
+                    start_time = t; // unknown units
+                }
+                "controller" => {
+                    let v = maybe_hex::<u8>(tokens.next().expect("controller v"))?;
+                    ensure!(v == 128);
+                    controller = v;
+                }
+                "preferredTargetId" => {
+                    let v = str::parse::<u32>(tokens.next().expect("preferredTargetId v"))?;
+                    preferred_target_id = Some(v);
+                }
+                "preferredTargetId2" => {
+                    let v = maybe_hex::<u32>(tokens.next().expect("preferredTargetId2 $v"))?;
+                    preferred_target_id = Some(v);
+                }
+                "npcFlags" => {
+                    let flags = str::parse::<u8>(tokens.next().expect("npcFlags v"))?;
+                    ensure!(flags == 2);
+                    npc_flags = Some(flags);
+                }
                 "." => break,
                 _ => {
                     bail!("unknown obj key: {}", token);
                 }
             }
         }
+        ensure!(alias != 0);
 
         Ok(ObjectInfo {
             xt: xt.ok_or_else(|| anyhow!("mm:obj: type not set in obj"))?,
@@ -247,6 +277,12 @@ impl ObjectInfo {
             skill,
             react,
             search_dist,
+            wing,
+            wng_formation,
+            start_time,
+            controller,
+            preferred_target_id,
+            npc_flags,
             waypoints: None,
         })
     }

@@ -20,7 +20,7 @@ use bitflags::bitflags;
 use nalgebra::Point3;
 use std::{collections::HashMap, mem};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum TypeTag {
     Object = 1,
@@ -45,7 +45,7 @@ impl FromRow for TypeTag {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ObjectKind {
     Fighter = 0b1000_0000_0000_0000,
     Bomber = 0b0100_0000_0000_0000,
@@ -87,7 +87,7 @@ impl FromRow for ObjectKind {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProcKind {
     OBJ,
     PLANE,
@@ -142,7 +142,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ObjectNames {
     pub short_name: String,
     pub long_name: String,
