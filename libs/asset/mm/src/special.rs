@@ -17,7 +17,7 @@ use anyhow::{anyhow, bail, Result};
 use nalgebra::Point3;
 use std::str::SplitAsciiWhitespace;
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct SpecialInfo {
     pos: Point3<f32>,
     name: String,

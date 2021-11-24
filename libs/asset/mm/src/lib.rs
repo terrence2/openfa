@@ -20,13 +20,75 @@ mod special;
 mod util;
 mod waypoint;
 
-use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoint};
+use crate::util::maybe_hex;
+use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoints};
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
+use lib::from_dos_string;
 use log::debug;
 use std::{borrow::Cow, collections::HashMap, str::FromStr};
 use xt::TypeManager;
+
+/// This mission is used to show the "vehicle info" screen in the reference.
+///
+/// INPUTS:
+///     <selected> - an XT file for alias -2
+pub const VEHICLE_INFO_MISSION: &str = "~INFO.M";
+
+/// ~/$MC\[_NATO\].M claim to be the base for created missions.
+/// INPUTS: none
+pub const NEW_MISSION_PREFIX: &str = "~MC";
+
+/// Freeflight mission prefix. There are a bunch of missions with a freeflight tag
+/// that generally take a <selected> input, but also a bunch that have a fixed input
+/// XT that generally matches the name. The intent is probably the same for all of
+/// these. There are no ~A missions that do not have the freeflight tag. These are
+/// generally able to be parsed independently, unlike quick mission fragments.
+///
+/// INPUTS:
+///     <selected> - but some are hardcoded
+pub const FREEFLIGHT_PREFIX: &str = "~A";
+
+/// Quick mission prefix. Quick missions are shipped as pile of fragments that gets
+/// catted together based on what's selected in the GUI with a bunch of variables
+/// provided. These are generally tokenable, but not individually recognizable as
+/// anything mission-like.
+///
+/// INPUTS:
+///     <aaa>
+///     <afv>
+///     <cargo>
+///     <carrier>
+///     <cruiser>
+///     <destroyer>
+///     <hovercraft>
+///     <sam>
+///     <small>
+///     <tank>
+pub const QUICK_MISSION_PREFIX: &str = "~Q";
+
+/// Multiplayer missions? These have Red and Blue bases, but nothing else.
+/// Clearly just a framework for something more.
+///
+/// INPUTS:
+///     <aaa>
+///     <jstars>
+///     <sam>
+///     <wateraaa>
+///     <watersam>
+pub const MULTIPLAYER_MISSION_PREFIX: &str = "~F";
+
+// It appears that '$' got changed to '~' in filenames (when moving to
+// windows?), but only M/MM references were caught, not PICs. Thus, this
+// local routine to normalize.
+pub(crate) fn canonicalize(name: &str) -> Cow<str> {
+    if name.starts_with('$') {
+        Cow::from(name.replace('$', "~"))
+    } else {
+        Cow::from(name)
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TLoc {
@@ -170,6 +232,13 @@ impl MapName {
     // USNF:
     //     installdir: UKR.T2, $UKR[1-8].T2
     //     MM+M refs: ukr.T2, $ukr[1-8].T2
+    //
+    // There are only unadorned T2, but many of the T2 references in M/MM are adorned with a sigil
+    // and a number. It turns out when these appear in M files, those map directly to MM instead of
+    // T2 (with some squinting at the sigil). So I think how this goes is: loading an M, findes the
+    // MM (instead of T2) referenced in the map_name, then loading the MM strips any sigil and
+    // number to find the T2, since the MM are the ones with tmap and tdict entries needed to
+    // actually understand what's in the T2 file.
     fn parse(map_name: &str) -> Result<Self> {
         let raw = map_name.to_uppercase();
 
@@ -231,12 +300,64 @@ impl MapName {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum CodeCookie {
+    CatFail,
+    Extra01,
+    Extra02,
+    K16,
+    K17,
+    Train01,
+    U01,
+    U07,
+    U08,
+    U11,
+    U12,
+    U15,
+    U22,
+    U23,
+    U24,
+    U25,
+    U29,
+    U34,
+    Ukr02,
+    Viet03,
+}
+
+impl CodeCookie {
+    fn from_str(s: &str) -> Result<Self> {
+        Ok(match s {
+            "catfail" => Self::CatFail,
+            "extra01" => Self::Extra01,
+            "extra02" => Self::Extra02,
+            "k16" => Self::K16,
+            "k17" => Self::K17,
+            "train01" => Self::Train01,
+            "u01" => Self::U01,
+            "u07" => Self::U07,
+            "u08" => Self::U08,
+            "u11" => Self::U11,
+            "u12" => Self::U12,
+            "u15" => Self::U15,
+            "u22" => Self::U22,
+            "u23" => Self::U23,
+            "u24" => Self::U24,
+            "u25" => Self::U25,
+            "u29" => Self::U29,
+            "u34" => Self::U34,
+            "ukr02" => Self::Ukr02,
+            "viet03" => Self::Viet03,
+            _ => bail!("unknown code type {}", s),
+        })
+    }
+}
+
 bitflags! {
-    struct ScreenSet : u8 {
-        const Briefing = 0x01;
-        const BriefingMap = 0x02;
-        const SelectPlane = 0x04;
-        const ArmPlane = 0x08;
+    pub struct ScreenSet : u8 {
+        const BRIEFING = 0x01;
+        const BRIEFING_MAP = 0x02;
+        const SELECT_PLANE = 0x04;
+        const ARM_PLANE = 0x08;
     }
 }
 
@@ -248,25 +369,33 @@ enum MValue {
     SelectPlane,
     ArmPlane,
     AllowRearmRefuel(bool),
+    PrintMissionOutcome(bool),
+    Code(CodeCookie),
     MapName(MapName),
     Layer((String, usize)),
     Clouds(u32),
     Wind((i16, i16)),
     View((u32, u32, u32)),
     Time((u8, u8)),
+    Revive((u8, u8, u8)),
+    EndScenario((u32, u32, u32)),
     UsAirSkill(u8),
     UsGroundSkill(u8),
     ThemAirSkill(u8),
     ThemGroundSkill(u8),
+    FreeFlight,
+    MapObjSuccessFlags((i32, u8)),
     Sides(Vec<u8>),
     HistoricalEra(u8),
     TMaps(HashMap<(u32, u32), TMap>),
     TDics(Vec<TDic>),
     Objects(Vec<ObjectInfo>),
+    Specials(Vec<SpecialInfo>),
+    GunsOnly,
 }
 
 impl MValue {
-    fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Vec<MValue>> {
+    fn tokenize(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Vec<MValue>> {
         let mut mm = Vec::new();
 
         // Do a fast pre-pass to get array pre-sizing for allocations and check if we need a
@@ -306,6 +435,7 @@ impl MValue {
 
         let mut layer_token = None;
         let mut sides: Vec<u8> = Vec::with_capacity(64);
+        let mut objects_by_alias = HashMap::with_capacity(obj_cnt);
         let mut objects = Vec::with_capacity(obj_cnt);
         let mut specials: Vec<SpecialInfo> = Vec::with_capacity(special_cnt);
         let mut tmaps = HashMap::with_capacity(tmap_cnt);
@@ -313,7 +443,6 @@ impl MValue {
 
         while let Some(token) = tokens.next() {
             assert!(!token.starts_with(';'));
-            println!("TOKEN: {}", token);
             match token {
                 "allowrearmrefuel" => {
                     let v = str::parse::<u8>(tokens.next().expect("allow rearm value"))?;
@@ -325,6 +454,11 @@ impl MValue {
                 "briefmap" => mm.push(MValue::BriefMap),
                 "selectplane" => mm.push(MValue::SelectPlane),
                 "armplane" => mm.push(MValue::ArmPlane),
+                "printmissionoutcome" | "printMissionOutcome" => {
+                    let v = str::parse::<u8>(tokens.next().expect("allow rearm value"))?;
+                    ensure!(v == 0);
+                    mm.push(MValue::PrintMissionOutcome(false));
+                }
                 "map" => {
                     let raw_map_name = tokens.next().ok_or_else(|| anyhow!("map name expected"))?;
                     let map_name = MapName::parse(raw_map_name)?;
@@ -336,7 +470,7 @@ impl MValue {
                     let layer_index = tokens.next().expect("layer index").parse::<usize>()?;
                     let layer_name = Self::find_layer(
                         layer_token.expect("map name must come before layer"),
-                        &raw_layer_name,
+                        raw_layer_name,
                         catalog,
                     )?;
                     mm.push(MValue::Layer((layer_name, layer_index)));
@@ -357,10 +491,32 @@ impl MValue {
                     let z = str::parse::<u32>(tokens.next().expect("view z"))?;
                     mm.push(MValue::View((x, y, z)));
                 }
+                "code" => {
+                    let cookie = CodeCookie::from_str(tokens.next().expect("code cookie"))?;
+                    mm.push(MValue::Code(cookie));
+                }
                 "time" => {
                     let h = str::parse::<u8>(tokens.next().expect("time h"))?;
                     let m = str::parse::<u8>(tokens.next().expect("time m"))?;
                     mm.push(MValue::Time((h, m)));
+                }
+                "revive" => {
+                    let a = str::parse::<u8>(tokens.next().expect("revive lives"))?;
+                    let b = str::parse::<u8>(tokens.next().expect("revive wait"))?;
+                    let c = str::parse::<u8>(tokens.next().expect("revive unk"))?;
+                    ensure!(a <= 4);
+                    ensure!(b == 0 || b == 15);
+                    ensure!(c == 10);
+                    mm.push(MValue::Revive((a, b, c)));
+                }
+                "endscenario" => {
+                    let a = str::parse::<u32>(tokens.next().expect("endscenario timeout"))?;
+                    let b = str::parse::<u32>(tokens.next().expect("endscenario unk 1"))?;
+                    let c = str::parse::<u32>(tokens.next().expect("endscenario unk 2"))?;
+                    ensure!(a == 600 || a == 900 || a == 1200 || a == 1500);
+                    ensure!(b == 0x7FFF_FFFF);
+                    ensure!(c == 0);
+                    mm.push(MValue::EndScenario((a, b, c)));
                 }
                 "usGroundSkill" => {
                     let skill = str::parse::<u8>(tokens.next().expect("skill"))?;
@@ -378,6 +534,7 @@ impl MValue {
                     let skill = str::parse::<u8>(tokens.next().expect("skill"))?;
                     mm.push(MValue::ThemAirSkill(skill));
                 }
+                "freeflight" | "freeFlight" => mm.push(MValue::FreeFlight),
                 "sides" => {
                     // Only used by Ukraine.
                     assert!(sides.is_empty());
@@ -418,9 +575,27 @@ impl MValue {
                     let historical_era = u8::from_str(tokens.next().expect("historical era"))?;
                     mm.push(MValue::HistoricalEra(historical_era));
                 }
+                "map_obj_success_flags" => {
+                    // Only used in a handful of vietnam missions: T02, T08, T10.
+                    // Seems like it might be positional, since the first arg doesn't map to an
+                    // alias or anything else obvious, even in the MM.
+                    let a = str::parse(tokens.next().expect("map_obj_success_flags a"))?;
+                    let b = maybe_hex(tokens.next().expect("map_obj_success_flags b"))?;
+                    ensure!(a < 0);
+                    ensure!(b == 0x80);
+                    mm.push(MValue::MapObjSuccessFlags((a, b)));
+                }
                 "obj" => {
                     let obj = ObjectInfo::from_tokens(&mut tokens, type_manager, catalog)?;
+                    let obj_offset = objects.len();
                     objects.push(obj);
+                    if let Some(alias) = objects[obj_offset].alias() {
+                        ensure!(
+                            !objects_by_alias.contains_key(&alias),
+                            "duplicate alias detected"
+                        );
+                        objects_by_alias.insert(alias, obj_offset);
+                    }
                 }
                 "special" => {
                     let special = SpecialInfo::from_tokens(&mut tokens)?;
@@ -471,21 +646,19 @@ impl MValue {
                 }
                 "waypoint2" => {
                     let cnt = tokens.next().expect("waypoint cnt").parse::<usize>()?;
-                    let mut waypoints = Vec::with_capacity(cnt);
-                    for i in 0..cnt {
-                        let wp = Waypoint::from_tokens(&mut tokens)?;
-                        assert_eq!(wp.index as usize, i);
-                        waypoints.push(wp);
-                    }
-                    let w_for_tok = tokens.next().expect("w_for");
-                    ensure!(w_for_tok == "w_for");
-                    // FIXME: this is probably an index into objects? Except it's negative?
-                    let _w_for = tokens.next().expect("w_for").parse::<i16>()?;
-                    let dot_tok = tokens.next().expect("dot");
-                    ensure!(dot_tok == ".");
+                    let wp = Waypoints::from_tokens(cnt, &mut tokens)?;
+                    let obj_offset = *objects_by_alias
+                        .get(&wp.for_alias())
+                        .ok_or_else(|| anyhow!("waypoints for unknown object"))?;
+                    objects[obj_offset].set_waypoints(wp);
                 }
                 "\0" | "\x1A" => {
-                    // DOS EOF char?
+                    // DOS EOF char, but not always at eof.
+                }
+                "gunsOnly" => {
+                    // Used only in training mission 9: EXTRA09.M in USNF+MF and UKR09 in USNF97.
+                    // TODO: does FA even support this mission properly?
+                    mm.push(MValue::GunsOnly);
                 }
                 v => {
                     println!("mm parse error near token: {:?} {:?}", v, tokens.next());
@@ -503,8 +676,12 @@ impl MValue {
             }
         }
 
+        if !sides.is_empty() {
+            mm.push(MValue::Sides(sides));
+        }
+
         if !specials.is_empty() {
-            //mm.push(MValue::Specials(specials));
+            mm.push(MValue::Specials(specials));
         }
         if !objects.is_empty() {
             mm.push(MValue::Objects(objects));
@@ -545,55 +722,58 @@ pub struct MissionMap {
     layer_index: usize,
     tmaps: HashMap<(u32, u32), TMap>,
     tdics: Vec<TDic>,
-    wind: (i16, i16),
+    wind: Option<(i16, i16)>,
     view: (u32, u32, u32),
     time: (u8, u8),
+    sides: Vec<u8>,
     objects: Vec<ObjectInfo>,
+    specials: Vec<SpecialInfo>,
 }
 
 impl MissionMap {
     pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Self> {
-        let mut mm = MValue::from_str(s, type_manager, catalog)?;
+        let mut tokens = MValue::tokenize(s, type_manager, catalog)?;
 
         let mut map_name = None;
         let mut layer_name = None;
         let mut layer_index = None;
-        let mut wind = Some((0, 0));
+        let mut wind = None;
         let mut view = None;
         let mut time = None;
-        // let mut sides: Vec<u8> = Vec::with_capacity(64);
-        // let mut specials: Vec<SpecialInfo> = Vec::with_capacity(special_cnt);
+        let mut sides = None;
+        let mut specials = None;
         let mut tmaps = None;
         let mut tdics = None;
         let mut objects = None;
 
         ensure!(
-            matches!(mm[0], MValue::TextFormat),
+            matches!(tokens[0], MValue::TextFormat),
             "missing textFormat node in MM"
         );
-        for key in mm.drain(..) {
-            match key {
+        for value in tokens.drain(..) {
+            match value {
                 MValue::TextFormat => {}
+                MValue::Brief => bail!("Brief in MM"),
+                MValue::BriefMap => bail!("BriefMap in MM"),
+                MValue::SelectPlane => bail!("SelectPlane in MM"),
+                MValue::ArmPlane => bail!("ArmPlane in MM"),
+                MValue::AllowRearmRefuel(_) => bail!("AllowRearmRefuel in MM"),
+                MValue::PrintMissionOutcome(_) => bail!("PrintMissionOutcome in MM"),
+                MValue::Code(_) => bail!("Code in MM"),
+                MValue::Wind(v) => wind = Some(v),
+                MValue::Revive(_) => bail!("Revive in MM"),
+                MValue::EndScenario(_) => bail!("EndScenario in MM"),
+                MValue::UsAirSkill(_) => bail!("UsAirSkill in MM"),
+                MValue::UsGroundSkill(_) => bail!("UsGroundSkill in MM"),
+                MValue::ThemAirSkill(_) => bail!("ThemAirSkill in MM"),
+                MValue::ThemGroundSkill(_) => bail!("ThemGroundSkill in MM"),
+                MValue::FreeFlight => bail!("FreeFlight in MM"),
+                MValue::MapObjSuccessFlags(_) => bail!("MapObjSuccessFlags in MM"),
+                MValue::GunsOnly => bail!("GunsOnly in MM"),
+                MValue::Sides(v) => sides = Some(v),
                 MValue::MapName(map) => {
-                    //ensure!(map_name.parent(name.chars().next().unwrap()) == name);
+                    // ensure!(map_name.parent(name.chars().next().unwrap()) == name);
                     map_name = Some(map);
-                    /*
-                    assert!(raw_map_name.is_none());
-                    raw_map_name = Some(tokens.next().expect("map name").to_owned());
-                    let parent_name = raw_map_name
-                        .as_ref()
-                        .unwrap()
-                        .replace('$', &name.chars().next().unwrap().to_string())
-                        .replace(".T2", ".MM")
-                        .to_uppercase();
-                    //if name.ends_with("MM") {
-                    ensure!(parent_name == name);
-                    //}
-                    t2_name = Some(Self::find_t2_for_map(
-                        raw_map_name.as_ref().unwrap(),
-                        catalog,
-                    )?);
-                     */
                 }
                 MValue::Layer((name, index)) => {
                     layer_name = Some(name);
@@ -606,7 +786,7 @@ impl MissionMap {
                 MValue::TMaps(tm) => tmaps = Some(tm),
                 MValue::TDics(td) => tdics = Some(td),
                 MValue::Objects(objs) => objects = Some(objs),
-                _ => {}
+                MValue::Specials(sps) => specials = Some(sps),
             }
         }
 
@@ -614,12 +794,14 @@ impl MissionMap {
             map_name: map_name.ok_or_else(|| anyhow!("mm must have a 'map' key"))?,
             layer_name: layer_name.ok_or_else(|| anyhow!("mm must have a 'layer' key"))?,
             layer_index: layer_index.ok_or_else(|| anyhow!("mm must have a 'layer' key"))?,
-            wind: wind.ok_or_else(|| anyhow!("mm must have a 'wind' key"))?,
+            wind,
             view: view.ok_or_else(|| anyhow!("mm must have a 'view' key"))?,
             time: time.ok_or_else(|| anyhow!("mm must have a 'time' key"))?,
+            sides: sides.ok_or_else(|| anyhow!("mm must have 'sides' key"))?,
             tmaps: tmaps.ok_or_else(|| anyhow!("mm must have 'tmaps' keys"))?,
             tdics: tdics.ok_or_else(|| anyhow!("mm must have 'tdics' keys"))?,
             objects: objects.ok_or_else(|| anyhow!("mm must have 'object' keys"))?,
+            specials: specials.ok_or_else(|| anyhow!("mm must have 'special' keys"))?,
         })
     }
 
@@ -647,97 +829,227 @@ impl MissionMap {
         self.tmaps.get(&(xi, zi))
     }
 
-    pub fn objects(&self) -> &Vec<ObjectInfo> {
-        &self.objects
+    pub fn objects(&self) -> impl Iterator<Item = &ObjectInfo> {
+        self.objects.iter()
     }
-
-    /*
-    fn find_t2_for_map(map_name: &str, catalog: &Catalog) -> Result<String> {
-        let raw = map_name.to_uppercase();
-
-        if catalog.exists(&raw) {
-            debug!("A: using t2: {}", raw);
-            return Ok(raw);
-        }
-
-        // ~KURILE.T2 && ~TVIET.T2
-        if raw.starts_with('~') && catalog.exists(&raw[1..]) {
-            debug!("B: using t2: {}", &raw[1..]);
-            return Ok(raw[1..].to_owned());
-        }
-
-        let parts = raw.split('.').collect::<Vec<&str>>();
-        let base = parts[0];
-        if base.len() == 5 {
-            let sigil = base.chars().next().unwrap();
-            ensure!(
-                sigil == '~' || sigil == '$',
-                "expected non-literal map name to start with $ or ~"
-            );
-            let suffix = base.chars().rev().take(1).collect::<String>();
-            ensure!(
-                suffix == "F" || suffix.parse::<u8>().is_ok(),
-                "expected non-literal map name to end with f or a number"
-            );
-            debug!("C: using t2: {}.T2", &base[1..=3]);
-            return Ok(base[1..=3].to_owned() + ".T2");
-        }
-
-        bail!("no map file matching {} found", raw)
-    }
-     */
-
-    // This is yet a different lookup routine than for T2 or PICs. It is usually the `layer` value,
-    // except when it is a modified version with the first (non-tilde) character of the MM name
-    // appended to the end of the LAY name, before the dot.
-    fn find_layer(map_name: &str, layer_name: &str, catalog: &Catalog) -> Result<String> {
-        debug!("find_layer map:{}, layer:{}", map_name, layer_name);
-        let first_char = map_name.chars().next().expect("the first character");
-        let layer_parts = layer_name.split('.').collect::<Vec<&str>>();
-        ensure!(layer_parts.len() == 2, "expected one dot in layer name");
-        ensure!(
-            layer_parts[1].to_uppercase() == "LAY",
-            "expected LAY extension"
-        );
-        let alt_layer_name = format!("{}{}.LAY", layer_parts[0], first_char).to_uppercase();
-        if catalog.exists(&alt_layer_name) {
-            debug!("B: using lay: {}", alt_layer_name);
-            return Ok(alt_layer_name);
-        }
-        debug!("A: using lay: {}", layer_name.to_uppercase());
-        Ok(layer_name.to_uppercase())
-    }
-
-    // This is a slightly different problem then getting the T2, because even though ~ABCn.T2
-    // might exist for ~ABCn.MM, we need to look up ABCi.PIC without the tilda.
-    /*
-    pub fn get_base_texture_name(&self) -> Result<String> {
-        let raw = self.map_name.to_uppercase();
-        let mut name = raw
-            .split('.')
-            .next()
-            .ok_or_else(|| anyhow!("expected a dotted name"))?;
-        if name.starts_with('~') || name.starts_with('$') {
-            name = &name[1..];
-        }
-        name = &name[0..3];
-        let se = name.chars().rev().take(1).collect::<String>();
-        if se.parse::<u8>().is_ok() {
-            name = &name[..name.len() - 1];
-        }
-
-        Ok(name.to_owned())
-    }
-     */
 }
 
 /// Represents an M file.
-pub struct Mission {}
+pub struct Mission {
+    mm: MissionMap,
+    map_name: MapName,
+    layer_name: String,
+    layer_index: usize,
+    screens: ScreenSet,
+    view: (u32, u32, u32),
+    wind: (i16, i16),
+    time: (u8, u8),
+    clouds: u32,
+    us_air_skill: u8,
+    us_ground_skill: u8,
+    them_air_skill: u8,
+    them_ground_skill: u8,
+    free_flight: bool,
+    guns_only: bool,
+    allow_rearm_refuel: Option<bool>,
+    print_mission_outcome: Option<bool>,
+    code_cookie: Option<CodeCookie>,
+    revive: Option<(u8, u8, u8)>,
+    end_scenario: Option<(u32, u32, u32)>,
+    sides: Vec<u8>,
+    objects: Vec<ObjectInfo>,
+}
 
 impl Mission {
     pub fn from_str(s: &str, type_manager: &TypeManager, catalog: &Catalog) -> Result<Self> {
-        let mkeys = MValue::from_str(s, type_manager, catalog)?;
-        Ok(Mission {})
+        let mut tokens = MValue::tokenize(s, type_manager, catalog)?;
+
+        let mut mm = None;
+        let mut map_name = None;
+        let mut screens = ScreenSet::empty();
+        let mut allow_rearm_refuel = None;
+        let mut print_mission_outcome = None;
+        let mut code_cookie = None;
+        let mut wind = None;
+        let mut revive = None;
+        let mut end_scenario = None;
+        let mut us_air_skill = None;
+        let mut us_ground_skill = None;
+        let mut them_air_skill = None;
+        let mut them_ground_skill = None;
+        let mut free_flight = false;
+        let mut sides = None;
+        let mut layer_name = None;
+        let mut layer_index = None;
+        let mut view = None;
+        let mut time = None;
+        let mut clouds = None;
+        let mut objects = None;
+        let mut guns_only = false;
+
+        ensure!(
+            matches!(tokens[0], MValue::TextFormat | MValue::AllowRearmRefuel(_)),
+            "missing textFormat node in M"
+        );
+        for value in tokens.drain(..) {
+            match value {
+                MValue::TextFormat => {}
+                MValue::Brief => screens |= ScreenSet::BRIEFING,
+                MValue::BriefMap => screens |= ScreenSet::BRIEFING_MAP,
+                MValue::SelectPlane => screens |= ScreenSet::SELECT_PLANE,
+                MValue::ArmPlane => screens |= ScreenSet::ARM_PLANE,
+                MValue::AllowRearmRefuel(v) => allow_rearm_refuel = Some(v),
+                MValue::PrintMissionOutcome(v) => print_mission_outcome = Some(v),
+                MValue::Code(v) => code_cookie = Some(v),
+                MValue::Wind(v) => wind = Some(v),
+                MValue::Revive(v) => revive = Some(v),
+                MValue::EndScenario(v) => end_scenario = Some(v),
+                MValue::UsAirSkill(v) => us_air_skill = Some(v),
+                MValue::UsGroundSkill(v) => us_ground_skill = Some(v),
+                MValue::ThemAirSkill(v) => them_air_skill = Some(v),
+                MValue::ThemGroundSkill(v) => them_ground_skill = Some(v),
+                MValue::FreeFlight => free_flight = true,
+                MValue::MapObjSuccessFlags(_) => {
+                    // TODO: we probably need to handle this as part of the next(?) object?
+                }
+                MValue::Sides(v) => sides = Some(v),
+                MValue::MapName(map) => {
+                    let mm_raw = catalog.read_name_sync(&map.parent())?;
+                    let mm_content = from_dos_string(mm_raw);
+                    mm = Some(MissionMap::from_str(&mm_content, type_manager, catalog)?);
+                    map_name = Some(map);
+                }
+                MValue::Layer((name, index)) => {
+                    layer_name = Some(name);
+                    layer_index = Some(index);
+                }
+                MValue::View(v) => view = Some(v),
+                MValue::Time(t) => time = Some(t),
+                MValue::Clouds(v) => clouds = Some(v),
+                MValue::HistoricalEra(historical_era) => ensure!(historical_era == 4),
+                MValue::Objects(objs) => objects = Some(objs),
+                MValue::TMaps(_) => bail!("TMaps not allowed in M files"),
+                MValue::TDics(_) => bail!("TDics not allowed in M files"),
+                MValue::Specials(_) => bail!("Special markers not allowed in M files"),
+                MValue::GunsOnly => guns_only = true,
+            }
+        }
+
+        Ok(Mission {
+            map_name: map_name.ok_or_else(|| anyhow!("Missions must have a map_name"))?,
+            mm: mm.ok_or_else(|| anyhow!("Missions must have a parent MissionMap"))?,
+            layer_name: layer_name.ok_or_else(|| anyhow!("Missions must have a layer name"))?,
+            layer_index: layer_index.ok_or_else(|| anyhow!("Missions must have a layer index"))?,
+            screens,
+            view: view.ok_or_else(|| anyhow!("mission must have view"))?,
+            wind: wind.ok_or_else(|| anyhow!("mission must have wind"))?,
+            time: time.ok_or_else(|| anyhow!("mission must have time"))?,
+            clouds: clouds.ok_or_else(|| anyhow!("mission must have clouds"))?,
+            us_air_skill: us_air_skill.ok_or_else(|| anyhow!("mission must have usAirSkill"))?,
+            us_ground_skill: us_ground_skill
+                .ok_or_else(|| anyhow!("mission must have usGroundSkill"))?,
+            them_air_skill: them_air_skill
+                .ok_or_else(|| anyhow!("mission must have themAirSkill"))?,
+            them_ground_skill: them_ground_skill
+                .ok_or_else(|| anyhow!("mission must have themGroundSkill"))?,
+            free_flight,
+            guns_only,
+            allow_rearm_refuel,
+            print_mission_outcome,
+            code_cookie,
+            revive,
+            end_scenario,
+            sides: sides.ok_or_else(|| anyhow!("missions must have sides defined"))?,
+            objects: objects.ok_or_else(|| anyhow!("missions must have objects"))?,
+        })
+    }
+
+    pub fn mission_map(&self) -> &MissionMap {
+        &self.mm
+    }
+
+    pub fn map_name(&self) -> &MapName {
+        &self.map_name
+    }
+
+    pub fn layer_name(&self) -> &str {
+        &self.layer_name
+    }
+
+    pub fn layer_index(&self) -> usize {
+        self.layer_index
+    }
+
+    pub fn screens(&self) -> &ScreenSet {
+        &self.screens
+    }
+
+    pub fn view(&self) -> (u32, u32, u32) {
+        self.view
+    }
+
+    pub fn time(&self) -> (u8, u8) {
+        self.time
+    }
+
+    pub fn wind(&self) -> (i16, i16) {
+        self.wind
+    }
+
+    pub fn clouds(&self) -> u32 {
+        self.clouds
+    }
+
+    pub fn us_air_skill(&self) -> u8 {
+        self.us_air_skill
+    }
+
+    pub fn us_ground_skill(&self) -> u8 {
+        self.us_ground_skill
+    }
+
+    pub fn them_air_skill(&self) -> u8 {
+        self.them_air_skill
+    }
+
+    pub fn them_ground_skill(&self) -> u8 {
+        self.them_ground_skill
+    }
+
+    pub fn free_flight(&self) -> bool {
+        self.free_flight
+    }
+
+    pub fn guns_only(&self) -> bool {
+        self.guns_only
+    }
+
+    pub fn allow_rearm_refuel(&self) -> bool {
+        self.allow_rearm_refuel.unwrap_or(false)
+    }
+
+    pub fn print_mission_outcome(&self) -> bool {
+        self.print_mission_outcome.unwrap_or(false)
+    }
+
+    pub fn code_cookie(&self) -> Option<CodeCookie> {
+        self.code_cookie
+    }
+
+    pub fn revive(&self) -> Option<(u8, u8, u8)> {
+        self.revive
+    }
+
+    pub fn end_scenario(&self) -> Option<(u32, u32, u32)> {
+        self.end_scenario
+    }
+
+    pub fn sides(&self) -> &[u8] {
+        &self.sides
+    }
+
+    pub fn mission_objects(&self) -> &[ObjectInfo] {
+        &self.objects
     }
 }
 
@@ -768,14 +1080,7 @@ mod tests {
                     continue;
                 }
 
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
                 let type_manager = TypeManager::empty();
                 let contents = from_dos_string(catalog.read_sync(fid)?);
@@ -792,43 +1097,30 @@ mod tests {
     fn it_can_parse_all_m_files() -> Result<()> {
         let catalogs = CatalogManager::for_testing()?;
         for (game, catalog) in catalogs.all() {
+            let type_manager = TypeManager::empty();
             for fid in catalog.find_with_extension("M")? {
                 let meta = catalog.stat_sync(fid)?;
 
-                // Quick mission fragments...
-                if meta.name().starts_with("~Q") {
+                if meta.name() == VEHICLE_INFO_MISSION
+                    || meta.name().starts_with(NEW_MISSION_PREFIX)
+                    || meta.name().starts_with(FREEFLIGHT_PREFIX)
+                    || meta.name().starts_with(MULTIPLAYER_MISSION_PREFIX)
+                    || meta.name().starts_with(QUICK_MISSION_PREFIX)
+                    || canonicalize(meta.name()) == VEHICLE_INFO_MISSION
+                    || canonicalize(meta.name()).starts_with(NEW_MISSION_PREFIX)
+                    || canonicalize(meta.name()).starts_with(FREEFLIGHT_PREFIX)
+                    || canonicalize(meta.name()).starts_with(MULTIPLAYER_MISSION_PREFIX)
+                    || canonicalize(meta.name()).starts_with(QUICK_MISSION_PREFIX)
+                {
                     continue;
                 }
 
-                // For some reason, the ATF Gold disks contain USNF missions, but
-                // do not contain the USNF assets. Not sure how that works.
-                // if game.test_dir == "ATFGOLD"
-                //     && (meta.name().contains("UKR")
-                //     || meta.name() == "KURILE.MM"
-                //     || meta.name() == "VIET.MM")
-                // {
-                //     continue;
-                // }
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
-                // This looks a fragment of an MM used for... something?
-                // if meta.name() == "$VARF.MM" {
-                //     continue;
-                // }
-
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
-
-                let type_manager = TypeManager::empty();
                 let contents = from_dos_string(catalog.read_sync(fid)?);
-                let mm = Mission::from_str(&contents, &type_manager, catalog)?;
-                // assert_eq!(mm.get_base_texture_name()?.len(), 3);
-                // assert!(mm.t2_name.ends_with(".T2"));
+                let mission = Mission::from_str(&contents, &type_manager, catalog)?;
+                assert!(!mission.sides.is_empty());
+                assert!(mission.map_name.raw.ends_with(".T2"));
             }
         }
 

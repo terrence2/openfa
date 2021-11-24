@@ -49,6 +49,7 @@ thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
 }
 
+#[derive(Debug)]
 pub struct ShapeInstanceBuffer {
     pub chunk_man: ShapeChunkBuffer,
 
@@ -505,14 +506,7 @@ mod test {
             inst_man.write().set_shared_palette(&palette, &gpu.read());
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 if skipped.contains(&meta.name()) {
                     continue;
                 }

@@ -17,8 +17,43 @@ use crate::{
     util::{maybe_hex, parse_header_delimited},
 };
 use anyhow::{anyhow, bail, ensure, Result};
+use itertools::Itertools;
 use nalgebra::Vector3;
 use std::str::SplitAsciiWhitespace;
+
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub struct Waypoints {
+    waypoints: Vec<Waypoint>,
+    for_alias: i32,
+}
+
+impl Waypoints {
+    pub(crate) fn from_tokens(count: usize, tokens: &mut SplitAsciiWhitespace) -> Result<Self> {
+        let mut waypoints = Vec::new();
+        let mut wps_tokens = tokens.take_while(|&tok| tok != "w_for").peekable();
+        for i in 0..count {
+            ensure!(wps_tokens.next().expect("w_index") == "w_index");
+            ensure!(wps_tokens.next().expect("w_index value").parse::<usize>()? == i);
+            let mut wp_tokens = wps_tokens.peeking_take_while(|&tok| tok != "w_index");
+            waypoints.push(Waypoint::from_tokens(i, &mut wp_tokens)?);
+        }
+        ensure!(
+            waypoints.len() == count,
+            "waypoint count does not match waypoints"
+        );
+        let for_alias = tokens.next().expect("w_for").parse::<i32>()?;
+        ensure!(tokens.next().expect("waypoints .") == ".");
+        Ok(Self {
+            waypoints,
+            for_alias,
+        })
+    }
+
+    pub fn for_alias(&self) -> i32 {
+        self.for_alias
+    }
+}
 
 // w_index 0
 // w_flags 1
@@ -34,7 +69,7 @@ use std::str::SplitAsciiWhitespace;
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct Waypoint {
-    pub index: u8,
+    pub index: usize,
     flags: u8,
     goal: bool,
     next: bool,
@@ -48,8 +83,10 @@ pub struct Waypoint {
 }
 
 impl Waypoint {
-    pub(crate) fn from_tokens(tokens: &mut SplitAsciiWhitespace) -> Result<Self> {
-        let mut index = None;
+    pub(crate) fn from_tokens<'a, I: Iterator<Item = &'a str>>(
+        index: usize,
+        wp_tokens: &mut I,
+    ) -> Result<Self> {
         let mut flags = None;
         let mut goal = None;
         let mut next = None;
@@ -62,12 +99,7 @@ impl Waypoint {
         let mut preferred_target_id = None;
 
         // Take the index, peek until we find the end or the next index, signaling next waypoint
-        ensure!(tokens.next().expect("w_index") == "w_index");
-        index = Some(tokens.next().expect("w_index").parse::<u8>()?);
-
-        let mut wp_tokens = tokens.take_while(|&tok| tok != "w_index");
         while let Some(token) = wp_tokens.next() {
-            println!("WP TOK: {}", token);
             match token {
                 "w_index" => panic!("w_index in main loop"),
                 "w_flags" => flags = Some(maybe_hex::<u8>(wp_tokens.next().expect("w_flags"))?),
@@ -86,7 +118,7 @@ impl Waypoint {
                 }
                 "w_speed" => speed = Some(wp_tokens.next().expect("w_speed").parse::<usize>()?),
                 "w_wng" => {
-                    wng_formation = Some(WingFormation::from_tokens(&mut wp_tokens)?);
+                    wng_formation = Some(WingFormation::from_tokens(wp_tokens)?);
                 }
                 "w_react" => {
                     react = Some([
@@ -99,9 +131,7 @@ impl Waypoint {
                     search_dist = Some(wp_tokens.next().expect("w_searchDist").parse::<u8>()?)
                 }
                 "w_name" => {
-                    name = parse_header_delimited(&mut wp_tokens);
-                    println!("NAME: {:?}", name);
-                    //wp_tokens.next().unwrap();
+                    name = parse_header_delimited(wp_tokens);
                 }
                 "w_preferredTargetId" => {
                     let v = str::parse::<u32>(wp_tokens.next().expect("w_preferredTargetId v"))?;
@@ -118,7 +148,7 @@ impl Waypoint {
         }
 
         Ok(Waypoint {
-            index: index.ok_or_else(|| anyhow!("mm:waypoint: index not set in waypoint",))?,
+            index,
             flags: flags.ok_or_else(|| anyhow!("mm:waypoint: flags not set in waypoint",))?,
             goal: goal.ok_or_else(|| anyhow!("mm:waypoint: goal not set in waypoint",))?,
             next: next.ok_or_else(|| anyhow!("mm:waypoint: next not set in waypoint",))?,

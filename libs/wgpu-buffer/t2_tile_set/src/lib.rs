@@ -658,7 +658,7 @@ impl T2TileSet {
         let mut frames = Vec::new();
         let texture_base_name = mm.map_name().base_texture_name();
         for loc in sources.drain() {
-            let name = loc.pic_file(&texture_base_name);
+            let name = loc.pic_file(texture_base_name);
             let data = catalog.read_name_sync(&name)?;
             let (buffer, w, h, stride) =
                 uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
@@ -939,14 +939,7 @@ mod tests {
 
             for fid in catalog.find_with_extension("MM")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "{}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())

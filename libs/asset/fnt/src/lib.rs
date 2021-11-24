@@ -229,14 +229,7 @@ mod tests {
         for (game, catalog) in catalogs.all() {
             for fid in catalog.find_with_extension("FNT")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
                 fnt.analyze(game.test_dir, meta.name())?;
             }

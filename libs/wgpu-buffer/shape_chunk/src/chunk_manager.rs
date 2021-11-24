@@ -45,6 +45,7 @@ impl TextureAtlasProperties {
     }
 }
 
+#[derive(Debug)]
 pub struct ShapeChunkBuffer {
     chunk_bind_group_layout: wgpu::BindGroupLayout,
     shared_sampler: wgpu::Sampler,

@@ -22,7 +22,8 @@ use anyhow::{bail, Result};
 use catalog::Catalog;
 use lib::from_dos_string;
 use log::trace;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use parking_lot::Mutex;
+use std::{collections::HashMap, sync::Arc};
 
 // A generic type.
 #[allow(clippy::upper_case_acronyms)]
@@ -71,11 +72,11 @@ impl Type {
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
 #[derive(Clone, Debug)]
-pub struct TypeRef(Rc<Type>);
+pub struct TypeRef(Arc<Type>);
 
 impl TypeRef {
     fn new(item: Type) -> Self {
-        TypeRef(Rc::new(item))
+        TypeRef(Arc::new(item))
     }
 
     pub fn ot(&self) -> &ObjectType {
@@ -110,22 +111,23 @@ impl TypeRef {
 // Knows how to load a type from a game library. Keeps a cached copy and hands
 // out a pointer to the type, since we frequently need to load the same item
 // repeatedly.
+#[derive(Debug)]
 pub struct TypeManager {
     // Cache immutable resources. Use interior mutability for ease of use.
-    cache: RefCell<HashMap<String, TypeRef>>,
+    cache: Mutex<HashMap<String, TypeRef>>,
 }
 
 impl TypeManager {
     pub fn empty() -> TypeManager {
         trace!("TypeManager::new");
         TypeManager {
-            cache: RefCell::new(HashMap::new()),
+            cache: Mutex::new(HashMap::new()),
         }
     }
 
     pub fn load(&self, name: &str, catalog: &Catalog) -> Result<TypeRef> {
         let cache_key = format!("{}:{}", catalog.label(), name);
-        if let Some(item) = self.cache.borrow().get(&cache_key) {
+        if let Some(item) = self.cache.lock().get(&cache_key) {
             trace!("TypeManager::load({}) -- cached", name);
             return Ok(item.clone());
         };
@@ -153,7 +155,7 @@ impl TypeManager {
             _ => bail!("resource: unknown type {}", name),
         };
         let xt = TypeRef::new(item);
-        self.cache.borrow_mut().insert(cache_key, xt.clone());
+        self.cache.lock().insert(cache_key, xt.clone());
         Ok(xt)
     }
 }
@@ -169,14 +171,7 @@ mod tests {
         for (game, catalog) in catalogs.all() {
             for fid in catalog.find_glob("*.[OJNP]T")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let types = TypeManager::empty();
                 let ty = types.load(meta.name(), catalog)?;
                 // Only one misspelling in 2500 files.

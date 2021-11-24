@@ -761,14 +761,7 @@ mod tests {
                 .chain(catalog.find_with_extension("MNU")?.iter())
             {
                 let meta = catalog.stat_sync(*fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let data = catalog.read_sync(*fid)?;
                 let _pe = PortableExecutable::from_bytes(&data)?;
             }
