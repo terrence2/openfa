@@ -26,7 +26,7 @@ use gpu::{texture_format_size, ArcTextureCopyView, Gpu, OwnedBufferCopyView, Upl
 use image::Rgba;
 use lay::Layer;
 use log::warn;
-use mm::{MissionMap, TLoc};
+use mmm::{MissionMap, TLoc};
 use nalgebra::Point3;
 use pal::Palette;
 use parking_lot::RwLock;

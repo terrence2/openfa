@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
-use mm::MissionMap;
+use mmm::MissionMap;
 use std::time::Instant;
 use structopt::StructOpt;
 use xt::TypeManager;
