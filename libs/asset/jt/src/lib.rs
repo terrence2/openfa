@@ -186,14 +186,7 @@ mod tests {
         for (game, catalog) in catalogs.all() {
             for fid in catalog.find_with_extension("JT")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let contents = from_dos_string(catalog.read_sync(fid)?);
                 let jt = ProjectileType::from_text(&contents)?;
                 // Only one misspelling in 2500 files.

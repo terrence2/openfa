@@ -37,14 +37,7 @@ fn main() -> Result<()> {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "{}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())

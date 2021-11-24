@@ -26,7 +26,7 @@ use gpu::{texture_format_size, ArcTextureCopyView, Gpu, OwnedBufferCopyView, Upl
 use image::Rgba;
 use lay::Layer;
 use log::warn;
-use mm::{MissionMap, TLoc};
+use mmm::{MissionMap, TLoc};
 use nalgebra::Point3;
 use pal::Palette;
 use parking_lot::RwLock;
@@ -642,7 +642,7 @@ impl T2TileSet {
 
         // Build a texture atlas, doing all work on the gpu.
         let mut atlas_builder = AtlasPacker::<Rgba<u8>>::new(
-            mm.map_name(),
+            mm.map_name().meta_name(),
             gpu,
             atlas_width,
             atlas_height,
@@ -656,9 +656,9 @@ impl T2TileSet {
 
         // Set up upload for each TLoc, mapping it to a frame.
         let mut frames = Vec::new();
-        let texture_base_name = mm.get_base_texture_name()?;
+        let texture_base_name = mm.map_name().base_texture_name();
         for loc in sources.drain() {
-            let name = loc.pic_file(&texture_base_name);
+            let name = loc.pic_file(texture_base_name);
             let data = catalog.read_name_sync(&name)?;
             let (buffer, w, h, stride) =
                 uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
@@ -704,7 +704,7 @@ impl T2TileSet {
         async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<T2Mapper> {
-        let t2_data = catalog.read_name_sync(mm.t2_name())?;
+        let t2_data = catalog.read_name_sync(&mm.map_name().t2_name())?;
         let t2 = T2Terrain::from_bytes(&t2_data)?;
 
         if self.layouts.contains_key(t2.name()) {
@@ -939,14 +939,7 @@ mod tests {
 
             for fid in catalog.find_with_extension("MM")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "{}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())

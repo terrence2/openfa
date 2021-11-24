@@ -1,12 +1,14 @@
 [package]
-name = "mm"
+name = "mmm"
 version = "0.0.0"
 edition = "2018"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bitflags = "^ 1"
 log = "^ 0.4"
+itertools = "^ 0.10"
 nalgebra = "^ 0.29"
 num-traits = "^ 0.2"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }

@@ -385,14 +385,7 @@ mod tests {
         for (game, catalog) in catalogs.all() {
             for fid in catalog.find_with_extension("PIC")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let _img = Pic::from_bytes(&catalog.read_sync(fid)?)?;
             }
         }
@@ -407,14 +400,7 @@ mod tests {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
             for fid in catalog.find_with_extension("PIC")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let img = Pic::decode(&palette, &catalog.read_sync(fid)?)?;
 
                 if false {

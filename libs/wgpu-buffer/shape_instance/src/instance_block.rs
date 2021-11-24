@@ -52,6 +52,7 @@ impl SlotId {
 
 // Fixed reservation blocks for upload of a number of entities. Unfortunately, because of
 // xforms, we don't know exactly how many instances will fit in any given block.
+#[derive(Debug)]
 pub struct InstanceBlock {
     // Our own block id, for creating slots.
     block_id: BlockId,

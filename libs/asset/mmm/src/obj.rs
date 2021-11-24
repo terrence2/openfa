@@ -12,11 +12,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{util::maybe_hex, waypoint::Waypoint};
+use crate::{
+    canonicalize,
+    formation::WingFormation,
+    util::{maybe_hex, parse_header_delimited},
+    waypoint::Waypoints,
+};
 use absolute_unit::{degrees, radians};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
 use nalgebra::{Point3, UnitQuaternion, Vector3};
+use std::collections::HashMap;
 use std::str::SplitAsciiWhitespace;
 use xt::{TypeManager, TypeRef};
 
@@ -36,6 +42,8 @@ pub enum Nationality {
     Unk15 = 15,
     Unk16 = 16,
     Unk17 = 17,
+    Unk18 = 18,
+    Unk19 = 19,
     Unk21 = 21,
     Unk22 = 22,
     Unk25 = 25,
@@ -45,11 +53,17 @@ pub enum Nationality {
     Unk36 = 36,
     Unk39 = 39,
     Unk40 = 40,
+    Unk128 = 128,
     Unk130 = 130,
     Unk131 = 131,
+    Unk132 = 132,
+    Unk133 = 133,
+    Unk136 = 136,
     Unk137 = 137,
     Unk138 = 138,
+    Unk140 = 140,
     Unk142 = 142,
+    Unk143 = 143,
     Unk147 = 147,
     Unk148 = 148,
     Unk151 = 151,
@@ -78,6 +92,8 @@ impl Nationality {
             15 => Nationality::Unk15,
             16 => Nationality::Unk16,
             17 => Nationality::Unk17,
+            18 => Nationality::Unk18,
+            19 => Nationality::Unk19,
             21 => Nationality::Unk21,
             22 => Nationality::Unk22,
             25 => Nationality::Unk25,
@@ -87,11 +103,17 @@ impl Nationality {
             36 => Nationality::Unk36,
             39 => Nationality::Unk39,
             40 => Nationality::Unk40,
+            128 => Nationality::Unk128,
             130 => Nationality::Unk130,
             131 => Nationality::Unk131,
+            132 => Nationality::Unk132,
+            133 => Nationality::Unk133,
+            136 => Nationality::Unk136,
             137 => Nationality::Unk137,
             138 => Nationality::Unk138,
             142 => Nationality::Unk142,
+            140 => Nationality::Unk140,
+            143 => Nationality::Unk143,
             147 => Nationality::Unk147,
             148 => Nationality::Unk148,
             151 => Nationality::Unk151,
@@ -106,7 +128,7 @@ impl Nationality {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct ObjectInfo {
     xt: TypeRef,
@@ -116,13 +138,22 @@ pub struct ObjectInfo {
     nationality: Nationality,
     flags: u16,
     speed: f32,
-    alias: i32,
+    alias: Option<i32>,
     // NT only.
     skill: Option<u8>,
     react: Option<(u16, u16, u16)>,
     search_dist: Option<u32>,
+    group: Option<(u8, u8)>, // like wing but for ground convoys; baltics only
     // PT only.
-    waypoints: Option<Vec<Waypoint>>,
+    waypoints: Option<Waypoints>,
+    wing: Option<(u8, u8)>,
+    wng_formation: Option<WingFormation>,
+    start_time: u32,
+    controller: u8,
+    preferred_target_id: Option<u32>,
+    npc_flags: Option<u8>,
+    hardpoint_overrides: Option<HashMap<usize, (u8, Option<TypeRef>)>>,
+    fuel_override: Option<u8>, // Only in VIET03.M
 }
 
 impl ObjectInfo {
@@ -138,42 +169,36 @@ impl ObjectInfo {
         let mut nationality = None;
         let mut flags = 0u16;
         let mut speed = 0f32;
-        let mut alias = 0i32;
+        let mut alias = None;
         // NT only.
         let mut skill = None;
         let mut react = None;
         let mut search_dist = None;
+        let mut group = None;
+        // PT only.
+        let mut wing = None;
+        let mut wng_formation = None;
+        let mut start_time = 0;
+        let mut controller = 0;
+        let mut preferred_target_id = None;
+        let mut npc_flags = None;
+        let mut hardpoint_overrides = None;
+        let mut fuel_override = None;
 
         while let Some(token) = tokens.next() {
             match token {
                 "type" => {
                     // TODO: pass raw in so we can dedup on the &str.
-                    xt = Some(
-                        type_manager.load(&tokens.next().expect("type").to_uppercase(), catalog)?,
-                    );
+                    let name = tokens.next().expect("type").to_uppercase();
+                    if let Ok(ty) = type_manager.load(&name, catalog) {
+                        xt = Some(ty);
+                    } else {
+                        let name = canonicalize(&name);
+                        xt = Some(type_manager.load(&name, catalog)?);
+                    }
                 }
                 "name" => {
-                    // FIXME: share with code in special
-                    // Start of Header (0x01) marks delimiting the string? Must be a dos thing. :shrug:
-                    // Regardless, we need to accumulate tokens until we find one ending in a 1, since
-                    // we've split on spaces already.
-                    let tmp = tokens.next().expect("name");
-                    assert!(tmp.starts_with(1 as char));
-                    if tmp.ends_with(1 as char) {
-                        let end = tmp.len() - 1;
-                        name = Some(tmp[1..end].to_owned());
-                    } else {
-                        let mut tmp = tmp.to_owned();
-                        #[allow(clippy::while_let_on_iterator)]
-                        while let Some(next) = tokens.next() {
-                            tmp += next;
-                            if tmp.ends_with(1 as char) {
-                                break;
-                            }
-                        }
-                        let end = tmp.len() - 1;
-                        name = Some(tmp[1..end].to_owned());
-                    }
+                    name = parse_header_delimited(tokens);
                 }
                 "pos" => {
                     let x = tokens.next().expect("pos x").parse::<i32>()?;
@@ -182,21 +207,38 @@ impl ObjectInfo {
                     pos = Some(Point3::new(x, y, z));
                     // All non-plane entities are at height 0 and need to be moved
                     // to the right elevation at startup.
-                    if !xt.as_ref().expect("xt").is_pt() {
+                    if !xt.as_ref().expect("xt").is_pt()
+                        && xt.as_ref().expect("xt").ot().file_name() != "MICROM.OT"
+                    {
+                        // In UKR17, there is a fight over a radio antenna on a roof.
+                        // Otherwise all objects are on the ground.
                         assert_eq!(y, 0);
                     }
                 }
                 "angle" => {
-                    let x = tokens.next().expect("ang x").parse::<i32>()?;
-                    let y = tokens.next().expect("ang y").parse::<i32>()?;
-                    let z = tokens.next().expect("ang z").parse::<i32>()?;
+                    let yaw = tokens.next().expect("ang yaw").parse::<i32>()?;
+                    let pitch = tokens.next().expect("ang pitch").parse::<i32>()?;
+                    let roll = tokens.next().expect("ang roll").parse::<i32>()?;
                     // No entities are tilted or pitched, only rotated.
-                    assert_eq!(y, 0);
-                    assert_eq!(z, 0);
-                    angle = UnitQuaternion::from_axis_angle(
-                        &Vector3::y_axis(),
-                        -radians!(degrees!(x)).f32(),
-                    );
+                    // Except for FCTYA.OT in VIET05, just that one, by -2 degrees.
+                    assert_eq!(roll, 0);
+                    angle = if pitch == 0 {
+                        UnitQuaternion::from_axis_angle(
+                            &Vector3::y_axis(),
+                            -radians!(degrees!(yaw)).f32(),
+                        )
+                    } else {
+                        let yaw_quat = UnitQuaternion::from_axis_angle(
+                            &Vector3::y_axis(),
+                            -radians!(degrees!(yaw)).f32(),
+                        );
+                        let pitch_axis = yaw_quat * Vector3::x_axis();
+                        let pitch_quat = UnitQuaternion::from_axis_angle(
+                            &pitch_axis,
+                            -radians!(degrees!(pitch)).f32(),
+                        );
+                        pitch_quat * yaw_quat
+                    };
                 }
                 "nationality" => {
                     nationality = Some(Nationality::from_ordinal(
@@ -204,9 +246,9 @@ impl ObjectInfo {
                     )?)
                 }
                 "nationality2" => {
-                    nationality = Some(Nationality::from_ordinal(
-                        tokens.next().expect("nationality2").parse::<usize>()?,
-                    )?)
+                    nationality = Some(Nationality::from_ordinal(maybe_hex(
+                        tokens.next().expect("nationality2"),
+                    )?)?)
                 }
                 "nationality3" => {
                     nationality = Some(Nationality::from_ordinal(
@@ -215,7 +257,7 @@ impl ObjectInfo {
                 }
                 "flags" => flags = maybe_hex::<u16>(tokens.next().expect("flags"))?,
                 "speed" => speed = tokens.next().expect("speed").parse::<i32>()? as f32,
-                "alias" => alias = tokens.next().expect("alias").parse::<i32>()?,
+                "alias" => alias = Some(tokens.next().expect("alias").parse::<i32>()?),
                 "skill" => skill = Some(tokens.next().expect("skill").parse::<u8>()?),
                 "react" => {
                     react = Some((
@@ -226,6 +268,61 @@ impl ObjectInfo {
                 }
                 "searchDist" => {
                     search_dist = Some(tokens.next().expect("search dist").parse::<u32>()?)
+                }
+                "group" => {
+                    let squad = str::parse::<u8>(tokens.next().expect("group squad"))?;
+                    let offset = str::parse::<u8>(tokens.next().expect("group offset"))?;
+                    group = Some((squad, offset));
+                }
+                "wing" => {
+                    let squad = str::parse::<u8>(tokens.next().expect("wing squad"))?;
+                    let offset = str::parse::<u8>(tokens.next().expect("wing offset"))?;
+                    wing = Some((squad, offset));
+                }
+                "wng" => {
+                    wng_formation = Some(WingFormation::from_tokens(tokens)?);
+                }
+                "startTime" => {
+                    let t = str::parse::<u32>(tokens.next().expect("startTime t"))?;
+                    start_time = t; // unknown units
+                }
+                "controller" => {
+                    let v = maybe_hex::<u8>(tokens.next().expect("controller v"))?;
+                    ensure!(v == 128);
+                    controller = v;
+                }
+                "preferredTargetId" => {
+                    let v = str::parse::<u32>(tokens.next().expect("preferredTargetId v"))?;
+                    preferred_target_id = Some(v);
+                }
+                "preferredTargetId2" => {
+                    let v = maybe_hex::<u32>(tokens.next().expect("preferredTargetId2 $v"))?;
+                    preferred_target_id = Some(v);
+                }
+                "npcFlags" => {
+                    let flags = str::parse::<u8>(tokens.next().expect("npcFlags v"))?;
+                    ensure!(flags == 2);
+                    npc_flags = Some(flags);
+                }
+                "hardpoint" => {
+                    if hardpoint_overrides.is_none() {
+                        hardpoint_overrides = Some(HashMap::new());
+                    }
+                    let idx = str::parse::<usize>(tokens.next().expect("hardpoint a"))?;
+                    let cnt = str::parse::<u8>(tokens.next().expect("hardpoint b"))?;
+                    let hp_xt = if cnt > 0 {
+                        let ty_name = tokens.next().expect("hardpoint c").to_uppercase();
+                        Some(type_manager.load(&ty_name, catalog)?)
+                    } else {
+                        None
+                    };
+                    hardpoint_overrides
+                        .as_mut()
+                        .map(|hps| hps.insert(idx, (cnt, hp_xt)));
+                }
+                "fuel" => {
+                    let unk = str::parse::<u8>(tokens.next().expect("fuel unk"))?;
+                    fuel_override = Some(unk);
                 }
                 "." => break,
                 _ => {
@@ -247,15 +344,24 @@ impl ObjectInfo {
             skill,
             react,
             search_dist,
+            group,
+            wing,
+            wng_formation,
+            start_time,
+            controller,
+            preferred_target_id,
+            npc_flags,
+            hardpoint_overrides,
+            fuel_override,
             waypoints: None,
         })
     }
 
-    pub fn set_waypoints(&mut self, waypoints: Vec<Waypoint>) {
+    pub fn set_waypoints(&mut self, waypoints: Waypoints) {
         self.waypoints = Some(waypoints);
     }
 
-    pub fn alias(&self) -> i32 {
+    pub fn alias(&self) -> Option<i32> {
         self.alias
     }
 

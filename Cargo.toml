@@ -9,6 +9,7 @@ members = [
     "apps/dump-asm",
     "apps/dump-lay",
     "apps/dump-lib",
+    "apps/dump-m",
     "apps/dump-mm",
     "apps/dump-pal",
     "apps/dump-pe",
@@ -23,7 +24,7 @@ members = [
     "libs/asset/jt",
     "libs/asset/lay",
     "libs/asset/lib",
-    "libs/asset/mm",
+    "libs/asset/mmm",
     "libs/asset/mnu",
     "libs/asset/nt",
     "libs/asset/ot",
@@ -100,7 +101,7 @@ widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
 galaxy = { path = "libs/galaxy" }
 lib = { path = "libs/asset/lib" }
-mm = { path = "libs/asset/mm" }
+mmm = { path = "libs/asset/mmm" }
 pal = { path = "libs/asset/pal" }
 shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
 t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }

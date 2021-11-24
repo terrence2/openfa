@@ -146,6 +146,7 @@ impl ChunkPart {
     }
 }
 
+#[derive(Debug)]
 pub struct OpenChunk {
     chunk_id: ChunkId,
     chunk_flags: ChunkFlags,

@@ -158,14 +158,7 @@ mod tests {
         for (game, catalog) in catalogs.all() {
             for fid in catalog.find_with_extension("MNU")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let _mnu = Menu::from_bytes(
                     &format!("{}:{}", game.test_dir, meta.name()),
                     &catalog.read_sync(fid)?,

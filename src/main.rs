@@ -33,7 +33,7 @@ use gpu::{
 };
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
-use mm::MissionMap;
+use mmm::MissionMap;
 use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};

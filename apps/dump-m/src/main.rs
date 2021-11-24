@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
-use mmm::MissionMap;
+use mmm::Mission;
 use std::time::Instant;
 use structopt::StructOpt;
 use xt::TypeManager;
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_mm(fid, &type_manager, catalog, &opt)?;
+                show_mission(fid, &type_manager, catalog, &opt)?;
             }
         }
     }
@@ -58,14 +58,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn show_mm(fid: FileId, type_manager: &TypeManager, catalog: &Catalog, opt: &Opt) -> Result<()> {
+fn show_mission(
+    fid: FileId,
+    type_manager: &TypeManager,
+    catalog: &Catalog,
+    opt: &Opt,
+) -> Result<()> {
     let raw = catalog.read_sync(fid)?;
     let content = from_dos_string(raw).to_owned();
 
     if opt.profile {
         let start = Instant::now();
         for _ in 0..PROFILE_COUNT {
-            let _ = MissionMap::from_str(&content, type_manager, catalog)?;
+            let _ = Mission::from_str(&content, type_manager, catalog)?;
         }
         println!(
             "load time: {}ms",
@@ -73,15 +78,13 @@ fn show_mm(fid: FileId, type_manager: &TypeManager, catalog: &Catalog, opt: &Opt
         );
         return Ok(());
     }
-    match MissionMap::from_str(&content, type_manager, catalog) {
+    match Mission::from_str(&content, type_manager, catalog) {
         Ok(mm) => {
             println!("map name:    {}", mm.map_name().meta_name());
             println!("t2 name:     {}", mm.map_name().t2_name());
             println!("layer name:  {}", mm.layer_name());
             println!("layer index: {}", mm.layer_index());
-            println!("tmap count:  {}", mm.texture_maps().len());
-            println!("tdic count:  {}", mm.texture_dictionary().len());
-            println!("obj count:   {}", mm.objects().count());
+            println!("obj count:   {}", mm.mission_objects().len());
             println!();
         }
         Err(e) => println!("Load failed: {}\n", e),

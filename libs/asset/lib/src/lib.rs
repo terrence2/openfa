@@ -270,7 +270,7 @@ impl DrawerInterface for LibDrawer {
                 compression: info.compression.name(),
                 packed_size: (info.end_offset - info.start_offset) as u64,
                 unpacked_size: (info.end_offset - info.start_offset) as u64,
-                path: None,
+                path: format!("{}[uncompressed]", self.name),
             },
             CompressionType::PkWare => {
                 let dwords: &[u32] =
@@ -281,7 +281,7 @@ impl DrawerInterface for LibDrawer {
                     compression: info.compression.name(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
                     unpacked_size: u64::from(dwords[0]),
-                    path: None,
+                    path: format!("{}[pk]", self.name),
                 }
             }
             CompressionType::Lzss => {
@@ -293,7 +293,7 @@ impl DrawerInterface for LibDrawer {
                     compression: info.compression.name(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
                     unpacked_size: u64::from(dwords[0]),
-                    path: None,
+                    path: format!("{}[lz]", self.name),
                 }
             }
             CompressionType::PxPk => unimplemented!(),

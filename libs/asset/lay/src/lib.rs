@@ -232,14 +232,7 @@ mod tests {
             let system_palette_data = catalog.read_name_sync("PALETTE.PAL")?;
             for fid in catalog.find_with_extension("LAY")? {
                 let meta = catalog.stat_sync(fid)?;
-                println!(
-                    "At: {}:{:13} @ {}",
-                    game.test_dir,
-                    meta.name(),
-                    meta.path()
-                        .map(|v| v.to_string_lossy())
-                        .unwrap_or_else(|| "<none>".into())
-                );
+                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let system_palette = Palette::from_bytes(&system_palette_data)?;
                 let _layer = Layer::from_bytes(&catalog.read_sync(fid)?, &system_palette)?;
             }
