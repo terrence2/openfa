@@ -34,7 +34,6 @@ use gpu::{
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mmm::MissionMap;
-use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
@@ -579,7 +578,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
 
-        // shapes.write().ensure_uploaded(&mut gpu.write())?;
+        // shapes.write().finish_open_chunks(&mut gpu.write())?;
 
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
@@ -746,7 +745,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
     shapes
         .write()
-        .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
+        .finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()
@@ -758,9 +757,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         gpu.write().add_default_bindings(interp)?;
         orrery.write().add_default_bindings(interp)?;
         arcball.write().add_default_bindings(interp)?;
-        globals.write().add_default_bindings(interp)?;
-        world.write().add_default_bindings(interp)?;
         system.write().add_default_bindings(interp)?;
+        globals.write().add_debug_bindings(interp)?;
+        world.write().add_debug_bindings(interp)?;
     }
 
     let catalog = Arc::new(AsyncRwLock::new(catalogs.steal_best()));
@@ -803,7 +802,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         {
             let logical_extent: Extent<AbsSize> = gpu.read().logical_size().into();
             let scale_factor = { gpu.read().scale_factor() };
-            frame_graph.widgets.write().handle_events(
+            frame_graph.widgets_mut().handle_events(
                 now,
                 &input_controller.poll_events()?,
                 interpreter.clone(),
@@ -811,44 +810,38 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
                 logical_extent,
             )?;
             frame_graph
-                .widgets
-                .write()
-                .layout_for_frame(now, &mut gpu.write())?;
+                .globals_mut()
+                .track_state_changes(arcball.read().camera(), &orrery.read());
+            frame_graph.terrain_mut().track_state_changes(
+                arcball.read_recursive().camera(),
+                system.write().get_camera(arcball.read_recursive().camera()),
+                catalog.clone(),
+                &mut async_rt,
+            )?;
+            frame_graph.shapes_mut().track_state_changes(
+                &system_start,
+                &now,
+                arcball.read().camera(),
+                galaxy.world_mut(),
+            );
         }
 
         arcball.write().think();
 
         let mut tracker = Default::default();
-        frame_graph.globals().make_upload_buffer(
-            arcball.read().camera(),
-            &gpu.read(),
-            &mut tracker,
-        )?;
-        frame_graph.atmosphere().make_upload_buffer(
-            convert(orrery.read().sun_direction()),
-            &gpu.read(),
-            &mut tracker,
-        )?;
-        frame_graph.terrain_mut().make_upload_buffer(
-            arcball.read_recursive().camera(),
-            system.write().get_camera(arcball.read_recursive().camera()),
-            catalog.clone(),
+        frame_graph
+            .globals_mut()
+            .ensure_uploaded(&gpu.read(), &mut tracker)?;
+        frame_graph
+            .terrain_mut()
+            .ensure_uploaded(&mut async_rt, &mut gpu.write(), &mut tracker)?;
+        frame_graph
+            .shapes_mut()
+            .ensure_uploaded(&gpu.read(), &mut tracker)?;
+        frame_graph.widgets.write().ensure_uploaded(
+            now,
             &mut async_rt,
             &mut gpu.write(),
-            &mut tracker,
-        )?;
-        frame_graph.shapes_mut().make_upload_buffer(
-            &system_start,
-            &now,
-            arcball.read().camera(),
-            galaxy.world_mut(),
-            &gpu.read(),
-            &mut tracker,
-        )?;
-        frame_graph.widgets.write().make_upload_buffer(
-            now,
-            &mut gpu.write(),
-            &async_rt,
             &mut tracker,
         )?;
         if !frame_graph.run(&mut gpu.write(), tracker)? {

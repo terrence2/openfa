@@ -34,11 +34,6 @@ layout(location = 0) out vec4 f_color;
 
 layout(set = 2, binding = 0) uniform texture2D chunk_mega_atlas_texture;
 layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
-//layout(set = 2, binding = 2) uniform ChunkMegaAtlasProperties {
-//    uint chunk_mega_atlas_width;
-//    uint chunk_mega_atlas_height;
-//    uint padding[2];
-//};
 
 //layout(set = 6, binding = 1) uniform sampler2DArray nose_art; NOSE\\d\\d.PIC
 //layout(set = 6, binding = 2) uniform sampler2DArray left_tail_art; LEFT\\d\\d.PIC
@@ -77,7 +72,7 @@ void main() {
     }
 
     vec3 camera_position_w_km = camera_position_km.xyz;
-    vec3 sun_direction_w = sun_direction.xyz;
+    vec3 sun_direction_w = orrery_sun_direction.xyz;
     float s = 1. / 1000.;
     mat4 inverse_scale = mat4(
         s, 0, 0, 0,
@@ -100,9 +95,5 @@ void main() {
     vec3 color = tone_mapping(radiance);
 
     f_color = vec4(color, diffuse.a);
-
-    //float cos_ang = dot(v_normal_w, sun_direction.xyz);
-    //f_color = cos_ang * diffuse;
-    //f_color = pos;
 }
 

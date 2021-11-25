@@ -808,18 +808,19 @@ impl T2TileSet {
 }
 
 impl TileSet for T2TileSet {
-    fn begin_update(&mut self) {}
+    fn begin_visibility_update(&mut self) {}
 
     fn note_required(&mut self, _visible_patch: &VisiblePatch) {}
 
-    fn finish_update(
+    fn finish_visibility_update(
         &mut self,
         _camera: &Camera,
         _catalog: Arc<AsyncRwLock<Catalog>>,
         _async_rt: &Runtime,
-        gpu: &Gpu,
-        tracker: &mut UploadTracker,
     ) {
+    }
+
+    fn ensure_uploaded(&mut self, gpu: &Gpu, tracker: &mut UploadTracker) {
         for layout in self.layouts.values() {
             let mapper_p = T2Mapper::new(&layout.t2, &layout.adjust.read());
             let mut info = T2Info::new(

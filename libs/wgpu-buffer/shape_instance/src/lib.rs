@@ -273,7 +273,7 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(
+    pub fn finish_open_chunks(
         &mut self,
         gpu: &mut Gpu,
         async_rt: &Runtime,
@@ -301,15 +301,13 @@ impl ShapeInstanceBuffer {
         &self.bind_group_layout
     }
 
-    pub fn make_upload_buffer(
+    pub fn track_state_changes(
         &mut self,
         start: &Instant,
         now: &Instant,
         camera: &Camera,
         world: &mut World,
-        gpu: &Gpu,
-        tracker: &mut UploadTracker,
-    ) -> Result<()> {
+    ) {
         // Reset cursor for our next upload.
         for block in self.blocks.values_mut() {
             block.begin_frame();
@@ -407,7 +405,9 @@ impl ShapeInstanceBuffer {
                 xform_count,
             );
         }
+    }
 
+    pub fn ensure_uploaded(&mut self, gpu: &Gpu, tracker: &mut UploadTracker) -> Result<()> {
         for block in self.blocks.values() {
             block.make_upload_buffer(gpu, tracker);
         }
@@ -526,7 +526,7 @@ mod test {
         }
         inst_man
             .write()
-            .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
+            .finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
         gpu.read().device().poll(wgpu::Maintain::Wait);
 
         Ok(())
