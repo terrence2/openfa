@@ -16,3 +16,4 @@ fnt = { path = "../../asset/fnt" }
 font_common = { path = "../../nitrogen/wgpu-buffer/font_common" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
+window = { path = "../../nitrogen/system/window" }

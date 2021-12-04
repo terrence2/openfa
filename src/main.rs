@@ -26,11 +26,7 @@ use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{
-    make_frame_graph,
-    size::{AbsSize, LeftBound, Size},
-    Gpu,
-};
+use gpu::{make_frame_graph, Gpu};
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mmm::MissionMap;
@@ -52,10 +48,13 @@ use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
 use widget::{
-    Border, Color, Expander, Extent, Label, Labeled, PositionH, PositionV, VerticalBox,
-    WidgetBuffer,
+    Border, Color, Expander, Label, Labeled, PositionH, PositionV, VerticalBox, WidgetBuffer,
 };
-use winit::window::Window;
+use window::{
+    size::{LeftBound, Size},
+    DisplayConfig, DisplayConfigChangeReceiver, DisplayOpts, Window,
+};
+use winit::window::Window as OsWindow;
 use world::WorldRenderPass;
 use xt::TypeManager;
 
@@ -76,6 +75,9 @@ struct Opt {
 
     #[structopt(flatten)]
     catalog_opts: CatalogOpts,
+
+    #[structopt(flatten)]
+    display: DisplayOpts,
 }
 
 #[derive(Debug)]
@@ -474,7 +476,9 @@ fn main() -> Result<()> {
     InputSystem::run_forever(window_main)
 }
 
-fn window_main(window: Window, input_controller: &InputController) -> Result<()> {
+fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> Result<()> {
+    os_window.set_title("OpenFA");
+
     let opt = Opt::from_args();
     let (cpu_detail, gpu_detail) = if cfg!(debug_assertions) {
         (CpuDetailLevel::Low, GpuDetailLevel::Low)
@@ -489,11 +493,18 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     let mut interpreter = Interpreter::default();
     let timeline = Timeline::new(&mut interpreter);
-    let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
+    let display_config = DisplayConfig::discover(&opt.display, &os_window);
+    let window = Window::new(
+        os_window,
+        input_controller,
+        display_config,
+        &mut interpreter,
+    )?;
+    let gpu = Gpu::new(&mut window.write(), Default::default(), &mut interpreter)?;
     let mut galaxy = Galaxy::new()?;
 
     let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter);
-    let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter);
+    let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter);
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
@@ -754,7 +765,6 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     {
         let interp = &mut interpreter;
-        gpu.write().add_default_bindings(interp)?;
         orrery.write().add_default_bindings(interp)?;
         arcball.write().add_default_bindings(interp)?;
         system.write().add_default_bindings(interp)?;
@@ -800,18 +810,17 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         now = next_now;
 
         {
-            let logical_extent: Extent<AbsSize> = gpu.read().logical_size().into();
-            let scale_factor = { gpu.read().scale_factor() };
-            frame_graph.widgets_mut().handle_events(
+            frame_graph.widgets_mut().track_state_changes(
                 now,
                 &input_controller.poll_events()?,
                 interpreter.clone(),
-                scale_factor,
-                logical_extent,
+                &window.read(),
             )?;
-            frame_graph
-                .globals_mut()
-                .track_state_changes(arcball.read().camera(), &orrery.read());
+            frame_graph.globals_mut().track_state_changes(
+                arcball.read().camera(),
+                &orrery.read(),
+                &window.read(),
+            );
             frame_graph.terrain_mut().track_state_changes(
                 arcball.read_recursive().camera(),
                 system.write().get_camera(arcball.read_recursive().camera()),
@@ -834,19 +843,20 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             .ensure_uploaded(&gpu.read(), &mut tracker)?;
         frame_graph
             .terrain_mut()
-            .ensure_uploaded(&mut async_rt, &mut gpu.write(), &mut tracker)?;
+            .ensure_uploaded(&async_rt, &mut gpu.write(), &mut tracker)?;
         frame_graph
             .shapes_mut()
             .ensure_uploaded(&gpu.read(), &mut tracker)?;
         frame_graph.widgets.write().ensure_uploaded(
             now,
-            &mut async_rt,
+            &async_rt,
+            &window.read(),
             &mut gpu.write(),
             &mut tracker,
         )?;
         if !frame_graph.run(&mut gpu.write(), tracker)? {
-            let sz = gpu.read().physical_size();
-            gpu.write().on_resize(sz.width as i64, sz.height as i64)?;
+            gpu.write()
+                .on_display_config_changed(window.read().config())?;
         }
 
         system

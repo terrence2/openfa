@@ -105,4 +105,5 @@ mmm = { path = "libs/asset/mmm" }
 pal = { path = "libs/asset/pal" }
 shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
 t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
+window = { path = "libs/nitrogen/system/window" }
 xt = { path = "libs/asset/xt" }
