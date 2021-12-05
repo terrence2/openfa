@@ -214,26 +214,18 @@ impl PicUploader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpu::TestResources;
     use image::RgbaImage;
     use lib::CatalogManager;
-    use nitrous::Interpreter;
     use std::{
         env,
         time::{Duration, Instant},
     };
-    use tokio::runtime::Runtime;
-    use winit::{event_loop::EventLoop, window::Window};
     use zerocopy::AsBytes;
 
     #[test]
     fn it_works_quickly() -> Result<()> {
-        env_logger::init();
-
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
+        let TestResources { gpu, .. } = Gpu::for_test_unix()?;
 
         let catalogs = CatalogManager::for_testing()?;
         let mut uploader = PicUploader::new(&gpu.read())?;
@@ -266,14 +258,7 @@ mod tests {
 
     #[test]
     fn round_trip() -> Result<()> {
-        env_logger::init();
-
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
-        let async_rt = Runtime::new()?;
+        let TestResources { gpu, async_rt, .. } = Gpu::for_test_unix()?;
 
         let catalogs = CatalogManager::for_testing()?;
 

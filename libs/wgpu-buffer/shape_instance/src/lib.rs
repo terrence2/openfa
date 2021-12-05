@@ -456,21 +456,20 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use gpu::TestResources;
     use lib::CatalogManager;
-    use nitrous::Interpreter;
     use pal::Palette;
     use shape_chunk::DrawSelection;
-    use winit::{event_loop::EventLoop, window::Window};
 
     #[cfg(unix)]
     #[test]
     fn test_creation() -> Result<()> {
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
-        let async_rt = Runtime::new()?;
+        let TestResources {
+            async_rt,
+            mut interpreter,
+            gpu,
+            ..
+        } = Gpu::for_test_unix()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640

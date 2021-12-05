@@ -172,7 +172,10 @@ impl CatalogManager {
             test_path.pop();
             test_path.push("disk_dumps");
         }
-        ensure!(test_path.to_string_lossy() != "/disk_dumps");
+        ensure!(
+            test_path.to_string_lossy() != "/disk_dumps",
+            "Unable to find the 'disk_dumps' directory for testing"
+        );
 
         let mut catalogs = vec![];
 

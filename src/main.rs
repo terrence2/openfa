@@ -48,7 +48,8 @@ use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
 use widget::{
-    Border, Color, Expander, Label, Labeled, PositionH, PositionV, VerticalBox, WidgetBuffer,
+    Border, Color, EventMapper, Expander, Label, Labeled, PositionH, PositionV, VerticalBox,
+    WidgetBuffer,
 };
 use window::{
     size::{LeftBound, Size},
@@ -492,7 +493,9 @@ fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> R
     let mut async_rt = Runtime::new()?;
 
     let mut interpreter = Interpreter::default();
+    let mapper = EventMapper::new(&mut interpreter);
     let timeline = Timeline::new(&mut interpreter);
+
     let display_config = DisplayConfig::discover(&opt.display, &os_window);
     let window = Window::new(
         os_window,
@@ -503,8 +506,8 @@ fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> R
     let gpu = Gpu::new(&mut window.write(), Default::default(), &mut interpreter)?;
     let mut galaxy = Galaxy::new()?;
 
-    let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter);
-    let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter);
+    let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter)?;
+    let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter)?;
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
@@ -528,7 +531,7 @@ fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> R
         &stars_buffer.read(),
         &terrain_buffer.read(),
     )?;
-    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter)?;
+    let widgets = WidgetBuffer::new(mapper, &mut gpu.write(), &mut interpreter)?;
     let ui = UiRenderPass::new(
         &mut gpu.write(),
         &globals.read(),
@@ -765,8 +768,6 @@ fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> R
 
     {
         let interp = &mut interpreter;
-        orrery.write().add_default_bindings(interp)?;
-        arcball.write().add_default_bindings(interp)?;
         system.write().add_default_bindings(interp)?;
         globals.write().add_debug_bindings(interp)?;
         world.write().add_debug_bindings(interp)?;

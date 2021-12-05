@@ -29,6 +29,4 @@ pic_uploader = { path = "../../util/pic_uploader" }
 sh = { path = "../../asset/sh" }
 
 [dev-dependencies]
-winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../asset/lib" }
-nitrous = { path = "../../nitrogen/util/nitrous" }

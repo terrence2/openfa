@@ -904,22 +904,21 @@ impl TileSet for T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpu::TestResources;
     use lib::{from_dos_string, CatalogManager};
-    use nitrous::Interpreter;
     use terrain::{CpuDetailLevel, GpuDetailLevel};
-    use winit::{event_loop::EventLoop, window::Window};
     use xt::TypeManager;
 
     #[test]
     fn it_can_load_all_t2() -> Result<()> {
         env_logger::init();
 
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
-        let async_rt = Runtime::new()?;
+        let TestResources {
+            async_rt,
+            mut interpreter,
+            gpu,
+            ..
+        } = Gpu::for_test_unix()?;
 
         let catalogs = CatalogManager::for_testing()?;
         for (game, catalog) in catalogs.selected() {

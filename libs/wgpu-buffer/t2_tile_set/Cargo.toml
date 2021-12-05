@@ -32,9 +32,7 @@ xt = { path = "../../asset/xt" }
 
 [dev-dependencies]
 env_logger = "^ 0.8"
-winit = { version = "^ 0.24", features = ["web-sys"] }
 lib = { path = "../../asset/lib" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
 
 [build-dependencies]
 build_shaders = { path = "../../nitrogen/util/build_shaders" }
