@@ -26,7 +26,7 @@ use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, Gpu};
+use gpu::{make_frame_graph, DetailLevelOpts, Gpu};
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mmm::MissionMap;
@@ -44,7 +44,8 @@ use std::{
 };
 use structopt::StructOpt;
 use t2_tile_set::{T2Adjustment, T2TileSet};
-use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
+use terminal_size::{terminal_size, Width};
+use terrain::{TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
 use widget::{
@@ -59,8 +60,9 @@ use winit::window::Window as OsWindow;
 use world::WorldRenderPass;
 use xt::TypeManager;
 
-/// Show the contents of an MM file
+/// Show resources from Jane's Fighters Anthology engine LIB files.
 #[derive(Debug, StructOpt)]
+#[structopt(set_term_width = if let Some((Width(w), _)) = terminal_size() { w as usize } else { 80 })]
 struct Opt {
     /// Run a command after startup
     #[structopt(short, long)]
@@ -71,11 +73,14 @@ struct Opt {
     execute: Option<PathBuf>,
 
     /// The map file(s) to view
-    #[structopt(short, long, name = "NAME")]
+    #[structopt(short, long)]
     map_names: Vec<String>,
 
     #[structopt(flatten)]
     catalog_opts: CatalogOpts,
+
+    #[structopt(flatten)]
+    detail: DetailLevelOpts,
 
     #[structopt(flatten)]
     display: DisplayOpts,
@@ -474,27 +479,18 @@ make_frame_graph!(
 
 fn main() -> Result<()> {
     env_logger::init();
-    InputSystem::run_forever(window_main)
+    InputSystem::run_forever(simulation_main)
 }
 
-fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> Result<()> {
+fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) -> Result<()> {
     os_window.set_title("OpenFA");
 
     let opt = Opt::from_args();
-    let (cpu_detail, gpu_detail) = if cfg!(debug_assertions) {
-        (CpuDetailLevel::Low, GpuDetailLevel::Low)
-    } else {
-        (CpuDetailLevel::Medium, GpuDetailLevel::High)
-    };
-    let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    let catalog = catalogs.best();
-    let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-
-    let mut async_rt = Runtime::new()?;
+    let cpu_detail = opt.detail.cpu_detail();
+    let gpu_detail = opt.detail.gpu_detail();
 
     let mut interpreter = Interpreter::default();
     let mapper = EventMapper::new(&mut interpreter);
-    let timeline = Timeline::new(&mut interpreter);
 
     let display_config = DisplayConfig::discover(&opt.display, &os_window);
     let window = Window::new(
@@ -503,11 +499,18 @@ fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> R
         display_config,
         &mut interpreter,
     )?;
-    let gpu = Gpu::new(&mut window.write(), Default::default(), &mut interpreter)?;
-    let mut galaxy = Galaxy::new()?;
-
     let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter)?;
     let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter)?;
+
+    let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    let catalog = catalogs.best();
+
+    let mut async_rt = Runtime::new()?;
+
+    let timeline = Timeline::new(&mut interpreter);
+    let mut galaxy = Galaxy::new()?;
+
+    let gpu = Gpu::new(&mut window.write(), Default::default(), &mut interpreter)?;
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
@@ -563,6 +566,7 @@ fn window_main(os_window: OsWindow, input_controller: &mut InputController) -> R
     ///////////////////////////////////////////////////////////
     // Scene Setup
     let start = Instant::now();
+    let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
     shapes
         .write()
         .set_shared_palette(&system_palette, &gpu.read());

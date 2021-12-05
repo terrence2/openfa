@@ -74,6 +74,7 @@ nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
 paste = "^ 1"
 structopt = "^ 0.3"
+terminal_size = "^ 0.1"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
