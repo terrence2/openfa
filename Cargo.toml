@@ -38,15 +38,15 @@ members = [
     "libs/galaxy",
 
     "libs/wgpu-buffer/font_fnt",
+    "libs/wgpu-buffer/ofa_groups",
+    "libs/wgpu-buffer/pic_uploader",
     "libs/wgpu-buffer/shape_chunk",
     "libs/wgpu-buffer/shape_instance",
     "libs/wgpu-buffer/t2_tile_set",
-    "libs/wgpu-buffer/ofa_groups",
 
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
-    "libs/util/pic_uploader",
     "libs/util/pkware",
     "libs/util/reverse",
 ]

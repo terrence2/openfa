@@ -25,7 +25,7 @@ gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
-pic_uploader = { path = "../../util/pic_uploader" }
+pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
 sh = { path = "../../asset/sh" }
 
 [dev-dependencies]

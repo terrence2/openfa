@@ -24,7 +24,7 @@ lay = { path = "../../asset/lay" }
 mmm = { path = "../../asset/mmm" }
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
-pic_uploader = { path = "../../util/pic_uploader" }
+pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
 shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
 t2 = { path = "../../asset/t2" }
 terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
