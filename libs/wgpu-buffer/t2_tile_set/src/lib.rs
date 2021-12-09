@@ -646,7 +646,6 @@ impl T2TileSet {
             gpu,
             atlas_width,
             atlas_height,
-            [0, 0, 0, 0],
             wgpu::TextureFormat::Rgba8Unorm,
             wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
         )?;
@@ -904,9 +903,8 @@ impl TileSet for T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpu::TestResources;
+    use gpu::{CpuDetailLevel, GpuDetailLevel, TestResources};
     use lib::{from_dos_string, CatalogManager};
-    use terrain::{CpuDetailLevel, GpuDetailLevel};
     use xt::TypeManager;
 
     #[test]

@@ -173,7 +173,6 @@ impl OpenChunk {
                 gpu,
                 atlas_size,
                 atlas_size,
-                [0, 0, 0, 0],
                 wgpu::TextureFormat::Rgba8Unorm,
                 wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
             )?,
