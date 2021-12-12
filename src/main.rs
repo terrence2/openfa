@@ -840,7 +840,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             );
         }
 
-        arcball.write().think();
+        arcball.write().track_state_changes();
 
         let mut tracker = Default::default();
         frame_graph

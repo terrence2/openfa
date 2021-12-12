@@ -144,21 +144,14 @@ pub struct StatInfo {
 
 #[derive(Clone, Debug)]
 pub struct PackedFileInfo {
-    libkey: usize,
     start_offset: usize,
     end_offset: usize,
     compression: CompressionType,
 }
 
 impl PackedFileInfo {
-    pub fn new(
-        libkey: usize,
-        start_offset: usize,
-        end_offset: usize,
-        compression: u8,
-    ) -> Result<Self> {
+    pub fn new(start_offset: usize, end_offset: usize, compression: u8) -> Result<Self> {
         Ok(Self {
-            libkey,
             start_offset,
             end_offset,
             compression: CompressionType::from_byte(compression)?,
@@ -218,7 +211,7 @@ impl LibDrawer {
                 map.len()
             };
             // Note: there is at least one duplicate in ATF Gold's 2.LIB.
-            let info = PackedFileInfo::new(0, entry.offset() as usize, end_offset, entry.flags())?;
+            let info = PackedFileInfo::new(entry.offset() as usize, end_offset, entry.flags())?;
             drawer_index.insert(dfid, name.clone());
             index.insert(dfid, info);
         }

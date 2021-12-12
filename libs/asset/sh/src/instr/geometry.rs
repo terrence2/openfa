@@ -249,7 +249,7 @@ pub struct Facet {
     material_size: usize,
     pub raw_material: Vec<u8>,
 
-    indices_count_pointer: *const u8,
+    _indices_count_pointer: *const u8,
     indices_pointer: *const u8,
     indices_size: usize,
     pub indices: Vec<u16>,
@@ -438,7 +438,7 @@ impl Facet {
             material_size,
             raw_material,
 
-            indices_count_pointer: (&data[index_count_offset..]).as_ptr(),
+            _indices_count_pointer: (&data[index_count_offset..]).as_ptr(),
             indices_pointer: (&data[indices_offset..]).as_ptr(),
             indices_size,
             indices,

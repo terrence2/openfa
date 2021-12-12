@@ -209,7 +209,7 @@ impl FieldValue {
 
 #[derive(Debug)]
 pub struct FieldRow {
-    kind: FieldType,
+    _kind: FieldType,
     value: FieldValue,
     comment: Option<String>,
 }
@@ -232,7 +232,7 @@ impl FieldRow {
         let raw_values = words.collect::<Vec<&str>>();
         let value = FieldValue::from_kind_and_str(&kind, raw_values, pointers)?;
         Ok(FieldRow {
-            kind,
+            _kind: kind,
             value,
             comment,
         })

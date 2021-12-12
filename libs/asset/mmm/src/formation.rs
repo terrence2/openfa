@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::{feet, Feet, Length};
 use anyhow::{bail, Result};
 
 #[derive(Copy, Clone, Debug)]
@@ -61,14 +62,14 @@ pub struct WingFormation {
     kind: FormationKind,
 
     // Usually 512, 2048, etc. Probably feet.
-    horizontal_separation: i32,
+    horizontal_separation: Length<Feet>,
 
     // Negative for "Low", positive for "High", 0 for "Level" formation.
-    vertical_separation: i32,
+    vertical_separation: Length<Feet>,
 }
 
 impl WingFormation {
-    pub fn from_tokens<'a, 'b, I: Iterator<Item = &'a str>>(
+    pub(crate) fn from_tokens<'a, 'b, I: Iterator<Item = &'a str>>(
         tokens: &'b mut I,
     ) -> Result<WingFormation>
     where
@@ -76,13 +77,32 @@ impl WingFormation {
     {
         let raw_control = str::parse::<u8>(tokens.next().expect("wng control"))?;
         let raw_kind = str::parse::<u8>(tokens.next().expect("wng formation"))?;
-        let horizontal_separation = str::parse::<i32>(tokens.next().expect("wng horizontal sep"))?;
-        let vertical_separation = str::parse::<i32>(tokens.next().expect("wng vertical sep"))?;
+        let horizontal_separation = feet!(str::parse::<i32>(
+            tokens.next().expect("wng horizontal sep")
+        )?);
+        let vertical_separation =
+            feet!(str::parse::<i32>(tokens.next().expect("wng vertical sep"))?);
         Ok(Self {
             control: FormationControl::from_u8(raw_control)?,
             kind: FormationKind::from_u8(raw_kind)?,
             horizontal_separation,
             vertical_separation,
         })
+    }
+
+    pub fn control(&self) -> FormationControl {
+        self.control
+    }
+
+    pub fn kind(&self) -> FormationKind {
+        self.kind
+    }
+
+    pub fn horizontal_separation(&self) -> Length<Feet> {
+        self.horizontal_separation
+    }
+
+    pub fn vertical_separation(&self) -> Length<Feet> {
+        self.vertical_separation
     }
 }

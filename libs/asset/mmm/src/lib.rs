@@ -20,15 +20,30 @@ mod special;
 mod util;
 mod waypoint;
 
+pub use crate::{
+    formation::{FormationControl, FormationKind, WingFormation},
+    special::SpecialInfo,
+};
+
 use crate::util::maybe_hex;
-use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoints};
+use crate::{obj::ObjectInfo, waypoint::Waypoints};
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
+use geodesy::CartesianOrigin;
 use lib::from_dos_string;
 use log::debug;
 use std::{borrow::Cow, collections::HashMap, str::FromStr};
 use xt::TypeManager;
+
+/// Map coordinates are relative to the bottom left corner.
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub struct MmmOrigin;
+impl CartesianOrigin for MmmOrigin {
+    fn origin_name() -> &'static str {
+        "missionmap"
+    }
+}
 
 /// This mission is used to show the "vehicle info" screen in the reference.
 ///
