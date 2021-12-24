@@ -42,7 +42,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_pe(fid, catalog)?;
+                show_pe(fid, &catalog)?;
             }
         }
     }

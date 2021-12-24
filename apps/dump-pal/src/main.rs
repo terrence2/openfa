@@ -49,7 +49,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_pal(fid, game, catalog, &opt)?;
+                show_pal(fid, game, &catalog, &opt)?;
             }
         }
     }
