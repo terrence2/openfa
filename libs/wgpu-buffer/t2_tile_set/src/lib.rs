@@ -41,7 +41,6 @@ use std::{
 };
 use t2::Terrain as T2Terrain;
 use terrain::{TerrainBuffer, TileSet, VisiblePatch};
-use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use wgpu::{BindGroup, ComputePass, Extent3d};
 use zerocopy::AsBytes;
 
@@ -615,7 +614,6 @@ impl T2TileSet {
         mm: &MissionMap,
         catalog: &Catalog,
         gpu: &mut Gpu,
-        async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<(
         HashMap<TLoc, u16>,
@@ -690,7 +688,7 @@ impl T2TileSet {
         );
 
         uploader.dispatch_singleton(gpu)?;
-        let (_, view, sampler) = atlas_builder.finish(gpu, async_rt, tracker)?;
+        let (_, view, sampler) = atlas_builder.finish(gpu, tracker)?;
 
         Ok((frame_refs, frame_buffer, (view, sampler)))
     }
@@ -701,7 +699,6 @@ impl T2TileSet {
         mm: &MissionMap,
         catalog: &Catalog,
         gpu: &mut Gpu,
-        async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<T2Mapper> {
         let t2_data = catalog.read_name_sync(&mm.map_name().t2_name())?;
@@ -716,7 +713,7 @@ impl T2TileSet {
         let palette = self._load_palette(system_palette, mm, catalog)?;
 
         let (frame_map, frame_buffer, (atlas_texture_view, atlas_sampler)) =
-            self._build_atlas(&palette, mm, catalog, gpu, async_rt, tracker)?;
+            self._build_atlas(&palette, mm, catalog, gpu, tracker)?;
 
         let (
             (height_texture_view, height_sampler),
@@ -820,13 +817,7 @@ impl TileSet for T2TileSet {
 
     fn note_required(&mut self, _visible_patch: &VisiblePatch) {}
 
-    fn finish_visibility_update(
-        &mut self,
-        _camera: &Camera,
-        _catalog: Arc<AsyncRwLock<Catalog>>,
-        _async_rt: &Runtime,
-    ) {
-    }
+    fn finish_visibility_update(&mut self, _camera: &Camera, _catalog: Arc<RwLock<Catalog>>) {}
 
     fn ensure_uploaded(&mut self, gpu: &Gpu, tracker: &mut UploadTracker) {
         for layout in self.layouts.values() {
@@ -850,7 +841,7 @@ impl TileSet for T2TileSet {
         }
     }
 
-    fn snapshot_index(&mut self, _async_rt: &Runtime, _gpu: &mut Gpu) {}
+    fn snapshot_index(&mut self, _gpu: &mut Gpu) {}
 
     fn paint_atlas_index(&self, _encoder: &mut wgpu::CommandEncoder) {}
 
@@ -921,7 +912,6 @@ mod tests {
         env_logger::init();
 
         let TestResources {
-            async_rt,
             mut interpreter,
             gpu,
             ..
@@ -969,7 +959,6 @@ mod tests {
                     &mm,
                     catalog,
                     &mut gpu.write(),
-                    &async_rt,
                     &mut tracker,
                 )?;
                 tracker.dispatch_uploads_one_shot(&mut gpu.write());
