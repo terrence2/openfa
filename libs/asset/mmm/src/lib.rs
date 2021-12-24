@@ -276,6 +276,11 @@ impl MapName {
         if let Some(digit) = maybe_number.to_digit(10) {
             number = Some(digit);
             name = name[..name.len() - 1].to_owned();
+        } else if maybe_number == 'F' {
+            // Note that ~KURILE and ~TVIET also exist; the E in kurile would be parsed as hex,
+            // so we can't just interpret as hex here. I don't know the significance of F.
+            number = Some(15);
+            name = name[..name.len() - 1].to_owned();
         }
 
         Ok(Self {
