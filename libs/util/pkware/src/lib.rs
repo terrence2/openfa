@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn it_doesnt_crash() {
-        let paths = fs::read_dir("../../test_data/pkware").unwrap();
+        let paths = fs::read_dir("../../../test_data/pkware").unwrap();
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());
