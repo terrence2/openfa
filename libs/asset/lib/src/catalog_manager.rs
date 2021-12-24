@@ -61,12 +61,7 @@ pub struct CatalogManager {
 
 impl CatalogManager {
     /// Find out what we have to work with.
-    pub fn bootstrap(
-        opts: &CatalogOpts, // game_path: Option<PathBuf>,
-                            // cd_path: Option<PathBuf>,
-                            // cd2_path: Option<PathBuf>,
-                            // lib_paths: &[PathBuf]
-    ) -> Result<Self> {
+    pub fn bootstrap(opts: &CatalogOpts) -> Result<Self> {
         // If we didn't specify a path, use cwd.
         let game_path = if let Some(path) = &opts.game_path {
             path.to_owned()
