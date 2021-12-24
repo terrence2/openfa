@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn it_doesnt_crash() -> Result<()> {
-        let paths = fs::read_dir("../../test_data/lzss/inputs")?;
+        let paths = fs::read_dir("../../../test_data/lzss/inputs")?;
         for i in paths {
             let entry = i?;
             let path = format!("{}", entry.path().display());

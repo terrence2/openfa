@@ -26,23 +26,16 @@ pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 mod test {
     use super::*;
     use anyhow::Result;
+    use gpu::TestResources;
     use gpu::{Gpu, UploadTracker};
     use lib::CatalogManager;
     use log::trace;
-    use nitrous::Interpreter;
     use pal::Palette;
-    use tokio::runtime::Runtime;
-    use winit::{event_loop::EventLoop, window::Window};
 
     #[cfg(unix)]
     #[test]
     fn test_load_all() -> Result<()> {
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
-        let async_rt = Runtime::new()?;
+        let TestResources { async_rt, gpu, .. } = Gpu::for_test_unix()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640

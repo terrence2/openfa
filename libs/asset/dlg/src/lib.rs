@@ -68,6 +68,7 @@ impl PreloadKind {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct Preload {
     kind: Option<PreloadKind>,
@@ -221,6 +222,7 @@ packed_struct!(DrawRockerHeader {
     _7 => zeros2: [u8; 5]
 });
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct DrawRocker {
     unk0: u16,

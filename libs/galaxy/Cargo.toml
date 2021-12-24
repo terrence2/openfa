@@ -15,7 +15,6 @@ geodesy = { path = "../nitrogen/util/geodesy" }
 physical_constants = { path = "../nitrogen/util/physical_constants" }
 shape_chunk = { path = "../wgpu-buffer/shape_chunk" }
 shape_instance = { path = "../wgpu-buffer/shape_instance" }
-universe = { path = "../nitrogen/sim/universe" }
 
 [dev-dependencies]
 lib = { path = "../asset/lib" }

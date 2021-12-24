@@ -16,16 +16,14 @@ use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use fnt::Fnt;
 use font_common::{FontAdvance, FontInterface};
-use gpu::{
-    size::{AbsSize, LeftBound},
-    Gpu,
-};
+use gpu::Gpu;
 use i386::{Interpreter, Reg};
 use image::{GenericImage, GenericImageView, GrayImage, Luma};
 use lazy_static::lazy_static;
 use log::trace;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
+use window::size::{AbsSize, LeftBound};
 
 // FIXME: 11px at 240px tall is 4.583..% of the screen, which is what
 //        we target at a scaling of 1.0 below.

@@ -33,6 +33,7 @@ use parking_lot::RwLock;
 use pic_uploader::PicUploader;
 use shader_shared::Group;
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     mem,
     num::NonZeroU64,
@@ -646,7 +647,6 @@ impl T2TileSet {
             gpu,
             atlas_width,
             atlas_height,
-            [0, 0, 0, 0],
             wgpu::TextureFormat::Rgba8Unorm,
             wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
         )?;
@@ -808,18 +808,27 @@ impl T2TileSet {
 }
 
 impl TileSet for T2TileSet {
-    fn begin_update(&mut self) {}
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn begin_visibility_update(&mut self) {}
 
     fn note_required(&mut self, _visible_patch: &VisiblePatch) {}
 
-    fn finish_update(
+    fn finish_visibility_update(
         &mut self,
         _camera: &Camera,
         _catalog: Arc<AsyncRwLock<Catalog>>,
         _async_rt: &Runtime,
-        gpu: &Gpu,
-        tracker: &mut UploadTracker,
     ) {
+    }
+
+    fn ensure_uploaded(&mut self, gpu: &Gpu, tracker: &mut UploadTracker) {
         for layout in self.layouts.values() {
             let mapper_p = T2Mapper::new(&layout.t2, &layout.adjust.read());
             let mut info = T2Info::new(
@@ -903,22 +912,20 @@ impl TileSet for T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpu::{CpuDetailLevel, GpuDetailLevel, TestResources};
     use lib::{from_dos_string, CatalogManager};
-    use nitrous::Interpreter;
-    use terrain::{CpuDetailLevel, GpuDetailLevel};
-    use winit::{event_loop::EventLoop, window::Window};
     use xt::TypeManager;
 
     #[test]
     fn it_can_load_all_t2() -> Result<()> {
         env_logger::init();
 
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
-        let async_rt = Runtime::new()?;
+        let TestResources {
+            async_rt,
+            mut interpreter,
+            gpu,
+            ..
+        } = Gpu::for_test_unix()?;
 
         let catalogs = CatalogManager::for_testing()?;
         for (game, catalog) in catalogs.selected() {

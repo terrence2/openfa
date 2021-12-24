@@ -25,21 +25,21 @@ use std::{
 };
 use structopt::StructOpt;
 
-/// Include this with #[structopt(flatten)] to provide cli arguments to CatalogManager for game discovery.
 #[derive(Debug, StructOpt)]
 pub struct CatalogOpts {
     /// The path to look in for game files (default: pwd)
     #[structopt(short, long)]
     game_path: Option<PathBuf>,
 
-    /// If not all required libs are found in the game path, look here. If the CD's LIB files have
-    /// been copied into the game directory, this is unused.
+    /// If not all required libs are found in the game path, look here. If the
+    /// CD's LIB files have been copied into the game directory, this is unused.
     #[structopt(short, long)]
     cd_path: Option<PathBuf>,
 
-    /// For Fighter's Anthology, if the second disk's LIB files have not been copied into the game
-    /// directory, and you want to use the reference materials, also provide this path. There is no
-    /// ability to switch the disk, currently. (Note: reference still WIP, so not much point yet.)
+    /// For Fighter's Anthology, if the second disk's LIB files have not been
+    /// copied into the game directory, and you want to use the reference
+    /// materials, also provide this path. There is no ability to switch the
+    /// disk, currently. (Note: reference still WIP, so not much point yet.)
     #[structopt(long)]
     cd2_path: Option<PathBuf>,
 
@@ -61,12 +61,7 @@ pub struct CatalogManager {
 
 impl CatalogManager {
     /// Find out what we have to work with.
-    pub fn bootstrap(
-        opts: &CatalogOpts, // game_path: Option<PathBuf>,
-                            // cd_path: Option<PathBuf>,
-                            // cd2_path: Option<PathBuf>,
-                            // lib_paths: &[PathBuf]
-    ) -> Result<Self> {
+    pub fn bootstrap(opts: &CatalogOpts) -> Result<Self> {
         // If we didn't specify a path, use cwd.
         let game_path = if let Some(path) = &opts.game_path {
             path.to_owned()
@@ -172,7 +167,10 @@ impl CatalogManager {
             test_path.pop();
             test_path.push("disk_dumps");
         }
-        ensure!(test_path.to_string_lossy() != "/disk_dumps");
+        ensure!(
+            test_path.to_string_lossy() != "/disk_dumps",
+            "Unable to find the 'disk_dumps' directory for testing"
+        );
 
         let mut catalogs = vec![];
 

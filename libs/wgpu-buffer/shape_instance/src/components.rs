@@ -47,39 +47,17 @@ impl ShapeState {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeTransformBuffer {
     pub buffer: TransformType,
 }
-impl Default for ShapeTransformBuffer {
-    fn default() -> Self {
-        Self {
-            buffer: TransformType::default(),
-        }
-    }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeFlagBuffer {
     pub buffer: [u32; 2],
 }
-impl Default for ShapeFlagBuffer {
-    fn default() -> Self {
-        Self { buffer: [0u32; 2] }
-    }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeXformBuffer {
     pub buffer: [[f32; 6]; 14],
-}
-impl Default for ShapeXformBuffer {
-    fn default() -> Self {
-        //let num_floats = widgets.read().unwrap().num_transformer_floats();
-        //let mut buffer = Vec::with_capacity(num_floats);
-        //buffer.resize(num_floats, 0f32);
-        Self {
-            buffer: [[0f32; 6]; 14],
-        }
-    }
 }

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, radians};
 use animate::Timeline;
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
 use catalog::Catalog;
@@ -26,42 +26,45 @@ use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{
-    make_frame_graph,
-    size::{AbsSize, LeftBound, Size},
-    Gpu,
-};
+use gpu::{make_frame_graph, DetailLevelOpts, Gpu};
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mmm::MissionMap;
-use nalgebra::convert;
 use nitrous::{Interpreter, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
 use pal::Palette;
 use parking_lot::RwLock;
+use platform_dirs::AppDirs;
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
 use std::{
+    fs::create_dir_all,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
 use structopt::StructOpt;
 use t2_tile_set::{T2Adjustment, T2TileSet};
-use terrain::{CpuDetailLevel, GpuDetailLevel, TerrainBuffer, TileSet};
+use terminal_size::{terminal_size, Width};
+use terrain::{TerrainBuffer, TileSet};
 use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
 use widget::{
-    Border, Color, Expander, Extent, Label, Labeled, PositionH, PositionV, VerticalBox,
+    Border, Color, EventMapper, Expander, Label, Labeled, PositionH, PositionV, VerticalBox,
     WidgetBuffer,
 };
-use winit::window::Window;
+use window::{
+    size::{LeftBound, Size},
+    DisplayConfig, DisplayConfigChangeReceiver, DisplayOpts, Window,
+};
+use winit::window::Window as OsWindow;
 use world::WorldRenderPass;
 use xt::TypeManager;
 
-/// Show the contents of an MM file
+/// Show resources from Jane's Fighters Anthology engine LIB files.
 #[derive(Debug, StructOpt)]
+#[structopt(set_term_width = if let Some((Width(w), _)) = terminal_size() { w as usize } else { 80 })]
 struct Opt {
     /// Run a command after startup
     #[structopt(short, long)]
@@ -72,11 +75,17 @@ struct Opt {
     execute: Option<PathBuf>,
 
     /// The map file(s) to view
-    #[structopt(short, long, name = "NAME")]
-    map_names: Vec<String>,
+    // #[structopt(short, long)]
+    // map_names: Vec<String>,
 
     #[structopt(flatten)]
     catalog_opts: CatalogOpts,
+
+    #[structopt(flatten)]
+    detail: DetailLevelOpts,
+
+    #[structopt(flatten)]
+    display: DisplayOpts,
 }
 
 #[derive(Debug)]
@@ -99,7 +108,6 @@ struct System {
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
     interpreter: Interpreter,
-    widgets: Arc<RwLock<WidgetBuffer>>,
     visible_widgets: VisibleWidgets,
 }
 
@@ -110,7 +118,7 @@ impl System {
         interpreter: Interpreter,
         widgets: Arc<RwLock<WidgetBuffer>>,
     ) -> Result<Arc<RwLock<Self>>> {
-        let visible_widgets = Self::build_gui(catalog, widgets.clone())?;
+        let visible_widgets = Self::build_gui(catalog, widgets)?;
         let system = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
@@ -120,7 +128,6 @@ impl System {
             target_offset: 0,
             targets: Vec::new(),
             interpreter,
-            widgets,
             visible_widgets,
         }));
         let demo = Value::Module(system.read().visible_widgets.demo_label.clone());
@@ -472,29 +479,43 @@ make_frame_graph!(
 
 fn main() -> Result<()> {
     env_logger::init();
-    InputSystem::run_forever(window_main)
+    InputSystem::run_forever(simulation_main)
 }
 
-fn window_main(window: Window, input_controller: &InputController) -> Result<()> {
-    let opt = Opt::from_args();
-    let (cpu_detail, gpu_detail) = if cfg!(debug_assertions) {
-        (CpuDetailLevel::Low, GpuDetailLevel::Low)
-    } else {
-        (CpuDetailLevel::Medium, GpuDetailLevel::High)
-    };
-    let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    let catalog = catalogs.best();
-    let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) -> Result<()> {
+    os_window.set_title("OpenFA");
 
-    let mut async_rt = Runtime::new()?;
+    let opt = Opt::from_args();
+    let cpu_detail = opt.detail.cpu_detail();
+    let gpu_detail = opt.detail.gpu_detail();
+
+    let app_dirs = AppDirs::new(Some("openfa"), true)
+        .ok_or_else(|| anyhow!("unable to find app directories"))?;
+    create_dir_all(&app_dirs.config_dir)?;
+    create_dir_all(&app_dirs.state_dir)?;
 
     let mut interpreter = Interpreter::default();
+    let mapper = EventMapper::new(&mut interpreter);
+
+    let display_config = DisplayConfig::discover(&opt.display, &os_window);
+    let window = Window::new(
+        os_window,
+        input_controller,
+        display_config,
+        &mut interpreter,
+    )?;
+    let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter)?;
+    let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter)?;
+
+    let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    let catalog = catalogs.best();
+
+    let async_rt = Runtime::new()?;
+
     let timeline = Timeline::new(&mut interpreter);
-    let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
     let mut galaxy = Galaxy::new()?;
 
-    let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter);
-    let arcball = ArcBallCamera::new(meters!(0.5), &mut gpu.write(), &mut interpreter);
+    let gpu = Gpu::new(&mut window.write(), Default::default(), &mut interpreter)?;
 
     ///////////////////////////////////////////////////////////
     let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
@@ -511,25 +532,30 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     )?;
     let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere_buffer.read(), &gpu.read())?;
     let world = WorldRenderPass::new(
-        &mut gpu.write(),
-        &mut interpreter,
-        &globals.read(),
+        &terrain_buffer.read(),
         &atmosphere_buffer.read(),
         &stars_buffer.read(),
-        &terrain_buffer.read(),
-    )?;
-    let widgets = WidgetBuffer::new(&mut gpu.write(), &mut interpreter)?;
-    let ui = UiRenderPass::new(
-        &mut gpu.write(),
         &globals.read(),
+        &mut gpu.write(),
+        &mut interpreter,
+    )?;
+    let widgets = WidgetBuffer::new(
+        mapper,
+        &mut gpu.write(),
+        &mut interpreter,
+        &app_dirs.state_dir,
+    )?;
+    let ui = UiRenderPass::new(
         &widgets.read(),
         &world.read(),
+        &globals.read(),
+        &mut gpu.write(),
     )?;
     let composite = Arc::new(RwLock::new(CompositeRenderPass::new(
-        &mut gpu.write(),
-        &globals.read(),
-        &world.read(),
         &ui.read(),
+        &world.read(),
+        &globals.read(),
+        &mut gpu.write(),
     )?));
 
     let mut frame_graph = FrameGraph::new(
@@ -550,6 +576,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     ///////////////////////////////////////////////////////////
     // Scene Setup
     let start = Instant::now();
+    let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
     shapes
         .write()
         .set_shared_palette(&system_palette, &gpu.read());
@@ -579,7 +606,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
             &mut tracker,
         )?;
 
-        // shapes.write().ensure_uploaded(&mut gpu.write())?;
+        // shapes.write().finish_open_chunks(&mut gpu.write())?;
 
         for info in mm.objects() {
             if info.xt().ot().shape.is_none() {
@@ -746,7 +773,7 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
     }
     shapes
         .write()
-        .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
+        .finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()
@@ -755,12 +782,9 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
 
     {
         let interp = &mut interpreter;
-        gpu.write().add_default_bindings(interp)?;
-        orrery.write().add_default_bindings(interp)?;
-        arcball.write().add_default_bindings(interp)?;
-        globals.write().add_default_bindings(interp)?;
-        world.write().add_default_bindings(interp)?;
         system.write().add_default_bindings(interp)?;
+        globals.write().add_debug_bindings(interp)?;
+        world.write().add_debug_bindings(interp)?;
     }
 
     let catalog = Arc::new(AsyncRwLock::new(catalogs.steal_best()));
@@ -801,59 +825,53 @@ fn window_main(window: Window, input_controller: &InputController) -> Result<()>
         now = next_now;
 
         {
-            let logical_extent: Extent<AbsSize> = gpu.read().logical_size().into();
-            let scale_factor = { gpu.read().scale_factor() };
-            frame_graph.widgets.write().handle_events(
+            frame_graph.widgets_mut().track_state_changes(
                 now,
                 &input_controller.poll_events()?,
+                &window.read(),
                 interpreter.clone(),
-                scale_factor,
-                logical_extent,
             )?;
-            frame_graph
-                .widgets
-                .write()
-                .layout_for_frame(now, &mut gpu.write())?;
+            frame_graph.globals_mut().track_state_changes(
+                arcball.read().camera(),
+                &orrery.read(),
+                &window.read(),
+            );
+            frame_graph.terrain_mut().track_state_changes(
+                arcball.read_recursive().camera(),
+                system.write().get_camera(arcball.read_recursive().camera()),
+                catalog.clone(),
+                &async_rt,
+            )?;
+            frame_graph.shapes_mut().track_state_changes(
+                &system_start,
+                &now,
+                arcball.read().camera(),
+                galaxy.world_mut(),
+            );
         }
 
-        arcball.write().think();
+        arcball.write().track_state_changes();
 
         let mut tracker = Default::default();
-        frame_graph.globals().make_upload_buffer(
-            arcball.read().camera(),
-            &gpu.read(),
-            &mut tracker,
-        )?;
-        frame_graph.atmosphere().make_upload_buffer(
-            convert(orrery.read().sun_direction()),
-            &gpu.read(),
-            &mut tracker,
-        )?;
-        frame_graph.terrain_mut().make_upload_buffer(
-            arcball.read_recursive().camera(),
-            system.write().get_camera(arcball.read_recursive().camera()),
-            catalog.clone(),
-            &mut async_rt,
-            &mut gpu.write(),
-            &mut tracker,
-        )?;
-        frame_graph.shapes_mut().make_upload_buffer(
-            &system_start,
-            &now,
-            arcball.read().camera(),
-            galaxy.world_mut(),
-            &gpu.read(),
-            &mut tracker,
-        )?;
-        frame_graph.widgets.write().make_upload_buffer(
+        frame_graph
+            .globals_mut()
+            .ensure_uploaded(&gpu.read(), &mut tracker)?;
+        frame_graph
+            .terrain_mut()
+            .ensure_uploaded(&async_rt, &mut gpu.write(), &mut tracker)?;
+        frame_graph
+            .shapes_mut()
+            .ensure_uploaded(&gpu.read(), &mut tracker)?;
+        frame_graph.widgets_mut().ensure_uploaded(
             now,
-            &mut gpu.write(),
             &async_rt,
+            &mut gpu.write(),
+            &window.read(),
             &mut tracker,
         )?;
-        if !frame_graph.run(&mut gpu.write(), tracker)? {
-            let sz = gpu.read().physical_size();
-            gpu.write().on_resize(sz.width as i64, sz.height as i64)?;
+        if !frame_graph.run(gpu.clone(), tracker)? {
+            gpu.write()
+                .on_display_config_changed(window.read().config())?;
         }
 
         system

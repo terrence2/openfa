@@ -38,15 +38,15 @@ members = [
     "libs/galaxy",
 
     "libs/wgpu-buffer/font_fnt",
+    "libs/wgpu-buffer/ofa_groups",
+    "libs/wgpu-buffer/pic_uploader",
     "libs/wgpu-buffer/shape_chunk",
     "libs/wgpu-buffer/shape_instance",
     "libs/wgpu-buffer/t2_tile_set",
-    "libs/wgpu-buffer/ofa_groups",
 
     "libs/util/i386",
     "libs/util/lzss",
     "libs/util/peff",
-    "libs/util/pic_uploader",
     "libs/util/pkware",
     "libs/util/reverse",
 ]
@@ -73,7 +73,9 @@ log = "^ 0.4"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
 paste = "^ 1"
+platform-dirs = "^ 0.3"
 structopt = "^ 0.3"
+terminal_size = "^ 0.1"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 winit = { version = "^ 0.24", features = ["web-sys"] }
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
@@ -96,7 +98,6 @@ physical_constants = { path = "libs/nitrogen/util/physical_constants" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
-universe = { path = "libs/nitrogen/sim/universe" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
 galaxy = { path = "libs/galaxy" }
@@ -105,4 +106,5 @@ mmm = { path = "libs/asset/mmm" }
 pal = { path = "libs/asset/pal" }
 shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
 t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
+window = { path = "libs/nitrogen/system/window" }
 xt = { path = "libs/asset/xt" }

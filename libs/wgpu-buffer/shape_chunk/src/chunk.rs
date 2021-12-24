@@ -22,6 +22,7 @@ use catalog::Catalog;
 use gpu::{Gpu, UploadTracker};
 use image::Rgba;
 use lazy_static::lazy_static;
+use log::info;
 use pal::Palette;
 use parking_lot::RwLock;
 use pic_uploader::PicUploader;
@@ -173,7 +174,6 @@ impl OpenChunk {
                 gpu,
                 atlas_size,
                 atlas_size,
-                [0, 0, 0, 0],
                 wgpu::TextureFormat::Rgba8Unorm,
                 wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
             )?,
@@ -245,7 +245,6 @@ pub struct ClosedChunk {
     atlas_bind_group: wgpu::BindGroup,
 
     chunk_id: ChunkId,
-    chunk_flags: ChunkFlags,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
 
@@ -263,7 +262,7 @@ impl ClosedChunk {
     ) -> Result<Self> {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
         let a_size = chunk.atlas_packer.atlas_size();
-        println!(
+        info!(
             "uploading vertex/atlas buffer {:?} size {} / {} ({} total) bytes",
             chunk.chunk_flags,
             v_size,
@@ -321,7 +320,6 @@ impl ClosedChunk {
             vertex_count: chunk.vertex_upload_buffer.len() as u32,
             atlas_bind_group,
             chunk_id: chunk.chunk_id,
-            chunk_flags: chunk.chunk_flags,
             chunk_parts: chunk.chunk_parts,
         })
     }

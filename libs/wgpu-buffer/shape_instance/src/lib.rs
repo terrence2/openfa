@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+pub mod component;
 mod components;
 mod instance_block;
 
@@ -19,6 +20,7 @@ pub use crate::instance_block::SlotId;
 pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
+use crate::component::{Rotation, Scale, Transform};
 use crate::instance_block::{BlockId, InstanceBlock, TransformType};
 use absolute_unit::Kilometers;
 use anyhow::Result;
@@ -43,7 +45,6 @@ use std::{
     time::Instant,
 };
 use tokio::runtime::Runtime;
-use universe::component::{Rotation, Scale, Transform};
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -273,7 +274,7 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn ensure_uploaded(
+    pub fn finish_open_chunks(
         &mut self,
         gpu: &mut Gpu,
         async_rt: &Runtime,
@@ -301,15 +302,13 @@ impl ShapeInstanceBuffer {
         &self.bind_group_layout
     }
 
-    pub fn make_upload_buffer(
+    pub fn track_state_changes(
         &mut self,
         start: &Instant,
         now: &Instant,
         camera: &Camera,
         world: &mut World,
-        gpu: &Gpu,
-        tracker: &mut UploadTracker,
-    ) -> Result<()> {
+    ) {
         // Reset cursor for our next upload.
         for block in self.blocks.values_mut() {
             block.begin_frame();
@@ -407,7 +406,9 @@ impl ShapeInstanceBuffer {
                 xform_count,
             );
         }
+    }
 
+    pub fn ensure_uploaded(&mut self, gpu: &Gpu, tracker: &mut UploadTracker) -> Result<()> {
         for block in self.blocks.values() {
             block.make_upload_buffer(gpu, tracker);
         }
@@ -456,21 +457,20 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use gpu::TestResources;
     use lib::CatalogManager;
-    use nitrous::Interpreter;
     use pal::Palette;
     use shape_chunk::DrawSelection;
-    use winit::{event_loop::EventLoop, window::Window};
 
     #[cfg(unix)]
     #[test]
     fn test_creation() -> Result<()> {
-        use winit::platform::unix::EventLoopExtUnix;
-        let event_loop = EventLoop::<()>::new_any_thread();
-        let window = Window::new(&event_loop)?;
-        let mut interpreter = Interpreter::default();
-        let gpu = Gpu::new(window, Default::default(), &mut interpreter)?;
-        let async_rt = Runtime::new()?;
+        let TestResources {
+            async_rt,
+            mut interpreter,
+            gpu,
+            ..
+        } = Gpu::for_test_unix()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -526,7 +526,7 @@ mod test {
         }
         inst_man
             .write()
-            .ensure_uploaded(&mut gpu.write(), &async_rt, &mut tracker)?;
+            .finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
         gpu.read().device().poll(wgpu::Maintain::Wait);
 
         Ok(())

@@ -20,15 +20,30 @@ mod special;
 mod util;
 mod waypoint;
 
+pub use crate::{
+    formation::{FormationControl, FormationKind, WingFormation},
+    special::SpecialInfo,
+};
+
 use crate::util::maybe_hex;
-use crate::{obj::ObjectInfo, special::SpecialInfo, waypoint::Waypoints};
+use crate::{obj::ObjectInfo, waypoint::Waypoints};
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
+use geodesy::CartesianOrigin;
 use lib::from_dos_string;
 use log::debug;
 use std::{borrow::Cow, collections::HashMap, str::FromStr};
 use xt::TypeManager;
+
+/// Map coordinates are relative to the bottom left corner.
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub struct MmmOrigin;
+impl CartesianOrigin for MmmOrigin {
+    fn origin_name() -> &'static str {
+        "missionmap"
+    }
+}
 
 /// This mission is used to show the "vehicle info" screen in the reference.
 ///
@@ -260,6 +275,11 @@ impl MapName {
         let mut number = None;
         if let Some(digit) = maybe_number.to_digit(10) {
             number = Some(digit);
+            name = name[..name.len() - 1].to_owned();
+        } else if maybe_number == 'F' {
+            // Note that ~KURILE and ~TVIET also exist; the E in kurile would be parsed as hex,
+            // so we can't just interpret as hex here. I don't know the significance of F.
+            number = Some(15);
             name = name[..name.len() - 1].to_owned();
         }
 
