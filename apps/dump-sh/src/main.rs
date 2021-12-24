@@ -80,7 +80,6 @@ struct Opt {
     catalog_opts: CatalogOpts,
 }
 
-#[allow(clippy::cognitive_complexity)] // Impossible to organize if you don't know what the goal is.
 fn main() -> Result<()> {
     let opt = Opt::from_args();
     let level = if opt.verbose {
@@ -93,7 +92,7 @@ fn main() -> Result<()> {
     for (game, catalog) in catalogs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                show_sh(fid, game, catalog, &opt)?;
+                show_sh(fid, game, &catalog, &opt)?;
             }
         }
     }

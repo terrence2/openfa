@@ -50,7 +50,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_mm(fid, &type_manager, catalog, &opt)?;
+                show_mm(fid, &type_manager, &catalog, &opt)?;
             }
         }
     }

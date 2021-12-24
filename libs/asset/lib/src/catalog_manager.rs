@@ -18,10 +18,12 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, DirectoryDrawer};
+use parking_lot::{RwLock, RwLockReadGuard};
 use std::{
     collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use structopt::StructOpt;
 
@@ -56,7 +58,7 @@ pub struct CatalogOpts {
 /// can get our hands on.
 pub struct CatalogManager {
     selected_game: Option<usize>,
-    catalogs: Vec<(&'static GameInfo, Catalog)>,
+    catalogs: Vec<(&'static GameInfo, Arc<RwLock<Catalog>>)>,
 }
 
 impl CatalogManager {
@@ -125,7 +127,7 @@ impl CatalogManager {
 
             Self {
                 selected_game: Some(0),
-                catalogs: vec![(game, catalog)],
+                catalogs: vec![(game, Arc::new(RwLock::new(catalog)))],
             }
         } else {
             println!(
@@ -150,7 +152,9 @@ impl CatalogManager {
         // Load any additional libdirs into the catalog
         for (_, catalog) in catalogs.catalogs.iter_mut() {
             for (i, lib_path) in opts.lib_paths.iter().enumerate() {
-                catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
+                catalog
+                    .write()
+                    .add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
             }
         }
 
@@ -196,7 +200,7 @@ impl CatalogManager {
                     if cdrom2dir.exists() {
                         Self::populate_catalog(game, &cdrom2dir, 0, &mut game_catalog)?;
                     }
-                    catalogs.push((game, game_catalog));
+                    catalogs.push((game, Arc::new(RwLock::new(game_catalog))));
                 }
             }
         }
@@ -207,25 +211,34 @@ impl CatalogManager {
         })
     }
 
-    pub fn all(&self) -> impl Iterator<Item = &(&'static GameInfo, Catalog)> + '_ {
-        self.catalogs.iter()
+    pub fn all(&self) -> impl Iterator<Item = (&'static GameInfo, RwLockReadGuard<Catalog>)> + '_ {
+        self.catalogs
+            .iter()
+            .map(|(gi, catalog)| (*gi, catalog.read()))
     }
 
-    pub fn selected(&self) -> Box<dyn Iterator<Item = &(&'static GameInfo, Catalog)> + '_> {
+    pub fn selected(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&'static GameInfo, RwLockReadGuard<Catalog>)> + '_> {
         if let Some(selected) = self.selected_game {
-            Box::new(self.catalogs.iter().skip(selected).take(1))
+            Box::new(
+                self.catalogs
+                    .iter()
+                    .skip(selected)
+                    .take(1)
+                    .map(|(gi, catalog)| (*gi, catalog.read())),
+            )
         } else {
             Box::new(self.all())
         }
     }
 
-    pub fn best(&self) -> &Catalog {
-        &self.catalogs[self.selected_game.unwrap_or(0)].1
+    pub fn best(&self) -> RwLockReadGuard<Catalog> {
+        self.catalogs[self.selected_game.unwrap_or(0)].1.read()
     }
 
-    pub fn steal_best(&mut self) -> Catalog {
-        let (_, catalog) = self.catalogs.remove(self.selected_game.unwrap_or(0));
-        catalog
+    pub fn best_owned(&self) -> Arc<RwLock<Catalog>> {
+        self.catalogs[self.selected_game.unwrap_or(0)].1.clone()
     }
 
     fn populate_catalog(

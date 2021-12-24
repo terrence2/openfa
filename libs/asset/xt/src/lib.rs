@@ -173,7 +173,7 @@ mod tests {
                 let meta = catalog.stat_sync(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let types = TypeManager::empty();
-                let ty = types.load(meta.name(), catalog)?;
+                let ty = types.load(meta.name(), &catalog)?;
                 // Only one misspelling in 2500 files.
                 assert!(ty.ot().file_name() == meta.name() || meta.name() == "SMALLARM.JT");
                 // println!(

@@ -261,11 +261,12 @@ mod tests {
         let TestResources { gpu, async_rt, .. } = Gpu::for_test_unix()?;
 
         let catalogs = CatalogManager::for_testing()?;
+        let catalog = catalogs.best();
 
-        let palette = Palette::from_bytes(&catalogs.best().read_name_sync("PALETTE.PAL")?)?;
+        let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let mut uploader = PicUploader::new(&gpu.read())?;
         uploader.set_shared_palette(&palette, &gpu.read());
-        let data = catalogs.best().read_name_sync("CATB.PIC")?;
+        let data = catalog.read_name_sync("CATB.PIC")?;
         let (buffer, width, height, _stride) =
             uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::MAP_READ)?;
         uploader.dispatch_singleton(&mut gpu.write())?;

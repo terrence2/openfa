@@ -26,11 +26,11 @@ use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, DetailLevelOpts, Gpu};
+use gpu::{make_frame_graph, CpuDetailLevel, DetailLevelOpts, Gpu, GpuDetailLevel};
 use input::{InputController, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogOpts};
 use mmm::MissionMap;
-use nitrous::{Interpreter, Value};
+use nitrous::{Interpreter, StartupOpts, Value};
 use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
 use pal::Palette;
@@ -40,7 +40,6 @@ use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
 use std::{
     fs::create_dir_all,
-    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -65,18 +64,6 @@ use xt::TypeManager;
 #[derive(Debug, StructOpt)]
 #[structopt(set_term_width = if let Some((Width(w), _)) = terminal_size() { w as usize } else { 80 })]
 struct Opt {
-    /// Run a command after startup
-    #[structopt(short, long)]
-    run_command: Option<String>,
-
-    /// Run given file after startup
-    #[structopt(short = "x", long)]
-    execute: Option<PathBuf>,
-
-    /// The map file(s) to view
-    // #[structopt(short, long)]
-    // map_names: Vec<String>,
-
     #[structopt(flatten)]
     catalog_opts: CatalogOpts,
 
@@ -85,6 +72,9 @@ struct Opt {
 
     #[structopt(flatten)]
     display: DisplayOpts,
+
+    #[structopt(flatten)]
+    startup_opts: StartupOpts,
 }
 
 #[derive(Debug)]
@@ -476,7 +466,59 @@ make_frame_graph!(
     }
 );
 
+fn build_frame_graph(
+    cpu_detail: CpuDetailLevel,
+    gpu_detail: GpuDetailLevel,
+    app_dirs: &AppDirs,
+    catalog: &Catalog,
+    mapper: Arc<RwLock<EventMapper>>,
+    window: &mut Window,
+    interpreter: &mut Interpreter,
+) -> Result<(Arc<RwLock<Gpu>>, FrameGraph)> {
+    let gpu = Gpu::new(window, Default::default(), interpreter)?;
+    let atmosphere = AtmosphereBuffer::new(&mut gpu.write())?;
+    let fullscreen = FullscreenBuffer::new(&gpu.read());
+    let globals = GlobalParametersBuffer::new(gpu.read().device(), interpreter);
+    let stars = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
+    let terrain = TerrainBuffer::new(
+        catalog,
+        cpu_detail,
+        gpu_detail,
+        &globals.read(),
+        &mut gpu.write(),
+        interpreter,
+    )?;
+    let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere.read(), &gpu.read())?;
+    let world = WorldRenderPass::new(
+        &terrain.read(),
+        &atmosphere.read(),
+        &stars.read(),
+        &globals.read(),
+        &mut gpu.write(),
+        interpreter,
+    )?;
+    let widgets = WidgetBuffer::new(mapper, &mut gpu.write(), interpreter, &app_dirs.state_dir)?;
+    let ui = UiRenderPass::new(
+        &widgets.read(),
+        &world.read(),
+        &globals.read(),
+        &mut gpu.write(),
+    )?;
+    let composite = Arc::new(RwLock::new(CompositeRenderPass::new(
+        &ui.read(),
+        &world.read(),
+        &globals.read(),
+        &mut gpu.write(),
+    )?));
+
+    let frame_graph = FrameGraph::new(
+        atmosphere, fullscreen, globals, shapes, stars, terrain, widgets, world, ui, composite,
+    )?;
+    Ok((gpu, frame_graph))
+}
+
 fn main() -> Result<()> {
+    let _opt = Opt::from_args(); // process help before opening a window
     env_logger::init();
     InputSystem::run_forever(simulation_main)
 }
@@ -506,74 +548,34 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter)?;
     let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter)?;
 
-    let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    let catalog = catalogs.best();
+    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    let catalog = catalogs.best_owned();
 
     let timeline = Timeline::new(&mut interpreter);
     let mut galaxy = Galaxy::new()?;
 
-    let gpu = Gpu::new(&mut window.write(), Default::default(), &mut interpreter)?;
-
     ///////////////////////////////////////////////////////////
-    let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
-    let fullscreen_buffer = FullscreenBuffer::new(&gpu.read());
-    let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter);
-    let stars_buffer = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
-    let terrain_buffer = TerrainBuffer::new(
-        catalog,
+    let (gpu, mut frame_graph) = build_frame_graph(
         cpu_detail,
         gpu_detail,
-        &globals.read(),
-        &mut gpu.write(),
-        &mut interpreter,
-    )?;
-    let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere_buffer.read(), &gpu.read())?;
-    let world = WorldRenderPass::new(
-        &terrain_buffer.read(),
-        &atmosphere_buffer.read(),
-        &stars_buffer.read(),
-        &globals.read(),
-        &mut gpu.write(),
-        &mut interpreter,
-    )?;
-    let widgets = WidgetBuffer::new(
+        &app_dirs,
+        &catalog.read(),
         mapper,
-        &mut gpu.write(),
+        &mut window.write(),
         &mut interpreter,
-        &app_dirs.state_dir,
     )?;
-    let ui = UiRenderPass::new(
-        &widgets.read(),
-        &world.read(),
-        &globals.read(),
-        &mut gpu.write(),
-    )?;
-    let composite = Arc::new(RwLock::new(CompositeRenderPass::new(
-        &ui.read(),
-        &world.read(),
-        &globals.read(),
-        &mut gpu.write(),
-    )?));
+    let globals = frame_graph.globals.clone();
+    let widgets = frame_graph.widgets.clone();
+    let shapes = frame_graph.shapes.clone();
+    let world = frame_graph.world.clone();
+    let terrain_buffer = frame_graph.terrain.clone();
 
-    let mut frame_graph = FrameGraph::new(
-        atmosphere_buffer,
-        fullscreen_buffer,
-        globals.clone(),
-        shapes.clone(),
-        stars_buffer,
-        terrain_buffer.clone(),
-        widgets.clone(),
-        world.clone(),
-        ui,
-        composite,
-    )?;
-
-    let system = System::new(catalog, interpreter.clone(), widgets)?;
+    let system = System::new(&catalog.read(), interpreter.clone(), widgets)?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
     let start = Instant::now();
-    let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+    let system_palette = Palette::from_bytes(&catalog.read().read_name_sync("PALETTE.PAL")?)?;
     shapes
         .write()
         .set_shared_palette(&system_palette, &gpu.read());
@@ -585,7 +587,8 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         &gpu.read(),
     )?;
     let type_manager = TypeManager::empty();
-    for mm_fid in catalog.find_with_extension("MM")? {
+    for mm_fid in catalog.read().find_with_extension("MM")? {
+        let catalog = catalog.read();
         let name = catalog.stat_sync(mm_fid)?.name().to_owned();
         if name.starts_with('~') || name.starts_with('$') {
             continue;
@@ -593,11 +596,11 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         println!("Loading {}...", name);
         let raw = catalog.read_sync(mm_fid)?;
         let mm_content = from_dos_string(raw);
-        let mm = MissionMap::from_str(&mm_content, &type_manager, catalog)?;
+        let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
         let t2_mapper = t2_tile_set.add_map(
             &system_palette,
             &mm,
-            catalog,
+            &catalog,
             &mut gpu.write(),
             &mut tracker,
         )?;
@@ -614,7 +617,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 info.xt().ot().shape.as_ref().expect("a shape file"),
                 DrawSelection::NormalModel,
-                catalog,
+                &catalog,
                 &mut gpu.write(),
                 &mut tracker,
             )?;
@@ -742,12 +745,12 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             let yi = i / side_len;
             let pt_stat = catalog.stat_sync(*pt_fid)?;
             let pt_name = pt_stat.name();
-            let xt = type_manager.load(pt_name, catalog)?;
+            let xt = type_manager.load(pt_name, &catalog)?;
             let pt = xt.pt()?;
             let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
                 pt.nt.ot.shape.as_ref().unwrap(),
                 DrawSelection::NormalModel,
-                catalog,
+                &catalog,
                 &mut gpu.write(),
                 &mut tracker,
             )?;
@@ -781,29 +784,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         world.write().add_debug_bindings(interp)?;
     }
 
-    let catalog = Arc::new(RwLock::new(catalogs.steal_best()));
-
-    if let Some(command) = opt.run_command.as_ref() {
-        let rv = interpreter.interpret_once(command)?;
-        println!("{}", rv);
-    }
-
-    if let Ok(code) = std::fs::read_to_string("autoexec.n2o") {
-        let rv = interpreter.interpret_once(&code);
-        println!("Execution Completed: {:?}", rv);
-    }
-
-    if let Some(exec_file) = opt.execute {
-        match std::fs::read_to_string(&exec_file) {
-            Ok(code) => {
-                let rv = interpreter.interpret_async(code);
-                println!("Execution Completed: {:?}", rv);
-            }
-            Err(e) => {
-                println!("Unable to read file '{:?}': {}", exec_file, e);
-            }
-        }
-    }
+    opt.startup_opts.on_startup(&mut interpreter)?;
 
     const STEP: Duration = Duration::from_micros(16_666);
     let mut now = Instant::now();

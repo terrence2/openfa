@@ -50,7 +50,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_mission(fid, &type_manager, catalog, &opt)?;
+                show_mission(fid, &type_manager, &catalog, &opt)?;
             }
         }
     }

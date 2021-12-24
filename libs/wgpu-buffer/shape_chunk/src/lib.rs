@@ -70,7 +70,7 @@ mod test {
                 let (_chunk_id, shape_id) = chunk_man.upload_shape(
                     meta.name(),
                     DrawSelection::NormalModel,
-                    catalog,
+                    &catalog,
                     &mut gpu.write(),
                     &mut tracker,
                 )?;

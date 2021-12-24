@@ -44,7 +44,7 @@ fn main() -> Result<()> {
             for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat_sync(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                show_t2(fid, opt.profile, catalog)?;
+                show_t2(fid, opt.profile, &catalog)?;
             }
         }
     }

@@ -922,7 +922,7 @@ mod tests {
             let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
             let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter);
             let terrain = TerrainBuffer::new(
-                catalog,
+                &catalog,
                 CpuDetailLevel::Low,
                 GpuDetailLevel::Low,
                 &globals.read(),
@@ -952,12 +952,12 @@ mod tests {
                 }
 
                 let contents = from_dos_string(catalog.read_sync(fid)?);
-                let mm = MissionMap::from_str(&contents, &type_manager, catalog)?;
+                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
                 let mut tracker = Default::default();
                 ts.add_map(
                     &system_palette,
                     &mm,
-                    catalog,
+                    &catalog,
                     &mut gpu.write(),
                     &mut tracker,
                 )?;
