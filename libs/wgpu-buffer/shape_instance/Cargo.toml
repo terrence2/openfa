@@ -13,6 +13,7 @@ parking_lot = "^ 0.11"
 tokio = { version = "^ 1.0", features = ["rt-multi-thread", "macros", "io-util", "fs", "sync"] }
 wgpu = "^ 0.7"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+geodesy = { path = "../../nitrogen/util/geodesy" }
 atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../nitrogen/sim/camera" }
 catalog = { path = "../../nitrogen/system/catalog" }
@@ -22,7 +23,6 @@ ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
 pal = { path = "../../asset/pal" }
 shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
 shape_chunk = { path = "../../wgpu-buffer/shape_chunk" }
-universe = { path = "../../nitrogen/sim/universe" }
 
 [dev-dependencies]
 lib = { path = "../../asset/lib" }

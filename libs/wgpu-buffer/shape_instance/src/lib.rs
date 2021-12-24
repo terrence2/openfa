@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+pub mod component;
 mod components;
 mod instance_block;
 
@@ -19,6 +20,7 @@ pub use crate::instance_block::SlotId;
 pub use components::*;
 pub use shape_chunk::{DrawSelection, DrawState};
 
+use crate::component::{Rotation, Scale, Transform};
 use crate::instance_block::{BlockId, InstanceBlock, TransformType};
 use absolute_unit::Kilometers;
 use anyhow::Result;
@@ -43,7 +45,6 @@ use std::{
     time::Instant,
 };
 use tokio::runtime::Runtime;
-use universe::component::{Rotation, Scale, Transform};
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());

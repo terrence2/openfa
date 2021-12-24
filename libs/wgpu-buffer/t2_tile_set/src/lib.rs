@@ -33,6 +33,7 @@ use parking_lot::RwLock;
 use pic_uploader::PicUploader;
 use shader_shared::Group;
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     mem,
     num::NonZeroU64,
@@ -807,6 +808,14 @@ impl T2TileSet {
 }
 
 impl TileSet for T2TileSet {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
     fn begin_visibility_update(&mut self) {}
 
     fn note_required(&mut self, _visible_patch: &VisiblePatch) {}

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, radians};
 use animate::Timeline;
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use atmosphere::AtmosphereBuffer;
 use camera::{ArcBallCamera, Camera};
 use catalog::Catalog;
@@ -35,9 +35,11 @@ use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
 use orrery::Orrery;
 use pal::Palette;
 use parking_lot::RwLock;
+use platform_dirs::AppDirs;
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
 use std::{
+    fs::create_dir_all,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
@@ -73,8 +75,8 @@ struct Opt {
     execute: Option<PathBuf>,
 
     /// The map file(s) to view
-    #[structopt(short, long)]
-    map_names: Vec<String>,
+    // #[structopt(short, long)]
+    // map_names: Vec<String>,
 
     #[structopt(flatten)]
     catalog_opts: CatalogOpts,
@@ -106,7 +108,6 @@ struct System {
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
     interpreter: Interpreter,
-    widgets: Arc<RwLock<WidgetBuffer>>,
     visible_widgets: VisibleWidgets,
 }
 
@@ -117,7 +118,7 @@ impl System {
         interpreter: Interpreter,
         widgets: Arc<RwLock<WidgetBuffer>>,
     ) -> Result<Arc<RwLock<Self>>> {
-        let visible_widgets = Self::build_gui(catalog, widgets.clone())?;
+        let visible_widgets = Self::build_gui(catalog, widgets)?;
         let system = Arc::new(RwLock::new(Self {
             exit: false,
             pin_camera: false,
@@ -127,7 +128,6 @@ impl System {
             target_offset: 0,
             targets: Vec::new(),
             interpreter,
-            widgets,
             visible_widgets,
         }));
         let demo = Value::Module(system.read().visible_widgets.demo_label.clone());
@@ -489,6 +489,11 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let cpu_detail = opt.detail.cpu_detail();
     let gpu_detail = opt.detail.gpu_detail();
 
+    let app_dirs = AppDirs::new(Some("openfa"), true)
+        .ok_or_else(|| anyhow!("unable to find app directories"))?;
+    create_dir_all(&app_dirs.config_dir)?;
+    create_dir_all(&app_dirs.state_dir)?;
+
     let mut interpreter = Interpreter::default();
     let mapper = EventMapper::new(&mut interpreter);
 
@@ -505,7 +510,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
     let catalog = catalogs.best();
 
-    let mut async_rt = Runtime::new()?;
+    let async_rt = Runtime::new()?;
 
     let timeline = Timeline::new(&mut interpreter);
     let mut galaxy = Galaxy::new()?;
@@ -527,25 +532,30 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     )?;
     let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere_buffer.read(), &gpu.read())?;
     let world = WorldRenderPass::new(
-        &mut gpu.write(),
-        &mut interpreter,
-        &globals.read(),
+        &terrain_buffer.read(),
         &atmosphere_buffer.read(),
         &stars_buffer.read(),
-        &terrain_buffer.read(),
-    )?;
-    let widgets = WidgetBuffer::new(mapper, &mut gpu.write(), &mut interpreter)?;
-    let ui = UiRenderPass::new(
-        &mut gpu.write(),
         &globals.read(),
+        &mut gpu.write(),
+        &mut interpreter,
+    )?;
+    let widgets = WidgetBuffer::new(
+        mapper,
+        &mut gpu.write(),
+        &mut interpreter,
+        &app_dirs.state_dir,
+    )?;
+    let ui = UiRenderPass::new(
         &widgets.read(),
         &world.read(),
+        &globals.read(),
+        &mut gpu.write(),
     )?;
     let composite = Arc::new(RwLock::new(CompositeRenderPass::new(
-        &mut gpu.write(),
-        &globals.read(),
-        &world.read(),
         &ui.read(),
+        &world.read(),
+        &globals.read(),
+        &mut gpu.write(),
     )?));
 
     let mut frame_graph = FrameGraph::new(
@@ -818,8 +828,8 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             frame_graph.widgets_mut().track_state_changes(
                 now,
                 &input_controller.poll_events()?,
-                interpreter.clone(),
                 &window.read(),
+                interpreter.clone(),
             )?;
             frame_graph.globals_mut().track_state_changes(
                 arcball.read().camera(),
@@ -830,7 +840,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
                 arcball.read_recursive().camera(),
                 system.write().get_camera(arcball.read_recursive().camera()),
                 catalog.clone(),
-                &mut async_rt,
+                &async_rt,
             )?;
             frame_graph.shapes_mut().track_state_changes(
                 &system_start,
@@ -852,14 +862,14 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         frame_graph
             .shapes_mut()
             .ensure_uploaded(&gpu.read(), &mut tracker)?;
-        frame_graph.widgets.write().ensure_uploaded(
+        frame_graph.widgets_mut().ensure_uploaded(
             now,
             &async_rt,
-            &window.read(),
             &mut gpu.write(),
+            &window.read(),
             &mut tracker,
         )?;
-        if !frame_graph.run(&mut gpu.write(), tracker)? {
+        if !frame_graph.run(gpu.clone(), tracker)? {
             gpu.write()
                 .on_display_config_changed(window.read().config())?;
         }

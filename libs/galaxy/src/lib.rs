@@ -13,8 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 //pub use legion::{entity::Entity, world::EntityStore};
-pub use universe::component::{Rotation, Scale, Transform};
-
 use absolute_unit::{degrees, feet, meters, radians, Degrees, Radians};
 use anyhow::Result;
 use geodesy::{GeoSurface, Graticule};
@@ -22,6 +20,7 @@ use legion::*;
 use nalgebra::{UnitQuaternion, Vector3};
 use shape_chunk::{ChunkPart, ShapeId};
 use shape_instance::{
+    component::{Rotation, Scale, Transform},
     ShapeFlagBuffer, ShapeRef, ShapeSlot, ShapeState, ShapeTransformBuffer, ShapeXformBuffer,
     SlotId,
 };
