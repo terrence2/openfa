@@ -39,7 +39,7 @@
 
  Mark Adler    madler@alumni.caltech.edu
 */
-use anyhow::{bail, ensure, Result};
+use anyhow::{ensure, Result};
 use lazy_static::lazy_static;
 use log::trace;
 
@@ -350,7 +350,7 @@ impl<'a> State<'a> {
             debug_assert_eq!(bitbuf, 0);
             bitbuf = self.inb()? as usize;
         }
-        bail!("ran out of codes");
+        unreachable!("ran out of codes")
     }
 
     /*
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn it_doesnt_crash() {
-        let paths = fs::read_dir("../../test_data/pkware").unwrap();
+        let paths = fs::read_dir("../../../test_data/pkware").unwrap();
         for i in paths {
             let entry = i.unwrap();
             let path = format!("{}", entry.path().display());

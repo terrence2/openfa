@@ -1071,12 +1071,13 @@ impl fmt::Display for ByteCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
     fn it_works() -> Result<()> {
+        /*
+        use std::fs;
         for game in &["ATF", "ATFGOLD", "ATFNATO", "FA", "MF", "USNF", "USNF97"] {
-            let dirname = format!("../../dump/i386/{}", game);
+            let dirname = format!("../../../dump/i386/{}", game);
             let paths = fs::read_dir(&dirname)?;
             for i in paths {
                 let entry = i?;
@@ -1094,6 +1095,7 @@ mod tests {
                 let _ = bc?;
             }
         }
+         */
 
         Ok(())
     }
