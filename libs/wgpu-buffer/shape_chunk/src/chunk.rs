@@ -35,7 +35,6 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tokio::runtime::Runtime;
 use zerocopy::{AsBytes, FromBytes};
 
 const CHUNK_MODEL_TARGET_COUNT: usize = 512;
@@ -257,7 +256,6 @@ impl ClosedChunk {
         dump_path: Option<PathBuf>,
         pic_uploader: &mut PicUploader,
         gpu: &mut gpu::Gpu,
-        async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<Self> {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
@@ -289,7 +287,7 @@ impl ClosedChunk {
             chunk.atlas_packer.dump(path);
         }
         let (_atlas_texture, atlas_view, _atlas_sampler) =
-            chunk.atlas_packer.finish(gpu, async_rt, tracker)?;
+            chunk.atlas_packer.finish(gpu, tracker)?;
 
         let atlas_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-chunk-atlas-bind-group"),

@@ -48,7 +48,6 @@ use structopt::StructOpt;
 use t2_tile_set::{T2Adjustment, T2TileSet};
 use terminal_size::{terminal_size, Width};
 use terrain::{TerrainBuffer, TileSet};
-use tokio::{runtime::Runtime, sync::RwLock as AsyncRwLock};
 use ui::UiRenderPass;
 use widget::{
     Border, Color, EventMapper, Expander, Label, Labeled, PositionH, PositionV, VerticalBox,
@@ -510,8 +509,6 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let mut catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
     let catalog = catalogs.best();
 
-    let async_rt = Runtime::new()?;
-
     let timeline = Timeline::new(&mut interpreter);
     let mut galaxy = Galaxy::new()?;
 
@@ -602,7 +599,6 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             &mm,
             catalog,
             &mut gpu.write(),
-            &async_rt,
             &mut tracker,
         )?;
 
@@ -620,7 +616,6 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
                 DrawSelection::NormalModel,
                 catalog,
                 &mut gpu.write(),
-                &async_rt,
                 &mut tracker,
             )?;
 
@@ -754,7 +749,6 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
                 DrawSelection::NormalModel,
                 catalog,
                 &mut gpu.write(),
-                &async_rt,
                 &mut tracker,
             )?;
             galaxy.create_building(
@@ -773,7 +767,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     }
     shapes
         .write()
-        .finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
+        .finish_open_chunks(&mut gpu.write(), &mut tracker)?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain_buffer
         .write()
@@ -787,7 +781,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         world.write().add_debug_bindings(interp)?;
     }
 
-    let catalog = Arc::new(AsyncRwLock::new(catalogs.steal_best()));
+    let catalog = Arc::new(RwLock::new(catalogs.steal_best()));
 
     if let Some(command) = opt.run_command.as_ref() {
         let rv = interpreter.interpret_once(command)?;
@@ -840,7 +834,6 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
                 arcball.read_recursive().camera(),
                 system.write().get_camera(arcball.read_recursive().camera()),
                 catalog.clone(),
-                &async_rt,
             )?;
             frame_graph.shapes_mut().track_state_changes(
                 &system_start,
@@ -858,13 +851,12 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             .ensure_uploaded(&gpu.read(), &mut tracker)?;
         frame_graph
             .terrain_mut()
-            .ensure_uploaded(&async_rt, &mut gpu.write(), &mut tracker)?;
+            .ensure_uploaded(&mut gpu.write(), &mut tracker)?;
         frame_graph
             .shapes_mut()
             .ensure_uploaded(&gpu.read(), &mut tracker)?;
         frame_graph.widgets_mut().ensure_uploaded(
             now,
-            &async_rt,
             &mut gpu.write(),
             &window.read(),
             &mut tracker,

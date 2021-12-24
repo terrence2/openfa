@@ -44,7 +44,6 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::runtime::Runtime;
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -237,13 +236,12 @@ impl ShapeInstanceBuffer {
         selection: DrawSelection,
         catalog: &Catalog,
         gpu: &mut Gpu,
-        async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
             .chunk_man
-            .upload_shape(name, selection, catalog, gpu, async_rt, tracker)?;
+            .upload_shape(name, selection, catalog, gpu, tracker)?;
 
         // Find or create a block that we can use to track the instance data.
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -274,13 +272,8 @@ impl ShapeInstanceBuffer {
         Ok((shape_id, slot_id))
     }
 
-    pub fn finish_open_chunks(
-        &mut self,
-        gpu: &mut Gpu,
-        async_rt: &Runtime,
-        tracker: &mut UploadTracker,
-    ) -> Result<()> {
-        self.chunk_man.finish_open_chunks(gpu, async_rt, tracker)
+    pub fn finish_open_chunks(&mut self, gpu: &mut Gpu, tracker: &mut UploadTracker) -> Result<()> {
+        self.chunk_man.finish_open_chunks(gpu, tracker)
     }
 
     #[inline]
@@ -466,7 +459,6 @@ mod test {
     #[test]
     fn test_creation() -> Result<()> {
         let TestResources {
-            async_rt,
             mut interpreter,
             gpu,
             ..
@@ -515,7 +507,6 @@ mod test {
                     DrawSelection::NormalModel,
                     catalog,
                     &mut gpu.write(),
-                    &async_rt,
                     &mut tracker,
                 )?;
                 all_chunks.push(chunk_id);
@@ -526,7 +517,7 @@ mod test {
         }
         inst_man
             .write()
-            .finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
+            .finish_open_chunks(&mut gpu.write(), &mut tracker)?;
         gpu.read().device().poll(wgpu::Maintain::Wait);
 
         Ok(())

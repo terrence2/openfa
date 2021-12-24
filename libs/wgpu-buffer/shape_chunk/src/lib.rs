@@ -35,7 +35,7 @@ mod test {
     #[cfg(unix)]
     #[test]
     fn test_load_all() -> Result<()> {
-        let TestResources { async_rt, gpu, .. } = Gpu::for_test_unix()?;
+        let TestResources { gpu, .. } = Gpu::for_test_unix()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -72,13 +72,12 @@ mod test {
                     DrawSelection::NormalModel,
                     catalog,
                     &mut gpu.write(),
-                    &async_rt,
                     &mut tracker,
                 )?;
                 all_shapes.push(shape_id);
             }
         }
-        chunk_man.finish_open_chunks(&mut gpu.write(), &async_rt, &mut tracker)?;
+        chunk_man.finish_open_chunks(&mut gpu.write(), &mut tracker)?;
         gpu.read().device().poll(wgpu::Maintain::Wait);
 
         for shape_id in &all_shapes {

@@ -24,7 +24,6 @@ use pal::Palette;
 use pic_uploader::PicUploader;
 use sh::RawShape;
 use std::{collections::HashMap, env, mem, num::NonZeroU64};
-use tokio::runtime::Runtime;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
@@ -133,15 +132,10 @@ impl ShapeChunkBuffer {
         })
     }
 
-    pub fn finish_open_chunks(
-        &mut self,
-        gpu: &mut Gpu,
-        async_rt: &Runtime,
-        tracker: &mut UploadTracker,
-    ) -> Result<()> {
+    pub fn finish_open_chunks(&mut self, gpu: &mut Gpu, tracker: &mut UploadTracker) -> Result<()> {
         let keys = self.open_chunks.keys().cloned().collect::<Vec<_>>();
         for chunk_flags in &keys {
-            self.finish_open_chunk(*chunk_flags, gpu, async_rt, tracker)?;
+            self.finish_open_chunk(*chunk_flags, gpu, tracker)?;
         }
         Ok(())
     }
@@ -150,7 +144,6 @@ impl ShapeChunkBuffer {
         &mut self,
         chunk_flags: ChunkFlags,
         gpu: &mut Gpu,
-        async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<()> {
         let open_chunk = self.open_chunks.remove(&chunk_flags).expect("a chunk");
@@ -173,7 +166,6 @@ impl ShapeChunkBuffer {
             dump_path,
             &mut self.pic_uploader,
             gpu,
-            async_rt,
             tracker,
         )?;
         self.closed_chunks.insert(chunk.chunk_id(), chunk);
@@ -193,7 +185,6 @@ impl ShapeChunkBuffer {
         selection: DrawSelection,
         catalog: &Catalog,
         gpu: &mut Gpu,
-        async_rt: &Runtime,
         tracker: &mut UploadTracker,
     ) -> Result<(ChunkId, ShapeId)> {
         let cache_key = format!("{}:{}", catalog.label(), name);
@@ -208,7 +199,7 @@ impl ShapeChunkBuffer {
 
         if let Some(chunk) = self.open_chunks.get(&chunk_flags) {
             if chunk.chunk_is_full() {
-                self.finish_open_chunk(chunk_flags, gpu, async_rt, tracker)?;
+                self.finish_open_chunk(chunk_flags, gpu, tracker)?;
                 self.open_chunks
                     .insert(chunk_flags, OpenChunk::new(chunk_flags, gpu)?);
             }
