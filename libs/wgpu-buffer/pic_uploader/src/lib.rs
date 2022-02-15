@@ -39,7 +39,7 @@ impl PicUploader {
                         // Palette
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
@@ -50,7 +50,7 @@ impl PicUploader {
                         // Unpalettized, unaligned buffer.
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
@@ -61,7 +61,7 @@ impl PicUploader {
                         // Target, aligned, texture
                         wgpu::BindGroupLayoutEntry {
                             binding: 2,
-                            visibility: wgpu::ShaderStage::COMPUTE,
+                            visibility: wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: false },
                                 has_dynamic_offset: false,
@@ -101,7 +101,7 @@ impl PicUploader {
         let palette_buffer = gpu.push_slice(
             "pic-upload-shared-palette",
             &palette.as_gpu_buffer(),
-            wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
+            wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::STORAGE,
         );
         self.shared_palette = Some(palette_buffer);
     }
@@ -110,7 +110,7 @@ impl PicUploader {
         &mut self,
         data: &[u8],
         gpu: &Gpu,
-        usage: wgpu::BufferUsage,
+        usage: wgpu::BufferUsages,
     ) -> Result<(wgpu::Buffer, u32, u32, u32)> {
         Ok(match Pic::read_format(data)? {
             PicFormat::Jpeg => {
@@ -124,7 +124,7 @@ impl PicUploader {
                     owned = gpu.push_slice(
                         "pic-upload-own-palette",
                         &own_palette.as_gpu_buffer(),
-                        wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
+                        wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::STORAGE,
                     );
                     &owned
                 } else {
@@ -134,14 +134,14 @@ impl PicUploader {
                 let raw_buffer = gpu.push_buffer(
                     "pic-upload-palettized",
                     &pic.pixel_data()?,
-                    wgpu::BufferUsage::COPY_SRC | wgpu::BufferUsage::STORAGE,
+                    wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::STORAGE,
                 );
                 let tgt_buffer_stride = Gpu::stride_for_row_size(pic.width() * 4);
                 let tgt_buffer_size = (tgt_buffer_stride * pic.height()) as u64;
                 let tgt_buffer = gpu.device().create_buffer(&wgpu::BufferDescriptor {
                     label: Some("pic-upload-tgt-buffer"),
                     size: tgt_buffer_size,
-                    usage: usage | wgpu::BufferUsage::STORAGE,
+                    usage: usage | wgpu::BufferUsages::STORAGE,
                     mapped_at_creation: false,
                 });
                 let bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
@@ -150,27 +150,27 @@ impl PicUploader {
                     entries: &[
                         wgpu::BindGroupEntry {
                             binding: 0,
-                            resource: wgpu::BindingResource::Buffer {
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: palette_buffer,
                                 offset: 0,
                                 size: NonZeroU64::new(4 * 256),
-                            },
+                            }),
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
-                            resource: wgpu::BindingResource::Buffer {
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: &raw_buffer,
                                 offset: 0,
                                 size: NonZeroU64::new(pic.raw_data().len() as u64),
-                            },
+                            }),
                         },
                         wgpu::BindGroupEntry {
                             binding: 2,
-                            resource: wgpu::BindingResource::Buffer {
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                 buffer: &tgt_buffer,
                                 offset: 0,
                                 size: NonZeroU64::new(tgt_buffer_size),
-                            },
+                            }),
                         },
                     ],
                 });
@@ -189,7 +189,10 @@ impl PicUploader {
         cpass.set_pipeline(&self.depalettize_pipeline);
         for (dispatch_group_count, bind_group) in self.depalettize.iter() {
             cpass.set_bind_group(0, bind_group, &[]);
-            cpass.dispatch(*dispatch_group_count, 1, 1)
+            const WORKGROUP_WIDTH: u32 = 65536;
+            let wg_x = (dispatch_group_count % WORKGROUP_WIDTH).max(1);
+            let wg_y = (dispatch_group_count / WORKGROUP_WIDTH).max(1);
+            cpass.dispatch(wg_x, wg_y, 1)
         }
         Ok(cpass)
     }
@@ -214,7 +217,7 @@ impl PicUploader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpu::TestResources;
+    use futures_lite::future::block_on;
     use image::RgbaImage;
     use lib::CatalogManager;
     use std::{
@@ -225,14 +228,15 @@ mod tests {
 
     #[test]
     fn it_works_quickly() -> Result<()> {
-        let TestResources { gpu, .. } = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test_unix()?;
+        let mut gpu = runtime.resource_mut::<Gpu>();
 
         let catalogs = CatalogManager::for_testing()?;
-        let mut uploader = PicUploader::new(&gpu.read())?;
+        let mut uploader = PicUploader::new(&gpu)?;
         let start = Instant::now();
         for (_game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            uploader.set_shared_palette(&palette, &gpu.read());
+            uploader.set_shared_palette(&palette, &gpu);
             for fid in catalog.find_with_extension("PIC")? {
                 let data = catalog.read_sync(fid)?;
                 let format = Pic::read_format(&data)?;
@@ -240,17 +244,17 @@ mod tests {
                     // Jpeg is not interesting for PicUploader since it's primary purpose is depalettizing.
                     continue;
                 }
-                uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::STORAGE)?;
+                uploader.upload(&data, &gpu, wgpu::BufferUsages::STORAGE)?;
             }
         }
         println!("prepare time: {:?}", start.elapsed());
 
         let start = Instant::now();
-        uploader.dispatch_singleton(&mut gpu.write())?;
+        uploader.dispatch_singleton(&mut gpu)?;
         println!("dispatch time: {:?}", start.elapsed());
 
         let start = Instant::now();
-        gpu.read().device().poll(wgpu::Maintain::Wait);
+        gpu.device().poll(wgpu::Maintain::Wait);
         println!("execute time: {:?}", start.elapsed());
 
         Ok(())
@@ -258,34 +262,29 @@ mod tests {
 
     #[test]
     fn round_trip() -> Result<()> {
-        let TestResources { gpu, async_rt, .. } = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test_unix()?;
+        let mut gpu = runtime.resource_mut::<Gpu>();
 
         let catalogs = CatalogManager::for_testing()?;
         let catalog = catalogs.best();
 
         let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-        let mut uploader = PicUploader::new(&gpu.read())?;
-        uploader.set_shared_palette(&palette, &gpu.read());
+        let mut uploader = PicUploader::new(&gpu)?;
+        uploader.set_shared_palette(&palette, &gpu);
         let data = catalog.read_name_sync("CATB.PIC")?;
         let (buffer, width, height, _stride) =
-            uploader.upload(&data, &gpu.read(), wgpu::BufferUsage::MAP_READ)?;
-        uploader.dispatch_singleton(&mut gpu.write())?;
-        gpu.read().device().poll(wgpu::Maintain::Wait);
+            uploader.upload(&data, &gpu, wgpu::BufferUsages::MAP_READ)?;
+        uploader.dispatch_singleton(&mut gpu)?;
+        gpu.device().poll(wgpu::Maintain::Wait);
 
         if env::var("DUMP") == Ok("1".to_owned()) {
-            let task = async_rt.spawn(async move {
-                let slice = buffer.slice(..);
-                slice.map_async(wgpu::MapMode::Read).await.unwrap();
-                let view = slice.get_mapped_range();
-                let rgba = RgbaImage::from_raw(width, height, view.as_bytes().to_vec()).unwrap();
-                rgba.save("../../../__dump__/test_pic_uploader_catb.png")
-                    .unwrap();
-            });
-            for _ in 0..10 {
-                gpu.read().device().poll(wgpu::Maintain::Wait);
-                std::thread::sleep(Duration::from_millis(16));
-            }
-            async_rt.block_on(task)?;
+            let reader = buffer.slice(..).map_async(wgpu::MapMode::Read);
+            gpu.device().poll(wgpu::Maintain::Wait);
+            block_on(reader)?;
+            let view = buffer.slice(..).get_mapped_range();
+            let rgba = RgbaImage::from_raw(width, height, view.as_bytes().to_vec()).unwrap();
+            rgba.save("../../../__dump__/test_pic_uploader_catb.png")
+                .unwrap();
         }
 
         Ok(())

@@ -404,7 +404,7 @@ impl System {
     }
 
     /// Maybe update visibility computation camera from the current view camera.
-    pub fn get_camera(&mut self, view_camera: &Camera) -> &Camera {
+    pub fn current_camera(&mut self, view_camera: &Camera) -> &Camera {
         if !self.pin_camera {
             self.visibility_camera = view_camera.to_owned();
         }
@@ -415,16 +415,24 @@ impl System {
 make_frame_graph!(
     FrameGraph {
         buffers: {
-            atmosphere: AtmosphereBuffer,
-            fullscreen: FullscreenBuffer,
-            globals: GlobalParametersBuffer,
-            shapes: ShapeInstanceBuffer,
-            stars: StarsBuffer,
-            terrain: TerrainBuffer,
+            // Note: lock order
+            // catalog
+            // system
+            // game
+            composite: CompositeRenderPass,
+            ui: UiRenderPass,
             widgets: WidgetBuffer,
             world: WorldRenderPass,
-            ui: UiRenderPass,
-            composite: CompositeRenderPass
+            shapes: ShapeInstanceBuffer,
+            terrain: TerrainBuffer,
+            atmosphere: AtmosphereBuffer,
+            stars: StarsBuffer,
+            fullscreen: FullscreenBuffer,
+            globals: GlobalParametersBuffer
+            // gpu
+            // window
+            // arcball
+            // orrery
         };
         passes: [
             // widget
@@ -476,10 +484,10 @@ fn build_frame_graph(
     interpreter: &mut Interpreter,
 ) -> Result<(Arc<RwLock<Gpu>>, FrameGraph)> {
     let gpu = Gpu::new(window, Default::default(), interpreter)?;
-    let atmosphere = AtmosphereBuffer::new(&mut gpu.write())?;
-    let fullscreen = FullscreenBuffer::new(&gpu.read());
     let globals = GlobalParametersBuffer::new(gpu.read().device(), interpreter);
+    let fullscreen = FullscreenBuffer::new(&gpu.read());
     let stars = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
+    let atmosphere = AtmosphereBuffer::new(&mut gpu.write())?;
     let terrain = TerrainBuffer::new(
         catalog,
         cpu_detail,
@@ -512,7 +520,7 @@ fn build_frame_graph(
     )?));
 
     let frame_graph = FrameGraph::new(
-        atmosphere, fullscreen, globals, shapes, stars, terrain, widgets, world, ui, composite,
+        composite, ui, widgets, world, shapes, terrain, atmosphere, stars, fullscreen, globals,
     )?;
     Ok((gpu, frame_graph))
 }
@@ -552,7 +560,6 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let catalog = catalogs.best_owned();
 
     let timeline = Timeline::new(&mut interpreter);
-    let mut galaxy = Galaxy::new()?;
 
     ///////////////////////////////////////////////////////////
     let (gpu, mut frame_graph) = build_frame_graph(
@@ -568,9 +575,10 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let widgets = frame_graph.widgets.clone();
     let shapes = frame_graph.shapes.clone();
     let world = frame_graph.world.clone();
-    let terrain_buffer = frame_graph.terrain.clone();
+    let terrain = frame_graph.terrain.clone();
 
     let system = System::new(&catalog.read(), interpreter.clone(), widgets)?;
+    let mut galaxy = Galaxy::new()?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
@@ -582,7 +590,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     let mut tracker = Default::default();
     let mut t2_tile_set = T2TileSet::new(
         system.read().t2_adjustment(),
-        &terrain_buffer.read(),
+        &terrain.read(),
         &globals.read(),
         &gpu.read(),
     )?;
@@ -772,7 +780,7 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         .write()
         .finish_open_chunks(&mut gpu.write(), &mut tracker)?;
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
-    terrain_buffer
+    terrain
         .write()
         .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);
     println!("Loading scene took: {:?}", start.elapsed());
@@ -783,6 +791,13 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         globals.write().add_debug_bindings(interp)?;
         world.write().add_debug_bindings(interp)?;
     }
+
+    let _window = window.clone();
+    let _gpu = gpu.clone();
+    let _frame_graph = frame_graph.clone();
+    let render_handle = std::thread::spawn(move || {
+        render_main(_window, _gpu, _frame_graph).unwrap();
+    });
 
     opt.startup_opts.on_startup(&mut interpreter)?;
 
@@ -800,9 +815,10 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
         now = next_now;
 
         {
+            let events = input_controller.poll_events()?;
             frame_graph.widgets_mut().track_state_changes(
                 now,
-                &input_controller.poll_events()?,
+                &events,
                 &window.read(),
                 interpreter.clone(),
             )?;
@@ -811,21 +827,23 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
                 &orrery.read(),
                 &window.read(),
             );
-            frame_graph.terrain_mut().track_state_changes(
-                arcball.read_recursive().camera(),
-                system.write().get_camera(arcball.read_recursive().camera()),
-                catalog.clone(),
-            )?;
+            let mut sys_lock = system.write();
+            let vis_camera = sys_lock.current_camera(arcball.read_recursive().camera());
             frame_graph.shapes_mut().track_state_changes(
                 &system_start,
                 &now,
                 arcball.read().camera(),
                 galaxy.world_mut(),
             );
+            frame_graph.terrain_mut().track_state_changes(
+                arcball.read_recursive().camera(),
+                vis_camera,
+                catalog.clone(),
+            )?;
+            arcball.write().track_state_changes();
         }
 
-        arcball.write().track_state_changes();
-
+        /*
         let mut tracker = Default::default();
         frame_graph
             .globals_mut()
@@ -846,10 +864,46 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
             gpu.write()
                 .on_display_config_changed(window.read().config())?;
         }
+         */
 
         system
             .write()
             .track_visible_state(now.elapsed(), &orrery.read(), &mut arcball.write());
+    }
+
+    window.write().closing = true;
+    render_handle.join().ok();
+
+    Ok(())
+}
+
+fn render_main(
+    window: Arc<RwLock<Window>>,
+    gpu: Arc<RwLock<Gpu>>,
+    mut frame_graph: FrameGraph,
+) -> Result<()> {
+    while !window.read().closing {
+        let now = Instant::now();
+        let mut tracker = Default::default();
+        frame_graph.widgets_mut().ensure_uploaded(
+            now,
+            &mut gpu.write(),
+            &window.read(),
+            &mut tracker,
+        )?;
+        frame_graph
+            .shapes_mut()
+            .ensure_uploaded(&gpu.read(), &mut tracker)?;
+        frame_graph
+            .terrain_mut()
+            .ensure_uploaded(&mut gpu.write(), &mut tracker)?;
+        frame_graph
+            .globals_mut()
+            .ensure_uploaded(&gpu.read(), &mut tracker)?;
+        if !frame_graph.run(gpu.clone(), tracker)? {
+            gpu.write()
+                .on_display_config_changed(window.read().config())?;
+        }
     }
 
     Ok(())

@@ -133,14 +133,14 @@ impl InstanceBlock {
         let command_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-command-buffer"),
             size: command_buffer_size,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
         let transform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
             size: Self::TRANSFORM_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
@@ -149,21 +149,21 @@ impl InstanceBlock {
         let flag_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-flag-buffer"),
             size: Self::FLAG_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
         let xform_index_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-index-buffer"),
             size: Self::XFORM_INDEX_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
         let xform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
             size: Self::XFORM_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
@@ -173,35 +173,35 @@ impl InstanceBlock {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &transform_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &flag_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &xform_index_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &xform_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
             ],
         });

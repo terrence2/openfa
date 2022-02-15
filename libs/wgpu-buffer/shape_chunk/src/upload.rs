@@ -144,47 +144,47 @@ impl Vertex {
     pub fn descriptor() -> wgpu::VertexBufferLayout<'static> {
         let tmp = wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 // position
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                     offset: 0,
                     shader_location: 0,
                 },
                 // normal
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                     offset: 12,
                     shader_location: 1,
                 },
                 // color
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float4,
+                    format: wgpu::VertexFormat::Float32x4,
                     offset: 24,
                     shader_location: 2,
                 },
                 // tex_coord
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint2,
+                    format: wgpu::VertexFormat::Uint32x2,
                     offset: 40,
                     shader_location: 3,
                 },
                 // flags0
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint,
+                    format: wgpu::VertexFormat::Uint32,
                     offset: 48,
                     shader_location: 4,
                 },
                 // flags1
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint,
+                    format: wgpu::VertexFormat::Uint32,
                     offset: 52,
                     shader_location: 5,
                 },
                 // xform_id
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint,
+                    format: wgpu::VertexFormat::Uint32,
                     offset: 56,
                     shader_location: 6,
                 },
@@ -1227,7 +1227,7 @@ impl<'a> ShapeUploader<'a> {
                     } else {
                         let data = self.catalog.read_name_sync(&filename)?;
                         let (buffer, w, h, stride) =
-                            pic_uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
+                            pic_uploader.upload(&data, gpu, wgpu::BufferUsages::COPY_SRC)?;
                         let frame = atlas_packer.push_buffer(buffer, w, h, stride)?;
                         self.loaded_frames.insert(filename, frame);
                         self.active_frame = Some(frame);

@@ -271,7 +271,7 @@ impl ClosedChunk {
         let vertex_buffer = gpu.push_slice(
             "shape-chunk-vertices",
             &chunk.vertex_upload_buffer,
-            wgpu::BufferUsage::VERTEX,
+            wgpu::BufferUsages::VERTEX,
         );
 
         let atlas_properties =
@@ -279,7 +279,7 @@ impl ClosedChunk {
         let atlas_properties = gpu.push_buffer(
             "chunk-atlas-properties",
             atlas_properties.as_bytes(),
-            wgpu::BufferUsage::UNIFORM,
+            wgpu::BufferUsages::UNIFORM,
         );
 
         pic_uploader.dispatch_singleton(gpu)?;
@@ -304,11 +304,11 @@ impl ClosedChunk {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &atlas_properties,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
             ],
         });

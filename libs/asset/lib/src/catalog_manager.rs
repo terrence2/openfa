@@ -16,9 +16,10 @@ use crate::{
     game_info::{GameInfo, GAME_INFO},
     LibDrawer, Priority,
 };
-use anyhow::{bail, ensure, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use catalog::{Catalog, DirectoryDrawer};
 use parking_lot::{RwLock, RwLockReadGuard};
+use runtime::{Extension, Runtime};
 use std::{
     collections::HashSet,
     env, fs,
@@ -27,8 +28,8 @@ use std::{
 };
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-pub struct CatalogOpts {
+#[derive(Debug, Default, StructOpt)]
+pub struct CatalogManagerOpts {
     /// The path to look in for game files (default: pwd)
     #[structopt(short, long)]
     game_path: Option<PathBuf>,
@@ -61,9 +62,19 @@ pub struct CatalogManager {
     catalogs: Vec<(&'static GameInfo, Arc<RwLock<Catalog>>)>,
 }
 
+impl Extension for CatalogManager {
+    fn init(runtime: &mut Runtime) -> Result<()> {
+        let opts = runtime
+            .remove_resource::<CatalogManagerOpts>()
+            .ok_or_else(|| anyhow!("CatalogManager requires CatalogManagerOpts resource"))?;
+        runtime.insert_resource(CatalogManager::bootstrap(&opts)?);
+        Ok(())
+    }
+}
+
 impl CatalogManager {
     /// Find out what we have to work with.
-    pub fn bootstrap(opts: &CatalogOpts) -> Result<Self> {
+    pub fn bootstrap(opts: &CatalogManagerOpts) -> Result<Self> {
         // If we didn't specify a path, use cwd.
         let game_path = if let Some(path) = &opts.game_path {
             path.to_owned()

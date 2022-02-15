@@ -1,7 +1,7 @@
 [package]
 name = "lib"
 version = "0.0.0"
-edition = "2018"
+edition = "2021"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [features]
@@ -25,3 +25,4 @@ lzss = { path = "../../util/lzss" }
 catalog = { path = "../../nitrogen/system/catalog" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 pkware = { path = "../../util/pkware" }
+runtime = { path = "../../nitrogen/util/runtime" }

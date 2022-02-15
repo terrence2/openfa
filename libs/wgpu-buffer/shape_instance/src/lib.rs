@@ -74,7 +74,7 @@ impl ShapeInstanceBuffer {
                     entries: &[
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
-                            visibility: wgpu::ShaderStage::VERTEX,
+                            visibility: wgpu::ShaderStages::VERTEX,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
@@ -84,7 +84,7 @@ impl ShapeInstanceBuffer {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
-                            visibility: wgpu::ShaderStage::VERTEX,
+                            visibility: wgpu::ShaderStages::VERTEX,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
@@ -94,7 +94,7 @@ impl ShapeInstanceBuffer {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 2,
-                            visibility: wgpu::ShaderStage::VERTEX,
+                            visibility: wgpu::ShaderStages::VERTEX,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
@@ -104,7 +104,7 @@ impl ShapeInstanceBuffer {
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 3,
-                            visibility: wgpu::ShaderStage::VERTEX,
+                            visibility: wgpu::ShaderStages::VERTEX,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
@@ -150,17 +150,18 @@ impl ShapeInstanceBuffer {
                     entry_point: "main",
                     targets: &[wgpu::ColorTargetState {
                         format: Gpu::SCREEN_FORMAT,
-                        color_blend: wgpu::BlendState::REPLACE,
-                        alpha_blend: wgpu::BlendState::REPLACE,
-                        write_mask: wgpu::ColorWrite::ALL,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
                     }],
                 }),
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Cw,
-                    cull_mode: wgpu::CullMode::Back,
+                    cull_mode: Some(wgpu::Face::Back),
+                    unclipped_depth: true,
                     polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: Gpu::DEPTH_FORMAT,
@@ -177,13 +178,13 @@ impl ShapeInstanceBuffer {
                         slope_scale: 0.0,
                         clamp: 0.0,
                     },
-                    clamp_depth: false,
                 }),
                 multisample: wgpu::MultisampleState {
                     count: 1,
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
+                multiview: None,
             });
 
         Ok(Arc::new(RwLock::new(Self {

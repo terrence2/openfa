@@ -13,11 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #version 450
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 2, local_size_z = 1) in;
+
+const uint WORKGROUP_WIDTH = 65536;
 
 layout(set = 0, binding = 0) readonly buffer Palette { uint palette[256]; };
 layout(set = 0, binding = 1) readonly buffer RawData { uint raw_img[]; };
-layout(set = 0, binding = 2) writeonly buffer TgtData { uint tgt_img[]; };
+layout(set = 0, binding = 2) buffer TgtData { uint tgt_img[]; };
 
 vec4
 unpackUnorm4x8(uint v)
@@ -33,7 +35,7 @@ unpackUnorm4x8(uint v)
 void
 main() {
     // Unpack 4 packed, 1 byte pixels
-    uint block_offset = gl_GlobalInvocationID.x;
+    uint block_offset = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * WORKGROUP_WIDTH;
     uvec4 p = uvec4(unpackUnorm4x8(raw_img[block_offset]) * 255.0);
 
     // look up each pixel in the palette, then write back to the target.

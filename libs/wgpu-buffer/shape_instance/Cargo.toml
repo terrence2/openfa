@@ -2,7 +2,7 @@
 name = "shape_instance"
 version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
@@ -10,7 +10,7 @@ legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
-wgpu = "^ 0.7"
+wgpu = { version = "^ 0.12", features = ["spirv"] }
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 geodesy = { path = "../../nitrogen/util/geodesy" }
 atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
@@ -20,6 +20,7 @@ gpu = { path = "../../nitrogen/system/gpu" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
 pal = { path = "../../asset/pal" }
+runtime = { path = "../../nitrogen/util/runtime" }
 shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
 shape_chunk = { path = "../../wgpu-buffer/shape_chunk" }
 

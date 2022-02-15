@@ -70,7 +70,7 @@ impl ShapeChunkBuffer {
                         // Texture Atlas
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
                                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -81,17 +81,14 @@ impl ShapeChunkBuffer {
                         // Texture Atlas Sampler
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
-                            visibility: wgpu::ShaderStage::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler {
-                                filtering: true,
-                                comparison: false,
-                            },
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                             count: None,
                         },
                         // Texture Atlas Properties
                         wgpu::BindGroupLayoutEntry {
                             binding: 2,
-                            visibility: wgpu::ShaderStage::VERTEX,
+                            visibility: wgpu::ShaderStages::VERTEX,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Uniform,
                                 has_dynamic_offset: false,

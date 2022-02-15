@@ -26,16 +26,15 @@ pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 mod test {
     use super::*;
     use anyhow::Result;
-    use gpu::TestResources;
     use gpu::{Gpu, UploadTracker};
-    use lib::CatalogManager;
+    use lib::{CatalogManager, CatalogManagerOpts};
     use log::trace;
     use pal::Palette;
 
     #[cfg(unix)]
     #[test]
     fn test_load_all() -> Result<()> {
-        let TestResources { gpu, .. } = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test_unix()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -71,14 +70,17 @@ mod test {
                     meta.name(),
                     DrawSelection::NormalModel,
                     &catalog,
-                    &mut gpu.write(),
+                    &mut runtime.resource_mut::<Gpu>(),
                     &mut tracker,
                 )?;
                 all_shapes.push(shape_id);
             }
         }
-        chunk_man.finish_open_chunks(&mut gpu.write(), &mut tracker)?;
-        gpu.read().device().poll(wgpu::Maintain::Wait);
+        chunk_man.finish_open_chunks(&mut runtime.resource_mut::<Gpu>(), &mut tracker)?;
+        runtime
+            .resource::<Gpu>()
+            .device()
+            .poll(wgpu::Maintain::Wait);
 
         for shape_id in &all_shapes {
             let lifetime = chunk_man.part(*shape_id).widgets();
