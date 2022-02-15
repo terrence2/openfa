@@ -66,9 +66,9 @@ debug = true
 [dependencies]
 chrono = "^ 0.4"
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = "^ 0.6"
 env_logger = "^ 0.7"
 image = "^ 0.23"
-legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
@@ -83,6 +83,7 @@ atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
 composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
+event_mapper = { path = "libs/nitrogen/sim/event_mapper" }
 fnt = { path = "libs/asset/fnt" }
 font_fnt = { path = "libs/wgpu-buffer/font_fnt" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
@@ -90,10 +91,12 @@ geodesy = { path = "libs/nitrogen/util/geodesy" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
+measure = { path = "libs/nitrogen/sim/measure" }
 nitrous = { path = "libs/nitrogen/util/nitrous" }
 nitrous_injector = { path = "libs/nitrogen/util/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
 physical_constants = { path = "libs/nitrogen/util/physical_constants" }
+runtime = { path = "libs/nitrogen/util/runtime" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }

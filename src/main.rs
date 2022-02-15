@@ -13,32 +13,37 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, radians};
-use animate::Timeline;
+use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, bail, Result};
 use atmosphere::AtmosphereBuffer;
-use camera::{ArcBallCamera, Camera};
+use bevy_ecs::prelude::*;
+use camera::{ArcBallController, ArcBallSystem, Camera, CameraSystem};
 use catalog::Catalog;
 use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
+use event_mapper::EventMapper;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{make_frame_graph, CpuDetailLevel, DetailLevelOpts, Gpu, GpuDetailLevel};
-use input::{InputController, InputSystem};
-use lib::{from_dos_string, CatalogManager, CatalogOpts};
+use gpu::{CpuDetailLevel, DetailLevelOpts, Gpu, GpuDetailLevel};
+use input::{DemoFocus, InputController, InputSystem};
+use lib::{from_dos_string, CatalogManager, CatalogManagerOpts};
+use measure::WorldSpaceFrame;
 use mmm::MissionMap;
-use nitrous::{Interpreter, StartupOpts, Value};
-use nitrous_injector::{inject_nitrous_module, method, NitrousModule};
+use nitrous::Value;
+use nitrous_injector::{inject_nitrous_resource, method, NitrousResource};
 use orrery::Orrery;
 use pal::Palette;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
+use runtime::{ExitRequest, Extension, FrameStage, Runtime, ScriptHerder, StartupOpts};
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
 use std::{
+    f32::consts::PI,
     fs::create_dir_all,
     sync::Arc,
     time::{Duration, Instant},
@@ -49,14 +54,12 @@ use terminal_size::{terminal_size, Width};
 use terrain::{TerrainBuffer, TileSet};
 use ui::UiRenderPass;
 use widget::{
-    Border, Color, EventMapper, Expander, Label, Labeled, PositionH, PositionV, VerticalBox,
-    WidgetBuffer,
+    Border, Color, Expander, Label, Labeled, PositionH, PositionV, VerticalBox, WidgetBuffer,
 };
 use window::{
     size::{LeftBound, Size},
-    DisplayConfig, DisplayConfigChangeReceiver, DisplayOpts, Window,
+    DisplayConfig, DisplayOpts, Window, WindowBuilder,
 };
-use winit::window::Window as OsWindow;
 use world::WorldRenderPass;
 use xt::TypeManager;
 
@@ -65,13 +68,13 @@ use xt::TypeManager;
 #[structopt(set_term_width = if let Some((Width(w), _)) = terminal_size() { w as usize } else { 80 })]
 struct Opt {
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 
     #[structopt(flatten)]
-    detail: DetailLevelOpts,
+    detail_opts: DetailLevelOpts,
 
     #[structopt(flatten)]
-    display: DisplayOpts,
+    display_opts: DisplayOpts,
 
     #[structopt(flatten)]
     startup_opts: StartupOpts,
@@ -87,55 +90,62 @@ struct VisibleWidgets {
     fps_label: Arc<RwLock<Label>>,
 }
 
-#[derive(Debug, NitrousModule)]
+#[derive(Debug, NitrousResource)]
 struct System {
-    exit: bool,
-    pin_camera: bool,
-    visibility_camera: Camera,
     maybe_update_view: Option<Graticule<GeoSurface>>,
     adjust: Arc<RwLock<T2Adjustment>>,
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
-    interpreter: Interpreter,
     visible_widgets: VisibleWidgets,
 }
 
-#[inject_nitrous_module]
+impl Extension for System {
+    fn init(runtime: &mut Runtime) -> Result<()> {
+        let system =
+            runtime.resource_scope(|world, mut widgets: Mut<WidgetBuffer<DemoFocus>>| {
+                let catalog = world.get_resource::<Arc<RwLock<Catalog>>>().unwrap();
+                System::new(&catalog.read(), &mut widgets)
+            })?;
+        // let widgets = runtime.resource_mut::<WidgetBuffer<DemoFocus>>();
+        // let catalog = runtime.resource::<Arc<RwLock<Catalog>>>();
+        // let system = System::new(&catalog.read(), &mut widgets)?;
+        runtime.insert_named_resource("system", system);
+        runtime
+            .frame_stage_mut(FrameStage::FrameEnd)
+            .add_system(Self::sys_track_visible_state);
+        runtime.run_string(
+            r#"
+                bindings.bind("Escape", "exit()");
+                bindings.bind("q", "exit()");
+            "#,
+        )?;
+        Ok(())
+    }
+}
+
+#[inject_nitrous_resource]
 impl System {
-    pub fn new(
-        catalog: &Catalog,
-        interpreter: Interpreter,
-        widgets: Arc<RwLock<WidgetBuffer>>,
-    ) -> Result<Arc<RwLock<Self>>> {
+    pub fn new(catalog: &Catalog, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<Self> {
         let visible_widgets = Self::build_gui(catalog, widgets)?;
-        let system = Arc::new(RwLock::new(Self {
-            exit: false,
-            pin_camera: false,
+        let system = Self {
             maybe_update_view: None,
-            visibility_camera: Default::default(),
             adjust: Arc::new(RwLock::new(T2Adjustment::default())),
             target_offset: 0,
             targets: Vec::new(),
-            interpreter,
             visible_widgets,
-        }));
-        let demo = Value::Module(system.read().visible_widgets.demo_label.clone());
-        system.write().interpreter.put_global("demo", demo);
-        system
-            .write()
-            .interpreter
-            .put_global("system", Value::Module(system.clone()));
+        };
         Ok(system)
     }
 
+    /*
     pub fn add_default_bindings(&mut self, interpreter: &mut Interpreter) -> Result<()> {
         interpreter.interpret_once(
             r#"
-                let bindings := mapper.create_bindings("system");
+                bindings.bind("Escape", "exit()");
+                bindings.bind("q", "exit()");
+
+                // let bindings := mapper.create_bindings("system");
                 bindings.bind("quit", "system.exit()");
-                bindings.bind("Escape", "system.exit()");
-                bindings.bind("q", "system.exit()");
-                bindings.bind("p", "system.toggle_pin_camera(pressed)");
                 bindings.bind("l", "widget.dump_glyphs(pressed)");
                 bindings.bind("d", "system.replay_demo(pressed)");
 
@@ -163,14 +173,15 @@ impl System {
         )?;
         Ok(())
     }
+     */
 
     pub fn build_gui(
         catalog: &Catalog,
-        widgets: Arc<RwLock<WidgetBuffer>>,
+        widgets: &mut WidgetBuffer<DemoFocus>,
     ) -> Result<VisibleWidgets> {
         let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
         let font = FntFont::from_fnt(&fnt)?;
-        widgets.write().add_font("HUD11", font);
+        widgets.add_font("HUD11", font);
 
         let sim_time = Label::new("").with_color(Color::White).wrapped();
         let camera_direction = Label::new("").with_color(Color::White).wrapped();
@@ -212,27 +223,25 @@ impl System {
             ))
             .wrapped();
         widgets
-            .read()
             .root_container()
             .write()
             .add_child("controls", expander)
             .set_float(PositionH::End, PositionV::Top);
 
         let fps_label = Label::new("")
-            .with_font(widgets.read().font_context().font_id_for_name("sans"))
+            .with_font(widgets.font_context().font_id_for_name("sans"))
             .with_color(Color::Red)
             .with_size(Size::from_pts(13.0))
             .with_pre_blended_text()
             .wrapped();
         widgets
-            .read()
             .root_container()
             .write()
             .add_child("fps", fps_label.clone())
             .set_float(PositionH::Start, PositionV::Bottom);
 
         let demo_label = Label::new("")
-            .with_font(widgets.read().font_context().font_id_for_name("HUD11"))
+            .with_font(widgets.font_context().font_id_for_name("HUD11"))
             .with_color(Color::White)
             .with_size(Size::from_pts(18.0))
             .wrapped();
@@ -243,13 +252,11 @@ impl System {
             .with_padding(Border::new_uniform(Size::from_px(8.)))
             .wrapped();
         widgets
-            .read()
             .root_container()
             .write()
             .add_child("demo", demo_box)
             .set_float(PositionH::Start, PositionV::Bottom);
         widgets
-            .read()
             .root_container()
             .write()
             .packing_mut("demo")?
@@ -265,16 +272,28 @@ impl System {
         })
     }
 
+    fn sys_track_visible_state(
+        query: Query<(&ArcBallController, &Camera)>,
+        timestep: Res<TimeStep>,
+        orrery: Res<Orrery>,
+        mut system: ResMut<System>,
+    ) {
+        for (arcball, camera) in query.iter() {
+            system.track_visible_state(*timestep.now(), &orrery, arcball, camera);
+        }
+    }
+
     pub fn track_visible_state(
         &mut self,
-        frame_time: Duration,
+        now: Instant,
         orrery: &Orrery,
-        arcball: &mut ArcBallCamera,
+        arcball: &ArcBallController,
+        camera: &Camera,
     ) {
-        if let Some(grat) = self.maybe_update_view {
-            arcball.set_target(grat);
-        }
-        self.maybe_update_view = None;
+        // if let Some(grat) = self.maybe_update_view {
+        //     arcball.set_target(grat);
+        // }
+        // self.maybe_update_view = None;
         self.visible_widgets
             .sim_time
             .write()
@@ -290,11 +309,14 @@ impl System {
         self.visible_widgets
             .camera_fov
             .write()
-            .set_text(format!("FoV: {}", degrees!(arcball.camera().fov_y()),));
-        self.visible_widgets
-            .fps_label
-            .write()
-            .set_text(format!("fps: {:0.2}", 1. / frame_time.as_secs_f64()));
+            .set_text(format!("FoV: {}", degrees!(camera.fov_y()),));
+        let frame_time = now.elapsed();
+        let ts = format!(
+            "frame: {}.{}ms",
+            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
+            frame_time.subsec_micros(),
+        );
+        self.visible_widgets.fps_label.write().set_text(ts);
     }
 
     pub fn t2_adjustment(&self) -> Arc<RwLock<T2Adjustment>> {
@@ -378,6 +400,8 @@ impl System {
         }
     }
 
+    /*
+    /// FIXME: should be in platform
     #[method]
     pub fn exec_file(&mut self, exec_file: &str) {
         match std::fs::read_to_string(exec_file) {
@@ -390,28 +414,10 @@ impl System {
             }
         }
     }
-
-    #[method]
-    pub fn exit(&mut self) {
-        self.exit = true;
-    }
-
-    #[method]
-    pub fn toggle_pin_camera(&mut self, pressed: bool) {
-        if pressed {
-            self.pin_camera = !self.pin_camera;
-        }
-    }
-
-    /// Maybe update visibility computation camera from the current view camera.
-    pub fn current_camera(&mut self, view_camera: &Camera) -> &Camera {
-        if !self.pin_camera {
-            self.visibility_camera = view_camera.to_owned();
-        }
-        &self.visibility_camera
-    }
+     */
 }
 
+/*
 make_frame_graph!(
     FrameGraph {
         buffers: {
@@ -524,64 +530,64 @@ fn build_frame_graph(
     )?;
     Ok((gpu, frame_graph))
 }
+ */
 
 fn main() -> Result<()> {
     let _opt = Opt::from_args(); // process help before opening a window
     env_logger::init();
-    InputSystem::run_forever(simulation_main)
+    InputSystem::run_forever(WindowBuilder::new().with_title("OpenFA"), simulation_main)
 }
 
-fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) -> Result<()> {
-    os_window.set_title("OpenFA");
-
+fn simulation_main(mut runtime: Runtime) -> Result<()> {
     let opt = Opt::from_args();
-    let cpu_detail = opt.detail.cpu_detail();
-    let gpu_detail = opt.detail.gpu_detail();
 
     let app_dirs = AppDirs::new(Some("openfa"), true)
         .ok_or_else(|| anyhow!("unable to find app directories"))?;
     create_dir_all(&app_dirs.config_dir)?;
     create_dir_all(&app_dirs.state_dir)?;
 
-    let mut interpreter = Interpreter::default();
-    let mapper = EventMapper::new(&mut interpreter);
-
-    let display_config = DisplayConfig::discover(&opt.display, &os_window);
-    let window = Window::new(
-        os_window,
-        input_controller,
-        display_config,
-        &mut interpreter,
-    )?;
-    let orrery = Orrery::new(Utc.ymd(1964, 8, 24).and_hms(0, 0, 0), &mut interpreter)?;
-    let arcball = ArcBallCamera::new(meters!(0.5), &mut window.write(), &mut interpreter)?;
-
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    let catalog = catalogs.best_owned();
-
-    let timeline = Timeline::new(&mut interpreter);
+    runtime
+        .insert_resource(opt.catalog_opts)
+        .insert_resource(opt.display_opts)
+        .insert_resource(opt.startup_opts)
+        .insert_resource(opt.detail_opts.cpu_detail())
+        .insert_resource(opt.detail_opts.gpu_detail())
+        .insert_resource(app_dirs)
+        .insert_resource(DemoFocus::Demo)
+        .load_extension::<StartupOpts>()?
+        .load_extension::<CatalogManager>()?
+        .load_extension::<EventMapper<DemoFocus>>()?
+        .load_extension::<Window>()?
+        .load_extension::<Gpu>()?
+        .load_extension::<AtmosphereBuffer>()?
+        .load_extension::<FullscreenBuffer>()?
+        .load_extension::<GlobalParametersBuffer>()?
+        .load_extension::<StarsBuffer>()?
+        .load_extension::<TerrainBuffer>()?
+        .load_extension::<WorldRenderPass>()?
+        .load_extension::<WidgetBuffer<DemoFocus>>()?
+        .load_extension::<UiRenderPass<DemoFocus>>()?
+        .load_extension::<CompositeRenderPass<DemoFocus>>()?
+        .load_extension::<System>()?
+        .load_extension::<Orrery>()?
+        .load_extension::<Timeline>()?
+        .load_extension::<TimeStep>()?
+        .load_extension::<CameraSystem>()?
+        .load_extension::<ArcBallSystem>()?;
 
     ///////////////////////////////////////////////////////////
-    let (gpu, mut frame_graph) = build_frame_graph(
-        cpu_detail,
-        gpu_detail,
-        &app_dirs,
-        &catalog.read(),
-        mapper,
-        &mut window.write(),
-        &mut interpreter,
-    )?;
-    let globals = frame_graph.globals.clone();
-    let widgets = frame_graph.widgets.clone();
-    let shapes = frame_graph.shapes.clone();
-    let world = frame_graph.world.clone();
-    let terrain = frame_graph.terrain.clone();
+    // let globals = frame_graph.globals.clone();
+    // let widgets = frame_graph.widgets.clone();
+    // let shapes = frame_graph.shapes.clone();
+    // let world = frame_graph.world.clone();
+    // let terrain = frame_graph.terrain.clone();
 
-    let system = System::new(&catalog.read(), interpreter.clone(), widgets)?;
+    // let system = System::new(&catalog.read(), interpreter.clone(), widgets)?;
     let mut galaxy = Galaxy::new()?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup
+    /*
     let start = Instant::now();
     let system_palette = Palette::from_bytes(&catalog.read().read_name_sync("PALETTE.PAL")?)?;
     shapes
@@ -788,19 +794,36 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
     {
         let interp = &mut interpreter;
         system.write().add_default_bindings(interp)?;
-        globals.write().add_debug_bindings(interp)?;
-        world.write().add_debug_bindings(interp)?;
+    }
+     */
+
+    // But we need at least a camera and controller before the sim is ready to run.
+    let camera = Camera::new(
+        radians!(PI / 2.0),
+        runtime.resource::<Window>().render_aspect_ratio(),
+        meters!(0.5),
+    );
+    let _player_ent = runtime
+        .spawn_named("player")
+        .insert(WorldSpaceFrame::default())
+        .insert_scriptable(ArcBallController::default())
+        .insert_scriptable(camera)
+        .id();
+
+    runtime.run_startup();
+    while runtime.resource::<ExitRequest>().still_running() {
+        // Catch monotonic sim time up to system time.
+        let frame_start = Instant::now();
+        while runtime.resource::<TimeStep>().next_now() < frame_start {
+            runtime.run_sim_once();
+        }
+
+        // Display a frame
+        runtime.run_frame_once();
     }
 
-    let _window = window.clone();
-    let _gpu = gpu.clone();
-    let _frame_graph = frame_graph.clone();
-    let render_handle = std::thread::spawn(move || {
-        render_main(_window, _gpu, _frame_graph).unwrap();
-    });
-
+    /*
     opt.startup_opts.on_startup(&mut interpreter)?;
-
     const STEP: Duration = Duration::from_micros(16_666);
     let mut now = Instant::now();
     let system_start = now;
@@ -873,10 +896,12 @@ fn simulation_main(os_window: OsWindow, input_controller: &mut InputController) 
 
     window.write().closing = true;
     render_handle.join().ok();
+     */
 
     Ok(())
 }
 
+/*
 fn render_main(
     window: Arc<RwLock<Window>>,
     gpu: Arc<RwLock<Gpu>>,
@@ -908,3 +933,4 @@ fn render_main(
 
     Ok(())
 }
+*/

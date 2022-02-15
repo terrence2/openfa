@@ -16,7 +16,7 @@ use crate::{
     game_info::{GameInfo, GAME_INFO},
     LibDrawer, Priority,
 };
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, DirectoryDrawer};
 use parking_lot::{RwLock, RwLockReadGuard};
 use runtime::{Extension, Runtime};
@@ -64,10 +64,14 @@ pub struct CatalogManager {
 
 impl Extension for CatalogManager {
     fn init(runtime: &mut Runtime) -> Result<()> {
+        let empty = CatalogManagerOpts::default();
         let opts = runtime
-            .remove_resource::<CatalogManagerOpts>()
-            .ok_or_else(|| anyhow!("CatalogManager requires CatalogManagerOpts resource"))?;
-        runtime.insert_resource(CatalogManager::bootstrap(&opts)?);
+            .maybe_resource::<CatalogManagerOpts>()
+            .unwrap_or(&empty);
+        let catalogs = CatalogManager::bootstrap(&opts)?;
+        let catalog = catalogs.best_owned();
+        runtime.insert_resource(catalogs);
+        runtime.insert_resource(catalog);
         Ok(())
     }
 }
