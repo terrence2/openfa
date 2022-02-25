@@ -12,8 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{SlotId, TransformType};
-use shape_chunk::{DrawState, ShapeErrata, ShapeId};
+use crate::{
+    chunk::{DrawState, ShapeErrata, ShapeId},
+    SlotId, TransformType,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeRef {

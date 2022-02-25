@@ -27,7 +27,7 @@ mod test {
     use super::*;
     use anyhow::Result;
     use gpu::{Gpu, UploadTracker};
-    use lib::{CatalogManager, CatalogManagerOpts};
+    use lib::CatalogManager;
     use log::trace;
     use pal::Palette;
 

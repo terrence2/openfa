@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{
+use crate::chunk::{
     chunk_manager::TextureAtlasProperties,
     upload::{AnalysisResults, DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
 };

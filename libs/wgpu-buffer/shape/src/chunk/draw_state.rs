@@ -12,10 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::upload::{ShapeErrata, VertexFlags};
+use crate::chunk::upload::{ShapeErrata, VertexFlags};
 use animate::{Animation, LinearAnimationTemplate};
-use bitflags::bitflags;
 use anyhow::{bail, Result};
+use bitflags::bitflags;
 use std::time::{Duration, Instant};
 
 const ANIMATION_FRAME_TIME: usize = 166; // ms

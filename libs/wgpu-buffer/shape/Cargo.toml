@@ -1,5 +1,5 @@
 [package]
-name = "shape_instance"
+name = "shape"
 version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2021"
@@ -7,23 +7,33 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = "^ 0.6"
+bitflags = "^ 1"
+image = "^ 0.23"
+lazy_static = "^ 1"
 legion = "^ 0.4"
+memoffset = "^ 0.6"
 log = "^ 0.4"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
+zerocopy = "^ 0.5"
 wgpu = { version = "^ 0.12", features = ["spirv"] }
+animate = { path = "../../nitrogen/sim/animate" }
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 geodesy = { path = "../../nitrogen/util/geodesy" }
+geometry = { path = "../../nitrogen/util/geometry" }
+atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../nitrogen/sim/camera" }
 catalog = { path = "../../nitrogen/system/catalog" }
 gpu = { path = "../../nitrogen/system/gpu" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
+pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
 ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
 pal = { path = "../../asset/pal" }
+i386 = { path = "../../util/i386" }
+sh = { path = "../../asset/sh" }
 runtime = { path = "../../nitrogen/util/runtime" }
 shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
-shape_chunk = { path = "../../wgpu-buffer/shape_chunk" }
 
 [dev-dependencies]
 lib = { path = "../../asset/lib" }

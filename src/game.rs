@@ -26,7 +26,7 @@ use mmm::{Mission, MissionMap};
 use nitrous::{inject_nitrous_resource, method, HeapMut, NitrousResource, Value};
 use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape_instance::{DrawSelection, ShapeInstanceBuffer};
+use shape::{DrawSelection, ShapeInstanceBuffer};
 use std::sync::Arc;
 use t2_tile_set::{T2Adjustment, T2TileSet};
 use terrain::{TerrainBuffer, TileSet};
@@ -131,4 +131,60 @@ impl Game {
 
         Ok(())
     }
+
+    /*
+
+    pub fn create_building(
+        &mut self,
+        slot_id: SlotId,
+        shape_id: ShapeId,
+        part: &ChunkPart,
+        scale: f32,
+        position: Graticule<GeoSurface>,
+        rotation: &UnitQuaternion<f32>,
+    ) -> Result<Entity> {
+        // For buildings we need to adjust the frame for "up" to be relative
+        // to the position when uploading.
+        let r_lon =
+            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -position.lon::<Radians>().f32());
+        let lat_axis = r_lon * Vector3::x_axis();
+        let q_lat = UnitQuaternion::from_axis_angle(
+            &lat_axis,
+            radians!(degrees!(90) - position.lat::<Degrees>()).f32(),
+        );
+        let rotation: UnitQuaternion<f32> = q_lat
+            * UnitQuaternion::from_axis_angle(
+                &Vector3::y_axis(),
+                (-position.lon::<Radians>()).f32(),
+            )
+            * rotation;
+
+        // vec4 r_lon = quat_from_axis_angle(vec3(0, 1, 0), latlon.y);
+        // vec3 lat_axis = quat_rotate(r_lon, vec3(1, 0, 0)).xyz;
+        // vec4 r_lat = quat_from_axis_angle(lat_axis, PI / 2.0 - latlon.x);
+        // vec3 ground_normal_w = quat_rotate(r_lat, quat_rotate(r_lon, ground_normal_local).xyz).xyz;
+
+        let widget_ref = part.widgets();
+        let widgets = widget_ref.read();
+        let entity = self.legion_world.push((
+            Transform::new(position),
+            Rotation::new(rotation),
+            Scale::new(
+                /* SHAPE_UNIT_TO_FEET */ scale * meters!(feet!(1.0)).f32(),
+            ),
+            ShapeRef::new(shape_id),
+            ShapeSlot::new(slot_id),
+            ShapeState::new(widgets.errata()),
+            ShapeTransformBuffer::default(),
+            ShapeFlagBuffer::default(),
+        ));
+        if widgets.errata().has_xform_animation {
+            self.legion_world
+                .entry(entity)
+                .expect("just created")
+                .add_component(ShapeXformBuffer::default());
+        }
+        Ok(entity)
+    }
+     */
 }

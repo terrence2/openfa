@@ -12,9 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::chunk::{ChunkId, DrawIndirectCommand};
 use gpu::{Gpu, UploadTracker};
 use log::trace;
-use shape_chunk::{ChunkId, DrawIndirectCommand};
 use std::{mem, num::NonZeroU64, sync::Arc};
 
 const BLOCK_SIZE: usize = 1 << 10;

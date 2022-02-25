@@ -12,10 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::upload::ShapeUploader;
-use crate::{
+use crate::chunk::{
     chunk::{ChunkFlags, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId},
     upload::DrawSelection,
+    upload::ShapeUploader,
 };
 use anyhow::{anyhow, Result};
 use catalog::Catalog;

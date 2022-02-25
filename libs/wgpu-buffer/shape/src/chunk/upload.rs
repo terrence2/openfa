@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::draw_state::DrawState;
+use crate::chunk::draw_state::DrawState;
 use absolute_unit::{feet, Feet, Length};
 use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};

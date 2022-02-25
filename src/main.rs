@@ -28,7 +28,6 @@ use event_mapper::EventMapper;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
-use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::{DetailLevelOpts, Gpu};
@@ -42,7 +41,7 @@ use orrery::Orrery;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
 use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
-use shape_instance::{DrawSelection, ShapeInstanceBuffer};
+use shape::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
 use std::{f32::consts::PI, fs::create_dir_all, sync::Arc, time::Instant};
 use structopt::StructOpt;
@@ -583,7 +582,6 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     // let terrain = frame_graph.terrain.clone();
 
     // let system = System::new(&catalog.read(), interpreter.clone(), widgets)?;
-    let mut galaxy = Galaxy::new()?;
 
     ///////////////////////////////////////////////////////////
     // Scene Setup

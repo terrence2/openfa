@@ -12,16 +12,22 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod chunk;
 pub mod component;
 mod components;
 mod instance_block;
 
-pub use crate::instance_block::SlotId;
+pub use crate::{
+    chunk::{DrawSelection, DrawState},
+    instance_block::SlotId,
+};
 pub use components::*;
-pub use shape_chunk::{DrawSelection, DrawState};
 
-use crate::component::{Rotation, Scale, Transform};
-use crate::instance_block::{BlockId, InstanceBlock, TransformType};
+use crate::{
+    chunk::{ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets, Vertex},
+    component::{Rotation, Scale, Transform},
+    instance_block::{BlockId, InstanceBlock, TransformType},
+};
 use absolute_unit::Kilometers;
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
@@ -35,9 +41,6 @@ use ofa_groups::Group as LocalGroup;
 use pal::Palette;
 use runtime::{Extension, Runtime};
 use shader_shared::Group;
-use shape_chunk::{
-    ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets, Vertex,
-};
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
@@ -462,10 +465,10 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::chunk::DrawSelection;
     use bevy_ecs::prelude::*;
     use lib::CatalogManager;
     use pal::Palette;
-    use shape_chunk::DrawSelection;
 
     #[cfg(unix)]
     #[test]
@@ -498,9 +501,8 @@ mod test {
         let mut all_slots = Vec::new();
         for (game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            runtime.resource_scope(|world, mut inst_man: Mut<ShapeInstanceBuffer>| {
-                inst_man
-                    .set_shared_palette(&palette, &mut world.get_resource_mut::<Gpu>().unwrap());
+            runtime.resource_scope(|mut heap, mut inst_man: Mut<ShapeInstanceBuffer>| {
+                inst_man.set_shared_palette(&palette, &mut heap.resource_mut::<Gpu>());
             });
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
@@ -508,24 +510,25 @@ mod test {
                 if skipped.contains(&meta.name()) {
                     continue;
                 }
-                let (chunk_id, slot_id) =
-                    runtime.resource_scope(|world, mut inst_man: Mut<ShapeInstanceBuffer>| {
+                let (chunk_id, slot_id) = runtime.resource_scope(
+                    |mut heap, mut inst_man: Mut<ShapeInstanceBuffer>| {
                         inst_man.upload_and_allocate_slot(
                             meta.name(),
                             DrawSelection::NormalModel,
                             &catalog,
-                            &mut world.get_resource_mut::<Gpu>().unwrap(),
+                            &mut heap.resource_mut::<Gpu>(),
                             &tracker,
                         )
-                    })?;
+                    },
+                )?;
                 all_chunks.push(chunk_id);
                 all_slots.push(slot_id);
                 all_chunks.push(chunk_id);
                 all_slots.push(slot_id);
             }
         }
-        runtime.resource_scope(|world, mut inst_man: Mut<ShapeInstanceBuffer>| {
-            inst_man.finish_open_chunks(&mut world.get_resource_mut::<Gpu>().unwrap(), &mut tracker)
+        runtime.resource_scope(|mut heap, mut inst_man: Mut<ShapeInstanceBuffer>| {
+            inst_man.finish_open_chunks(&mut heap.resource_mut::<Gpu>(), &mut tracker)
         })?;
         runtime
             .resource::<Gpu>()
