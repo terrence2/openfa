@@ -256,7 +256,7 @@ impl ClosedChunk {
         dump_path: Option<PathBuf>,
         pic_uploader: &mut PicUploader,
         gpu: &mut gpu::Gpu,
-        tracker: &mut UploadTracker,
+        tracker: &UploadTracker,
     ) -> Result<Self> {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
         let a_size = chunk.atlas_packer.atlas_size();

@@ -27,6 +27,7 @@ pub struct PicUploader {
     shared_palette: Option<wgpu::Buffer>,
 }
 
+// FIXME: this should be a resource
 impl PicUploader {
     const GROUP_SIZE: u32 = 64;
 

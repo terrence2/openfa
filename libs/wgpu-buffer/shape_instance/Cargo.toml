@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = "^ 0.6"
 legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.29"

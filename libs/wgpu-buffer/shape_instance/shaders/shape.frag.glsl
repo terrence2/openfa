@@ -43,33 +43,34 @@ layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
 vec4
 diffuse_color(out bool should_discard)
 {
+    // FIXME: this breaks if our mega-atlas spills into a second layer.
+    // FIXME: move to our new resizable atlas code
+    vec4 tex_color = texture(sampler2D(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), v_tex_coord);
+
     should_discard = false;
     if ((f_flags0 & 0xFFFFFFFEu) == 0 && f_flags1 == 0) {
         should_discard = true;
         return vec4(0);
     } else if (v_tex_coord.x == 0.0) {
         return v_color;
+    } else if ((f_flags0 & 1u) == 1u) {
+        return vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
+    } else if (tex_color.a < 0.5) {
+        should_discard = true;
+        return vec4(tex_color.rgb, 0);
     } else {
-        // FIXME: I think this breaks if our mega-atlas spills into a second layer. The layer should be part
-        // FIXME: of the texture coordinate we are uploading.
-        vec4 tex_color = texture(sampler2D(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), v_tex_coord);
-        if ((f_flags0 & 1u) == 1u) {
-            return vec4((1.0 - tex_color[3]) * v_color.xyz + tex_color[3] * tex_color.xyz, 1.0);
-        } else if (tex_color.a < 0.5) {
-            should_discard = true;
-            return vec4(0);
-        } else {
-            return tex_color;
-        }
+        return tex_color;
     }
 }
 
 void main() {
     bool should_discard;
     vec4 diffuse = diffuse_color(should_discard);
-    if (should_discard) {
-        discard;
-    }
+
+    // FIXME: need to figure out transparency properly
+//    if (should_discard) {
+//        discard;
+//    }
 
     vec3 camera_position_w_km = camera_position_km.xyz;
     vec3 sun_direction_w = orrery_sun_direction.xyz;

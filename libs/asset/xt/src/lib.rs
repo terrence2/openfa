@@ -23,6 +23,7 @@ use catalog::Catalog;
 use lib::from_dos_string;
 use log::trace;
 use parking_lot::Mutex;
+use runtime::{Extension, Runtime};
 use std::{collections::HashMap, sync::Arc};
 
 // A generic type.
@@ -115,6 +116,13 @@ impl TypeRef {
 pub struct TypeManager {
     // Cache immutable resources. Use interior mutability for ease of use.
     cache: Mutex<HashMap<String, TypeRef>>,
+}
+
+impl Extension for TypeManager {
+    fn init(runtime: &mut Runtime) -> Result<()> {
+        runtime.insert_resource(TypeManager::empty());
+        Ok(())
+    }
 }
 
 impl TypeManager {

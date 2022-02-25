@@ -33,7 +33,7 @@ use legion::*;
 use nalgebra::Matrix4;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
-use parking_lot::RwLock;
+use runtime::{Extension, Runtime};
 use shader_shared::Group;
 use shape_chunk::{
     ChunkId, ChunkPart, ShapeChunkBuffer, ShapeErrata, ShapeId, ShapeWidgets, Vertex,
@@ -41,7 +41,6 @@ use shape_chunk::{
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
-    sync::Arc,
     time::Instant,
 };
 
@@ -61,12 +60,24 @@ pub struct ShapeInstanceBuffer {
     pipeline: wgpu::RenderPipeline,
 }
 
+impl Extension for ShapeInstanceBuffer {
+    fn init(runtime: &mut Runtime) -> Result<()> {
+        let shapes = ShapeInstanceBuffer::new(
+            runtime.resource::<GlobalParametersBuffer>(),
+            runtime.resource::<AtmosphereBuffer>(),
+            runtime.resource::<Gpu>(),
+        )?;
+        runtime.insert_resource(shapes);
+        Ok(())
+    }
+}
+
 impl ShapeInstanceBuffer {
     pub fn new(
-        globals_buffer: &GlobalParametersBuffer,
-        atmosphere_buffer: &AtmosphereBuffer,
+        globals: &GlobalParametersBuffer,
+        atmosphere: &AtmosphereBuffer,
         gpu: &Gpu,
-    ) -> Result<Arc<RwLock<Self>>> {
+    ) -> Result<Self> {
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -128,8 +139,8 @@ impl ShapeInstanceBuffer {
                     label: Some("shape-render-pipeline-layout"),
                     push_constant_ranges: &[],
                     bind_group_layouts: &[
-                        globals_buffer.bind_group_layout(),
-                        atmosphere_buffer.bind_group_layout(),
+                        globals.bind_group_layout(),
+                        atmosphere.bind_group_layout(),
                         chunk_man.bind_group_layout(),
                         &bind_group_layout,
                     ],
@@ -187,14 +198,14 @@ impl ShapeInstanceBuffer {
                 multiview: None,
             });
 
-        Ok(Arc::new(RwLock::new(Self {
+        Ok(Self {
             chunk_man,
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
             bind_group_layout,
             pipeline,
-        })))
+        })
     }
 
     // pub fn block(&self, id: &BlockId) -> &InstanceBlock {
@@ -237,7 +248,7 @@ impl ShapeInstanceBuffer {
         selection: DrawSelection,
         catalog: &Catalog,
         gpu: &mut Gpu,
-        tracker: &mut UploadTracker,
+        tracker: &UploadTracker,
     ) -> Result<(ShapeId, SlotId)> {
         // Ensure that the shape is actually in a chunk somewhere.
         let (chunk_id, shape_id) = self
@@ -259,7 +270,7 @@ impl ShapeInstanceBuffer {
             block_id
         };
 
-        // FIXME: this is less useful than I thought it would be.
+        // FIXME: can we do indirect drawing yet?
         let draw_cmd = self
             .chunk_man
             .part(shape_id)
@@ -451,7 +462,7 @@ impl ShapeInstanceBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use gpu::TestResources;
+    use bevy_ecs::prelude::*;
     use lib::CatalogManager;
     use pal::Palette;
     use shape_chunk::DrawSelection;
@@ -459,11 +470,10 @@ mod test {
     #[cfg(unix)]
     #[test]
     fn test_creation() -> Result<()> {
-        let TestResources {
-            mut interpreter,
-            gpu,
-            ..
-        } = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test_unix()?
+            .with_extension::<GlobalParametersBuffer>()?
+            .with_extension::<AtmosphereBuffer>()?
+            .with_extension::<ShapeInstanceBuffer>()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -481,14 +491,6 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let atmosphere_buffer = AtmosphereBuffer::new(&mut gpu.write())?;
-        let globals_buffer = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter);
-        let inst_man = ShapeInstanceBuffer::new(
-            &globals_buffer.read(),
-            &atmosphere_buffer.read(),
-            &gpu.read(),
-        )?;
-
         let catalogs = CatalogManager::for_testing()?;
 
         let mut tracker = UploadTracker::default();
@@ -496,30 +498,39 @@ mod test {
         let mut all_slots = Vec::new();
         for (game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            inst_man.write().set_shared_palette(&palette, &gpu.read());
+            runtime.resource_scope(|world, mut inst_man: Mut<ShapeInstanceBuffer>| {
+                inst_man
+                    .set_shared_palette(&palette, &mut world.get_resource_mut::<Gpu>().unwrap());
+            });
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 if skipped.contains(&meta.name()) {
                     continue;
                 }
-                let (chunk_id, slot_id) = inst_man.write().upload_and_allocate_slot(
-                    meta.name(),
-                    DrawSelection::NormalModel,
-                    &catalog,
-                    &mut gpu.write(),
-                    &mut tracker,
-                )?;
+                let (chunk_id, slot_id) =
+                    runtime.resource_scope(|world, mut inst_man: Mut<ShapeInstanceBuffer>| {
+                        inst_man.upload_and_allocate_slot(
+                            meta.name(),
+                            DrawSelection::NormalModel,
+                            &catalog,
+                            &mut world.get_resource_mut::<Gpu>().unwrap(),
+                            &tracker,
+                        )
+                    })?;
                 all_chunks.push(chunk_id);
                 all_slots.push(slot_id);
                 all_chunks.push(chunk_id);
                 all_slots.push(slot_id);
             }
         }
-        inst_man
-            .write()
-            .finish_open_chunks(&mut gpu.write(), &mut tracker)?;
-        gpu.read().device().poll(wgpu::Maintain::Wait);
+        runtime.resource_scope(|world, mut inst_man: Mut<ShapeInstanceBuffer>| {
+            inst_man.finish_open_chunks(&mut world.get_resource_mut::<Gpu>().unwrap(), &mut tracker)
+        })?;
+        runtime
+            .resource::<Gpu>()
+            .device()
+            .poll(wgpu::Maintain::Wait);
 
         Ok(())
     }

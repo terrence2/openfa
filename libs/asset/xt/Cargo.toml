@@ -14,3 +14,4 @@ lib = { path = "../../asset/lib" }
 nt = { path = "../../asset/nt" }
 ot = { path = "../../asset/ot" }
 pt = { path = "../../asset/pt" }
+runtime = { path = "../../nitrogen/util/runtime" }

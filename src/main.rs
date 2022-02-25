@@ -12,6 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod game;
+
+use crate::game::Game;
+
 use absolute_unit::{degrees, meters, radians};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, bail, Result};
@@ -19,7 +23,6 @@ use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ArcBallSystem, Camera, CameraSystem};
 use catalog::Catalog;
-use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use composite::CompositeRenderPass;
 use event_mapper::EventMapper;
 use fnt::Fnt;
@@ -28,26 +31,20 @@ use fullscreen::FullscreenBuffer;
 use galaxy::Galaxy;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{CpuDetailLevel, DetailLevelOpts, Gpu, GpuDetailLevel};
-use input::{DemoFocus, InputController, InputSystem};
+use gpu::{DetailLevelOpts, Gpu};
+use input::{DemoFocus, InputSystem};
 use lib::{from_dos_string, CatalogManager, CatalogManagerOpts};
+use log::warn;
 use measure::WorldSpaceFrame;
 use mmm::MissionMap;
-use nitrous::Value;
-use nitrous_injector::{inject_nitrous_resource, method, NitrousResource};
+use nitrous::{inject_nitrous_resource, method, HeapMut, NitrousResource};
 use orrery::Orrery;
-use pal::Palette;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
-use runtime::{ExitRequest, Extension, FrameStage, Runtime, ScriptHerder, StartupOpts};
+use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
 use shape_instance::{DrawSelection, ShapeInstanceBuffer};
 use stars::StarsBuffer;
-use std::{
-    f32::consts::PI,
-    fs::create_dir_all,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{f32::consts::PI, fs::create_dir_all, sync::Arc, time::Instant};
 use structopt::StructOpt;
 use t2_tile_set::{T2Adjustment, T2TileSet};
 use terminal_size::{terminal_size, Width};
@@ -58,7 +55,7 @@ use widget::{
 };
 use window::{
     size::{LeftBound, Size},
-    DisplayConfig, DisplayOpts, Window, WindowBuilder,
+    DisplayOpts, Window, WindowBuilder,
 };
 use world::WorldRenderPass;
 use xt::TypeManager;
@@ -102,8 +99,8 @@ struct System {
 impl Extension for System {
     fn init(runtime: &mut Runtime) -> Result<()> {
         let system =
-            runtime.resource_scope(|world, mut widgets: Mut<WidgetBuffer<DemoFocus>>| {
-                let catalog = world.get_resource::<Arc<RwLock<Catalog>>>().unwrap();
+            runtime.resource_scope(|heap, mut widgets: Mut<WidgetBuffer<DemoFocus>>| {
+                let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
                 System::new(&catalog.read(), &mut widgets)
             })?;
         // let widgets = runtime.resource_mut::<WidgetBuffer<DemoFocus>>();
@@ -573,7 +570,10 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<Timeline>()?
         .load_extension::<TimeStep>()?
         .load_extension::<CameraSystem>()?
-        .load_extension::<ArcBallSystem>()?;
+        .load_extension::<ArcBallSystem>()?
+        .load_extension::<TypeManager>()?
+        .load_extension::<ShapeInstanceBuffer>()?
+        .load_extension::<Game>()?;
 
     ///////////////////////////////////////////////////////////
     // let globals = frame_graph.globals.clone();
@@ -804,10 +804,10 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         meters!(0.5),
     );
     let _player_ent = runtime
-        .spawn_named("player")
+        .spawn_named("player")?
         .insert(WorldSpaceFrame::default())
-        .insert_scriptable(ArcBallController::default())
-        .insert_scriptable(camera)
+        .insert_scriptable(ArcBallController::default())?
+        .insert_scriptable(camera)?
         .id();
 
     runtime.run_startup();
@@ -823,20 +823,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     }
 
     /*
-    opt.startup_opts.on_startup(&mut interpreter)?;
-    const STEP: Duration = Duration::from_micros(16_666);
-    let mut now = Instant::now();
-    let system_start = now;
     while !system.read().exit {
-        // Catch up to system time.
-        let next_now = Instant::now();
-        while now + STEP < next_now {
-            orrery.write().step_time(ChronoDuration::from_std(STEP)?);
-            timeline.write().step_time(&now)?;
-            now += STEP;
-        }
-        now = next_now;
-
         {
             let events = input_controller.poll_events()?;
             frame_graph.widgets_mut().track_state_changes(

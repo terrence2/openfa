@@ -313,7 +313,7 @@ impl T2TileSet {
                         },
                     )),
                     module: &gpu.create_shader_module(
-                        "accumulate_spherical_colors.comp",
+                        "accumulate_colors.comp",
                         include_bytes!("../target/accumulate_colors.comp.spirv"),
                     )?,
                     entry_point: "main",
@@ -897,7 +897,7 @@ impl TileSet for T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpu::{CpuDetailLevel, GpuDetailLevel, TestResources};
+    use gpu::{CpuDetailLevel, GpuDetailLevel};
     use lib::{from_dos_string, CatalogManager};
     use xt::TypeManager;
 
@@ -905,27 +905,25 @@ mod tests {
     fn it_can_load_all_t2() -> Result<()> {
         env_logger::init();
 
-        let TestResources {
-            mut interpreter,
-            gpu,
-            ..
-        } = Gpu::for_test_unix()?;
+        let catalog = Arc::new(RwLock::new(Catalog::empty("test")));
+
+        let mut runtime = Gpu::for_test_unix()?;
+        runtime
+            .insert_resource(catalog)
+            .load_extension::<GlobalParametersBuffer>()?
+            .load_extension::<TerrainBuffer>()?;
 
         let catalogs = CatalogManager::for_testing()?;
         for (game, catalog) in catalogs.selected() {
             let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            let globals = GlobalParametersBuffer::new(gpu.read().device(), &mut interpreter);
-            let terrain = TerrainBuffer::new(
-                &catalog,
-                CpuDetailLevel::Low,
-                GpuDetailLevel::Low,
-                &globals.read(),
-                &mut gpu.write(),
-                &mut interpreter,
-            )?;
+
             let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
-            let mut ts =
-                T2TileSet::new(t2_adjustment, &terrain.read(), &globals.read(), &gpu.read())?;
+            let mut ts = T2TileSet::new(
+                t2_adjustment,
+                &runtime.resource::<TerrainBuffer>(),
+                &runtime.resource::<GlobalParametersBuffer>(),
+                &runtime.resource::<Gpu>(),
+            )?;
             let type_manager = TypeManager::empty();
 
             for fid in catalog.find_with_extension("MM")? {
@@ -947,18 +945,18 @@ mod tests {
 
                 let contents = from_dos_string(catalog.read_sync(fid)?);
                 let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
-                let mut tracker = Default::default();
+                let mut tracker = UploadTracker::default();
                 ts.add_map(
                     &system_palette,
                     &mm,
                     &catalog,
-                    &mut gpu.write(),
+                    &mut runtime.resource_mut::<Gpu>(),
                     &mut tracker,
                 )?;
-                tracker.dispatch_uploads_one_shot(&mut gpu.write());
+                tracker.dispatch_uploads_one_shot(&mut runtime.resource_mut::<Gpu>());
             }
-            terrain
-                .write()
+            runtime
+                .resource_mut::<TerrainBuffer>()
                 .add_tile_set(Box::new(ts) as Box<dyn TileSet>);
         }
 

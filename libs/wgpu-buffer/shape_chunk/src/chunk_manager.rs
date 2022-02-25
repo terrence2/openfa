@@ -141,7 +141,7 @@ impl ShapeChunkBuffer {
         &mut self,
         chunk_flags: ChunkFlags,
         gpu: &mut Gpu,
-        tracker: &mut UploadTracker,
+        tracker: &UploadTracker,
     ) -> Result<()> {
         let open_chunk = self.open_chunks.remove(&chunk_flags).expect("a chunk");
         if open_chunk.chunk_is_empty() {
@@ -182,7 +182,7 @@ impl ShapeChunkBuffer {
         selection: DrawSelection,
         catalog: &Catalog,
         gpu: &mut Gpu,
-        tracker: &mut UploadTracker,
+        tracker: &UploadTracker,
     ) -> Result<(ChunkId, ShapeId)> {
         let cache_key = format!("{}:{}", catalog.label(), name);
         if let Some(&shape_id) = self.name_to_shape_map.get(&cache_key) {

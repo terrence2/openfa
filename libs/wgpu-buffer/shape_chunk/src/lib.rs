@@ -54,12 +54,12 @@ mod test {
 
         let catalogs = CatalogManager::for_testing()?;
 
-        let mut chunk_man = ShapeChunkBuffer::new(&gpu.read())?;
+        let mut chunk_man = ShapeChunkBuffer::new(&runtime.resource::<Gpu>())?;
         let mut tracker = UploadTracker::default();
         let mut all_shapes = Vec::new();
         for (game, catalog) in catalogs.selected() {
             let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            chunk_man.set_shared_palette(&palette, &gpu.read());
+            chunk_man.set_shared_palette(&palette, &runtime.resource::<Gpu>());
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());

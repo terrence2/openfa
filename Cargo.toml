@@ -93,7 +93,6 @@ gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
 measure = { path = "libs/nitrogen/sim/measure" }
 nitrous = { path = "libs/nitrogen/util/nitrous" }
-nitrous_injector = { path = "libs/nitrogen/util/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
 physical_constants = { path = "libs/nitrogen/util/physical_constants" }
 runtime = { path = "libs/nitrogen/util/runtime" }

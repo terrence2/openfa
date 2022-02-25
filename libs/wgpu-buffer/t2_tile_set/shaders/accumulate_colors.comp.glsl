@@ -52,7 +52,11 @@ main()
         bool inside = all(bvec4(greaterThanEqual(tile_uv, vec2(0)), lessThanEqual(tile_uv, vec2(1))));
 
         // Lookup our tile u/v in the index to get the Frame and orientation.
-        uvec4 index = texture(usampler2D(index_texture, index_sampler), tile_uv);
+        ivec2 tile_uv_index = ivec2(
+            tile_uv.x * t2_info.index_width,
+            tile_uv.y * t2_info.index_height
+        );
+        uvec4 index = texelFetch(usampler2D(index_texture, index_sampler), tile_uv_index, 0);
         T2Frame frame = t2_frames[index.r];
         uint orientation = index.g;
 
