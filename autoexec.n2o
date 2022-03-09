@@ -26,3 +26,5 @@ let eye_dist := 56.595;
 @player.arcball.set_eye_longitude_radians(eye_lon);
 @player.arcball.set_eye_distance_meters(eye_dist);
 orrery.set_unix_ms(-168993517833.82);
+
+game.load_map("APA.MM");

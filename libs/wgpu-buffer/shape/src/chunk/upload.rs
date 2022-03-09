@@ -238,15 +238,22 @@ impl Default for Vertex {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum DrawSelection {
-    DamageModel,
     NormalModel,
+    DamageModel,
 }
 
 impl DrawSelection {
     pub fn is_damage(&self) -> bool {
         self == &DrawSelection::DamageModel
+    }
+
+    pub fn offset(&self) -> usize {
+        match self {
+            Self::NormalModel => 0,
+            Self::DamageModel => 1,
+        }
     }
 }
 
@@ -290,6 +297,7 @@ impl ShapeErrata {
 // TODO: the core iterate-instructions loop, but keep separate state around that.
 pub(crate) struct AnalysisResults {
     has_frame_animation: bool,
+    has_damage_model: bool,
     prop_man: BufferPropsManager,
     transformers: Vec<Transformer>,
 }
@@ -298,6 +306,7 @@ impl Default for AnalysisResults {
     fn default() -> Self {
         Self {
             has_frame_animation: false,
+            has_damage_model: false,
             prop_man: BufferPropsManager::new(),
             transformers: Vec::new(),
         }
@@ -307,6 +316,10 @@ impl Default for AnalysisResults {
 impl AnalysisResults {
     pub fn has_animation(&self) -> bool {
         self.has_frame_animation
+    }
+
+    pub fn has_damage_model(&self) -> bool {
+        self.has_damage_model
     }
 
     pub fn has_xforms(&self) -> bool {
@@ -1286,6 +1299,9 @@ impl<'a> ShapeUploader<'a> {
         let mut result: AnalysisResults = Default::default();
         let mut callback = |pc: &ProgramCounter, instr: &Instr| {
             match instr {
+                Instr::JumpToDamage(_) => {
+                    result.has_damage_model = true;
+                }
                 Instr::JumpToFrame(_) => {
                     result.has_frame_animation = true;
                 }

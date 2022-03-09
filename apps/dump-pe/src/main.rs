@@ -15,7 +15,7 @@
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogOpts};
+use lib::{CatalogManager, CatalogManagerOpts};
 use peff::PortableExecutable;
 use std::collections::HashSet;
 use structopt::StructOpt;
@@ -27,7 +27,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 fn main() -> Result<()> {

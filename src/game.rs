@@ -18,19 +18,20 @@ use bevy_ecs::prelude::*;
 use camera::ArcBallController;
 use catalog::Catalog;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
-use gpu::{Gpu, UploadTracker};
+use gpu::Gpu;
 use lib::from_dos_string;
 use log::warn;
 use measure::WorldSpaceFrame;
 use mmm::{Mission, MissionMap};
-use nitrous::{inject_nitrous_resource, method, HeapMut, NitrousResource, Value};
+use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousResource, Value};
+use pal::Palette;
 use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape::{DrawSelection, ShapeInstanceBuffer};
-use std::sync::Arc;
-use t2_tile_set::{T2Adjustment, T2TileSet};
+use shape::{DrawSelection, ShapeBuffer};
+use std::{collections::HashSet, sync::Arc};
+use t2_terrain::{T2Adjustment, T2TerrainBuffer};
 use terrain::{TerrainBuffer, TileSet};
-use xt::TypeManager;
+use xt::{TypeManager, TypeRef};
 
 #[derive(Debug, Default, NitrousResource)]
 pub struct Game {}
@@ -39,7 +40,7 @@ impl Extension for Game {
     fn init(runtime: &mut Runtime) -> Result<()> {
         /*
         let t2_adjustment = T2Adjustment::default();
-        let mut t2_tile_set = T2TileSet::new(
+        let mut t2_terrain = T2TileSet::new(
             system.read().t2_adjustment(),
             &terrain.read(),
             &globals.read(),
@@ -47,7 +48,7 @@ impl Extension for Game {
         )?;
         runtime
             .resource_mut::<TerrainBuffer>()
-            .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);
+            .add_tile_set(Box::new(t2_terrain) as Box<dyn TileSet>);
          */
         let game = Game::new();
         runtime.insert_named_resource("game", game);
@@ -81,10 +82,20 @@ impl Game {
         };
 
         // Load and parse the PT file
-        let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-        let xt = heap
-            .resource::<TypeManager>()
-            .load(&pt_filename, &catalog.read())?;
+        heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
+            let xt = heap
+                .resource::<TypeManager>()
+                .load(&pt_filename, &catalog.read())?;
+            let palette =
+                Palette::from_bytes(&catalog.read().read_name_sync("PALETTE.PAL")?.as_ref())?;
+            shapes.upload_shapes(
+                &palette,
+                &[xt.ot().shape.clone().unwrap()],
+                &catalog.read(),
+                heap.resource::<Gpu>(),
+            )
+        })?;
         // let (_shape_id, _slot_id) =
         //     heap.resource_scope(|heap, mut shapes: Mut<ShapeInstanceBuffer>| {
         //         let gpu = heap.resource::<Gpu>();
@@ -110,27 +121,56 @@ impl Game {
             // FIXME: log message to terminal
             bail!("cannot load {name}; it is a template (note the ~ or $ prefix)");
         }
-        // can we print this in a useful way?
+
+        // FIXME: can we print this in a useful way?
         println!("Loading {}...", name);
 
-        let type_manager = heap.resource::<TypeManager>();
-        let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-        let cat = catalog.read();
-        let raw = cat.read_name_sync(name)?;
-        let mm_content = from_dos_string(raw);
-        let mm = MissionMap::from_str(&mm_content, type_manager, &cat)?;
+        // FIXME: do something smarter with system palette!
+        let system_palette = {
+            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
+            let cat = catalog.read();
+            Palette::from_bytes(&cat.read_name_sync("PALETTE.PAL")?.as_ref())?
+        };
 
-        // let mut t2_tile_set = T2TileSet::new(
-        //     system.read().t2_adjustment(),
-        //     &terrain.read(),
-        //     &globals.read(),
-        //     &gpu.read(),
-        // )?;
+        let mm = {
+            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
+            let cat = catalog.read();
+            let raw = cat.read_name_sync(name)?;
+            let mm_content = from_dos_string(raw);
+            MissionMap::from_str(mm_content.as_ref(), heap.resource::<TypeManager>(), &cat)?
+        };
 
-        // let terrain = heap.resource::<TerrainBuffer>();
+        let tile_set = heap.resource_scope(|heap, mut t2_terrain: Mut<T2TerrainBuffer>| {
+            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
+            let cat = catalog.read();
+            t2_terrain.add_map(&system_palette, &mm, &cat, &heap.resource::<Gpu>())
+        })?;
+        heap.spawn_named(make_symbol(name))?
+            .insert_scriptable(tile_set)?;
+
+        // Accumulate and load all shapes on the GPU before spawning entities with those shapes.
+        let mut shape_names = HashSet::new();
+        for info in mm.objects() {
+            if let Some(shape_file) = info.xt().ot().shape.as_ref() {
+                shape_names.insert(shape_file.to_owned());
+            }
+        }
+        let shape_names = shape_names.iter().collect::<Vec<_>>();
+        let shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
+            let cat = catalog.read();
+            shapes.upload_shapes(&system_palette, &shape_names, &cat, heap.resource::<Gpu>())
+        })?;
+
+        // Re-visit all objects and instanciate instances
+        for info in mm.objects() {
+            self.spawn_from_type(info.xt(), &mut heap);
+        }
 
         Ok(())
     }
+
+    fn spawn_from_type(&self, type_ref: TypeRef, heap: &mut HeapMut) {}
 
     /*
 

@@ -12,13 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod chunk;
 mod chunk_manager;
+mod chunks;
 mod draw_state;
 mod upload;
 
-pub use chunk::{ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId};
-pub use chunk_manager::ShapeChunkBuffer;
+pub(crate) use chunk_manager::ChunkManager;
+pub use chunks::{
+    ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId, ShapeIds,
+};
 pub use draw_state::DrawState;
 pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 
@@ -26,10 +28,12 @@ pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
 mod test {
     use super::*;
     use anyhow::Result;
-    use gpu::{Gpu, UploadTracker};
+    use gpu::Gpu;
     use lib::CatalogManager;
     use log::trace;
     use pal::Palette;
+    use sh::RawShape;
+    use std::collections::HashMap;
 
     #[cfg(unix)]
     #[test]
@@ -54,38 +58,60 @@ mod test {
 
         let catalogs = CatalogManager::for_testing()?;
 
-        let mut chunk_man = ShapeChunkBuffer::new(&runtime.resource::<Gpu>())?;
-        let mut tracker = UploadTracker::default();
-        let mut all_shapes = Vec::new();
+        let mut chunk_man = ChunkManager::new(&runtime.resource::<Gpu>())?;
+        let mut result_maps = HashMap::new();
         for (game, catalog) in catalogs.selected() {
-            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-            chunk_man.set_shared_palette(&palette, &runtime.resource::<Gpu>());
+            let palette = Palette::from_bytes(catalog.read_name_sync("PALETTE.PAL")?.as_ref())?;
+            let mut all_shapes = HashMap::new();
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat_sync(fid)?;
+
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 if skipped.contains(&meta.name()) {
                     continue;
                 }
-                let (_chunk_id, shape_id) = chunk_man.upload_shape(
-                    meta.name(),
-                    DrawSelection::NormalModel,
-                    &catalog,
-                    &mut runtime.resource_mut::<Gpu>(),
-                    &mut tracker,
-                )?;
-                all_shapes.push(shape_id);
+                all_shapes.insert(
+                    meta.name().to_owned(),
+                    RawShape::from_bytes(catalog.read_name_sync(meta.name())?.as_ref())?,
+                );
             }
+            let results = chunk_man.upload_shapes(
+                &palette,
+                &all_shapes,
+                &catalog,
+                &runtime.resource::<Gpu>(),
+            )?;
+            result_maps.insert(game.test_dir.clone(), results);
         }
-        chunk_man.finish_open_chunks(&mut runtime.resource_mut::<Gpu>(), &mut tracker)?;
+
+        // Manually crank a frame
+        let mut encoder = runtime.resource::<Gpu>().device().create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("test-chunk-encoder"),
+            },
+        );
+        chunk_man.close_open_chunks(&runtime.resource::<Gpu>(), &mut encoder);
         runtime
             .resource::<Gpu>()
             .device()
             .poll(wgpu::Maintain::Wait);
+        chunk_man.cleanup_open_chunks_after_render(&mut runtime.resource_mut::<Gpu>());
 
-        for shape_id in &all_shapes {
-            let lifetime = chunk_man.part(*shape_id).widgets();
-            let widgets = lifetime.read();
-            trace!("{} - {}", widgets.num_xforms(), widgets.name());
+        for (game, mut results) in result_maps.drain() {
+            for (name, mut shape_ids) in results.drain() {
+                for (sel, shape_id) in shape_ids.drain() {
+                    let lifetime = chunk_man.part(shape_id).widgets();
+                    let widgets = lifetime.read();
+                    println!(
+                        "{}:{}:{:?} => {} - {}",
+                        game,
+                        name,
+                        sel,
+                        widgets.num_xforms(),
+                        widgets.name()
+                    );
+                }
+            }
         }
 
         Ok(())

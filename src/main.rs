@@ -21,7 +21,9 @@ use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, bail, Result};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
-use camera::{ArcBallController, ArcBallSystem, Camera, CameraSystem};
+use camera::{
+    ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera, ScreenCameraController,
+};
 use catalog::Catalog;
 use composite::CompositeRenderPass;
 use event_mapper::EventMapper;
@@ -41,11 +43,11 @@ use orrery::Orrery;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
 use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
-use shape::{DrawSelection, ShapeInstanceBuffer};
+use shape::{DrawSelection, ShapeBuffer};
 use stars::StarsBuffer;
 use std::{f32::consts::PI, fs::create_dir_all, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use t2_tile_set::{T2Adjustment, T2TileSet};
+use t2_terrain::{T2Adjustment, T2TerrainBuffer};
 use terminal_size::{terminal_size, Width};
 use terrain::{TerrainBuffer, TileSet};
 use ui::UiRenderPass;
@@ -60,7 +62,7 @@ use world::WorldRenderPass;
 use xt::TypeManager;
 
 /// Show resources from Jane's Fighters Anthology engine LIB files.
-#[derive(Debug, StructOpt)]
+#[derive(Clone, Debug, StructOpt)]
 #[structopt(set_term_width = if let Some((Width(w), _)) = terminal_size() { w as usize } else { 80 })]
 struct Opt {
     #[structopt(flatten)]
@@ -269,13 +271,14 @@ impl System {
     }
 
     fn sys_track_visible_state(
-        query: Query<(&ArcBallController, &Camera)>,
+        query: Query<&ArcBallController>,
+        camera: Res<ScreenCamera>,
         timestep: Res<TimeStep>,
         orrery: Res<Orrery>,
         mut system: ResMut<System>,
     ) {
-        for (arcball, camera) in query.iter() {
-            system.track_visible_state(*timestep.now(), &orrery, arcball, camera);
+        for arcball in query.iter() {
+            system.track_visible_state(*timestep.now(), &orrery, arcball, &camera);
         }
     }
 
@@ -284,7 +287,7 @@ impl System {
         now: Instant,
         orrery: &Orrery,
         arcball: &ArcBallController,
-        camera: &Camera,
+        camera: &ScreenCamera,
     ) {
         // if let Some(grat) = self.maybe_update_view {
         //     arcball.set_target(grat);
@@ -529,13 +532,17 @@ fn build_frame_graph(
  */
 
 fn main() -> Result<()> {
-    let _opt = Opt::from_args(); // process help before opening a window
+    let opt = Opt::from_args();
     env_logger::init();
-    InputSystem::run_forever(WindowBuilder::new().with_title("OpenFA"), simulation_main)
+    InputSystem::run_forever(
+        opt,
+        WindowBuilder::new().with_title("OpenFA"),
+        simulation_main,
+    )
 }
 
 fn simulation_main(mut runtime: Runtime) -> Result<()> {
-    let opt = Opt::from_args();
+    let opt = runtime.resource::<Opt>().to_owned();
 
     let app_dirs = AppDirs::new(Some("openfa"), true)
         .ok_or_else(|| anyhow!("unable to find app directories"))?;
@@ -560,6 +567,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<GlobalParametersBuffer>()?
         .load_extension::<StarsBuffer>()?
         .load_extension::<TerrainBuffer>()?
+        .load_extension::<T2TerrainBuffer>()?
         .load_extension::<WorldRenderPass>()?
         .load_extension::<WidgetBuffer<DemoFocus>>()?
         .load_extension::<UiRenderPass<DemoFocus>>()?
@@ -571,7 +579,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<CameraSystem>()?
         .load_extension::<ArcBallSystem>()?
         .load_extension::<TypeManager>()?
-        .load_extension::<ShapeInstanceBuffer>()?
+        .load_extension::<ShapeBuffer>()?
         .load_extension::<Game>()?;
 
     ///////////////////////////////////////////////////////////
@@ -592,7 +600,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .write()
         .set_shared_palette(&system_palette, &gpu.read());
     let mut tracker = Default::default();
-    let mut t2_tile_set = T2TileSet::new(
+    let mut t2_terrain = T2TileSet::new(
         system.read().t2_adjustment(),
         &terrain.read(),
         &globals.read(),
@@ -609,7 +617,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         let raw = catalog.read_sync(mm_fid)?;
         let mm_content = from_dos_string(raw);
         let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
-        let t2_mapper = t2_tile_set.add_map(
+        let t2_mapper = t2_terrain.add_map(
             &system_palette,
             &mm,
             &catalog,
@@ -786,7 +794,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     tracker.dispatch_uploads_one_shot(&mut gpu.write());
     terrain
         .write()
-        .add_tile_set(Box::new(t2_tile_set) as Box<dyn TileSet>);
+        .add_tile_set(Box::new(t2_terrain) as Box<dyn TileSet>);
     println!("Loading scene took: {:?}", start.elapsed());
 
     {
@@ -796,16 +804,11 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
      */
 
     // But we need at least a camera and controller before the sim is ready to run.
-    let camera = Camera::new(
-        radians!(PI / 2.0),
-        runtime.resource::<Window>().render_aspect_ratio(),
-        meters!(0.5),
-    );
     let _player_ent = runtime
         .spawn_named("player")?
         .insert(WorldSpaceFrame::default())
         .insert_scriptable(ArcBallController::default())?
-        .insert_scriptable(camera)?
+        .insert(ScreenCameraController::default())
         .id();
 
     runtime.run_startup();

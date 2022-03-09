@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogOpts};
+use lib::{CatalogManager, CatalogManagerOpts};
 use std::time::Instant;
 use structopt::StructOpt;
 use t2::Terrain;
@@ -30,7 +30,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 const PROFILE_COUNT: usize = 10000;

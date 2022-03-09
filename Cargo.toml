@@ -39,7 +39,7 @@ members = [
     "libs/wgpu-buffer/ofa_groups",
     "libs/wgpu-buffer/pic_uploader",
     "libs/wgpu-buffer/shape",
-    "libs/wgpu-buffer/t2_tile_set",
+    "libs/wgpu-buffer/t2_terrain",
 
     "libs/util/i386",
     "libs/util/lzss",
@@ -102,6 +102,6 @@ lib = { path = "libs/asset/lib" }
 mmm = { path = "libs/asset/mmm" }
 pal = { path = "libs/asset/pal" }
 shape = { path = "libs/wgpu-buffer/shape" }
-t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
+t2_terrain = { path = "libs/wgpu-buffer/t2_terrain" }
 window = { path = "libs/nitrogen/system/window" }
 xt = { path = "libs/asset/xt" }

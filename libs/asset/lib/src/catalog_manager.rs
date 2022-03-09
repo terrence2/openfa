@@ -28,7 +28,7 @@ use std::{
 };
 use structopt::StructOpt;
 
-#[derive(Debug, Default, StructOpt)]
+#[derive(Clone, Debug, Default, StructOpt)]
 pub struct CatalogManagerOpts {
     /// The path to look in for game files (default: pwd)
     #[structopt(short, long)]
@@ -68,7 +68,7 @@ impl Extension for CatalogManager {
         let opts = runtime
             .maybe_resource::<CatalogManagerOpts>()
             .unwrap_or(&empty);
-        let catalogs = CatalogManager::bootstrap(&opts)?;
+        let catalogs = CatalogManager::bootstrap(opts)?;
         let catalog = catalogs.best_owned();
         runtime.insert_resource(catalogs);
         runtime.insert_resource(catalog);

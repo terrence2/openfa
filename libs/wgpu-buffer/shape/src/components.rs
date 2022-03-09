@@ -16,16 +16,7 @@ use crate::{
     chunk::{DrawState, ShapeErrata, ShapeId},
     SlotId, TransformType,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeRef {
-    pub shape_id: ShapeId,
-}
-impl ShapeRef {
-    pub fn new(shape_id: ShapeId) -> Self {
-        Self { shape_id }
-    }
-}
+use bevy_ecs::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeSlot {
@@ -37,7 +28,7 @@ impl ShapeSlot {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct ShapeState {
     pub draw_state: DrawState,
 }
@@ -49,17 +40,17 @@ impl ShapeState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeTransformBuffer {
     pub buffer: TransformType,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeFlagBuffer {
     pub buffer: [u32; 2],
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeXformBuffer {
     pub buffer: [[f32; 6]; 14],
 }

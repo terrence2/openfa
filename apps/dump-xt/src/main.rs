@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::Catalog;
-use lib::{CatalogManager, CatalogOpts};
+use lib::{CatalogManager, CatalogManagerOpts};
 use simplelog::{Config, LevelFilter, TermLogger};
 use structopt::StructOpt;
 use xt::{Envelope, HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
@@ -26,7 +26,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 fn main() -> Result<()> {

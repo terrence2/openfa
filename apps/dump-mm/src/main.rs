@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{from_dos_string, CatalogManager, CatalogOpts};
+use lib::{from_dos_string, CatalogManager, CatalogManagerOpts};
 use mmm::MissionMap;
 use std::time::Instant;
 use structopt::StructOpt;
@@ -31,7 +31,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 const PROFILE_COUNT: usize = 10000;

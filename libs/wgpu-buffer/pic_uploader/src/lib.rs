@@ -86,7 +86,7 @@ impl PicUploader {
                     module: &gpu.create_shader_module(
                         "pic_depalettize.comp.glsl",
                         include_bytes!("../target/pic_depalettize.comp.spirv"),
-                    )?,
+                    ),
                     entry_point: "main",
                 });
 
@@ -183,10 +183,11 @@ impl PicUploader {
         })
     }
 
-    pub fn dispatch_pass<'a>(
-        &'a mut self,
-        mut cpass: wgpu::ComputePass<'a>,
-    ) -> Result<wgpu::ComputePass<'a>> {
+    /// Call to encode a compute pass to expand all pics we've uploaded this frame.
+    pub fn expand_pics(&self, encoder: &mut wgpu::CommandEncoder) {
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("pic-uploader-expand-pics-compute-pass"),
+        });
         cpass.set_pipeline(&self.depalettize_pipeline);
         for (dispatch_group_count, bind_group) in self.depalettize.iter() {
             cpass.set_bind_group(0, bind_group, &[]);
@@ -195,23 +196,24 @@ impl PicUploader {
             let wg_y = (dispatch_group_count / WORKGROUP_WIDTH).max(1);
             cpass.dispatch(wg_x, wg_y, 1)
         }
-        Ok(cpass)
     }
 
-    pub fn dispatch_singleton(&mut self, gpu: &mut Gpu) -> Result<()> {
+    /// Call after every frame to make sure we don't re-do work next frame.
+    pub fn finish_expand_pass(&mut self) {
+        self.depalettize.clear();
+    }
+
+    #[cfg(test)]
+    fn dispatch_singleton(&mut self, gpu: &mut Gpu) {
         let mut encoder = gpu
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("test-encoder"),
             });
         {
-            let cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("test-encoder-compute-pass"),
-            });
-            self.dispatch_pass(cpass)?;
+            self.expand_pics(&mut encoder);
         }
         gpu.queue_mut().submit(vec![encoder.finish()]);
-        Ok(())
     }
 }
 
@@ -221,10 +223,7 @@ mod tests {
     use futures_lite::future::block_on;
     use image::RgbaImage;
     use lib::CatalogManager;
-    use std::{
-        env,
-        time::{Duration, Instant},
-    };
+    use std::{env, time::Instant};
     use zerocopy::AsBytes;
 
     #[test]
@@ -236,22 +235,22 @@ mod tests {
         let mut uploader = PicUploader::new(&gpu)?;
         let start = Instant::now();
         for (_game, catalog) in catalogs.selected() {
-            let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+            let palette = Palette::from_bytes(catalog.read_name_sync("PALETTE.PAL")?.as_ref())?;
             uploader.set_shared_palette(&palette, &gpu);
             for fid in catalog.find_with_extension("PIC")? {
                 let data = catalog.read_sync(fid)?;
-                let format = Pic::read_format(&data)?;
+                let format = Pic::read_format(data.as_ref())?;
                 if format == PicFormat::Jpeg {
                     // Jpeg is not interesting for PicUploader since it's primary purpose is depalettizing.
                     continue;
                 }
-                uploader.upload(&data, &gpu, wgpu::BufferUsages::STORAGE)?;
+                uploader.upload(data.as_ref(), &gpu, wgpu::BufferUsages::STORAGE)?;
             }
         }
         println!("prepare time: {:?}", start.elapsed());
 
         let start = Instant::now();
-        uploader.dispatch_singleton(&mut gpu)?;
+        uploader.dispatch_singleton(&mut gpu);
         println!("dispatch time: {:?}", start.elapsed());
 
         let start = Instant::now();
@@ -275,7 +274,7 @@ mod tests {
         let data = catalog.read_name_sync("CATB.PIC")?;
         let (buffer, width, height, _stride) =
             uploader.upload(&data, &gpu, wgpu::BufferUsages::MAP_READ)?;
-        uploader.dispatch_singleton(&mut gpu)?;
+        uploader.dispatch_singleton(&mut gpu);
         gpu.device().poll(wgpu::Maintain::Wait);
 
         if env::var("DUMP") == Ok("1".to_owned()) {

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{anyhow, ensure, Result};
 use image::Pixel;
-use lib::{CatalogManager, CatalogOpts};
+use lib::{CatalogManager, CatalogManagerOpts};
 use pal::Palette;
 use pic::{Header, Pic};
 use rand::Rng;
@@ -98,7 +98,7 @@ struct Opt {
     source_image: PathBuf,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 fn load_palette(opt: &Opt) -> Result<Palette> {

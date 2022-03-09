@@ -13,17 +13,17 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::{
-    chunk::{ChunkFlags, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId},
+    chunks::{ChunkFlags, ChunkId, ChunkPart, ClosedChunk, OpenChunk, ShapeId},
     upload::DrawSelection,
     upload::ShapeUploader,
 };
 use anyhow::{anyhow, Result};
 use catalog::Catalog;
-use gpu::{Gpu, UploadTracker};
+use gpu::Gpu;
 use pal::Palette;
 use pic_uploader::PicUploader;
 use sh::RawShape;
-use std::{collections::HashMap, env, mem, num::NonZeroU64};
+use std::{collections::HashMap, env, mem, num::NonZeroU64, path::PathBuf};
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
@@ -45,21 +45,21 @@ impl TextureAtlasProperties {
 }
 
 #[derive(Debug)]
-pub struct ShapeChunkBuffer {
+pub(crate) struct ChunkManager {
     chunk_bind_group_layout: wgpu::BindGroupLayout,
     shared_sampler: wgpu::Sampler,
 
     name_to_shape_map: HashMap<String, ShapeId>,
     shape_to_chunk_map: HashMap<ShapeId, ChunkId>,
 
-    shared_palette: Palette,
     pic_uploader: PicUploader,
+    // TODO: does this need to be a vec of OpenChunk? Where do we actually stop having "enough" room.
     open_chunks: HashMap<ChunkFlags, OpenChunk>,
     closed_chunks: HashMap<ChunkId, ClosedChunk>,
     dump_atlas_textures: bool,
 }
 
-impl ShapeChunkBuffer {
+impl ChunkManager {
     pub fn new(gpu: &Gpu) -> Result<Self> {
         let dump_atlas_textures = env::var("DUMP") == Ok("1".to_owned());
         let chunk_bind_group_layout =
@@ -67,6 +67,7 @@ impl ShapeChunkBuffer {
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("shape-chunk-bind-group-layout"),
                     entries: &[
+                        // FIXME: use layout entries from the atlas?
                         // Texture Atlas
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
@@ -121,7 +122,6 @@ impl ShapeChunkBuffer {
             shared_sampler,
             name_to_shape_map: HashMap::new(),
             shape_to_chunk_map: HashMap::new(),
-            shared_palette: Palette::empty(),
             pic_uploader: PicUploader::new(gpu)?,
             open_chunks: HashMap::new(),
             closed_chunks: HashMap::new(),
@@ -129,109 +129,146 @@ impl ShapeChunkBuffer {
         })
     }
 
-    pub fn finish_open_chunks(&mut self, gpu: &mut Gpu, tracker: &mut UploadTracker) -> Result<()> {
-        let keys = self.open_chunks.keys().cloned().collect::<Vec<_>>();
-        for chunk_flags in &keys {
-            self.finish_open_chunk(*chunk_flags, gpu, tracker)?;
+    pub(crate) fn close_open_chunks(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
+        //   ScriptRun phase causes various chunk.upload_shape calls
+        //     pic_uploader.upload -> creates a buffer, but not filled yet
+        //     atlas.upload_buffer(unfilled buffer) into the blit_list of the atlas
+        //   Render Phase:
+        //     PicUploader::expand_pics fills out the buffers we pushed into the blit list above
+        //     AtlasPacker::encode_frame_uploads copies and/or blits those buffers into the atlas
+        self.pic_uploader.expand_pics(encoder);
+        for open_chunk in self.open_chunks.values_mut() {
+            assert!(
+                !open_chunk.chunk_is_empty(),
+                "opened a chunk that didn't get written to"
+            );
+            open_chunk.upload_atlas(gpu, encoder);
+            let closed_chunk = ClosedChunk::new(
+                open_chunk,
+                &self.chunk_bind_group_layout,
+                &self.shared_sampler,
+                gpu,
+            );
+            self.closed_chunks
+                .insert(open_chunk.chunk_id(), closed_chunk);
         }
-        Ok(())
+        self.pic_uploader.finish_expand_pass();
     }
 
-    pub fn finish_open_chunk(
-        &mut self,
-        chunk_flags: ChunkFlags,
-        gpu: &mut Gpu,
-        tracker: &UploadTracker,
-    ) -> Result<()> {
-        let open_chunk = self.open_chunks.remove(&chunk_flags).expect("a chunk");
-        if open_chunk.chunk_is_empty() {
-            return Ok(());
+    pub(crate) fn cleanup_open_chunks_after_render(&mut self, gpu: &mut Gpu) {
+        for (_, open_chunk) in self.open_chunks.drain() {
+            if let Some(path) = Self::dump_path(open_chunk.chunk_id()) {
+                open_chunk.dump_atlas(gpu, &path);
+            }
         }
-        let dump_path = if self.dump_atlas_textures {
-            let mut path = env::current_dir()?;
-            path.push("__dump__");
-            path.push("shape_chunk");
-            path.push(&format!("chunk-{}.png", open_chunk.chunk_id()));
-            Some(path)
-        } else {
-            None
-        };
-        let chunk = ClosedChunk::new(
-            open_chunk,
-            &self.chunk_bind_group_layout,
-            &self.shared_sampler,
-            dump_path,
-            &mut self.pic_uploader,
-            gpu,
-            tracker,
-        )?;
-        self.closed_chunks.insert(chunk.chunk_id(), chunk);
-        Ok(())
     }
 
-    /// Set the palette we will use to decode colors. Try to upload blocks of shapes with the same
-    /// palette at once as it's expensive to switch.
-    pub fn set_shared_palette(&mut self, palette: &Palette, gpu: &Gpu) {
-        self.shared_palette = palette.to_owned();
-        self.pic_uploader.set_shared_palette(palette, gpu);
-    }
-
-    pub fn upload_shape(
-        &mut self,
-        name: &str,
-        selection: DrawSelection,
-        catalog: &Catalog,
-        gpu: &mut Gpu,
-        tracker: &UploadTracker,
-    ) -> Result<(ChunkId, ShapeId)> {
-        let cache_key = format!("{}:{}", catalog.label(), name);
-        if let Some(&shape_id) = self.name_to_shape_map.get(&cache_key) {
-            let chunk_id = self.shape_to_chunk_map[&shape_id];
-            return Ok((chunk_id, shape_id));
-        }
-
-        let sh = RawShape::from_bytes(&catalog.read_name_sync(name)?)?;
-        let analysis = ShapeUploader::analyze_model(name, &sh, &selection)?;
-        let chunk_flags = ChunkFlags::for_analysis(&analysis);
-
-        if let Some(chunk) = self.open_chunks.get(&chunk_flags) {
-            if chunk.chunk_is_full() {
-                self.finish_open_chunk(chunk_flags, gpu, tracker)?;
-                self.open_chunks
-                    .insert(chunk_flags, OpenChunk::new(chunk_flags, gpu)?);
+    fn dump_path(chunk_id: ChunkId) -> Option<PathBuf> {
+        if env::var("DUMP") == Ok("1".to_owned()) {
+            if let Ok(mut path) = env::current_dir() {
+                path.push("__dump__");
+                path.push("shape_chunk");
+                path.push(&format!("chunk-{}.png", chunk_id));
+                Some(path)
+            } else {
+                None
             }
         } else {
-            self.open_chunks
-                .insert(chunk_flags, OpenChunk::new(chunk_flags, gpu)?);
+            None
         }
-        let chunk_id = self.open_chunks[&chunk_flags].chunk_id();
+    }
 
-        let shape_id = self
+    pub fn push_one_shape(
+        &mut self,
+        palette: &Palette,
+        shape_file_name: &str,
+        sh: &RawShape,
+        selection: DrawSelection,
+        catalog: &Catalog,
+        gpu: &Gpu,
+    ) -> Result<(ShapeId, bool)> {
+        let cache_key = format!("{}:{}:{:?}", catalog.label(), shape_file_name, selection);
+        if let Some(&shape_id) = self.name_to_shape_map.get(&cache_key) {
+            // Note: if we are cached, we would already have loaded the damage model
+            return Ok((shape_id, false));
+        }
+
+        let analysis = ShapeUploader::analyze_model(shape_file_name, sh, &selection)?;
+        // NOTE: The analysis should always detect the damage model, even when visiting
+        //       normal model instructions: we have to jump the other direction after all.
+        //       This let's us save a costly re-analysis if there's no model there anyway.
+        let has_damage_model = analysis.has_damage_model();
+        let chunk_flags = ChunkFlags::for_analysis(&analysis);
+        let chunk = self
             .open_chunks
-            .get_mut(&chunk_flags)
-            .expect("an open chunk")
-            .upload_shape(
-                name,
-                analysis,
-                &sh,
-                &selection,
-                &self.shared_palette,
-                catalog,
-                &mut self.pic_uploader,
-                gpu,
-            )?;
+            .entry(chunk_flags)
+            .or_insert_with(|| OpenChunk::new(chunk_flags, gpu));
+        let shape_id = chunk.upload_shape(
+            shape_file_name,
+            analysis,
+            sh,
+            &selection,
+            palette,
+            catalog,
+            &mut self.pic_uploader,
+            gpu,
+        )?;
 
         self.name_to_shape_map.insert(cache_key, shape_id);
-        self.shape_to_chunk_map.insert(shape_id, chunk_id);
-        Ok((chunk_id, shape_id))
+        self.shape_to_chunk_map.insert(shape_id, chunk.chunk_id());
+        Ok((shape_id, has_damage_model))
     }
 
-    pub fn shape_for(&self, name: &str) -> Result<ShapeId> {
-        Ok(*self
-            .name_to_shape_map
-            .get(name)
-            .ok_or_else(|| anyhow!("no shape for the given name"))?)
+    pub fn upload_shapes(
+        &mut self,
+        palette: &Palette,
+        shapes: &HashMap<String, RawShape>,
+        catalog: &Catalog,
+        gpu: &Gpu,
+    ) -> Result<HashMap<String, HashMap<DrawSelection, ShapeId>>> {
+        self.pic_uploader.set_shared_palette(palette, gpu);
+
+        let mut out = HashMap::new();
+        for (shape_file_name, sh) in shapes.iter() {
+            out.insert(shape_file_name.to_owned(), HashMap::new());
+
+            let (normal_shape_id, has_damage_model) = self.push_one_shape(
+                palette,
+                shape_file_name,
+                sh,
+                DrawSelection::NormalModel,
+                catalog,
+                gpu,
+            )?;
+            out.get_mut(shape_file_name)
+                .unwrap()
+                .insert(DrawSelection::NormalModel, normal_shape_id);
+
+            if has_damage_model {
+                let (damage_shape_id, has_damage_model) = self.push_one_shape(
+                    palette,
+                    shape_file_name,
+                    sh,
+                    DrawSelection::DamageModel,
+                    catalog,
+                    gpu,
+                )?;
+                assert!(has_damage_model);
+                out.get_mut(shape_file_name)
+                    .unwrap()
+                    .insert(DrawSelection::DamageModel, damage_shape_id);
+            }
+        }
+
+        Ok(out)
     }
+
+    // pub fn shape_for(&self, name: &str) -> Result<ShapeId> {
+    //     Ok(*self
+    //         .name_to_shape_map
+    //         .get(name)
+    //         .ok_or_else(|| anyhow!("no shape for the given name"))?)
+    // }
 
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         let chunk_id = self.shape_to_chunk_map[&shape_id];
@@ -248,8 +285,12 @@ impl ShapeChunkBuffer {
         unreachable!()
     }
 
-    pub fn part_for(&self, name: &str) -> Result<&ChunkPart> {
-        Ok(self.part(self.shape_for(name)?))
+    // pub fn part_for(&self, name: &str) -> Result<&ChunkPart> {
+    //     Ok(self.part(self.shape_for(name)?))
+    // }
+
+    pub fn shape_chunk(&self, shape_id: ShapeId) -> ChunkId {
+        self.shape_to_chunk_map[&shape_id]
     }
 
     // NOTE: The chunk must be closed.

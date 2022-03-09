@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use lay::Layer;
-use lib::{CatalogManager, CatalogOpts, GameInfo};
+use lib::{CatalogManager, CatalogManagerOpts, GameInfo};
 use pal::Palette;
 use std::fs;
 use structopt::StructOpt;
@@ -27,7 +27,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 fn main() -> Result<()> {

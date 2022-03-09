@@ -15,9 +15,11 @@
 #version 450
 #include <nitrogen/wgpu-buffer/shader_shared/include/buffer_helpers.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/terrain.glsl>
-#include <wgpu-buffer/t2_tile_set/include/t2_tile_set.glsl>
+#include <wgpu-buffer/t2_terrain/include/t2_tile_set.glsl>
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+const uint WORKGROUP_WIDTH = 65536;
+
+layout(local_size_x = 64, local_size_y = 2, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) buffer Vertices { TerrainVertex vertices[]; };
 
@@ -30,7 +32,7 @@ void
 main()
 {
     // One invocation per vertex.
-    uint i = gl_GlobalInvocationID.x;
+    uint i = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * WORKGROUP_WIDTH;
     vec2 grat = arr_to_vec2(vertices[i].graticule);
     vec3 v_normal = arr_to_vec3(vertices[i].normal);
 

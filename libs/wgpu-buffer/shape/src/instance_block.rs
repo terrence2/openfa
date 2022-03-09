@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::{ChunkId, DrawIndirectCommand};
-use gpu::{Gpu, UploadTracker};
+use gpu::Gpu;
 use log::trace;
 use std::{mem, num::NonZeroU64, sync::Arc};
 
@@ -280,40 +280,40 @@ impl InstanceBlock {
         }
     }
 
-    pub(crate) fn make_upload_buffer(&self, gpu: &Gpu, tracker: &mut UploadTracker) {
+    pub(crate) fn make_upload_buffer(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
         gpu.upload_slice_to(
             "shape-instance-command-buffer-scratch",
             &self.command_buffer_scratch[..self.len()],
             self.command_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-transform-buffer-scratch",
             &self.transform_buffer_scratch[..self.len()],
             self.transform_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-flag-buffer-scratch",
             &self.flag_buffer_scratch[..self.len()],
             self.flag_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-xform-index-buffer-scratch",
             &self.xform_index_buffer_scratch[..self.len()],
             self.xform_index_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-xform-buffer-scratch",
             &self.xform_buffer_scratch[..self.xform_cursor],
             self.xform_buffer.clone(),
-            tracker,
+            encoder,
         );
     }
 

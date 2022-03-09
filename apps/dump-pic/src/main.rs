@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use image::GenericImageView;
-use lib::{CatalogManager, CatalogOpts, GameInfo};
+use lib::{CatalogManager, CatalogManagerOpts, GameInfo};
 use pal::Palette;
 use pic::Pic;
 use std::fs;
@@ -52,7 +52,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 fn main() -> Result<()> {

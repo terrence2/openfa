@@ -18,8 +18,9 @@ use crate::chunk::{
 };
 use anyhow::Result;
 use atlas::AtlasPacker;
+use bevy_ecs::prelude::*;
 use catalog::Catalog;
-use gpu::{Gpu, UploadTracker};
+use gpu::Gpu;
 use image::Rgba;
 use lazy_static::lazy_static;
 use log::info;
@@ -27,26 +28,19 @@ use pal::Palette;
 use parking_lot::RwLock;
 use pic_uploader::PicUploader;
 use sh::RawShape;
+use smallvec::SmallVec;
 use std::fmt::Formatter;
 use std::{
     collections::HashMap,
     fmt::Display,
     mem,
-    path::PathBuf,
+    path::Path,
     sync::{Arc, Mutex},
 };
 use zerocopy::{AsBytes, FromBytes};
 
-const CHUNK_MODEL_TARGET_COUNT: usize = 512;
-
 const AVERAGE_VERTEX_BYTES: usize = 24_783;
-const MAX_VERTEX_BYTES: usize = 157_968;
-const VERTEX_CHUNK_HIGH_WATER_BYTES: usize = AVERAGE_VERTEX_BYTES * CHUNK_MODEL_TARGET_COUNT;
-const VERTEX_CHUNK_HIGH_WATER_COUNT: usize =
-    VERTEX_CHUNK_HIGH_WATER_BYTES / mem::size_of::<Vertex>();
-const VERTEX_CHUNK_BYTES: usize = VERTEX_CHUNK_HIGH_WATER_BYTES + MAX_VERTEX_BYTES;
-const VERTEX_CHUNK_COUNT: usize = VERTEX_CHUNK_BYTES / mem::size_of::<Vertex>();
-const MAX_ATLAS_BYTES: usize = 64 * 1024 * 1024;
+const VERTEX_CHUNK_COUNT: usize = AVERAGE_VERTEX_BYTES / mem::size_of::<Vertex>();
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
@@ -66,8 +60,31 @@ impl Display for ChunkId {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Component)]
 pub struct ShapeId((ChunkId, u32));
+
+#[derive(Clone, Debug)]
+pub struct ShapeIds {
+    normal: ShapeId,
+    damage: SmallVec<[ShapeId; 1]>,
+}
+
+impl ShapeIds {
+    pub(crate) fn new(normal_shape_id: ShapeId, damage_shape_ids: SmallVec<[ShapeId; 1]>) -> Self {
+        Self {
+            normal: normal_shape_id,
+            damage: damage_shape_ids,
+        }
+    }
+
+    pub fn normal(&self) -> ShapeId {
+        self.normal
+    }
+
+    pub fn damage(&self) -> &[ShapeId] {
+        &self.damage
+    }
+}
 
 lazy_static! {
     static ref GLOBAL_CHUNK_ID: Mutex<u32> = Mutex::new(0);
@@ -161,11 +178,11 @@ pub struct OpenChunk {
 }
 
 impl OpenChunk {
-    pub(crate) fn new(chunk_flags: ChunkFlags, gpu: &Gpu) -> Result<Self> {
+    pub(crate) fn new(chunk_flags: ChunkFlags, gpu: &Gpu) -> Self {
         let atlas_size0 = 1024 + 4;
         let atlas_stride = Gpu::stride_for_row_size(atlas_size0 * 4);
         let atlas_size = atlas_stride / 4;
-        Ok(Self {
+        Self {
             chunk_id: allocate_chunk_id(),
             chunk_flags,
             atlas_packer: AtlasPacker::<Rgba<u8>>::new(
@@ -175,21 +192,23 @@ impl OpenChunk {
                 atlas_size,
                 wgpu::TextureFormat::Rgba8Unorm,
                 wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
-            )?,
+            ),
             vertex_upload_buffer: Vec::with_capacity(VERTEX_CHUNK_COUNT),
             last_shape_id: 0,
             chunk_parts: HashMap::new(),
-        })
+        }
     }
 
-    pub fn chunk_is_full(&self) -> bool {
-        // TODO: also check on atlas?
-        self.vertex_upload_buffer.len() >= VERTEX_CHUNK_HIGH_WATER_COUNT
-            || self.atlas_packer.atlas_size() > MAX_ATLAS_BYTES
+    pub(crate) fn upload_atlas(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
+        self.atlas_packer.encode_frame_uploads(gpu, encoder);
     }
 
-    pub fn chunk_is_empty(&self) -> bool {
+    pub(crate) fn chunk_is_empty(&self) -> bool {
         self.vertex_upload_buffer.is_empty()
+    }
+
+    pub(crate) fn dump_atlas(&self, gpu: &mut Gpu, path: &Path) {
+        self.atlas_packer.dump_texture(gpu, path).ok();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -204,6 +223,7 @@ impl OpenChunk {
         pic_uploader: &mut PicUploader,
         gpu: &Gpu,
     ) -> Result<ShapeId> {
+        assert!(*selection != DrawSelection::DamageModel || analysis.has_damage_model());
         let start_vertex = self.vertex_upload_buffer.len();
         let (shape_widgets, mut verts) = ShapeUploader::new(name, palette, catalog).draw_model(
             sh,
@@ -248,16 +268,12 @@ pub struct ClosedChunk {
 }
 
 impl ClosedChunk {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        mut chunk: OpenChunk,
+        chunk: &mut OpenChunk,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
-        dump_path: Option<PathBuf>,
-        pic_uploader: &mut PicUploader,
-        gpu: &mut gpu::Gpu,
-        tracker: &UploadTracker,
-    ) -> Result<Self> {
+        gpu: &gpu::Gpu,
+    ) -> Self {
         let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
         let a_size = chunk.atlas_packer.atlas_size();
         info!(
@@ -282,13 +298,8 @@ impl ClosedChunk {
             wgpu::BufferUsages::UNIFORM,
         );
 
-        pic_uploader.dispatch_singleton(gpu)?;
-        if let Some(path) = dump_path {
-            chunk.atlas_packer.dump(path);
-        }
-        let (_atlas_texture, atlas_view, _atlas_sampler) =
-            chunk.atlas_packer.finish(gpu, tracker)?;
-
+        // TODO: use entries from the atlas directly
+        let atlas_view = chunk.atlas_packer.texture_view();
         let atlas_bind_group = gpu.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shape-chunk-atlas-bind-group"),
             layout,
@@ -296,7 +307,7 @@ impl ClosedChunk {
                 // atlas texture
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                    resource: wgpu::BindingResource::TextureView(atlas_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -313,13 +324,17 @@ impl ClosedChunk {
             ],
         });
 
-        Ok(ClosedChunk {
+        // Note: steal chunk parts as cloning it would be expensive and we don't need it anymore.
+        let mut chunk_parts = HashMap::new();
+        std::mem::swap(&mut chunk_parts, &mut chunk.chunk_parts);
+
+        ClosedChunk {
             vertex_buffer,
             vertex_count: chunk.vertex_upload_buffer.len() as u32,
             atlas_bind_group,
             chunk_id: chunk.chunk_id,
-            chunk_parts: chunk.chunk_parts,
-        })
+            chunk_parts,
+        }
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {

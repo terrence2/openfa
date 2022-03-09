@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogOpts, GameInfo};
+use lib::{CatalogManager, CatalogManagerOpts, GameInfo};
 use reverse::b2h;
 use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
 use simplelog::*;
@@ -77,7 +77,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    catalog_opts: CatalogManagerOpts,
 }
 
 fn main() -> Result<()> {
