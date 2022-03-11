@@ -24,7 +24,7 @@ use bevy_ecs::prelude::*;
 use camera::{
     ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera, ScreenCameraController,
 };
-use catalog::Catalog;
+use catalog::{Catalog, CatalogOpts};
 use composite::CompositeRenderPass;
 use event_mapper::EventMapper;
 use fnt::Fnt;
@@ -34,7 +34,7 @@ use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::{DetailLevelOpts, Gpu};
 use input::{DemoFocus, InputSystem};
-use lib::{from_dos_string, CatalogManager, CatalogManagerOpts};
+use lib::{from_dos_string, Libs, LibsOpts};
 use log::warn;
 use measure::WorldSpaceFrame;
 use mmm::MissionMap;
@@ -66,7 +66,7 @@ use xt::TypeManager;
 #[structopt(set_term_width = if let Some((Width(w), _)) = terminal_size() { w as usize } else { 80 })]
 struct Opt {
     #[structopt(flatten)]
-    catalog_opts: CatalogManagerOpts,
+    libs_opts: LibsOpts,
 
     #[structopt(flatten)]
     detail_opts: DetailLevelOpts,
@@ -91,7 +91,6 @@ struct VisibleWidgets {
 #[derive(Debug, NitrousResource)]
 struct System {
     maybe_update_view: Option<Graticule<GeoSurface>>,
-    adjust: Arc<RwLock<T2Adjustment>>,
     target_offset: isize,
     targets: Vec<(String, Graticule<GeoSurface>)>,
     visible_widgets: VisibleWidgets,
@@ -101,12 +100,8 @@ impl Extension for System {
     fn init(runtime: &mut Runtime) -> Result<()> {
         let system =
             runtime.resource_scope(|heap, mut widgets: Mut<WidgetBuffer<DemoFocus>>| {
-                let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-                System::new(&catalog.read(), &mut widgets)
+                System::new(heap.resource::<Libs>(), &mut widgets)
             })?;
-        // let widgets = runtime.resource_mut::<WidgetBuffer<DemoFocus>>();
-        // let catalog = runtime.resource::<Arc<RwLock<Catalog>>>();
-        // let system = System::new(&catalog.read(), &mut widgets)?;
         runtime.insert_named_resource("system", system);
         runtime
             .frame_stage_mut(FrameStage::FrameEnd)
@@ -123,11 +118,10 @@ impl Extension for System {
 
 #[inject_nitrous_resource]
 impl System {
-    pub fn new(catalog: &Catalog, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<Self> {
-        let visible_widgets = Self::build_gui(catalog, widgets)?;
+    pub fn new(libs: &Libs, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<Self> {
+        let visible_widgets = Self::build_gui(libs, widgets)?;
         let system = Self {
             maybe_update_view: None,
-            adjust: Arc::new(RwLock::new(T2Adjustment::default())),
             target_offset: 0,
             targets: Vec::new(),
             visible_widgets,
@@ -173,11 +167,8 @@ impl System {
     }
      */
 
-    pub fn build_gui(
-        catalog: &Catalog,
-        widgets: &mut WidgetBuffer<DemoFocus>,
-    ) -> Result<VisibleWidgets> {
-        let fnt = Fnt::from_bytes(&catalog.read_name_sync("HUD11.FNT")?)?;
+    pub fn build_gui(libs: &Libs, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<VisibleWidgets> {
+        let fnt = Fnt::from_bytes(libs.read_name("HUD11.FNT")?.as_ref())?;
         let font = FntFont::from_fnt(&fnt)?;
         widgets.add_font("HUD11", font);
 
@@ -318,6 +309,7 @@ impl System {
         self.visible_widgets.fps_label.write().set_text(ts);
     }
 
+    /*
     pub fn t2_adjustment(&self) -> Arc<RwLock<T2Adjustment>> {
         self.adjust.clone()
     }
@@ -398,6 +390,7 @@ impl System {
             println!("target: {}", name);
         }
     }
+     */
 
     /*
     /// FIXME: should be in platform
@@ -550,7 +543,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     create_dir_all(&app_dirs.state_dir)?;
 
     runtime
-        .insert_resource(opt.catalog_opts)
+        .insert_resource(opt.libs_opts)
         .insert_resource(opt.display_opts)
         .insert_resource(opt.startup_opts)
         .insert_resource(opt.detail_opts.cpu_detail())
@@ -558,7 +551,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .insert_resource(app_dirs)
         .insert_resource(DemoFocus::Demo)
         .load_extension::<StartupOpts>()?
-        .load_extension::<CatalogManager>()?
+        .load_extension::<Libs>()?
         .load_extension::<EventMapper<DemoFocus>>()?
         .load_extension::<Window>()?
         .load_extension::<Gpu>()?

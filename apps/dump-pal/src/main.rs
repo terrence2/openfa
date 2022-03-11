@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogManagerOpts, GameInfo};
+use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use std::fs;
 use structopt::StructOpt;
@@ -34,16 +34,16 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogManagerOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
@@ -58,8 +58,8 @@ fn main() -> Result<()> {
 }
 
 fn show_pal(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
-    let meta = catalog.stat_sync(fid)?;
-    let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
+    let meta = catalog.stat(fid)?;
+    let pal = Palette::from_bytes(&catalog.read(fid)?)?;
     if opt.dump {
         println!("Dumping palette: {}:{}", game.test_dir, meta.name());
 

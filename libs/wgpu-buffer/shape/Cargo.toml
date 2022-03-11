@@ -30,6 +30,7 @@ global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
 measure = { path = "../../nitrogen/sim/measure" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
 ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
 pal = { path = "../../asset/pal" }
 pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }

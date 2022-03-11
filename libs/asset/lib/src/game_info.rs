@@ -12,7 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use std::env;
 
 // FIXME: should this all be in a common crate?
 pub struct GameInfo {
@@ -27,26 +26,6 @@ pub struct GameInfo {
     pub allow_packed_t2: bool,
     pub unique_files: &'static [&'static str],
     pub cd_libs: &'static [&'static str],
-}
-
-impl GameInfo {
-    // FIXME: we should remove all of this
-    pub fn packed_label(&self) -> String {
-        format!("packed:{}", self.test_dir)
-    }
-
-    pub fn unpacked_label(&self) -> String {
-        format!("unpacked:{}", self.test_dir)
-    }
-
-    pub fn label(&self) -> String {
-        let use_packed = env::var("USE_PACKED").unwrap_or_else(|_| "0".to_owned());
-        if use_packed == "1" || use_packed.to_ascii_lowercase().starts_with('t') {
-            self.packed_label()
-        } else {
-            self.unpacked_label()
-        }
-    }
 }
 
 const USNF: GameInfo = GameInfo {

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::Catalog;
-use lib::{CatalogManager, CatalogManagerOpts};
+use lib::{Libs, LibsOpts};
 use simplelog::{Config, LevelFilter, TermLogger};
 use structopt::StructOpt;
 use xt::{Envelope, HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
@@ -26,17 +26,17 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogManagerOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     TermLogger::init(LevelFilter::Warn, Config::default())?;
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 show_xt(meta.name(), &catalog)?;
             }

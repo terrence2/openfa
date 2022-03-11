@@ -1482,7 +1482,7 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
     use simplelog::{Config, LevelFilter, TermLogger};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
@@ -1537,14 +1537,14 @@ mod tests {
         #[allow(unused_variables, unused_mut)]
         let mut freq: HashMap<&'static str, usize> = HashMap::new();
 
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, catalog) in libs.all() {
             for fid in catalog.find_with_extension("SH")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
-                let data = catalog.read_sync(fid)?;
-                let shape = RawShape::from_bytes(&data)?;
+                let data = catalog.read(fid)?;
+                let shape = RawShape::from_bytes(data.as_ref())?;
 
                 // Ensure that f2 points to the trailer if it exists.
                 // And conversely that we found the trailer in the right place.

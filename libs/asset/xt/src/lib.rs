@@ -141,7 +141,7 @@ impl TypeManager {
         };
 
         trace!("TypeManager::load({})", name);
-        let content = from_dos_string(catalog.read_name_sync(name)?);
+        let content = from_dos_string(catalog.read_name(name)?);
         let ext = name.rsplitn(2, '.').collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
@@ -171,14 +171,14 @@ impl TypeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     #[test]
     fn can_parse_all_entity_types() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
+        let catalogs = Libs::for_testing()?;
         for (game, catalog) in catalogs.all() {
             for fid in catalog.find_glob("*.[OJNP]T")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let types = TypeManager::empty();
                 let ty = types.load(meta.name(), &catalog)?;

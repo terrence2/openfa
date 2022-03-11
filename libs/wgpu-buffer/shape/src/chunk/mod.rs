@@ -29,7 +29,7 @@ mod test {
     use super::*;
     use anyhow::Result;
     use gpu::Gpu;
-    use lib::CatalogManager;
+    use lib::Libs;
     use log::trace;
     use pal::Palette;
     use sh::RawShape;
@@ -56,15 +56,15 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let catalogs = CatalogManager::for_testing()?;
+        let libs = Libs::for_testing()?;
 
         let mut chunk_man = ChunkManager::new(&runtime.resource::<Gpu>())?;
         let mut result_maps = HashMap::new();
-        for (game, catalog) in catalogs.selected() {
-            let palette = Palette::from_bytes(catalog.read_name_sync("PALETTE.PAL")?.as_ref())?;
+        for (game, catalog) in libs.selected() {
+            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
             let mut all_shapes = HashMap::new();
             for fid in catalog.find_with_extension("SH")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
 
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 if skipped.contains(&meta.name()) {
@@ -72,7 +72,7 @@ mod test {
                 }
                 all_shapes.insert(
                     meta.name().to_owned(),
-                    RawShape::from_bytes(catalog.read_name_sync(meta.name())?.as_ref())?,
+                    RawShape::from_bytes(catalog.read_name(meta.name())?.as_ref())?,
                 );
             }
             let results = chunk_man.upload_shapes(

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{anyhow, ensure, Result};
 use image::Pixel;
-use lib::{CatalogManager, CatalogManagerOpts};
+use lib::{Libs, LibsOpts};
 use pal::Palette;
 use pic::{Header, Pic};
 use rand::Rng;
@@ -98,7 +98,7 @@ struct Opt {
     source_image: PathBuf,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogManagerOpts,
+    libs_opts: LibsOpts,
 }
 
 fn load_palette(opt: &Opt) -> Result<Palette> {
@@ -107,14 +107,14 @@ fn load_palette(opt: &Opt) -> Result<Palette> {
         return Palette::from_bytes(&pal_data);
     }
 
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
     if let Some(ref s) = opt.palette_resource {
-        Pic::from_bytes(&catalogs.best().read_name_sync(s)?)?
+        Pic::from_bytes(libs.catalog().read_name(s)?.as_ref())?
             .palette()
             .cloned()
             .ok_or_else(|| anyhow!("expected non-palette resource to contain a palette"))
     } else {
-        Palette::from_bytes(&catalogs.best().read_name_sync("PALETTE.PAL")?)
+        Palette::from_bytes(libs.catalog().read_name("PALETTE.PAL")?.as_ref())
     }
 }
 

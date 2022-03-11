@@ -221,16 +221,16 @@ impl Fnt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     #[test]
     fn it_can_parse_all_fnt_files() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, catalog) in libs.all() {
             for fid in catalog.find_with_extension("FNT")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let fnt = Fnt::from_bytes(&catalog.read_sync(fid)?)?;
+                let fnt = Fnt::from_bytes(&catalog.read(fid)?)?;
                 fnt.analyze(game.test_dir, meta.name())?;
             }
         }

@@ -222,7 +222,7 @@ mod tests {
     use super::*;
     use futures_lite::future::block_on;
     use image::RgbaImage;
-    use lib::CatalogManager;
+    use lib::Libs;
     use std::{env, time::Instant};
     use zerocopy::AsBytes;
 
@@ -231,7 +231,7 @@ mod tests {
         let mut runtime = Gpu::for_test_unix()?;
         let mut gpu = runtime.resource_mut::<Gpu>();
 
-        let catalogs = CatalogManager::for_testing()?;
+        let catalogs = Libs::for_testing()?;
         let mut uploader = PicUploader::new(&gpu)?;
         let start = Instant::now();
         for (_game, catalog) in catalogs.selected() {
@@ -265,7 +265,7 @@ mod tests {
         let mut runtime = Gpu::for_test_unix()?;
         let mut gpu = runtime.resource_mut::<Gpu>();
 
-        let catalogs = CatalogManager::for_testing()?;
+        let catalogs = Libs::for_testing()?;
         let catalog = catalogs.best();
 
         let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;

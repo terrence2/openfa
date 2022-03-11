@@ -67,6 +67,15 @@ enum ShapeUpload {
     AnimateDrawState,
 }
 
+pub struct ShapeInstance {
+    instantiated_shape_id: ShapeId,
+    slot_id: SlotId,
+}
+
+pub struct ShapeComponents {
+    draw_state: DrawState,
+}
+
 #[derive(Debug)]
 pub struct ShapeBuffer {
     chunk_man: ChunkManager,
@@ -292,12 +301,12 @@ impl ShapeBuffer {
             let shape_file_name = shape_file_name.as_ref();
             shapes.insert(
                 shape_file_name.to_owned(),
-                RawShape::from_bytes(catalog.read_name_sync(shape_file_name)?.as_ref())?,
+                RawShape::from_bytes(catalog.read_name(shape_file_name)?.as_ref())?,
             );
             let (base_name, _sh) = shape_file_name.rsplit_once(".").unwrap();
             for suffix in ["_A", "_B", "_C", "_D"] {
                 let assoc_name = format!("{}{}.SH", base_name, suffix);
-                if let Ok(data) = catalog.read_name_sync(&assoc_name) {
+                if let Ok(data) = catalog.read_name(&assoc_name) {
                     shapes.insert(assoc_name, RawShape::from_bytes(data.as_ref())?);
                 }
             }
@@ -364,7 +373,11 @@ impl ShapeBuffer {
         shapes.chunk_man.cleanup_open_chunks_after_render(&mut gpu);
     }
 
-    pub fn create_instance(&mut self, shape_id: ShapeId, gpu: &Gpu) -> SlotId {
+    pub fn create_instance(
+        &mut self,
+        shape_id: ShapeId,
+        gpu: &Gpu,
+    ) -> Result<(ShapeInstance, ShapeComponents)> {
         // Find or create a block that we can use to track the instance data.
         let chunk_id = self.chunk_man.shape_chunk(shape_id);
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -389,7 +402,18 @@ impl ShapeBuffer {
             .get_mut(&block_id)
             .unwrap()
             .allocate_slot(draw_cmd);
-        slot_id
+        let widgets = self.chunk_man.part(shape_id).widgets();
+        let errata: ShapeErrata = widgets.read().errata();
+
+        Ok((
+            ShapeInstance {
+                instantiated_shape_id: shape_id,
+                slot_id,
+            },
+            ShapeComponents {
+                draw_state: DrawState::new(errata),
+            },
+        ))
     }
 
     /*
@@ -754,7 +778,9 @@ impl ShapeBuffer {
 mod test {
     use super::*;
     use crate::chunk::DrawSelection;
-    use lib::CatalogManager;
+    use animate::TimeStep;
+    use camera::CameraSystem;
+    use lib::Libs;
     use orrery::Orrery;
     use pal::Palette;
 
@@ -765,14 +791,14 @@ mod test {
             .with_extension::<GlobalParametersBuffer>()?
             .with_extension::<AtmosphereBuffer>()?
             .with_extension::<ShapeBuffer>()?;
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.selected() {
+        let libs = Libs::for_testing()?;
+        for (game, catalog) in libs.selected() {
             if game.test_dir != "FA" {
                 continue;
             }
-            let palette = Palette::from_bytes(catalog.read_name_sync("PALETTE.PAL")?.as_ref())?;
+            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
             for fid in catalog.find_with_extension("SH")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 if meta.name() != "F22.SH" {
                     continue;
                 }
@@ -796,6 +822,8 @@ mod test {
     #[test]
     fn test_creation() -> Result<()> {
         let mut runtime = Gpu::for_test_unix()?
+            .with_extension::<TimeStep>()?
+            .with_extension::<CameraSystem>()?
             .with_extension::<GlobalParametersBuffer>()?
             .with_extension::<AtmosphereBuffer>()?
             .with_extension::<ShapeBuffer>()?
@@ -817,12 +845,12 @@ mod test {
             "WAVE2.SH",
         ];
 
-        let catalogs = CatalogManager::for_testing()?;
+        let libs = Libs::for_testing()?;
 
-        for (game, catalog) in catalogs.selected() {
+        for (game, catalog) in libs.selected() {
             let mut all_shapes = Vec::new();
             for fid in catalog.find_with_extension("SH")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 if meta.name().ends_with("_S.SH")
                     || meta.name().ends_with("_A.SH")
                     || meta.name().ends_with("_B.SH")
@@ -848,7 +876,7 @@ mod test {
             }
             let out = runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
                 shapes.upload_shapes(
-                    &Palette::from_bytes(catalog.read_name_sync("PALETTE.PAL").unwrap().as_ref())
+                    &Palette::from_bytes(catalog.read_name("PALETTE.PAL").unwrap().as_ref())
                         .unwrap(),
                     &all_shapes,
                     &catalog,

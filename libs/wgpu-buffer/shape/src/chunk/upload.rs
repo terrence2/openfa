@@ -1238,7 +1238,7 @@ impl<'a> ShapeUploader<'a> {
                     if let Some(frame) = self.loaded_frames.get(&filename) {
                         self.active_frame = Some(*frame);
                     } else {
-                        let data = self.catalog.read_name_sync(&filename)?;
+                        let data = self.catalog.read_name(&filename)?;
                         let (buffer, w, h, stride) =
                             pic_uploader.upload(&data, gpu, wgpu::BufferUsages::COPY_SRC)?;
                         let frame = atlas_packer.push_buffer(buffer, w, h, stride)?;

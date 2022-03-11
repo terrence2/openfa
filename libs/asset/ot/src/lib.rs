@@ -275,16 +275,16 @@ impl ObjectType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogManager};
+    use lib::{from_dos_string, Libs};
 
     #[test]
     fn can_parse_all_entity_types() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, catalog) in libs.all() {
             for fid in catalog.find_glob("*.[OJNP]T")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let contents = from_dos_string(catalog.read(fid)?);
                 let ot = ObjectType::from_text(&contents)?;
                 // Only one misspelling in 2500 files.
                 assert!(ot.file_name() == meta.name() || meta.name() == "SMALLARM.JT");

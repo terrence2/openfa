@@ -73,7 +73,7 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
             println!("{}:", input.to_string_lossy());
         }
         for &fid in catalog.find_glob("*")?.iter() {
-            let info = catalog.stat_sync(fid)?;
+            let info = catalog.stat(fid)?;
             let mut psize = info.packed_size().file_size(options::BINARY).unwrap();
             if psize.ends_with(" B") {
                 psize += "  ";
@@ -131,7 +131,7 @@ fn handle_unpack(inputs: Vec<PathBuf>, output_path: Option<PathBuf>) -> Result<(
             create_dir_all(&outdir)?;
         }
         for &fid in catalog.find_glob("*")?.iter() {
-            let stat = catalog.stat_sync(fid)?;
+            let stat = catalog.stat(fid)?;
             let name = stat.name();
             let outfilename = outdir.join(name);
             println!(
@@ -140,7 +140,7 @@ fn handle_unpack(inputs: Vec<PathBuf>, output_path: Option<PathBuf>) -> Result<(
                 name,
                 outfilename.to_string_lossy()
             );
-            let content = catalog.read_name_sync(name)?;
+            let content = catalog.read_name(name)?;
             if outfilename.exists() {
                 remove_file(&outfilename)?;
             }

@@ -20,6 +20,7 @@ use catalog::Catalog;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use gpu::Gpu;
 use lib::from_dos_string;
+use lib::Libs;
 use log::warn;
 use measure::WorldSpaceFrame;
 use mmm::{Mission, MissionMap};
@@ -87,8 +88,7 @@ impl Game {
             let xt = heap
                 .resource::<TypeManager>()
                 .load(&pt_filename, &catalog.read())?;
-            let palette =
-                Palette::from_bytes(&catalog.read().read_name_sync("PALETTE.PAL")?.as_ref())?;
+            let palette = Palette::from_bytes(&catalog.read().read_name("PALETTE.PAL")?.as_ref())?;
             shapes.upload_shapes(
                 &palette,
                 &[xt.ot().shape.clone().unwrap()],
@@ -127,17 +127,18 @@ impl Game {
 
         // FIXME: do something smarter with system palette!
         let system_palette = {
-            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-            let cat = catalog.read();
-            Palette::from_bytes(&cat.read_name_sync("PALETTE.PAL")?.as_ref())?
+            let libs = heap.resource::<Libs>();
+            Palette::from_bytes(&libs.read_name("PALETTE.PAL")?.as_ref())?
         };
 
         let mm = {
-            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-            let cat = catalog.read();
-            let raw = cat.read_name_sync(name)?;
-            let mm_content = from_dos_string(raw);
-            MissionMap::from_str(mm_content.as_ref(), heap.resource::<TypeManager>(), &cat)?
+            let libs = heap.resource::<Libs>();
+            let mm_content = from_dos_string(libs.read_name(name)?);
+            MissionMap::from_str(
+                mm_content.as_ref(),
+                heap.resource::<TypeManager>(),
+                libs.catalog(),
+            )?
         };
 
         let tile_set = heap.resource_scope(|heap, mut t2_terrain: Mut<T2TerrainBuffer>| {
@@ -156,21 +157,29 @@ impl Game {
             }
         }
         let shape_names = shape_names.iter().collect::<Vec<_>>();
-        let shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+        let preloaded_shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
             let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
             let cat = catalog.read();
             shapes.upload_shapes(&system_palette, &shape_names, &cat, heap.resource::<Gpu>())
         })?;
 
-        // Re-visit all objects and instanciate instances
+        // Re-visit all objects and instantiate instances
+        // TODO: only worried about shape bits for now, not the rest of the entity.
+        /*
         for info in mm.objects() {
-            self.spawn_from_type(info.xt(), &mut heap);
+            let (shape_ids, shape_inst, shape_comps) = if let Some(shape_file) = info.xt().ot().shape.as_ref() {
+                let shape_ids = preloaded_shape_ids
+                    .get(shape_file)
+                    .expect("preloaded shape");
+                let (inst, comps) = runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+                    shapes.create_instance(shape_ids.normal(), runtime.resource::<Gpu>());
+                })?;
+            }
         }
+         */
 
         Ok(())
     }
-
-    fn spawn_from_type(&self, type_ref: TypeRef, heap: &mut HeapMut) {}
 
     /*
 

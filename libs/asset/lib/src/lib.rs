@@ -16,16 +16,15 @@
 // Load LIB files; find files in them; hand out immutable pointers on request.
 #![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
-mod catalog_manager;
 mod game_info;
+mod libs;
 
 pub use crate::{
-    catalog_manager::{CatalogManager, CatalogManagerOpts},
     game_info::{GameInfo, GAME_INFO},
+    libs::{Libs, LibsOpts},
 };
 
 use anyhow::{anyhow, ensure, Result};
-use async_trait::async_trait;
 use byteorder::{ByteOrder, LittleEndian};
 use catalog::{DrawerFileId, DrawerFileMetadata, DrawerInterface};
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
@@ -239,7 +238,6 @@ pub fn from_dos_string(input: Cow<[u8]>) -> Cow<str> {
     }
 }
 
-#[async_trait]
 impl DrawerInterface for LibDrawer {
     fn index(&self) -> Result<HashMap<DrawerFileId, String>> {
         Ok(self.drawer_index.clone())
@@ -253,7 +251,7 @@ impl DrawerInterface for LibDrawer {
         &self.name
     }
 
-    fn stat_sync(&self, id: DrawerFileId) -> Result<DrawerFileMetadata> {
+    fn stat(&self, id: DrawerFileId) -> Result<DrawerFileMetadata> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -293,7 +291,7 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    fn read_sync(&self, id: DrawerFileId) -> Result<Cow<[u8]>> {
+    fn read(&self, id: DrawerFileId) -> Result<Cow<[u8]>> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -318,7 +316,7 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    fn read_slice_sync(&self, id: DrawerFileId, extent: Range<usize>) -> Result<Cow<[u8]>> {
+    fn read_slice(&self, id: DrawerFileId, extent: Range<usize>) -> Result<Cow<[u8]>> {
         ensure!(self.index.contains_key(&id));
         let info = &self.index[&id];
         Ok(match info.compression {
@@ -333,55 +331,8 @@ impl DrawerInterface for LibDrawer {
         })
     }
 
-    async fn read(&self, id: DrawerFileId) -> Result<Vec<u8>> {
-        ensure!(self.index.contains_key(&id));
-        let info = &self.index[&id];
-        // FIXME: make this more async friendly by spawn blocking off the io thread
-        Ok(match info.compression {
-            CompressionType::None => {
-                let mut out = Vec::new();
-                out.copy_from_slice(&self.data[info.start_offset..info.end_offset]);
-                out
-            }
-            CompressionType::PkWare => {
-                // FIXME: zerocopy
-                let dwords: &[u32] =
-                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
-                let expect_output_size = Some(dwords[0] as usize);
-                pkware::explode(
-                    &self.data[info.start_offset + 4..info.end_offset],
-                    expect_output_size,
-                )?
-            }
-            CompressionType::Lzss => {
-                // FIXME: zerocopy
-                let dwords: &[u32] =
-                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
-                let expect_output_size = Some(dwords[0] as usize);
-                lzss::explode(
-                    &self.data[info.start_offset + 4..info.end_offset],
-                    expect_output_size,
-                )?
-            }
-            CompressionType::PxPk => unimplemented!(),
-        })
-    }
-
-    async fn read_slice(&self, id: DrawerFileId, extent: Range<usize>) -> Result<Vec<u8>> {
-        ensure!(self.index.contains_key(&id));
-        let info = &self.index[&id];
-        Ok(match info.compression {
-            CompressionType::None => {
-                assert!(info.start_offset + extent.start <= info.end_offset);
-                assert!(info.start_offset + extent.end <= info.end_offset);
-                let mut out = Vec::new();
-                out.copy_from_slice(
-                    &self.data[info.start_offset + extent.start..info.start_offset + extent.end],
-                );
-                out
-            }
-            _ => unimplemented!("slice on compressed file"),
-        })
+    fn read_mapped_slice(&mut self, _id: DrawerFileId, _extent: Range<usize>) -> Result<&[u8]> {
+        unimplemented!()
     }
 }
 
@@ -391,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_catalog_builder() -> Result<()> {
-        let _catalog = CatalogManager::for_testing()?;
+        let _catalog = Libs::for_testing()?;
         Ok(())
     }
 }

@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use image::GenericImageView;
-use lib::{CatalogManager, CatalogManagerOpts, GameInfo};
+use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use pic::Pic;
 use std::fs;
@@ -52,16 +52,16 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogManagerOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 show_pic(fid, game, &catalog, &opt)?;
             }
@@ -72,8 +72,8 @@ fn main() -> Result<()> {
 }
 
 fn show_pic(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
-    let meta = catalog.stat_sync(fid)?;
-    let content = catalog.read_sync(fid)?;
+    let meta = catalog.stat(fid)?;
+    let content = catalog.read(fid)?;
     let image = Pic::from_bytes(&content)?;
 
     println!(
@@ -101,7 +101,7 @@ fn show_pic(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Resul
         } else if opt.grayscale {
             Palette::grayscale()?
         } else {
-            Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?
+            Palette::from_bytes(&catalog.read_name("PALETTE.PAL")?)?
         };
         let image = Pic::decode(&palette, &content)?;
         image.save(target)?;

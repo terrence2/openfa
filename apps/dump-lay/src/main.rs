@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use lay::Layer;
-use lib::{CatalogManager, CatalogManagerOpts, GameInfo};
+use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use std::fs;
 use structopt::StructOpt;
@@ -27,16 +27,16 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogManagerOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
@@ -51,14 +51,13 @@ fn main() -> Result<()> {
 }
 
 fn show_lay(fid: FileId, game: &GameInfo, catalog: &Catalog) -> Result<()> {
-    let name = catalog.stat_sync(fid)?.name().to_owned();
+    let name = catalog.stat(fid)?.name().to_owned();
     fs::create_dir_all(&format!("__dump__/lay-pal/{}-{}", game.test_dir, name))?;
 
-    let system_palette_data = catalog.read_name_sync("PALETTE.PAL")?;
-    let system_palette = Palette::from_bytes(&system_palette_data)?;
+    let system_palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
 
-    let layer_data = catalog.read_sync(fid)?;
-    let layer = Layer::from_bytes(&layer_data, &system_palette)?;
+    let layer_data = catalog.read(fid)?;
+    let layer = Layer::from_bytes(layer_data.as_ref(), &system_palette)?;
     for i in 0..5 {
         if i >= layer.num_indices() {
             continue;

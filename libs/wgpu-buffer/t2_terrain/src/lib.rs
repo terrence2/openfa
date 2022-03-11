@@ -492,7 +492,7 @@ impl T2TerrainBuffer {
         // to create gpu buffers and textures, queue up uploads and blit lists, then during
         // sys_finish_loading, trigger pic_loader and atlas shaders, then build the final bind
         // groups.
-        let t2_data = catalog.read_name_sync(&mm.map_name().t2_name())?;
+        let t2_data = catalog.read_name(&mm.map_name().t2_name())?;
         let t2 = T2::from_bytes(t2_data.as_ref())?;
 
         if self.loaded.contains(t2.name()) {
@@ -815,7 +815,8 @@ impl T2TerrainBuffer {
         mm: &MissionMap,
         catalog: &Catalog,
     ) -> Result<Palette> {
-        let layer = Layer::from_bytes(&catalog.read_name_sync(mm.layer_name())?, system_palette)?;
+        let layer =
+            Layer::from_bytes(catalog.read_name(mm.layer_name())?.as_ref(), system_palette)?;
         let layer_index = if mm.layer_index() != 0 {
             mm.layer_index()
         } else {
@@ -888,7 +889,7 @@ impl T2TerrainBuffer {
         let texture_base_name = mm.map_name().base_texture_name();
         for loc in sources.drain() {
             let name = loc.pic_file(texture_base_name);
-            let data = catalog.read_name_sync(&name)?;
+            let data = catalog.read_name(name.as_ref())?;
             let (buffer, w, h, stride) =
                 pic_uploader.upload(data.as_ref(), gpu, wgpu::BufferUsages::COPY_SRC)?;
             let frame = atlas_builder.push_buffer(buffer, w, h, stride)?;
@@ -1029,37 +1030,32 @@ impl T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpu::{CpuDetailLevel, GpuDetailLevel};
-    use lib::{from_dos_string, CatalogManager};
+    use lib::{from_dos_string, Libs};
     use xt::TypeManager;
 
     #[test]
     fn it_can_load_all_t2() -> Result<()> {
         env_logger::init();
 
-        let catalog = Arc::new(RwLock::new(Catalog::empty("test")));
-
         let mut runtime = Gpu::for_test_unix()?;
         runtime
-            .insert_resource(catalog)
+            .load_extension::<Libs>()?
             .load_extension::<GlobalParametersBuffer>()?
             .load_extension::<TerrainBuffer>()?;
 
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.selected() {
-            let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
+        let libs = Libs::for_testing()?;
+        for (game, catalog) in libs.selected() {
+            let system_palette = Palette::from_bytes(&catalog.read_name("PALETTE.PAL")?)?;
 
-            let t2_adjustment = Arc::new(RwLock::new(T2Adjustment::default()));
             let mut ts = T2TerrainBuffer::new(
-                t2_adjustment,
-                &runtime.resource::<TerrainBuffer>(),
-                &runtime.resource::<GlobalParametersBuffer>(),
-                &runtime.resource::<Gpu>(),
+                runtime.resource::<TerrainBuffer>(),
+                runtime.resource::<GlobalParametersBuffer>(),
+                runtime.resource::<Gpu>(),
             )?;
             let type_manager = TypeManager::empty();
 
             for fid in catalog.find_with_extension("MM")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
@@ -1075,21 +1071,10 @@ mod tests {
                     continue;
                 }
 
-                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let contents = from_dos_string(catalog.read(fid)?);
                 let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
-                let mut tracker = UploadTracker::default();
-                ts.add_map(
-                    &system_palette,
-                    &mm,
-                    &catalog,
-                    &mut runtime.resource_mut::<Gpu>(),
-                    &mut tracker,
-                )?;
-                tracker.dispatch_uploads_one_shot(&mut runtime.resource_mut::<Gpu>());
+                ts.add_map(&system_palette, &mm, &catalog, runtime.resource::<Gpu>())?;
             }
-            runtime
-                .resource_mut::<TerrainBuffer>()
-                .add_tile_set(Box::new(ts) as Box<dyn TileSet>);
         }
 
         Ok(())

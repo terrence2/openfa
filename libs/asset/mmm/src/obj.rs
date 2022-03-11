@@ -22,8 +22,7 @@ use absolute_unit::{degrees, radians};
 use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
 use nalgebra::{Point3, UnitQuaternion, Vector3};
-use std::collections::HashMap;
-use std::str::SplitAsciiWhitespace;
+use std::{collections::HashMap, str::SplitAsciiWhitespace};
 use xt::{TypeManager, TypeRef};
 
 #[derive(Clone, Debug, Eq, PartialEq)]

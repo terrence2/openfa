@@ -244,16 +244,16 @@ impl<'a> From<Palette> for Cow<'a, Palette> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     #[test]
     fn it_works_with_normal_palette() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, catalog) in libs.all() {
             for fid in catalog.find_with_extension("PAL")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
+                let pal = Palette::from_bytes(catalog.read(fid)?.as_ref())?;
                 assert_eq!(pal.rgb(1)?, Rgb([252, 0, 252]));
             }
         }
