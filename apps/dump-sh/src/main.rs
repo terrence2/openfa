@@ -89,10 +89,10 @@ fn main() -> Result<()> {
     };
     TermLogger::init(level, Config::default())?;
     let libs = Libs::bootstrap(&opt.libs_opts)?;
-    for (game, catalog) in libs.selected() {
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                show_sh(fid, game, &catalog, &opt)?;
+                show_sh(fid, game, catalog, &opt)?;
             }
         }
     }

@@ -39,12 +39,12 @@ fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
     let libs = Libs::bootstrap(&opt.libs_opts)?;
-    for (game, catalog) in libs.selected() {
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                show_t2(fid, opt.profile, &catalog)?;
+                show_t2(fid, opt.profile, catalog)?;
             }
         }
     }

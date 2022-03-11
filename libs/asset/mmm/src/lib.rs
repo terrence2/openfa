@@ -1085,7 +1085,7 @@ mod tests {
     #[test]
     fn it_can_parse_all_mm_files() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("MM")? {
                 let meta = catalog.stat(fid)?;
 
@@ -1120,7 +1120,7 @@ mod tests {
     #[test]
     fn it_can_parse_all_m_files() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
+        for (game, _palette, catalog) in libs.all() {
             let type_manager = TypeManager::empty();
             for fid in catalog.find_with_extension("M")? {
                 let meta = catalog.stat(fid)?;

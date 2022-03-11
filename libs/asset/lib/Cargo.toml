@@ -15,12 +15,12 @@ glob = "^ 0.2"
 lazy_static = "^ 1"
 log = "^ 0.4"
 memmap = "^ 0.6"
-parking_lot = "^ 0.11"
 regex = "^ 1"
 structopt = "^ 0.3"
 zerocopy = "^ 0.5"
 lzss = { path = "../../util/lzss" }
 catalog = { path = "../../nitrogen/system/catalog" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
+pal = { path = "../../asset/pal" }
 pkware = { path = "../../util/pkware" }
 runtime = { path = "../../nitrogen/util/runtime" }

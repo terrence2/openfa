@@ -40,7 +40,7 @@ struct Opt {
 fn main() -> Result<()> {
     let opt = Opt::from_args();
     let libs = Libs::bootstrap(&opt.libs_opts)?;
-    for (game, catalog) in libs.selected() {
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat(fid)?;
@@ -49,7 +49,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_pal(fid, game, &catalog, &opt)?;
+                show_pal(fid, game, catalog, &opt)?;
             }
         }
     }

@@ -18,6 +18,7 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
+use pal::Palette;
 use runtime::{Extension, Runtime};
 use std::{
     borrow::Cow,
@@ -58,7 +59,7 @@ pub struct LibsOpts {
 /// can get our hands on.
 pub struct Libs {
     selected_game: Option<usize>,
-    catalogs: Vec<(&'static GameInfo, Catalog)>,
+    catalogs: Vec<(&'static GameInfo, Palette, Catalog)>,
 }
 
 impl Extension for Libs {
@@ -140,9 +141,10 @@ impl Libs {
                 println!("Detected {} in game path...", game.name);
             }
 
+            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
             Self {
                 selected_game: Some(0),
-                catalogs: vec![(game, catalog)],
+                catalogs: vec![(game, palette, catalog)],
             }
         } else {
             println!(
@@ -153,7 +155,7 @@ impl Libs {
             let mut catalogs = Self::for_testing()?;
 
             if let Some(selected) = &opts.select_game {
-                for (i, (game, _)) in catalogs.catalogs.iter().enumerate() {
+                for (i, (game, _, _)) in catalogs.catalogs.iter().enumerate() {
                     if game.test_dir == selected {
                         catalogs.selected_game = Some(i);
                         break;
@@ -165,7 +167,7 @@ impl Libs {
         };
 
         // Load any additional libdirs into the catalog
-        for (_, catalog) in catalogs.catalogs.iter_mut() {
+        for (_, _, catalog) in catalogs.catalogs.iter_mut() {
             for (i, lib_path) in opts.lib_paths.iter().enumerate() {
                 catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
             }
@@ -213,7 +215,9 @@ impl Libs {
                     if cdrom2dir.exists() {
                         Self::populate_catalog(game, &cdrom2dir, 0, &mut game_catalog)?;
                     }
-                    catalogs.push((game, game_catalog));
+                    let palette =
+                        Palette::from_bytes(game_catalog.read_name("PALETTE.PAL")?.as_ref())?;
+                    catalogs.push((game, palette, game_catalog));
                 }
             }
         }
@@ -224,18 +228,22 @@ impl Libs {
         })
     }
 
-    pub fn all(&self) -> impl Iterator<Item = (&'static GameInfo, &Catalog)> + '_ {
-        self.catalogs.iter().map(|(gi, catalog)| (*gi, catalog))
+    pub fn all(&self) -> impl Iterator<Item = (&'static GameInfo, &Palette, &Catalog)> + '_ {
+        self.catalogs
+            .iter()
+            .map(|(gi, palette, catalog)| (*gi, palette, catalog))
     }
 
-    pub fn selected(&self) -> Box<dyn Iterator<Item = (&'static GameInfo, &Catalog)> + '_> {
+    pub fn selected(
+        &self,
+    ) -> Box<dyn Iterator<Item = (&'static GameInfo, &Palette, &Catalog)> + '_> {
         if let Some(selected) = self.selected_game {
             Box::new(
                 self.catalogs
                     .iter()
                     .skip(selected)
                     .take(1)
-                    .map(|(gi, catalog)| (*gi, catalog)),
+                    .map(|(gi, palette, catalog)| (*gi, palette, catalog)),
             )
         } else {
             Box::new(self.all())
@@ -243,10 +251,12 @@ impl Libs {
     }
 
     pub fn catalog(&self) -> &Catalog {
-        &self.catalogs[self.selected_game.unwrap_or(0)].1
+        &self.catalogs[self.selected_game.unwrap_or(0)].2
     }
 
-    // pub fn palette(&self) -> &Palette {}
+    pub fn palette(&self) -> &Palette {
+        &self.catalogs[self.selected_game.unwrap_or(0)].1
+    }
 
     pub fn label(&self) -> &str {
         self.catalog().label()

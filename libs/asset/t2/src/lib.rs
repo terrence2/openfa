@@ -771,7 +771,7 @@ mod test {
     #[test]
     fn it_can_parse_all_t2_files() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("T2")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());

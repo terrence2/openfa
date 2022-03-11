@@ -382,11 +382,11 @@ mod tests {
     #[test]
     fn it_can_new_all_pics() -> Result<()> {
         let catalogs = Libs::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        for (game, _palette, catalog) in catalogs.all() {
             for fid in catalog.find_with_extension("PIC")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let _img = Pic::from_bytes(&catalog.read(fid)?)?;
+                let _img = Pic::from_bytes(catalog.read(fid)?.as_ref())?;
             }
         }
 
@@ -396,12 +396,11 @@ mod tests {
     #[test]
     fn it_can_decode_all_pics() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
-            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
+        for (game, palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("PIC")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let img = Pic::decode(&palette, catalog.read(fid)?.as_ref())?;
+                let img = Pic::decode(palette, catalog.read(fid)?.as_ref())?;
 
                 if false {
                     let name = format!(

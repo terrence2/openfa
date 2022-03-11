@@ -60,8 +60,7 @@ mod test {
 
         let mut chunk_man = ChunkManager::new(&runtime.resource::<Gpu>())?;
         let mut result_maps = HashMap::new();
-        for (game, catalog) in libs.selected() {
-            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
+        for (game, palette, catalog) in libs.selected() {
             let mut all_shapes = HashMap::new();
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat(fid)?;
@@ -76,9 +75,9 @@ mod test {
                 );
             }
             let results = chunk_man.upload_shapes(
-                &palette,
+                palette,
                 &all_shapes,
-                &catalog,
+                catalog,
                 &runtime.resource::<Gpu>(),
             )?;
             result_maps.insert(game.test_dir.clone(), results);

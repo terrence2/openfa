@@ -229,7 +229,7 @@ fn main() -> Result<()> {
     if opt.include_row_heads {
         let mut off: u32 = pix_offset;
         for _ in 0..dim.1 {
-            let bytes: [u8; 4] = unsafe { mem::transmute(off.to_le()) };
+            let bytes = off.to_le_bytes();
             fp.write_all(&bytes)?;
             off += dim.1;
         }

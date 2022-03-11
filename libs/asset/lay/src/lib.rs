@@ -228,13 +228,11 @@ mod tests {
     #[test]
     fn it_can_parse_all_lay_files() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
-            let system_palette_data = catalog.read_name("PALETTE.PAL")?;
+        for (game, palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("LAY")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let system_palette = Palette::from_bytes(system_palette_data.as_ref())?;
-                let _layer = Layer::from_bytes(catalog.read(fid)?.as_ref(), &system_palette)?;
+                let _layer = Layer::from_bytes(catalog.read(fid)?.as_ref(), palette)?;
             }
         }
 

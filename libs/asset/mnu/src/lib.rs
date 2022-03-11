@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn it_can_load_all_menus() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("MNU")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());

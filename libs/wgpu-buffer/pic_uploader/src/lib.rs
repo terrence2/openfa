@@ -234,11 +234,10 @@ mod tests {
         let catalogs = Libs::for_testing()?;
         let mut uploader = PicUploader::new(&gpu)?;
         let start = Instant::now();
-        for (_game, catalog) in catalogs.selected() {
-            let palette = Palette::from_bytes(catalog.read_name_sync("PALETTE.PAL")?.as_ref())?;
-            uploader.set_shared_palette(&palette, &gpu);
+        for (_game, palette, catalog) in catalogs.selected() {
+            uploader.set_shared_palette(palette, &gpu);
             for fid in catalog.find_with_extension("PIC")? {
-                let data = catalog.read_sync(fid)?;
+                let data = catalog.read(fid)?;
                 let format = Pic::read_format(data.as_ref())?;
                 if format == PicFormat::Jpeg {
                     // Jpeg is not interesting for PicUploader since it's primary purpose is depalettizing.
@@ -265,13 +264,13 @@ mod tests {
         let mut runtime = Gpu::for_test_unix()?;
         let mut gpu = runtime.resource_mut::<Gpu>();
 
-        let catalogs = Libs::for_testing()?;
-        let catalog = catalogs.best();
+        let libs = Libs::for_testing()?;
+        let catalog = libs.catalog();
+        let palette = libs.palette();
 
-        let palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
         let mut uploader = PicUploader::new(&gpu)?;
-        uploader.set_shared_palette(&palette, &gpu);
-        let data = catalog.read_name_sync("CATB.PIC")?;
+        uploader.set_shared_palette(palette, &gpu);
+        let data = catalog.read_name("CATB.PIC")?;
         let (buffer, width, height, _stride) =
             uploader.upload(&data, &gpu, wgpu::BufferUsages::MAP_READ)?;
         uploader.dispatch_singleton(&mut gpu);

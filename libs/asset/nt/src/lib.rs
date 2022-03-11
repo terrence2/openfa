@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn can_parse_all_npc_types() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("NT")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());

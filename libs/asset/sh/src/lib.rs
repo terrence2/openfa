@@ -1538,7 +1538,7 @@ mod tests {
         let mut freq: HashMap<&'static str, usize> = HashMap::new();
 
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.all() {
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());

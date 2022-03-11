@@ -1044,9 +1044,7 @@ mod tests {
             .load_extension::<TerrainBuffer>()?;
 
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.selected() {
-            let system_palette = Palette::from_bytes(&catalog.read_name("PALETTE.PAL")?)?;
-
+        for (game, palette, catalog) in libs.selected() {
             let mut ts = T2TerrainBuffer::new(
                 runtime.resource::<TerrainBuffer>(),
                 runtime.resource::<GlobalParametersBuffer>(),
@@ -1072,8 +1070,8 @@ mod tests {
                 }
 
                 let contents = from_dos_string(catalog.read(fid)?);
-                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
-                ts.add_map(&system_palette, &mm, &catalog, runtime.resource::<Gpu>())?;
+                let mm = MissionMap::from_str(contents.as_ref(), &type_manager, catalog)?;
+                ts.add_map(palette, &mm, catalog, runtime.resource::<Gpu>())?;
             }
         }
 

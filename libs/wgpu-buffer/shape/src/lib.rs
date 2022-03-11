@@ -782,7 +782,6 @@ mod test {
     use camera::CameraSystem;
     use lib::Libs;
     use orrery::Orrery;
-    use pal::Palette;
 
     #[cfg(unix)]
     #[test]
@@ -792,11 +791,10 @@ mod test {
             .with_extension::<AtmosphereBuffer>()?
             .with_extension::<ShapeBuffer>()?;
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.selected() {
+        for (game, palette, catalog) in libs.selected() {
             if game.test_dir != "FA" {
                 continue;
             }
-            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat(fid)?;
                 if meta.name() != "F22.SH" {
@@ -806,9 +804,9 @@ mod test {
                 let results =
                     runtime.resource_scope(|mut heap, mut inst_man: Mut<ShapeBuffer>| {
                         inst_man.upload_shapes(
-                            &palette,
+                            palette,
                             &[meta.name()],
-                            &catalog,
+                            catalog,
                             heap.resource::<Gpu>(),
                         )
                     })?;
@@ -847,7 +845,7 @@ mod test {
 
         let libs = Libs::for_testing()?;
 
-        for (game, catalog) in libs.selected() {
+        for (game, palette, catalog) in libs.selected() {
             let mut all_shapes = Vec::new();
             for fid in catalog.find_with_extension("SH")? {
                 let meta = catalog.stat(fid)?;
@@ -875,13 +873,7 @@ mod test {
                 all_shapes.push(meta.name().to_owned());
             }
             let out = runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
-                shapes.upload_shapes(
-                    &Palette::from_bytes(catalog.read_name("PALETTE.PAL").unwrap().as_ref())
-                        .unwrap(),
-                    &all_shapes,
-                    &catalog,
-                    heap.resource::<Gpu>(),
-                )
+                shapes.upload_shapes(palette, &all_shapes, catalog, heap.resource::<Gpu>())
             })?;
 
             // Create an instance of each core shape.

@@ -752,7 +752,7 @@ mod tests {
     #[test]
     fn it_works() -> Result<()> {
         let libs = Libs::for_testing()?;
-        for (game, catalog) in libs.selected() {
+        for (game, _palette, catalog) in libs.selected() {
             for fid in catalog
                 .find_with_extension("SH")?
                 .iter()
