@@ -30,7 +30,7 @@ use crate::{
     component::{Rotation, Scale, Transform},
     instance_block::{BlockId, InstanceBlock, TransformType},
 };
-use absolute_unit::Kilometers;
+use absolute_unit::{Kilometers, Meters};
 use animate::TimeStep;
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
@@ -53,6 +53,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     time::Instant,
 };
+use world::WorldRenderPass;
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -62,18 +63,32 @@ thread_local! {
 enum ChunkUpload {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-enum ShapeUpload {
+pub enum ShapeUploadStep {
     ResetUploadCursor,
     AnimateDrawState,
+    ApplyTransforms,
+    ApplyFlags,
+    ApplyXforms,
+    PushToBlock,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
+pub enum ShapeRenderStep {
+    UploadChunks,
+    UploadBlocks,
+    Render,
 }
 
 pub struct ShapeInstance {
-    instantiated_shape_id: ShapeId,
-    slot_id: SlotId,
+    pub shape_id: ShapeId,
+    pub slot_id: SlotId,
 }
 
 pub struct ShapeComponents {
-    draw_state: DrawState,
+    pub draw_state: DrawState,
+    pub transform_buffer: ShapeTransformBuffer,
+    pub flag_buffer: ShapeFlagBuffer,
+    pub xform_buffer: ShapeXformBuffer,
 }
 
 #[derive(Debug)]
@@ -97,23 +112,58 @@ impl Extension for ShapeBuffer {
         )?;
 
         runtime
+            .frame_stage_mut(FrameStage::TrackStateChanges)
+            .add_system(Self::sys_ts_reset_upload_cursor.label(ShapeUploadStep::ResetUploadCursor));
+        runtime
+            .frame_stage_mut(FrameStage::TrackStateChanges)
+            .add_system(Self::sys_ts_animate_draw_state.label(ShapeUploadStep::AnimateDrawState));
+        runtime
+            .frame_stage_mut(FrameStage::TrackStateChanges)
+            .add_system(
+                Self::sys_ts_apply_transforms
+                    .label(ShapeUploadStep::ApplyTransforms)
+                    .after(ShapeUploadStep::ResetUploadCursor),
+            );
+        runtime
+            .frame_stage_mut(FrameStage::TrackStateChanges)
+            .add_system(
+                Self::sys_ts_build_flag_mask
+                    .label(ShapeUploadStep::ApplyFlags)
+                    .after(ShapeUploadStep::ResetUploadCursor),
+            );
+        runtime
+            .frame_stage_mut(FrameStage::TrackStateChanges)
+            .add_system(
+                Self::sys_ts_apply_xforms
+                    .label(ShapeUploadStep::ApplyXforms)
+                    .after(ShapeUploadStep::ResetUploadCursor),
+            );
+        runtime
+            .frame_stage_mut(FrameStage::TrackStateChanges)
+            .add_system(
+                Self::sys_ts_push_values_to_block
+                    .label(ShapeUploadStep::PushToBlock)
+                    .after(ShapeUploadStep::ApplyTransforms)
+                    .after(ShapeUploadStep::ApplyFlags)
+                    .after(ShapeUploadStep::ApplyXforms),
+            );
+
+        runtime
             .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_close_open_chunks.label("ShapeBuffer::sys_close_open_chunks"));
+            .add_system(Self::sys_close_open_chunks.label(ShapeRenderStep::UploadChunks));
+        runtime
+            .frame_stage_mut(FrameStage::Render)
+            .add_system(Self::sys_upload_block_frame_data.label(ShapeRenderStep::UploadBlocks));
+        runtime.frame_stage_mut(FrameStage::Render).add_system(
+            Self::sys_draw_shapes
+                .label(ShapeRenderStep::Render)
+                .after(ShapeRenderStep::UploadChunks)
+                .after(ShapeRenderStep::UploadBlocks),
+        );
+
         runtime
             .frame_stage_mut(FrameStage::FrameEnd)
             .add_system(Self::sys_cleanup_open_chunks_after_render);
-
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_reset_upload_cursor.label(ShapeUpload::ResetUploadCursor));
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_animate_draw_state.label(ShapeUpload::AnimateDrawState));
-
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
-            Self::sys_upload_block_frame_data.label("ShapeBuffer::sys_upload_block_frame_data"),
-        );
-
         runtime.insert_resource(shapes);
         Ok(())
     }
@@ -406,12 +456,12 @@ impl ShapeBuffer {
         let errata: ShapeErrata = widgets.read().errata();
 
         Ok((
-            ShapeInstance {
-                instantiated_shape_id: shape_id,
-                slot_id,
-            },
+            ShapeInstance { shape_id, slot_id },
             ShapeComponents {
                 draw_state: DrawState::new(errata),
+                transform_buffer: ShapeTransformBuffer::default(),
+                flag_buffer: ShapeFlagBuffer::default(),
+                xform_buffer: ShapeXformBuffer::default(),
             },
         ))
     }
@@ -460,10 +510,6 @@ impl ShapeBuffer {
     }
      */
 
-    // pub fn finish_open_chunks(&mut self, gpu: &mut Gpu, tracker: &mut UploadTracker) -> Result<()> {
-    //     self.chunk_man.finish_open_chunks(gpu, tracker)
-    // }
-
     #[inline]
     pub fn push_values(
         &mut self,
@@ -473,6 +519,7 @@ impl ShapeBuffer {
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
     ) {
+        println!("PUSHING: {:?}, {:?}", transform, flags);
         self.blocks
             .get_mut(slot_id.block_id())
             .unwrap()
@@ -491,10 +538,10 @@ impl ShapeBuffer {
         }
     }
 
-    pub fn sys_ts_animate_draw_state(step: Res<TimeStep>, mut query: Query<&mut ShapeState>) {
+    pub fn sys_ts_animate_draw_state(step: Res<TimeStep>, mut query: Query<&mut DrawState>) {
         let now = step.now();
-        for mut shape_state in query.iter_mut() {
-            shape_state.draw_state.animate(now);
+        for mut draw_state in query.iter_mut() {
+            draw_state.animate(now);
         }
     }
 
@@ -504,12 +551,12 @@ impl ShapeBuffer {
         mut query: Query<(&WorldSpaceFrame, &mut ShapeTransformBuffer)>,
     ) {
         let km2m = Matrix4::new_scaling(1_000.0);
-        let view = camera.view::<Kilometers>().to_homogeneous();
+        let view = camera.view::<Meters>().to_homogeneous();
         query.par_for_each_mut(&task_pool, 1024, |(frame, mut transform_buffer)| {
             // Transform must be performed in f64, then moved into view space (where precision
             // errors are at least far away), before being truncated to f32.
             let pos = frame.position().point64().to_homogeneous();
-            let pos_view = km2m * view * pos;
+            let pos_view = /*km2m */ view * pos;
             transform_buffer.buffer[0] = pos_view.x as f32;
             transform_buffer.buffer[1] = pos_view.y as f32;
             transform_buffer.buffer[2] = pos_view.z as f32;
@@ -523,19 +570,18 @@ impl ShapeBuffer {
 
             // transform_buffer.buffer[6] = scale.scale();
             // FIXME: scaling
-            transform_buffer.buffer[6] = 1.0;
+            transform_buffer.buffer[6] = 4.0;
         });
     }
 
     pub fn sys_ts_build_flag_mask(
         task_pool: Res<TaskPool>,
         step: Res<TimeStep>,
-        mut query: Query<(&ShapeState, &mut ShapeFlagBuffer)>,
+        mut query: Query<(&DrawState, &mut ShapeFlagBuffer)>,
     ) {
         let start = step.start();
-        query.par_for_each_mut(&task_pool, 1024, |(shape_state, mut flag_buffer)| {
-            shape_state
-                .draw_state
+        query.par_for_each_mut(&task_pool, 1024, |(draw_state, mut flag_buffer)| {
+            draw_state
                 .build_mask_into(start, &mut flag_buffer.buffer)
                 .unwrap();
         });
@@ -545,36 +591,26 @@ impl ShapeBuffer {
         shapes: Res<ShapeBuffer>,
         task_pool: Res<TaskPool>,
         step: Res<TimeStep>,
-        mut query: Query<(&ShapeId, &ShapeState, &mut ShapeXformBuffer)>,
+        mut query: Query<(&ShapeId, &DrawState, &mut ShapeXformBuffer)>,
     ) {
         let start = step.start();
         let now = step.now();
         query.par_for_each_mut(
             &task_pool,
             1024,
-            |(shape_id, shape_state, mut xform_buffer)| {
+            |(shape_id, draw_state, mut xform_buffer)| {
                 let part = shapes.chunk_man.part(*shape_id);
                 WIDGET_CACHE.with(|widget_cache| {
                     match widget_cache.borrow_mut().entry(*shape_id) {
                         Entry::Occupied(mut e) => {
                             e.get_mut()
-                                .animate_into(
-                                    &shape_state.draw_state,
-                                    start,
-                                    now,
-                                    &mut xform_buffer.buffer,
-                                )
+                                .animate_into(&draw_state, start, now, &mut xform_buffer.buffer)
                                 .unwrap();
                         }
                         Entry::Vacant(e) => {
                             let mut widgets = part.widgets().read().clone();
                             widgets
-                                .animate_into(
-                                    &shape_state.draw_state,
-                                    start,
-                                    now,
-                                    &mut xform_buffer.buffer,
-                                )
+                                .animate_into(&draw_state, start, now, &mut xform_buffer.buffer)
                                 .unwrap();
                             e.insert(widgets);
                         }
@@ -582,38 +618,6 @@ impl ShapeBuffer {
                 });
             },
         );
-        /*
-        let mut query = <(Read<ShapeRef>, Read<ShapeState>, Write<ShapeXformBuffer>)>::query();
-        query.par_for_each_mut(world, |(shape_ref, shape_state, xform_buffer)| {
-            let part = self.chunk_man.part(shape_ref.shape_id);
-            WIDGET_CACHE.with(|widget_cache| {
-                match widget_cache.borrow_mut().entry(shape_ref.shape_id) {
-                    Entry::Occupied(mut e) => {
-                        e.get_mut()
-                            .animate_into(
-                                &shape_state.draw_state,
-                                start,
-                                now,
-                                &mut xform_buffer.buffer,
-                            )
-                            .unwrap();
-                    }
-                    Entry::Vacant(e) => {
-                        let mut widgets = part.widgets().read().clone();
-                        widgets
-                            .animate_into(
-                                &shape_state.draw_state,
-                                start,
-                                now,
-                                &mut xform_buffer.buffer,
-                            )
-                            .unwrap();
-                        e.insert(widgets);
-                    }
-                }
-            });
-        });
-         */
     }
 
     pub fn track_state_changes(
@@ -646,7 +650,7 @@ impl ShapeBuffer {
         query.par_for_each_mut(world, |(transform, rotation, scale, transform_buffer)| {
             // Transform must be performed in f64, then moved into view space (where precision
             // errors are at least far away), before being truncated to f32.
-            let pos = transform.cartesian().point64().to_homogeneous();
+            let pos = transform.cartesian_km().point64().to_homogeneous();
             let pos_view = km2m * view * pos;
             transform_buffer.buffer[0] = pos_view.x as f32;
             transform_buffer.buffer[1] = pos_view.y as f32;
@@ -723,6 +727,28 @@ impl ShapeBuffer {
          */
     }
 
+    fn sys_ts_push_values_to_block(
+        mut shapes: ResMut<ShapeBuffer>,
+        query: Query<(
+            &ShapeId,
+            &SlotId,
+            &ShapeTransformBuffer,
+            &ShapeFlagBuffer,
+            &ShapeXformBuffer,
+        )>,
+    ) {
+        for (shape_id, slot_id, transform_buffer, flag_buffer, xform_buffer) in query.iter() {
+            let xform_count = shapes.chunk_man.part(*shape_id).xform_count();
+            shapes.push_values(
+                *slot_id,
+                &transform_buffer.buffer,
+                flag_buffer.buffer,
+                &Some(xform_buffer.buffer),
+                xform_count,
+            )
+        }
+    }
+
     fn sys_upload_block_frame_data(
         mut shapes: ResMut<ShapeBuffer>,
         gpu: Res<Gpu>,
@@ -735,42 +761,48 @@ impl ShapeBuffer {
         }
     }
 
-    pub fn draw_shapes<'a>(
-        &'a self,
-        mut rpass: wgpu::RenderPass<'a>,
-        globals_buffer: &'a GlobalParametersBuffer,
-        atmosphere_buffer: &'a AtmosphereBuffer,
-    ) -> Result<wgpu::RenderPass<'a>> {
-        assert_ne!(LocalGroup::ShapeChunk.index(), Group::Globals.index());
-        assert_ne!(LocalGroup::ShapeChunk.index(), Group::Atmosphere.index());
-        assert_ne!(LocalGroup::ShapeBlock.index(), Group::Globals.index());
-        assert_ne!(LocalGroup::ShapeBlock.index(), Group::Atmosphere.index());
-        rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(Group::Globals.index(), globals_buffer.bind_group(), &[]);
-        rpass.set_bind_group(
-            Group::Atmosphere.index(),
-            atmosphere_buffer.bind_group(),
-            &[],
-        );
+    fn sys_draw_shapes(
+        shapes: Res<ShapeBuffer>,
+        globals: Res<GlobalParametersBuffer>,
+        atmosphere: Res<AtmosphereBuffer>,
+        world: Res<WorldRenderPass>,
+        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+    ) {
+        if let Some(encoder) = maybe_encoder.into_inner() {
+            let (color_attachments, depth_stencil_attachment) = world.offscreen_target_preserved();
+            let render_pass_desc_ref = wgpu::RenderPassDescriptor {
+                label: Some("shape-draw"),
+                color_attachments: &color_attachments,
+                depth_stencil_attachment,
+            };
+            let mut rpass = encoder.begin_render_pass(&render_pass_desc_ref);
 
-        for block in self.blocks.values() {
-            let chunk = self.chunk_man.chunk(block.chunk_id());
+            assert_ne!(LocalGroup::ShapeChunk.index(), Group::Globals.index());
+            assert_ne!(LocalGroup::ShapeChunk.index(), Group::Atmosphere.index());
+            assert_ne!(LocalGroup::ShapeBlock.index(), Group::Globals.index());
+            assert_ne!(LocalGroup::ShapeBlock.index(), Group::Atmosphere.index());
+            rpass.set_pipeline(&shapes.pipeline);
+            rpass.set_bind_group(Group::Globals.index(), globals.bind_group(), &[]);
+            rpass.set_bind_group(Group::Atmosphere.index(), atmosphere.bind_group(), &[]);
 
-            // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
-            rpass.set_bind_group(LocalGroup::ShapeChunk.index(), chunk.bind_group(), &[]);
-            rpass.set_bind_group(LocalGroup::ShapeBlock.index(), block.bind_group(), &[]);
-            rpass.set_vertex_buffer(0, chunk.vertex_buffer());
-            for i in 0..block.len() {
-                //rpass.draw_indirect(block.command_buffer(), i as u64);
-                let cmd = block.command_buffer_scratch[i];
-                #[allow(clippy::range_plus_one)]
-                rpass.draw(
-                    cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
-                    i as u32..i as u32 + 1,
-                );
+            for block in shapes.blocks.values() {
+                let chunk = shapes.chunk_man.chunk(block.chunk_id());
+
+                // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
+                rpass.set_bind_group(LocalGroup::ShapeChunk.index(), chunk.bind_group(), &[]);
+                rpass.set_bind_group(LocalGroup::ShapeBlock.index(), block.bind_group(), &[]);
+                rpass.set_vertex_buffer(0, chunk.vertex_buffer());
+                for i in 0..block.len() {
+                    //rpass.draw_indirect(block.command_buffer(), i as u64);
+                    let cmd = block.command_buffer_scratch[i];
+                    #[allow(clippy::range_plus_one)]
+                    rpass.draw(
+                        cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
+                        i as u32..i as u32 + 1,
+                    );
+                }
             }
         }
-        Ok(rpass)
     }
 }
 

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, meters, Meters};
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::ArcBallController;
 use catalog::Catalog;
@@ -24,11 +24,12 @@ use lib::Libs;
 use log::warn;
 use measure::WorldSpaceFrame;
 use mmm::{Mission, MissionMap};
+use nalgebra::{Unit, UnitQuaternion, Vector3};
 use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousResource, Value};
 use pal::Palette;
 use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape::{DrawSelection, ShapeBuffer};
+use shape::{DrawSelection, DrawState, ShapeBuffer};
 use std::{collections::HashSet, sync::Arc};
 use t2_terrain::{T2Adjustment, T2TerrainBuffer};
 use terrain::{TerrainBuffer, TileSet};
@@ -39,18 +40,6 @@ pub struct Game {}
 
 impl Extension for Game {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        /*
-        let t2_adjustment = T2Adjustment::default();
-        let mut t2_terrain = T2TileSet::new(
-            system.read().t2_adjustment(),
-            &terrain.read(),
-            &globals.read(),
-            &gpu.read(),
-        )?;
-        runtime
-            .resource_mut::<TerrainBuffer>()
-            .add_tile_set(Box::new(t2_terrain) as Box<dyn TileSet>);
-         */
         let game = Game::new();
         runtime.insert_named_resource("game", game);
         Ok(())
@@ -82,35 +71,49 @@ impl Game {
             Graticule::<GeoSurface>::new(degrees!(0f32), degrees!(0f32), meters!(10f32))
         };
 
+        let xt = {
+            let libs = heap.resource::<Libs>();
+            heap.resource::<TypeManager>()
+                .load(&pt_filename, libs.catalog())
+        }?;
+        if xt.ot().shape.is_none() {
+            bail!("the given XT does not have a shape");
+        }
+        let shape_name = xt.ot().shape.as_ref().unwrap();
+
         // Load and parse the PT file
-        heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
-            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-            let xt = heap
-                .resource::<TypeManager>()
-                .load(&pt_filename, &catalog.read())?;
-            let palette = Palette::from_bytes(&catalog.read().read_name("PALETTE.PAL")?.as_ref())?;
+        let shape_map = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            let libs = heap.resource::<Libs>();
             shapes.upload_shapes(
-                &palette,
-                &[xt.ot().shape.clone().unwrap()],
-                &catalog.read(),
+                libs.palette(),
+                &[shape_name],
+                libs.catalog(),
                 heap.resource::<Gpu>(),
             )
         })?;
-        // let (_shape_id, _slot_id) =
-        //     heap.resource_scope(|heap, mut shapes: Mut<ShapeInstanceBuffer>| {
-        //         let gpu = heap.resource::<Gpu>();
-        //         // shapes.upload_and_allocate_slot(
-        //         //     xt.ot().shape.as_ref().expect("a shape file"),
-        //         //     DrawSelection::NormalModel,
-        //         //     &catalog.read(),
-        //         //     gpu,
-        //         //     heap.resource::<UploadTracker>(),
-        //         // )
-        //         bail!("unimplemnted")
-        //     })?;
+        let shape_ids = shape_map
+            .get(shape_name)
+            .ok_or_else(|| anyhow!("failed to load shape"))?;
+        let (inst, comps) = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            shapes.create_instance(shape_ids.normal(), heap.resource::<Gpu>())
+        })?;
 
         // Build the entity
-        let entity = heap.spawn_named(name)?;
+        let frame: WorldSpaceFrame = WorldSpaceFrame::from_graticule(
+            target,
+            &UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0f64),
+        );
+        // FIXME: need to report errors! They are getting silently eaten right now.
+        let mut entity = heap.spawn_named(name)?;
+        entity.insert(shape_ids.to_owned());
+        entity.insert(inst.shape_id);
+        entity.insert(inst.slot_id);
+        entity.insert(frame);
+        entity.insert(comps.draw_state);
+        entity.insert_scriptable(comps.draw_state)?;
+        entity.insert(comps.transform_buffer);
+        entity.insert(comps.flag_buffer);
+        entity.insert(comps.xform_buffer);
 
         Ok(Value::True())
     }
@@ -125,12 +128,6 @@ impl Game {
         // FIXME: can we print this in a useful way?
         println!("Loading {}...", name);
 
-        // FIXME: do something smarter with system palette!
-        let system_palette = {
-            let libs = heap.resource::<Libs>();
-            Palette::from_bytes(&libs.read_name("PALETTE.PAL")?.as_ref())?
-        };
-
         let mm = {
             let libs = heap.resource::<Libs>();
             let mm_content = from_dos_string(libs.read_name(name)?);
@@ -142,9 +139,8 @@ impl Game {
         };
 
         let tile_set = heap.resource_scope(|heap, mut t2_terrain: Mut<T2TerrainBuffer>| {
-            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-            let cat = catalog.read();
-            t2_terrain.add_map(&system_palette, &mm, &cat, &heap.resource::<Gpu>())
+            let libs = heap.resource::<Libs>();
+            t2_terrain.add_map(libs.palette(), &mm, libs.catalog(), &heap.resource::<Gpu>())
         })?;
         heap.spawn_named(make_symbol(name))?
             .insert_scriptable(tile_set)?;
@@ -158,9 +154,13 @@ impl Game {
         }
         let shape_names = shape_names.iter().collect::<Vec<_>>();
         let preloaded_shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
-            let catalog = heap.resource::<Arc<RwLock<Catalog>>>();
-            let cat = catalog.read();
-            shapes.upload_shapes(&system_palette, &shape_names, &cat, heap.resource::<Gpu>())
+            let libs = heap.resource::<Libs>();
+            shapes.upload_shapes(
+                libs.palette(),
+                &shape_names,
+                libs.catalog(),
+                heap.resource::<Gpu>(),
+            )
         })?;
 
         // Re-visit all objects and instantiate instances

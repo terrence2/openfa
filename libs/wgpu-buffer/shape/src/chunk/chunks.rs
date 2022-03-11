@@ -63,7 +63,7 @@ impl Display for ChunkId {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Component)]
 pub struct ShapeId((ChunkId, u32));
 
-#[derive(Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct ShapeIds {
     normal: ShapeId,
     damage: SmallVec<[ShapeId; 1]>,

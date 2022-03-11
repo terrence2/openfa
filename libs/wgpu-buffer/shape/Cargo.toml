@@ -37,6 +37,7 @@ pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
 runtime = { path = "../../nitrogen/util/runtime" }
 sh = { path = "../../asset/sh" }
 shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
+world = { path = "../../nitrogen/wgpu-buffer/world" }
 
 [dev-dependencies]
 lib = { path = "../../asset/lib" }

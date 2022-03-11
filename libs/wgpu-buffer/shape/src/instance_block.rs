@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::{ChunkId, DrawIndirectCommand};
+use bevy_ecs::prelude::*;
 use gpu::Gpu;
 use log::trace;
 use std::{mem, num::NonZeroU64, sync::Arc};
@@ -30,7 +31,7 @@ impl BlockId {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Component, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SlotId {
     block_id: BlockId,
     offset: u32,

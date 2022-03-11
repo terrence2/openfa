@@ -28,18 +28,6 @@ impl ShapeSlot {
     }
 }
 
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
-pub struct ShapeState {
-    pub draw_state: DrawState,
-}
-impl ShapeState {
-    pub fn new(errata: ShapeErrata) -> Self {
-        Self {
-            draw_state: DrawState::new(errata),
-        }
-    }
-}
-
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeTransformBuffer {
     pub buffer: TransformType,

@@ -28,3 +28,4 @@ let eye_dist := 56.595;
 orrery.set_unix_ms(-168993517833.82);
 
 game.load_map("APA.MM");
+game.spawn_named_plane("test", "F16.PT");
