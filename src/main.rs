@@ -16,15 +16,14 @@ mod game;
 
 use crate::game::Game;
 
-use absolute_unit::{degrees, meters, radians};
+use absolute_unit::degrees;
 use animate::{TimeStep, Timeline};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::{
     ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera, ScreenCameraController,
 };
-use catalog::{Catalog, CatalogOpts};
 use composite::CompositeRenderPass;
 use event_mapper::EventMapper;
 use fnt::Fnt;
@@ -34,22 +33,20 @@ use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::{DetailLevelOpts, Gpu};
 use input::{DemoFocus, InputSystem};
-use lib::{from_dos_string, Libs, LibsOpts};
-use log::warn;
+use lib::{Libs, LibsOpts};
 use measure::WorldSpaceFrame;
-use mmm::MissionMap;
-use nitrous::{inject_nitrous_resource, method, HeapMut, NitrousResource};
+use nitrous::{inject_nitrous_resource, NitrousResource};
 use orrery::Orrery;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
 use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
-use shape::{DrawSelection, ShapeBuffer};
+use shape::ShapeBuffer;
 use stars::StarsBuffer;
-use std::{f32::consts::PI, fs::create_dir_all, sync::Arc, time::Instant};
+use std::{fs::create_dir_all, sync::Arc, time::Instant};
 use structopt::StructOpt;
-use t2_terrain::{T2Adjustment, T2TerrainBuffer};
+use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
-use terrain::{TerrainBuffer, TileSet};
+use terrain::TerrainBuffer;
 use ui::UiRenderPass;
 use widget::{
     Border, Color, Expander, Label, Labeled, PositionH, PositionV, VerticalBox, WidgetBuffer,
@@ -80,7 +77,7 @@ struct Opt {
 
 #[derive(Debug)]
 struct VisibleWidgets {
-    demo_label: Arc<RwLock<Label>>,
+    _demo_label: Arc<RwLock<Label>>,
     sim_time: Arc<RwLock<Label>>,
     camera_direction: Arc<RwLock<Label>>,
     camera_position: Arc<RwLock<Label>>,
@@ -90,9 +87,8 @@ struct VisibleWidgets {
 
 #[derive(Debug, NitrousResource)]
 struct System {
-    maybe_update_view: Option<Graticule<GeoSurface>>,
-    target_offset: isize,
-    targets: Vec<(String, Graticule<GeoSurface>)>,
+    _target_offset: isize,
+    _targets: Vec<(String, Graticule<GeoSurface>)>,
     visible_widgets: VisibleWidgets,
 }
 
@@ -121,9 +117,8 @@ impl System {
     pub fn new(libs: &Libs, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<Self> {
         let visible_widgets = Self::build_gui(libs, widgets)?;
         let system = Self {
-            maybe_update_view: None,
-            target_offset: 0,
-            targets: Vec::new(),
+            _target_offset: 0,
+            _targets: Vec::new(),
             visible_widgets,
         };
         Ok(system)
@@ -252,7 +247,7 @@ impl System {
             .set_expand(false);
 
         Ok(VisibleWidgets {
-            demo_label,
+            _demo_label: demo_label,
             sim_time,
             camera_direction,
             camera_position,
@@ -280,10 +275,6 @@ impl System {
         arcball: &ArcBallController,
         camera: &ScreenCamera,
     ) {
-        // if let Some(grat) = self.maybe_update_view {
-        //     arcball.set_target(grat);
-        // }
-        // self.maybe_update_view = None;
         self.visible_widgets
             .sim_time
             .write()
@@ -800,7 +791,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     let _player_ent = runtime
         .spawn_named("player")?
         .insert(WorldSpaceFrame::default())
-        .insert_scriptable(ArcBallController::default())?
+        .insert_named(ArcBallController::default())?
         .insert(ScreenCameraController::default())
         .id();
 

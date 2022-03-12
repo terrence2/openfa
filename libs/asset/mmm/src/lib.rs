@@ -1108,7 +1108,7 @@ mod tests {
 
                 let type_manager = TypeManager::empty();
                 let contents = from_dos_string(catalog.read(fid)?);
-                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
+                let mm = MissionMap::from_str(contents.as_ref(), &type_manager, catalog)?;
                 assert_eq!(mm.map_name().base_texture_name().len(), 3);
                 assert!(mm.map_name().t2_name().ends_with(".T2"));
             }
@@ -1142,7 +1142,7 @@ mod tests {
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
                 let contents = from_dos_string(catalog.read(fid)?);
-                let mission = Mission::from_str(&contents, &type_manager, &catalog)?;
+                let mission = Mission::from_str(contents.as_ref(), &type_manager, catalog)?;
                 assert!(!mission.sides.is_empty());
                 assert!(mission.map_name.raw.ends_with(".T2"));
             }

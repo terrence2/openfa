@@ -43,8 +43,6 @@ layout(set = 2, binding = 1) uniform sampler chunk_mega_atlas_sampler;
 vec4
 diffuse_color(out bool should_discard)
 {
-    // FIXME: this breaks if our mega-atlas spills into a second layer.
-    // FIXME: move to our new resizable atlas code
     vec4 tex_color = texture(sampler2D(chunk_mega_atlas_texture, chunk_mega_atlas_sampler), v_tex_coord);
 
     should_discard = false;
@@ -67,11 +65,6 @@ void main() {
     bool should_discard;
     vec4 diffuse = diffuse_color(should_discard);
 
-    // FIXME: need to figure out transparency properly
-//    if (should_discard) {
-//        discard;
-//    }
-
     vec3 camera_position_w_km = camera_position_km.xyz;
     vec3 sun_direction_w = orrery_sun_direction.xyz;
     float s = 1. / 1000.;
@@ -92,6 +85,12 @@ void main() {
         camera_position_w_km,
         camera_direction_w
     );
+
+    // We can only discard after doing all texture reads.
+    // TODO: see if we can discard early by storing dx/dy and using sample_grad
+    if (should_discard) {
+        discard;
+    }
 
     vec3 color = tone_mapping(radiance);
 

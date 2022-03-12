@@ -24,6 +24,7 @@ atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "../../nitrogen/sim/camera" }
 catalog = { path = "../../nitrogen/system/catalog" }
+composite = { path = "../../nitrogen/wgpu-buffer/composite" }
 geodesy = { path = "../../nitrogen/util/geodesy" }
 geometry = { path = "../../nitrogen/util/geometry" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
@@ -40,8 +41,11 @@ shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
 world = { path = "../../nitrogen/wgpu-buffer/world" }
 
 [dev-dependencies]
+fullscreen = { path = "../../nitrogen/wgpu-buffer/fullscreen" }
 lib = { path = "../../asset/lib" }
 orrery = { path = "../../nitrogen/sim/orrery" }
+stars = { path = "../../nitrogen/wgpu-buffer/stars" }
+terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
 
 [build-dependencies]
 build_shaders = { path = "../../nitrogen/util/build_shaders" }

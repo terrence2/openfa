@@ -16,24 +16,18 @@ use absolute_unit::{degrees, meters, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::ArcBallController;
-use catalog::Catalog;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use gpu::Gpu;
 use lib::from_dos_string;
 use lib::Libs;
-use log::warn;
 use measure::WorldSpaceFrame;
-use mmm::{Mission, MissionMap};
-use nalgebra::{Unit, UnitQuaternion, Vector3};
+use mmm::MissionMap;
 use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousResource, Value};
-use pal::Palette;
-use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape::{DrawSelection, DrawState, ShapeBuffer};
-use std::{collections::HashSet, sync::Arc};
-use t2_terrain::{T2Adjustment, T2TerrainBuffer};
-use terrain::{TerrainBuffer, TileSet};
-use xt::{TypeManager, TypeRef};
+use shape::ShapeBuffer;
+use std::collections::HashSet;
+use t2_terrain::T2TerrainBuffer;
+use xt::TypeManager;
 
 #[derive(Debug, Default, NitrousResource)]
 pub struct Game {}
@@ -53,33 +47,37 @@ impl Game {
     }
 
     #[method]
-    fn spawn_named_plane(&self, name: &str, pt_filename: &str, mut heap: HeapMut) -> Result<Value> {
-        // Sanity checks
-        let pt_filename = pt_filename.to_uppercase();
-        if !pt_filename.ends_with(".PT") {
-            bail!("PT files must end in PT");
-        }
+    fn spawn(&self, name: &str, filename: &str, mut heap: HeapMut) -> Result<Value> {
+        let filename = filename.to_uppercase();
+
+        let id = heap.spawn_named(name)?.id();
 
         // Find a good place in the world to spawn
         let target = if let Some(arcball) = heap.maybe_get_named::<ArcBallController>("player") {
             arcball.target()
         } else if let Some(frame) = heap.maybe_get_named::<WorldSpaceFrame>("player") {
-            let p = frame.position().vec64() + (frame.forward() * 100.);
+            let p = frame.position().vec64() + (frame.basis().forward * 100.);
             let target = Cartesian::<GeoCenter, Meters>::from(p);
             Graticule::<GeoSurface>::from(Graticule::<GeoCenter>::from(target))
         } else {
             Graticule::<GeoSurface>::new(degrees!(0f32), degrees!(0f32), meters!(10f32))
         };
+        let frame: WorldSpaceFrame = WorldSpaceFrame::from_graticule(
+            target,
+            Graticule::new(degrees!(0), degrees!(0), meters!(1)),
+        );
+        heap.entity_mut(id).insert(frame);
 
         let xt = {
             let libs = heap.resource::<Libs>();
             heap.resource::<TypeManager>()
-                .load(&pt_filename, libs.catalog())
+                .load(&filename, libs.catalog())
         }?;
         if xt.ot().shape.is_none() {
             bail!("the given XT does not have a shape");
         }
         let shape_name = xt.ot().shape.as_ref().unwrap();
+        heap.entity_mut(id).insert(xt.clone());
 
         // Load and parse the PT file
         let shape_map = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
@@ -94,26 +92,14 @@ impl Game {
         let shape_ids = shape_map
             .get(shape_name)
             .ok_or_else(|| anyhow!("failed to load shape"))?;
-        let (inst, comps) = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
-            shapes.create_instance(shape_ids.normal(), heap.resource::<Gpu>())
-        })?;
+        heap.entity_mut(id).insert(shape_ids.to_owned());
 
-        // Build the entity
-        let frame: WorldSpaceFrame = WorldSpaceFrame::from_graticule(
-            target,
-            &UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0f64),
-        );
-        // FIXME: need to report errors! They are getting silently eaten right now.
-        let mut entity = heap.spawn_named(name)?;
-        entity.insert(shape_ids.to_owned());
-        entity.insert(inst.shape_id);
-        entity.insert(inst.slot_id);
-        entity.insert(frame);
-        entity.insert(comps.draw_state);
-        entity.insert_scriptable(comps.draw_state)?;
-        entity.insert(comps.transform_buffer);
-        entity.insert(comps.flag_buffer);
-        entity.insert(comps.xform_buffer);
+        let _ = heap.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
+            heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
+                let entity = heap.named_entity_mut(id);
+                shapes.instantiate(entity, shape_ids.normal(), &gpu)
+            })
+        })?;
 
         Ok(Value::True())
     }
@@ -140,10 +126,10 @@ impl Game {
 
         let tile_set = heap.resource_scope(|heap, mut t2_terrain: Mut<T2TerrainBuffer>| {
             let libs = heap.resource::<Libs>();
-            t2_terrain.add_map(libs.palette(), &mm, libs.catalog(), &heap.resource::<Gpu>())
+            t2_terrain.add_map(libs.palette(), &mm, libs.catalog(), heap.resource::<Gpu>())
         })?;
         heap.spawn_named(make_symbol(name))?
-            .insert_scriptable(tile_set)?;
+            .insert_named(tile_set)?;
 
         // Accumulate and load all shapes on the GPU before spawning entities with those shapes.
         let mut shape_names = HashSet::new();
@@ -153,7 +139,7 @@ impl Game {
             }
         }
         let shape_names = shape_names.iter().collect::<Vec<_>>();
-        let preloaded_shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+        let _preloaded_shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
             let libs = heap.resource::<Libs>();
             shapes.upload_shapes(
                 libs.palette(),

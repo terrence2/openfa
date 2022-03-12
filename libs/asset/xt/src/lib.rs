@@ -19,6 +19,7 @@ pub use ot::ObjectType;
 pub use pt::{Envelope, PlaneType};
 
 use anyhow::{bail, Result};
+use bevy_ecs::prelude::*;
 use catalog::Catalog;
 use lib::from_dos_string;
 use log::trace;
@@ -72,7 +73,7 @@ impl Type {
 // Any single type is likely used by multiple game objects at once so we cache
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
-#[derive(Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct TypeRef(Arc<Type>);
 
 impl TypeRef {

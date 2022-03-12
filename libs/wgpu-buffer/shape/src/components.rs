@@ -12,21 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{
-    chunk::{DrawState, ShapeErrata, ShapeId},
-    SlotId, TransformType,
-};
+use crate::TransformType;
 use bevy_ecs::prelude::*;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeSlot {
-    pub slot_id: SlotId,
-}
-impl ShapeSlot {
-    pub fn new(slot_id: SlotId) -> Self {
-        Self { slot_id }
-    }
-}
 
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeTransformBuffer {

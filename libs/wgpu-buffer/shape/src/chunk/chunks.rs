@@ -259,11 +259,7 @@ impl OpenChunk {
 #[derive(Debug)]
 pub struct ClosedChunk {
     vertex_buffer: wgpu::Buffer,
-    vertex_count: u32,
-
     atlas_bind_group: wgpu::BindGroup,
-
-    chunk_id: ChunkId,
     chunk_parts: HashMap<ShapeId, ChunkPart>,
 }
 
@@ -330,9 +326,7 @@ impl ClosedChunk {
 
         ClosedChunk {
             vertex_buffer,
-            vertex_count: chunk.vertex_upload_buffer.len() as u32,
             atlas_bind_group,
-            chunk_id: chunk.chunk_id,
             chunk_parts,
         }
     }
@@ -343,14 +337,6 @@ impl ClosedChunk {
 
     pub fn vertex_buffer(&self) -> wgpu::BufferSlice {
         self.vertex_buffer.slice(..)
-    }
-
-    pub fn vertex_count(&self) -> u32 {
-        self.vertex_count
-    }
-
-    pub fn chunk_id(&self) -> ChunkId {
-        self.chunk_id
     }
 
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {

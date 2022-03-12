@@ -27,10 +27,10 @@ use crate::{
     chunk::{
         ChunkId, ChunkManager, ChunkPart, ShapeErrata, ShapeId, ShapeIds, ShapeWidgets, Vertex,
     },
-    component::{Rotation, Scale, Transform},
+    // component::Scale,
     instance_block::{BlockId, InstanceBlock, TransformType},
 };
-use absolute_unit::{Kilometers, Meters};
+use absolute_unit::Meters;
 use animate::TimeStep;
 use anyhow::Result;
 use atmosphere::AtmosphereBuffer;
@@ -38,13 +38,14 @@ use bevy_ecs::prelude::*;
 use bevy_tasks::TaskPool;
 use camera::ScreenCamera;
 use catalog::Catalog;
+use composite::CompositeRenderStep;
 use global_data::GlobalParametersBuffer;
 use gpu::Gpu;
 use measure::WorldSpaceFrame;
-use nalgebra::Matrix4;
+use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
-use runtime::{Extension, FrameStage, Runtime, SimStage};
+use runtime::{Extension, FrameStage, Runtime};
 use sh::RawShape;
 use shader_shared::Group;
 use smallvec::SmallVec;
@@ -53,7 +54,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     time::Instant,
 };
-use world::WorldRenderPass;
+use world::{WorldRenderPass, WorldRenderStep};
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
@@ -119,18 +120,10 @@ impl Extension for ShapeBuffer {
             .add_system(Self::sys_ts_animate_draw_state.label(ShapeUploadStep::AnimateDrawState));
         runtime
             .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(
-                Self::sys_ts_apply_transforms
-                    .label(ShapeUploadStep::ApplyTransforms)
-                    .after(ShapeUploadStep::ResetUploadCursor),
-            );
+            .add_system(Self::sys_ts_apply_transforms.label(ShapeUploadStep::ApplyTransforms));
         runtime
             .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(
-                Self::sys_ts_build_flag_mask
-                    .label(ShapeUploadStep::ApplyFlags)
-                    .after(ShapeUploadStep::ResetUploadCursor),
-            );
+            .add_system(Self::sys_ts_build_flag_mask.label(ShapeUploadStep::ApplyFlags));
         runtime
             .frame_stage_mut(FrameStage::TrackStateChanges)
             .add_system(
@@ -158,7 +151,9 @@ impl Extension for ShapeBuffer {
             Self::sys_draw_shapes
                 .label(ShapeRenderStep::Render)
                 .after(ShapeRenderStep::UploadChunks)
-                .after(ShapeRenderStep::UploadBlocks),
+                .after(ShapeRenderStep::UploadBlocks)
+                .after(WorldRenderStep::Render)
+                .before(CompositeRenderStep::Render),
         );
 
         runtime
@@ -353,7 +348,7 @@ impl ShapeBuffer {
                 shape_file_name.to_owned(),
                 RawShape::from_bytes(catalog.read_name(shape_file_name)?.as_ref())?,
             );
-            let (base_name, _sh) = shape_file_name.rsplit_once(".").unwrap();
+            let (base_name, _sh) = shape_file_name.rsplit_once('.').unwrap();
             for suffix in ["_A", "_B", "_C", "_D"] {
                 let assoc_name = format!("{}{}.SH", base_name, suffix);
                 if let Ok(data) = catalog.read_name(&assoc_name) {
@@ -389,7 +384,7 @@ impl ShapeBuffer {
                 damage_shape_ids.push(*damage_shape_id);
             }
 
-            let (base_name, _sh) = shape_file_name.rsplit_once(".").unwrap();
+            let (base_name, _sh) = shape_file_name.rsplit_once('.').unwrap();
             for suffix in ["_A", "_B", "_C", "_D"] {
                 let assoc_name = format!("{}{}.SH", base_name, suffix);
                 if let Some(damage_models) = upload_results.get(&assoc_name) {
@@ -423,11 +418,12 @@ impl ShapeBuffer {
         shapes.chunk_man.cleanup_open_chunks_after_render(&mut gpu);
     }
 
-    pub fn create_instance(
+    pub fn instantiate(
         &mut self,
+        mut entity: NamedEntityMut,
         shape_id: ShapeId,
         gpu: &Gpu,
-    ) -> Result<(ShapeInstance, ShapeComponents)> {
+    ) -> Result<()> {
         // Find or create a block that we can use to track the instance data.
         let chunk_id = self.chunk_man.shape_chunk(shape_id);
         let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
@@ -455,60 +451,25 @@ impl ShapeBuffer {
         let widgets = self.chunk_man.part(shape_id).widgets();
         let errata: ShapeErrata = widgets.read().errata();
 
-        Ok((
-            ShapeInstance { shape_id, slot_id },
-            ShapeComponents {
-                draw_state: DrawState::new(errata),
-                transform_buffer: ShapeTransformBuffer::default(),
-                flag_buffer: ShapeFlagBuffer::default(),
-                xform_buffer: ShapeXformBuffer::default(),
-            },
-        ))
+        entity.insert(shape_id);
+        entity.insert(slot_id);
+        entity.insert_named(DrawState::new(errata))?;
+        entity.insert(ShapeTransformBuffer::default());
+        entity.insert(ShapeFlagBuffer::default());
+        entity.insert(ShapeXformBuffer::default());
+
+        Ok(())
+
+        // Ok((
+        //     ShapeInstance { shape_id, slot_id },
+        //     ShapeComponents {
+        //         draw_state: DrawState::new(errata),
+        //         transform_buffer: ShapeTransformBuffer::default(),
+        //         flag_buffer: ShapeFlagBuffer::default(),
+        //         xform_buffer: ShapeXformBuffer::default(),
+        //     },
+        // ))
     }
-
-    /*
-    pub fn upload_and_allocate_slot(
-        &mut self,
-        name: &str,
-        selection: DrawSelection,
-        catalog: &Catalog,
-        gpu: &mut Gpu,
-        tracker: &UploadTracker,
-    ) -> Result<(ShapeId, SlotId)> {
-        // Ensure that the shape is actually in a chunk somewhere.
-        let (chunk_id, shape_id) = self
-            .chunk_man
-            .upload_shape(name, selection, catalog, gpu, tracker)?;
-
-        // Find or create a block that we can use to track the instance data.
-        let block_id = if let Some(block_id) = self.find_open_block(chunk_id) {
-            block_id
-        } else {
-            let block_id = self.allocate_block_id();
-            let block =
-                InstanceBlock::new(block_id, chunk_id, &self.bind_group_layout, gpu.device());
-            self.chunk_to_block_map
-                .entry(chunk_id)
-                .or_insert_with(Vec::new)
-                .push(block_id);
-            self.blocks.insert(block_id, block);
-            block_id
-        };
-
-        // FIXME: can we do indirect drawing yet?
-        let draw_cmd = self
-            .chunk_man
-            .part(shape_id)
-            .draw_command(self.blocks[&block_id].len() as u32, 1);
-        let slot_id = self
-            .blocks
-            .get_mut(&block_id)
-            .unwrap()
-            .allocate_slot(draw_cmd);
-
-        Ok((shape_id, slot_id))
-    }
-     */
 
     #[inline]
     pub fn push_values(
@@ -519,7 +480,6 @@ impl ShapeBuffer {
         xforms: &Option<[[f32; 6]; 14]>,
         xform_count: usize,
     ) {
-        println!("PUSHING: {:?}, {:?}", transform, flags);
         self.blocks
             .get_mut(slot_id.block_id())
             .unwrap()
@@ -550,20 +510,20 @@ impl ShapeBuffer {
         camera: Res<ScreenCamera>,
         mut query: Query<(&WorldSpaceFrame, &mut ShapeTransformBuffer)>,
     ) {
-        let km2m = Matrix4::new_scaling(1_000.0);
         let view = camera.view::<Meters>().to_homogeneous();
         query.par_for_each_mut(&task_pool, 1024, |(frame, mut transform_buffer)| {
             // Transform must be performed in f64, then moved into view space (where precision
             // errors are at least far away), before being truncated to f32.
             let pos = frame.position().point64().to_homogeneous();
-            let pos_view = /*km2m */ view * pos;
+            let pos_view = view * pos;
             transform_buffer.buffer[0] = pos_view.x as f32;
             transform_buffer.buffer[1] = pos_view.y as f32;
             transform_buffer.buffer[2] = pos_view.z as f32;
 
             // Since we are uploading with eye space rotations applied, we need to "undo"
             // the eye-space rotation before uploading so that we will be world aligned.
-            let (a, b, c) = frame.quaternion32().euler_angles();
+            // let fwd = frame.forward();
+            let (a, b, c) = frame.facing32().euler_angles();
             transform_buffer.buffer[3] = a;
             transform_buffer.buffer[4] = b;
             transform_buffer.buffer[5] = c;
@@ -595,6 +555,7 @@ impl ShapeBuffer {
     ) {
         let start = step.start();
         let now = step.now();
+        assert!(now >= start);
         query.par_for_each_mut(
             &task_pool,
             1024,
@@ -604,13 +565,13 @@ impl ShapeBuffer {
                     match widget_cache.borrow_mut().entry(*shape_id) {
                         Entry::Occupied(mut e) => {
                             e.get_mut()
-                                .animate_into(&draw_state, start, now, &mut xform_buffer.buffer)
+                                .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
                                 .unwrap();
                         }
                         Entry::Vacant(e) => {
                             let mut widgets = part.widgets().read().clone();
                             widgets
-                                .animate_into(&draw_state, start, now, &mut xform_buffer.buffer)
+                                .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
                                 .unwrap();
                             e.insert(widgets);
                         }
@@ -622,10 +583,10 @@ impl ShapeBuffer {
 
     pub fn track_state_changes(
         &mut self,
-        start: &Instant,
-        now: &Instant,
-        camera: &ScreenCamera,
-        world: &mut World,
+        _start: &Instant,
+        _now: &Instant,
+        _camera: &ScreenCamera,
+        _world: &mut World,
     ) {
         /*
         for block in self.blocks.values_mut() {
@@ -750,7 +711,7 @@ impl ShapeBuffer {
     }
 
     fn sys_upload_block_frame_data(
-        mut shapes: ResMut<ShapeBuffer>,
+        shapes: Res<ShapeBuffer>,
         gpu: Res<Gpu>,
         maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
     ) {
@@ -799,6 +760,7 @@ impl ShapeBuffer {
                     rpass.draw(
                         cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
                         i as u32..i as u32 + 1,
+                        // 0..1,
                     );
                 }
             }
@@ -809,11 +771,13 @@ impl ShapeBuffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::chunk::DrawSelection;
     use animate::TimeStep;
-    use camera::CameraSystem;
+    use camera::{CameraSystem, ScreenCameraController};
+    use fullscreen::FullscreenBuffer;
     use lib::Libs;
     use orrery::Orrery;
+    use stars::StarsBuffer;
+    use terrain::TerrainBuffer;
 
     #[cfg(unix)]
     #[test]
@@ -833,15 +797,9 @@ mod test {
                     continue;
                 }
 
-                let results =
-                    runtime.resource_scope(|mut heap, mut inst_man: Mut<ShapeBuffer>| {
-                        inst_man.upload_shapes(
-                            palette,
-                            &[meta.name()],
-                            catalog,
-                            heap.resource::<Gpu>(),
-                        )
-                    })?;
+                let results = runtime.resource_scope(|heap, mut inst_man: Mut<ShapeBuffer>| {
+                    inst_man.upload_shapes(palette, &[meta.name()], catalog, heap.resource::<Gpu>())
+                })?;
                 println!("RESULT: {:#?}", results);
             }
         }
@@ -851,13 +809,19 @@ mod test {
     #[cfg(unix)]
     #[test]
     fn test_creation() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?
-            .with_extension::<TimeStep>()?
-            .with_extension::<CameraSystem>()?
-            .with_extension::<GlobalParametersBuffer>()?
-            .with_extension::<AtmosphereBuffer>()?
-            .with_extension::<ShapeBuffer>()?
-            .with_extension::<Orrery>()?;
+        let mut runtime = Gpu::for_test_unix()?;
+        runtime
+            .load_extension::<TimeStep>()?
+            .load_extension::<Catalog>()?
+            .load_extension::<CameraSystem>()?
+            .load_extension::<GlobalParametersBuffer>()?
+            .load_extension::<FullscreenBuffer>()?
+            .load_extension::<AtmosphereBuffer>()?
+            .load_extension::<ShapeBuffer>()?
+            .load_extension::<StarsBuffer>()?
+            .load_extension::<TerrainBuffer>()?
+            .load_extension::<WorldRenderPass>()?
+            .load_extension::<Orrery>()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640
@@ -904,20 +868,30 @@ mod test {
                 // FIXME: skip _?.SH shapes as those should be loaded automagically now
                 all_shapes.push(meta.name().to_owned());
             }
-            let out = runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
+            let out = runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
                 shapes.upload_shapes(palette, &all_shapes, catalog, heap.resource::<Gpu>())
             })?;
 
             // Create an instance of each core shape.
             for (name, shape_ids) in out.iter() {
-                runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
-                    let slot_id =
-                        shapes.create_instance(shape_ids.normal(), heap.resource::<Gpu>());
-                });
+                let id = runtime
+                    .spawn_named(&format!("{}:{}", game.test_dir, name))?
+                    .id();
+                runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
+                    heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
+                        shapes.instantiate(heap.named_entity_mut(id), shape_ids.normal(), &gpu)
+                    })
+                })?;
             }
         }
 
         // Crank frame to upload all the shapes we just loaded.
+        let _player_ent = runtime
+            .spawn_named("player")?
+            .insert(WorldSpaceFrame::default())
+            .insert(ScreenCameraController::default())
+            .id();
+        runtime.run_sim_once();
         runtime.run_frame_once();
 
         Ok(())

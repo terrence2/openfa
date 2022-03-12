@@ -18,7 +18,7 @@ let tgt_lon := 1.379423469142956;
 let tgt_height := 1500. - 6. * 150.;
 let eye_lat := 0.29670346;
 let eye_lon := 14.5683351;
-let eye_dist := 56.595;
+let eye_dist := 610.595;
 @player.arcball.set_target_latitude_radians(tgt_lat);
 @player.arcball.set_target_longitude_radians(tgt_lon);
 @player.arcball.set_target_height_meters(tgt_height);
@@ -28,4 +28,6 @@ let eye_dist := 56.595;
 orrery.set_unix_ms(-168993517833.82);
 
 game.load_map("APA.MM");
-game.spawn_named_plane("test", "F16.PT");
+game.spawn("test", "F16.PT");
+//game.spawn("test", "WTRBUF.OT");
+//game.spawn("test", "C130.PT");

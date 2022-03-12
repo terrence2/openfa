@@ -17,7 +17,7 @@ use crate::chunk::{
     upload::DrawSelection,
     upload::ShapeUploader,
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use catalog::Catalog;
 use gpu::Gpu;
 use pal::Palette;
@@ -56,12 +56,10 @@ pub(crate) struct ChunkManager {
     // TODO: does this need to be a vec of OpenChunk? Where do we actually stop having "enough" room.
     open_chunks: HashMap<ChunkFlags, OpenChunk>,
     closed_chunks: HashMap<ChunkId, ClosedChunk>,
-    dump_atlas_textures: bool,
 }
 
 impl ChunkManager {
     pub fn new(gpu: &Gpu) -> Result<Self> {
-        let dump_atlas_textures = env::var("DUMP") == Ok("1".to_owned());
         let chunk_bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -125,7 +123,6 @@ impl ChunkManager {
             pic_uploader: PicUploader::new(gpu)?,
             open_chunks: HashMap::new(),
             closed_chunks: HashMap::new(),
-            dump_atlas_textures,
         })
     }
 
@@ -263,13 +260,6 @@ impl ChunkManager {
         Ok(out)
     }
 
-    // pub fn shape_for(&self, name: &str) -> Result<ShapeId> {
-    //     Ok(*self
-    //         .name_to_shape_map
-    //         .get(name)
-    //         .ok_or_else(|| anyhow!("no shape for the given name"))?)
-    // }
-
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
         let chunk_id = self.shape_to_chunk_map[&shape_id];
         if let Some(chunk) = self.closed_chunks.get(&chunk_id) {
@@ -284,10 +274,6 @@ impl ChunkManager {
         }
         unreachable!()
     }
-
-    // pub fn part_for(&self, name: &str) -> Result<&ChunkPart> {
-    //     Ok(self.part(self.shape_for(name)?))
-    // }
 
     pub fn shape_chunk(&self, shape_id: ShapeId) -> ChunkId {
         self.shape_to_chunk_map[&shape_id]

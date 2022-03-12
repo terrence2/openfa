@@ -30,8 +30,6 @@ mod test {
     use anyhow::Result;
     use gpu::Gpu;
     use lib::Libs;
-    use log::trace;
-    use pal::Palette;
     use sh::RawShape;
     use std::collections::HashMap;
 
@@ -58,7 +56,7 @@ mod test {
 
         let libs = Libs::for_testing()?;
 
-        let mut chunk_man = ChunkManager::new(&runtime.resource::<Gpu>())?;
+        let mut chunk_man = ChunkManager::new(runtime.resource::<Gpu>())?;
         let mut result_maps = HashMap::new();
         for (game, palette, catalog) in libs.selected() {
             let mut all_shapes = HashMap::new();
@@ -78,9 +76,9 @@ mod test {
                 palette,
                 &all_shapes,
                 catalog,
-                &runtime.resource::<Gpu>(),
+                runtime.resource::<Gpu>(),
             )?;
-            result_maps.insert(game.test_dir.clone(), results);
+            result_maps.insert(game.test_dir.to_owned(), results);
         }
 
         // Manually crank a frame
@@ -89,7 +87,7 @@ mod test {
                 label: Some("test-chunk-encoder"),
             },
         );
-        chunk_man.close_open_chunks(&runtime.resource::<Gpu>(), &mut encoder);
+        chunk_man.close_open_chunks(runtime.resource::<Gpu>(), &mut encoder);
         runtime
             .resource::<Gpu>()
             .device()
