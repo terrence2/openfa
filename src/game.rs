@@ -16,7 +16,7 @@ use absolute_unit::{degrees, meters, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::ArcBallController;
-use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule, Target};
+use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use gpu::Gpu;
 use lib::from_dos_string;
 use lib::Libs;
@@ -37,18 +37,18 @@ use xt::TypeManager;
 
 static SCALE_OVERRIDE: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
     let mut m = HashMap::new();
-    m.insert("STRIP1.OT", 4);
-    m.insert("STRIP2.OT", 4);
-    m.insert("STRIP3A.OT", 4);
-    m.insert("STRIP3.OT", 4);
-    m.insert("STRIP4.OT", 4);
-    m.insert("STRIP5A.OT", 4);
-    m.insert("STRIP5.OT", 4);
-    m.insert("STRIP6A.OT", 4);
-    m.insert("STRIP6.OT", 4);
-    m.insert("STRIP7A.OT", 4);
-    m.insert("STRIP7.OT", 4);
-    m.insert("STRIP.OT", 4);
+    m.insert("STRIP1.OT", 1);
+    m.insert("STRIP2.OT", 1);
+    m.insert("STRIP3A.OT", 1);
+    m.insert("STRIP3.OT", 1);
+    m.insert("STRIP4.OT", 1);
+    m.insert("STRIP5A.OT", 1);
+    m.insert("STRIP5.OT", 1);
+    m.insert("STRIP6A.OT", 1);
+    m.insert("STRIP6.OT", 1);
+    m.insert("STRIP7A.OT", 1);
+    m.insert("STRIP7.OT", 1);
+    m.insert("STRIP.OT", 1);
     m
 });
 
@@ -71,7 +71,7 @@ impl Game {
 
     #[method]
     fn boresight(&self, mut heap: HeapMut) {
-        let query = heap.query::<&ShapeScale>();
+        let _query = heap.query::<&ShapeScale>();
     }
 
     // fn spawn_inner(&self, instances: &[(&str, &str)], mut heap: HeapMut) -> Result<()> {}
@@ -225,7 +225,6 @@ impl Game {
                 &info.xt().ot().ot_names.file_name,
             ));
             let scale = *scale.unwrap_or(&1i32) as f32;
-            let scale = 1f32;
 
             let frame = {
                 let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
