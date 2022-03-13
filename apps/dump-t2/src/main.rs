@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogOpts};
+use lib::{Libs, LibsOpts};
 use std::time::Instant;
 use structopt::StructOpt;
 use t2::Terrain;
@@ -30,7 +30,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    libs_opts: LibsOpts,
 }
 
 const PROFILE_COUNT: usize = 10000;
@@ -38,13 +38,13 @@ const PROFILE_COUNT: usize = 10000;
 fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                show_t2(fid, opt.profile, &catalog)?;
+                show_t2(fid, opt.profile, catalog)?;
             }
         }
     }
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
 }
 
 fn show_t2(fid: FileId, profile: bool, catalog: &Catalog) -> Result<()> {
-    let raw = &catalog.read_sync(fid)?;
+    let raw = &catalog.read(fid)?;
     if profile {
         let start = Instant::now();
         for _ in 0..PROFILE_COUNT {

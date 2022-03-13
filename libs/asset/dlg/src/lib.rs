@@ -483,17 +483,17 @@ impl Dialog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     #[test]
     fn it_can_load_all_dialogs() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("DLG")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
-                Dialog::explore(meta.name(), &catalog.read_sync(fid)?)?;
+                Dialog::explore(meta.name(), &catalog.read(fid)?)?;
                 //let _dlg = Dialog::from_bytes(&catalog.read_sync(fid)?)?;
             }
         }

@@ -12,9 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use gpu::{Gpu, UploadTracker};
+use crate::chunk::{ChunkId, DrawIndirectCommand};
+use bevy_ecs::prelude::*;
+use gpu::Gpu;
 use log::trace;
-use shape_chunk::{ChunkId, DrawIndirectCommand};
 use std::{mem, num::NonZeroU64, sync::Arc};
 
 const BLOCK_SIZE: usize = 1 << 10;
@@ -30,7 +31,7 @@ impl BlockId {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Component, Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SlotId {
     block_id: BlockId,
     offset: u32,
@@ -133,14 +134,14 @@ impl InstanceBlock {
         let command_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-command-buffer"),
             size: command_buffer_size,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
         let transform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
             size: Self::TRANSFORM_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
@@ -149,21 +150,21 @@ impl InstanceBlock {
         let flag_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-flag-buffer"),
             size: Self::FLAG_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
         let xform_index_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-index-buffer"),
             size: Self::XFORM_INDEX_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
         let xform_buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shape-instance-xform-buffer"),
             size: Self::XFORM_BUFFER_SIZE,
-            usage: wgpu::BufferUsage::all(),
+            usage: wgpu::BufferUsages::all(),
             mapped_at_creation: false,
         }));
 
@@ -173,35 +174,35 @@ impl InstanceBlock {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &transform_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &flag_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &xform_index_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &xform_buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
             ],
         });
@@ -280,40 +281,40 @@ impl InstanceBlock {
         }
     }
 
-    pub(crate) fn make_upload_buffer(&self, gpu: &Gpu, tracker: &mut UploadTracker) {
+    pub(crate) fn make_upload_buffer(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
         gpu.upload_slice_to(
             "shape-instance-command-buffer-scratch",
             &self.command_buffer_scratch[..self.len()],
             self.command_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-transform-buffer-scratch",
             &self.transform_buffer_scratch[..self.len()],
             self.transform_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-flag-buffer-scratch",
             &self.flag_buffer_scratch[..self.len()],
             self.flag_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-xform-index-buffer-scratch",
             &self.xform_index_buffer_scratch[..self.len()],
             self.xform_index_buffer.clone(),
-            tracker,
+            encoder,
         );
 
         gpu.upload_slice_to(
             "shape-instance-xform-buffer-scratch",
             &self.xform_buffer_scratch[..self.xform_cursor],
             self.xform_buffer.clone(),
-            tracker,
+            encoder,
         );
     }
 

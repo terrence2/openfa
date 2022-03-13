@@ -15,7 +15,7 @@
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogOpts};
+use lib::{Libs, LibsOpts};
 use peff::PortableExecutable;
 use std::collections::HashSet;
 use structopt::StructOpt;
@@ -27,22 +27,22 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_pe(fid, &catalog)?;
+                show_pe(fid, catalog)?;
             }
         }
     }
@@ -55,7 +55,7 @@ fn show_pe(fid: FileId, catalog: &Catalog) -> Result<()> {
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
 
-    let content = catalog.read_sync(fid)?;
+    let content = catalog.read(fid)?;
     let pe = PortableExecutable::from_bytes(&content)?;
 
     println!("image base: 0x{:08X}", pe.image_base);

@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use image::GenericImageView;
-use lib::{CatalogManager, CatalogOpts, GameInfo};
+use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use pic::Pic;
 use std::fs;
@@ -52,18 +52,18 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                show_pic(fid, game, &catalog, &opt)?;
+                show_pic(fid, game, palette, catalog, &opt)?;
             }
         }
     }
@@ -71,10 +71,16 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn show_pic(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
-    let meta = catalog.stat_sync(fid)?;
-    let content = catalog.read_sync(fid)?;
-    let image = Pic::from_bytes(&content)?;
+fn show_pic(
+    fid: FileId,
+    game: &GameInfo,
+    system_palette: &Palette,
+    catalog: &Catalog,
+    opt: &Opt,
+) -> Result<()> {
+    let meta = catalog.stat(fid)?;
+    let content = catalog.read(fid)?;
+    let image = Pic::from_bytes(content.as_ref())?;
 
     println!(
         "{}",
@@ -101,7 +107,7 @@ fn show_pic(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Resul
         } else if opt.grayscale {
             Palette::grayscale()?
         } else {
-            Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?
+            system_palette.to_owned()
         };
         let image = Pic::decode(&palette, &content)?;
         image.save(target)?;

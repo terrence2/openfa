@@ -17,18 +17,19 @@ use crate::{
     LibDrawer, Priority,
 };
 use anyhow::{bail, ensure, Result};
-use catalog::{Catalog, DirectoryDrawer};
-use parking_lot::{RwLock, RwLockReadGuard};
+use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
+use pal::Palette;
+use runtime::{Extension, Runtime};
 use std::{
+    borrow::Cow,
     collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-pub struct CatalogOpts {
+#[derive(Clone, Debug, Default, StructOpt)]
+pub struct LibsOpts {
     /// The path to look in for game files (default: pwd)
     #[structopt(short, long)]
     game_path: Option<PathBuf>,
@@ -46,7 +47,7 @@ pub struct CatalogOpts {
     cd2_path: Option<PathBuf>,
 
     /// Extra directories to treat as libraries
-    #[structopt(short, long)]
+    #[structopt(short = "-l", long)]
     lib_paths: Vec<PathBuf>,
 
     /// Select the game, if there is more than one available (e.g. in test mode)
@@ -56,14 +57,29 @@ pub struct CatalogOpts {
 
 /// Search for artifacts and create catalogs for any and every game we
 /// can get our hands on.
-pub struct CatalogManager {
+pub struct Libs {
     selected_game: Option<usize>,
-    catalogs: Vec<(&'static GameInfo, Arc<RwLock<Catalog>>)>,
+    catalogs: Vec<(&'static GameInfo, Palette, Catalog)>,
 }
 
-impl CatalogManager {
+impl Extension for Libs {
+    fn init(runtime: &mut Runtime) -> Result<()> {
+        let empty = LibsOpts::default();
+        let opts = runtime.maybe_resource::<LibsOpts>().unwrap_or(&empty);
+        let extra_paths = opts.lib_paths.clone();
+        let catalogs = Libs::bootstrap(opts)?;
+        runtime.insert_resource(catalogs);
+
+        runtime.insert_resource(CatalogOpts::from_extra_paths(extra_paths));
+        runtime.load_extension::<Catalog>()?;
+
+        Ok(())
+    }
+}
+
+impl Libs {
     /// Find out what we have to work with.
-    pub fn bootstrap(opts: &CatalogOpts) -> Result<Self> {
+    pub fn bootstrap(opts: &LibsOpts) -> Result<Self> {
         // If we didn't specify a path, use cwd.
         let game_path = if let Some(path) = &opts.game_path {
             path.to_owned()
@@ -125,9 +141,10 @@ impl CatalogManager {
                 println!("Detected {} in game path...", game.name);
             }
 
+            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
             Self {
                 selected_game: Some(0),
-                catalogs: vec![(game, Arc::new(RwLock::new(catalog)))],
+                catalogs: vec![(game, palette, catalog)],
             }
         } else {
             println!(
@@ -138,7 +155,7 @@ impl CatalogManager {
             let mut catalogs = Self::for_testing()?;
 
             if let Some(selected) = &opts.select_game {
-                for (i, (game, _)) in catalogs.catalogs.iter().enumerate() {
+                for (i, (game, _, _)) in catalogs.catalogs.iter().enumerate() {
                     if game.test_dir == selected {
                         catalogs.selected_game = Some(i);
                         break;
@@ -150,11 +167,9 @@ impl CatalogManager {
         };
 
         // Load any additional libdirs into the catalog
-        for (_, catalog) in catalogs.catalogs.iter_mut() {
+        for (_, _, catalog) in catalogs.catalogs.iter_mut() {
             for (i, lib_path) in opts.lib_paths.iter().enumerate() {
-                catalog
-                    .write()
-                    .add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
+                catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
             }
         }
 
@@ -200,7 +215,9 @@ impl CatalogManager {
                     if cdrom2dir.exists() {
                         Self::populate_catalog(game, &cdrom2dir, 0, &mut game_catalog)?;
                     }
-                    catalogs.push((game, Arc::new(RwLock::new(game_catalog))));
+                    let palette =
+                        Palette::from_bytes(game_catalog.read_name("PALETTE.PAL")?.as_ref())?;
+                    catalogs.push((game, palette, game_catalog));
                 }
             }
         }
@@ -211,34 +228,50 @@ impl CatalogManager {
         })
     }
 
-    pub fn all(&self) -> impl Iterator<Item = (&'static GameInfo, RwLockReadGuard<Catalog>)> + '_ {
+    pub fn all(&self) -> impl Iterator<Item = (&'static GameInfo, &Palette, &Catalog)> + '_ {
         self.catalogs
             .iter()
-            .map(|(gi, catalog)| (*gi, catalog.read()))
+            .map(|(gi, palette, catalog)| (*gi, palette, catalog))
     }
 
     pub fn selected(
         &self,
-    ) -> Box<dyn Iterator<Item = (&'static GameInfo, RwLockReadGuard<Catalog>)> + '_> {
+    ) -> Box<dyn Iterator<Item = (&'static GameInfo, &Palette, &Catalog)> + '_> {
         if let Some(selected) = self.selected_game {
             Box::new(
                 self.catalogs
                     .iter()
                     .skip(selected)
                     .take(1)
-                    .map(|(gi, catalog)| (*gi, catalog.read())),
+                    .map(|(gi, palette, catalog)| (*gi, palette, catalog)),
             )
         } else {
             Box::new(self.all())
         }
     }
 
-    pub fn best(&self) -> RwLockReadGuard<Catalog> {
-        self.catalogs[self.selected_game.unwrap_or(0)].1.read()
+    pub fn catalog(&self) -> &Catalog {
+        &self.catalogs[self.selected_game.unwrap_or(0)].2
     }
 
-    pub fn best_owned(&self) -> Arc<RwLock<Catalog>> {
-        self.catalogs[self.selected_game.unwrap_or(0)].1.clone()
+    pub fn palette(&self) -> &Palette {
+        &self.catalogs[self.selected_game.unwrap_or(0)].1
+    }
+
+    pub fn label(&self) -> &str {
+        self.catalog().label()
+    }
+
+    pub fn exists<S: AsRef<str>>(&self, name: S) -> bool {
+        self.catalog().exists(name.as_ref())
+    }
+
+    pub fn read(&self, fid: FileId) -> Result<Cow<[u8]>> {
+        self.catalog().read(fid)
+    }
+
+    pub fn read_name<S: AsRef<str>>(&self, name: S) -> Result<Cow<[u8]>> {
+        self.catalog().read_name(name.as_ref())
     }
 
     fn populate_catalog(

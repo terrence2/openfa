@@ -747,12 +747,12 @@ const DOSX_HEADER: &[u8] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     #[test]
     fn it_works() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.selected() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.selected() {
             for fid in catalog
                 .find_with_extension("SH")?
                 .iter()
@@ -760,10 +760,10 @@ mod tests {
                 .chain(catalog.find_with_extension("DLG")?.iter())
                 .chain(catalog.find_with_extension("MNU")?.iter())
             {
-                let meta = catalog.stat_sync(*fid)?;
+                let meta = catalog.stat(*fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let data = catalog.read_sync(*fid)?;
-                let _pe = PortableExecutable::from_bytes(&data)?;
+                let data = catalog.read(*fid)?;
+                let _pe = PortableExecutable::from_bytes(data.as_ref())?;
             }
         }
 

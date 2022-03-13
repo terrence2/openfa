@@ -17,7 +17,7 @@
 #include <nitrogen/wgpu-buffer/shader_shared/include/consts.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/terrain.glsl>
 #include <nitrogen/wgpu-buffer/terrain/include/layout_accumulate.glsl>
-#include <wgpu-buffer/t2_tile_set/include/t2_tile_set.glsl>
+#include <wgpu-buffer/t2_terrain/include/t2_tile_set.glsl>
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -52,7 +52,11 @@ main()
         bool inside = all(bvec4(greaterThanEqual(tile_uv, vec2(0)), lessThanEqual(tile_uv, vec2(1))));
 
         // Lookup our tile u/v in the index to get the Frame and orientation.
-        uvec4 index = texture(usampler2D(index_texture, index_sampler), tile_uv);
+        ivec2 tile_uv_index = ivec2(
+            tile_uv.x * t2_info.index_width,
+            tile_uv.y * t2_info.index_height
+        );
+        uvec4 index = texelFetch(usampler2D(index_texture, index_sampler), tile_uv_index, 0);
         T2Frame frame = t2_frames[index.r];
         uint orientation = index.g;
 

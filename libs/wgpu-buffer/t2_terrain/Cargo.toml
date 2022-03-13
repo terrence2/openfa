@@ -1,16 +1,17 @@
 [package]
-name = "t2_tile_set"
+name = "t2_terrain"
 version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = "^ 0.6"
 log = "^ 0.4"
 image = "^ 0.23"
 nalgebra = "^ 0.29"
 parking_lot = "^ 0.11"
-wgpu = "^ 0.7"
+wgpu = { version = "^ 0.12", features = ["spirv"] }
 zerocopy = "^ 0.5"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
@@ -21,12 +22,15 @@ global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../nitrogen/system/gpu" }
 lay = { path = "../../asset/lay" }
 mmm = { path = "../../asset/mmm" }
+nitrous = { path = "../../nitrogen/util/nitrous"}
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
 pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
+runtime = { path = "../../nitrogen/util/runtime" }
 shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
 t2 = { path = "../../asset/t2" }
 terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
+world = { path = "../../nitrogen/wgpu-buffer/world" }
 xt = { path = "../../asset/xt" }
 
 [dev-dependencies]

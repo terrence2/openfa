@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::draw_state::DrawState;
+use crate::chunk::draw_state::DrawState;
 use absolute_unit::{feet, Feet, Length};
 use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};
@@ -144,47 +144,47 @@ impl Vertex {
     pub fn descriptor() -> wgpu::VertexBufferLayout<'static> {
         let tmp = wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 // position
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                     offset: 0,
                     shader_location: 0,
                 },
                 // normal
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                     offset: 12,
                     shader_location: 1,
                 },
                 // color
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float4,
+                    format: wgpu::VertexFormat::Float32x4,
                     offset: 24,
                     shader_location: 2,
                 },
                 // tex_coord
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint2,
+                    format: wgpu::VertexFormat::Uint32x2,
                     offset: 40,
                     shader_location: 3,
                 },
                 // flags0
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint,
+                    format: wgpu::VertexFormat::Uint32,
                     offset: 48,
                     shader_location: 4,
                 },
                 // flags1
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint,
+                    format: wgpu::VertexFormat::Uint32,
                     offset: 52,
                     shader_location: 5,
                 },
                 // xform_id
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Uint,
+                    format: wgpu::VertexFormat::Uint32,
                     offset: 56,
                     shader_location: 6,
                 },
@@ -238,15 +238,22 @@ impl Default for Vertex {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum DrawSelection {
-    DamageModel,
     NormalModel,
+    DamageModel,
 }
 
 impl DrawSelection {
     pub fn is_damage(&self) -> bool {
         self == &DrawSelection::DamageModel
+    }
+
+    pub fn offset(&self) -> usize {
+        match self {
+            Self::NormalModel => 0,
+            Self::DamageModel => 1,
+        }
     }
 }
 
@@ -284,12 +291,22 @@ impl ShapeErrata {
             num_xform_animations: analysis.transformers.len() as u8,
         }
     }
+
+    fn non_shape() -> Self {
+        Self {
+            no_upper_aileron: false,
+            has_frame_animation: false,
+            has_xform_animation: false,
+            num_xform_animations: 0,
+        }
+    }
 }
 
 // TODO: this should be a sibling of ShapeUploader in such a way that they can share
 // TODO: the core iterate-instructions loop, but keep separate state around that.
 pub(crate) struct AnalysisResults {
     has_frame_animation: bool,
+    has_damage_model: bool,
     prop_man: BufferPropsManager,
     transformers: Vec<Transformer>,
 }
@@ -298,6 +315,7 @@ impl Default for AnalysisResults {
     fn default() -> Self {
         Self {
             has_frame_animation: false,
+            has_damage_model: false,
             prop_man: BufferPropsManager::new(),
             transformers: Vec::new(),
         }
@@ -307,6 +325,10 @@ impl Default for AnalysisResults {
 impl AnalysisResults {
     pub fn has_animation(&self) -> bool {
         self.has_frame_animation
+    }
+
+    pub fn has_damage_model(&self) -> bool {
+        self.has_damage_model
     }
 
     pub fn has_xforms(&self) -> bool {
@@ -666,6 +688,15 @@ impl ShapeWidgets {
             transformers,
             errata,
             aabb,
+        }
+    }
+
+    pub fn non_shape() -> Self {
+        Self {
+            shape_name: "hidden".to_owned(),
+            transformers: vec![],
+            errata: ShapeErrata::non_shape(),
+            aabb: Aabb::new([0f32; 3], [0f32; 3]),
         }
     }
 
@@ -1225,9 +1256,9 @@ impl<'a> ShapeUploader<'a> {
                     if let Some(frame) = self.loaded_frames.get(&filename) {
                         self.active_frame = Some(*frame);
                     } else {
-                        let data = self.catalog.read_name_sync(&filename)?;
+                        let data = self.catalog.read_name(&filename)?;
                         let (buffer, w, h, stride) =
-                            pic_uploader.upload(&data, gpu, wgpu::BufferUsage::COPY_SRC)?;
+                            pic_uploader.upload(&data, gpu, wgpu::BufferUsages::COPY_SRC)?;
                         let frame = atlas_packer.push_buffer(buffer, w, h, stride)?;
                         self.loaded_frames.insert(filename, frame);
                         self.active_frame = Some(frame);
@@ -1286,6 +1317,9 @@ impl<'a> ShapeUploader<'a> {
         let mut result: AnalysisResults = Default::default();
         let mut callback = |pc: &ProgramCounter, instr: &Instr| {
             match instr {
+                Instr::JumpToDamage(_) => {
+                    result.has_damage_model = true;
+                }
                 Instr::JumpToFrame(_) => {
                     result.has_frame_animation = true;
                 }

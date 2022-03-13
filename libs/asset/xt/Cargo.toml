@@ -1,11 +1,12 @@
 [package]
 name = "xt"
 version = "0.0.0"
-edition = "2018"
+edition = "2021"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = "^ 0.6"
 log = "^ 0.4"
 parking_lot = "^ 0.11"
 catalog = { path = "../../nitrogen/system/catalog" }
@@ -14,3 +15,4 @@ lib = { path = "../../asset/lib" }
 nt = { path = "../../asset/nt" }
 ot = { path = "../../asset/ot" }
 pt = { path = "../../asset/pt" }
+runtime = { path = "../../nitrogen/util/runtime" }

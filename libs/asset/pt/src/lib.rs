@@ -255,17 +255,17 @@ impl PlaneType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogManager};
+    use lib::{from_dos_string, Libs};
 
     #[test]
     fn it_can_parse_all_plane_files() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("PT")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let contents = from_dos_string(catalog.read_sync(fid)?);
-                let pt = PlaneType::from_text(&contents)?;
+                let contents = from_dos_string(catalog.read(fid)?);
+                let pt = PlaneType::from_text(contents.as_ref())?;
                 assert_eq!(pt.nt.ot.file_name(), meta.name());
             }
         }

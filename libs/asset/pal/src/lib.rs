@@ -244,22 +244,6 @@ impl<'a> From<Palette> for Cow<'a, Palette> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
-
-    #[test]
-    fn it_works_with_normal_palette() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
-            for fid in catalog.find_with_extension("PAL")? {
-                let meta = catalog.stat_sync(fid)?;
-                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let pal = Palette::from_bytes(&catalog.read_sync(fid)?)?;
-                assert_eq!(pal.rgb(1)?, Rgb([252, 0, 252]));
-            }
-        }
-
-        Ok(())
-    }
 
     #[test]
     fn it_can_be_empty() -> Result<()> {

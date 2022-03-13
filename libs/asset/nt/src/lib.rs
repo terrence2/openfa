@@ -108,16 +108,16 @@ pub struct HardPoint {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogManager};
+    use lib::{from_dos_string, Libs};
 
     #[test]
     fn can_parse_all_npc_types() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("NT")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let contents = from_dos_string(catalog.read_sync(fid)?);
+                let contents = from_dos_string(catalog.read(fid)?);
                 let nt = NpcType::from_text(&contents)?;
                 assert_eq!(nt.ot.file_name(), meta.name());
             }

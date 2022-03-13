@@ -12,10 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::upload::{ShapeErrata, VertexFlags};
+use crate::chunk::upload::{ShapeErrata, VertexFlags};
 use animate::{Animation, LinearAnimationTemplate};
-use bitflags::bitflags;
 use anyhow::{bail, Result};
+use bevy_ecs::prelude::*;
+use bitflags::bitflags;
+use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use std::time::{Duration, Instant};
 
 const ANIMATION_FRAME_TIME: usize = 166; // ms
@@ -43,7 +45,8 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Component, NitrousComponent, Clone, Copy, Debug, PartialEq)]
+#[Name = "draw_state"]
 pub struct DrawState {
     gear_animation: Animation,
     bay_animation: Animation,
@@ -58,6 +61,7 @@ pub struct DrawState {
     errata: ShapeErrata,
 }
 
+#[inject_nitrous_component]
 impl DrawState {
     pub fn new(errata: ShapeErrata) -> Self {
         DrawState {
@@ -77,6 +81,7 @@ impl DrawState {
         }
     }
 
+    #[method]
     pub fn gear_retracted(&self) -> bool {
         self.gear_animation.completed_backward()
     }
@@ -85,6 +90,7 @@ impl DrawState {
         self.gear_animation.value()
     }
 
+    #[method]
     pub fn bay_closed(&self) -> bool {
         self.bay_animation.completed_backward()
     }

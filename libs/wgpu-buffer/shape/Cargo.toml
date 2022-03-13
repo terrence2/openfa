@@ -1,0 +1,51 @@
+[package]
+name = "shape"
+version = "0.0.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = "^ 0.6"
+bevy_tasks = "^ 0.6"
+bitflags = "^ 1"
+image = "^ 0.23"
+lazy_static = "^ 1"
+log = "^ 0.4"
+memoffset = "^ 0.6"
+nalgebra = "^ 0.29"
+parking_lot = "^ 0.11"
+smallvec = "^ 1.4"
+zerocopy = "^ 0.5"
+wgpu = { version = "^ 0.12", features = ["spirv"] }
+absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+animate = { path = "../../nitrogen/sim/animate" }
+atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
+atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
+camera = { path = "../../nitrogen/sim/camera" }
+catalog = { path = "../../nitrogen/system/catalog" }
+composite = { path = "../../nitrogen/wgpu-buffer/composite" }
+geodesy = { path = "../../nitrogen/util/geodesy" }
+geometry = { path = "../../nitrogen/util/geometry" }
+global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
+gpu = { path = "../../nitrogen/system/gpu" }
+i386 = { path = "../../util/i386" }
+measure = { path = "../../nitrogen/sim/measure" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
+ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
+pal = { path = "../../asset/pal" }
+pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
+runtime = { path = "../../nitrogen/util/runtime" }
+sh = { path = "../../asset/sh" }
+shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
+world = { path = "../../nitrogen/wgpu-buffer/world" }
+
+[dev-dependencies]
+fullscreen = { path = "../../nitrogen/wgpu-buffer/fullscreen" }
+lib = { path = "../../asset/lib" }
+orrery = { path = "../../nitrogen/sim/orrery" }
+stars = { path = "../../nitrogen/wgpu-buffer/stars" }
+terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
+
+[build-dependencies]
+build_shaders = { path = "../../nitrogen/util/build_shaders" }

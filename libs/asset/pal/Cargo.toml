@@ -1,12 +1,9 @@
 [package]
 name = "pal"
 version = "0.0.0"
-edition = "2018"
+edition = "2021"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 image = "^ 0.23"
-
-[dev-dependencies]
-lib = { path = "../../asset/lib" }

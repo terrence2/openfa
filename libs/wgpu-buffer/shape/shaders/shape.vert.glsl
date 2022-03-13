@@ -17,7 +17,7 @@
 #include <wgpu-buffer/shader_shared/include/consts.glsl>
 #include <wgpu-buffer/shader_shared/include/quaternion.glsl>
 #include <wgpu-buffer/global_data/include/global_data.glsl>
-#include <wgpu-buffer/shape_chunk/include/include_shape.glsl>
+#include <wgpu-buffer/shape/include/shape.glsl>
 
 // Vertex inputs
 layout(location = 0) in vec3 position;
@@ -45,16 +45,16 @@ layout(set = 2, binding = 2) uniform ChunkMegaAtlasProperties {
 
 // Per shape input
 const uint MAX_XFORM_ID = 32;
-layout(set = 3, binding = 0) buffer ShapeInstanceBlockTransforms {
+layout(set = 3, binding = 0) readonly buffer ShapeInstanceBlockTransforms {
     float shape_transforms[];
 };
-layout(set = 3, binding = 1) buffer ShapeInstanceBlockFlags {
+layout(set = 3, binding = 1) readonly buffer ShapeInstanceBlockFlags {
     uint shape_flags[];
 };
-layout(set = 3, binding = 2) buffer ShapeInstanceBlockXformOffsets {
+layout(set = 3, binding = 2) readonly buffer ShapeInstanceBlockXformOffsets {
     uint shape_xform_offsets[];
 };
-layout(set = 3, binding = 3) buffer ShapeInstanceBlockXforms {
+layout(set = 3, binding = 3) readonly buffer ShapeInstanceBlockXforms {
     float shape_xforms[];
 };
 

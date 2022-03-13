@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{from_dos_string, CatalogManager, CatalogOpts};
+use lib::{from_dos_string, Libs, LibsOpts};
 use mmm::Mission;
 use std::time::Instant;
 use structopt::StructOpt;
@@ -31,7 +31,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    libs_opts: LibsOpts,
 }
 
 const PROFILE_COUNT: usize = 10000;
@@ -40,17 +40,17 @@ fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
     let type_manager = TypeManager::empty();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_mission(fid, &type_manager, &catalog, &opt)?;
+                show_mission(fid, &type_manager, catalog, &opt)?;
             }
         }
     }
@@ -64,7 +64,7 @@ fn show_mission(
     catalog: &Catalog,
     opt: &Opt,
 ) -> Result<()> {
-    let raw = catalog.read_sync(fid)?;
+    let raw = catalog.read(fid)?;
     let content = from_dos_string(raw).to_owned();
 
     if opt.profile {

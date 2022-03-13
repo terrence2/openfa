@@ -12,52 +12,38 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{SlotId, TransformType};
-use shape_chunk::{DrawState, ShapeErrata, ShapeId};
+use crate::TransformType;
+use bevy_ecs::prelude::*;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeRef {
-    pub shape_id: ShapeId,
-}
-impl ShapeRef {
-    pub fn new(shape_id: ShapeId) -> Self {
-        Self { shape_id }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeSlot {
-    pub slot_id: SlotId,
-}
-impl ShapeSlot {
-    pub fn new(slot_id: SlotId) -> Self {
-        Self { slot_id }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapeState {
-    pub draw_state: DrawState,
-}
-impl ShapeState {
-    pub fn new(errata: ShapeErrata) -> Self {
-        Self {
-            draw_state: DrawState::new(errata),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeTransformBuffer {
     pub buffer: TransformType,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeFlagBuffer {
     pub buffer: [u32; 2],
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeXformBuffer {
     pub buffer: [[f32; 6]; 14],
+}
+
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct ShapeScale(f32);
+
+impl ShapeScale {
+    pub fn new(v: f32) -> Self {
+        Self(v)
+    }
+
+    // Convert to dense pack for upload.
+    pub fn compact(self) -> [f32; 1] {
+        [self.0]
+    }
+
+    pub fn scale(&self) -> f32 {
+        self.0
+    }
 }

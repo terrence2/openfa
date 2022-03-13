@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use lib::{CatalogManager, CatalogOpts, GameInfo};
+use lib::{GameInfo, Libs, LibsOpts};
 use reverse::b2h;
 use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
 use simplelog::*;
@@ -77,7 +77,7 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
@@ -88,11 +88,11 @@ fn main() -> Result<()> {
         LevelFilter::Warn
     };
     TermLogger::init(level, Config::default())?;
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                show_sh(fid, game, &catalog, &opt)?;
+                show_sh(fid, game, catalog, &opt)?;
             }
         }
     }
@@ -101,8 +101,8 @@ fn main() -> Result<()> {
 }
 
 fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
-    let meta = catalog.stat_sync(fid)?;
-    let data = catalog.read_sync(fid)?;
+    let meta = catalog.stat(fid)?;
+    let data = catalog.read(fid)?;
     let shape = RawShape::from_bytes(&data)?;
 
     if opt.show_all {

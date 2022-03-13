@@ -2,7 +2,7 @@
 name = "openfa"
 version = "0.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [workspace]
 members = [
@@ -35,14 +35,11 @@ members = [
     "libs/asset/t2",
     "libs/asset/xt",
 
-    "libs/galaxy",
-
     "libs/wgpu-buffer/font_fnt",
     "libs/wgpu-buffer/ofa_groups",
     "libs/wgpu-buffer/pic_uploader",
-    "libs/wgpu-buffer/shape_chunk",
-    "libs/wgpu-buffer/shape_instance",
-    "libs/wgpu-buffer/t2_tile_set",
+    "libs/wgpu-buffer/shape",
+    "libs/wgpu-buffer/t2_terrain",
 
     "libs/util/i386",
     "libs/util/lzss",
@@ -66,11 +63,12 @@ debug = true
 [dependencies]
 chrono = "^ 0.4"
 anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = "^ 0.6"
 env_logger = "^ 0.7"
 image = "^ 0.23"
-legion = "^ 0.4"
 log = "^ 0.4"
 nalgebra = "^ 0.29"
+once_cell = "^ 1"
 parking_lot = "^ 0.11"
 paste = "^ 1"
 platform-dirs = "^ 0.3"
@@ -78,11 +76,12 @@ structopt = "^ 0.3"
 terminal_size = "^ 0.1"
 winit = { version = "^ 0.24", features = ["web-sys"] }
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
-animate = { path = "libs/nitrogen/util/animate" }
+animate = { path = "libs/nitrogen/sim/animate" }
 atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
 composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
+event_mapper = { path = "libs/nitrogen/sim/event_mapper" }
 fnt = { path = "libs/asset/fnt" }
 font_fnt = { path = "libs/wgpu-buffer/font_fnt" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
@@ -90,20 +89,20 @@ geodesy = { path = "libs/nitrogen/util/geodesy" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
+measure = { path = "libs/nitrogen/sim/measure" }
 nitrous = { path = "libs/nitrogen/util/nitrous" }
-nitrous_injector = { path = "libs/nitrogen/util/nitrous_injector" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
 physical_constants = { path = "libs/nitrogen/util/physical_constants" }
+runtime = { path = "libs/nitrogen/util/runtime" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
-galaxy = { path = "libs/galaxy" }
 lib = { path = "libs/asset/lib" }
 mmm = { path = "libs/asset/mmm" }
 pal = { path = "libs/asset/pal" }
-shape_instance = { path = "libs/wgpu-buffer/shape_instance" }
-t2_tile_set = { path = "libs/wgpu-buffer/t2_tile_set" }
+shape = { path = "libs/wgpu-buffer/shape" }
+t2_terrain = { path = "libs/wgpu-buffer/t2_terrain" }
 window = { path = "libs/nitrogen/system/window" }
 xt = { path = "libs/asset/xt" }

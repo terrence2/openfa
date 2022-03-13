@@ -934,9 +934,13 @@ impl Mission {
                 }
                 MValue::Sides(v) => sides = Some(v),
                 MValue::MapName(map) => {
-                    let mm_raw = catalog.read_name_sync(&map.parent())?;
+                    let mm_raw = catalog.read_name(&map.parent())?;
                     let mm_content = from_dos_string(mm_raw);
-                    mm = Some(MissionMap::from_str(&mm_content, type_manager, catalog)?);
+                    mm = Some(MissionMap::from_str(
+                        mm_content.as_ref(),
+                        type_manager,
+                        catalog,
+                    )?);
                     map_name = Some(map);
                 }
                 MValue::Layer((name, index)) => {
@@ -1076,14 +1080,14 @@ impl Mission {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::{from_dos_string, CatalogManager};
+    use lib::{from_dos_string, Libs};
 
     #[test]
     fn it_can_parse_all_mm_files() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("MM")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
 
                 // For some reason, the ATF Gold disks contain USNF missions, but
                 // do not contain the USNF assets. Not sure how that works.
@@ -1103,8 +1107,8 @@ mod tests {
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
                 let type_manager = TypeManager::empty();
-                let contents = from_dos_string(catalog.read_sync(fid)?);
-                let mm = MissionMap::from_str(&contents, &type_manager, &catalog)?;
+                let contents = from_dos_string(catalog.read(fid)?);
+                let mm = MissionMap::from_str(contents.as_ref(), &type_manager, catalog)?;
                 assert_eq!(mm.map_name().base_texture_name().len(), 3);
                 assert!(mm.map_name().t2_name().ends_with(".T2"));
             }
@@ -1115,11 +1119,11 @@ mod tests {
 
     #[test]
     fn it_can_parse_all_m_files() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
             let type_manager = TypeManager::empty();
             for fid in catalog.find_with_extension("M")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
 
                 if meta.name() == VEHICLE_INFO_MISSION
                     || meta.name().starts_with(NEW_MISSION_PREFIX)
@@ -1137,8 +1141,8 @@ mod tests {
 
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
-                let contents = from_dos_string(catalog.read_sync(fid)?);
-                let mission = Mission::from_str(&contents, &type_manager, &catalog)?;
+                let contents = from_dos_string(catalog.read(fid)?);
+                let mission = Mission::from_str(contents.as_ref(), &type_manager, catalog)?;
                 assert!(!mission.sides.is_empty());
                 assert!(mission.map_name.raw.ends_with(".T2"));
             }

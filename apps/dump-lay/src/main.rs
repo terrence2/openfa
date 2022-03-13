@@ -15,7 +15,7 @@
 use anyhow::Result;
 use catalog::{Catalog, FileId};
 use lay::Layer;
-use lib::{CatalogManager, CatalogOpts, GameInfo};
+use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use std::fs;
 use structopt::StructOpt;
@@ -27,22 +27,22 @@ struct Opt {
     inputs: Vec<String>,
 
     #[structopt(flatten)]
-    catalog_opts: CatalogOpts,
+    libs_opts: LibsOpts,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let catalogs = CatalogManager::bootstrap(&opt.catalog_opts)?;
-    for (game, catalog) in catalogs.selected() {
+    let libs = Libs::bootstrap(&opt.libs_opts)?;
+    for (game, palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("{}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 println!(
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_lay(fid, game, &catalog)?;
+                show_lay(fid, game, palette, catalog)?;
             }
         }
     }
@@ -50,15 +50,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn show_lay(fid: FileId, game: &GameInfo, catalog: &Catalog) -> Result<()> {
-    let name = catalog.stat_sync(fid)?.name().to_owned();
+fn show_lay(fid: FileId, game: &GameInfo, palette: &Palette, catalog: &Catalog) -> Result<()> {
+    let name = catalog.stat(fid)?.name().to_owned();
     fs::create_dir_all(&format!("__dump__/lay-pal/{}-{}", game.test_dir, name))?;
 
-    let system_palette_data = catalog.read_name_sync("PALETTE.PAL")?;
-    let system_palette = Palette::from_bytes(&system_palette_data)?;
-
-    let layer_data = catalog.read_sync(fid)?;
-    let layer = Layer::from_bytes(&layer_data, &system_palette)?;
+    let layer_data = catalog.read(fid)?;
+    let layer = Layer::from_bytes(layer_data.as_ref(), palette)?;
     for i in 0..5 {
         if i >= layer.num_indices() {
             continue;
@@ -72,7 +69,7 @@ fn show_lay(fid: FileId, game: &GameInfo, catalog: &Catalog) -> Result<()> {
         let r3 = layer_data.slice(0x30, 0x40)?;
 
         // We need to put rows r0, r1, and r2 into into 0xC0, 0xE0, 0xF0 somehow.
-        let mut palette = system_palette.clone();
+        let mut palette = palette.clone();
         palette.overlay_at(&r1, 0xF0 - 1)?;
         palette.overlay_at(&r0, 0xE0 - 1)?;
         palette.overlay_at(&r3, 0xD0)?;

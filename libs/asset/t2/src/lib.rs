@@ -764,18 +764,18 @@ impl Terrain {
 #[cfg(test)]
 mod test {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     const DUMP: bool = false;
 
     #[test]
     fn it_can_parse_all_t2_files() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("T2")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let contents = catalog.read_sync(fid)?;
+                let contents = catalog.read(fid)?;
                 let terrain = Terrain::from_bytes(&contents)?;
                 if DUMP {
                     terrain.make_debug_images(&format!(

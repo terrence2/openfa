@@ -19,10 +19,12 @@ pub use ot::ObjectType;
 pub use pt::{Envelope, PlaneType};
 
 use anyhow::{bail, Result};
+use bevy_ecs::prelude::*;
 use catalog::Catalog;
 use lib::from_dos_string;
 use log::trace;
 use parking_lot::Mutex;
+use runtime::{Extension, Runtime};
 use std::{collections::HashMap, sync::Arc};
 
 // A generic type.
@@ -71,7 +73,7 @@ impl Type {
 // Any single type is likely used by multiple game objects at once so we cache
 // type loads aggressively and hand out a Ref to an immutable, shared global
 // copy of the Type.
-#[derive(Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct TypeRef(Arc<Type>);
 
 impl TypeRef {
@@ -117,6 +119,13 @@ pub struct TypeManager {
     cache: Mutex<HashMap<String, TypeRef>>,
 }
 
+impl Extension for TypeManager {
+    fn init(runtime: &mut Runtime) -> Result<()> {
+        runtime.insert_resource(TypeManager::empty());
+        Ok(())
+    }
+}
+
 impl TypeManager {
     pub fn empty() -> TypeManager {
         trace!("TypeManager::new");
@@ -133,7 +142,7 @@ impl TypeManager {
         };
 
         trace!("TypeManager::load({})", name);
-        let content = from_dos_string(catalog.read_name_sync(name)?);
+        let content = from_dos_string(catalog.read_name(name)?);
         let ext = name.rsplitn(2, '.').collect::<Vec<&str>>();
         let item = match ext[0] {
             "OT" => {
@@ -163,17 +172,17 @@ impl TypeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::CatalogManager;
+    use lib::Libs;
 
     #[test]
     fn can_parse_all_entity_types() -> Result<()> {
-        let catalogs = CatalogManager::for_testing()?;
-        for (game, catalog) in catalogs.all() {
+        let catalogs = Libs::for_testing()?;
+        for (game, _palette, catalog) in catalogs.all() {
             for fid in catalog.find_glob("*.[OJNP]T")? {
-                let meta = catalog.stat_sync(fid)?;
+                let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let types = TypeManager::empty();
-                let ty = types.load(meta.name(), &catalog)?;
+                let ty = types.load(meta.name(), catalog)?;
                 // Only one misspelling in 2500 files.
                 assert!(ty.ot().file_name() == meta.name() || meta.name() == "SMALLARM.JT");
                 // println!(
