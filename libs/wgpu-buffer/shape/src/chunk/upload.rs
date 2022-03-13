@@ -291,6 +291,15 @@ impl ShapeErrata {
             num_xform_animations: analysis.transformers.len() as u8,
         }
     }
+
+    fn non_shape() -> Self {
+        Self {
+            no_upper_aileron: false,
+            has_frame_animation: false,
+            has_xform_animation: false,
+            num_xform_animations: 0,
+        }
+    }
 }
 
 // TODO: this should be a sibling of ShapeUploader in such a way that they can share
@@ -679,6 +688,15 @@ impl ShapeWidgets {
             transformers,
             errata,
             aabb,
+        }
+    }
+
+    pub fn non_shape() -> Self {
+        Self {
+            shape_name: "hidden".to_owned(),
+            transformers: vec![],
+            errata: ShapeErrata::non_shape(),
+            aabb: Aabb::new([0f32; 3], [0f32; 3]),
         }
     }
 

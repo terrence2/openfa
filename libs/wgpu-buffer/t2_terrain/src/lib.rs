@@ -67,6 +67,7 @@ impl Default for T2Adjustment {
 
 /// Converts between FightersAnthology cartesian offsets within a tile
 /// to Geodesic coordinates for use with the nitrogen engine.
+#[derive(Clone, Debug)]
 pub struct T2Mapper {
     base: [Angle<Degrees>; 2],
     extent: [Angle<Degrees>; 2],
@@ -581,7 +582,7 @@ impl T2TerrainBuffer {
             atlas_packer,
         });
 
-        let tile_set = T2TileSet::new(t2, adjust, t2_info, t2_info_buffer, bind_group);
+        let tile_set = T2TileSet::new(t2, adjust, mapper, t2_info, t2_info_buffer, bind_group);
 
         Ok(tile_set)
     }
@@ -928,6 +929,7 @@ impl T2TerrainBuffer {
 pub struct T2TileSet {
     t2: T2,
     tile_adjustment: T2Adjustment,
+    tile_mapper: T2Mapper,
     tile_info: T2Info,
     tile_info_buffer: wgpu::Buffer,
     tile_bind_group: wgpu::BindGroup,
@@ -938,6 +940,7 @@ impl T2TileSet {
     pub(crate) fn new(
         t2: T2,
         tile_adjustment: T2Adjustment,
+        tile_mapper: T2Mapper,
         tile_info: T2Info,
         tile_info_buffer: wgpu::Buffer,
         tile_bind_group: wgpu::BindGroup,
@@ -945,6 +948,7 @@ impl T2TileSet {
         Self {
             t2,
             tile_adjustment,
+            tile_mapper,
             tile_info,
             tile_info_buffer,
             tile_bind_group,
@@ -1024,6 +1028,10 @@ impl T2TileSet {
             &[],
         );
         cpass.dispatch(extent.width / 8, extent.height / 8, 1);
+    }
+
+    pub fn mapper(&self) -> &T2Mapper {
+        &self.tile_mapper
     }
 }
 

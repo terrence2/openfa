@@ -13,26 +13,23 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod chunk;
-pub mod component;
 mod components;
 mod instance_block;
 
 pub use crate::{
-    chunk::{DrawSelection, DrawState},
+    chunk::{DrawSelection, DrawState, ShapeWidgets},
     instance_block::SlotId,
 };
 pub use components::*;
 
 use crate::{
-    chunk::{
-        ChunkId, ChunkManager, ChunkPart, ShapeErrata, ShapeId, ShapeIds, ShapeWidgets, Vertex,
-    },
+    chunk::{ChunkId, ChunkManager, ChunkPart, ShapeErrata, ShapeId, ShapeIds, Vertex},
     // component::Scale,
     instance_block::{BlockId, InstanceBlock, TransformType},
 };
 use absolute_unit::Meters;
 use animate::TimeStep;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use bevy_tasks::TaskPool;
@@ -78,18 +75,6 @@ pub enum ShapeRenderStep {
     UploadChunks,
     UploadBlocks,
     Render,
-}
-
-pub struct ShapeInstance {
-    pub shape_id: ShapeId,
-    pub slot_id: SlotId,
-}
-
-pub struct ShapeComponents {
-    pub draw_state: DrawState,
-    pub transform_buffer: ShapeTransformBuffer,
-    pub flag_buffer: ShapeFlagBuffer,
-    pub xform_buffer: ShapeXformBuffer,
 }
 
 #[derive(Debug)]
@@ -459,16 +444,23 @@ impl ShapeBuffer {
         entity.insert(ShapeXformBuffer::default());
 
         Ok(())
+    }
 
-        // Ok((
-        //     ShapeInstance { shape_id, slot_id },
-        //     ShapeComponents {
-        //         draw_state: DrawState::new(errata),
-        //         transform_buffer: ShapeTransformBuffer::default(),
-        //         flag_buffer: ShapeFlagBuffer::default(),
-        //         xform_buffer: ShapeXformBuffer::default(),
-        //     },
-        // ))
+    // Note: should only be used interactively, as it is super wasteful of GPU resources.
+    pub fn instantiate_one(
+        &mut self,
+        mut entity: NamedEntityMut,
+        shape_name: &str,
+        palette: &Palette,
+        catalog: &Catalog,
+        gpu: &Gpu,
+    ) -> Result<()> {
+        let shape_map = self.upload_shapes(palette, &[shape_name], catalog, gpu)?;
+        let shape_ids = shape_map
+            .get(shape_name)
+            .ok_or_else(|| anyhow!("failed to load shape"))?;
+        entity.insert(shape_ids.to_owned());
+        self.instantiate(entity, shape_ids.normal(), gpu)
     }
 
     #[inline]
@@ -508,10 +500,10 @@ impl ShapeBuffer {
     pub fn sys_ts_apply_transforms(
         task_pool: Res<TaskPool>,
         camera: Res<ScreenCamera>,
-        mut query: Query<(&WorldSpaceFrame, &mut ShapeTransformBuffer)>,
+        mut query: Query<(&WorldSpaceFrame, &ShapeScale, &mut ShapeTransformBuffer)>,
     ) {
         let view = camera.view::<Meters>().to_homogeneous();
-        query.par_for_each_mut(&task_pool, 1024, |(frame, mut transform_buffer)| {
+        query.par_for_each_mut(&task_pool, 1024, |(frame, scale, mut transform_buffer)| {
             // Transform must be performed in f64, then moved into view space (where precision
             // errors are at least far away), before being truncated to f32.
             let pos = frame.position().point64().to_homogeneous();
@@ -528,9 +520,7 @@ impl ShapeBuffer {
             transform_buffer.buffer[4] = b;
             transform_buffer.buffer[5] = c;
 
-            // transform_buffer.buffer[6] = scale.scale();
-            // FIXME: scaling
-            transform_buffer.buffer[6] = 4.0;
+            transform_buffer.buffer[6] = scale.scale();
         });
     }
 
@@ -700,6 +690,7 @@ impl ShapeBuffer {
     ) {
         for (shape_id, slot_id, transform_buffer, flag_buffer, xform_buffer) in query.iter() {
             let xform_count = shapes.chunk_man.part(*shape_id).xform_count();
+            // FIXME: make xforms optional again
             shapes.push_values(
                 *slot_id,
                 &transform_buffer.buffer,

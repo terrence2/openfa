@@ -29,3 +29,21 @@ pub struct ShapeFlagBuffer {
 pub struct ShapeXformBuffer {
     pub buffer: [[f32; 6]; 14],
 }
+
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct ShapeScale(f32);
+
+impl ShapeScale {
+    pub fn new(v: f32) -> Self {
+        Self(v)
+    }
+
+    // Convert to dense pack for upload.
+    pub fn compact(self) -> [f32; 1] {
+        [self.0]
+    }
+
+    pub fn scale(&self) -> f32 {
+        self.0
+    }
+}

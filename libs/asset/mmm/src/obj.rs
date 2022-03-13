@@ -18,10 +18,11 @@ use crate::{
     util::{maybe_hex, parse_header_delimited},
     waypoint::Waypoints,
 };
-use absolute_unit::{degrees, radians};
+use absolute_unit::{degrees, meters, Angle, Degrees};
 use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
-use nalgebra::{Point3, UnitQuaternion, Vector3};
+use geodesy::{Graticule, Target};
+use nalgebra::Point3;
 use std::{collections::HashMap, str::SplitAsciiWhitespace};
 use xt::{TypeManager, TypeRef};
 
@@ -127,13 +128,39 @@ impl Nationality {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct EulerAngles {
+    yaw: Angle<Degrees>,
+    pitch: Angle<Degrees>,
+    #[allow(unused)]
+    roll: Angle<Degrees>,
+}
+
+impl EulerAngles {
+    pub fn facing(&self) -> Graticule<Target> {
+        Graticule::new(degrees!(self.pitch), degrees!(self.yaw), meters!(1))
+    }
+
+    pub fn yaw(&self) -> Angle<Degrees> {
+        self.yaw
+    }
+
+    pub fn pitch(&self) -> Angle<Degrees> {
+        self.pitch
+    }
+
+    pub fn roll(&self) -> Angle<Degrees> {
+        self.roll
+    }
+}
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ObjectInfo {
     xt: TypeRef,
     name: Option<String>,
     pos: Point3<i32>,
-    angle: UnitQuaternion<f32>,
+    angle: EulerAngles,
     nationality: Nationality,
     flags: u16,
     speed: f32,
@@ -164,7 +191,7 @@ impl ObjectInfo {
         let mut xt = None;
         let mut name = None;
         let mut pos = None;
-        let mut angle = UnitQuaternion::identity();
+        let mut angle = EulerAngles::default();
         let mut nationality = None;
         let mut flags = 0u16;
         let mut speed = 0f32;
@@ -218,25 +245,10 @@ impl ObjectInfo {
                     let yaw = tokens.next().expect("ang yaw").parse::<i32>()?;
                     let pitch = tokens.next().expect("ang pitch").parse::<i32>()?;
                     let roll = tokens.next().expect("ang roll").parse::<i32>()?;
-                    // No entities are tilted or pitched, only rotated.
-                    // Except for FCTYA.OT in VIET05, just that one, by -2 degrees.
-                    assert_eq!(roll, 0);
-                    angle = if pitch == 0 {
-                        UnitQuaternion::from_axis_angle(
-                            &Vector3::y_axis(),
-                            -radians!(degrees!(yaw)).f32(),
-                        )
-                    } else {
-                        let yaw_quat = UnitQuaternion::from_axis_angle(
-                            &Vector3::y_axis(),
-                            -radians!(degrees!(yaw)).f32(),
-                        );
-                        let pitch_axis = yaw_quat * Vector3::x_axis();
-                        let pitch_quat = UnitQuaternion::from_axis_angle(
-                            &pitch_axis,
-                            -radians!(degrees!(pitch)).f32(),
-                        );
-                        pitch_quat * yaw_quat
+                    angle = EulerAngles {
+                        yaw: degrees!(yaw),
+                        pitch: degrees!(pitch),
+                        roll: degrees!(roll),
                     };
                 }
                 "nationality" => {
@@ -376,7 +388,7 @@ impl ObjectInfo {
         &self.pos
     }
 
-    pub fn angle(&self) -> &UnitQuaternion<f32> {
+    pub fn angle(&self) -> &EulerAngles {
         &self.angle
     }
 }
