@@ -13,19 +13,19 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::draw_state::DrawState;
-use absolute_unit::{feet, Feet, Length};
+use absolute_unit::{feet, meters, Length, Meters};
 use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};
 use bitflags::bitflags;
 use catalog::Catalog;
-use geometry::Aabb;
+use geometry::{intersect::sphere_vs_ray, Aabb, Ray, Sphere};
 use gpu::Gpu;
 use i386::Interpreter;
 use image::Rgba;
 use lazy_static::lazy_static;
 use log::trace;
 use memoffset::offset_of;
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 use pal::Palette;
 use parking_lot::RwLock;
 use pic_uploader::PicUploader;
@@ -659,10 +659,69 @@ impl Transformer {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ShapeExtent {
+    // Bounding box in feet
+    aabb: Aabb<f32, 3>,
+
+    // Pre-compute useful metrics
+    radius: Length<Meters>,
+    height: Length<Meters>,
+    offset_to_ground: Length<Meters>,
+}
+
+impl ShapeExtent {
+    pub fn new(lo: [f32; 3], hi: [f32; 3]) -> Self {
+        let lo_v = Vector3::new(lo[0], lo[1], lo[2]);
+        let hi_v = Vector3::new(hi[0], hi[1], hi[2]);
+        let lo2 = lo_v.magnitude_squared();
+        let hi2 = hi_v.magnitude_squared();
+        Self {
+            aabb: Aabb::new(lo, hi),
+            radius: meters!(lo2.max(hi2).sqrt()),
+            height: meters!(hi_v[1] - lo_v[1]),
+            offset_to_ground: meters!(-lo_v[1]),
+        }
+    }
+
+    pub fn aabb(&self) -> &Aabb<f32, 3> {
+        &self.aabb
+    }
+
+    pub fn radius(&self) -> Length<Meters> {
+        self.radius
+    }
+
+    pub fn height(&self) -> Length<Meters> {
+        self.height
+    }
+
+    pub fn offset_to_ground(&self) -> Length<Meters> {
+        self.offset_to_ground
+    }
+
+    pub fn intersect_ray(
+        &self,
+        position: Point3<f64>,
+        scale: f64,
+        ray: &Ray<f64>,
+    ) -> Option<Point3<f64>> {
+        // if let Some(intersect) = aabb_vs_ray(&self.aabb, ray) {
+        // }
+
+        let hit_sphere =
+            Sphere::from_center_and_radius(&position, meters!(self.radius()).f64() * scale);
+        if let Some(intersect) = sphere_vs_ray(&hit_sphere, ray) {
+            return Some(intersect);
+        }
+        None
+    }
+}
+
 // Contains information about what parts of the shape can be mutated by
 // standard actions. e.g. Gears, flaps, etc.
 #[derive(Clone, Debug)]
-pub struct ShapeWidgets {
+pub struct ShapeMetadata {
     shape_name: String,
 
     // Self contained vm/instructions for how to set up each required transform
@@ -672,22 +731,22 @@ pub struct ShapeWidgets {
     // Draw properties based on what's in the shape file.
     errata: ShapeErrata,
 
-    // Bounding box
-    aabb: Aabb<f32, 3>,
+    // Fast hit testing apparatus
+    extent: ShapeExtent,
 }
 
-impl ShapeWidgets {
+impl ShapeMetadata {
     pub fn new(
         name: &str,
         errata: ShapeErrata,
         transformers: Vec<Transformer>,
-        aabb: Aabb<f32, 3>,
+        extent: ShapeExtent,
     ) -> Self {
         Self {
             shape_name: name.to_owned(),
             transformers,
             errata,
-            aabb,
+            extent,
         }
     }
 
@@ -696,7 +755,7 @@ impl ShapeWidgets {
             shape_name: "hidden".to_owned(),
             transformers: vec![],
             errata: ShapeErrata::non_shape(),
-            aabb: Aabb::new([0f32; 3], [0f32; 3]),
+            extent: ShapeExtent::new([0f32; 3], [0f32; 3]),
         }
     }
 
@@ -731,17 +790,8 @@ impl ShapeWidgets {
         self.transformers.len() * 6
     }
 
-    // In shape units.
-    pub fn height(&self) -> f32 {
-        self.aabb.span(1)
-    }
-
-    pub fn offset_to_ground(&self) -> Length<Feet> {
-        feet!(-self.aabb.low(1))
-    }
-
-    pub fn aabb(&self) -> &Aabb<f32, 3> {
-        &self.aabb
+    pub fn extent(&self) -> &ShapeExtent {
+        &self.extent
     }
 }
 
@@ -799,7 +849,14 @@ impl<'a> ShapeUploader<'a> {
                 xform_id: MAX_XFORM_ID,
             });
         for v in vert_buf.vertices() {
-            let position = [f32::from(v[0]), f32::from(v[2]), f32::from(-v[1])];
+            // Note: given the unit positioning in MM files, STRIP*.SH needs to have its
+            //       internal units scaled by 4 to line up with the MM units. It's unclear
+            //       if this is special behavior, possibly controlled by flags in the MM.
+            let position = [
+                meters!(feet!(v[0]) * 4).f32(),
+                meters!(feet!(v[2]) * 4).f32(),
+                meters!(feet!(-v[1]) * 4).f32(),
+            ];
             for (i, &p) in position.iter().enumerate() {
                 if p > self.aabb_max[i] {
                     self.aabb_max[i] = p;
@@ -1227,7 +1284,7 @@ impl<'a> ShapeUploader<'a> {
         pic_uploader: &mut PicUploader,
         atlas_packer: &mut AtlasPacker<Rgba<u8>>,
         gpu: &Gpu,
-    ) -> Result<(Arc<RwLock<ShapeWidgets>>, Vec<Vertex>)> {
+    ) -> Result<(Arc<RwLock<ShapeMetadata>>, Vec<Vertex>)> {
         trace!("ShapeUploader::draw_model: {}", self.name);
         let mut callback = |_pc: &ProgramCounter, instr: &Instr| {
             match instr {
@@ -1292,18 +1349,18 @@ impl<'a> ShapeUploader<'a> {
         let mut verts = Vec::new();
         mem::swap(&mut verts, &mut self.vertices);
 
-        let aabb = if !verts.is_empty() {
-            Aabb::new(self.aabb_min, self.aabb_max)
+        let (lo, hi) = if !verts.is_empty() {
+            (self.aabb_min, self.aabb_max)
         } else {
-            Aabb::new([0.; 3], [0.; 3])
+            ([0.; 3], [0.; 3])
         };
 
         Ok((
-            Arc::new(RwLock::new(ShapeWidgets::new(
+            Arc::new(RwLock::new(ShapeMetadata::new(
                 self.name,
                 ShapeErrata::from_flags(&analysis),
                 analysis.transformers,
-                aabb,
+                ShapeExtent::new(lo, hi),
             ))),
             verts,
         ))

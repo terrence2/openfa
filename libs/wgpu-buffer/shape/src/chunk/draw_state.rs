@@ -86,8 +86,9 @@ impl DrawState {
         self.gear_animation.completed_backward()
     }
 
-    pub fn gear_position(&self) -> f32 {
-        self.gear_animation.value()
+    #[method]
+    pub fn gear_position(&self) -> f64 {
+        self.gear_animation.value() as f64
     }
 
     #[method]
@@ -95,8 +96,9 @@ impl DrawState {
         self.bay_animation.completed_backward()
     }
 
-    pub fn bay_position(&self) -> f32 {
-        self.bay_animation.value()
+    #[method]
+    pub fn bay_position(&self) -> f64 {
+        self.bay_animation.value() as f64
     }
 
     pub fn time_origin(&self) -> &Instant {
@@ -107,22 +109,27 @@ impl DrawState {
         f32::from(self.thrust_vector_pos)
     }
 
+    #[method]
     pub fn flaps_down(&self) -> bool {
         self.flags.contains(DrawStateFlags::FLAPS_DOWN)
     }
 
+    #[method]
     pub fn slats_down(&self) -> bool {
         self.flags.contains(DrawStateFlags::SLATS_DOWN)
     }
 
+    #[method]
     pub fn airbrake_extended(&self) -> bool {
         self.flags.contains(DrawStateFlags::AIRBRAKE_EXTENDED)
     }
 
+    #[method]
     pub fn hook_extended(&self) -> bool {
         self.flags.contains(DrawStateFlags::HOOK_EXTENDED)
     }
 
+    #[method]
     pub fn afterburner_enabled(&self) -> bool {
         self.flags.contains(DrawStateFlags::AFTERBURNER_ENABLED)
     }
@@ -136,7 +143,7 @@ impl DrawState {
     }
 
     pub fn x86_gear_position(&self) -> u32 {
-        self.gear_position() as u32
+        self.gear_animation.value() as u32
     }
 
     pub fn x86_bay_open(&self) -> u32 {
@@ -144,7 +151,7 @@ impl DrawState {
     }
 
     pub fn x86_bay_position(&self) -> u32 {
-        self.bay_position() as u32
+        self.bay_animation.value() as u32
     }
 
     pub fn x86_canard_position(&self) -> u32 {
@@ -163,82 +170,101 @@ impl DrawState {
         i32::from(self.wing_sweep_angle()) as u32
     }
 
+    #[method]
     pub fn player_dead(&self) -> bool {
         self.flags.contains(DrawStateFlags::PLAYER_DEAD)
     }
 
+    #[method]
     pub fn rudder_left(&self) -> bool {
         self.flags.contains(DrawStateFlags::RUDDER_LEFT)
     }
 
+    #[method]
     pub fn rudder_right(&self) -> bool {
         self.flags.contains(DrawStateFlags::RUDDER_RIGHT)
     }
 
+    #[method]
     pub fn left_aileron_down(&self) -> bool {
         self.flags.contains(DrawStateFlags::LEFT_AILERON_DOWN)
     }
 
+    #[method]
     pub fn left_aileron_up(&self) -> bool {
         self.flags.contains(DrawStateFlags::LEFT_AILERON_UP)
     }
 
+    #[method]
     pub fn right_aileron_down(&self) -> bool {
         self.flags.contains(DrawStateFlags::RIGHT_AILERON_DOWN)
     }
 
+    #[method]
     pub fn right_aileron_up(&self) -> bool {
         self.flags.contains(DrawStateFlags::RIGHT_AILERON_UP)
     }
 
+    #[method]
     pub fn toggle_flaps(&mut self) {
         self.flags.toggle(DrawStateFlags::FLAPS_DOWN);
     }
 
+    #[method]
     pub fn toggle_slats(&mut self) {
         self.flags.toggle(DrawStateFlags::SLATS_DOWN);
     }
 
+    #[method]
     pub fn toggle_airbrake(&mut self) {
         self.flags.toggle(DrawStateFlags::AIRBRAKE_EXTENDED);
     }
 
+    #[method]
     pub fn toggle_hook(&mut self) {
         self.flags.toggle(DrawStateFlags::HOOK_EXTENDED);
     }
 
+    #[method]
     pub fn toggle_player_dead(&mut self) {
         self.flags.toggle(DrawStateFlags::PLAYER_DEAD);
     }
 
+    #[method]
     pub fn bump_eject_state(&mut self) {
         self.eject_state += 1;
         self.eject_state %= 5;
     }
 
+    #[method]
     pub fn enable_afterburner(&mut self) {
         self.flags.insert(DrawStateFlags::AFTERBURNER_ENABLED);
     }
 
+    #[method]
     pub fn disable_afterburner(&mut self) {
         self.flags.remove(DrawStateFlags::AFTERBURNER_ENABLED);
     }
 
+    #[method]
     pub fn move_rudder_center(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
     }
 
+    #[method]
     pub fn move_rudder_left(&mut self) {
         self.flags.insert(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
     }
 
+    #[method]
     pub fn move_rudder_right(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.insert(DrawStateFlags::RUDDER_RIGHT);
     }
 
+    #[method]
     pub fn move_stick_center(&mut self) {
         self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
         self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
@@ -250,18 +276,25 @@ impl DrawState {
 
     pub fn move_stick_backward(&mut self) {}
 
-    pub fn vector_thrust_forward(&mut self) {
-        self.thrust_vector_delta = 10;
+    #[method]
+    pub fn vector_thrust_forward(&mut self, pressed: bool) {
+        if pressed {
+            self.thrust_vector_delta = 10;
+        } else {
+            self.thrust_vector_delta = 0;
+        }
     }
 
-    pub fn vector_thrust_backward(&mut self) {
-        self.thrust_vector_delta = -10;
+    #[method]
+    pub fn vector_thrust_backward(&mut self, pressed: bool) {
+        if pressed {
+            self.thrust_vector_delta = -10;
+        } else {
+            self.thrust_vector_delta = 0;
+        }
     }
 
-    pub fn vector_thrust_stop(&mut self) {
-        self.thrust_vector_delta = 0;
-    }
-
+    #[method]
     pub fn vector_thrust_recenter(&mut self) {
         self.thrust_vector_pos = 0;
     }
@@ -278,6 +311,7 @@ impl DrawState {
         self.wing_sweep_delta = 0;
     }
 
+    #[method]
     pub fn move_stick_left(&mut self) {
         self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
         self.flags.insert(DrawStateFlags::LEFT_AILERON_UP);
@@ -285,6 +319,7 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
     }
 
+    #[method]
     pub fn move_stick_right(&mut self) {
         self.flags.insert(DrawStateFlags::LEFT_AILERON_DOWN);
         self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
@@ -292,6 +327,7 @@ impl DrawState {
         self.flags.insert(DrawStateFlags::RIGHT_AILERON_UP);
     }
 
+    #[method]
     pub fn consume_sam(&mut self) {
         self.sam_count -= 1;
         if self.sam_count < 0 {
@@ -299,11 +335,21 @@ impl DrawState {
         }
     }
 
-    pub fn toggle_gear(&mut self, start: &Instant) {
+    #[method]
+    pub fn toggle_gear(&mut self) {
+        self.toggle_gear_at(&Instant::now());
+    }
+
+    pub fn toggle_gear_at(&mut self, start: &Instant) {
         self.gear_animation.start_or_reverse(start);
     }
 
-    pub fn toggle_bay(&mut self, start: &Instant) {
+    #[method]
+    pub fn toggle_bay(&mut self) {
+        self.toggle_bay_at(&Instant::now());
+    }
+
+    pub fn toggle_bay_at(&mut self, start: &Instant) {
         self.bay_animation.start_or_reverse(start);
     }
 

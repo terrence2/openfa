@@ -22,11 +22,12 @@ mod waypoint;
 
 pub use crate::{
     formation::{FormationControl, FormationKind, WingFormation},
+    obj::ObjectInfo,
     special::SpecialInfo,
+    waypoint::Waypoints,
 };
 
 use crate::util::maybe_hex;
-use crate::{obj::ObjectInfo, waypoint::Waypoints};
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use catalog::Catalog;
@@ -1074,6 +1075,10 @@ impl Mission {
 
     pub fn mission_objects(&self) -> &[ObjectInfo] {
         &self.objects
+    }
+
+    pub fn all_objects(&self) -> impl Iterator<Item = &ObjectInfo> {
+        self.objects.iter().chain(self.mm.objects.iter())
     }
 }
 

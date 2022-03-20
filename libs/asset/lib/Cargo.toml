@@ -20,6 +20,7 @@ structopt = "^ 0.3"
 zerocopy = "^ 0.5"
 lzss = { path = "../../util/lzss" }
 catalog = { path = "../../nitrogen/system/catalog" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 pal = { path = "../../asset/pal" }
 pkware = { path = "../../util/pkware" }

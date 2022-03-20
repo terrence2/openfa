@@ -28,6 +28,9 @@ let eye_dist := 610.595;
 orrery.set_unix_ms(-168993517833.82);
 
 game.load_map("APA.MM");
-game.spawn("test", "F16.PT");
-//game.spawn("test", "WTRBUF.OT");
-//game.spawn("test", "C130.PT");
+bindings.bind("space", "game.boresight(pressed)");
+
+game.spawn("test", "F22.PT");
+bindings.bind("f", "@test.draw_state.toggle_flaps()");
+bindings.bind("g", "@test.draw_state.toggle_gear()");
+bindings.bind("b", "@test.draw_state.toggle_airbreak()");

@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::{
     chunk_manager::TextureAtlasProperties,
-    upload::{AnalysisResults, DrawSelection, ShapeUploader, ShapeWidgets, Vertex},
+    upload::{AnalysisResults, DrawSelection, ShapeMetadata, ShapeUploader, Vertex},
 };
 use anyhow::Result;
 use atlas::AtlasPacker;
@@ -126,7 +126,7 @@ pub struct ChunkPart {
     vertex_start: usize,
     vertex_count: usize,
     xform_count: usize,
-    shape_widgets: Arc<RwLock<ShapeWidgets>>,
+    metadata: Arc<RwLock<ShapeMetadata>>,
 }
 
 impl ChunkPart {
@@ -134,14 +134,14 @@ impl ChunkPart {
     pub fn new(
         vertex_start: usize,
         vertex_end: usize,
-        shape_widgets: Arc<RwLock<ShapeWidgets>>,
+        metadata: Arc<RwLock<ShapeMetadata>>,
     ) -> Self {
-        let xform_count = shape_widgets.read().num_xforms();
+        let xform_count = metadata.read().num_xforms();
         ChunkPart {
             vertex_start,
             vertex_count: vertex_end - vertex_start,
             xform_count,
-            shape_widgets,
+            metadata,
         }
     }
 
@@ -154,8 +154,8 @@ impl ChunkPart {
         }
     }
 
-    pub fn widgets(&self) -> Arc<RwLock<ShapeWidgets>> {
-        self.shape_widgets.clone()
+    pub fn metadata(&self) -> Arc<RwLock<ShapeMetadata>> {
+        self.metadata.clone()
     }
 
     pub fn xform_count(&self) -> usize {

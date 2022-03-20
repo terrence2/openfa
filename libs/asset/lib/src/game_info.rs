@@ -28,6 +28,17 @@ pub struct GameInfo {
     pub cd_libs: &'static [&'static str],
 }
 
+impl GameInfo {
+    pub fn released_at(&self) -> String {
+        assert_ne!(self.release_year, 0);
+        if self.release_month > 0 {
+            format!("{}/{}", self.release_month, self.release_year)
+        } else {
+            format!("?/{}", self.release_year)
+        }
+    }
+}
+
 const USNF: GameInfo = GameInfo {
     name: "USNF",
     long_name: "U.S. Navy Fighters",

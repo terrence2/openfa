@@ -26,7 +26,6 @@ use gpu::wgpu::CommandEncoder;
 use gpu::{texture_format_size, Gpu};
 use image::Rgba;
 use lay::Layer;
-use log::warn;
 use mmm::{MissionMap, TLoc};
 use nalgebra::Point3;
 use nitrous::{
@@ -86,6 +85,9 @@ impl T2Mapper {
         let lat_span_adj = adjust.span_offset[0].f32();
         let lon_span_adj = adjust.span_offset[1].f32();
         let extent_ft = [t2.extent_north_south_in_ft(), t2.extent_east_west_in_ft()];
+        // Need to figure out what's missing here.
+        // factor for ft to nautical ft: / (5280. / 6080.)
+        // factor for offset from equator: * radians!(base[0]).cos() as f32
         let extent = [
             degrees!(extent_ft[0] / (364_000. + lat_span_adj)),
             degrees!(extent_ft[1] / (364_000. + lon_span_adj)),
@@ -169,7 +171,6 @@ pub struct T2TerrainBuffer {
     displace_height_pipeline: wgpu::ComputePipeline,
     accumulate_color_pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    loaded: HashSet<String>,
     uploads: Vec<T2TileSetUpload>,
 }
 
@@ -386,7 +387,6 @@ impl T2TerrainBuffer {
             displace_height_pipeline,
             accumulate_color_pipeline,
             bind_group_layout,
-            loaded: HashSet::new(),
             uploads: Vec::new(),
             // shared_adjustment,
             // layouts: HashMap::new(),
@@ -495,10 +495,6 @@ impl T2TerrainBuffer {
         // groups.
         let t2_data = catalog.read_name(&mm.map_name().t2_name())?;
         let t2 = T2::from_bytes(t2_data.as_ref())?;
-
-        if self.loaded.contains(t2.name()) {
-            warn!("Skipping duplicate add_map for {}", t2.name());
-        }
 
         // Do some deep magic to build up a palette.
         let palette = self._load_palette(system_palette, mm, catalog)?;

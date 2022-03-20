@@ -17,14 +17,13 @@ mod components;
 mod instance_block;
 
 pub use crate::{
-    chunk::{DrawSelection, DrawState, ShapeWidgets},
+    chunk::{DrawSelection, DrawState, ShapeId, ShapeIds, ShapeMetadata},
     instance_block::SlotId,
 };
 pub use components::*;
 
 use crate::{
-    chunk::{ChunkId, ChunkManager, ChunkPart, ShapeErrata, ShapeId, ShapeIds, Vertex},
-    // component::Scale,
+    chunk::{ChunkId, ChunkManager, ShapeErrata, Vertex},
     instance_block::{BlockId, InstanceBlock, TransformType},
 };
 use absolute_unit::Meters;
@@ -42,6 +41,7 @@ use measure::WorldSpaceFrame;
 use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
+use parking_lot::RwLock;
 use runtime::{Extension, FrameStage, Runtime};
 use sh::RawShape;
 use shader_shared::Group;
@@ -49,12 +49,13 @@ use smallvec::SmallVec;
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
+    sync::Arc,
     time::Instant,
 };
 use world::{WorldRenderPass, WorldRenderStep};
 
 thread_local! {
-    pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
+    pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeMetadata >> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
@@ -285,16 +286,12 @@ impl ShapeBuffer {
         })
     }
 
-    // pub fn block(&self, id: &BlockId) -> &InstanceBlock {
-    //     &self.blocks[id]
-    // }
-
-    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
-        self.chunk_man.part(shape_id)
+    pub fn metadata(&self, shape_id: ShapeId) -> Arc<RwLock<ShapeMetadata>> {
+        self.chunk_man.part(shape_id).metadata()
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
-        self.chunk_man.part(shape_id).widgets().read().errata()
+        self.chunk_man.part(shape_id).metadata().read().errata()
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
@@ -433,7 +430,7 @@ impl ShapeBuffer {
             .get_mut(&block_id)
             .unwrap()
             .allocate_slot(draw_cmd);
-        let widgets = self.chunk_man.part(shape_id).widgets();
+        let widgets = self.chunk_man.part(shape_id).metadata();
         let errata: ShapeErrata = widgets.read().errata();
 
         entity.insert(shape_id);
@@ -559,7 +556,7 @@ impl ShapeBuffer {
                                 .unwrap();
                         }
                         Entry::Vacant(e) => {
-                            let mut widgets = part.widgets().read().clone();
+                            let mut widgets = part.metadata().read().clone();
                             widgets
                                 .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
                                 .unwrap();
