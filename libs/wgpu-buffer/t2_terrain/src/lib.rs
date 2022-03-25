@@ -21,9 +21,9 @@ use atlas::AtlasPacker;
 use bevy_ecs::prelude::*;
 use catalog::Catalog;
 use geodesy::{GeoSurface, Graticule};
-use global_data::{GlobalParametersBuffer, GlobalsRenderStep};
+use global_data::{GlobalParametersBuffer, GlobalsStep};
 use gpu::wgpu::CommandEncoder;
-use gpu::{texture_format_size, Gpu};
+use gpu::{texture_format_size, Gpu, GpuStep};
 use image::Rgba;
 use lay::Layer;
 use mmm::{MissionMap, TLoc};
@@ -41,8 +41,8 @@ use std::{
     num::{NonZeroU32, NonZeroU64},
 };
 use t2::Terrain as T2;
-use terrain::{TerrainBuffer, TerrainRenderStep};
-use world::WorldRenderStep;
+use terrain::{TerrainBuffer, TerrainStep};
+use world::WorldStep;
 use zerocopy::AsBytes;
 
 #[derive(Debug)]
@@ -183,43 +183,36 @@ impl Extension for T2TerrainBuffer {
         )?;
         runtime.insert_named_resource("terrain2", terrain2);
 
-        runtime
-            .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_finish_uploads.label(T2TerrainRenderStep::FinishUploads));
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_finish_uploads
+                .label(T2TerrainRenderStep::FinishUploads)
+                .after(TerrainStep::Tesselate)
+                .before(TerrainStep::RenderDeferredTexture),
+        );
 
         // Ensure both relative order and ensure each step follows the equivalent base Terrain step
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_encode_uploads
                 .label(T2TerrainRenderStep::EncodeUploads)
                 .after(T2TerrainRenderStep::FinishUploads)
-                .after(TerrainRenderStep::EncodeUploads)
-                .after(GlobalsRenderStep::EnsureUpdated),
+                .after(TerrainStep::EncodeUploads)
+                .after(GlobalsStep::EnsureUpdated)
+                .after(GpuStep::CreateCommandEncoder)
+                .before(GpuStep::SubmitCommands),
         );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
-            Self::sys_paint_atlas_indices
-                .label(T2TerrainRenderStep::PaintAtlasIndices)
-                .after(T2TerrainRenderStep::EncodeUploads)
-                .after(TerrainRenderStep::PaintAtlasIndices),
-        );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_terrain_tesselate
                 .label(T2TerrainRenderStep::Tesselate)
                 .after(T2TerrainRenderStep::PaintAtlasIndices)
-                .after(TerrainRenderStep::Tesselate)
-                .before(TerrainRenderStep::RenderDeferredTexture),
+                .after(TerrainStep::Tesselate)
+                .before(TerrainStep::RenderDeferredTexture),
         );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
-            Self::sys_deferred_texture
-                .label(T2TerrainRenderStep::RenderDeferredTexture)
-                .after(T2TerrainRenderStep::Tesselate)
-                .after(TerrainRenderStep::RenderDeferredTexture),
-        );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_accumulate_normal_and_color
                 .label(T2TerrainRenderStep::AccumulateNormalsAndColor)
                 .after(T2TerrainRenderStep::RenderDeferredTexture)
-                .after(TerrainRenderStep::AccumulateNormalsAndColor)
-                .before(WorldRenderStep::Render),
+                .after(TerrainStep::AccumulateNormalsAndColor)
+                .before(WorldStep::Render),
         );
 
         Ok(())
@@ -440,8 +433,6 @@ impl T2TerrainBuffer {
         }
     }
 
-    fn sys_paint_atlas_indices() {}
-
     fn sys_terrain_tesselate(
         t2_terrain: Res<T2TerrainBuffer>,
         query: Query<&T2TileSet>,
@@ -459,8 +450,6 @@ impl T2TerrainBuffer {
             }
         }
     }
-
-    fn sys_deferred_texture() {}
 
     fn sys_accumulate_normal_and_color(
         t2_terrain: Res<T2TerrainBuffer>,

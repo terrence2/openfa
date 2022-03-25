@@ -36,7 +36,7 @@ use camera::ScreenCamera;
 use catalog::Catalog;
 use composite::CompositeRenderStep;
 use global_data::GlobalParametersBuffer;
-use gpu::Gpu;
+use gpu::{Gpu, GpuStep};
 use measure::WorldSpaceFrame;
 use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
@@ -52,7 +52,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use world::{WorldRenderPass, WorldRenderStep};
+use world::{WorldRenderPass, WorldStep};
 
 thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeMetadata >> = RefCell::new(HashMap::new());
@@ -62,20 +62,17 @@ thread_local! {
 enum ChunkUpload {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-pub enum ShapeUploadStep {
+pub enum ShapeStep {
     ResetUploadCursor,
     AnimateDrawState,
     ApplyTransforms,
     ApplyFlags,
     ApplyXforms,
     PushToBlock,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-pub enum ShapeRenderStep {
     UploadChunks,
     UploadBlocks,
     Render,
+    CleanupOpenChunks,
 }
 
 #[derive(Debug)]
@@ -99,52 +96,60 @@ impl Extension for ShapeBuffer {
         )?;
 
         runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_reset_upload_cursor.label(ShapeUploadStep::ResetUploadCursor));
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_ts_reset_upload_cursor.label(ShapeStep::ResetUploadCursor));
         runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_animate_draw_state.label(ShapeUploadStep::AnimateDrawState));
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_ts_animate_draw_state.label(ShapeStep::AnimateDrawState));
         runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_apply_transforms.label(ShapeUploadStep::ApplyTransforms));
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_build_flag_mask.label(ShapeUploadStep::ApplyFlags));
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(
-                Self::sys_ts_apply_xforms
-                    .label(ShapeUploadStep::ApplyXforms)
-                    .after(ShapeUploadStep::ResetUploadCursor),
-            );
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(
-                Self::sys_ts_push_values_to_block
-                    .label(ShapeUploadStep::PushToBlock)
-                    .after(ShapeUploadStep::ApplyTransforms)
-                    .after(ShapeUploadStep::ApplyFlags)
-                    .after(ShapeUploadStep::ApplyXforms),
-            );
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_ts_apply_transforms.label(ShapeStep::ApplyTransforms));
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_ts_build_flag_mask
+                .label(ShapeStep::ApplyFlags)
+                .after(ShapeStep::AnimateDrawState),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_ts_apply_xforms
+                .label(ShapeStep::ApplyXforms)
+                .after(ShapeStep::ResetUploadCursor)
+                .after(ShapeStep::AnimateDrawState),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_ts_push_values_to_block
+                .label(ShapeStep::PushToBlock)
+                .after(ShapeStep::ApplyTransforms)
+                .after(ShapeStep::ApplyFlags)
+                .after(ShapeStep::ApplyXforms),
+        );
 
-        runtime
-            .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_close_open_chunks.label(ShapeRenderStep::UploadChunks));
-        runtime
-            .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_upload_block_frame_data.label(ShapeRenderStep::UploadBlocks));
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_close_open_chunks
+                .label(ShapeStep::UploadChunks)
+                .after(GpuStep::CreateCommandEncoder)
+                .before(GpuStep::SubmitCommands),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_upload_block_frame_data
+                .label(ShapeStep::UploadBlocks)
+                .after(ShapeStep::PushToBlock)
+                .after(GpuStep::CreateCommandEncoder)
+                .before(GpuStep::SubmitCommands),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_draw_shapes
-                .label(ShapeRenderStep::Render)
-                .after(ShapeRenderStep::UploadChunks)
-                .after(ShapeRenderStep::UploadBlocks)
-                .after(WorldRenderStep::Render)
+                .label(ShapeStep::Render)
+                .after(ShapeStep::UploadChunks)
+                .after(ShapeStep::UploadBlocks)
+                .after(WorldStep::Render)
                 .before(CompositeRenderStep::Render),
         );
 
-        runtime
-            .frame_stage_mut(FrameStage::FrameEnd)
-            .add_system(Self::sys_cleanup_open_chunks_after_render);
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_cleanup_open_chunks_after_render
+                .label(ShapeStep::CleanupOpenChunks)
+                .after(GpuStep::PresentTargetSurface),
+        );
         runtime.insert_resource(shapes);
         Ok(())
     }
@@ -247,6 +252,9 @@ impl ShapeBuffer {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Cw,
+                    // Note: showing backfaces would minimize the impact of the many seams and gaps
+                    //       in FA models; however, many surfaces are co-planar, resulting in
+                    //       massive z-fighting between front and reversed back faces.
                     cull_mode: Some(wgpu::Face::Back),
                     unclipped_depth: true,
                     polygon_mode: wgpu::PolygonMode::Fill,

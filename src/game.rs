@@ -12,13 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters, Feet, Meters};
+use absolute_unit::{degrees, feet, meters, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::ArcBallController;
 use camera::ScreenCamera;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
-use geometry::{intersect::sphere_vs_ray, Ray, Sphere};
+use geometry::Ray;
 use gpu::Gpu;
 use lib::{from_dos_string, Libs};
 use measure::WorldSpaceFrame;
@@ -287,7 +287,7 @@ impl Game {
             // FIXME: log message to terminal
             bail!("cannot load {name}; it is a template (note the ~ or $ prefix)");
         }
-        let game_name = heap.resource::<Libs>().catalog().label().to_owned();
+        // let game_name = heap.resource::<Libs>().catalog().label().to_owned();
 
         let mm = {
             let libs = heap.resource::<Libs>();

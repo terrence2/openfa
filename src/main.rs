@@ -31,7 +31,7 @@ use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
-use gpu::{DetailLevelOpts, Gpu};
+use gpu::{DetailLevelOpts, Gpu, GpuStep};
 use input::{DemoFocus, InputSystem};
 use lib::{Libs, LibsOpts};
 use measure::WorldSpaceFrame;
@@ -100,8 +100,8 @@ impl Extension for System {
             })?;
         runtime.insert_named_resource("system", system);
         runtime
-            .frame_stage_mut(FrameStage::FrameEnd)
-            .add_system(Self::sys_track_visible_state);
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_track_visible_state.after(GpuStep::PresentTargetSurface));
         runtime.run_string(
             r#"
                 bindings.bind("Escape", "exit()");
