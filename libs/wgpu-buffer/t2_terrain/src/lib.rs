@@ -203,14 +203,12 @@ impl Extension for T2TerrainBuffer {
         runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_terrain_tesselate
                 .label(T2TerrainRenderStep::Tesselate)
-                .after(T2TerrainRenderStep::PaintAtlasIndices)
                 .after(TerrainStep::Tesselate)
                 .before(TerrainStep::RenderDeferredTexture),
         );
         runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_accumulate_normal_and_color
                 .label(T2TerrainRenderStep::AccumulateNormalsAndColor)
-                .after(T2TerrainRenderStep::RenderDeferredTexture)
                 .after(TerrainStep::AccumulateNormalsAndColor)
                 .before(WorldStep::Render),
         );

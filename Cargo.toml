@@ -98,6 +98,7 @@ physical_constants = { path = "libs/nitrogen/util/physical_constants" }
 runtime = { path = "libs/nitrogen/util/runtime" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
+tracelog = { path = "libs/nitrogen/system/tracelog" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
 widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }

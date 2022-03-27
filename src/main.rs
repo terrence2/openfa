@@ -47,6 +47,7 @@ use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
 use terrain::TerrainBuffer;
+use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use widget::{
     Border, Color, Expander, Label, Labeled, PositionH, PositionV, VerticalBox, WidgetBuffer,
@@ -73,6 +74,9 @@ struct Opt {
 
     #[structopt(flatten)]
     startup_opts: StartupOpts,
+
+    #[structopt(flatten)]
+    tracelog_opts: TraceLogOpts,
 }
 
 #[derive(Debug)]
@@ -537,10 +541,12 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .insert_resource(opt.libs_opts)
         .insert_resource(opt.display_opts)
         .insert_resource(opt.startup_opts)
+        .insert_resource(opt.tracelog_opts)
         .insert_resource(opt.detail_opts.cpu_detail())
         .insert_resource(opt.detail_opts.gpu_detail())
         .insert_resource(app_dirs)
         .insert_resource(DemoFocus::Demo)
+        .load_extension::<TraceLog>()?
         .load_extension::<StartupOpts>()?
         .load_extension::<Libs>()?
         .load_extension::<EventMapper<DemoFocus>>()?
