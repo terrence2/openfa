@@ -44,20 +44,20 @@ static SCALE_OVERRIDE: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
 });
 
 #[derive(Debug, Default, NitrousResource)]
-pub struct Game {}
+pub struct AssetLoader;
 
-impl Extension for Game {
+impl Extension for AssetLoader {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        let game = Game::new();
-        runtime.insert_named_resource("game", game);
+        let asset_loader = Self::new();
+        runtime.insert_named_resource("game", asset_loader);
         Ok(())
     }
 }
 
 #[inject_nitrous_resource]
-impl Game {
+impl AssetLoader {
     fn new() -> Self {
-        Game {}
+        Self
     }
 
     #[method]
@@ -499,4 +499,32 @@ impl Game {
         Ok(entity)
     }
      */
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atmosphere::AtmosphereBuffer;
+    use global_data::GlobalParametersBuffer;
+    use terrain::TerrainBuffer;
+
+    #[test]
+    fn it_works() -> Result<()> {
+        let mut runtime = Gpu::for_test_unix()?;
+        runtime
+            .load_extension::<AssetLoader>()?
+            .load_extension::<Libs>()?
+            .load_extension::<TypeManager>()?
+            .load_extension::<GlobalParametersBuffer>()?
+            .load_extension::<AtmosphereBuffer>()?
+            .load_extension::<TerrainBuffer>()?
+            .load_extension::<T2TerrainBuffer>()?
+            .load_extension::<ShapeBuffer>()?;
+
+        runtime.resource_scope(|mut heap, world: Mut<AssetLoader>| {
+            world.load_mission("UKR01.M", heap)
+        })?;
+
+        Ok(())
+    }
 }

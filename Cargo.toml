@@ -35,6 +35,10 @@ members = [
     "libs/asset/t2",
     "libs/asset/xt",
 
+    "libs/game/asset_loader",
+    "libs/game/flight_dynamics",
+    "libs/game/player",
+
     "libs/wgpu-buffer/font_fnt",
     "libs/wgpu-buffer/ofa_groups",
     "libs/wgpu-buffer/pic_uploader",
@@ -78,11 +82,13 @@ terminal_size = "^ 0.1"
 winit = { version = "^ 0.24", features = ["web-sys"] }
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
 animate = { path = "libs/nitrogen/sim/animate" }
+asset_loader = { path = "libs/game/asset_loader" }
 atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
 camera = { path = "libs/nitrogen/sim/camera" }
 catalog = { path = "libs/nitrogen/system/catalog" }
 composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
 event_mapper = { path = "libs/nitrogen/sim/event_mapper" }
+flight_dynamics = { path = "libs/game/flight_dynamics" }
 fnt = { path = "libs/asset/fnt" }
 font_fnt = { path = "libs/wgpu-buffer/font_fnt" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
@@ -95,6 +101,7 @@ measure = { path = "libs/nitrogen/sim/measure" }
 nitrous = { path = "libs/nitrogen/util/nitrous" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
 physical_constants = { path = "libs/nitrogen/util/physical_constants" }
+player = { path = "libs/game/player" }
 runtime = { path = "libs/nitrogen/util/runtime" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }

@@ -12,13 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod game;
-
-use crate::game::Game;
-
 use absolute_unit::degrees;
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
+use asset_loader::AssetLoader;
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::{
@@ -26,6 +23,7 @@ use camera::{
 };
 use composite::CompositeRenderPass;
 use event_mapper::EventMapper;
+use flight_dynamics::FlightDynamics;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
@@ -39,6 +37,7 @@ use nitrous::{inject_nitrous_resource, NitrousResource};
 use orrery::Orrery;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
+use player::Player;
 use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
 use shape::ShapeBuffer;
 use stars::StarsBuffer;
@@ -570,7 +569,9 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<ArcBallSystem>()?
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
-        .load_extension::<Game>()?;
+        .load_extension::<AssetLoader>()?
+        .load_extension::<Player>()?
+        .load_extension::<FlightDynamics>()?;
 
     ///////////////////////////////////////////////////////////
     // let globals = frame_graph.globals.clone();

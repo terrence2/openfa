@@ -34,3 +34,6 @@ game.spawn("test", "F22.PT");
 bindings.bind("f", "@test.draw_state.toggle_flaps()");
 bindings.bind("g", "@test.draw_state.toggle_gear()");
 bindings.bind("b", "@test.draw_state.toggle_airbreak()");
+
+widget.toggle_terminal();
+//libs.find("~*.M");
