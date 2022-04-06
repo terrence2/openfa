@@ -25,6 +25,10 @@ struct Opt {
     /// The XT files to load
     inputs: Vec<String>,
 
+    /// Show just one field
+    #[structopt(short, long)]
+    field: Option<String>,
+
     #[structopt(flatten)]
     libs_opts: LibsOpts,
 }
@@ -37,12 +41,49 @@ fn main() -> Result<()> {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat(fid)?;
-                println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                show_xt(meta.name(), catalog)?;
+                if let Some(req_field) = &opt.field {
+                    show_xt_field(meta.name(), req_field, catalog);
+                } else {
+                    println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
+                    show_xt(meta.name(), catalog)?;
+                }
             }
         }
     }
 
+    Ok(())
+}
+
+fn show_xt_field(name: &str, req_field: &str, catalog: &Catalog) -> Result<()> {
+    let type_manager = TypeManager::empty();
+    let xt = type_manager.load(name, catalog)?;
+    let ot = xt.ot();
+    for &field in ObjectType::fields() {
+        if field == req_field {
+            println!("{:<14}:{} = {}", name, field, ot.get_field(field));
+        }
+    }
+    if let Some(nt) = xt.nt() {
+        for &field in NpcType::fields() {
+            if field == req_field {
+                println!("{:<14}:{} = {}", name, field, nt.get_field(field));
+            }
+        }
+    }
+    if let Some(jt) = xt.jt() {
+        for &field in ProjectileType::fields() {
+            if field == req_field {
+                println!("{:<14}:{} = {}", name, field, jt.get_field(field));
+            }
+        }
+    }
+    if let Some(pt) = xt.pt() {
+        for &field in PlaneType::fields() {
+            if field == req_field {
+                println!("{:<14}:{} = {}", name, field, pt.get_field(field));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -58,7 +99,7 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
     }
     println!();
 
-    if let Ok(nt) = xt.nt() {
+    if let Some(nt) = xt.nt() {
         println!("{:>25}", "NPC Type");
         println!("{:>25}", "========");
         for field in NpcType::fields() {
@@ -78,7 +119,7 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
         println!();
     }
 
-    if let Ok(jt) = xt.jt() {
+    if let Some(jt) = xt.jt() {
         println!("{:>25}", "Projectile Type");
         println!("{:>25}", "===============");
         for field in ProjectileType::fields() {
@@ -86,7 +127,7 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
         }
     }
 
-    if let Ok(pt) = xt.pt() {
+    if let Some(pt) = xt.pt() {
         println!("{:>25}", "Plane Type");
         println!("{:>25}", "==========");
         for field in PlaneType::fields() {
