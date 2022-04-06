@@ -59,9 +59,6 @@ thread_local! {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-enum ChunkUpload {}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
 pub enum ShapeStep {
     ResetUploadCursor,
     AnimateDrawState,
@@ -449,6 +446,13 @@ impl ShapeBuffer {
         entity.insert(ShapeXformBuffer::default());
 
         Ok(())
+    }
+
+    pub fn free_slot(&mut self, slot_id: SlotId) {
+        self.blocks
+            .get_mut(slot_id.block_id())
+            .expect("invalid slot block")
+            .deallocate_slot(slot_id);
     }
 
     // Note: should only be used interactively, as it is super wasteful of GPU resources.

@@ -43,7 +43,7 @@ const AVERAGE_VERTEX_BYTES: usize = 24_783;
 const VERTEX_CHUNK_COUNT: usize = AVERAGE_VERTEX_BYTES / mem::size_of::<Vertex>();
 
 #[repr(C)]
-#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug, Default)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,
