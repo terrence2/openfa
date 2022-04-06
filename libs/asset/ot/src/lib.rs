@@ -243,7 +243,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Word,  [Dec],"maxMinusDopplerPitch",   Signed, max_minus_doppler_pitch,  i16, V0, panic!()), // word 20 ; maxMinusDopplerPitch
     (Word,  [Dec],     "minDopplerSpeed",   Signed, min_doppler_speed,        i16, V0, panic!()), // word 20 ; minDopplerSpeed
     (Word,  [Dec],     "maxDopplerSpeed",   Signed, max_doppler_speed,        i16, V0, panic!()), // word 1000 ; maxDopplerSpeed
-    (Word,  [Dec],         "viewOffset.",     Vec3, unk_rear_view_pos,Point3<f32>, V0, panic!()), // word 0 ; viewOffset.x
+    (Word,  [Dec],         "viewOffset.",     Vec3, view_offset,      Point3<f32>, V0, panic!()), // word 0 ; viewOffset.x
     (Ptr,   [Dec,Sym],         "hudName",   PtrStr, hud,                   String, V2, None) // dword 0
 }];
 
