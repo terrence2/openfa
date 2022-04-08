@@ -240,7 +240,7 @@ impl InstanceBlock {
     }
 
     pub(crate) fn has_open_slot(&self) -> bool {
-        self.len() < BLOCK_SIZE
+        self.free_slot < BLOCK_SIZE
     }
 
     pub(crate) fn allocate_slot(&mut self, draw_cmd: DrawIndirectCommand) -> SlotId {
@@ -341,6 +341,6 @@ impl InstanceBlock {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.next_slot as usize
+        self.free_slot as usize
     }
 }

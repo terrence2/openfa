@@ -15,7 +15,7 @@
 use absolute_unit::degrees;
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
-use asset_loader::AssetLoader;
+use asset_loader::{AssetLoader, MissionMarker};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::{
@@ -37,7 +37,7 @@ use nitrous::{inject_nitrous_resource, NitrousResource};
 use orrery::Orrery;
 use parking_lot::RwLock;
 use platform_dirs::AppDirs;
-use player::Player;
+use player::PlayerCameraController;
 use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
 use shape::ShapeBuffer;
 use stars::StarsBuffer;
@@ -260,36 +260,27 @@ impl System {
     }
 
     fn sys_track_visible_state(
-        query: Query<&ArcBallController>,
         camera: Res<ScreenCamera>,
         timestep: Res<TimeStep>,
         orrery: Res<Orrery>,
         mut system: ResMut<System>,
     ) {
-        for arcball in query.iter() {
-            system.track_visible_state(*timestep.now(), &orrery, arcball, &camera);
-        }
+        system.track_visible_state(*timestep.now(), &orrery, &camera);
     }
 
-    pub fn track_visible_state(
-        &mut self,
-        now: Instant,
-        orrery: &Orrery,
-        arcball: &ArcBallController,
-        camera: &ScreenCamera,
-    ) {
+    pub fn track_visible_state(&mut self, now: Instant, orrery: &Orrery, camera: &ScreenCamera) {
         self.visible_widgets
             .sim_time
             .write()
             .set_text(format!("Date: {}", orrery.get_time()));
-        self.visible_widgets
-            .camera_direction
-            .write()
-            .set_text(format!("Eye: {}", arcball.eye()));
-        self.visible_widgets
-            .camera_position
-            .write()
-            .set_text(format!("Position: {}", arcball.target(),));
+        // self.visible_widgets
+        //     .camera_direction
+        //     .write()
+        //     .set_text(format!("Eye: {}", arcball.eye()));
+        // self.visible_widgets
+        //     .camera_position
+        //     .write()
+        //     .set_text(format!("Position: {}", arcball.target(),));
         self.visible_widgets
             .camera_fov
             .write()
@@ -465,57 +456,6 @@ make_frame_graph!(
         ];
     }
 );
-
-fn build_frame_graph(
-    cpu_detail: CpuDetailLevel,
-    gpu_detail: GpuDetailLevel,
-    app_dirs: &AppDirs,
-    catalog: &Catalog,
-    mapper: Arc<RwLock<EventMapper>>,
-    window: &mut Window,
-    interpreter: &mut Interpreter,
-) -> Result<(Arc<RwLock<Gpu>>, FrameGraph)> {
-    let gpu = Gpu::new(window, Default::default(), interpreter)?;
-    let globals = GlobalParametersBuffer::new(gpu.read().device(), interpreter);
-    let fullscreen = FullscreenBuffer::new(&gpu.read());
-    let stars = Arc::new(RwLock::new(StarsBuffer::new(&gpu.read())?));
-    let atmosphere = AtmosphereBuffer::new(&mut gpu.write())?;
-    let terrain = TerrainBuffer::new(
-        catalog,
-        cpu_detail,
-        gpu_detail,
-        &globals.read(),
-        &mut gpu.write(),
-        interpreter,
-    )?;
-    let shapes = ShapeInstanceBuffer::new(&globals.read(), &atmosphere.read(), &gpu.read())?;
-    let world = WorldRenderPass::new(
-        &terrain.read(),
-        &atmosphere.read(),
-        &stars.read(),
-        &globals.read(),
-        &mut gpu.write(),
-        interpreter,
-    )?;
-    let widgets = WidgetBuffer::new(mapper, &mut gpu.write(), interpreter, &app_dirs.state_dir)?;
-    let ui = UiRenderPass::new(
-        &widgets.read(),
-        &world.read(),
-        &globals.read(),
-        &mut gpu.write(),
-    )?;
-    let composite = Arc::new(RwLock::new(CompositeRenderPass::new(
-        &ui.read(),
-        &world.read(),
-        &globals.read(),
-        &mut gpu.write(),
-    )?));
-
-    let frame_graph = FrameGraph::new(
-        composite, ui, widgets, world, shapes, terrain, atmosphere, stars, fullscreen, globals,
-    )?;
-    Ok((gpu, frame_graph))
-}
  */
 
 fn main() -> Result<()> {
@@ -566,241 +506,20 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<Timeline>()?
         .load_extension::<TimeStep>()?
         .load_extension::<CameraSystem>()?
-        .load_extension::<ArcBallSystem>()?
+        .load_extension::<PlayerCameraController>()?
+        // .load_extension::<ArcBallSystem>()?
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
-        .load_extension::<Player>()?
         .load_extension::<FlightDynamics>()?;
 
-    ///////////////////////////////////////////////////////////
-    // let globals = frame_graph.globals.clone();
-    // let widgets = frame_graph.widgets.clone();
-    // let shapes = frame_graph.shapes.clone();
-    // let world = frame_graph.world.clone();
-    // let terrain = frame_graph.terrain.clone();
-
-    // let system = System::new(&catalog.read(), interpreter.clone(), widgets)?;
-
-    ///////////////////////////////////////////////////////////
-    // Scene Setup
-    /*
-    let start = Instant::now();
-    let system_palette = Palette::from_bytes(&catalog.read().read_name_sync("PALETTE.PAL")?)?;
-    shapes
-        .write()
-        .set_shared_palette(&system_palette, &gpu.read());
-    let mut tracker = Default::default();
-    let mut t2_terrain = T2TileSet::new(
-        system.read().t2_adjustment(),
-        &terrain.read(),
-        &globals.read(),
-        &gpu.read(),
-    )?;
-    let type_manager = TypeManager::empty();
-    for mm_fid in catalog.read().find_with_extension("MM")? {
-        let catalog = catalog.read();
-        let name = catalog.stat_sync(mm_fid)?.name().to_owned();
-        if name.starts_with('~') || name.starts_with('$') {
-            continue;
-        }
-        println!("Loading {}...", name);
-        let raw = catalog.read_sync(mm_fid)?;
-        let mm_content = from_dos_string(raw);
-        let mm = MissionMap::from_str(&mm_content, &type_manager, &catalog)?;
-        let t2_mapper = t2_terrain.add_map(
-            &system_palette,
-            &mm,
-            &catalog,
-            &mut gpu.write(),
-            &mut tracker,
-        )?;
-
-        // shapes.write().finish_open_chunks(&mut gpu.write())?;
-
-        for info in mm.objects() {
-            if info.xt().ot().shape.is_none() {
-                // FIXME: this still needs to add the entity.
-                // I believe these are only for hidden flak guns in TVIET.
-                continue;
-            }
-
-            let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
-                info.xt().ot().shape.as_ref().expect("a shape file"),
-                DrawSelection::NormalModel,
-                &catalog,
-                &mut gpu.write(),
-                &mut tracker,
-            )?;
-
-            if let Ok(_pt) = info.xt().pt() {
-                //galaxy.create_flyer(pt, shape_id, slot_id)?
-                //unimplemented!()
-            } else if let Ok(_nt) = info.xt().nt() {
-                //galaxy.create_ground_mover(nt)
-                //unimplemented!()
-                let scale = if info
-                    .xt()
-                    .ot()
-                    .shape
-                    .as_ref()
-                    .expect("a shape file")
-                    .starts_with("BNK")
-                {
-                    2f32
-                } else {
-                    4f32
-                };
-                let grat = t2_mapper.fa2grat(
-                    info.position(),
-                    shapes
-                        .read()
-                        .part(shape_id)
-                        .widgets()
-                        .read()
-                        .offset_to_ground()
-                        * scale,
-                );
-                system
-                    .write()
-                    .add_target(&info.name().unwrap_or_else(|| "<unknown>".to_owned()), grat);
-                galaxy.create_building(
-                    slot_id,
-                    shape_id,
-                    shapes.read().part(shape_id),
-                    scale,
-                    grat,
-                    info.angle(),
-                )?;
-            } else if info.xt().jt().is_ok() {
-                bail!("did not expect a projectile in MM objects")
-            } else {
-                let scale = if info
-                    .xt()
-                    .ot()
-                    .shape
-                    .as_ref()
-                    .expect("a shape file")
-                    .starts_with("BNK")
-                {
-                    2f32
-                } else {
-                    4f32
-                };
-                let grat = t2_mapper.fa2grat(
-                    info.position(),
-                    shapes
-                        .read()
-                        .part(shape_id)
-                        .widgets()
-                        .read()
-                        .offset_to_ground()
-                        * scale,
-                );
-                system
-                    .write()
-                    .add_target(&info.name().unwrap_or_else(|| "<unknown>".to_owned()), grat);
-                galaxy.create_building(
-                    slot_id,
-                    shape_id,
-                    shapes.read().part(shape_id),
-                    scale,
-                    grat,
-                    info.angle(),
-                )?;
-                /*
-                   println!("Obj Inst {:?}: {:?}", info.xt().ot().shape, info.position());
-                   let sh_name = info
-                       .xt()
-                       .ot()
-                       .shape
-                       .as_ref()
-                       .expect("a shape file")
-                       .to_owned();
-                   if let Some(n) = info.name() {
-                       names.push(n + " (" + &sh_name + ")");
-                   } else {
-                       names.push(sh_name);
-                   }
-                */
-            };
-        }
-    }
-
-    for (offset, (_game, catalog)) in catalogs.all().enumerate() {
-        let system_palette = Palette::from_bytes(&catalog.read_name_sync("PALETTE.PAL")?)?;
-        shapes
-            .write()
-            .set_shared_palette(&system_palette, &gpu.read());
-        let mut pts = catalog.find_with_extension("PT")?;
-        let side_len = (pts.len() as f64).sqrt().ceil() as usize;
-        const KEY: &str = "AV8.PT";
-        pts.sort_by(|a_fid, b_fid| {
-            let a_stat = catalog.stat_sync(*a_fid).unwrap();
-            let b_stat = catalog.stat_sync(*b_fid).unwrap();
-            let a = a_stat.name();
-            let b = b_stat.name();
-            if a == KEY {
-                std::cmp::Ordering::Less
-            } else if b == KEY {
-                std::cmp::Ordering::Greater
-            } else {
-                a.cmp(b)
-            }
-        });
-
-        let base_lat = 0.16217;
-        let base_lon = 1.379419;
-        for (i, pt_fid) in pts.iter().enumerate() {
-            let xi = i % side_len;
-            let yi = i / side_len;
-            let pt_stat = catalog.stat_sync(*pt_fid)?;
-            let pt_name = pt_stat.name();
-            let xt = type_manager.load(pt_name, &catalog)?;
-            let pt = xt.pt()?;
-            let (shape_id, slot_id) = shapes.write().upload_and_allocate_slot(
-                pt.nt.ot.shape.as_ref().unwrap(),
-                DrawSelection::NormalModel,
-                &catalog,
-                &mut gpu.write(),
-                &mut tracker,
-            )?;
-            galaxy.create_building(
-                slot_id,
-                shape_id,
-                shapes.read().part(shape_id),
-                2.,
-                Graticule::new(
-                    degrees!(0.003 * xi as f64) + radians!(base_lat),
-                    degrees!(0.003 * yi as f64) + radians!(base_lon),
-                    meters!(1500.0 - 150.0 * offset as f64),
-                ),
-                &nalgebra::UnitQuaternion::identity(),
-            )?;
-        }
-    }
-    shapes
-        .write()
-        .finish_open_chunks(&mut gpu.write(), &mut tracker)?;
-    tracker.dispatch_uploads_one_shot(&mut gpu.write());
-    terrain
-        .write()
-        .add_tile_set(Box::new(t2_terrain) as Box<dyn TileSet>);
-    println!("Loading scene took: {:?}", start.elapsed());
-
-    {
-        let interp = &mut interpreter;
-        system.write().add_default_bindings(interp)?;
-    }
-     */
-
-    // But we need at least a camera and controller before the sim is ready to run.
-    let _player_ent = runtime
-        .spawn_named("player")?
-        .insert(WorldSpaceFrame::default())
-        .insert_named(ArcBallController::default())?
-        .insert(ScreenCameraController::default())
-        .id();
+    // But we need at least a cameras and controller before the sim is ready to run.
+    // let _player_ent = runtime
+    //     .spawn_named("Player")?
+    //     .insert(WorldSpaceFrame::default())
+    //     .insert_named(ArcBallController::default())?
+    //     .insert(ScreenCameraController::default())
+    //     .id();
 
     runtime.run_startup();
     while runtime.resource::<ExitRequest>().still_running() {
@@ -814,102 +533,5 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         runtime.run_frame_once();
     }
 
-    /*
-    while !system.read().exit {
-        {
-            let events = input_controller.poll_events()?;
-            frame_graph.widgets_mut().track_state_changes(
-                now,
-                &events,
-                &window.read(),
-                interpreter.clone(),
-            )?;
-            frame_graph.globals_mut().track_state_changes(
-                arcball.read().camera(),
-                &orrery.read(),
-                &window.read(),
-            );
-            let mut sys_lock = system.write();
-            let vis_camera = sys_lock.current_camera(arcball.read_recursive().camera());
-            frame_graph.shapes_mut().track_state_changes(
-                &system_start,
-                &now,
-                arcball.read().camera(),
-                galaxy.world_mut(),
-            );
-            frame_graph.terrain_mut().track_state_changes(
-                arcball.read_recursive().camera(),
-                vis_camera,
-                catalog.clone(),
-            )?;
-            arcball.write().track_state_changes();
-        }
-
-        /*
-        let mut tracker = Default::default();
-        frame_graph
-            .globals_mut()
-            .ensure_uploaded(&gpu.read(), &mut tracker)?;
-        frame_graph
-            .terrain_mut()
-            .ensure_uploaded(&mut gpu.write(), &mut tracker)?;
-        frame_graph
-            .shapes_mut()
-            .ensure_uploaded(&gpu.read(), &mut tracker)?;
-        frame_graph.widgets_mut().ensure_uploaded(
-            now,
-            &mut gpu.write(),
-            &window.read(),
-            &mut tracker,
-        )?;
-        if !frame_graph.run(gpu.clone(), tracker)? {
-            gpu.write()
-                .on_display_config_changed(window.read().config())?;
-        }
-         */
-
-        system
-            .write()
-            .track_visible_state(now.elapsed(), &orrery.read(), &mut arcball.write());
-    }
-
-    window.write().closing = true;
-    render_handle.join().ok();
-     */
-
     Ok(())
 }
-
-/*
-fn render_main(
-    window: Arc<RwLock<Window>>,
-    gpu: Arc<RwLock<Gpu>>,
-    mut frame_graph: FrameGraph,
-) -> Result<()> {
-    while !window.read().closing {
-        let now = Instant::now();
-        let mut tracker = Default::default();
-        frame_graph.widgets_mut().ensure_uploaded(
-            now,
-            &mut gpu.write(),
-            &window.read(),
-            &mut tracker,
-        )?;
-        frame_graph
-            .shapes_mut()
-            .ensure_uploaded(&gpu.read(), &mut tracker)?;
-        frame_graph
-            .terrain_mut()
-            .ensure_uploaded(&mut gpu.write(), &mut tracker)?;
-        frame_graph
-            .globals_mut()
-            .ensure_uploaded(&gpu.read(), &mut tracker)?;
-        if !frame_graph.run(gpu.clone(), tracker)? {
-            gpu.write()
-                .on_display_config_changed(window.read().config())?;
-        }
-    }
-
-    Ok(())
-}
-*/

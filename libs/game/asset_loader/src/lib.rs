@@ -15,8 +15,8 @@
 use absolute_unit::{degrees, feet, meters, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
-use camera::ArcBallController;
-use camera::ScreenCamera;
+use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
+use flight_dynamics::FlightDynamics;
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
@@ -29,7 +29,7 @@ use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale};
+use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
@@ -38,10 +38,30 @@ use std::{
 use t2_terrain::{T2TerrainBuffer, T2TileSet};
 use xt::TypeManager;
 
+const FEET_TO_METERS: f32 = 1. / 3.28084;
+
 static SCALE_OVERRIDE: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
-    let m: HashMap<&str, i32> = HashMap::new();
+    let mut m: HashMap<&str, i32> = HashMap::new();
+    m.insert("STRIP.OT", 4);
+    m.insert("STRIP1.OT", 4);
+    m.insert("STRIP2.OT", 4);
+    m.insert("STRIP3.OT", 4);
+    m.insert("STRIP3A.OT", 4);
+    m.insert("STRIP4.OT", 4);
+    m.insert("STRIP5.OT", 4);
+    m.insert("STRIP5A.OT", 4);
+    m.insert("STRIP6.OT", 4);
+    m.insert("STRIP6A.OT", 4);
+    m.insert("STRIP7.OT", 4);
+    m.insert("STRIP7A.OT", 4);
     m
 });
+
+#[derive(Debug, Default, Component)]
+pub struct MissionMarker;
+
+#[derive(Debug, Default, Component)]
+pub struct PlayerMarker;
 
 #[derive(Debug, Default, NitrousResource)]
 pub struct AssetLoader;
@@ -184,6 +204,7 @@ impl AssetLoader {
         let tile_id = heap
             .spawn_named(make_symbol(map_name))?
             .insert_named(tile_set)?
+            .insert(MissionMarker)
             .id();
 
         // Pre-load the shapes into as few chunks as possible.
@@ -214,7 +235,11 @@ impl AssetLoader {
                     "{}_{}_{}",
                     game_name,
                     make_symbol(&map_name[0..map_name.len() - 3]),
-                    make_symbol(&shape_name[0..shape_name.len() - 3]),
+                    make_symbol(if shape_name.len() > 0 {
+                        &shape_name[0..shape_name.len() - 3]
+                    } else {
+                        "none"
+                    }),
                 )
                 .to_lowercase()
             });
@@ -229,7 +254,7 @@ impl AssetLoader {
                 };
             duplicates.insert(base_inst_name, next_count);
 
-            let id = heap.spawn_named(&inst_name)?.id();
+            let id = heap.spawn_named(&inst_name)?.insert(MissionMarker).id();
 
             // Load the shape if it has one.
             let metadata = if let Some(shape_file) = info.xt().ot().shape.as_ref() {
@@ -247,15 +272,18 @@ impl AssetLoader {
                 Arc::new(RwLock::new(ShapeMetadata::non_shape()))
             };
 
-            // let scale: Option<&i32> = SCALE_OVERRIDE.get(<String as Borrow<str>>::borrow(
-            //     &info.xt().ot().ot_names.file_name,
-            // ));
-            // let scale = *scale.unwrap_or(&1i32) as f32;
-            let scale = 1.0f32;
+            // FIXME: seriously, figure out what's going on here
+            let scale: Option<&i32> = SCALE_OVERRIDE.get(<String as Borrow<str>>::borrow(
+                &info.xt().ot().ot_names.file_name,
+            ));
+            let scale = *scale.unwrap_or(&1i32) as f32;
+            let scale = scale * FEET_TO_METERS;
 
             let frame = {
                 let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
-                let offset_from_ground = metadata.read().extent().offset_to_ground() * scale;
+                let offset_from_ground = (metadata.read().extent().offset_to_ground()
+                    + feet!(info.position().y))
+                    * scale;
                 // FIXME: figure out the terrain height here
                 let position = tile_mapper.fa2grat(info.position(), feet!(offset_from_ground));
 
@@ -272,11 +300,36 @@ impl AssetLoader {
                 WorldSpaceFrame::from_graticule(position, info.angle().facing())
             };
 
+            if inst_name == "Player" {
+                heap.named_entity_mut(id).insert(PlayerMarker);
+            }
+
             heap.named_entity_mut(id)
                 .insert(frame)
-                .insert(ShapeScale::new(scale));
+                .insert(ShapeScale::new(scale))
+                .insert(info.xt());
+
+            if let Some(pt) = info.xt().pt() {
+                FlightDynamics::install_on(heap.named_entity_mut(id), pt);
+            }
         }
 
+        Ok(())
+    }
+
+    #[method]
+    fn unload_mission(&self, mut heap: HeapMut) -> Result<()> {
+        let mut work = Vec::new();
+        for (entity, _) in heap.query::<(Entity, &MissionMarker)>().iter(heap.world()) {
+            work.push(entity);
+        }
+        for entity in work.drain(..) {
+            if let Some(slot_id) = heap.maybe_get::<SlotId>(entity) {
+                let slot_id = *slot_id;
+                heap.resource_mut::<ShapeBuffer>().free_slot(slot_id);
+            }
+            heap.despawn(entity);
+        }
         Ok(())
     }
 
@@ -306,11 +359,14 @@ impl AssetLoader {
 
     #[method]
     fn load_mission(&self, name: &str, mut heap: HeapMut) -> Result<()> {
+        // Unload prior mission
+        self.unload_mission(heap.as_mut())?;
+
         let name = name.to_uppercase();
-        if name.starts_with('~') || name.starts_with('$') {
-            // FIXME: log message to terminal
-            bail!("cannot load {name}; it is a template (note the ~ or $ prefix)");
-        }
+        // if name.starts_with('~') || name.starts_with('$') {
+        //     // FIXME: log message to terminal
+        //     bail!("cannot load {name}; it is a template (note the ~ or $ prefix)");
+        // }
         let game_name = heap.resource::<Libs>().catalog().label().to_owned();
 
         // FIXME: can we print this in a useful way?
@@ -333,113 +389,6 @@ impl AssetLoader {
             mission.all_objects(),
             &mut heap,
         )?;
-
-        /*
-        let tile_set = heap.resource_scope(|heap, mut t2_terrain: Mut<T2TerrainBuffer>| {
-            let libs = heap.resource::<Libs>();
-            t2_terrain.add_map(
-                libs.palette(),
-                mission.mission_map(),
-                libs.catalog(),
-                heap.resource::<Gpu>(),
-            )
-        })?;
-        let tile_id = heap
-            .spawn_named(make_symbol(&name))?
-            .insert_named(tile_set)?
-            .id();
-
-        // Pre-load the shapes into as few chunks as possible.
-        let mut shape_names = HashSet::new();
-        for info in mission.all_objects() {
-            if let Some(shape_file) = info.xt().ot().shape.as_ref() {
-                shape_names.insert(shape_file.to_owned());
-            }
-        }
-        let shape_names = shape_names.iter().collect::<Vec<_>>();
-        let preloaded_shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
-            let libs = heap.resource::<Libs>();
-            shapes.upload_shapes(
-                libs.palette(),
-                &shape_names,
-                libs.catalog(),
-                heap.resource::<Gpu>(),
-            )
-        })?;
-
-        // Create all entities as we go.
-        let mut duplicates: HashMap<String, i32> = HashMap::new();
-        for info in mission.all_objects() {
-            let map_name = &name;
-            let mut base_inst_name = info.name().unwrap_or_else(|| {
-                let shape_name = info.xt().ot().shape.clone().unwrap_or_default();
-                format!(
-                    "{}_{}_{}",
-                    game_name,
-                    make_symbol(&map_name[0..map_name.len() - 3]),
-                    make_symbol(&shape_name[0..shape_name.len() - 3]),
-                )
-                .to_lowercase()
-            });
-            let (inst_name, next_count) =
-                if let Some(current_count) = duplicates.get(&base_inst_name) {
-                    (
-                        format!("{}_{}", base_inst_name, current_count + 1),
-                        current_count + 1,
-                    )
-                } else {
-                    (base_inst_name.clone(), 0)
-                };
-            duplicates.insert(base_inst_name, next_count);
-
-            let id = heap.spawn_named(&inst_name)?.id();
-
-            // Load the shape if it has one.
-            let metadata = if let Some(shape_file) = info.xt().ot().shape.as_ref() {
-                let shape_ids = preloaded_shape_ids
-                    .get(shape_file)
-                    .ok_or_else(|| anyhow!("failed to load shape"))?;
-                heap.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
-                    heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
-                        let entity = heap.named_entity_mut(id);
-                        shapes.instantiate(entity, shape_ids.normal(), &gpu)
-                    })
-                })?;
-                heap.resource::<ShapeBuffer>().metadata(shape_ids.normal())
-            } else {
-                Arc::new(RwLock::new(ShapeMetadata::non_shape()))
-            };
-
-            // let scale: Option<&i32> = SCALE_OVERRIDE.get(<String as Borrow<str>>::borrow(
-            //     &info.xt().ot().ot_names.file_name,
-            // ));
-            // let scale = *scale.unwrap_or(&1i32) as f32;
-            let scale = 1.0f32;
-
-            let frame = {
-                let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
-                let offset_from_ground = metadata.read().extent().offset_to_ground() * scale;
-                // FIXME: figure out the terrain height here
-                let position = tile_mapper.fa2grat(info.position(), feet!(offset_from_ground));
-
-                if info.xt().ot().ot_names.file_name.starts_with("STRIP") {
-                    println!(
-                        "{}: {},{},{} => {}",
-                        info.xt().ot().ot_names.file_name,
-                        info.angle().yaw(),
-                        info.angle().pitch(),
-                        info.angle().roll(),
-                        info.angle().facing()
-                    );
-                }
-                WorldSpaceFrame::from_graticule(position, info.angle().facing())
-            };
-
-            heap.named_entity_mut(id)
-                .insert(frame)
-                .insert(ShapeScale::new(scale));
-        }
-         */
 
         Ok(())
     }

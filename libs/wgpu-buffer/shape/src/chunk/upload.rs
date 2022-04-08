@@ -852,11 +852,7 @@ impl<'a> ShapeUploader<'a> {
             // Note: given the unit positioning in MM files, STRIP*.SH needs to have its
             //       internal units scaled by 4 to line up with the MM units. It's unclear
             //       if this is special behavior, possibly controlled by flags in the MM.
-            let position = [
-                meters!(feet!(v[0]) * 4).f32(),
-                meters!(feet!(v[2]) * 4).f32(),
-                meters!(feet!(-v[1]) * 4).f32(),
-            ];
+            let position = [feet!(v[0]).f32(), feet!(v[2]).f32(), feet!(-v[1]).f32()];
             for (i, &p) in position.iter().enumerate() {
                 if p > self.aabb_max[i] {
                     self.aabb_max[i] = p;

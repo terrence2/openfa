@@ -6,5 +6,14 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = "^ 0.6"
+nalgebra = "^ 0.29"
+absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+asset_loader = { path = "../../game/asset_loader" }
+camera = { path = "../../nitrogen/sim/camera" }
+flight_dynamics = { path = "../../game/flight_dynamics" }
+geodesy = { path = "../../nitrogen/util/geodesy" }
+global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
+measure = { path = "../../nitrogen/sim/measure" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
 runtime = { path = "../../nitrogen/util/runtime" }
+terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }

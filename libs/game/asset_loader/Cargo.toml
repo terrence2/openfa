@@ -11,6 +11,7 @@ ordered-float = "^ 2"
 parking_lot = "^ 0.11"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 camera = { path = "../../nitrogen/sim/camera" }
+flight_dynamics = { path = "../../game/flight_dynamics" }
 geodesy = { path = "../../nitrogen/util/geodesy" }
 geometry = { path = "../../nitrogen/util/geometry" }
 gpu = { path = "../../nitrogen/system/gpu" }

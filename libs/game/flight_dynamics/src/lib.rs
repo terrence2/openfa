@@ -12,26 +12,54 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::Result;
-use nitrous::{inject_nitrous_resource, method, NitrousResource};
-use runtime::{Extension, Runtime};
+mod controls;
 
-#[derive(Debug, Default, NitrousResource)]
-pub struct FlightDynamics;
+pub use crate::controls::Throttle;
+
+use animate::TimeStep;
+use anyhow::Result;
+use bevy_ecs::prelude::*;
+use nitrous::{inject_nitrous_component, method, NamedEntityMut, NitrousComponent};
+use pt::PlaneType;
+use runtime::{Extension, Runtime};
+use xt::TypeRef;
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
+pub enum FlightStep {
+    SimThrottle,
+    Simulate,
+}
+
+#[derive(Debug, Component, NitrousComponent)]
+pub struct FlightDynamics {}
 
 impl Extension for FlightDynamics {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        let dynamics = Self::new();
-        runtime.insert_named_resource("flight_dynamics", dynamics);
+        runtime.add_sim_system(Self::sys_animate_throttle.label(FlightStep::SimThrottle));
+
+        runtime.add_sim_system(
+            Self::sys_simulate_flight
+                .label(FlightStep::Simulate)
+                .after(FlightStep::SimThrottle),
+        );
+
         Ok(())
     }
 }
 
-#[inject_nitrous_resource]
+#[inject_nitrous_component]
 impl FlightDynamics {
-    fn new() -> Self {
-        Self
+    pub fn install_on(mut entity: NamedEntityMut, pt: &PlaneType) {
+        entity.insert_named(Throttle::new(pt));
     }
+
+    fn sys_animate_throttle(timestep: Res<TimeStep>, mut query: Query<(&TypeRef, &mut Throttle)>) {
+        for (xt, mut throttle) in query.iter_mut() {
+            throttle.sys_tick(timestep.step(), xt.pt().expect("PT"));
+        }
+    }
+
+    fn sys_simulate_flight(query: Query<(&FlightDynamics, &Throttle)>) {}
 }
 
 #[cfg(test)]

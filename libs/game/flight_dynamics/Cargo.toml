@@ -6,5 +6,8 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = "^ 0.6"
+animate = { path = "../../nitrogen/sim/animate" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
+pt = { path = "../../asset/pt" }
 runtime = { path = "../../nitrogen/util/runtime" }
+xt = { path = "../../asset/xt" }

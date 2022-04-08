@@ -42,7 +42,7 @@ fn main() -> Result<()> {
             for fid in catalog.find_glob(input)? {
                 let meta = catalog.stat(fid)?;
                 if let Some(req_field) = &opt.field {
-                    show_xt_field(meta.name(), req_field, catalog);
+                    show_xt_field(meta.name(), req_field, catalog)?;
                 } else {
                     println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                     show_xt(meta.name(), catalog)?;
