@@ -11,3 +11,4 @@ nitrous = { path = "../../nitrogen/util/nitrous" }
 pt = { path = "../../asset/pt" }
 runtime = { path = "../../nitrogen/util/runtime" }
 xt = { path = "../../asset/xt" }
+shape = { path = "../../wgpu-buffer/shape" }

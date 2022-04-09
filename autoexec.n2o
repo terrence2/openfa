@@ -53,6 +53,11 @@ bindings.bind("key2", "@Player.throttle.set_detent(2)");
 bindings.bind("key3", "@Player.throttle.set_detent(3)");
 bindings.bind("key4", "@Player.throttle.set_detent(4)");
 bindings.bind("key5", "@Player.throttle.set_detent(5)");
+bindings.bind("b", "@Player.airbrake.toggle()");
+bindings.bind("f", "@Player.flaps.toggle()");
+bindings.bind("h", "@Player.hook.toggle()");
+bindings.bind("o", "@Player.bay.toggle()");
+bindings.bind("g", "@Player.gear.toggle()");
 
 //bindings.bind("f", "@test.draw_state.toggle_flaps()");
 //bindings.bind("g", "@test.draw_state.toggle_gear()");

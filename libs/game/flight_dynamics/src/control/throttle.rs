@@ -12,13 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::controls::ThrottlePosition::Military;
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use pt::PlaneType;
+use shape::DrawState;
 use std::{num::NonZeroU32, time::Duration};
 
-const AFTERBURNER_ENABLE_SOUND: &'static str = "&AFTBURN.11K";
+const _AFTERBURNER_ENABLE_SOUND: &'static str = "&AFTBURN.11K";
 
 #[derive(Debug, Copy, Clone)]
 enum ThrottlePosition {
@@ -38,12 +38,14 @@ impl ThrottlePosition {
         matches!(self, Self::Afterburner)
     }
 
-    fn increase(&mut self, delta: f32, max: ThrottlePosition) {
+    fn increase(&mut self, delta: f32, max: ThrottlePosition) -> bool {
+        let mut enable_ab = false;
         match self {
             Self::Military(current) => {
                 let next = (*current + delta).min(max.military());
                 *self = if next >= 100. && max.is_afterburner() {
                     // TODO: return a new afterburner state so we can play sound?
+                    enable_ab = true;
                     Self::Afterburner
                 } else {
                     Self::Military(next)
@@ -51,16 +53,20 @@ impl ThrottlePosition {
             }
             Self::Afterburner => {}
         }
+        enable_ab
     }
 
-    fn decrease(&mut self, delta: f32, min: ThrottlePosition) {
+    fn decrease(&mut self, delta: f32, min: ThrottlePosition) -> bool {
+        let mut disable_ab = false;
         if self.is_afterburner() {
+            disable_ab = true;
             *self = Self::Military(100.);
         }
         if let Self::Military(current) = self {
             let next = (*current - delta).max(min.military());
             *self = Self::Military(next);
         }
+        disable_ab
     }
 }
 
@@ -74,7 +80,8 @@ pub struct Throttle {
 
 #[inject_nitrous_component]
 impl Throttle {
-    pub fn new(pt: &PlaneType) -> Self {
+    pub fn new(pt: &PlaneType, draw_state: &mut DrawState) -> Self {
+        draw_state.disable_afterburner();
         Throttle {
             throttle_position: ThrottlePosition::Military(0.),
             engine_position: ThrottlePosition::Military(0.),
@@ -82,20 +89,23 @@ impl Throttle {
         }
     }
 
-    pub(crate) fn sys_tick(&mut self, dt: &Duration, pt: &PlaneType) {
+    pub(crate) fn sys_tick(&mut self, dt: &Duration, pt: &PlaneType, draw_state: &mut DrawState) {
         if self.engine_position.military() < self.throttle_position.military() {
-            self.engine_position.increase(
+            if self.engine_position.increase(
                 pt.throttle_acc as f32 * dt.as_secs_f32(),
                 self.throttle_position,
-            );
+            ) {
+                draw_state.enable_afterburner();
+            }
         }
         if self.engine_position.military() > self.throttle_position.military() {
-            self.engine_position.decrease(
+            if self.engine_position.decrease(
                 pt.throttle_dacc as f32 * dt.as_secs_f32(),
                 self.throttle_position,
-            );
+            ) {
+                draw_state.disable_afterburner();
+            }
         }
-        println!("{:?} of {:?}", self.engine_position, self.throttle_position);
     }
 
     #[method]

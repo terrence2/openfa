@@ -29,7 +29,7 @@ use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
+use shape::{DrawState, ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
@@ -310,7 +310,7 @@ impl AssetLoader {
                 .insert(info.xt());
 
             if let Some(pt) = info.xt().pt() {
-                FlightDynamics::install_on(heap.named_entity_mut(id), pt);
+                FlightDynamics::install_on(id, pt, heap.as_mut());
             }
         }
 
