@@ -14,9 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
-use pt::PlaneType;
 use shape::DrawState;
-use std::{num::NonZeroU32, time::Duration};
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug)]
 enum GearPosition {
@@ -36,14 +35,25 @@ pub struct Gear {
 
 #[inject_nitrous_component]
 impl Gear {
-    pub fn new(draw_state: &mut DrawState) -> Self {
-        draw_state.set_gear_visible(false);
-        draw_state.set_gear_position(0.);
-        Gear {
-            position: GearPosition::Closed,
-            // TODO: is this specified?
-            open_speed: 1. / 5.,
-            close_speed: 1. / 5.,
+    pub fn new(on_ground: bool, draw_state: &mut DrawState) -> Self {
+        if on_ground {
+            draw_state.set_gear_visible(true);
+            draw_state.set_gear_position(1.);
+            Gear {
+                position: GearPosition::Open,
+                // TODO: is this specified?
+                open_speed: 1. / 5.,
+                close_speed: 1. / 5.,
+            }
+        } else {
+            draw_state.set_gear_visible(false);
+            draw_state.set_gear_position(0.);
+            Gear {
+                position: GearPosition::Closed,
+                // TODO: is this specified?
+                open_speed: 1. / 5.,
+                close_speed: 1. / 5.,
+            }
         }
     }
 

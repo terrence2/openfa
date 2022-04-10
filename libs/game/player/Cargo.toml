@@ -16,4 +16,5 @@ global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 measure = { path = "../../nitrogen/sim/measure" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
 runtime = { path = "../../nitrogen/util/runtime" }
+shape = { path = "../../wgpu-buffer/shape" }
 terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }

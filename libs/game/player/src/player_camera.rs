@@ -17,7 +17,8 @@ use absolute_unit::Meters;
 use anyhow::{bail, Result};
 use asset_loader::PlayerMarker;
 use bevy_ecs::prelude::*;
-use camera::{ScreenCamera, ScreenCameraController};
+use camera::{CameraStep, ScreenCamera, ScreenCameraController};
+use flight_dynamics::FlightStep;
 use geodesy::{Cartesian, GeoCenter};
 use global_data::GlobalsStep;
 use measure::WorldSpaceFrame;
@@ -27,6 +28,7 @@ use nitrous::{
     NitrousResource,
 };
 use runtime::{Extension, Runtime};
+use shape::ShapeStep;
 use std::str::FromStr;
 use terrain::TerrainStep;
 
@@ -94,6 +96,11 @@ impl CameraMode {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
+pub enum PlayerCameraStep {
+    ApplyInput,
+}
+
 #[derive(Component, NitrousComponent, Debug)]
 #[Name = "controller"]
 pub struct PlayerCameraController {
@@ -102,40 +109,6 @@ pub struct PlayerCameraController {
 
 impl Extension for PlayerCameraController {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        // let player = Self::default();
-        // runtime.insert_named_resource("camera", player);
-        // runtime.run_string(
-        //     r#"
-        //         bindings.bind("+mouse1", "@camera.arcball.pan_view(pressed)");
-        //         bindings.bind("+mouse3", "@camera.arcball.move_view(pressed)");
-        //         bindings.bind("mouseMotion", "@camera.arcball.handle_mousemotion(dx, dy)");
-        //         bindings.bind("mouseWheel", "@camera.arcball.handle_mousewheel(vertical_delta)");
-        //         bindings.bind("+Shift+Up", "@camera.arcball.target_up_fast(pressed)");
-        //         bindings.bind("+Shift+Down", "@camera.arcball.target_down_fast(pressed)");
-        //         bindings.bind("+Up", "@camera.arcball.target_up(pressed)");
-        //         bindings.bind("+Down", "@camera.arcball.target_down(pressed)");
-        //     "#,
-        // )?;
-        runtime.run_string(
-            r#"
-                bindings.bind("F1", "@camera.controller.set_mode('Forward')");
-                bindings.bind("F2", "@camera.controller.set_mode('Backward')");
-                bindings.bind("F3", "@camera.controller.set_mode('LookUp')");
-                bindings.bind("F4", "@camera.controller.set_mode('Target')");
-                bindings.bind("F5", "@camera.controller.set_mode('Incoming')");
-                bindings.bind("F6", "@camera.controller.set_mode('Wingman')");
-                bindings.bind("F7", "@camera.controller.set_mode('PlayerToTarget')");
-                bindings.bind("F8", "@camera.controller.set_mode('TargetToPlayer')");
-                bindings.bind("F9", "@camera.controller.set_mode('FlyBy')");
-                bindings.bind("F10", "@camera.controller.set_mode('External')");
-                bindings.bind("F12", "@camera.controller.set_mode('Missle')");
-
-                bindings.bind("+mouse1", "@camera.controller.set_pan_view(pressed)");
-                bindings.bind("mouseMotion", "@camera.controller.handle_mousemotion(dx, dy)");
-                bindings.bind("mouseWheel", "@camera.controller.handle_mousewheel(vertical_delta)");
-            "#,
-        )?;
-
         runtime
             .spawn_named("camera")?
             .insert_named(PlayerCameraController::new())?
@@ -144,10 +117,10 @@ impl Extension for PlayerCameraController {
             .insert(ScreenCameraController::default())
             .id();
 
-        runtime.add_frame_system(
+        runtime.add_sim_system(
             Self::sys_update_camera
-                .before(GlobalsStep::TrackStateChanges)
-                .before(TerrainStep::OptimizePatches),
+                .label(PlayerCameraStep::ApplyInput)
+                .before(CameraStep::ApplyInput),
         );
 
         Ok(())

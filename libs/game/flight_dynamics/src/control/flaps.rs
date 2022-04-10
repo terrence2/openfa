@@ -14,9 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
-use pt::PlaneType;
 use shape::DrawState;
-use std::{num::NonZeroU32, time::Duration};
 
 #[derive(Component, NitrousComponent, Debug, Copy, Clone)]
 #[Name = "flaps"]

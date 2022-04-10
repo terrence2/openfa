@@ -16,12 +16,12 @@ use absolute_unit::{degrees, feet, meters, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
-use flight_dynamics::FlightDynamics;
+use flight_dynamics::{FlightDynamics, Throttle};
 use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
 use lib::{from_dos_string, Libs};
-use measure::WorldSpaceFrame;
+use measure::{LocalMotion, WorldSpaceFrame};
 use mmm::{Mission, MissionMap, ObjectInfo};
 use nitrous::EntityName;
 use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousResource, Value};
@@ -29,7 +29,7 @@ use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use parking_lot::RwLock;
 use runtime::{Extension, Runtime};
-use shape::{DrawState, ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
+use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
@@ -81,11 +81,7 @@ impl AssetLoader {
     }
 
     #[method]
-    fn boresight(&self, pressed: bool, mut heap: HeapMut) {
-        if !pressed {
-            return;
-        }
-
+    fn boresight(&self, mut heap: HeapMut) {
         heap.resource_scope(|mut heap, camera: Mut<ScreenCamera>| {
             heap.resource_scope(|mut heap, shapes: Mut<ShapeBuffer>| {
                 let mut intersects = Vec::new();
@@ -117,18 +113,45 @@ impl AssetLoader {
         });
     }
 
-    // fn spawn_inner(&self, instances: &[(&str, &str)], mut heap: HeapMut) -> Result<()> {}
+    /// The ScreenCameraController is normally attached to an entity named 'camera', which is a
+    /// PlayerCameraController which always tracks to entity called 'Player' (and related entities
+    /// off of Player, like the target). This method rips the ScreenCameraController off 'camera'
+    /// and puts it on 'fallback_camera', which is a free-move ArcBallController with no inherent
+    /// attachment to other entities.
+    #[method]
+    fn detach_camera(&self, mut heap: HeapMut) {
+        let fallback_id = heap.entity_by_name("fallback_camera");
+        let camera_id = heap.entity_by_name("camera");
+
+        heap.named_entity_mut(camera_id)
+            .remove::<ScreenCameraController>();
+        heap.named_entity_mut(fallback_id)
+            .insert::<ScreenCameraController>(ScreenCameraController);
+
+        let camera_frame = heap.get::<WorldSpaceFrame>(camera_id).to_owned();
+        // *heap.get_mut::<WorldSpaceFrame>(fallback_id) = camera_frame;
+        heap.get_mut::<ArcBallController>(fallback_id)
+            .set_target(camera_frame.position_graticule())
+    }
+
+    #[method]
+    fn attach_camera(&self, mut heap: HeapMut) {
+        let fallback_id = heap.entity_by_name("fallback_camera");
+        let camera_id = heap.entity_by_name("camera");
+
+        heap.named_entity_mut(fallback_id)
+            .remove::<ScreenCameraController>();
+        heap.named_entity_mut(camera_id)
+            .insert::<ScreenCameraController>(ScreenCameraController);
+    }
 
     fn frame_for_interactive(heap: &mut HeapMut) -> WorldSpaceFrame {
-        let target = if let Some(arcball) = heap.maybe_get_named::<ArcBallController>("player") {
-            arcball.target()
-        } else if let Some(frame) = heap.maybe_get_named::<WorldSpaceFrame>("player") {
-            let p = frame.position().vec64() + (frame.basis().forward * 100.);
-            let target = Cartesian::<GeoCenter, Meters>::from(p);
-            Graticule::<GeoSurface>::from(Graticule::<GeoCenter>::from(target))
-        } else {
-            Graticule::<GeoSurface>::new(degrees!(0f32), degrees!(0f32), meters!(10f32))
-        };
+        let target =
+            if let Some(arcball) = heap.maybe_get_named::<ArcBallController>("fallback_camera") {
+                arcball.target()
+            } else {
+                Graticule::<GeoSurface>::new(degrees!(0f32), degrees!(0f32), meters!(10f32))
+            };
         WorldSpaceFrame::from_graticule(
             target,
             Graticule::new(degrees!(0), degrees!(0), meters!(1)),
@@ -147,38 +170,94 @@ impl AssetLoader {
                 .load(&filename, libs.catalog())
         }?;
 
-        let scale: Option<&i32> = SCALE_OVERRIDE.get(<String as Borrow<str>>::borrow(&filename));
-        let scale = *scale.unwrap_or(&1i32) as f32;
+        // Fake up an info.
+        let info = ObjectInfo::from_xt(xt.clone(), name);
 
-        let frame = Self::frame_for_interactive(&mut heap);
-        let id = heap
-            .spawn_named(name)?
-            .insert(xt.clone())
-            .insert(frame)
-            .insert(ShapeScale::new(scale))
-            .id();
+        // Preload the one shape
+        heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            let libs = heap.resource::<Libs>();
+            shapes.upload_shapes(
+                libs.palette(),
+                &[&xt.ot().shape.as_ref().ok_or_else(|| anyhow!("no shape"))?],
+                libs.catalog(),
+                heap.resource::<Gpu>(),
+            )
+        })?;
 
-        // Instantiate the shape, if it has one.
-        if let Some(shape_name) = xt.ot().shape.as_ref() {
-            heap.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
-                heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
-                    heap.resource_scope(|mut heap, libs: Mut<Libs>| {
-                        let entity = heap.named_entity_mut(id);
-                        shapes.instantiate_one(
-                            entity,
-                            shape_name,
-                            libs.palette(),
-                            libs.catalog(),
-                            &gpu,
-                        )
-                    })
-                })
-            })?;
+        // Use the spawn routing shared by mission loading
+        let id = Self::spawn_entity_common(name, &info, None, heap.as_mut())?;
+        if name == "Player" {
+            heap.named_entity_mut(id).insert(PlayerMarker);
         }
 
-        // FIXME: we need all the things that are in an mmm ObjectInfo here...
-
         Ok(Value::True())
+    }
+
+    fn spawn_entity_common<S: AsRef<str>>(
+        inst_name: S,
+        info: &ObjectInfo,
+        tile_id: Option<Entity>,
+        mut heap: HeapMut,
+    ) -> Result<Entity> {
+        let id = heap
+            .spawn_named(inst_name.as_ref())?
+            .insert(MissionMarker)
+            .id();
+
+        // Load the shape if it has one.
+        let metadata = if let Some(shape_file_name) = info.xt().ot().shape.as_ref() {
+            let normal_shape_id = heap
+                .resource::<ShapeBuffer>()
+                .shape_ids_for_preloaded_shape(shape_file_name)?
+                .normal();
+            heap.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
+                heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
+                    let entity = heap.named_entity_mut(id);
+                    shapes.instantiate(entity, normal_shape_id, &gpu)
+                })
+            })?;
+            heap.resource::<ShapeBuffer>().metadata(normal_shape_id)
+        } else {
+            Arc::new(RwLock::new(ShapeMetadata::non_shape()))
+        };
+
+        // FIXME: seriously, figure out what's going on with scale in SH files
+        let scale: Option<&i32> = SCALE_OVERRIDE.get(<String as Borrow<str>>::borrow(
+            &info.xt().ot().ot_names.file_name,
+        ));
+        let scale = *scale.unwrap_or(&1i32) as f32;
+        let scale = scale * FEET_TO_METERS; // Internal units are meters
+
+        let frame = if let Some(tile_id) = tile_id {
+            let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
+            let offset_from_ground =
+                (metadata.read().extent().offset_to_ground() + feet!(info.position().y)) * scale;
+            // FIXME: figure out the terrain height here and raise to at least that level
+            let position = tile_mapper.fa2grat(info.position(), feet!(offset_from_ground));
+            // FIXME: manually re-align strip halfs
+            WorldSpaceFrame::from_graticule(position, info.angle().facing())
+        } else {
+            Self::frame_for_interactive(&mut heap)
+        };
+
+        heap.named_entity_mut(id)
+            .insert(frame)
+            .insert(ShapeScale::new(scale))
+            .insert(info.xt());
+
+        // If the type is a plane, install a flight model
+        if let Some(pt) = info.xt().pt() {
+            heap.named_entity_mut(id)
+                .insert(LocalMotion::new_forward(feet!(info.speed())));
+            let on_ground = info.position().y == 0;
+            FlightDynamics::install_on(id, pt, on_ground, heap.as_mut())?;
+            if let Some(fuel_override) = info.fuel_override() {
+                heap.get_mut::<Throttle>(id)
+                    .set_internal_fuel_lbs(fuel_override as f64);
+            }
+        }
+
+        Ok(id)
     }
 
     fn load_mmm_common<'a, I>(
@@ -215,7 +294,7 @@ impl AssetLoader {
             }
         }
         let shape_names = shape_names.iter().collect::<Vec<_>>();
-        let preloaded_shape_ids = heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+        heap.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
             let libs = heap.resource::<Libs>();
             shapes.upload_shapes(
                 libs.palette(),
@@ -254,63 +333,9 @@ impl AssetLoader {
                 };
             duplicates.insert(base_inst_name, next_count);
 
-            let id = heap.spawn_named(&inst_name)?.insert(MissionMarker).id();
-
-            // Load the shape if it has one.
-            let metadata = if let Some(shape_file) = info.xt().ot().shape.as_ref() {
-                let shape_ids = preloaded_shape_ids
-                    .get(shape_file)
-                    .ok_or_else(|| anyhow!("failed to load shape"))?;
-                heap.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
-                    heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
-                        let entity = heap.named_entity_mut(id);
-                        shapes.instantiate(entity, shape_ids.normal(), &gpu)
-                    })
-                })?;
-                heap.resource::<ShapeBuffer>().metadata(shape_ids.normal())
-            } else {
-                Arc::new(RwLock::new(ShapeMetadata::non_shape()))
-            };
-
-            // FIXME: seriously, figure out what's going on here
-            let scale: Option<&i32> = SCALE_OVERRIDE.get(<String as Borrow<str>>::borrow(
-                &info.xt().ot().ot_names.file_name,
-            ));
-            let scale = *scale.unwrap_or(&1i32) as f32;
-            let scale = scale * FEET_TO_METERS;
-
-            let frame = {
-                let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
-                let offset_from_ground = (metadata.read().extent().offset_to_ground()
-                    + feet!(info.position().y))
-                    * scale;
-                // FIXME: figure out the terrain height here
-                let position = tile_mapper.fa2grat(info.position(), feet!(offset_from_ground));
-
-                if info.xt().ot().ot_names.file_name.starts_with("STRIP") {
-                    println!(
-                        "{}: {},{},{} => {}",
-                        info.xt().ot().ot_names.file_name,
-                        info.angle().yaw(),
-                        info.angle().pitch(),
-                        info.angle().roll(),
-                        info.angle().facing()
-                    );
-                }
-                WorldSpaceFrame::from_graticule(position, info.angle().facing())
-            };
-
+            let id = Self::spawn_entity_common(&inst_name, info, Some(tile_id), heap.as_mut())?;
             if inst_name == "Player" {
                 heap.named_entity_mut(id).insert(PlayerMarker);
-            }
-
-            heap.named_entity_mut(id)
-                .insert(frame)
-                .insert(ShapeScale::new(scale))
-                .insert(info.xt());
-
-            if let Some(pt) = info.xt().pt() {
-                FlightDynamics::install_on(id, pt, heap.as_mut());
             }
         }
 
@@ -361,6 +386,9 @@ impl AssetLoader {
     fn load_mission(&self, name: &str, mut heap: HeapMut) -> Result<()> {
         // Unload prior mission
         self.unload_mission(heap.as_mut())?;
+
+        // Reattach camera in case it has gone wandering
+        self.attach_camera(heap.as_mut());
 
         let name = name.to_uppercase();
         // if name.starts_with('~') || name.starts_with('$') {

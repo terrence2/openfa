@@ -80,6 +80,9 @@ pub struct ShapeBuffer {
     blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
 
+    // Map from any particular shape name to the ShapeIds we have on file for it.
+    shapes_cache: HashMap<String, ShapeIds>,
+
     bind_group_layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
 }
@@ -286,6 +289,7 @@ impl ShapeBuffer {
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
+            shapes_cache: HashMap::new(),
             bind_group_layout,
             pipeline,
         })
@@ -323,14 +327,15 @@ impl ShapeBuffer {
         shape_file_names: &[S],
         catalog: &Catalog,
         gpu: &Gpu,
-    ) -> Result<HashMap<String, ShapeIds>> {
-        let mut out = HashMap::new();
-
+    ) -> Result<()> {
         // Load all SH files, including associated damage models (but not shadow shapes, those have
         // their own section in the OT files, for some reason).
         let mut shapes = HashMap::new();
         for shape_file_name in shape_file_names {
             let shape_file_name = shape_file_name.as_ref();
+            if self.shapes_cache.contains_key(shape_file_name) {
+                continue;
+            }
             shapes.insert(
                 shape_file_name.to_owned(),
                 RawShape::from_bytes(catalog.read_name(shape_file_name)?.as_ref())?,
@@ -352,6 +357,9 @@ impl ShapeBuffer {
         // Re-visit our shape_file_names and accumulate our uploaded shape data into useful results.
         for shape_file_name in shape_file_names {
             let shape_file_name = shape_file_name.as_ref();
+            if self.shapes_cache.contains_key(shape_file_name) {
+                continue;
+            }
             assert!(
                 upload_results.contains_key(shape_file_name),
                 "did not find expected loaded models"
@@ -382,13 +390,22 @@ impl ShapeBuffer {
                 }
             }
 
-            out.insert(
+            self.shapes_cache.insert(
                 shape_file_name.to_owned(),
                 ShapeIds::new(normal_shape_id, damage_shape_ids),
             );
         }
 
-        Ok(out)
+        Ok(())
+    }
+
+    pub fn shape_ids_for_preloaded_shape<S: AsRef<str>>(
+        &self,
+        shape_file_name: S,
+    ) -> Result<&ShapeIds> {
+        self.shapes_cache
+            .get(shape_file_name.as_ref())
+            .ok_or_else(|| anyhow!("request for shape not preloaded"))
     }
 
     fn sys_close_open_chunks(
@@ -453,23 +470,6 @@ impl ShapeBuffer {
             .get_mut(slot_id.block_id())
             .expect("invalid slot block")
             .deallocate_slot(slot_id);
-    }
-
-    // Note: should only be used interactively, as it is super wasteful of GPU resources.
-    pub fn instantiate_one(
-        &mut self,
-        mut entity: NamedEntityMut,
-        shape_name: &str,
-        palette: &Palette,
-        catalog: &Catalog,
-        gpu: &Gpu,
-    ) -> Result<()> {
-        let shape_map = self.upload_shapes(palette, &[shape_name], catalog, gpu)?;
-        let shape_ids = shape_map
-            .get(shape_name)
-            .ok_or_else(|| anyhow!("failed to load shape"))?;
-        entity.insert(shape_ids.to_owned());
-        self.instantiate(entity, shape_ids.normal(), gpu)
     }
 
     #[inline]
@@ -868,14 +868,40 @@ mod test {
                 // FIXME: skip _?.SH shapes as those should be loaded automagically now
                 all_shapes.push(meta.name().to_owned());
             }
-            let out = runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
                 shapes.upload_shapes(palette, &all_shapes, catalog, heap.resource::<Gpu>())
             })?;
 
             // Create an instance of each core shape.
-            for (name, shape_ids) in out.iter() {
+            for fid in catalog.find_with_extension("SH")? {
+                let meta = catalog.stat(fid)?;
+                if meta.name().ends_with("_S.SH")
+                    || meta.name().ends_with("_A.SH")
+                    || meta.name().ends_with("_B.SH")
+                    || meta.name().ends_with("_C.SH")
+                    || meta.name().ends_with("_D.SH")
+                {
+                    continue;
+                }
+                // FIXME: re-try all of these
+                if skipped.contains(&meta.name()) {
+                    println!(
+                        "SKIP: {}:{:13} @ {}",
+                        game.test_dir,
+                        meta.name(),
+                        meta.path()
+                    );
+                    continue;
+                } else {
+                    println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
+                }
+                let shape_ids = runtime
+                    .resource::<ShapeBuffer>()
+                    .shape_ids_for_preloaded_shape(meta.name())?
+                    .to_owned();
+                // for (name, shape_ids) in out.iter() {
                 let id = runtime
-                    .spawn_named(&format!("{}:{}", game.test_dir, name))?
+                    .spawn_named(&format!("{}:{}", game.test_dir, meta.name()))?
                     .id();
                 runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
                     heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {

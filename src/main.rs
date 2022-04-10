@@ -12,10 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::degrees;
+use absolute_unit::{degrees, feet, meters};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
-use asset_loader::{AssetLoader, MissionMarker};
+use asset_loader::{AssetLoader, MissionMarker, PlayerMarker};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::{
@@ -32,7 +32,7 @@ use global_data::GlobalParametersBuffer;
 use gpu::{DetailLevelOpts, Gpu, GpuStep};
 use input::{DemoFocus, InputSystem};
 use lib::{Libs, LibsOpts};
-use measure::WorldSpaceFrame;
+use measure::{LocalMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_resource, NitrousResource};
 use orrery::Orrery;
 use parking_lot::RwLock;
@@ -49,7 +49,8 @@ use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use widget::{
-    Border, Color, Expander, Label, Labeled, PositionH, PositionV, VerticalBox, WidgetBuffer,
+    Border, Color, Expander, FontId, Label, Labeled, PositionH, PositionV, VerticalBox,
+    WidgetBuffer,
 };
 use window::{
     size::{LeftBound, Size},
@@ -86,6 +87,10 @@ struct VisibleWidgets {
     camera_position: Arc<RwLock<Label>>,
     camera_fov: Arc<RwLock<Label>>,
     fps_label: Arc<RwLock<Label>>,
+
+    weight_label: Arc<RwLock<Label>>,
+    accel_label: Arc<RwLock<Label>>,
+    velocity_label: Arc<RwLock<Label>>,
 }
 
 #[derive(Debug, NitrousResource)]
@@ -215,6 +220,30 @@ impl System {
             .add_child("controls", expander)
             .set_float(PositionH::End, PositionV::Top);
 
+        fn make_label(
+            widgets: &mut WidgetBuffer<DemoFocus>,
+            font_id: FontId,
+            offset: i32,
+        ) -> Arc<RwLock<Label>> {
+            let label = Label::new("empty")
+                .with_font(font_id)
+                .with_color(Color::Green)
+                .with_size(Size::from_pts(12.0))
+                .with_pre_blended_text()
+                .wrapped();
+            let rootp = widgets.root_container();
+            let mut root = rootp.write();
+            let mut packing = root.add_child("weight", label.clone());
+            packing.set_float(PositionH::Start, PositionV::Top);
+            packing.set_offset(Size::zero(), Size::from_pts(offset as f32 * -14.0));
+            label
+        }
+
+        let font_id = widgets.font_context().font_id_for_name("HUD11");
+        let weight_label = make_label(widgets, font_id, 0);
+        let accel_label = make_label(widgets, font_id, 1);
+        let velocity_label = make_label(widgets, font_id, 2);
+
         let fps_label = Label::new("")
             .with_font(widgets.font_context().font_id_for_name("sans"))
             .with_color(Color::Red)
@@ -256,6 +285,9 @@ impl System {
             camera_position,
             camera_fov,
             fps_label,
+            weight_label,
+            accel_label,
+            velocity_label,
         })
     }
 
@@ -264,23 +296,48 @@ impl System {
         timestep: Res<TimeStep>,
         orrery: Res<Orrery>,
         mut system: ResMut<System>,
+        query: Query<(&WorldSpaceFrame, &LocalMotion, &FlightDynamics), With<PlayerMarker>>,
     ) {
-        system.track_visible_state(*timestep.now(), &orrery, &camera);
+        system.track_visible_state(*timestep.now(), &orrery, &camera, query);
     }
 
-    pub fn track_visible_state(&mut self, now: Instant, orrery: &Orrery, camera: &ScreenCamera) {
+    pub fn track_visible_state(
+        &mut self,
+        now: Instant,
+        orrery: &Orrery,
+        camera: &ScreenCamera,
+        query: Query<(&WorldSpaceFrame, &LocalMotion, &FlightDynamics), With<PlayerMarker>>,
+    ) {
         self.visible_widgets
             .sim_time
             .write()
             .set_text(format!("Date: {}", orrery.get_time()));
-        // self.visible_widgets
-        //     .camera_direction
-        //     .write()
-        //     .set_text(format!("Eye: {}", arcball.eye()));
-        // self.visible_widgets
-        //     .camera_position
-        //     .write()
-        //     .set_text(format!("Position: {}", arcball.target(),));
+        if let Ok((frame, motion, dynamics)) = query.get_single() {
+            self.visible_widgets
+                .weight_label
+                .write()
+                .set_text(format!("Weight: {:0.1} lbs", dynamics.weight_lbs()));
+            self.visible_widgets
+                .accel_label
+                .write()
+                .set_text(format!("Accel: {:0.2} m/s/s", motion.acceleration_m_s2().z));
+            self.visible_widgets
+                .velocity_label
+                .write()
+                .set_text(format!("Velocity: {:0.2} m/s", motion.velocity_m_s().z));
+
+            self.visible_widgets
+                .camera_direction
+                .write()
+                .set_text(format!(
+                    "V: {}",
+                    feet!(meters!(motion.forward_velocity())) / 5280. * 3600.
+                ));
+            self.visible_widgets
+                .camera_position
+                .write()
+                .set_text(format!("Position: {}", frame.position(),));
+        }
         self.visible_widgets
             .camera_fov
             .write()
@@ -507,19 +564,19 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<TimeStep>()?
         .load_extension::<CameraSystem>()?
         .load_extension::<PlayerCameraController>()?
-        // .load_extension::<ArcBallSystem>()?
+        .load_extension::<ArcBallSystem>()?
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
         .load_extension::<FlightDynamics>()?;
 
-    // But we need at least a cameras and controller before the sim is ready to run.
-    // let _player_ent = runtime
-    //     .spawn_named("Player")?
-    //     .insert(WorldSpaceFrame::default())
-    //     .insert_named(ArcBallController::default())?
-    //     .insert(ScreenCameraController::default())
-    //     .id();
+    // Have an arcball camera controller sitting around that we can fall back to for debugging.
+    let _fallback_camera_ent = runtime
+        .spawn_named("fallback_camera")?
+        .insert(WorldSpaceFrame::default())
+        .insert_named(ArcBallController::default())?
+        // .insert(ScreenCameraController::default())
+        .id();
 
     runtime.run_startup();
     while runtime.resource::<ExitRequest>().still_running() {

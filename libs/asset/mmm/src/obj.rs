@@ -183,6 +183,34 @@ pub struct ObjectInfo {
 }
 
 impl ObjectInfo {
+    pub fn from_xt(xt: TypeRef, name: &str) -> Self {
+        Self {
+            xt,
+            name: Some(name.to_owned()),
+            pos: Point3::new(1, 1, 1), // avoid origin for special discover of e.g. gear
+            angle: EulerAngles::default(),
+            nationality: Nationality::Unk0,
+            flags: 0,
+            speed: 200.,
+            alias: None,
+            // NT only.
+            skill: None,
+            react: None,
+            search_dist: None,
+            group: None,
+            // PT only.
+            waypoints: None,
+            wing: None,
+            wng_formation: None,
+            start_time: 0,
+            controller: 0,
+            preferred_target_id: None,
+            npc_flags: None,
+            hardpoint_overrides: None,
+            fuel_override: None,
+        }
+    }
+
     pub(crate) fn from_tokens(
         tokens: &mut SplitAsciiWhitespace,
         type_manager: &TypeManager,
@@ -390,5 +418,13 @@ impl ObjectInfo {
 
     pub fn angle(&self) -> &EulerAngles {
         &self.angle
+    }
+
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    pub fn fuel_override(&self) -> Option<u8> {
+        self.fuel_override
     }
 }

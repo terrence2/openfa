@@ -16,9 +16,10 @@ use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use pt::PlaneType;
 use shape::DrawState;
-use std::{num::NonZeroU32, time::Duration};
+use std::time::Duration;
 
 const _AFTERBURNER_ENABLE_SOUND: &'static str = "&AFTBURN.11K";
+const ENGINE_IDLE: f32 = 0.2;
 
 #[derive(Debug, Copy, Clone)]
 enum ThrottlePosition {
@@ -75,7 +76,7 @@ impl ThrottlePosition {
 pub struct Throttle {
     throttle_position: ThrottlePosition,
     engine_position: ThrottlePosition,
-    internal_fuel: f32,
+    internal_fuel_lbs: f32,
 }
 
 #[inject_nitrous_component]
@@ -85,8 +86,18 @@ impl Throttle {
         Throttle {
             throttle_position: ThrottlePosition::Military(0.),
             engine_position: ThrottlePosition::Military(0.),
-            internal_fuel: pt.internal_fuel as f32,
+            internal_fuel_lbs: pt.internal_fuel as f32,
         }
+    }
+
+    #[method]
+    pub fn internal_fuel_lbs(&self) -> f64 {
+        self.internal_fuel_lbs as f64
+    }
+
+    #[method]
+    pub fn set_internal_fuel_lbs(&mut self, fuel_override: f64) {
+        self.internal_fuel_lbs = fuel_override as f32;
     }
 
     pub(crate) fn sys_tick(&mut self, dt: &Duration, pt: &PlaneType, draw_state: &mut DrawState) {
@@ -105,6 +116,28 @@ impl Throttle {
             ) {
                 draw_state.disable_afterburner();
             }
+        }
+    }
+
+    pub(crate) fn consume_fuel(&mut self, dt: &Duration, pt: &PlaneType) {
+        let consumption_rate_lbs = if self.engine_position.is_afterburner() {
+            pt.aft_fuel_consumption as f32
+        } else {
+            let power_f = self.engine_position.military() / 100.;
+            let consumption_f = power_f * (1. - ENGINE_IDLE) + ENGINE_IDLE;
+            pt.fuel_consumption as f32 * consumption_f
+        };
+        let consumption_amount_lbs = consumption_rate_lbs * dt.as_secs_f32();
+        self.internal_fuel_lbs -= consumption_amount_lbs;
+    }
+
+    pub(crate) fn compute_thrust(&self, pt: &PlaneType) -> f32 {
+        if self.engine_position.is_afterburner() {
+            pt.aft_thrust as f32
+        } else {
+            // TODO: can we assume zero thrust at engine off? Probably close enough.
+            let power_f = self.engine_position.military() / 100.;
+            pt.thrust as f32 * power_f
         }
     }
 
