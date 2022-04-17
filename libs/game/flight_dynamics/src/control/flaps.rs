@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
+use pt::PlaneType;
 use shape::DrawState;
 
 #[derive(Component, NitrousComponent, Debug, Copy, Clone)]
@@ -31,6 +32,13 @@ impl Flaps {
 
     pub(crate) fn sys_tick(&self, draw_state: &mut DrawState) {
         draw_state.set_flaps(self.extended)
+    }
+
+    pub fn coefficient_of_drag(&self, pt: &PlaneType) -> f32 {
+        // While the coefficient would vary while flaps are being changed,
+        // we don't model that as it happens very quickly (at least for
+        // aircraft we care about primarily in this simulation).
+        (pt.flaps_drag * self.extended as i16) as f32
     }
 
     #[method]

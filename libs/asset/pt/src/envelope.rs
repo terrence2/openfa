@@ -38,6 +38,16 @@ pub struct EnvelopeCoord {
     altitude: f32,
 }
 
+impl EnvelopeCoord {
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    pub fn altitude(&self) -> f32 {
+        self.altitude
+    }
+}
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct EnvelopeShape {
@@ -57,6 +67,12 @@ impl FromRows for EnvelopeShape {
             shape.push(EnvelopeCoord { speed, altitude });
         }
         Ok((Self { shape }, 40))
+    }
+}
+
+impl EnvelopeShape {
+    pub fn coord(&self, offset: usize) -> &EnvelopeCoord {
+        &self.shape[offset]
     }
 }
 

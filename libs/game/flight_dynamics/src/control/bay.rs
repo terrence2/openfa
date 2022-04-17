@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
+use pt::PlaneType;
 use shape::DrawState;
 use std::time::Duration;
 
@@ -23,6 +24,12 @@ enum BayPosition {
     Closed,
     Opening(f32),
     Closing(f32),
+}
+
+impl BayPosition {
+    fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed)
+    }
 }
 
 #[derive(Component, NitrousComponent, Debug, Copy, Clone)]
@@ -73,6 +80,13 @@ impl Bay {
             }
             p => p,
         }
+    }
+
+    pub fn coefficient_of_drag(&self, pt: &PlaneType) -> f32 {
+        // Bay doors are usually fully exposed the moment they are open. While induced drag
+        // will vary with bay door position, this is a complex interaction and not one we can
+        // easily model without a fluid simulation. As such, we boil it down to a bool.
+        (pt.flaps_drag * (!self.position.is_closed()) as i16) as f32
     }
 
     #[method]

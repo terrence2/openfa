@@ -14,15 +14,28 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
+use pt::PlaneType;
 use shape::DrawState;
 use std::time::Duration;
 
+// Openness is in the range of 0 to 1.
 #[derive(Clone, Copy, Debug)]
 enum GearPosition {
     Open,
     Closed,
     Opening(f32),
     Closing(f32),
+}
+
+impl GearPosition {
+    fn open_fraction(&self) -> f32 {
+        match self {
+            Self::Open => 1.,
+            Self::Closed => 0.,
+            Self::Opening(f) => *f,
+            Self::Closing(f) => *f,
+        }
+    }
 }
 
 #[derive(Component, NitrousComponent, Debug, Copy, Clone)]
@@ -84,6 +97,12 @@ impl Gear {
             }
             p => p,
         }
+    }
+
+    pub fn coefficient_of_drag(&self, pt: &PlaneType) -> f32 {
+        // The coefficient of drag will vary in complex and unpredictable ways as the shape
+        // of the aircraft changes. We boil that down to a simple linear transition.
+        pt.gear_drag as f32 * self.position.open_fraction()
     }
 
     #[method]

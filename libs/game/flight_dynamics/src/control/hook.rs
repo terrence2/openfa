@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
+use pt::PlaneType;
 use shape::DrawState;
 
 #[derive(Component, NitrousComponent, Debug, Copy, Clone)]
@@ -31,6 +32,11 @@ impl Hook {
 
     pub(crate) fn sys_tick(&self, draw_state: &mut DrawState) {
         draw_state.set_hook(self.extended)
+    }
+
+    pub fn coefficient_of_drag(&self, _pt: &PlaneType) -> f32 {
+        // Hook induced drag is more or less constant, if deployed.
+        (2i16 * self.extended as i16) as f32
     }
 
     #[method]

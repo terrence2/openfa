@@ -23,7 +23,7 @@ use camera::{
 };
 use composite::CompositeRenderPass;
 use event_mapper::EventMapper;
-use flight_dynamics::FlightDynamics;
+use flight_dynamics::{FlightDynamics, Throttle};
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
@@ -58,6 +58,7 @@ use window::{
 };
 use world::WorldRenderPass;
 use xt::TypeManager;
+use xt::TypeRef;
 
 /// Show resources from Jane's Fighters Anthology engine LIB files.
 #[derive(Clone, Debug, StructOpt)]
@@ -89,6 +90,7 @@ struct VisibleWidgets {
     fps_label: Arc<RwLock<Label>>,
 
     weight_label: Arc<RwLock<Label>>,
+    engine_label: Arc<RwLock<Label>>,
     accel_label: Arc<RwLock<Label>>,
     velocity_label: Arc<RwLock<Label>>,
 }
@@ -222,6 +224,7 @@ impl System {
 
         fn make_label(
             widgets: &mut WidgetBuffer<DemoFocus>,
+            name: &str,
             font_id: FontId,
             offset: i32,
         ) -> Arc<RwLock<Label>> {
@@ -233,16 +236,17 @@ impl System {
                 .wrapped();
             let rootp = widgets.root_container();
             let mut root = rootp.write();
-            let mut packing = root.add_child("weight", label.clone());
+            let mut packing = root.add_child(name, label.clone());
             packing.set_float(PositionH::Start, PositionV::Top);
             packing.set_offset(Size::zero(), Size::from_pts(offset as f32 * -14.0));
             label
         }
 
         let font_id = widgets.font_context().font_id_for_name("HUD11");
-        let weight_label = make_label(widgets, font_id, 0);
-        let accel_label = make_label(widgets, font_id, 1);
-        let velocity_label = make_label(widgets, font_id, 2);
+        let weight_label = make_label(widgets, "weight", font_id, 0);
+        let engine_label = make_label(widgets, "engine", font_id, 1);
+        let accel_label = make_label(widgets, "accel", font_id, 2);
+        let velocity_label = make_label(widgets, "velocity", font_id, 3);
 
         let fps_label = Label::new("")
             .with_font(widgets.font_context().font_id_for_name("sans"))
@@ -286,6 +290,7 @@ impl System {
             camera_fov,
             fps_label,
             weight_label,
+            engine_label,
             accel_label,
             velocity_label,
         })
@@ -296,59 +301,74 @@ impl System {
         timestep: Res<TimeStep>,
         orrery: Res<Orrery>,
         mut system: ResMut<System>,
-        query: Query<(&WorldSpaceFrame, &LocalMotion, &FlightDynamics), With<PlayerMarker>>,
+        query: Query<
+            (
+                &WorldSpaceFrame,
+                &LocalMotion,
+                &TypeRef,
+                &Throttle,
+                &FlightDynamics,
+            ),
+            With<PlayerMarker>,
+        >,
     ) {
-        system.track_visible_state(*timestep.now(), &orrery, &camera, query);
-    }
-
-    pub fn track_visible_state(
-        &mut self,
-        now: Instant,
-        orrery: &Orrery,
-        camera: &ScreenCamera,
-        query: Query<(&WorldSpaceFrame, &LocalMotion, &FlightDynamics), With<PlayerMarker>>,
-    ) {
-        self.visible_widgets
+        system
+            .visible_widgets
             .sim_time
             .write()
             .set_text(format!("Date: {}", orrery.get_time()));
-        if let Ok((frame, motion, dynamics)) = query.get_single() {
-            self.visible_widgets
+        if let Ok((frame, motion, xt, throttle, dynamics)) = query.get_single() {
+            system
+                .visible_widgets
                 .weight_label
                 .write()
                 .set_text(format!("Weight: {:0.1} lbs", dynamics.weight_lbs()));
-            self.visible_widgets
+            system
+                .visible_widgets
+                .engine_label
+                .write()
+                .set_text(format!(
+                    "Engine: {} ({} lbs)",
+                    throttle.engine_display(),
+                    throttle.compute_thrust(xt.pt().unwrap())
+                ));
+            system
+                .visible_widgets
                 .accel_label
                 .write()
-                .set_text(format!("Accel: {:0.2} m/s/s", motion.acceleration_m_s2().z));
-            self.visible_widgets
+                .set_text(format!("Accel: {:0.4} m/s/s", motion.acceleration_m_s2().z));
+            system
+                .visible_widgets
                 .velocity_label
                 .write()
                 .set_text(format!("Velocity: {:0.2} m/s", motion.velocity_m_s().z));
 
-            self.visible_widgets
+            system
+                .visible_widgets
                 .camera_direction
                 .write()
                 .set_text(format!(
                     "V: {}",
                     feet!(meters!(motion.forward_velocity())) / 5280. * 3600.
                 ));
-            self.visible_widgets
+            system
+                .visible_widgets
                 .camera_position
                 .write()
                 .set_text(format!("Position: {}", frame.position(),));
         }
-        self.visible_widgets
+        system
+            .visible_widgets
             .camera_fov
             .write()
             .set_text(format!("FoV: {}", degrees!(camera.fov_y()),));
-        let frame_time = now.elapsed();
+        let frame_time = timestep.now().elapsed();
         let ts = format!(
             "frame: {}.{}ms",
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
         );
-        self.visible_widgets.fps_label.write().set_text(ts);
+        system.visible_widgets.fps_label.write().set_text(ts);
     }
 
     /*

@@ -71,6 +71,15 @@ impl ThrottlePosition {
     }
 }
 
+impl ToString for ThrottlePosition {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Afterburner => "AFT".to_owned(),
+            Self::Military(m) => format!("{}%", m),
+        }
+    }
+}
+
 #[derive(Component, NitrousComponent, Debug, Copy, Clone)]
 #[Name = "throttle"]
 pub struct Throttle {
@@ -88,6 +97,14 @@ impl Throttle {
             engine_position: ThrottlePosition::Military(0.),
             internal_fuel_lbs: pt.internal_fuel as f32,
         }
+    }
+
+    pub fn throttle_display(&self) -> String {
+        self.throttle_position.to_string()
+    }
+
+    pub fn engine_display(&self) -> String {
+        self.engine_position.to_string()
     }
 
     #[method]
@@ -131,7 +148,7 @@ impl Throttle {
         self.internal_fuel_lbs -= consumption_amount_lbs;
     }
 
-    pub(crate) fn compute_thrust(&self, pt: &PlaneType) -> f32 {
+    pub fn compute_thrust(&self, pt: &PlaneType) -> f32 {
         if self.engine_position.is_afterburner() {
             pt.aft_thrust as f32
         } else {

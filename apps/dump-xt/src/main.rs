@@ -140,8 +140,18 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
             println!();
             println!("{:>25}: {:02}", "Envelope", i + 1);
             println!("{:>25}====", "========");
-            for field in Envelope::fields() {
-                println!("{:>25}: {}", field, env.get_field(field));
+            println!("{:>25}: {}", "gload", env.get_field("gload"));
+            println!("{:>25}: {}", "stall_lift", env.get_field("stall_lift"));
+            println!("{:>25}: {}", "max_speed", env.get_field("max_speed"));
+            println!("{:>25}:    kts    alt", "shape");
+            for i in 0..env.count {
+                let shape = &env.shape.coord(i as usize);
+                println!(
+                    "{:>25}    {:>4} {:>6}",
+                    " ",
+                    shape.speed() as i32,
+                    shape.altitude() as i32
+                );
             }
         }
     }

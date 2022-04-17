@@ -14,11 +14,12 @@ bindings.bind("+mouse1", "@camera.controller.set_pan_view(pressed)");
 bindings.bind("mouseMotion", "@camera.controller.handle_mousemotion(dx, dy)");
 bindings.bind("mouseWheel", "@camera.controller.handle_mousewheel(vertical_delta)");
 // Flight controls
-bindings.bind("key1", "@Player.throttle.set_detent(1)");
-bindings.bind("key2", "@Player.throttle.set_detent(2)");
-bindings.bind("key3", "@Player.throttle.set_detent(3)");
-bindings.bind("key4", "@Player.throttle.set_detent(4)");
-bindings.bind("key5", "@Player.throttle.set_detent(5)");
+bindings.bind("key1", "@Player.throttle.set_detent(0)");
+bindings.bind("key2", "@Player.throttle.set_detent(1)");
+bindings.bind("key3", "@Player.throttle.set_detent(2)");
+bindings.bind("key4", "@Player.throttle.set_detent(3)");
+bindings.bind("key5", "@Player.throttle.set_detent(4)");
+bindings.bind("key6", "@Player.throttle.set_detent(5)");
 bindings.bind("b", "@Player.airbrake.toggle()");
 bindings.bind("f", "@Player.flaps.toggle()");
 bindings.bind("h", "@Player.hook.toggle()");
