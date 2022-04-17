@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters, radians, LengthUnit, Meters};
+use absolute_unit::{degrees, meters, radians, scalar, LengthUnit, Meters};
 use geodesy::{Cartesian, GeoCenter, Graticule, Target};
 use measure::WorldSpaceFrame;
 use nalgebra::{Unit as NUnit, UnitQuaternion, Vector3};
@@ -101,7 +101,7 @@ impl ExternalCameraController {
     }
 
     pub fn handle_mousewheel(&mut self, delta: f64) {
-        self.eye.distance *= if delta > 0f64 { 1.1f64 } else { 0.9f64 };
-        self.eye.distance = self.eye.distance.max(meters!(0.01));
+        self.eye.distance *= scalar!(if delta > 0f64 { 1.1f64 } else { 0.9f64 });
+        self.eye.distance = self.eye.distance.max(meters!(0.01f64));
     }
 }

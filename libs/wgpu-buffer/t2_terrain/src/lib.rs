@@ -15,7 +15,7 @@
 mod t2_info;
 
 use crate::t2_info::T2Info;
-use absolute_unit::{degrees, meters, radians, Angle, Degrees, Feet, Length, Meters};
+use absolute_unit::{degrees, meters, radians, scalar, Angle, Degrees, Feet, Length, Meters};
 use anyhow::{ensure, Result};
 use atlas::AtlasPacker;
 use bevy_ecs::prelude::*;
@@ -122,10 +122,10 @@ impl T2Mapper {
         // lon_f = ((pos.lon() - base.lon) / span.lon) * cos(pos.lat)
         // lon_f / cos(pos.lat) * span.lon = (pos.lon - base.lon)
         // pos.lon = (lon_f / cos(pos.lat) * span.lon) + base.lon
-        let lat_f = pos[2] as f32 / self.extent_ft[0];
-        let lon_f = pos[0] as f32 / self.extent_ft[1];
+        let lat_f = scalar!(pos[2] as f32 / self.extent_ft[0]);
+        let lon_f = scalar!(pos[0] as f32 / self.extent_ft[1]);
         let lat = self.base[0] + (self.extent[0] * lat_f) - self.extent[0];
-        let lon = -((self.extent[1] / lat.cos() as f32 * lon_f) + self.base[1]);
+        let lon = -((self.extent[1] / lat.cos() * lon_f) + self.base[1]);
         Graticule::new(lat, lon, meters!(offset_from_ground))
     }
 }

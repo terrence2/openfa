@@ -17,7 +17,7 @@ mod control;
 pub use crate::control::{
     airbrake::Airbrake, bay::Bay, flaps::Flaps, gear::Gear, hook::Hook, throttle::Throttle,
 };
-use absolute_unit::{Feet, Meters};
+use absolute_unit::{feet, Feet, Meters};
 use animate::TimeStep;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
@@ -110,7 +110,7 @@ impl FlightDynamics {
         {
             let dt = timestep.step();
             let pt = xt.pt().expect("PT");
-            let grat = frame.position();
+            let grat = frame.position_graticule();
 
             // Update states of all flight controls
             airbrake.sys_tick(&mut draw_state);
@@ -136,7 +136,7 @@ impl FlightDynamics {
                 + bay.coefficient_of_drag(pt)
                 + gear.coefficient_of_drag(pt);
             let (_, atmospheric_density_slug_ft3, _) =
-                UsStandardAtmosphere::at_altitude(grat.distance::<Feet>());
+                UsStandardAtmosphere::at_altitude(feet!(grat.distance));
             let forward_velocity_ft_s = motion.forward_velocity() as f32 * METERS_TO_FEET_32;
             let drag_lbf = 0.5
                 * coef_drag
@@ -160,8 +160,8 @@ impl FlightDynamics {
 
             // rotate motion into world space frame and apply to position.
             let velocity_m_s = frame.facing() * motion.meters_per_second();
-            // let world_pos = frame.cartesian::<Meters>() - velocity_m_s * dt.as_secs_f64();
-            // frame.set_position(world_pos);
+            let world_pos = frame.position().vec64() - velocity_m_s * dt.as_secs_f64();
+            frame.set_position(world_pos.into());
 
             dynamics.weight_lbs = weight_lbs;
         }

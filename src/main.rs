@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters};
+use absolute_unit::{degrees, feet, meters, scalar};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::{AssetLoader, MissionMarker, PlayerMarker};
@@ -349,7 +349,7 @@ impl System {
                 .write()
                 .set_text(format!(
                     "V: {}",
-                    feet!(meters!(motion.forward_velocity())) / 5280. * 3600.
+                    feet!(meters!(motion.forward_velocity())) / scalar!(5280. * 3600.)
                 ));
             system
                 .visible_widgets

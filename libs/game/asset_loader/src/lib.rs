@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters, Meters};
+use absolute_unit::{degrees, feet, meters, scalar, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
@@ -226,7 +226,7 @@ impl AssetLoader {
             &info.xt().ot().ot_names.file_name,
         ));
         let scale = *scale.unwrap_or(&1i32) as f32;
-        let scale = scale * FEET_TO_METERS; // Internal units are meters
+        let scale = scalar!(scale * FEET_TO_METERS); // Internal units are meters
 
         let frame = if let Some(tile_id) = tile_id {
             let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
@@ -242,7 +242,7 @@ impl AssetLoader {
 
         heap.named_entity_mut(id)
             .insert(frame)
-            .insert(ShapeScale::new(scale))
+            .insert(ShapeScale::new(scale.into_inner() as f32))
             .insert(info.xt());
 
         // If the type is a plane, install a flight model
