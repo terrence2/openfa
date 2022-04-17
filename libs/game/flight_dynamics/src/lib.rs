@@ -17,18 +17,17 @@ mod control;
 pub use crate::control::{
     airbrake::Airbrake, bay::Bay, flaps::Flaps, gear::Gear, hook::Hook, throttle::Throttle,
 };
+use absolute_unit::{Feet, Meters};
 use animate::TimeStep;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
 use measure::{LocalMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_component, method, HeapMut, NamedEntityMut, NitrousComponent};
+use physical_constants::{UsStandardAtmosphere, FEET_TO_M_32, GRAVITY_M_S2_32, METERS_TO_FEET_32};
 use pt::PlaneType;
 use runtime::{Extension, Runtime};
 use shape::{DrawState, ShapeStep};
 use xt::TypeRef;
-
-// FIXME: find a common location
-const FEET_TO_METERS: f32 = 1. / 3.28084;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
 pub enum FlightStep {
@@ -111,6 +110,7 @@ impl FlightDynamics {
         {
             let dt = timestep.step();
             let pt = xt.pt().expect("PT");
+            let grat = frame.position();
 
             // Update states of all flight controls
             airbrake.sys_tick(&mut draw_state);
@@ -123,23 +123,45 @@ impl FlightDynamics {
             // FIXME: do not consume fuel internally if there are drop tanks
             throttle.consume_fuel(dt, pt);
 
+            // F{drag} = 0.5 * C{drag} * p * v**2 * A
+            //                           Kg/m^3 * m/s * m/s * m^2 => m*Kg/s^2
+            // FA accounts for A as part of the coefficient.
+            // TODO: does FA account for the 0.5 in the coefficients?
+            // We can assume that the units probably match thrust units, which are ft*lb/s^2
+            // FIXME: add in _gpull_drag; e.g. induced drag coefficient
+            let coef_drag = pt.coef_drag as f32
+                + airbrake.coefficient_of_drag(pt)
+                + flaps.coefficient_of_drag(pt)
+                + hook.coefficient_of_drag(pt)
+                + bay.coefficient_of_drag(pt)
+                + gear.coefficient_of_drag(pt);
+            let (_, atmospheric_density_slug_ft3, _) =
+                UsStandardAtmosphere::at_altitude(grat.distance::<Feet>());
+            let forward_velocity_ft_s = motion.forward_velocity() as f32 * METERS_TO_FEET_32;
+            let drag_lbf = 0.5
+                * coef_drag
+                * atmospheric_density_slug_ft3 as f32
+                * forward_velocity_ft_s
+                * forward_velocity_ft_s
+                / 32.174;
+
             // FIXME: add armament weights
             // FIXME: subtract force of drag
-            let drag_lbf = 0.;
             let thrust_lbf = throttle.compute_thrust(pt);
             let weight_lbs = pt.nt.ot.empty_weight as f32 + throttle.internal_fuel_lbs() as f32;
 
             // F=ma
             // a = F/m
             // (lb*ft/s^2) / lb => ft/s^2
-            let accel_m_ss = ((thrust_lbf - drag_lbf) / weight_lbs) * FEET_TO_METERS; // m/s^2
+            let accel_m_ss =
+                ((thrust_lbf - drag_lbf) / weight_lbs) * FEET_TO_M_32 * GRAVITY_M_S2_32; // m/s^2
             motion.acceleration_m_s2_mut().z = accel_m_ss as f64;
             *motion.forward_velocity_mut() += accel_m_ss as f64 * dt.as_secs_f64();
 
             // rotate motion into world space frame and apply to position.
             let velocity_m_s = frame.facing() * motion.meters_per_second();
-            let world_pos = frame.position().point64() - velocity_m_s * dt.as_secs_f64();
-            frame.set_position(world_pos);
+            // let world_pos = frame.cartesian::<Meters>() - velocity_m_s * dt.as_secs_f64();
+            // frame.set_position(world_pos);
 
             dynamics.weight_lbs = weight_lbs;
         }
