@@ -6,8 +6,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = "^ 0.6"
-bevy_tasks = "^ 0.6"
+bevy_ecs = { version = "^ 0.7", features = ["trace"] }
+bevy_tasks = "^ 0.7"
 bitflags = "^ 1"
 image = "^ 0.23"
 lazy_static = "^ 1"

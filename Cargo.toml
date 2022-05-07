@@ -67,7 +67,7 @@ debug = true
 [dependencies]
 chrono = "^ 0.4"
 anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = "^ 0.6"
+bevy_ecs = { version = "^ 0.7", features = ["trace"] }
 env_logger = "^ 0.7"
 image = "^ 0.23"
 log = "^ 0.4"
