@@ -125,7 +125,7 @@ fn find_closest_dithered(top: &[(usize, usize)]) -> usize {
         .map(|(x, i)| (sum.checked_div(*x).unwrap_or(sum), i))
         .collect::<Vec<_>>();
     let sum = inverted.iter().fold(0, |acc, (x, _)| acc + x);
-    let f: usize = rand::thread_rng().gen_range(0, sum.max(1));
+    let f: usize = rand::thread_rng().gen_range(0..sum.max(1));
     let mut acc = 0;
     for (x, i) in inverted {
         acc += x;

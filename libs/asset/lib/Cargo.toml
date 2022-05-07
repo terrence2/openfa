@@ -17,7 +17,7 @@ log = "^ 0.4"
 memmap = "^ 0.6"
 regex = "^ 1"
 structopt = "^ 0.3"
-zerocopy = "^ 0.5"
+zerocopy = "^ 0.6"
 lzss = { path = "../../util/lzss" }
 catalog = { path = "../../nitrogen/system/catalog" }
 nitrous = { path = "../../nitrogen/util/nitrous" }

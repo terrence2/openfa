@@ -8,7 +8,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = { version = "^ 0.7", features = ["trace"] }
 log = "^ 0.4"
-parking_lot = "^ 0.11"
+parking_lot = "^ 0.12"
 catalog = { path = "../../nitrogen/system/catalog" }
 jt = { path = "../../asset/jt" }
 lib = { path = "../../asset/lib" }

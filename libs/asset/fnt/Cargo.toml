@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 codepage-437 = "^ 0.1.0"
 anyhow = { version = "^ 1", features = ["backtrace"] }
-image = "^ 0.23"
+image = "^ 0.24"
 ansi = { path = "../../nitrogen/util/ansi" }
 i386 = { path = "../../util/i386" }
 peff = { path = "../../util/peff" }

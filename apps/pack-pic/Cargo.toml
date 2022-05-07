@@ -6,10 +6,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-image = "^ 0.23"
-rand = "^ 0.7"
+image = "^ 0.24"
+rand = "^ 0.8"
 structopt = "^ 0.3"
-zerocopy = "^ 0.5"
+zerocopy = "^ 0.6"
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/asset/lib" }
 pal = { path = "../../libs/asset/pal" }

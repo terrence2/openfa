@@ -18,7 +18,7 @@ use fnt::Fnt;
 use font_common::{FontAdvance, FontInterface};
 use gpu::Gpu;
 use i386::{Interpreter, Reg};
-use image::{GenericImage, GenericImageView, GrayImage, Luma};
+use image::{GenericImageView, GrayImage, Luma};
 use lazy_static::lazy_static;
 use log::trace;
 use parking_lot::RwLock;
@@ -133,7 +133,13 @@ impl FontInterface for FntFont {
                 .glyphs
                 .view(frame.x_offset, 0, frame.width as u32, self.height);
             let mut out = GrayImage::from_pixel(frame.width as u32, self.height, Luma([0]));
-            out.copy_from(&src, 0, 0).unwrap();
+            for y in 0..src.height() {
+                for x in 0..src.width() {
+                    out.put_pixel(x, y, src.get_pixel(x, y));
+                }
+            }
+            // FIXME: GenericImageView is not implemented for SubImage<&ImageBuffer<>>???
+            // out.copy_from(&src, 0, 0).unwrap();
             out
         } else if c == ' ' {
             GrayImage::new(1, 1)

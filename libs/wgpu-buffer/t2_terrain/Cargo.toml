@@ -8,11 +8,11 @@ edition = "2021"
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = { version = "^ 0.7", features = ["trace"] }
 log = "^ 0.4"
-image = "^ 0.23"
-nalgebra = "^ 0.29"
-parking_lot = "^ 0.11"
+image = "^ 0.24"
+nalgebra = "^ 0.31"
+parking_lot = "^ 0.12"
 wgpu = { version = "^ 0.12", features = ["spirv"] }
-zerocopy = "^ 0.5"
+zerocopy = "^ 0.6"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 camera = { path = "../../nitrogen/sim/camera" }
@@ -34,7 +34,7 @@ world = { path = "../../nitrogen/wgpu-buffer/world" }
 xt = { path = "../../asset/xt" }
 
 [dev-dependencies]
-env_logger = "^ 0.8"
+env_logger = "^ 0.9"
 lib = { path = "../../asset/lib" }
 
 [build-dependencies]
