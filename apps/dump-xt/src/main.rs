@@ -17,7 +17,7 @@ use catalog::Catalog;
 use lib::{Libs, LibsOpts};
 use simplelog::{Config, LevelFilter, TermLogger};
 use structopt::StructOpt;
-use xt::{Envelope, HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
+use xt::{HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
 
 /// Show the contents of OT, PT, NT, and JT files
 #[derive(Debug, StructOpt)]
@@ -142,15 +142,19 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
             println!("{:>25}====", "========");
             println!("{:>25}: {}", "gload", env.get_field("gload"));
             println!("{:>25}: {}", "stall_lift", env.get_field("stall_lift"));
-            println!("{:>25}: {}", "max_speed", env.get_field("max_speed"));
-            println!("{:>25}:    kts    alt", "shape");
+            println!(
+                "{:>25}: {}",
+                "max_speed_idx",
+                env.get_field("max_speed_index")
+            );
+            println!("{:>25}:", "shape");
             for i in 0..env.count {
                 let shape = &env.shape.coord(i as usize);
                 println!(
-                    "{:>25}    {:>4} {:>6}",
+                    "{:>25}     {:>4} {:>6}",
                     " ",
-                    shape.speed() as i32,
-                    shape.altitude() as i32
+                    shape.speed(),
+                    shape.altitude()
                 );
             }
         }

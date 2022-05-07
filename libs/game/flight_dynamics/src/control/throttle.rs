@@ -12,8 +12,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::{
+    feet_per_second2, meters_per_second2, pdl, pounds_force, pounds_weight, Force, PoundsForce,
+    PoundsWeight, Weight,
+};
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
+use physical_constants::GRAVITY_M_S2_64;
 use pt::PlaneType;
 use shape::DrawState;
 use std::time::Duration;
@@ -85,7 +90,7 @@ impl ToString for ThrottlePosition {
 pub struct Throttle {
     throttle_position: ThrottlePosition,
     engine_position: ThrottlePosition,
-    internal_fuel_lbs: f32,
+    internal_fuel_lb: Weight<PoundsWeight>, // e.g. weight
 }
 
 #[inject_nitrous_component]
@@ -95,7 +100,7 @@ impl Throttle {
         Throttle {
             throttle_position: ThrottlePosition::Military(0.),
             engine_position: ThrottlePosition::Military(0.),
-            internal_fuel_lbs: pt.internal_fuel as f32,
+            internal_fuel_lb: pounds_weight!(pt.internal_fuel),
         }
     }
 
@@ -107,14 +112,19 @@ impl Throttle {
         self.engine_position.to_string()
     }
 
+    pub fn internal_fuel(&self) -> Weight<PoundsWeight> {
+        self.internal_fuel_lb
+    }
+
     #[method]
     pub fn internal_fuel_lbs(&self) -> f64 {
-        self.internal_fuel_lbs as f64
+        self.internal_fuel_lb.f64()
     }
 
     #[method]
     pub fn set_internal_fuel_lbs(&mut self, fuel_override: f64) {
-        self.internal_fuel_lbs = fuel_override as f32;
+        // FIXME: check against max fuel?
+        self.internal_fuel_lb = pounds_weight!(fuel_override);
     }
 
     pub(crate) fn sys_tick(&mut self, dt: &Duration, pt: &PlaneType, draw_state: &mut DrawState) {
@@ -145,16 +155,16 @@ impl Throttle {
             pt.fuel_consumption as f32 * consumption_f
         };
         let consumption_amount_lbs = consumption_rate_lbs * dt.as_secs_f32();
-        self.internal_fuel_lbs -= consumption_amount_lbs;
+        self.internal_fuel_lb -= pounds_weight!(consumption_amount_lbs);
     }
 
-    pub fn compute_thrust(&self, pt: &PlaneType) -> f32 {
+    pub fn compute_thrust(&self, pt: &PlaneType) -> Force<PoundsForce> {
         if self.engine_position.is_afterburner() {
-            pt.aft_thrust as f32
+            pounds_force!(pt.aft_thrust)
         } else {
             // TODO: can we assume zero thrust at engine off? Probably close enough.
             let power_f = self.engine_position.military() / 100.;
-            pt.thrust as f32 * power_f
+            pounds_force!(pt.thrust as f32 * power_f)
         }
     }
 

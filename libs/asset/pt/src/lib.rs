@@ -16,6 +16,7 @@ mod envelope;
 
 pub use crate::envelope::Envelope;
 
+use absolute_unit::{Length, Meters, Seconds, Velocity};
 use anyhow::{bail, ensure, Result};
 use nt::NpcType;
 use ot::{
@@ -72,6 +73,12 @@ impl FromRow for Envelopes {
 impl Envelopes {
     pub fn iter(&self) -> Iter<Envelope> {
         self.all.iter()
+    }
+
+    pub fn find_g_load_extrema(&self, speed: Velocity<Meters, Seconds>, altitude: Length<Meters>) {
+        for envelope in &self.all {
+            let hit = envelope.find_g_load_extrema(speed, altitude);
+        }
     }
 }
 

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters, scalar, Meters};
+use absolute_unit::{degrees, feet, feet_per_second, meters, scalar, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
@@ -248,7 +248,7 @@ impl AssetLoader {
         // If the type is a plane, install a flight model
         if let Some(pt) = info.xt().pt() {
             heap.named_entity_mut(id)
-                .insert(LocalMotion::new_forward(feet!(info.speed())));
+                .insert(LocalMotion::new_forward(feet_per_second!(info.speed())));
             let on_ground = info.position().y == 0;
             FlightDynamics::install_on(id, pt, on_ground, heap.as_mut())?;
             if let Some(fuel_override) = info.fuel_override() {

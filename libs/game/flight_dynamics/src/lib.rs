@@ -17,13 +17,17 @@ mod control;
 pub use crate::control::{
     airbrake::Airbrake, bay::Bay, flaps::Flaps, gear::Gear, hook::Hook, throttle::Throttle,
 };
-use absolute_unit::{feet, Feet, Meters};
+use absolute_unit::{
+    feet, feet2, feet_per_second, meters2, meters_per_second, meters_per_second2, pounds_force,
+    pounds_weight, scalar, seconds, Acceleration, Feet, Force, Kilograms, Mass, Meters, Newtons,
+    PoundsForce, PoundsMass, PoundsWeight, Seconds, Velocity, Weight,
+};
 use animate::TimeStep;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
 use measure::{LocalMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_component, method, HeapMut, NamedEntityMut, NitrousComponent};
-use physical_constants::{UsStandardAtmosphere, FEET_TO_M_32, GRAVITY_M_S2_32, METERS_TO_FEET_32};
+use physical_constants::{StandardAtmosphere, FEET_TO_M_32, GRAVITY_M_S2_32, METERS_TO_FEET_32};
 use pt::PlaneType;
 use runtime::{Extension, Runtime};
 use shape::{DrawState, ShapeStep};
@@ -38,7 +42,7 @@ pub enum FlightStep {
 #[Name = "dynamics"]
 pub struct FlightDynamics {
     // Aggregate current weight with all stores and fuel
-    weight_lbs: f32,
+    weight_lbs: Weight<PoundsWeight>,
 }
 
 impl Extension for FlightDynamics {
@@ -74,8 +78,12 @@ impl FlightDynamics {
         Ok(())
     }
 
-    pub fn weight_lbs(&self) -> f32 {
+    pub fn weight(&self) -> Weight<PoundsWeight> {
         self.weight_lbs
+    }
+
+    pub fn weight_lbs(&self) -> f32 {
+        self.weight_lbs.f32()
     }
 
     fn sys_simulate(
@@ -123,47 +131,61 @@ impl FlightDynamics {
             // FIXME: do not consume fuel internally if there are drop tanks
             throttle.consume_fuel(dt, pt);
 
+            // What is our max g-loading?
+            pt.envelopes
+                .find_g_load_extrema(motion.forward_velocity(), grat.distance);
+
             // F{drag} = 0.5 * C{drag} * p * v**2 * A
             //                           Kg/m^3 * m/s * m/s * m^2 => m*Kg/s^2
             // FA accounts for A as part of the coefficient.
-            // TODO: does FA account for the 0.5 in the coefficients?
             // We can assume that the units probably match thrust units, which are ft*lb/s^2
             // FIXME: add in _gpull_drag; e.g. induced drag coefficient
-            let coef_drag = pt.coef_drag as f32
-                + airbrake.coefficient_of_drag(pt)
-                + flaps.coefficient_of_drag(pt)
-                + hook.coefficient_of_drag(pt)
-                + bay.coefficient_of_drag(pt)
-                + gear.coefficient_of_drag(pt);
-            let (_, atmospheric_density_slug_ft3, _) =
-                UsStandardAtmosphere::at_altitude(feet!(grat.distance));
-            let forward_velocity_ft_s = motion.forward_velocity() as f32 * METERS_TO_FEET_32;
-            let drag_lbf = 0.5
-                * coef_drag
-                * atmospheric_density_slug_ft3 as f32
-                * forward_velocity_ft_s
-                * forward_velocity_ft_s
-                / 32.174;
+            let coef_drag = scalar!(
+                (pt.coef_drag as f32
+                    + airbrake.coefficient_of_drag(pt)
+                    + flaps.coefficient_of_drag(pt)
+                    + hook.coefficient_of_drag(pt)
+                    + bay.coefficient_of_drag(pt)
+                    + gear.coefficient_of_drag(pt))
+                // Cd (drag coefficient) is the same for all PT! It's probably not that huge
+                // a differentiator between aircraft models compared to induced drag, thrust
+                // and other factors, so makes some sense. Typical Cd are 0.01 to 0.02 range,
+                // whereas the sum above is going to be 256 + modifiers.
+                // Typical drags are on the order of 0.01 to 0.03. Divide by ~10_000.
+                / 10_000.
+            );
+
+            let atmosphere = StandardAtmosphere::at_altitude(grat.distance);
+            let forward_velocity_m_s: Velocity<Meters, Seconds> =
+                meters_per_second!(motion.forward_velocity());
+            // lb/ft^3 * ft/s * ft/s * ft^2 => lb*ft/s^2
+            let drag_lbf: Force<Newtons> = (scalar!(0.5).as_dyn()
+                * coef_drag.as_dyn()
+                * atmosphere.density::<Kilograms, Meters>().as_dyn()
+                * forward_velocity_m_s.as_dyn()
+                * forward_velocity_m_s.as_dyn()
+                * meters2!(1f64).as_dyn())
+            .into(); // area (usually pre-mixed with Cd for aircraft)
+                     // let drag_lbf = pounds_force!(0i8);
 
             // FIXME: add armament weights
-            // FIXME: subtract force of drag
             let thrust_lbf = throttle.compute_thrust(pt);
-            let weight_lbs = pt.nt.ot.empty_weight as f32 + throttle.internal_fuel_lbs() as f32;
+            let weight_lb = pounds_weight!(pt.nt.ot.empty_weight) + throttle.internal_fuel();
 
-            // F=ma
-            // a = F/m
-            // (lb*ft/s^2) / lb => ft/s^2
-            let accel_m_ss =
-                ((thrust_lbf - drag_lbf) / weight_lbs) * FEET_TO_M_32 * GRAVITY_M_S2_32; // m/s^2
-            motion.acceleration_m_s2_mut().z = accel_m_ss as f64;
-            *motion.forward_velocity_mut() += accel_m_ss as f64 * dt.as_secs_f64();
+            // a=F/m
+            let accel_m_ss: Acceleration<Meters, Seconds> =
+                meters_per_second2!((thrust_lbf - drag_lbf) / weight_lb.mass::<PoundsMass>());
+            motion.acceleration_m_s2_mut().z = accel_m_ss;
+            *motion.forward_velocity_mut() += accel_m_ss * seconds!(dt.as_secs_f64());
 
             // rotate motion into world space frame and apply to position.
-            let velocity_m_s = frame.facing() * motion.meters_per_second();
-            let world_pos = frame.position().vec64() - velocity_m_s * dt.as_secs_f64();
-            frame.set_position(world_pos.into());
+            let velocity_m_s = (frame.facing() * motion.velocity_m_s().map(|v| v.f64()))
+                .map(|v| meters_per_second!(v));
+            let world_pos =
+                frame.position_pt3() - velocity_m_s.map(|v| v * seconds!(dt.as_secs_f64()));
+            frame.set_position(world_pos);
 
-            dynamics.weight_lbs = weight_lbs;
+            dynamics.weight_lbs = weight_lb;
         }
     }
 }

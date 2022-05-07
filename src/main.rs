@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters, scalar};
+use absolute_unit::{degrees, feet, meters, miles_per_hour, scalar};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::{AssetLoader, MissionMarker, PlayerMarker};
@@ -328,7 +328,7 @@ impl System {
                 .engine_label
                 .write()
                 .set_text(format!(
-                    "Engine: {} ({} lbs)",
+                    "Engine: {} ({})",
                     throttle.engine_display(),
                     throttle.compute_thrust(xt.pt().unwrap())
                 ));
@@ -336,21 +336,21 @@ impl System {
                 .visible_widgets
                 .accel_label
                 .write()
-                .set_text(format!("Accel: {:0.4} m/s/s", motion.acceleration_m_s2().z));
+                .set_text(format!("Accel: {:0.4}", motion.acceleration_m_s2().z));
             system
                 .visible_widgets
                 .velocity_label
                 .write()
-                .set_text(format!("Velocity: {:0.2} m/s", motion.velocity_m_s().z));
+                .set_text(format!(
+                    "Velocity: {:0.2}",
+                    miles_per_hour!(motion.velocity_m_s().z)
+                ));
 
             system
                 .visible_widgets
                 .camera_direction
                 .write()
-                .set_text(format!(
-                    "V: {}",
-                    feet!(meters!(motion.forward_velocity())) / scalar!(5280. * 3600.)
-                ));
+                .set_text(format!("V: {}", motion.forward_velocity()));
             system
                 .visible_widgets
                 .camera_position
