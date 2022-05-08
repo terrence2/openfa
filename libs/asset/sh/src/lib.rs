@@ -27,13 +27,13 @@ use anyhow::{anyhow, bail, ensure, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use lazy_static::lazy_static;
 use log::trace;
+use packed_struct::packed_struct;
 use reverse::{bs2s, bs_2_i16, p2s};
 use std::{
     cmp,
     collections::{HashMap, HashSet},
     fmt, mem, str,
 };
-use zerocopy::{FromBytes, LayoutVerified};
 
 // Sandwiched instructions
 // Unmask
@@ -377,8 +377,8 @@ impl Unk6C {
     }
 }
 
-#[repr(packed)]
-#[derive(FromBytes, Copy, Clone)]
+#[packed_struct]
+#[derive(Copy, Clone)]
 pub struct CeOverlay {
     swing_pos: [i32; 3],
     f3: u16,
@@ -406,13 +406,12 @@ impl UnkCE {
         let data = &code[offset..];
         assert_eq!(data[0], Self::MAGIC);
         assert_eq!(data[1], 0);
-        // Note: no default for arrays larger than 32 elements.
         let s = &data[2..];
-        let (ce, _) = LayoutVerified::<&[u8], CeOverlay>::new_from_prefix(s).unwrap();
-        let ce = *ce;
+        let ce = CeOverlay::overlay_prefix(s)?;
         Ok(Self {
             offset,
-            ce,
+            ce: *ce,
+            // Note: no default for arrays larger than 32 elements.
             data: [
                 s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8], s[9], s[10], s[11], s[12],
                 s[13], s[14], s[15], s[16], s[17], s[18], s[19], s[20], s[21], s[22], s[23], s[24],
@@ -438,16 +437,16 @@ impl UnkCE {
         format!(
             "UnkCE @ {:04X}: {:6} {:6} {:6} {:2} {:6} {:6} {:6} {:6} {:6} {:6}",
             self.offset,
-            self.ce.swing_pos[0],
-            self.ce.swing_pos[1],
-            self.ce.swing_pos[2],
-            self.ce.f3,
-            self.ce.f4,
-            self.ce.f5,
-            self.ce.f6,
-            self.ce.f7,
-            self.ce.f8,
-            self.ce.f9,
+            self.ce.swing_pos()[0],
+            self.ce.swing_pos()[1],
+            self.ce.swing_pos()[2],
+            self.ce.f3(),
+            self.ce.f4(),
+            self.ce.f5(),
+            self.ce.f6(),
+            self.ce.f7(),
+            self.ce.f8(),
+            self.ce.f9(),
             // bs2s(&self.data[mem::size_of::<CeOverlay>()..])
         )
         // format!("UnkCE @ {:04X}: {}", self.offset, bs2s(&self.data))

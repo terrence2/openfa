@@ -14,12 +14,13 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use log::trace;
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
 use thiserror::Error;
+use zerocopy::LayoutVerified;
 
 #[derive(Debug, Error)]
 enum PortableExecutableError {
@@ -87,9 +88,7 @@ impl PortableExecutable {
             data[0] == 0x4d && data[1] == 0x5a,
             "not a dos program file header"
         );
-        let pe_offset_ptr: *const u32 =
-            unsafe { mem::transmute(data[0x3c..].as_ptr() as *const u8) };
-        let pe_offset = unsafe { *pe_offset_ptr } as usize;
+        let pe_offset = u32::from_le_bytes((&data[0x3c..0x40]).try_into()?) as usize;
 
         ensure!(
             data.len() > pe_offset + 4 + 20 + 28,
@@ -100,8 +99,7 @@ impl PortableExecutable {
             "did not find pe header"
         );
         let coff_offset = pe_offset + 4;
-        let coff_ptr: *const COFFHeader = data[coff_offset..].as_ptr() as *const _;
-        let coff: &COFFHeader = unsafe { &*coff_ptr };
+        let coff = COFFHeader::overlay_prefix(&data[coff_offset..])?;
         ensure!(coff.machine() == 0x14C, "expected i386 machine type field");
         ensure!(
             coff.characteristics() == 0xA18E,
@@ -115,8 +113,7 @@ impl PortableExecutable {
         ensure!(coff.size_of_optional_header() == 224, "a normal PE file");
 
         let opt_offset = pe_offset + 4 + mem::size_of::<COFFHeader>();
-        let opt_ptr: *const OptionalHeader = data[opt_offset..].as_ptr() as *const _;
-        let opt: &OptionalHeader = unsafe { &*opt_ptr };
+        let opt = OptionalHeader::overlay_prefix(&data[opt_offset..])?;
         ensure!(opt.magic() == 0x10B, "expected a PE optional header magic");
         ensure!(
             opt.size_of_uninitialized_data() == 0,
@@ -136,8 +133,7 @@ impl PortableExecutable {
 
         let win_offset =
             pe_offset + 4 + mem::size_of::<COFFHeader>() + mem::size_of::<OptionalHeader>();
-        let win_ptr: *const WindowsHeader = data[win_offset..].as_ptr() as *const _;
-        let win: &WindowsHeader = unsafe { &*win_ptr };
+        let win = WindowsHeader::overlay_prefix(&data[win_offset..])?;
         ensure!(
             win.image_base() == 0 || win.image_base() == 0x10000,
             "expected image base to be 0 or 10000"
@@ -182,16 +178,15 @@ impl PortableExecutable {
 
         // Load directory data so we can cross reference with the section labels.
         let dir_offset = win_offset + mem::size_of::<WindowsHeader>();
-        let dir_ptr: *const DataDirectory = data[dir_offset..].as_ptr() as *const _;
-        let dirs: &[DataDirectory] = unsafe { std::slice::from_raw_parts(dir_ptr, 16) };
+        let dir_end = dir_offset + 16 * mem::size_of::<DataDirectory>();
+        let dirs = DataDirectory::overlay_slice(&data[dir_offset..dir_end])?;
 
         let section_table_offset =
             pe_offset + 4 + mem::size_of::<COFFHeader>() + coff.size_of_optional_header() as usize;
         let mut sections = HashMap::new();
         for i in 0..coff.number_of_sections() as usize {
             let section_offset = section_table_offset + i * mem::size_of::<SectionHeader>();
-            let section_ptr: *const SectionHeader = data[section_offset..].as_ptr() as *const _;
-            let section: &SectionHeader = unsafe { &*section_ptr };
+            let section = SectionHeader::overlay_prefix(&data[section_offset..])?;
             ensure!(
                 section.number_of_relocations() == 0,
                 "relocations are not supported"
@@ -253,7 +248,9 @@ impl PortableExecutable {
                 s => bail!("unexpected section name: {}", s),
             };
             ensure!(
-                SectionFlags::from_u32(section.characteristics()) == expect_flags,
+                SectionFlags::from_bits(section.characteristics())
+                    .ok_or_else(|| anyhow!("invalid section flags in characteristics"))?
+                    == expect_flags,
                 "unexpected section flags"
             );
 
@@ -334,9 +331,10 @@ impl PortableExecutable {
 
         // Assert that there is exactly one entry by loading the second section and checking
         // that it is null.
-        let term_ptr: *const ImportDirectoryEntry =
-            idata[mem::size_of::<ImportDirectoryEntry>()..].as_ptr() as *const _;
-        let term: &ImportDirectoryEntry = unsafe { &*term_ptr };
+        let dirs_end = 2 * mem::size_of::<ImportDirectoryEntry>();
+        let dirs = ImportDirectoryEntry::overlay_slice(&idata[..dirs_end])?;
+        let dir = &dirs[0];
+        let term = &dirs[1];
         ensure!(
             term.import_lut_rva() == 0
                 && term.timestamp() == 0
@@ -345,9 +343,6 @@ impl PortableExecutable {
                 && term.thunk_table() == 0,
             "expected one import dirctory entry"
         );
-
-        let dir_ptr: *const ImportDirectoryEntry = idata.as_ptr() as *const _;
-        let dir: &ImportDirectoryEntry = unsafe { &*dir_ptr };
         ensure!(dir.timestamp() == 0, "expected zero timestamp");
         ensure!(dir.forwarder_chain() == 0, "did not expect forwarding");
 
@@ -369,9 +364,17 @@ impl PortableExecutable {
 
         // Iterate the name/thunk tables in parallel, extracting vaddr and name mappings.
         let lut_offset = dir.import_lut_rva() as usize - section.virtual_address() as usize;
+        let max_luts = idata[lut_offset..].len() / mem::size_of::<u32>();
+        let (lut_table, _) =
+            LayoutVerified::<&[u8], [u32]>::new_slice_from_prefix(&idata[lut_offset..], max_luts)
+                .ok_or_else(|| anyhow!("failed to transmute lut_table"))?;
         let thunk_offset = dir.thunk_table() as usize - section.virtual_address() as usize;
-        let lut_table: &[u32] = unsafe { mem::transmute(&idata[lut_offset..]) };
-        let thunk_table: &[u32] = unsafe { mem::transmute(&idata[thunk_offset..]) };
+        let max_thunks = idata[thunk_offset..].len() / mem::size_of::<u32>();
+        let (thunk_table, _) = LayoutVerified::<&[u8], [u32]>::new_slice_from_prefix(
+            &idata[thunk_offset..],
+            max_thunks,
+        )
+        .ok_or_else(|| anyhow!("failed to transmute thunk table"))?;
         let mut thunks = Vec::new();
         let mut ordinal = 0usize;
         while lut_table[ordinal] != 0 {
@@ -394,22 +397,21 @@ impl PortableExecutable {
                 "import name table not in idata"
             );
             let name_table_offset = name_table_rva as usize - section.virtual_address() as usize;
-            let hint_ptr: *const u16 =
-                unsafe { mem::transmute(idata[name_table_offset..].as_ptr() as *const u8) };
-            let hint: u16 = unsafe { *hint_ptr };
+            let hint =
+                u16::from_le_bytes((&idata[name_table_offset..name_table_offset + 2]).try_into()?);
             ensure!(hint == 0, "hint table entries are not supported");
             let name = Self::read_name(&idata[name_table_offset + 2..])?;
             let vaddr = dir.thunk_table() as usize + ordinal * mem::size_of::<u32>();
             let vaddr_offset = dir.thunk_table() as usize + ordinal * mem::size_of::<u32>();
-            let vaddrs: &[u32] = unsafe {
-                mem::transmute(&idata[vaddr_offset - section.virtual_address() as usize..])
-            };
+            let vaddr_data_offset = vaddr_offset - section.virtual_address() as usize;
+            let vaddr_data =
+                u32::from_le_bytes((&idata[vaddr_data_offset..vaddr_data_offset + 4]).try_into()?);
             trace!(
                 "Loaded thunk: {} for {} at {:04X} which contains: {:08X}",
                 ordinal,
                 name,
                 vaddr,
-                vaddrs[0]
+                vaddr_data
             );
             let thunk = Thunk {
                 name,
@@ -439,14 +441,14 @@ impl PortableExecutable {
             &relocs[0..18]
         );
         while offset < relocs.len() {
-            let base_reloc_ptr: *const BaseRelocation = relocs[offset..].as_ptr() as *const _;
-            let base_reloc: &BaseRelocation = unsafe { &*base_reloc_ptr };
+            let base_reloc = BaseRelocation::overlay_prefix(&relocs[offset..])?;
             trace!("base reloc at {} is {:?}", offset, base_reloc);
             if base_reloc.block_size() > 0 {
                 let reloc_cnt =
                     (base_reloc.block_size() as usize - mem::size_of::<BaseRelocation>()) / 2;
-                let relocs: &[u16] =
-                    unsafe { mem::transmute(&relocs[offset + mem::size_of::<BaseRelocation>()..]) };
+                let relocs_offset = offset + mem::size_of::<BaseRelocation>();
+                let relocs = LayoutVerified::<&[u8], [u16]>::new_slice(&relocs[relocs_offset..])
+                    .ok_or_else(|| anyhow!("failed to transmute relocations"))?;
                 for reloc in relocs.iter().take(reloc_cnt) {
                     let flags = (reloc & 0xF000) >> 12;
                     if flags == 0 {
@@ -503,17 +505,17 @@ impl PortableExecutable {
     pub fn relocate(&mut self, target: u32) -> Result<()> {
         let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
         for &reloc in self.relocs.iter() {
-            let dwords: &mut [u32] = unsafe { mem::transmute(&mut self.code[reloc as usize..]) };
-            let pcode: *mut u32 = dwords.as_mut_ptr();
-            unsafe {
-                trace!(
-                    "Relocating word at 0x{:04X} from 0x{:08X} to 0x{:08X}",
-                    reloc as usize,
-                    *pcode,
-                    delta.apply(*pcode)
-                );
-                *pcode = delta.apply(*pcode);
-            }
+            let reloc = reloc as usize;
+            let pcode = u32::from_le_bytes((&self.code[reloc..reloc + 4]).try_into()?);
+            trace!(
+                "Relocating word at 0x{:04X} from 0x{:08X} to 0x{:08X}",
+                reloc as usize,
+                pcode,
+                delta.apply(pcode)
+            );
+            // The safe version is less clear, but supports non little-endian architectures.
+            // { *pcode = delta.apply(*pcode); }
+            self.code[reloc..reloc + 4].copy_from_slice(&delta.apply(pcode).to_le_bytes());
         }
 
         // Note: section headers and thunks do not get image base I guess?
@@ -596,69 +598,74 @@ impl RelocationDelta {
     }
 }
 
-packed_struct!(COFFHeader {
-    _0 => machine: u16,
-    _1 => number_of_sections: u16,
-    _2 => time_date_stamp: u32,
-    _3 => pointer_to_symbol_table: u32,
-    _4 => number_of_symbols: u32,
-    _5 => size_of_optional_header: u16,
-    _6 => characteristics: u16
-});
+#[packed_struct]
+struct COFFHeader {
+    machine: u16,
+    number_of_sections: u16,
+    time_date_stamp: u32,
+    pointer_to_symbol_table: u32,
+    number_of_symbols: u32,
+    size_of_optional_header: u16,
+    characteristics: u16,
+}
 
-packed_struct!(OptionalHeader {
-    _0 => magic: u16,
-    _1 => major_linker_version: u8,
-    _2 => minor_linker_version: u8,
-    _3 => size_of_code: u32,
-    _4 => size_of_initialized_data: u32,
-    _5 => size_of_uninitialized_data: u32,
-    _6 => address_of_entry_point: u32,
-    _7 => base_of_code: u32,
-    _8 => base_of_data: u32
-});
+#[packed_struct]
+struct OptionalHeader {
+    magic: u16,
+    major_linker_version: u8,
+    minor_linker_version: u8,
+    size_of_code: u32,
+    size_of_initialized_data: u32,
+    size_of_uninitialized_data: u32,
+    address_of_entry_point: u32,
+    base_of_code: u32,
+    base_of_data: u32,
+}
 
-packed_struct!(WindowsHeader {
-    _0 => image_base: u32,
-    _1 => section_alignment: u32,
-    _2 => file_alignment: u32,
-    _3 => major_os_version: u16,
-    _4 => minor_os_version: u16,
-    _5 => major_image_version: u16,
-    _6 => minor_image_version: u16,
-    _7 => major_subsystem_version: u16,
-    _8 => minor_subsystem_version: u16,
-    _9 => win32_version_value: u32,
-    _10 => size_of_image: u32,
-    _11 => size_of_headers: u32,
-    _12 => checksum: u32,
-    _13 => subsystem: u16,
-    _14 => dll_characteristics: u16,
-    _15 => size_of_stack_reserve: u32,
-    _16 => size_of_stack_commit: u32,
-    _17 => size_of_heap_reserve: u32,
-    _18 => size_of_heap_commit: u32,
-    _19 => loader_flags: u32,
-    _20 => number_of_rvas_and_sizes: u32
-});
+#[packed_struct]
+struct WindowsHeader {
+    image_base: u32,
+    section_alignment: u32,
+    file_alignment: u32,
+    major_os_version: u16,
+    minor_os_version: u16,
+    major_image_version: u16,
+    minor_image_version: u16,
+    major_subsystem_version: u16,
+    minor_subsystem_version: u16,
+    win32_version_value: u32,
+    size_of_image: u32,
+    size_of_headers: u32,
+    checksum: u32,
+    subsystem: u16,
+    dll_characteristics: u16,
+    size_of_stack_reserve: u32,
+    size_of_stack_commit: u32,
+    size_of_heap_reserve: u32,
+    size_of_heap_commit: u32,
+    loader_flags: u32,
+    number_of_rvas_and_sizes: u32,
+}
 
-packed_struct!(DataDirectory {
-    _0 => virtual_address: u32,
-    _1 => size: u32
-});
+#[packed_struct]
+struct DataDirectory {
+    virtual_address: u32,
+    size: u32,
+}
 
-packed_struct!(SectionHeader {
-    _0 => name: [u8; 8],
-    _1 => virtual_size: u32,
-    _2 => virtual_address: u32,
-    _3 => size_of_raw_data: u32,
-    _4 => pointer_to_raw_data: u32,
-    _5 => pointer_to_relocations: u32,
-    _6 => pointer_to_line_numbers: u32,
-    _7 => number_of_relocations: u16,
-    _8 => number_of_line_numbers: u16,
-    _9 => characteristics: u32
-});
+#[packed_struct]
+struct SectionHeader {
+    name: [u8; 8],
+    virtual_size: u32,
+    virtual_address: u32,
+    size_of_raw_data: u32,
+    pointer_to_raw_data: u32,
+    pointer_to_relocations: u32,
+    pointer_to_line_numbers: u32,
+    number_of_relocations: u16,
+    number_of_line_numbers: u16,
+    characteristics: u32,
+}
 
 bitflags! {
     struct SectionFlags : u32 {
@@ -705,24 +712,21 @@ bitflags! {
     }
 }
 
-impl SectionFlags {
-    fn from_u32(u: u32) -> SectionFlags {
-        unsafe { mem::transmute(u) }
-    }
+#[packed_struct]
+struct ImportDirectoryEntry {
+    import_lut_rva: u32,
+    timestamp: u32,
+    forwarder_chain: u32,
+    name_rva: u32,
+    thunk_table: u32,
 }
 
-packed_struct!(ImportDirectoryEntry {
-    _0 => import_lut_rva: u32,
-    _1 => timestamp: u32,
-    _2 => forwarder_chain: u32,
-    _3 => name_rva: u32,
-    _4 => thunk_table: u32
-});
-
-packed_struct!(BaseRelocation {
-    _0 => page_rva: u32,
-    _1 => block_size: u32
-});
+#[packed_struct]
+#[derive(Copy, Clone, Debug)]
+struct BaseRelocation {
+    page_rva: u32,
+    block_size: u32,
+}
 
 const DOSX_HEADER: &[u8] = &[
     68, 88, 0, 0, 0, 0, 1, 0, 16, 0, 6, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
