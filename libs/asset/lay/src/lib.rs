@@ -18,58 +18,59 @@ use pal::Palette;
 use peff::PortableExecutable;
 use std::{fs, mem, str};
 
-packed_struct!(LayerHeader {
-     _0 => unk_ptr_00x100: u32, // Ramp
-     _1 => unk_ptr_01: u32,
-     _2 => unk_ptr_02: u32,
-     _3 => unk_ptr_03: u32,
-     _4 => unk_ptr_04: u32,
-     _5 => seven: u32,
-     _6 => unk_ptr_20x100: u32, // Ramp
-     _7 => unk_ptr_21x100: u32,
-     _8 => unk_ptr_22x100: u32,
-     _9 => unk_ptr_23x100: u32,
-    _10 => unk_ptr_24x100: u32,
-    _11 => unk_ptr_25x100: u32,
-    _12 => unk_ptr_26x100: u32,
-    _13 => zero30: u32,
-    _14 => zero31: u32,
-    _15 => zero32: u32,
-    _16 => six: u32,
-    _17 => unk_ptr_50x100: u32, // Ramp
-    _18 => unk_ptr_51x100: u32,
-    _19 => unk_ptr_52x100: u32,
-    _20 => unk_ptr_53x100: u32,
-    _21 => unk_ptr_54x100: u32,
-    _22 => unk_ptr_55x100: u32,
-    _23 => unk_ptr_56x100: u32,
-    _24 => zero60: u32,
-    _25 => zero61: u32,
-    _26 => zero62: u32,
-    _27 => unk_ptr_70: u32,
-    _28 => ptr_second: u32,
-    _29 => ptr_first: u32
-});
+#[packed_struct]
+struct LayerHeader {
+    unk_ptr_00x100: u32, // Ramp
+    unk_ptr_01: u32,
+    unk_ptr_02: u32,
+    unk_ptr_03: u32,
+    unk_ptr_04: u32,
+    seven: u32,
+    unk_ptr_20x100: u32, // Ramp
+    unk_ptr_21x100: u32,
+    unk_ptr_22x100: u32,
+    unk_ptr_23x100: u32,
+    unk_ptr_24x100: u32,
+    unk_ptr_25x100: u32,
+    unk_ptr_26x100: u32,
+    zero30: u32,
+    zero31: u32,
+    zero32: u32,
+    six: u32,
+    unk_ptr_50x100: u32, // Ramp
+    unk_ptr_51x100: u32,
+    unk_ptr_52x100: u32,
+    unk_ptr_53x100: u32,
+    unk_ptr_54x100: u32,
+    unk_ptr_55x100: u32,
+    unk_ptr_56x100: u32,
+    zero60: u32,
+    zero61: u32,
+    zero62: u32,
+    unk_ptr_70: u32,
+    ptr_second: u32,
+    ptr_first: u32,
+}
 
-packed_struct!(LayerPlaneHeader {
-    _0 => maybe_66: u32,
-    _1 => maybe_2dd: u32,
-    _2 => maybe_fog_update_thunk: u32,
-    _3 => horizon_proc_thunk: u32,
+#[packed_struct]
+struct LayerPlaneHeader {
+    maybe_66: u32,
+    maybe_2dd: u32,
+    maybe_fog_update_thunk: u32,
+    horizon_proc_thunk: u32,
     // FE 1F 38 0E 70 62 00 00 30 0B 01 00 18 47 E8 B8
-    _4 => unk_1ffe: u16,
-    _5 => unk_0e38: u16,
-    _6 => unk_00006270: u32,
-    _7 => unk_00010b30: u32,
-    _8 => unk_b8e84718: u32,
+    unk_1ffe: u16,
+    unk_0e38: u16,
+    unk_00006270: u32,
+    unk_00010b30: u32,
+    unk_b8e84718: u32,
     // 8 * 4 bytes => 0x20 bytes
-    _9 => unk_fill_and_shape: [u8; 16],
+    unk_fill_and_shape: [u8; 16],
     // 0x30 bytes
-    _10 => unk_stuff0: [u8; 0x20],
+    unk_stuff0: [u8; 0x20],
     // 0x50 bytes
-    _11 => unk_stuff1: [u8; 0x1D]
-    // 0x6F bytes
-});
+    unk_stuff1: [u8; 0x1D], // 0x6F bytes
+}
 
 const PALETTE_SLICE_SIZE: usize = 0xC0;
 
@@ -110,9 +111,7 @@ impl Layer {
         }
 
         let data = &pe.code;
-
-        let header_ptr: *const LayerHeader = data.as_ptr() as *const _;
-        let header: &LayerHeader = unsafe { &*header_ptr };
+        let header = LayerHeader::overlay_prefix(data)?;
 
         assert_eq!(header.unk_ptr_00x100(), header.unk_ptr_04());
         assert_eq!(header.unk_ptr_00x100(), header.unk_ptr_20x100());
@@ -159,8 +158,7 @@ impl Layer {
 
             // This header recurs every 0x160 bytes, 0x146 bytes after header.ptr_first().
             let plane_data = &data[offset..offset + HDR_SIZE];
-            let plane_ptr: *const LayerPlaneHeader = plane_data.as_ptr() as *const LayerPlaneHeader;
-            let plane: &LayerPlaneHeader = unsafe { &*plane_ptr };
+            let plane = LayerPlaneHeader::overlay_prefix(plane_data)?;
             ensure!(
                 plane.maybe_66() == 0x66 || plane.maybe_66() == 0,
                 "expected 66"
