@@ -120,7 +120,8 @@ impl Extension for PlayerCameraController {
         runtime.add_sim_system(
             Self::sys_update_camera
                 .label(PlayerCameraStep::ApplyInput)
-                .before(CameraStep::ApplyInput),
+                .before(CameraStep::ApplyInput)
+                .after(FlightStep::Simulate),
         );
 
         Ok(())
