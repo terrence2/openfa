@@ -12,16 +12,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters, miles_per_hour, scalar};
+use absolute_unit::{degrees, miles_per_hour};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
-use asset_loader::{AssetLoader, MissionMarker, PlayerMarker};
+use asset_loader::{AssetLoader, PlayerMarker};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
-use camera::{
-    ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera, ScreenCameraController,
-};
+use camera::{ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera};
 use composite::CompositeRenderPass;
+use csscolorparser::Color;
 use event_mapper::EventMapper;
 use flight_dynamics::{FlightDynamics, Throttle};
 use fnt::Fnt;
@@ -30,18 +29,18 @@ use fullscreen::FullscreenBuffer;
 use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::{DetailLevelOpts, Gpu, GpuStep};
-use input::{DemoFocus, InputSystem};
+use input::{InputSystem, InputTarget};
+use instrument_envelope::EnvelopeInstrument;
 use lib::{Libs, LibsOpts};
 use measure::{LocalMotion, WorldSpaceFrame};
-use nitrous::{inject_nitrous_resource, NitrousResource};
+use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
 use orrery::Orrery;
-use parking_lot::RwLock;
 use platform_dirs::AppDirs;
 use player::PlayerCameraController;
-use runtime::{ExitRequest, Extension, FrameStage, Runtime, StartupOpts};
+use runtime::{report, ExitRequest, Extension, Runtime, StartupOpts};
 use shape::ShapeBuffer;
 use stars::StarsBuffer;
-use std::{fs::create_dir_all, sync::Arc, time::Instant};
+use std::{fs::create_dir_all, time::Instant};
 use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
@@ -49,13 +48,10 @@ use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use widget::{
-    Border, Color, Expander, FontId, Label, Labeled, PositionH, PositionV, VerticalBox,
-    WidgetBuffer,
+    FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, PositionH, PositionV,
+    Terminal, WidgetBuffer,
 };
-use window::{
-    size::{LeftBound, Size},
-    DisplayOpts, Window, WindowBuilder,
-};
+use window::{size::Size, DisplayOpts, Window, WindowBuilder};
 use world::WorldRenderPass;
 use xt::TypeManager;
 use xt::TypeRef;
@@ -82,36 +78,30 @@ struct Opt {
 
 #[derive(Debug)]
 struct VisibleWidgets {
-    _demo_label: Arc<RwLock<Label>>,
-    sim_time: Arc<RwLock<Label>>,
-    camera_direction: Arc<RwLock<Label>>,
-    camera_position: Arc<RwLock<Label>>,
-    camera_fov: Arc<RwLock<Label>>,
-    fps_label: Arc<RwLock<Label>>,
+    _demo_label: Entity,
+    sim_time: Entity,
+    camera_direction: Entity,
+    camera_position: Entity,
+    camera_fov: Entity,
+    fps_label: Entity,
 
-    weight_label: Arc<RwLock<Label>>,
-    engine_label: Arc<RwLock<Label>>,
-    accel_label: Arc<RwLock<Label>>,
-    velocity_label: Arc<RwLock<Label>>,
+    weight_label: Entity,
+    engine_label: Entity,
+    accel_label: Entity,
+    velocity_label: Entity,
 }
 
 #[derive(Debug, NitrousResource)]
 struct System {
-    _target_offset: isize,
-    _targets: Vec<(String, Graticule<GeoSurface>)>,
     visible_widgets: VisibleWidgets,
 }
 
 impl Extension for System {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        let system =
-            runtime.resource_scope(|heap, mut widgets: Mut<WidgetBuffer<DemoFocus>>| {
-                System::new(heap.resource::<Libs>(), &mut widgets)
-            })?;
+        let system = System::new(runtime.heap_mut())?;
         runtime.insert_named_resource("system", system);
         runtime
-            .frame_stage_mut(FrameStage::Main)
-            .add_system(Self::sys_track_visible_state.after(GpuStep::PresentTargetSurface));
+            .add_frame_system(Self::sys_track_visible_state.after(GpuStep::PresentTargetSurface));
         runtime.run_string(
             r#"
                 bindings.bind("Escape", "exit()");
@@ -124,163 +114,122 @@ impl Extension for System {
 
 #[inject_nitrous_resource]
 impl System {
-    pub fn new(libs: &Libs, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<Self> {
-        let visible_widgets = Self::build_gui(libs, widgets)?;
-        let system = Self {
-            _target_offset: 0,
-            _targets: Vec::new(),
-            visible_widgets,
-        };
+    pub fn new(heap: HeapMut) -> Result<Self> {
+        let visible_widgets = Self::build_gui(heap)?;
+        let system = Self { visible_widgets };
         Ok(system)
     }
 
-    /*
-    pub fn add_default_bindings(&mut self, interpreter: &mut Interpreter) -> Result<()> {
-        interpreter.interpret_once(
-            r#"
-                bindings.bind("Escape", "exit()");
-                bindings.bind("q", "exit()");
-
-                // let bindings := mapper.create_bindings("system");
-                bindings.bind("quit", "system.exit()");
-                bindings.bind("l", "widget.dump_glyphs(pressed)");
-                bindings.bind("d", "system.replay_demo(pressed)");
-
-                bindings.bind("j", "system.terrain_adjust_lon_base(pressed, -1.0)");
-                bindings.bind("l", "system.terrain_adjust_lon_base(pressed, 1.0)");
-                bindings.bind("i", "system.terrain_adjust_lat_base(pressed, 1.0)");
-                bindings.bind("k", "system.terrain_adjust_lat_base(pressed, -1.0)");
-                bindings.bind("shift+j", "system.terrain_adjust_lon_base(pressed, -0.1)");
-                bindings.bind("shift+l", "system.terrain_adjust_lon_base(pressed, 0.1)");
-                bindings.bind("shift+i", "system.terrain_adjust_lat_base(pressed, 0.1)");
-                bindings.bind("shift+k", "system.terrain_adjust_lat_base(pressed, -0.1)");
-                bindings.bind("control+j", "system.terrain_adjust_lon_base(pressed, -0.01)");
-                bindings.bind("control+l", "system.terrain_adjust_lon_base(pressed, 0.01)");
-                bindings.bind("control+i", "system.terrain_adjust_lat_base(pressed, 0.01)");
-                bindings.bind("control+k", "system.terrain_adjust_lat_base(pressed, -0.01)");
-
-                bindings.bind("n", "system.next_target(pressed)");
-                bindings.bind("shift+n", "system.previous_target(pressed)");
-
-                bindings.bind("o", "system.terrain_adjust_lon_scale(pressed, 1000.0)");
-                bindings.bind("u", "system.terrain_adjust_lon_scale(pressed, -1000.0)");
-
-                bindings.bind("f", "system.terrain_adjust_toggle_hide(pressed)");
-            "#,
-        )?;
-        Ok(())
-    }
-     */
-
-    pub fn build_gui(libs: &Libs, widgets: &mut WidgetBuffer<DemoFocus>) -> Result<VisibleWidgets> {
-        let fnt = Fnt::from_bytes(libs.read_name("HUD11.FNT")?.as_ref())?;
+    pub fn build_gui(mut heap: HeapMut) -> Result<VisibleWidgets> {
+        let fnt = Fnt::from_bytes(heap.resource::<Libs>().read_name("HUD11.FNT")?.as_ref())?;
         let font = FntFont::from_fnt(&fnt)?;
-        widgets.add_font("HUD11", font);
+        heap.resource_mut::<PaintContext>().add_font("HUD11", font);
+        let font_id = heap
+            .resource::<PaintContext>()
+            .font_context
+            .font_id_for_name("HUD11");
 
-        let sim_time = Label::new("").with_color(Color::White).wrapped();
-        let camera_direction = Label::new("").with_color(Color::White).wrapped();
-        let camera_position = Label::new("").with_color(Color::White).wrapped();
-        let camera_fov = Label::new("").with_color(Color::White).wrapped();
-        let controls_box = VerticalBox::new_with_children(&[
-            sim_time.clone(),
-            camera_direction.clone(),
-            camera_position.clone(),
-            camera_fov.clone(),
-        ])
-        .with_background_color(Color::Gray.darken(3.).opacity(0.8))
-        .with_glass_background()
-        .with_padding(Border::new(
-            Size::zero(),
-            Size::from_px(8.),
-            Size::from_px(24.),
-            Size::from_px(8.),
-        ))
-        .wrapped();
-        let expander = Expander::new_with_child("☰ OpenFA v0.0", controls_box)
-            .with_color(Color::White)
-            .with_background_color(Color::Gray.darken(3.).opacity(0.8))
-            .with_glass_background()
-            .with_border(
-                Color::Black,
-                Border::new(
-                    Size::zero(),
-                    Size::from_px(2.),
-                    Size::from_px(2.),
-                    Size::zero(),
-                ),
-            )
-            .with_padding(Border::new(
-                Size::from_px(2.),
-                Size::from_px(3.),
-                Size::from_px(3.),
-                Size::from_px(2.),
-            ))
-            .wrapped();
-        widgets
-            .root_container()
-            .write()
-            .add_child("controls", expander)
-            .set_float(PositionH::End, PositionV::Top);
+        let sim_time = Label::new("")
+            .with_color(&Color::from([255, 255, 255]))
+            .wrapped("sim_time", heap.as_mut())?;
+        let camera_direction = Label::new("")
+            .with_color(&Color::from([255, 255, 255]))
+            .wrapped("camera_direction", heap.as_mut())?;
+        let camera_position = Label::new("")
+            .with_color(&Color::from([255, 255, 255]))
+            .wrapped("camera_position", heap.as_mut())?;
+        let camera_fov = Label::new("")
+            .with_color(&Color::from([255, 255, 255]))
+            .wrapped("camera_fov", heap.as_mut())?;
+        let mut controls_box = LayoutNode::new_vbox("controls_box", heap.as_mut())?;
+        let controls_id = controls_box.id();
+        controls_box.push_widget(sim_time)?;
+        controls_box.push_widget(camera_direction)?;
+        controls_box.push_widget(camera_position)?;
+        controls_box.push_widget(camera_fov)?;
+        heap.resource_mut::<WidgetBuffer>()
+            .root_mut()
+            .push_layout(controls_box)?;
+        let controls_packing = LayoutPacking::default()
+            .float_end()
+            .float_top()
+            .set_background("#222a")?
+            .set_padding_left("10px", heap.as_mut())?
+            .set_padding_bottom("6px", heap.as_mut())?
+            .set_padding_top("4px", heap.as_mut())?
+            .set_padding_right("4px", heap.as_mut())?
+            .set_border_color("#000")?
+            .set_border_left("2px", heap.as_mut())?
+            .set_border_bottom("2px", heap.as_mut())?
+            .to_owned();
+        *heap.get_mut::<LayoutPacking>(controls_id) = controls_packing;
 
-        fn make_label(
-            widgets: &mut WidgetBuffer<DemoFocus>,
-            name: &str,
-            font_id: FontId,
-            offset: i32,
-        ) -> Arc<RwLock<Label>> {
-            let label = Label::new("empty")
+        fn make_label(name: &str, font_id: FontId, heap: HeapMut) -> Result<Entity> {
+            Label::new("empty")
                 .with_font(font_id)
-                .with_color(Color::Green)
+                .with_color(&Color::from([0, 255, 0]))
                 .with_size(Size::from_pts(12.0))
-                .with_pre_blended_text()
-                .wrapped();
-            let rootp = widgets.root_container();
-            let mut root = rootp.write();
-            let mut packing = root.add_child(name, label.clone());
-            packing.set_float(PositionH::Start, PositionV::Top);
-            packing.set_offset(Size::zero(), Size::from_pts(offset as f32 * -14.0));
-            label
+                .wrapped(name, heap)
         }
 
-        let font_id = widgets.font_context().font_id_for_name("HUD11");
-        let weight_label = make_label(widgets, "weight", font_id, 0);
-        let engine_label = make_label(widgets, "engine", font_id, 1);
-        let accel_label = make_label(widgets, "accel", font_id, 2);
-        let velocity_label = make_label(widgets, "velocity", font_id, 3);
+        let weight_label = make_label("weight", font_id, heap.as_mut())?;
+        let engine_label = make_label("engine", font_id, heap.as_mut())?;
+        let accel_label = make_label("accel", font_id, heap.as_mut())?;
+        let velocity_label = make_label("velocity", font_id, heap.as_mut())?;
+
+        let mut player_box = LayoutNode::new_vbox("player_box", heap.as_mut())?;
+        let player_box_id = player_box.id();
+        player_box.push_widget(weight_label)?;
+        player_box.push_widget(engine_label)?;
+        player_box.push_widget(accel_label)?;
+        player_box.push_widget(velocity_label)?;
+        heap.resource_mut::<WidgetBuffer>()
+            .root_mut()
+            .push_layout(player_box)?;
+        let player_box_packing = LayoutPacking::default()
+            .float_start()
+            .float_top()
+            .set_background("#222a")?
+            .set_padding_right("10px", heap.as_mut())?
+            .set_padding_bottom("6px", heap.as_mut())?
+            .set_padding_top("4px", heap.as_mut())?
+            .set_padding_left("4px", heap.as_mut())?
+            .set_border_color("#000")?
+            .set_border_right("2px", heap.as_mut())?
+            .set_border_bottom("2px", heap.as_mut())?
+            .to_owned();
+        *heap.get_mut::<LayoutPacking>(player_box_id) = player_box_packing;
 
         let fps_label = Label::new("")
-            .with_font(widgets.font_context().font_id_for_name("sans"))
-            .with_color(Color::Red)
+            .with_font(
+                heap.resource::<PaintContext>()
+                    .font_context
+                    .font_id_for_name("sans"),
+            )
+            .with_color(&Color::from([255, 0, 0]))
             .with_size(Size::from_pts(13.0))
             .with_pre_blended_text()
-            .wrapped();
-        widgets
-            .root_container()
-            .write()
-            .add_child("fps", fps_label.clone())
-            .set_float(PositionH::Start, PositionV::Bottom);
+            .wrapped("fps_label", heap.as_mut())?;
+        heap.resource_mut::<WidgetBuffer>()
+            .root_mut()
+            .push_widget(fps_label)?;
+        heap.get_mut::<LayoutPacking>(fps_label).float_bottom();
 
-        let demo_label = Label::new("")
-            .with_font(widgets.font_context().font_id_for_name("HUD11"))
-            .with_color(Color::White)
-            .with_size(Size::from_pts(18.0))
-            .wrapped();
-        let demo_box = VerticalBox::new_with_children(&[demo_label.clone()])
-            .with_background_color(Color::Gray.darken(3.).opacity(0.8))
-            .with_glass_background()
-            .with_border(Color::Black, Border::new_uniform(Size::from_px(2.)))
-            .with_padding(Border::new_uniform(Size::from_px(8.)))
-            .wrapped();
-        widgets
-            .root_container()
-            .write()
-            .add_child("demo", demo_box)
-            .set_float(PositionH::Start, PositionV::Bottom);
-        widgets
-            .root_container()
-            .write()
-            .packing_mut("demo")?
-            .set_expand(false);
+        let demo_label = Label::new("").wrapped("demo_label", heap.as_mut())?;
+
+        let mut envelope = EnvelopeInstrument::new();
+        envelope.set_scale(2.).set_mode("all")?;
+        let envelope_id = envelope.wrapped("envelope_instrument", heap.as_mut())?;
+        let envelope_packing = LayoutPacking::default()
+            .float_end()
+            .float_bottom()
+            .set_margin_right("20px", heap.as_mut())?
+            .set_margin_bottom("20px", heap.as_mut())?
+            .to_owned();
+        *heap.get_mut::<LayoutPacking>(envelope_id) = envelope_packing;
+        heap.resource_mut::<WidgetBuffer>()
+            .root_mut()
+            .push_widget(envelope_id)?;
 
         Ok(VisibleWidgets {
             _demo_label: demo_label,
@@ -300,7 +249,8 @@ impl System {
         camera: Res<ScreenCamera>,
         timestep: Res<TimeStep>,
         orrery: Res<Orrery>,
-        mut system: ResMut<System>,
+        system: Res<System>,
+        mut labels: Query<&mut Label>,
         query: Query<
             (
                 &WorldSpaceFrame,
@@ -312,228 +262,70 @@ impl System {
             With<PlayerMarker>,
         >,
     ) {
-        system
-            .visible_widgets
-            .sim_time
-            .write()
+        report!(system.track_visible_state(&camera, &timestep, &orrery, &mut labels, &query));
+    }
+
+    fn track_visible_state(
+        &self,
+        camera: &ScreenCamera,
+        timestep: &TimeStep,
+        orrery: &Orrery,
+        labels: &mut Query<&mut Label>,
+        query: &Query<
+            (
+                &WorldSpaceFrame,
+                &LocalMotion,
+                &TypeRef,
+                &Throttle,
+                &FlightDynamics,
+            ),
+            With<PlayerMarker>,
+        >,
+    ) -> Result<()> {
+        labels
+            .get_mut(self.visible_widgets.sim_time)?
             .set_text(format!("Date: {}", orrery.get_time()));
+        labels
+            .get_mut(self.visible_widgets.camera_fov)?
+            .set_text(format!("FoV: {}", degrees!(camera.fov_y())));
+
         if let Ok((frame, motion, xt, throttle, dynamics)) = query.get_single() {
-            system
-                .visible_widgets
-                .weight_label
-                .write()
+            labels
+                .get_mut(self.visible_widgets.weight_label)?
                 .set_text(format!("Weight: {:0.1} lbs", dynamics.weight_lbs()));
-            system
-                .visible_widgets
-                .engine_label
-                .write()
+            labels
+                .get_mut(self.visible_widgets.engine_label)?
                 .set_text(format!(
                     "Engine: {} ({})",
                     throttle.engine_display(),
                     throttle.compute_thrust(xt.pt().unwrap())
                 ));
-            system
-                .visible_widgets
-                .accel_label
-                .write()
+            labels
+                .get_mut(self.visible_widgets.accel_label)?
                 .set_text(format!("Accel: {:0.4}", motion.acceleration_m_s2().z));
-            system
-                .visible_widgets
-                .velocity_label
-                .write()
+            labels
+                .get_mut(self.visible_widgets.velocity_label)?
                 .set_text(format!(
                     "Velocity: {:0.2}",
                     miles_per_hour!(motion.velocity_m_s().z)
                 ));
-
-            system
-                .visible_widgets
-                .camera_direction
-                .write()
-                .set_text(format!("V: {}", motion.forward_velocity()));
-            system
-                .visible_widgets
-                .camera_position
-                .write()
-                .set_text(format!("Position: {}", frame.position(),));
+            labels
+                .get_mut(self.visible_widgets.camera_direction)?
+                .set_text(format!("V: {:0.4}", motion.forward_velocity()));
+            labels
+                .get_mut(self.visible_widgets.camera_position)?
+                .set_text(format!("Position: {:0.4}", frame.position(),));
         }
-        system
-            .visible_widgets
-            .camera_fov
-            .write()
-            .set_text(format!("FoV: {}", degrees!(camera.fov_y()),));
         let frame_time = timestep.now().elapsed();
         let ts = format!(
             "frame: {}.{}ms",
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
             frame_time.subsec_micros(),
         );
-        system.visible_widgets.fps_label.write().set_text(ts);
+        labels.get_mut(self.visible_widgets.fps_label)?.set_text(ts);
+        Ok(())
     }
-
-    /*
-    pub fn t2_adjustment(&self) -> Arc<RwLock<T2Adjustment>> {
-        self.adjust.clone()
-    }
-
-    pub fn add_target(&mut self, name: &str, grat: Graticule<GeoSurface>) {
-        self.targets.push((name.to_owned(), grat));
-    }
-
-    #[method]
-    pub fn terrain_adjust_lon_scale(&self, pressed: bool, f: f64) {
-        if pressed {
-            self.adjust.write().span_offset[1] += meters!(f);
-            println!(
-                "span offset: {}x{}",
-                self.adjust.read().span_offset[0],
-                self.adjust.read().span_offset[1]
-            );
-        }
-    }
-
-    #[method]
-    pub fn terrain_adjust_lon_base(&self, pressed: bool, f: f64) {
-        if pressed {
-            self.adjust.write().base_offset[1] += degrees!(f);
-            println!(
-                "base offset: {}x{}",
-                self.adjust.read().base_offset[0],
-                self.adjust.read().base_offset[1]
-            );
-        }
-    }
-
-    #[method]
-    pub fn terrain_adjust_lat_base(&self, pressed: bool, f: f64) {
-        if pressed {
-            self.adjust.write().base_offset[0] += degrees!(f);
-            println!(
-                "base offset: {}x{}",
-                self.adjust.read().base_offset[0],
-                self.adjust.read().base_offset[1]
-            );
-        }
-    }
-
-    #[method]
-    pub fn terrain_adjust_toggle_hide(&self, pressed: bool) {
-        if pressed {
-            if self.adjust.read().blend_factor < 1.0 {
-                self.adjust.write().blend_factor = 1.0;
-            } else {
-                self.adjust.write().blend_factor = 0.2;
-            }
-        }
-    }
-
-    #[method]
-    pub fn next_target(&mut self, pressed: bool) {
-        if pressed {
-            self.target_offset += 1;
-            self.target_offset %= self.targets.len() as isize;
-
-            let (name, pos) = &self.targets[self.target_offset as usize];
-            self.maybe_update_view = Some(*pos);
-            println!("target: {}, {}", self.target_offset, name);
-        }
-    }
-
-    #[method]
-    pub fn previous_target(&mut self, pressed: bool) {
-        if pressed {
-            self.target_offset -= 1;
-            if self.target_offset < 0 {
-                self.target_offset = self.targets.len() as isize - 1;
-            }
-
-            let (name, pos) = &self.targets[self.target_offset as usize];
-            self.maybe_update_view = Some(*pos);
-            println!("target: {}", name);
-        }
-    }
-     */
-
-    /*
-    /// FIXME: should be in platform
-    #[method]
-    pub fn exec_file(&mut self, exec_file: &str) {
-        match std::fs::read_to_string(exec_file) {
-            Ok(code) => {
-                let rv = self.interpreter.interpret_async(code);
-                println!("Execution Completed: {:?}", rv);
-            }
-            Err(e) => {
-                println!("Unable to read file '{:?}': {}", exec_file, e);
-            }
-        }
-    }
-     */
 }
-
-/*
-make_frame_graph!(
-    FrameGraph {
-        buffers: {
-            // Note: lock order
-            // catalog
-            // system
-            // game
-            composite: CompositeRenderPass,
-            ui: UiRenderPass,
-            widgets: WidgetBuffer,
-            world: WorldRenderPass,
-            shapes: ShapeInstanceBuffer,
-            terrain: TerrainBuffer,
-            atmosphere: AtmosphereBuffer,
-            stars: StarsBuffer,
-            fullscreen: FullscreenBuffer,
-            globals: GlobalParametersBuffer
-            // gpu
-            // window
-            // arcball
-            // orrery
-        };
-        passes: [
-            // widget
-            maintain_font_atlas: Any() { widgets() },
-
-            // terrain
-            // Update the indices so we have correct height data to tessellate with and normal
-            // and color data to accumulate.
-            paint_atlas_indices: Any() { terrain() },
-            // Apply heights to the terrain mesh.
-            tessellate: Compute() { terrain() },
-            // Render the terrain mesh's texcoords to an offscreen buffer.
-            deferred_texture: Render(terrain, deferred_texture_target) {
-                terrain( globals )
-            },
-            // Accumulate normal and color data.
-            accumulate_normal_and_color: Compute() { terrain( globals ) },
-
-            // world: Flatten terrain g-buffer into the final image and mix in stars.
-            render_world: Render(world, offscreen_target_cleared) {
-                world( globals, fullscreen, atmosphere, stars, terrain )
-            },
-
-            // FIXME: can we get away with doing this before terrain so we don't overdraw?
-            draw_shapes: Render(world, offscreen_target_preserved) {
-                shapes( globals, atmosphere )
-            },
-
-            // ui: Draw our widgets onto a buffer with resolution independent of the world.
-            render_ui: Render(ui, offscreen_target) {
-                ui( globals, widgets, world )
-            },
-
-            // composite: Accumulate offscreen buffers into a final image.
-            composite_scene: Render(Screen) {
-                composite( fullscreen, globals, world, ui )
-            }
-        ];
-    }
-);
- */
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
@@ -561,11 +353,11 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .insert_resource(opt.detail_opts.cpu_detail())
         .insert_resource(opt.detail_opts.gpu_detail())
         .insert_resource(app_dirs)
-        .insert_resource(DemoFocus::Demo)
         .load_extension::<TraceLog>()?
         .load_extension::<StartupOpts>()?
         .load_extension::<Libs>()?
-        .load_extension::<EventMapper<DemoFocus>>()?
+        .load_extension::<InputTarget>()?
+        .load_extension::<EventMapper>()?
         .load_extension::<Window>()?
         .load_extension::<Gpu>()?
         .load_extension::<AtmosphereBuffer>()?
@@ -575,10 +367,12 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<TerrainBuffer>()?
         .load_extension::<T2TerrainBuffer>()?
         .load_extension::<WorldRenderPass>()?
-        .load_extension::<WidgetBuffer<DemoFocus>>()?
-        .load_extension::<UiRenderPass<DemoFocus>>()?
-        .load_extension::<CompositeRenderPass<DemoFocus>>()?
+        .load_extension::<WidgetBuffer>()?
+        .load_extension::<UiRenderPass>()?
+        .load_extension::<CompositeRenderPass>()?
         .load_extension::<System>()?
+        .load_extension::<Label>()?
+        .load_extension::<Terminal>()?
         .load_extension::<Orrery>()?
         .load_extension::<Timeline>()?
         .load_extension::<TimeStep>()?
@@ -588,14 +382,14 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
-        .load_extension::<FlightDynamics>()?;
+        .load_extension::<FlightDynamics>()?
+        .load_extension::<EnvelopeInstrument>()?;
 
     // Have an arcball camera controller sitting around that we can fall back to for debugging.
     let _fallback_camera_ent = runtime
         .spawn_named("fallback_camera")?
         .insert(WorldSpaceFrame::default())
         .insert_named(ArcBallController::default())?
-        // .insert(ScreenCameraController::default())
         .id();
 
     runtime.run_startup();

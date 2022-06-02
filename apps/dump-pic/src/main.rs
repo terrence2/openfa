@@ -18,7 +18,7 @@ use image::GenericImageView;
 use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use pic::Pic;
-use std::fs;
+use std::{fs, path::PathBuf};
 use structopt::StructOpt;
 
 /// Extract PICs to PNG files and show PIC metadata
@@ -110,7 +110,13 @@ fn show_pic(
             system_palette.to_owned()
         };
         let image = Pic::decode(&palette, &content)?;
-        image.save(target)?;
+        let mut path = PathBuf::from(target);
+        if path.is_dir() {
+            path.push(meta.name().replace("PIC", "PNG"));
+            image.save(path)?;
+        } else {
+            image.save(path)?;
+        }
     }
 
     if opt.show_ascii {

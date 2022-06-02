@@ -45,7 +45,6 @@ impl PlaneTypeVersion {
 // Wrap Vec<HP> so that we can impl FromRow.
 #[derive(Debug)]
 pub struct Envelopes {
-    #[allow(dead_code)]
     all: Vec<Envelope>,
 }
 

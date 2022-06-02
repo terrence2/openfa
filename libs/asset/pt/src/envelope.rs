@@ -13,8 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{
-    feet, feet_per_second, meters, meters_per_second, meters_per_second2, Acceleration, Feet,
-    Length, Meters, Seconds, Velocity,
+    feet, feet_per_second, meters, meters_per_second, Length, Meters, Seconds, Velocity,
 };
 use anyhow::{bail, ensure, Result};
 use nalgebra::Vector2;

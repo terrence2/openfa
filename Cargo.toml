@@ -40,6 +40,7 @@ members = [
     "libs/game/player",
 
     "libs/wgpu-buffer/font_fnt",
+    "libs/wgpu-buffer/instrument_envelope",
     "libs/wgpu-buffer/ofa_groups",
     "libs/wgpu-buffer/pic_uploader",
     "libs/wgpu-buffer/shape",
@@ -56,18 +57,18 @@ members = [
 [profile.release]
 debug = true
 
-# Need profile-overrides from nightly
-# The external 'image' crate is extremely slow with optimizations.
-# The internal 'pkware' crate is also extremly slow without opt 1+.
-#[profile.dev.overrides.image]
-#opt-level = 3
-#[profile.dev.overrides.pkware]
-#opt-level = 2
+# Turn on a small amount of optimisation while developing, mostly targetted
+# at triangulate, image, nalgebra and other packages that are artificially
+# slow in debug builds. Note that we have to turn it on from _all_, not just
+# dependencies because of inlining.
+[profile.dev]
+opt-level = 1
 
 [dependencies]
 chrono = "^ 0.4"
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = { version = "^ 0.7", features = ["trace"] }
+csscolorparser = "^ 0.6"
 env_logger = "^ 0.9"
 image = "^ 0.24"
 log = "^ 0.4"
@@ -97,6 +98,7 @@ geometry = { path = "libs/nitrogen/util/geometry" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
+instrument_envelope = { path = "libs/wgpu-buffer/instrument_envelope" }
 measure = { path = "libs/nitrogen/sim/measure" }
 nitrous = { path = "libs/nitrogen/util/nitrous" }
 orrery = { path = "libs/nitrogen/sim/orrery" }

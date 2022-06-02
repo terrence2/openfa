@@ -15,14 +15,13 @@
 use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
 use fnt::Fnt;
-use font_common::{FontAdvance, FontInterface};
+use font_common::{Font, FontAdvance, FontInterface};
 use gpu::Gpu;
 use i386::{Interpreter, Reg};
 use image::{GenericImageView, GrayImage, Luma};
 use lazy_static::lazy_static;
 use log::trace;
-use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use window::size::{AbsSize, LeftBound};
 
 // FIXME: 11px at 240px tall is 4.583..% of the screen, which is what
@@ -150,7 +149,7 @@ impl FontInterface for FntFont {
 }
 
 impl FntFont {
-    pub fn from_fnt(fnt: &Fnt) -> Result<Arc<RwLock<dyn FontInterface>>> {
+    pub fn from_fnt(fnt: &Fnt) -> Result<Font> {
         trace!("GlyphCacheFNT::new");
 
         let mut width = 0;
@@ -208,33 +207,10 @@ impl FntFont {
         let buf =
             GrayImage::from_raw(width as u32, fnt.height as u32, plane).expect("same parameters");
 
-        /*
-        let texture_view = upload_texture_luma("fnt-face-texture-view", buf, gpu)?;
-        let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("fnt-face-sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            lod_min_clamp: 0f32,
-            lod_max_clamp: 9_999_999f32,
-            anisotropy_clamp: None,
-            compare: None,
-        });
-
-        Ok(Box::new(Self {
-            texture_view,
-            sampler,
-            glyph_frames,
-            render_height: fnt.height as f32 / SCREEN_SCALE[1],
-        }) as Box<dyn FontInterface>)
-         */
-        Ok(Arc::new(RwLock::new(Self {
+        Ok(Font::new(Self {
             glyphs: buf,
             glyph_frames,
             height: fnt.height as u32,
-        })))
+        }))
     }
 }
