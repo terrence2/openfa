@@ -25,6 +25,9 @@ bindings.bind("f", "@Player.flaps.toggle()");
 bindings.bind("h", "@Player.hook.toggle()");
 bindings.bind("o", "@Player.bay.toggle()");
 bindings.bind("g", "@Player.gear.toggle()");
+bindings.bind("+Up", "@Player.elevator.move_stick_forward(pressed)");
+bindings.bind("+Down", "@Player.elevator.move_stick_backward(pressed)");
+//bindings.bind("joyX", "@Player.elevator.set_position(axis)");
 
 // Map debugging tools
 bindings.bind("space", "game.boresight()");

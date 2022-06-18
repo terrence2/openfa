@@ -52,6 +52,19 @@ impl EnvelopeCoord {
     }
 }
 
+// Result of testing a position with an envelope. Tracks where inside we are, or how far out in
+// what direction. This lets us interpolate to get sub-G results from a nested envelope set.
+pub enum EnvelopeIntersection {
+    Inside {
+        to_stall: f64,
+        to_over_speed: f64,
+        to_lift_fail: f64,
+    },
+    Stall(f64),
+    LiftFail(f64),
+    OverSpeed(f64),
+}
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct EnvelopeShape {
@@ -82,40 +95,89 @@ impl EnvelopeShape {
         &self.shape[offset]
     }
 
+    // https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+    #[inline]
+    fn segment_intersection(
+        (p0_x, p0_y): (f64, f64),
+        (p1_x, p1_y): (f64, f64),
+        (p2_x, p2_y): (f64, f64),
+        (p3_x, p3_y): (f64, f64),
+    ) -> Option<(f64, f64)> {
+        let s1_x = p1_x - p0_x;
+        let s1_y = p1_y - p0_y;
+        let s2_x = p3_x - p2_x;
+        let s2_y = p3_y - p2_y;
+
+        let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+        let t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+        if s >= 0. && s <= 1. && t >= 0. && t <= 1. {
+            let i_x = p0_x + (t * s1_x);
+            let i_y = p0_y + (t * s1_y);
+            return Some((i_x, i_y));
+        }
+        None
+    }
+
     pub fn is_in_envelope(
         &self,
         speed: Velocity<Meters, Seconds>,
         altitude: Length<Meters>,
-    ) -> bool {
-        let o = Vector2::new(speed.f64(), altitude.f64());
-        let m = Vector2::new(5000f64, altitude.f64());
+    ) -> EnvelopeIntersection {
+        let origin = Vector2::new(speed.f64(), altitude.f64());
 
-        let v3 = Vector2::new(0f64, -1f64);
-        let mut cnt = 0;
+        let ends = [
+            // Left
+            Vector2::new(-1_000f64, altitude.f64()),
+            // Right
+            Vector2::new(7_000f64, altitude.f64()),
+            // Down
+            Vector2::new(speed.f64(), -1_000f64),
+            // Up
+            Vector2::new(speed.f64(), 120_000f64),
+        ];
+        let mut counts = [0, 0, 0, 0];
+        let mut minimums2 = [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::INFINITY];
+
         for (i, coord0) in self.shape.iter().enumerate() {
             let j = (i + 1) % self.shape.len();
             let coord1 = &self.shape[j];
 
-            let a = Vector2::new(coord0.speed.f64(), coord0.altitude.f64());
-            let b = Vector2::new(coord1.speed.f64(), coord1.altitude.f64());
-
-            let v1 = a - o;
-            let v2 = b - o;
-            let v3 = m - o;
-
-            if v1.perp(&v3).signum() == v3.perp(&v2).signum() && v3.dot(&(v1 + v2)) > 0. {
-                cnt += 1;
+            for dir in 0..4 {
+                if let Some((intersect_x, intersect_y)) = Self::segment_intersection(
+                    (origin.x, origin.y),
+                    (ends[dir].x, ends[dir].y),
+                    (coord0.speed().f64(), coord0.altitude().f64()),
+                    (coord1.speed().f64(), coord1.altitude().f64()),
+                ) {
+                    counts[dir] += 1;
+                    let dx = intersect_x - origin.x;
+                    let dy = intersect_y - origin.y;
+                    let d2 = dx * dx + dy * dy;
+                    if d2 < minimums2[dir] {
+                        minimums2[dir] = d2;
+                    }
+                }
             }
-
-            // let v1 = o - a;
-            // let v2 = b - a;
-            // let t1 = v2.perp(&v1) / v2.dot(&v3);
-            // let t2 = v1.dot(&v3) / v2.dot(&v3);
-            // println!("{i}-{j} => {t1}, {t2}");
         }
-        // println!("CNT: {}", cnt);
-        // false
-        cnt % 2 == 0
+
+        // If one intersects then, in a perfect universe, all others would intersect.
+        let intersect = counts.map(|c| c > 0 && c % 2 == 1);
+        if intersect[0] || intersect[1] || intersect[2] || intersect[3] {
+            return EnvelopeIntersection::Inside {
+                to_stall: minimums2[0].sqrt(),
+                to_over_speed: minimums2[1].sqrt(),
+                to_lift_fail: minimums2[3].sqrt(),
+            };
+        }
+
+        let visible = counts.map(|c| c > 0);
+        match visible {
+            [true, _, _, _] => EnvelopeIntersection::OverSpeed(minimums2[0].sqrt()),
+            [_, true, _, _] => EnvelopeIntersection::Stall(minimums2[1].sqrt()),
+            [_, _, true, _] => EnvelopeIntersection::LiftFail(minimums2[2].sqrt()),
+            _ => panic!("envelopes should be constructed such that this can't happen"),
+        }
     }
 }
 
@@ -133,12 +195,7 @@ impl Envelope {
         &self,
         speed: Velocity<Meters, Seconds>,
         altitude: Length<Meters>,
-    ) -> bool {
-        // if speed.f64() > 1. {
-        //     let hit = self.shape.is_in_envelope(speed, altitude);
-        //     println!("{:>4} => {hit}", self.gload);
-        //     return hit;
-        // }
-        false
+    ) -> EnvelopeIntersection {
+        self.shape.is_in_envelope(speed, altitude)
     }
 }

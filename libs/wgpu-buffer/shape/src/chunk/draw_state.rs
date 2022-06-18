@@ -245,9 +245,11 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
     }
 
-    pub fn move_stick_forward(&mut self) {}
+    pub fn elevator_up(&mut self) {}
 
-    pub fn move_stick_backward(&mut self) {}
+    pub fn elevator_down(&mut self) {}
+
+    pub fn elevator_center(&mut self) {}
 
     #[method]
     pub fn vector_thrust_forward(&mut self, pressed: bool) {

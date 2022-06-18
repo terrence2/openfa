@@ -17,8 +17,9 @@ use anyhow::{bail, Result};
 use asset_loader::PlayerMarker;
 use bevy_ecs::prelude::*;
 use csscolorparser::Color;
+use flight_dynamics::FlightDynamics;
 use gpu::Gpu;
-use measure::{LocalMotion, WorldSpaceFrame};
+use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent, Value};
 use runtime::{report, Extension, Runtime};
 use std::str::FromStr;
@@ -28,7 +29,7 @@ use widget::{
     TextRun, WidgetInfo, WidgetRenderStep, WidgetVertex,
 };
 use window::{
-    size::{LeftBound, RelSize, ScreenDir, Size},
+    size::{RelSize, ScreenDir, Size},
     Window,
 };
 use xt::TypeRef;
@@ -100,6 +101,9 @@ impl FromStr for EnvelopeMode {
 pub struct EnvelopeInstrument {
     scale: f32,
     mode: EnvelopeMode,
+    max_g_load_output: TextRun,
+    altitude_output: TextRun,
+    velocity_output: TextRun,
 }
 
 impl Extension for EnvelopeInstrument {
@@ -123,7 +127,7 @@ impl Extension for EnvelopeInstrument {
 #[inject_nitrous_component]
 impl EnvelopeInstrument {
     const TMP_BACKGROUND_COLOR: [u8; 4] = [0x20, 0x30, 0x40, 0xff];
-    const CURSOR_COLOR: [u8; 4] = [0x5c, 0xc8, 0xfc, 0xff];
+    const CURSOR_COLOR: [u8; 4] = [0xad, 0xe3, 0xfd, 0xff];
     const LEFT_COLOR: [u8; 4] = [0x4c, 0x8c, 0xa4, 0xff];
     const TOP_COLOR: [u8; 4] = [0xb0, 0xcc, 0xd8, 0xff];
     const BOTTOM_COLOR: [u8; 4] = [0x7c, 0xac, 0xbc, 0xff];
@@ -141,10 +145,33 @@ impl EnvelopeInstrument {
     ];
 
     fn sys_measure(
-        mut instruments: Query<(&EnvelopeInstrument, &LayoutPacking, &mut LayoutMeasurements)>,
+        player: Query<(&BodyMotion, &WorldSpaceFrame, &FlightDynamics), With<PlayerMarker>>,
+        mut instruments: Query<(
+            &mut EnvelopeInstrument,
+            &LayoutPacking,
+            &mut LayoutMeasurements,
+        )>,
         win: Res<Window>,
+        paint_context: Res<PaintContext>,
     ) {
-        for (instrument, packing, mut measure) in instruments.iter_mut() {
+        let (motion, frame, dynamics) = player.single();
+        for (mut instrument, packing, mut measure) in instruments.iter_mut() {
+            instrument.max_g_load_output.select_all();
+            instrument
+                .max_g_load_output
+                .insert(&format!("{:0.1}", dynamics.max_g_load()));
+
+            report!(instrument
+                .altitude_output
+                .measure(&win, &paint_context.font_context));
+            report!(instrument
+                .velocity_output
+                .measure(&win, &paint_context.font_context));
+            let metrics = report!(instrument
+                .max_g_load_output
+                .measure(&win, &paint_context.font_context));
+            measure.set_metrics(metrics);
+
             let extent = Extent::<RelSize>::new(
                 Size::from_px(INSTRUMENT_WIDTH as f32 * instrument.scale)
                     .as_rel(&win, ScreenDir::Horizontal),
@@ -156,14 +183,17 @@ impl EnvelopeInstrument {
     }
 
     fn sys_upload(
-        player: Query<(&TypeRef, &LocalMotion, &WorldSpaceFrame), With<PlayerMarker>>,
+        player: Query<
+            (&TypeRef, &BodyMotion, &WorldSpaceFrame, &FlightDynamics),
+            With<PlayerMarker>,
+        >,
         mut instruments: Query<(&EnvelopeInstrument, &mut LayoutMeasurements)>,
         win: Res<Window>,
         gpu: Res<Gpu>,
         mut paint_context: ResMut<PaintContext>,
     ) {
         let now = std::time::Instant::now();
-        let (xt, motion, frame) = player.single();
+        let (xt, motion, frame, dynamics) = player.single();
         for (instrument, measure) in instruments.iter() {
             let panel_border = Border::new(
                 Size::from_px(10.) * instrument.scale,
@@ -324,15 +354,42 @@ impl EnvelopeInstrument {
                     info,
                     &mut paint_context.background_pool,
                 );
+
+                // Draw text on top
+                let mut pos = region.position().to_owned();
+                *pos.left_mut() += region.extent().width()
+                    - measure.metrics().width.as_rel(&win, ScreenDir::Horizontal);
+                *pos.bottom_mut() += region.extent().height()
+                    - measure.metrics().height.as_rel(&win, ScreenDir::Vertical);
+                report!(instrument.max_g_load_output.upload(
+                    pos.into(),
+                    info,
+                    &win,
+                    &gpu,
+                    &mut paint_context
+                ));
             }
         }
         // println!("ENV: {:?}", now.elapsed());
     }
 
-    pub fn new() -> Self {
+    pub fn new(context: &PaintContext) -> Self {
+        let font_id = context.font_context.font_id_for_name("HUD11");
         Self {
             scale: 4.,
             mode: EnvelopeMode::Current,
+            max_g_load_output: TextRun::empty()
+                .with_hidden_selection()
+                .with_default_color(&Color::from([1., 1., 1.]))
+                .with_default_font(font_id),
+            altitude_output: TextRun::empty()
+                .with_hidden_selection()
+                .with_default_color(&Color::from([1., 1., 1.]))
+                .with_default_font(font_id),
+            velocity_output: TextRun::empty()
+                .with_hidden_selection()
+                .with_default_color(&Color::from([1., 1., 1.]))
+                .with_default_font(font_id),
         }
     }
 

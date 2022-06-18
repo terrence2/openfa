@@ -14,7 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod envelope;
 
-pub use crate::envelope::Envelope;
+pub use crate::envelope::{Envelope, EnvelopeIntersection};
 
 use absolute_unit::{Length, Meters, Seconds, Velocity};
 use anyhow::{bail, ensure, Result};
@@ -24,6 +24,7 @@ use ot::{
     parse::{FieldRow, FromRow, FromRows},
     ObjectType,
 };
+use std::fmt::Formatter;
 use std::{collections::HashMap, fmt, slice::Iter};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -42,10 +43,46 @@ impl PlaneTypeVersion {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum GloadExtrema {
+    Inside(f64),
+    Stall(f64),
+    OverSpeed(f64),
+    LiftFail(f64),
+}
+
+impl fmt::Display for GloadExtrema {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // For display in the envelope window
+        match self {
+            Self::Inside(v) => {
+                fmt::Display::fmt(v, f)?;
+                write!(f, "G")
+            }
+            Self::Stall(_) => write!(f, "stall"),
+            Self::OverSpeed(_) => write!(f, "max-q"),
+            Self::LiftFail(_) => write!(f, "lift-fail"),
+        }
+    }
+}
+
+impl GloadExtrema {
+    pub fn max_g_load(&self) -> f64 {
+        *match self {
+            Self::Inside(f) => f,
+            Self::Stall(f) => f,
+            Self::OverSpeed(f) => f,
+            Self::LiftFail(f) => f,
+        }
+    }
+}
+
 // Wrap Vec<HP> so that we can impl FromRow.
 #[derive(Debug)]
 pub struct Envelopes {
     all: Vec<Envelope>,
+    min_g: i16,
+    max_g: i16,
 }
 
 impl FromRow for Envelopes {
@@ -56,16 +93,29 @@ impl FromRow for Envelopes {
         let mut envs = Vec::new();
 
         ensure!(lines.len() % 44 == 0, "expected 44 lines per envelope");
+        let mut min_g = 1_000;
+        let mut max_g = -1_000;
         while off < lines.len() {
             let lns = lines[off..off + 44]
                 .iter()
                 .map(std::convert::AsRef::as_ref)
                 .collect::<Vec<_>>();
             let env = Envelope::from_lines((), &lns, pointers)?;
+            if env.gload > max_g {
+                max_g = env.gload;
+            }
+            if env.gload < min_g {
+                min_g = env.gload;
+            }
             envs.push(env);
             off += 44;
         }
-        Ok(Envelopes { all: envs })
+        envs.sort_by_cached_key(|envelope| envelope.gload);
+        Ok(Envelopes {
+            all: envs,
+            min_g,
+            max_g,
+        })
     }
 }
 
@@ -74,9 +124,64 @@ impl Envelopes {
         self.all.iter()
     }
 
-    pub fn find_g_load_extrema(&self, speed: Velocity<Meters, Seconds>, altitude: Length<Meters>) {
-        for envelope in &self.all {
-            let hit = envelope.find_g_load_extrema(speed, altitude);
+    pub fn min_g_load(&self) -> i16 {
+        self.min_g
+    }
+
+    pub fn max_g_load(&self) -> i16 {
+        self.max_g
+    }
+
+    pub fn find_g_load_maxima(
+        &self,
+        speed: Velocity<Meters, Seconds>,
+        altitude: Length<Meters>,
+    ) -> GloadExtrema {
+        // From inside (tightest envelope) outwards.
+        let mut prior = None;
+        for envelope in self.all.iter().rev() {
+            // Check if we are fully in this envelope.
+            let intersect = envelope.find_g_load_extrema(speed, altitude);
+            if let EnvelopeIntersection::Inside {
+                to_stall,
+                to_over_speed,
+                to_lift_fail,
+            } = intersect
+            {
+                return GloadExtrema::Inside(match prior {
+                    // If we are in the highest g-load envelope, that is our max.
+                    None => envelope.gload as f64,
+                    Some(EnvelopeIntersection::Stall(v)) => {
+                        envelope.gload as f64 + (to_stall / (to_stall + v))
+                    }
+                    Some(EnvelopeIntersection::OverSpeed(v)) => {
+                        envelope.gload as f64 + (to_over_speed / (to_over_speed + v))
+                    }
+                    Some(EnvelopeIntersection::LiftFail(v)) => {
+                        envelope.gload as f64 + (to_lift_fail / (to_lift_fail + v))
+                    }
+                    Some(EnvelopeIntersection::Inside { .. }) => {
+                        panic!("found non-returned intersection?")
+                    }
+                });
+            } else {
+                prior = Some(intersect);
+            }
+
+            // Our negative extrema is a different loop.
+            if envelope.gload == 0 {
+                break;
+            }
+        }
+
+        // Inside no envelopes... map from the last failed envelope, which should be 0.
+        match prior {
+            None => panic!("empty envelope!"),
+            Some(EnvelopeIntersection::Stall(v)) => GloadExtrema::Stall(v),
+            Some(EnvelopeIntersection::OverSpeed(v)) => GloadExtrema::OverSpeed(v),
+            Some(EnvelopeIntersection::LiftFail(v)) => GloadExtrema::LiftFail(v),
+            // Broke after first envelope, therefore must be 0
+            Some(EnvelopeIntersection::Inside { .. }) => GloadExtrema::Inside(0.),
         }
     }
 }

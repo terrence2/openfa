@@ -15,6 +15,7 @@
 
 pub(crate) mod airbrake;
 pub(crate) mod bay;
+pub(crate) mod elevator;
 pub(crate) mod flaps;
 pub(crate) mod gear;
 pub(crate) mod hook;

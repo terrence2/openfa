@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, miles_per_hour};
+use absolute_unit::{degrees, knots, PoundsForce};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::{AssetLoader, PlayerMarker};
@@ -32,7 +32,7 @@ use gpu::{DetailLevelOpts, Gpu, GpuStep};
 use input::{InputSystem, InputTarget};
 use instrument_envelope::EnvelopeInstrument;
 use lib::{Libs, LibsOpts};
-use measure::{LocalMotion, WorldSpaceFrame};
+use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
 use orrery::Orrery;
 use platform_dirs::AppDirs;
@@ -217,7 +217,7 @@ impl System {
 
         let demo_label = Label::new("").wrapped("demo_label", heap.as_mut())?;
 
-        let mut envelope = EnvelopeInstrument::new();
+        let mut envelope = EnvelopeInstrument::new(heap.resource::<PaintContext>());
         envelope.set_scale(2.).set_mode("all")?;
         let envelope_id = envelope.wrapped("envelope_instrument", heap.as_mut())?;
         let envelope_packing = LayoutPacking::default()
@@ -254,7 +254,7 @@ impl System {
         query: Query<
             (
                 &WorldSpaceFrame,
-                &LocalMotion,
+                &BodyMotion,
                 &TypeRef,
                 &Throttle,
                 &FlightDynamics,
@@ -274,7 +274,7 @@ impl System {
         query: &Query<
             (
                 &WorldSpaceFrame,
-                &LocalMotion,
+                &BodyMotion,
                 &TypeRef,
                 &Throttle,
                 &FlightDynamics,
@@ -296,19 +296,16 @@ impl System {
             labels
                 .get_mut(self.visible_widgets.engine_label)?
                 .set_text(format!(
-                    "Engine: {} ({})",
+                    "Engine: {} ({:0.0})",
                     throttle.engine_display(),
-                    throttle.compute_thrust(xt.pt().unwrap())
+                    throttle.compute_thrust::<PoundsForce>(xt.pt().unwrap())
                 ));
             labels
                 .get_mut(self.visible_widgets.accel_label)?
                 .set_text(format!("Accel: {:0.4}", motion.acceleration_m_s2().z));
             labels
                 .get_mut(self.visible_widgets.velocity_label)?
-                .set_text(format!(
-                    "Velocity: {:0.2}",
-                    miles_per_hour!(motion.velocity_m_s().z)
-                ));
+                .set_text(format!("Velocity: {:0.2}", knots!(motion.velocity_m_s().z)));
             labels
                 .get_mut(self.visible_widgets.camera_direction)?
                 .set_text(format!("V: {:0.4}", motion.forward_velocity()));

@@ -17,11 +17,11 @@ use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
 use flight_dynamics::{FlightDynamics, Throttle};
-use geodesy::{Cartesian, GeoCenter, GeoSurface, Graticule};
+use geodesy::{GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
 use lib::{from_dos_string, Libs};
-use measure::{LocalMotion, WorldSpaceFrame};
+use measure::{BodyMotion, WorldSpaceFrame};
 use mmm::{Mission, MissionMap, ObjectInfo};
 use nitrous::EntityName;
 use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousResource, Value};
@@ -145,6 +145,19 @@ impl AssetLoader {
             .insert::<ScreenCameraController>(ScreenCameraController);
     }
 
+    #[method]
+    fn take_control(&self, name: &str, mut heap: HeapMut) {
+        let player_id = heap.entity_by_name("Player");
+        if let Some(target_id) = heap.maybe_entity_by_name(name) {
+            heap.named_entity_mut(player_id)
+                .remove::<PlayerMarker>()
+                .rename_numbered("Player_prior_");
+            heap.named_entity_mut(target_id)
+                .insert(PlayerMarker)
+                .rename("Player");
+        }
+    }
+
     fn frame_for_interactive(heap: &mut HeapMut) -> WorldSpaceFrame {
         let target =
             if let Some(arcball) = heap.maybe_get_named::<ArcBallController>("fallback_camera") {
@@ -248,7 +261,7 @@ impl AssetLoader {
         // If the type is a plane, install a flight model
         if let Some(pt) = info.xt().pt() {
             heap.named_entity_mut(id)
-                .insert(LocalMotion::new_forward(feet_per_second!(info.speed())));
+                .insert(BodyMotion::new_forward(feet_per_second!(info.speed())));
             let on_ground = info.position().y == 0;
             FlightDynamics::install_on(id, pt, on_ground, heap.as_mut())?;
             if let Some(fuel_override) = info.fuel_override() {

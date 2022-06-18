@@ -13,12 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{
-    feet_per_second2, meters_per_second2, pdl, pounds_force, pounds_weight, Force, PoundsForce,
-    PoundsWeight, Weight,
+    pounds_force, pounds_weight, Force, ForceUnit, PoundsForce, PoundsWeight, Weight,
 };
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
-use physical_constants::GRAVITY_M_S2_64;
 use pt::PlaneType;
 use shape::DrawState;
 use std::time::Duration;
@@ -80,7 +78,7 @@ impl ToString for ThrottlePosition {
     fn to_string(&self) -> String {
         match self {
             Self::Afterburner => "AFT".to_owned(),
-            Self::Military(m) => format!("{}%", m),
+            Self::Military(m) => format!("{:0.0}%", m),
         }
     }
 }
@@ -158,14 +156,15 @@ impl Throttle {
         self.internal_fuel_lb -= pounds_weight!(consumption_amount_lbs);
     }
 
-    pub fn compute_thrust(&self, pt: &PlaneType) -> Force<PoundsForce> {
-        if self.engine_position.is_afterburner() {
+    pub fn compute_thrust<Unit: ForceUnit>(&self, pt: &PlaneType) -> Force<Unit> {
+        (&if self.engine_position.is_afterburner() {
             pounds_force!(pt.aft_thrust)
         } else {
             // TODO: can we assume zero thrust at engine off? Probably close enough.
             let power_f = self.engine_position.military() / 100.;
             pounds_force!(pt.thrust as f32 * power_f)
-        }
+        })
+            .into()
     }
 
     #[method]

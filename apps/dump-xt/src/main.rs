@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use absolute_unit::{feet, knots};
 use anyhow::Result;
 use catalog::Catalog;
 use lib::{Libs, LibsOpts};
@@ -151,10 +152,10 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
             for i in 0..env.count {
                 let shape = &env.shape.coord(i as usize);
                 println!(
-                    "{:>25}     {:>4} {:>6}",
+                    "{:>25}     {:>4.4} {:>6.4}",
                     " ",
-                    shape.speed(),
-                    shape.altitude()
+                    knots!(shape.speed()),
+                    feet!(shape.altitude())
                 );
             }
         }

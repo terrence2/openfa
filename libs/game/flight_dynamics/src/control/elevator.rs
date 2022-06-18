@@ -1,0 +1,66 @@
+// This file is part of OpenFA.
+//
+// OpenFA is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// OpenFA is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use bevy_ecs::prelude::*;
+use nitrous::{inject_nitrous_component, method, NitrousComponent};
+use shape::DrawState;
+use std::time::Duration;
+
+#[derive(Component, NitrousComponent, Debug, Default, Copy, Clone)]
+#[Name = "elevator"]
+pub struct Elevator {
+    position: f64,        // [-1, 1]
+    key_move_target: f64, // target of move, depending on what key is held
+}
+
+#[inject_nitrous_component]
+impl Elevator {
+    #[method]
+    pub fn move_stick_backward(&mut self, pressed: bool) {
+        self.key_move_target = if pressed { 1. } else { 0. };
+    }
+
+    #[method]
+    pub fn move_stick_forward(&mut self, pressed: bool) {
+        self.key_move_target = if pressed { -1. } else { 0. };
+    }
+
+    #[method]
+    pub fn position(&self) -> f64 {
+        self.position as f64
+    }
+
+    pub(crate) fn sys_tick(&mut self, dt: &Duration, draw_state: &mut DrawState) {
+        if self.key_move_target > self.position {
+            self.position += dt.as_secs_f64();
+            if self.key_move_target < self.position {
+                self.position = self.key_move_target;
+            }
+        } else if self.key_move_target < self.position {
+            self.position -= dt.as_secs_f64();
+            if self.key_move_target > self.position {
+                self.position = self.key_move_target;
+            }
+        }
+        self.position = self.position.max(-1.).min(1.);
+
+        if self.position > 0.1 {
+            draw_state.elevator_up();
+        } else if self.position < 0.1 {
+            draw_state.elevator_down();
+        } else {
+            draw_state.elevator_center();
+        }
+    }
+}
