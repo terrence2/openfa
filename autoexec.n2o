@@ -27,6 +27,10 @@ bindings.bind("o", "@Player.bay.toggle()");
 bindings.bind("g", "@Player.gear.toggle()");
 bindings.bind("+Up", "@Player.elevator.move_stick_forward(pressed)");
 bindings.bind("+Down", "@Player.elevator.move_stick_backward(pressed)");
+bindings.bind("+Left", "@Player.ailerons.move_stick_left(pressed)");
+bindings.bind("+Right", "@Player.ailerons.move_stick_right(pressed)");
+bindings.bind("+Comma", "@Player.rudder.move_pedals_left(pressed)");
+bindings.bind("+Period", "@Player.rudder.move_pedals_right(pressed)");
 //bindings.bind("joyX", "@Player.elevator.set_position(axis)");
 
 // Map debugging tools
@@ -73,6 +77,7 @@ bindings.bind("+Down", "@fallback_camera.arcball.target_down(pressed)");
 orrery.set_unix_ms(1648903175246.7478);
 
 game.load_mission("~V02.M");
+//game.load_mission("~B02.M");
 //game.load_mission("UKR01.M");
 //game.load_mission("~T02.M");
 //game.load_mission("~T01.M");
@@ -98,3 +103,6 @@ game.load_mission("~V02.M");
 
 //widget.toggle_terminal();
 //libs.find("~*.M");
+
+@Player.dynamics.show_force_vectors();
+@Player.dynamics.show_velocity_vector();

@@ -19,21 +19,21 @@ use shape::DrawState;
 use std::time::Duration;
 
 #[derive(Component, NitrousComponent, Debug, Default, Copy, Clone)]
-#[Name = "elevator"]
-pub struct Elevator {
+#[Name = "ailerons"]
+pub struct Ailerons {
     position: f64,        // [-1, 1]
     key_move_target: f64, // target of move, depending on what key is held
 }
 
 #[inject_nitrous_component]
-impl Elevator {
+impl Ailerons {
     #[method]
-    pub fn move_stick_backward(&mut self, pressed: bool) {
+    pub fn move_stick_right(&mut self, pressed: bool) {
         self.key_move_target = if pressed { 1. } else { 0. };
     }
 
     #[method]
-    pub fn move_stick_forward(&mut self, pressed: bool) {
+    pub fn move_stick_left(&mut self, pressed: bool) {
         self.key_move_target = if pressed { -1. } else { 0. };
     }
 
@@ -47,11 +47,14 @@ impl Elevator {
             surface_position_tick(self.key_move_target, dt.as_secs_f64(), self.position);
 
         if self.position > 0.1 {
-            draw_state.move_elevator_up();
+            draw_state.move_right_aileron_up();
+            draw_state.move_left_aileron_down();
         } else if self.position < 0.1 {
-            draw_state.move_elevator_down();
+            draw_state.move_left_aileron_up();
+            draw_state.move_right_aileron_down();
         } else {
-            draw_state.move_elevator_center();
+            draw_state.move_left_aileron_center();
+            draw_state.move_right_aileron_center();
         }
     }
 }

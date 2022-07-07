@@ -18,7 +18,7 @@ use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};
 use bitflags::bitflags;
 use catalog::Catalog;
-use geometry::{intersect::sphere_vs_ray, Aabb, Ray, Sphere};
+use geometry::{intersect::sphere_vs_ray, Aabb, Aabb3, Cylinder, Ray, Sphere};
 use gpu::Gpu;
 use i386::Interpreter;
 use image::Rgba;
@@ -662,11 +662,12 @@ impl Transformer {
 #[derive(Clone, Debug)]
 pub struct ShapeExtent {
     // Bounding box in feet
-    aabb: Aabb<f32, 3>,
+    aabb: Aabb3<Meters>,
 
     // Pre-compute useful metrics
     radius: Length<Meters>,
     height: Length<Meters>,
+    length: Length<Meters>,
     offset_to_ground: Length<Meters>,
 }
 
@@ -674,17 +675,22 @@ impl ShapeExtent {
     pub fn new(lo: [f32; 3], hi: [f32; 3]) -> Self {
         let lo_v = Vector3::new(lo[0], lo[1], lo[2]);
         let hi_v = Vector3::new(hi[0], hi[1], hi[2]);
-        let lo2 = lo_v.magnitude_squared();
-        let hi2 = hi_v.magnitude_squared();
+        let lo_v = lo_v.map(|v| meters!(feet!(v)));
+        let hi_v = hi_v.map(|v| meters!(feet!(v)));
+        let lo2 = lo_v.map(|v| v.f64()).magnitude_squared();
+        let hi2 = hi_v.map(|v| v.f64()).magnitude_squared();
+        let lo_p = Point3::from(lo_v);
+        let hi_p = Point3::from(hi_v);
         Self {
-            aabb: Aabb::new(lo, hi),
+            aabb: Aabb3::from_bounds(lo_p, hi_p),
             radius: meters!(lo2.max(hi2).sqrt()),
             height: meters!(hi_v[1] - lo_v[1]),
+            length: meters!(hi_v[2] - hi_v[2]),
             offset_to_ground: meters!(-lo_v[1]),
         }
     }
 
-    pub fn aabb(&self) -> &Aabb<f32, 3> {
+    pub fn aabb(&self) -> &Aabb3<Meters> {
         &self.aabb
     }
 
@@ -704,7 +710,7 @@ impl ShapeExtent {
         &self,
         position: Point3<f64>,
         scale: f64,
-        ray: &Ray<f64>,
+        ray: &Ray,
     ) -> Option<Point3<f64>> {
         // if let Some(intersect) = aabb_vs_ray(&self.aabb, ray) {
         // }
@@ -751,11 +757,12 @@ impl ShapeMetadata {
     }
 
     pub fn non_shape() -> Self {
+        let extent = ShapeExtent::new([0f32; 3], [0f32; 3]);
         Self {
             shape_name: "hidden".to_owned(),
             transformers: vec![],
             errata: ShapeErrata::non_shape(),
-            extent: ShapeExtent::new([0f32; 3], [0f32; 3]),
+            extent,
         }
     }
 

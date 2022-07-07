@@ -16,6 +16,7 @@ geodesy = { path = "../../nitrogen/util/geodesy" }
 geometry = { path = "../../nitrogen/util/geometry" }
 gpu = { path = "../../nitrogen/system/gpu" }
 lib = { path = "../../asset/lib" }
+marker = { path = "../../nitrogen/wgpu-buffer/marker" }
 measure = { path = "../../nitrogen/sim/measure" }
 mmm = { path = "../../asset/mmm" }
 nitrous = { path = "../../nitrogen/util/nitrous" }

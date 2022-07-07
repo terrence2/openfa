@@ -22,7 +22,7 @@ pub use chunks::{
     ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId, ShapeIds,
 };
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, ShapeErrata, ShapeMetadata, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, ShapeExtent, ShapeMetadata, Vertex};
 
 #[cfg(test)]
 mod test {

@@ -13,12 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::upload::{ShapeErrata, VertexFlags};
-use animate::{Animation, LinearAnimationTemplate};
 use anyhow::{bail, Result};
 use bevy_ecs::prelude::*;
 use bitflags::bitflags;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 const ANIMATION_FRAME_TIME: usize = 166; // ms
 
@@ -219,37 +218,56 @@ impl DrawState {
         self.flags.remove(DrawStateFlags::AFTERBURNER_ENABLED);
     }
 
-    #[method]
+    pub fn move_right_aileron_up(&mut self) {
+        self.flags.remove(DrawStateFlags::RIGHT_AILERON_DOWN);
+        self.flags.insert(DrawStateFlags::RIGHT_AILERON_UP);
+    }
+
+    pub fn move_right_aileron_down(&mut self) {
+        self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
+        self.flags.insert(DrawStateFlags::RIGHT_AILERON_DOWN);
+    }
+
+    pub fn move_right_aileron_center(&mut self) {
+        self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
+        self.flags.remove(DrawStateFlags::RIGHT_AILERON_DOWN);
+    }
+
+    pub fn move_left_aileron_up(&mut self) {
+        self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
+        self.flags.insert(DrawStateFlags::LEFT_AILERON_UP);
+    }
+
+    pub fn move_left_aileron_down(&mut self) {
+        self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
+        self.flags.insert(DrawStateFlags::LEFT_AILERON_DOWN);
+    }
+
+    pub fn move_left_aileron_center(&mut self) {
+        self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
+        self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
+    }
+
     pub fn move_rudder_center(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
     }
 
-    #[method]
     pub fn move_rudder_left(&mut self) {
         self.flags.insert(DrawStateFlags::RUDDER_LEFT);
         self.flags.remove(DrawStateFlags::RUDDER_RIGHT);
     }
 
-    #[method]
     pub fn move_rudder_right(&mut self) {
         self.flags.remove(DrawStateFlags::RUDDER_LEFT);
         self.flags.insert(DrawStateFlags::RUDDER_RIGHT);
     }
 
-    #[method]
-    pub fn move_stick_center(&mut self) {
-        self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
-        self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
-        self.flags.remove(DrawStateFlags::RIGHT_AILERON_DOWN);
-        self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
-    }
+    pub fn move_elevator_up(&mut self) {}
 
-    pub fn elevator_up(&mut self) {}
+    pub fn move_elevator_down(&mut self) {}
 
-    pub fn elevator_down(&mut self) {}
-
-    pub fn elevator_center(&mut self) {}
+    pub fn move_elevator_center(&mut self) {}
 
     #[method]
     pub fn vector_thrust_forward(&mut self, pressed: bool) {
@@ -287,22 +305,6 @@ impl DrawState {
     }
 
     #[method]
-    pub fn move_stick_left(&mut self) {
-        self.flags.remove(DrawStateFlags::LEFT_AILERON_DOWN);
-        self.flags.insert(DrawStateFlags::LEFT_AILERON_UP);
-        self.flags.insert(DrawStateFlags::RIGHT_AILERON_DOWN);
-        self.flags.remove(DrawStateFlags::RIGHT_AILERON_UP);
-    }
-
-    #[method]
-    pub fn move_stick_right(&mut self) {
-        self.flags.insert(DrawStateFlags::LEFT_AILERON_DOWN);
-        self.flags.remove(DrawStateFlags::LEFT_AILERON_UP);
-        self.flags.remove(DrawStateFlags::RIGHT_AILERON_DOWN);
-        self.flags.insert(DrawStateFlags::RIGHT_AILERON_UP);
-    }
-
-    #[method]
     pub fn consume_sam(&mut self) {
         self.sam_count -= 1;
         if self.sam_count < 0 {
@@ -328,7 +330,8 @@ impl DrawState {
         self.bay_position = (1. - f) * BAY_ANIMATION_EXTENT;
     }
 
-    pub fn animate(&mut self, now: &Instant) {
+    pub fn animate(&mut self, _now: &Instant) {
+        // FIXME: make use of the instant here?
         self.thrust_vector_pos += self.thrust_vector_delta;
         self.wing_sweep_pos += self.wing_sweep_delta;
     }

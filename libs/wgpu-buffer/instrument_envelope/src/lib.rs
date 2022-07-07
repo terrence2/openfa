@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{feet, meters, meters_per_second, miles_per_hour};
+use absolute_unit::{feet, knots, meters, meters_per_second, miles_per_hour};
 use anyhow::{bail, Result};
 use asset_loader::PlayerMarker;
 use bevy_ecs::prelude::*;
@@ -161,16 +161,27 @@ impl EnvelopeInstrument {
                 .max_g_load_output
                 .insert(&format!("{:0.1}", dynamics.max_g_load()));
 
+            instrument.altitude_output.select_all();
+            instrument.altitude_output.insert(&format!(
+                "{:0.0}",
+                feet!(frame.position_graticule().distance)
+            ));
+
+            instrument.velocity_output.select_all();
+            instrument.velocity_output.insert(&format!(
+                "{:0.0}",
+                knots!(motion.vehicle_forward_velocity())
+            ));
+
             report!(instrument
                 .altitude_output
                 .measure(&win, &paint_context.font_context));
             report!(instrument
                 .velocity_output
                 .measure(&win, &paint_context.font_context));
-            let metrics = report!(instrument
+            report!(instrument
                 .max_g_load_output
                 .measure(&win, &paint_context.font_context));
-            measure.set_metrics(metrics);
 
             let extent = Extent::<RelSize>::new(
                 Size::from_px(INSTRUMENT_WIDTH as f32 * instrument.scale)
@@ -326,7 +337,7 @@ impl EnvelopeInstrument {
                 }
 
                 // Paint cursor
-                let xf = motion.forward_velocity().f32() / display_width.f32();
+                let xf = motion.vehicle_forward_velocity().f32() / display_width.f32();
                 let yf = frame.altitude_asl().f32() / display_height.f32();
                 let x = region.position().left().as_percent()
                     + region.extent().width().as_percent() * xf;
@@ -356,12 +367,50 @@ impl EnvelopeInstrument {
                 );
 
                 // Draw text on top
-                let mut pos = region.position().to_owned();
+                let mut pos = region.position().clone_with_depth_adjust(0.4);
                 *pos.left_mut() += region.extent().width()
-                    - measure.metrics().width.as_rel(&win, ScreenDir::Horizontal);
+                    - instrument
+                        .max_g_load_output
+                        .metrics()
+                        .width
+                        .as_rel(&win, ScreenDir::Horizontal);
                 *pos.bottom_mut() += region.extent().height()
-                    - measure.metrics().height.as_rel(&win, ScreenDir::Vertical);
+                    - instrument
+                        .max_g_load_output
+                        .metrics()
+                        .height
+                        .as_rel(&win, ScreenDir::Vertical);
                 report!(instrument.max_g_load_output.upload(
+                    pos.into(),
+                    info,
+                    &win,
+                    &gpu,
+                    &mut paint_context
+                ));
+
+                let mut pos = region.position().clone_with_depth_adjust(0.4);
+                *pos.bottom_mut() += region.extent().height()
+                    - instrument
+                        .altitude_output
+                        .metrics()
+                        .height
+                        .as_rel(&win, ScreenDir::Vertical);
+                report!(instrument.altitude_output.upload(
+                    pos.into(),
+                    info,
+                    &win,
+                    &gpu,
+                    &mut paint_context
+                ));
+
+                let mut pos = region.position().clone_with_depth_adjust(0.4);
+                *pos.left_mut() += region.extent().width()
+                    - instrument
+                        .velocity_output
+                        .metrics()
+                        .width
+                        .as_rel(&win, ScreenDir::Horizontal);
+                report!(instrument.velocity_output.upload(
                     pos.into(),
                     info,
                     &win,
@@ -374,22 +423,27 @@ impl EnvelopeInstrument {
     }
 
     pub fn new(context: &PaintContext) -> Self {
+        let scale = 4.;
         let font_id = context.font_context.font_id_for_name("HUD11");
+        let font_size = Size::from_pts(6. * scale);
         Self {
-            scale: 4.,
+            scale,
             mode: EnvelopeMode::Current,
             max_g_load_output: TextRun::empty()
                 .with_hidden_selection()
                 .with_default_color(&Color::from([1., 1., 1.]))
-                .with_default_font(font_id),
+                .with_default_font(font_id)
+                .with_default_size(font_size),
             altitude_output: TextRun::empty()
                 .with_hidden_selection()
                 .with_default_color(&Color::from([1., 1., 1.]))
-                .with_default_font(font_id),
+                .with_default_font(font_id)
+                .with_default_size(font_size),
             velocity_output: TextRun::empty()
                 .with_hidden_selection()
                 .with_default_color(&Color::from([1., 1., 1.]))
-                .with_default_font(font_id),
+                .with_default_font(font_id)
+                .with_default_size(font_size),
         }
     }
 
@@ -401,7 +455,18 @@ impl EnvelopeInstrument {
 
     #[method]
     pub fn set_scale(&mut self, scale: f64) -> &mut Self {
-        self.scale = scale as f32;
+        let scale = scale as f32;
+        self.scale = scale;
+        let font_size = Size::from_pts(6. * scale);
+        self.max_g_load_output.set_default_size(font_size);
+        self.altitude_output.set_default_size(font_size);
+        self.velocity_output.set_default_size(font_size);
+        self.max_g_load_output.select_all();
+        self.altitude_output.select_all();
+        self.velocity_output.select_all();
+        self.max_g_load_output.change_size(font_size);
+        self.altitude_output.change_size(font_size);
+        self.velocity_output.change_size(font_size);
         self
     }
 

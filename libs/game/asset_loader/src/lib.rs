@@ -21,6 +21,7 @@ use geodesy::{GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
 use lib::{from_dos_string, Libs};
+use marker::EntityMarkers;
 use measure::{BodyMotion, WorldSpaceFrame};
 use mmm::{Mission, MissionMap, ObjectInfo};
 use nitrous::EntityName;

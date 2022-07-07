@@ -328,10 +328,10 @@ macro_rules! make_consume_fields {
         ($rows[0].value().numeric()?.byte()? as $field_type, 1)
     };
     (Word, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
-        ($rows[0].value().numeric()?.word()? as $field_type, 1)
+        (<$field_type>::from($rows[0].value().numeric()?.word()?), 1)
     };
     (DWord, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
-        ($rows[0].value().numeric()?.dword()? as $field_type, 1)
+        (<$field_type>::from($rows[0].value().numeric()?.dword()?), 1)
     };
     (Num, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.unsigned()? as $field_type, 1)

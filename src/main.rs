@@ -32,6 +32,7 @@ use gpu::{DetailLevelOpts, Gpu, GpuStep};
 use input::{InputSystem, InputTarget};
 use instrument_envelope::EnvelopeInstrument;
 use lib::{Libs, LibsOpts};
+use marker::Markers;
 use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
 use orrery::Orrery;
@@ -88,7 +89,7 @@ struct VisibleWidgets {
     weight_label: Entity,
     engine_label: Entity,
     accel_label: Entity,
-    velocity_label: Entity,
+    alpha_label: Entity,
 }
 
 #[derive(Debug, NitrousResource)]
@@ -175,14 +176,14 @@ impl System {
         let weight_label = make_label("weight", font_id, heap.as_mut())?;
         let engine_label = make_label("engine", font_id, heap.as_mut())?;
         let accel_label = make_label("accel", font_id, heap.as_mut())?;
-        let velocity_label = make_label("velocity", font_id, heap.as_mut())?;
+        let alpha_label = make_label("alpha", font_id, heap.as_mut())?;
 
         let mut player_box = LayoutNode::new_vbox("player_box", heap.as_mut())?;
         let player_box_id = player_box.id();
         player_box.push_widget(weight_label)?;
         player_box.push_widget(engine_label)?;
         player_box.push_widget(accel_label)?;
-        player_box.push_widget(velocity_label)?;
+        player_box.push_widget(alpha_label)?;
         heap.resource_mut::<WidgetBuffer>()
             .root_mut()
             .push_layout(player_box)?;
@@ -241,7 +242,7 @@ impl System {
             weight_label,
             engine_label,
             accel_label,
-            velocity_label,
+            alpha_label,
         })
     }
 
@@ -304,11 +305,11 @@ impl System {
                 .get_mut(self.visible_widgets.accel_label)?
                 .set_text(format!("Accel: {:0.4}", motion.acceleration_m_s2().z));
             labels
-                .get_mut(self.visible_widgets.velocity_label)?
-                .set_text(format!("Velocity: {:0.2}", knots!(motion.velocity_m_s().z)));
+                .get_mut(self.visible_widgets.alpha_label)?
+                .set_text(format!("Alpha: {:0.2}", degrees!(dynamics.alpha())));
             labels
                 .get_mut(self.visible_widgets.camera_direction)?
-                .set_text(format!("V: {:0.4}", motion.forward_velocity()));
+                .set_text(format!("V: {:0.4}", motion.cg_velocity()));
             labels
                 .get_mut(self.visible_widgets.camera_position)?
                 .set_text(format!("Position: {:0.4}", frame.position(),));
@@ -366,6 +367,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<WorldRenderPass>()?
         .load_extension::<WidgetBuffer>()?
         .load_extension::<UiRenderPass>()?
+        .load_extension::<Markers>()?
         .load_extension::<CompositeRenderPass>()?
         .load_extension::<System>()?
         .load_extension::<Label>()?

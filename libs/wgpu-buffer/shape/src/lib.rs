@@ -17,7 +17,7 @@ mod components;
 mod instance_block;
 
 pub use crate::{
-    chunk::{DrawSelection, DrawState, ShapeId, ShapeIds, ShapeMetadata},
+    chunk::{DrawSelection, DrawState, ShapeExtent, ShapeId, ShapeIds, ShapeMetadata},
     instance_block::SlotId,
 };
 pub use components::*;
@@ -37,6 +37,7 @@ use catalog::Catalog;
 use composite::CompositeRenderStep;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, GpuStep};
+use marker::MarkersStep;
 use measure::WorldSpaceFrame;
 use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
@@ -142,6 +143,7 @@ impl Extension for ShapeBuffer {
                 .after(ShapeStep::UploadChunks)
                 .after(ShapeStep::UploadBlocks)
                 .after(WorldStep::Render)
+                .before(MarkersStep::Render)
                 .before(CompositeRenderStep::Render),
         );
 

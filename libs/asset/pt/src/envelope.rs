@@ -176,8 +176,54 @@ impl EnvelopeShape {
             [true, _, _, _] => EnvelopeIntersection::OverSpeed(minimums2[0].sqrt()),
             [_, true, _, _] => EnvelopeIntersection::Stall(minimums2[1].sqrt()),
             [_, _, true, _] => EnvelopeIntersection::LiftFail(minimums2[2].sqrt()),
-            _ => panic!("envelopes should be constructed such that this can't happen"),
+            _ => {
+                // Upper left or upper right, or below.
+                if altitude < meters!(0f64) {
+                    EnvelopeIntersection::Inside {
+                        to_stall: minimums2[0].sqrt(),
+                        to_over_speed: minimums2[1].sqrt(),
+                        to_lift_fail: minimums2[3].sqrt(),
+                    }
+                } else {
+                    EnvelopeIntersection::Stall(minimums2[1].sqrt())
+                }
+            }
         }
+    }
+
+    pub fn find_min_lift_speed_at(
+        &self,
+        altitude: Length<Meters>,
+    ) -> Option<Velocity<Meters, Seconds>> {
+        let origin = Vector2::new(0_f64, altitude.f64());
+        let end = Vector2::new(10_000_f64, altitude.f64());
+
+        let mut minima = None;
+
+        for (i, coord0) in self.shape.iter().enumerate() {
+            let j = (i + 1) % self.shape.len();
+            let coord1 = &self.shape[j];
+
+            if let Some((intersect_x, intersect_y)) = Self::segment_intersection(
+                (origin.x, origin.y),
+                (end.x, end.y),
+                (coord0.speed().f64(), coord0.altitude().f64()),
+                (coord1.speed().f64(), coord1.altitude().f64()),
+            ) {
+                let dx = intersect_x - origin.x;
+                let dy = intersect_y - origin.y;
+                let d = meters_per_second!((dx * dx + dy * dy).sqrt());
+                if let Some(m) = minima {
+                    if d < m {
+                        minima = Some(d);
+                    }
+                } else {
+                    minima = Some(d);
+                }
+            }
+        }
+
+        minima
     }
 }
 
@@ -197,5 +243,12 @@ impl Envelope {
         altitude: Length<Meters>,
     ) -> EnvelopeIntersection {
         self.shape.is_in_envelope(speed, altitude)
+    }
+
+    pub fn find_min_lift_speed_at(
+        &self,
+        altitude: Length<Meters>,
+    ) -> Option<Velocity<Meters, Seconds>> {
+        self.shape.find_min_lift_speed_at(altitude)
     }
 }

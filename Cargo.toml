@@ -17,9 +17,9 @@ members = [
     "apps/dump-sh",
     "apps/dump-t2",
     "apps/dump-xt",
-    "apps/pack-pic",
+    # "apps/pack-pic",
 
-    "libs/asset/dlg",
+    # "libs/asset/dlg",
     "libs/asset/fnt",
     "libs/asset/jt",
     "libs/asset/lay",
@@ -99,6 +99,7 @@ global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "libs/nitrogen/system/gpu" }
 input = { path = "libs/nitrogen/system/input" }
 instrument_envelope = { path = "libs/wgpu-buffer/instrument_envelope" }
+marker = { path = "libs/nitrogen/wgpu-buffer/marker" }
 measure = { path = "libs/nitrogen/sim/measure" }
 nitrous = { path = "libs/nitrogen/util/nitrous" }
 orrery = { path = "libs/nitrogen/sim/orrery" }

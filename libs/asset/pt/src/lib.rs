@@ -16,7 +16,7 @@ mod envelope;
 
 pub use crate::envelope::{Envelope, EnvelopeIntersection};
 
-use absolute_unit::{Length, Meters, Seconds, Velocity};
+use absolute_unit::{Hours, Length, Meters, Miles, Seconds, Velocity};
 use anyhow::{bail, ensure, Result};
 use nt::NpcType;
 use ot::{
@@ -130,6 +130,18 @@ impl Envelopes {
 
     pub fn max_g_load(&self) -> i16 {
         self.max_g
+    }
+
+    pub fn find_min_lift_speed_at(
+        &self,
+        altitude: Length<Meters>,
+    ) -> Option<Velocity<Meters, Seconds>> {
+        for envelope in self.all.iter() {
+            if envelope.gload == 1 {
+                return envelope.find_min_lift_speed_at(altitude);
+            }
+        }
+        None
     }
 
     pub fn find_g_load_maxima(
@@ -265,7 +277,7 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],            "envMin",  Signed, env_min,              i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
 (Word,  [Dec],            "envMax",  Signed, env_max,              i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
 (Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,  u16, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
-(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,        u16, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
+(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,        Velocity<Miles, Hours>, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
 (Word,  [Dec],            "_bv.x.", CustomN, bv_x,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.y.", CustomN, bv_y,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.z.", CustomN, bv_z,          PhysBounds, V0, panic!()),
