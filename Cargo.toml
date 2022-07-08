@@ -38,6 +38,7 @@ members = [
     "libs/game/asset_loader",
     "libs/game/flight_dynamics",
     "libs/game/player",
+    "libs/game/vehicle_state",
 
     "libs/wgpu-buffer/font_fnt",
     "libs/wgpu-buffer/instrument_envelope",
@@ -117,5 +118,6 @@ mmm = { path = "libs/asset/mmm" }
 pal = { path = "libs/asset/pal" }
 shape = { path = "libs/wgpu-buffer/shape" }
 t2_terrain = { path = "libs/wgpu-buffer/t2_terrain" }
+vehicle_state = { path = "libs/game/vehicle_state" }
 window = { path = "libs/nitrogen/system/window" }
 xt = { path = "libs/asset/xt" }

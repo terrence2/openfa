@@ -48,6 +48,7 @@ use terminal_size::{terminal_size, Width};
 use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
+use vehicle_state::VehicleState;
 use widget::{
     FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, PositionH, PositionV,
     Terminal, WidgetBuffer,
@@ -381,6 +382,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
+        .load_extension::<VehicleState>()?
         .load_extension::<FlightDynamics>()?
         .load_extension::<EnvelopeInstrument>()?;
 

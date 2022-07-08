@@ -46,6 +46,7 @@ use xt::TypeRef;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
 pub enum FlightStep {
+    UpdateState,
     Simulate,
 }
 
@@ -105,7 +106,12 @@ pub struct FlightDynamics {
 
 impl Extension for FlightDynamics {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        runtime.add_sim_system(Self::sys_simulate.label(FlightStep::Simulate));
+        runtime.add_sim_system(Self::sys_update_state.label(FlightStep::UpdateState));
+        runtime.add_sim_system(
+            Self::sys_simulate
+                .label(FlightStep::Simulate)
+                .after(FlightStep::UpdateState),
+        );
 
         Ok(())
     }
@@ -146,6 +152,7 @@ impl FlightDynamics {
         let elevator = Elevator::default();
         let rudder = Rudder::default();
         let inertia = Inertia::from_extent(
+            pt,
             heap.resource::<ShapeBuffer>()
                 .metadata(*heap.get::<ShapeId>(id))
                 .read()
@@ -307,17 +314,27 @@ impl FlightDynamics {
         if heap.maybe_get::<EntityMarkers>(self.id).is_none() {
             heap.entity_mut(self.id).insert(EntityMarkers::default());
         }
-        let fuselage = heap.get::<Inertia>(self.id).fuselage().to_owned();
+        let (fuselage_front, fuselage_back, wing) = {
+            let inertia = heap.get::<Inertia>(self.id);
+            (
+                inertia.fuselage_front().to_owned(),
+                inertia.fuselage_back().to_owned(),
+                inertia.wing().to_owned(),
+            )
+        };
         let mut markers = heap.get_mut::<EntityMarkers>(self.id);
-        markers.add_cylinder_direct("inertia_fuselage", fuselage, "#0D0".parse()?);
-        // markers.add_box_direct("inertia_fuselage", fuselage, "#0D0".parse()?);
+        markers.add_cylinder_direct("inertia_fuselage_front", fuselage_front, "#0D05".parse()?);
+        markers.add_cylinder_direct("inertia_fuselage_back", fuselage_back, "#0E05".parse()?);
+        markers.add_box_direct("inertia_wing", wing, "#0D05".parse()?);
         Ok(())
     }
 
     #[method]
     pub fn hide_inertia_model(&mut self, mut heap: HeapMut) -> Result<()> {
         if let Some(mut markers) = heap.maybe_get_mut::<EntityMarkers>(self.id) {
-            markers.remove_cylinder("inertia_fuselage");
+            markers.remove_cylinder("inertia_fuselage_front");
+            markers.remove_cylinder("inertia_fuselage_back");
+            markers.remove_box("inertia_wing");
         }
         Ok(())
     }
@@ -328,12 +345,6 @@ impl FlightDynamics {
             heap.entity_mut(self.id).insert(EntityMarkers::default());
         }
         let mut markers = heap.get_mut::<EntityMarkers>(self.id);
-        markers.add_box(
-            "test_point",
-            Point3::new(meters!(-4f64), meters!(-4_f64), meters!(-4f64)),
-            Point3::new(meters!(4_f64), meters!(4_f64), meters!(4f64)),
-            "#F0F".parse()?,
-        );
         markers.add_arrow(
             "force_x",
             Point3::origin(),
@@ -422,29 +433,27 @@ impl FlightDynamics {
         self.coef_m0 = radians!(v);
     }
 
-    // Algorithm taken from David Allerton's Principles of Flight Simulation.
-    fn simulate(
+    fn update_state(
         &mut self,
         timestep: &TimeStep,
-        xt: &TypeRef,
+
         airbrake: &Airbrake,
         flaps: &Flaps,
         hook: &Hook,
         bay: &mut Bay,
         gear: &mut Gear,
+
         throttle: &mut Throttle,
         ailerons: &mut Ailerons,
         elevator: &mut Elevator,
         rudder: &mut Rudder,
+
+        xt: &TypeRef,
         draw_state: &mut DrawState,
-        motion: &mut BodyMotion,
-        frame: &mut WorldSpaceFrame,
-        mut markers: Option<Mut<EntityMarkers>>,
     ) {
         let dt = timestep.step();
         let pt = xt.pt().expect("PT");
 
-        // Update states of all flight controls
         airbrake.sys_tick(draw_state);
         flaps.sys_tick(draw_state);
         hook.sys_tick(draw_state);
@@ -454,6 +463,29 @@ impl FlightDynamics {
         ailerons.sys_tick(dt, draw_state);
         elevator.sys_tick(dt, draw_state);
         rudder.sys_tick(dt, draw_state);
+    }
+
+    // Algorithm taken from David Allerton's Principles of Flight Simulation.
+    fn simulate(
+        &mut self,
+        timestep: &TimeStep,
+        xt: &TypeRef,
+        airbrake: &Airbrake,
+        flaps: &Flaps,
+        hook: &Hook,
+        bay: &Bay,
+        gear: &Gear,
+        throttle: &mut Throttle,
+        ailerons: &Ailerons,
+        elevator: &Elevator,
+        rudder: &Rudder,
+        inertia: &mut Inertia,
+        motion: &mut BodyMotion,
+        frame: &mut WorldSpaceFrame,
+        mut markers: Option<Mut<EntityMarkers>>,
+    ) {
+        let dt = timestep.step();
+        let pt = xt.pt().expect("PT");
 
         // Allerton defines the SDoF axes as:
         // fwd   axis: X, u, L, p
@@ -746,7 +778,7 @@ impl FlightDynamics {
             + gear_moment_pitch;
         debug_assert!(m.is_finite(), "m is NaN");
 
-        let i_xx = kilograms_meter2!(100f64);
+        let i_xx = inertia.i_xx();
         let i_zz = kilograms_meter2!(100f64);
         let i_xz = kilograms_meter2!(100f64);
         let i_yy = kilograms_meter2!(100f64);
@@ -817,47 +849,24 @@ impl FlightDynamics {
         self.beta = beta;
     }
 
-    fn sys_simulate(
+    fn sys_update_state(
         timestep: Res<TimeStep>,
         mut query: Query<(
-            &TypeRef,
-            &Airbrake,
-            &Flaps,
-            &Hook,
-            &mut Bay,
-            &mut Gear,
-            &mut Throttle,
-            &mut Ailerons,
-            &mut Elevator,
-            &mut Rudder,
-            &mut DrawState,
-            &mut BodyMotion,
-            &mut WorldSpaceFrame,
             &mut FlightDynamics,
-            Option<&mut EntityMarkers>,
+            (&Airbrake, &Flaps, &Hook, &mut Bay, &mut Gear),
+            (&mut Throttle, &mut Ailerons, &mut Elevator, &mut Rudder),
+            (&TypeRef, &mut DrawState),
         )>,
     ) {
         for (
-            xt,
-            airbrake,
-            flaps,
-            hook,
-            mut bay,
-            mut gear,
-            mut throttle,
-            mut ailerons,
-            mut elevator,
-            mut rudder,
-            mut draw_state,
-            mut motion,
-            mut frame,
             mut dynamics,
-            markers,
+            (airbrake, flaps, hook, mut bay, mut gear),
+            (mut throttle, mut ailerons, mut elevator, mut rudder),
+            (xt, mut draw_state),
         ) in query.iter_mut()
         {
-            dynamics.simulate(
+            dynamics.update_state(
                 &timestep,
-                &xt,
                 &airbrake,
                 &flaps,
                 &hook,
@@ -867,7 +876,45 @@ impl FlightDynamics {
                 &mut ailerons,
                 &mut elevator,
                 &mut rudder,
+                &xt,
                 &mut draw_state,
+            );
+        }
+    }
+
+    fn sys_simulate(
+        timestep: Res<TimeStep>,
+        mut query: Query<(
+            &mut FlightDynamics,
+            &mut Inertia,
+            (&Airbrake, &Flaps, &Hook, &Bay, &Gear),
+            (&mut Throttle, &Ailerons, &Elevator, &Rudder),
+            (&TypeRef, &mut BodyMotion, &mut WorldSpaceFrame),
+            Option<&mut EntityMarkers>,
+        )>,
+    ) {
+        for (
+            mut dynamics,
+            mut inertia,
+            (airbrake, flaps, hook, bay, gear),
+            (mut throttle, ailerons, elevator, rudder),
+            (xt, mut motion, mut frame),
+            markers,
+        ) in query.iter_mut()
+        {
+            dynamics.simulate(
+                &timestep,
+                &xt,
+                &airbrake,
+                &flaps,
+                &hook,
+                &bay,
+                &gear,
+                &mut throttle,
+                &ailerons,
+                &elevator,
+                &rudder,
+                &mut inertia,
                 &mut motion,
                 &mut frame,
                 markers,

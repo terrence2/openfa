@@ -29,6 +29,7 @@ use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousReso
 use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use parking_lot::RwLock;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use runtime::{Extension, Runtime};
 use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
 use std::{
@@ -160,12 +161,27 @@ impl AssetLoader {
     }
 
     fn frame_for_interactive(heap: &mut HeapMut) -> WorldSpaceFrame {
-        let target =
-            if let Some(arcball) = heap.maybe_get_named::<ArcBallController>("fallback_camera") {
-                arcball.target()
-            } else {
-                Graticule::<GeoSurface>::new(degrees!(0f32), degrees!(0f32), meters!(10f32))
-            };
+        let fallback_id = heap.entity_by_name("fallback_camera");
+        let camera_id = heap.entity_by_name("camera");
+
+        let target = if heap
+            .maybe_get::<ScreenCameraController>(fallback_id)
+            .is_some()
+        {
+            heap.get_named::<ArcBallController>("fallback_camera")
+                .target()
+        } else if heap
+            .maybe_get::<ScreenCameraController>(camera_id)
+            .is_some()
+        {
+            let mut grat = heap
+                .get_named::<WorldSpaceFrame>("camera")
+                .position_graticule();
+            grat.latitude += degrees!(1_f64 / 60_f64);
+            grat
+        } else {
+            Graticule::<GeoSurface>::new(degrees!(0f32), degrees!(0f32), meters!(10f32))
+        };
         WorldSpaceFrame::from_graticule(
             target,
             Graticule::new(degrees!(0), degrees!(0), meters!(1)),
@@ -204,6 +220,19 @@ impl AssetLoader {
             heap.named_entity_mut(id).insert(PlayerMarker);
         }
 
+        Ok(Value::True())
+    }
+
+    /// Spawn with a temp name, then game.take_control of the new entity.
+    #[method]
+    fn spawn_in(&self, filename: &str, mut heap: HeapMut) -> Result<Value> {
+        let name: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(6)
+            .map(char::from)
+            .collect();
+        self.spawn(&name, filename, heap.as_mut())?;
+        self.take_control(&name, heap);
         Ok(Value::True())
     }
 
