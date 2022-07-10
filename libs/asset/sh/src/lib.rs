@@ -32,7 +32,9 @@ use reverse::{bs2s, bs_2_i16, p2s};
 use std::{
     cmp,
     collections::{HashMap, HashSet},
-    fmt, mem, str,
+    fmt,
+    fmt::Write as _,
+    mem, str,
 };
 
 // Sandwiched instructions
@@ -638,7 +640,7 @@ impl TrailerUnknown {
         let mut s = format!("Trailer @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
         let mut off = 0;
         for (line, section) in out.iter().zip(sections) {
-            s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
+            writeln!(s, "  @{:02X}|{:04X}: {}", off, self.offset + off, line).ok();
             off += section.length;
         }
         s
@@ -721,7 +723,7 @@ impl UnknownData {
         let mut s = format!("Unknown @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
         let mut off = 0;
         for (line, section) in out.iter().zip(sections) {
-            s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
+            writeln!(s, "  @{:02X}|{:04X}: {}", off, self.offset + off, line).ok();
             off += section.length;
         }
         s
@@ -789,7 +791,7 @@ impl UnknownUnknown {
         let mut s = format!("Unknown @ {:04X}: {:6}b =>\n", self.offset, self.data.len(),);
         let mut off = 0;
         for (line, section) in out.iter().zip(sections) {
-            s += &format!("  @{:02X}|{:04X}: {}\n", off, self.offset + off, line);
+            writeln!(s, "  @{:02X}|{:04X}: {}", off, self.offset + off, line).ok();
             off += section.length;
         }
         s
@@ -851,14 +853,16 @@ macro_rules! opaque_instr {
                     let b: &[u8] = &unsafe { std::slice::from_raw_parts(self.data, 14) }[2..];
                     let d: &[i16] = unsafe { mem::transmute(b) };
                     for i in 0..6 {
-                        s += &format!(
+                        write!(
+                            s,
                             "{}{:02X}{:02X}({}){} ",
                             ansi().fg(Color::Green),
                             b[i * 2],
                             b[i * 2 + 1],
                             d[i],
                             ansi(),
-                        );
+                        )
+                        .ok();
                     }
                     return s;
                 }

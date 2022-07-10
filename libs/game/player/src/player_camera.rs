@@ -13,24 +13,15 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::cameras::ExternalCameraController;
-use absolute_unit::Meters;
 use anyhow::{bail, Result};
 use asset_loader::PlayerMarker;
 use bevy_ecs::prelude::*;
-use camera::{CameraStep, ScreenCamera, ScreenCameraController};
+use camera::{CameraStep, ScreenCameraController};
 use flight_dynamics::FlightStep;
-use geodesy::{Cartesian, GeoCenter};
-use global_data::GlobalsStep;
 use measure::WorldSpaceFrame;
-use nalgebra::{UnitQuaternion, Vector3};
-use nitrous::{
-    inject_nitrous_component, inject_nitrous_resource, method, HeapMut, NitrousComponent,
-    NitrousResource,
-};
+use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use runtime::{Extension, Runtime};
-use shape::ShapeStep;
 use std::str::FromStr;
-use terrain::TerrainStep;
 
 #[derive(Debug)]
 pub enum CameraMode {
@@ -75,23 +66,20 @@ impl CameraMode {
     }
 
     fn set_pan_view(&mut self, pressed: bool) {
-        match self {
-            Self::External(controller) => controller.set_pan_view(pressed),
-            _ => {}
+        if let Self::External(controller) = self {
+            controller.set_pan_view(pressed);
         }
     }
 
     fn handle_mousemotion(&mut self, dx: f64, dy: f64) {
-        match self {
-            Self::External(controller) => controller.handle_mousemotion(dx, dy),
-            _ => {}
+        if let Self::External(controller) = self {
+            controller.handle_mousemotion(dx, dy);
         }
     }
 
     fn handle_mousewheel(&mut self, vertical_delta: f64) {
-        match self {
-            Self::External(controller) => controller.handle_mousewheel(vertical_delta),
-            _ => {}
+        if let Self::External(controller) = self {
+            controller.handle_mousewheel(vertical_delta);
         }
     }
 }

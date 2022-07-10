@@ -15,7 +15,7 @@
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use ansi::{ansi, Color};
-use std::mem;
+use std::{fmt::Write, mem};
 
 pub fn n2h(n: u8) -> char {
     match n {
@@ -71,7 +71,7 @@ pub fn bs_2_i16(bs: &[u8]) -> String {
     let mut s = String::new();
     let d: &[i16] = unsafe { mem::transmute(bs) };
     for i in 0..bs.len() / 2 {
-        s += &format!("{:02X}{:02X}({}) ", bs[i * 2], bs[i * 2 + 1], d[i],);
+        write!(s, "{:02X}{:02X}({}) ", bs[i * 2], bs[i * 2 + 1], d[i]).ok();
     }
     s
 }
@@ -92,7 +92,7 @@ pub fn p_2_i16(bs: *const u8, start: usize, end: usize) -> String {
     let b: &[u8] = unsafe { std::slice::from_raw_parts(bs.add(start), end - start) };
     let d: &[i16] = unsafe { mem::transmute(b) };
     for i in 0..(end - start) / 2 {
-        s += &format!("{:02X}{:02X}({}) ", b[i * 2], b[i * 2 + 1], d[i],);
+        write!(s, "{:02X}{:02X}({}) ", b[i * 2], b[i * 2 + 1], d[i]).ok();
     }
     s
 }

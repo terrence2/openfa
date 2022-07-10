@@ -12,14 +12,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{
-    pounds_force, pounds_weight, Force, ForceUnit, PoundsForce, PoundsWeight, Weight,
-};
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
-use pt::PlaneType;
-use shape::DrawState;
-use std::time::Duration;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ThrottlePosition {

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, meters, radians, scalar, LengthUnit, Meters};
+use absolute_unit::{degrees, meters, radians, scalar, Meters};
 use geodesy::{Cartesian, GeoCenter, Graticule, Target};
 use measure::WorldSpaceFrame;
 use nalgebra::{Unit as NUnit, UnitQuaternion, Vector3};

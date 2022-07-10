@@ -20,13 +20,13 @@ use csscolorparser::Color;
 use flight_dynamics::FlightDynamics;
 use gpu::Gpu;
 use measure::{BodyMotion, WorldSpaceFrame};
-use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent, Value};
+use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent};
 use runtime::{report, Extension, Runtime};
 use std::str::FromStr;
-use triangulate::{builders, Triangulate, TriangulateDefault, Vertex};
+use triangulate::{builders, Triangulate, Vertex};
 use widget::{
-    Border, Extent, FontId, LayoutMeasurements, LayoutPacking, PaintContext, Position, Region,
-    TextRun, WidgetInfo, WidgetRenderStep, WidgetVertex,
+    Border, Extent, LayoutMeasurements, LayoutPacking, PaintContext, Position, Region, TextRun,
+    WidgetInfo, WidgetRenderStep, WidgetVertex,
 };
 use window::{
     size::{RelSize, ScreenDir, Size},
@@ -53,7 +53,7 @@ impl Vertex for PathVert {
 }
 
 impl PathVert {
-    pub fn to_widget(&self, depth: f32, info: u32, color: [u8; 4]) -> WidgetVertex {
+    pub fn to_widget(self, depth: f32, info: u32, color: [u8; 4]) -> WidgetVertex {
         WidgetVertex::new(
             [
                 RelSize::Percent(self.x).as_gpu(),
@@ -198,13 +198,12 @@ impl EnvelopeInstrument {
             (&TypeRef, &BodyMotion, &WorldSpaceFrame, &FlightDynamics),
             With<PlayerMarker>,
         >,
-        mut instruments: Query<(&EnvelopeInstrument, &mut LayoutMeasurements)>,
+        instruments: Query<(&EnvelopeInstrument, &mut LayoutMeasurements)>,
         win: Res<Window>,
         gpu: Res<Gpu>,
         mut paint_context: ResMut<PaintContext>,
     ) {
-        let now = std::time::Instant::now();
-        let (xt, motion, frame, dynamics) = player.single();
+        let (xt, motion, frame, _dynamics) = player.single();
         for (instrument, measure) in instruments.iter() {
             let panel_border = Border::new(
                 Size::from_px(10.) * instrument.scale,
@@ -317,8 +316,8 @@ impl EnvelopeInstrument {
                         .triangulate::<builders::VecVecFanBuilder<_>>(&mut out)
                         .unwrap();
                     let depth = region.position().depth().as_gpu() + 0.2 + 0.01 * i as f32;
-                    let color = Self::ENVELOPE_LAYER_COLORS
-                        [(gload.abs() as usize).min(Self::ENVELOPE_LAYER_COLORS.len() - 1)];
+                    let color = Self::ENVELOPE_LAYER_COLORS[(gload.unsigned_abs() as usize)
+                        .min(Self::ENVELOPE_LAYER_COLORS.len() - 1)];
                     for tri in &out {
                         // For each tri in the fan
                         let v0 = &tri[0];

@@ -218,7 +218,7 @@ impl PowerPlant {
     pub fn engine_display(&self) -> String {
         match self {
             Self::Jet(engine) => engine.engine_display(),
-            Self::Piston(engine) => "N/A".to_owned(),
+            Self::Piston(_engine) => "N/A".to_owned(),
         }
     }
 
@@ -229,21 +229,21 @@ impl PowerPlant {
     ) -> Force<Newtons> {
         match self {
             Self::Jet(engine) => engine.forward_thrust(atmosphere, motion),
-            Self::Piston(engine) => newtons!(0_f64),
+            Self::Piston(_engine) => newtons!(0_f64),
         }
     }
 
     pub fn fuel_consumption(&self, dt: &Duration) -> Mass<Kilograms> {
         match self {
             Self::Jet(engine) => engine.fuel_consumption(dt),
-            Self::Piston(engine) => kilograms!(0_f64),
+            Self::Piston(_engine) => kilograms!(0_f64),
         }
     }
 
     pub fn set_out_of_fuel(&mut self) {
         match self {
             Self::Jet(engine) => engine.set_out_of_fuel(),
-            Self::Piston(engine) => {}
+            Self::Piston(_engine) => {}
         }
     }
 
@@ -255,7 +255,7 @@ impl PowerPlant {
     ) {
         match self {
             Self::Jet(engine) => engine.sys_tick(throttle, dt, draw_state),
-            Self::Piston(engine) => {}
+            Self::Piston(_engine) => {}
         }
     }
 }

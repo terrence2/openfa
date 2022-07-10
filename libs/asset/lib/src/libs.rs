@@ -24,7 +24,9 @@ use runtime::{Extension, Runtime};
 use std::{
     borrow::Cow,
     collections::HashSet,
-    env, fs,
+    env,
+    fmt::Write as _,
+    fs,
     path::{Path, PathBuf},
 };
 use structopt::StructOpt;
@@ -235,12 +237,14 @@ impl Libs {
     fn list_games(&self) -> String {
         let mut s = String::new();
         for (game, _, _) in &self.catalogs {
-            s += &format!(
-                "{:>7} - {} ({})\n",
+            writeln!(
+                s,
+                "{:>7} - {} ({})",
                 game.test_dir,
                 game.long_name,
                 game.released_at()
-            );
+            )
+            .ok();
         }
         s
     }
@@ -264,12 +268,14 @@ impl Libs {
         let mut s = String::new();
         for fid in self.catalog().find_glob(glob)? {
             let stat = self.catalog().stat(fid)?;
-            s += &format!(
-                "{:<11} {:>4} {:>6}\n",
+            writeln!(
+                s,
+                "{:<11} {:>4} {:>6}",
                 stat.name(),
                 stat.compression().unwrap_or("none"),
                 stat.unpacked_size()
-            );
+            )
+            .ok();
         }
         Ok(s)
     }

@@ -26,14 +26,12 @@ use absolute_unit::{
     degrees, kilograms_meter2, knots, meters, meters2, meters_per_second, meters_per_second2,
     newton_meters, newtons, pounds_weight, radians, radians_per_second, radians_per_second2,
     scalar, seconds, Acceleration, Angle, AngularAcceleration, AngularVelocity, Force, Kilograms,
-    Meters, Newtons, PoundsMass, PoundsWeight, Radians, RotationalInertia, Scalar, Seconds, Torque,
-    Velocity, Weight,
+    Meters, Newtons, Radians, RotationalInertia, Scalar, Seconds, Torque, Velocity, Weight,
 };
 use animate::TimeStep;
 use anyhow::Result;
 use approx::relative_eq;
 use bevy_ecs::prelude::*;
-use geodesy::{GeoCenter, GeoSurface, Graticule};
 use marker::EntityMarkers;
 use measure::{BodyMotion, WorldSpaceFrame};
 use nalgebra::{Point3, UnitQuaternion, Vector3};
@@ -539,14 +537,12 @@ impl FlightDynamics {
         let max_aoa = radians!(degrees!(pt.gpull_aoa));
         let alpha = radians!(w.f64().atan2(u.f64()));
         let beta = radians!(v.f64().atan2(uw_mag.f64()));
-        if let Some(_) = markers.as_mut() {
-            if alpha > max_aoa {
-                println!(
-                    "OOB alpha > max_aoa: {} > {}",
-                    degrees!(alpha),
-                    degrees!(max_aoa)
-                );
-            }
+        if markers.is_some() && alpha > max_aoa {
+            println!(
+                "OOB alpha > max_aoa: {} > {}",
+                degrees!(alpha),
+                degrees!(max_aoa)
+            );
         }
 
         // Alpha_dot and beta_dot are trig approximations, so the units intentionally don't
@@ -877,15 +873,15 @@ impl FlightDynamics {
         {
             dynamics.update_state(
                 &timestep,
-                &airbrake,
-                &flaps,
-                &hook,
+                airbrake,
+                flaps,
+                hook,
                 &mut bay,
                 &mut gear,
                 &mut ailerons,
                 &mut elevator,
                 &mut rudder,
-                &xt,
+                xt,
                 &mut draw_state,
             );
         }
@@ -913,16 +909,16 @@ impl FlightDynamics {
         {
             dynamics.simulate(
                 &timestep,
-                &xt,
-                &airbrake,
-                &flaps,
-                &hook,
-                &bay,
-                &gear,
-                &vehicle,
-                &ailerons,
-                &elevator,
-                &rudder,
+                xt,
+                airbrake,
+                flaps,
+                hook,
+                bay,
+                gear,
+                vehicle,
+                ailerons,
+                elevator,
+                rudder,
                 &mut inertia,
                 &mut motion,
                 &mut frame,

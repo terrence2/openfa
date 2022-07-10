@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, knots, pdl, PoundsForce, PoundsWeight};
+use absolute_unit::{degrees, knots, pdl, PoundsWeight};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::{AssetLoader, PlayerMarker};
@@ -26,7 +26,6 @@ use flight_dynamics::FlightDynamics;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
-use geodesy::{GeoSurface, Graticule};
 use global_data::GlobalParametersBuffer;
 use gpu::{DetailLevelOpts, Gpu, GpuStep};
 use input::{InputSystem, InputTarget};
@@ -49,15 +48,13 @@ use terminal_size::{terminal_size, Width};
 use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
-use vehicle_state::{Throttle, VehicleState};
+use vehicle_state::VehicleState;
 use widget::{
-    FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, PositionH, PositionV,
-    Terminal, WidgetBuffer,
+    FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, Terminal, WidgetBuffer,
 };
 use window::{size::Size, DisplayOpts, Window, WindowBuilder};
 use world::WorldRenderPass;
 use xt::TypeManager;
-use xt::TypeRef;
 
 /// Show resources from Jane's Fighters Anthology engine LIB files.
 #[derive(Clone, Debug, StructOpt)]
@@ -258,8 +255,6 @@ impl System {
             (
                 &WorldSpaceFrame,
                 &BodyMotion,
-                &TypeRef,
-                &Throttle,
                 &VehicleState,
                 &FlightDynamics,
             ),
@@ -279,8 +274,6 @@ impl System {
             (
                 &WorldSpaceFrame,
                 &BodyMotion,
-                &TypeRef,
-                &Throttle,
                 &VehicleState,
                 &FlightDynamics,
             ),
@@ -294,7 +287,7 @@ impl System {
             .get_mut(self.visible_widgets.camera_fov)?
             .set_text(format!("FoV: {}", degrees!(camera.fov_y())));
 
-        if let Ok((frame, motion, xt, throttle, vehicle, dynamics)) = query.get_single() {
+        if let Ok((frame, motion, vehicle, dynamics)) = query.get_single() {
             labels
                 .get_mut(self.visible_widgets.weight_label)?
                 .set_text(format!(
@@ -308,7 +301,7 @@ impl System {
                 .set_text(format!(
                     "Engine: {} ({:0.0})",
                     vehicle.power_plant().engine_display(),
-                    pdl!(vehicle.power_plant().forward_thrust(&atmosphere, &motion))
+                    pdl!(vehicle.power_plant().forward_thrust(&atmosphere, motion))
                 ));
             labels
                 .get_mut(self.visible_widgets.accel_label)?

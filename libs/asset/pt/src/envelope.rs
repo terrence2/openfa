@@ -111,7 +111,7 @@ impl EnvelopeShape {
         let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
         let t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
 
-        if s >= 0. && s <= 1. && t >= 0. && t <= 1. {
+        if (0. ..=1.).contains(&s) && (0. ..=1.).contains(&t) {
             let i_x = p0_x + (t * s1_x);
             let i_y = p0_y + (t * s1_y);
             return Some((i_x, i_y));

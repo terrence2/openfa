@@ -21,7 +21,6 @@ use geodesy::{GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
 use lib::{from_dos_string, Libs};
-use marker::EntityMarkers;
 use measure::{BodyMotion, WorldSpaceFrame};
 use mmm::{Mission, MissionMap, ObjectInfo};
 use nitrous::EntityName;
@@ -38,7 +37,6 @@ use std::{
     sync::Arc,
 };
 use t2_terrain::{T2TerrainBuffer, T2TileSet};
-use vehicle_state::Throttle;
 use vehicle_state::VehicleState;
 use xt::TypeManager;
 
@@ -325,7 +323,7 @@ impl AssetLoader {
             let libs = heap.resource::<Libs>();
             t2_terrain.add_map(
                 libs.palette(),
-                &mission_map,
+                mission_map,
                 libs.catalog(),
                 heap.resource::<Gpu>(),
             )
@@ -364,7 +362,7 @@ impl AssetLoader {
                     "{}_{}_{}",
                     game_name,
                     make_symbol(&map_name[0..map_name.len() - 3]),
-                    make_symbol(if shape_name.len() > 0 {
+                    make_symbol(if !shape_name.is_empty() {
                         &shape_name[0..shape_name.len() - 3]
                     } else {
                         "none"
