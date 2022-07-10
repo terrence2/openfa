@@ -291,7 +291,7 @@ impl AssetLoader {
         if info.xt().is_jt() || info.xt().is_nt() || info.xt().is_pt() {
             heap.named_entity_mut(id)
                 .insert(BodyMotion::new_forward(feet_per_second!(info.speed())));
-            VehicleState::install_on(id, info.xt(), heap.as_mut())?;
+            VehicleState::install_on(id, &info.xt(), heap.as_mut())?;
             if let Some(fuel_override) = info.fuel_override() {
                 heap.get_mut::<VehicleState>(id)
                     .set_internal_fuel_lbs(fuel_override);

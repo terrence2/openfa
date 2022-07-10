@@ -13,14 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod control;
-mod inertia;
 
-pub use crate::{
-    control::{
-        ailerons::Ailerons, airbrake::Airbrake, bay::Bay, elevator::Elevator, flaps::Flaps,
-        gear::Gear, hook::Hook, rudder::Rudder,
-    },
-    inertia::Inertia,
+pub use crate::control::{
+    ailerons::Ailerons, airbrake::Airbrake, bay::Bay, elevator::Elevator, flaps::Flaps, gear::Gear,
+    hook::Hook, rudder::Rudder,
 };
 use absolute_unit::{
     degrees, kilograms_meter2, knots, meters, meters2, meters_per_second, meters_per_second2,
@@ -39,8 +35,8 @@ use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent};
 use physical_constants::{StandardAtmosphere, STANDARD_GRAVITY};
 use pt::{GloadExtrema, PlaneType};
 use runtime::{Extension, Runtime};
-use shape::{DrawState, ShapeBuffer, ShapeId};
-use vehicle_state::VehicleState;
+use shape::DrawState;
+use vehicle_state::{VehicleState, VehicleStep};
 use xt::TypeRef;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
@@ -61,12 +57,6 @@ pub struct FlightDynamics {
     // Intermediates
     alpha: Angle<Radians>,
     beta: Angle<Radians>,
-
-    // //////////// Inertia tensor //////////// //
-    // inertia_xx: RotationalInertia<Kilograms, Meters>,
-    // inertia_yy: RotationalInertia<Kilograms, Meters>,
-    // inertia_zz: RotationalInertia<Kilograms, Meters>,
-    // inertia_xz: RotationalInertia<Kilograms, Meters>,
 
     // //////////// Pitch coefficients //////////// //
 
@@ -106,7 +96,8 @@ impl Extension for FlightDynamics {
         runtime.add_sim_system(
             Self::sys_simulate
                 .label(FlightStep::Simulate)
-                .after(FlightStep::UpdateState),
+                .after(FlightStep::UpdateState)
+                .after(VehicleStep::UpdateState),
         );
 
         Ok(())
@@ -132,7 +123,7 @@ impl FlightDynamics {
 
     pub fn install_on(
         id: Entity,
-        pt: &PlaneType,
+        _pt: &PlaneType,
         on_ground: bool,
         mut heap: HeapMut,
     ) -> Result<()> {
@@ -144,13 +135,6 @@ impl FlightDynamics {
         let ailerons = Ailerons::default();
         let elevator = Elevator::default();
         let rudder = Rudder::default();
-        let inertia = Inertia::from_extent(
-            pt,
-            heap.resource::<ShapeBuffer>()
-                .metadata(*heap.get::<ShapeId>(id))
-                .read()
-                .extent(),
-        );
         heap.named_entity_mut(id)
             .insert_named(airbrake)?
             .insert_named(flaps)?
@@ -160,7 +144,6 @@ impl FlightDynamics {
             .insert_named(ailerons)?
             .insert_named(elevator)?
             .insert_named(rudder)?
-            .insert_named(inertia)?
             .insert_named(FlightDynamics::new(id))?;
         Ok(())
     }
@@ -307,7 +290,7 @@ impl FlightDynamics {
             heap.entity_mut(self.id).insert(EntityMarkers::default());
         }
         let (fuselage_front, fuselage_back, wing) = {
-            let inertia = heap.get::<Inertia>(self.id);
+            let inertia = heap.get::<VehicleState>(self.id).inertia();
             (
                 inertia.fuselage_front().to_owned(),
                 inertia.fuselage_back().to_owned(),
@@ -501,7 +484,6 @@ impl FlightDynamics {
         ailerons: &Ailerons,
         elevator: &Elevator,
         rudder: &Rudder,
-        inertia: &mut Inertia,
         motion: &mut BodyMotion,
         frame: &mut WorldSpaceFrame,
         mut markers: Option<Mut<EntityMarkers>>,
@@ -782,19 +764,20 @@ impl FlightDynamics {
             + gear_moment_pitch;
         debug_assert!(m.is_finite(), "m is NaN");
 
-        let i_xx = kilograms_meter2!(100f64);
-        let i_zz = kilograms_meter2!(100f64);
-        let i_xz = kilograms_meter2!(100f64);
-        let i_yy = inertia.i_xx(); // I totally got the axis wrong here
-                                   // Compute body frame accelerations
-                                   // (kg*m^2 / s^2) / kg*m^2 => rad / s^2
+        let tensor = vehicle.inertia_tensor();
+        let i_xx = tensor.i_xx.as_dyn();
+        let i_zz = tensor.i_zz.as_dyn();
+        let i_xz = kilograms_meter2!(100f64).as_dyn();
+        let i_yy = tensor.i_yy.as_dyn();
+        // Compute body frame accelerations
+        // (kg*m^2 / s^2) / kg*m^2 => rad / s^2
         assert_eq!(r, radians_per_second!(0f64));
         assert_eq!(p, radians_per_second!(0f64));
         let q_dot: AngularAcceleration<Radians, Seconds> = ((m.as_dyn() * radians!(1f64).as_dyn()
-            + (i_zz - i_xx).as_dyn() * (r * p).as_dyn() // 0
-            + i_xz.as_dyn() * (r * r - p * p).as_dyn()) // 0
-            / i_yy.as_dyn())
-        .into();
+            + (i_zz - i_xx) * (r * p).as_dyn() // 0
+            + i_xz * (r * r - p * p).as_dyn()) // 0
+            / i_yy)
+            .into();
         debug_assert!(q_dot.is_finite(), "q_dot is NaN");
         // rad/s
         q += q_dot * seconds!(dt.as_secs_f64());
@@ -891,7 +874,6 @@ impl FlightDynamics {
         timestep: Res<TimeStep>,
         mut query: Query<(
             &mut FlightDynamics,
-            &mut Inertia,
             (&Airbrake, &Flaps, &Hook, &Bay, &Gear, &VehicleState),
             (&Ailerons, &Elevator, &Rudder),
             (&TypeRef, &mut BodyMotion, &mut WorldSpaceFrame),
@@ -900,7 +882,6 @@ impl FlightDynamics {
     ) {
         for (
             mut dynamics,
-            mut inertia,
             (airbrake, flaps, hook, bay, gear, vehicle),
             (ailerons, elevator, rudder),
             (xt, mut motion, mut frame),
@@ -919,7 +900,6 @@ impl FlightDynamics {
                 ailerons,
                 elevator,
                 rudder,
-                &mut inertia,
                 &mut motion,
                 &mut frame,
                 markers,

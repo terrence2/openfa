@@ -19,8 +19,14 @@ use bevy_ecs::prelude::*;
 use geometry::{Aabb3, Cylinder};
 use nalgebra::{Point3, Vector3};
 use nitrous::{inject_nitrous_component, NitrousComponent};
-use pt::PlaneType;
+use ot::ObjectType;
 use shape::ShapeExtent;
+
+pub struct InertiaTensor {
+    pub i_xx: RotationalInertia<Kilograms, Meters>,
+    pub i_yy: RotationalInertia<Kilograms, Meters>,
+    pub i_zz: RotationalInertia<Kilograms, Meters>,
+}
 
 // Each FlightDynamics gets its own Inertia reference. The base plane
 // bits are shared between all instances of that plane, but are must created
@@ -35,22 +41,15 @@ pub struct Inertia {
     // TODO: fuel tanks
     // TODO: munitions
 
-    // Constant masses.
-    fuselage_front_mass: Mass<Kilograms>,
-    fuselage_back_mass: Mass<Kilograms>,
-    wing_mass: Mass<Kilograms>,
-
-    // Re-computing the inertia tensor results in the following tracked components.
-    i_xx: RotationalInertia<Kilograms, Meters>,
-    i_yy: RotationalInertia<Kilograms, Meters>,
-    i_zz: RotationalInertia<Kilograms, Meters>,
+    // Constants
+    empty_mass: Mass<Kilograms>,
 }
 
 #[inject_nitrous_component]
 impl Inertia {
     /// Create the Inertia from the plane data.
     /// TODO: fuel and munitions
-    pub fn from_extent(pt: &PlaneType, extent: &ShapeExtent) -> Self {
+    pub fn from_extent(ot: &ObjectType, extent: &ShapeExtent) -> Self {
         // Assumption: fuselage is 1/4 the total elevator to gear height
         // Assumption: the wing chord is 1/5 the total plane length
         let length = extent.aabb().span(2);
@@ -85,25 +84,6 @@ impl Inertia {
             ),
         );
 
-        // Assumption: constant density between wings and fuselage
-        let empty_mass = pt.nt.ot.empty_weight.mass::<Kilograms>();
-        let fuselage_volume = fuselage_front.volume() + fuselage_back.volume();
-        let wing_volume = wing.volume();
-        let total_volume = fuselage_volume + wing_volume;
-        let wing_fraction: Scalar = (wing_volume.as_dyn() / total_volume.as_dyn()).into();
-        let fuselage_fraction: Scalar = (fuselage_volume.as_dyn() / total_volume.as_dyn()).into();
-        let wing_mass = wing_fraction * empty_mass;
-        let fuselage_mass = fuselage_fraction * empty_mass;
-        let fuselage_back_mass = fuselage_mass / scalar!(2_f64);
-        let fuselage_front_mass = fuselage_mass / scalar!(2_f64);
-
-        // TODO: recompute every step
-        // Inertia at the end of a cylinder = 1/4*m*r**2 + 1/3*m*l**2
-        let i_xx = Self::cylinder_i_xx(&fuselage_back, fuselage_back_mass)
-            + Self::cylinder_i_xx(&fuselage_front, fuselage_front_mass)
-            + Self::aabb_i_xx(&wing, wing_mass);
-        println!("computed i_xx: {}", i_xx);
-
         Self {
             // Impostors
             fuselage_front,
@@ -113,17 +93,19 @@ impl Inertia {
             // munitions
 
             // Pre-computed factors
-            fuselage_back_mass,
-            fuselage_front_mass,
-            wing_mass,
-
-            i_xx,
-            i_yy: kilograms_meter2!(100_f64),
-            i_zz: kilograms_meter2!(100_f64),
+            empty_mass: ot.empty_weight.mass::<Kilograms>(),
         }
     }
 
     fn cylinder_i_xx(
+        c: &Cylinder<Meters>,
+        m: Mass<Kilograms>,
+    ) -> RotationalInertia<Kilograms, Meters> {
+        let r = c.radius_bottom();
+        scalar!(1. / 2_f64) * m * (r * r)
+    }
+
+    fn cylinder_i_yy_zz_end(
         c: &Cylinder<Meters>,
         m: Mass<Kilograms>,
     ) -> RotationalInertia<Kilograms, Meters> {
@@ -139,8 +121,18 @@ impl Inertia {
         scalar!(1. / 12_f64) * m * (ly * ly + lz * lz)
     }
 
-    pub fn i_xx(&self) -> RotationalInertia<Kilograms, Meters> {
-        self.i_xx
+    fn aabb_i_yy(b: &Aabb3<Meters>, m: Mass<Kilograms>) -> RotationalInertia<Kilograms, Meters> {
+        // Note: i_xx in the Allerton frame is actually -z in the model frame
+        let lx = b.span(2);
+        let lz = b.span(1);
+        scalar!(1. / 12_f64) * m * (lx * lx + lz * lz)
+    }
+
+    fn aabb_i_zz(b: &Aabb3<Meters>, m: Mass<Kilograms>) -> RotationalInertia<Kilograms, Meters> {
+        // Note: i_xx in the Allerton frame is actually -z in the model frame
+        let lx = b.span(2);
+        let ly = b.span(0);
+        scalar!(1. / 12_f64) * m * (lx * lx + ly * ly)
     }
 
     pub fn fuselage_front(&self) -> &Cylinder<Meters> {
@@ -156,6 +148,31 @@ impl Inertia {
     }
 
     /// Recalculate the tensor from change shapes.
-    /// TODO: take current munitions and fuel levels.
-    pub fn recompute_tensor(&mut self) {}
+    /// TODO: take current hardpoints, munitions, and fuel levels.
+    pub fn recompute_tensor(&self, internal_fuel: Mass<Kilograms>) -> InertiaTensor {
+        // Assumption: constant density between wings and fuselage
+        // Assumption: uniform distribution of fuel in wings and fuselage
+        let current_mass = self.empty_mass + internal_fuel;
+        let fuselage_volume = self.fuselage_front.volume() + self.fuselage_back.volume();
+        let wing_volume = self.wing.volume();
+        let total_volume = fuselage_volume + wing_volume;
+        let wing_fraction: Scalar = (wing_volume.as_dyn() / total_volume.as_dyn()).into();
+        let fuselage_fraction: Scalar = (fuselage_volume.as_dyn() / total_volume.as_dyn()).into();
+        let wing_mass = wing_fraction * current_mass;
+        let fuselage_mass = fuselage_fraction * current_mass;
+        let fuselage_back_mass = fuselage_mass / scalar!(2_f64);
+        let fuselage_front_mass = fuselage_mass / scalar!(2_f64);
+
+        let i_xx = Self::cylinder_i_xx(&self.fuselage_back, fuselage_back_mass)
+            + Self::cylinder_i_xx(&self.fuselage_front, fuselage_front_mass)
+            + Self::aabb_i_xx(&self.wing, wing_mass);
+        let i_yy = Self::cylinder_i_yy_zz_end(&self.fuselage_back, fuselage_back_mass)
+            + Self::cylinder_i_yy_zz_end(&self.fuselage_front, fuselage_front_mass)
+            + Self::aabb_i_yy(&self.wing, wing_mass);
+        let i_zz = Self::cylinder_i_yy_zz_end(&self.fuselage_back, fuselage_back_mass)
+            + Self::cylinder_i_yy_zz_end(&self.fuselage_front, fuselage_front_mass)
+            + Self::aabb_i_zz(&self.wing, wing_mass);
+
+        InertiaTensor { i_xx, i_yy, i_zz }
+    }
 }

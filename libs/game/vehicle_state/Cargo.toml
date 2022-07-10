@@ -16,6 +16,7 @@ marker = { path = "../../nitrogen/wgpu-buffer/marker" }
 measure = { path = "../../nitrogen/sim/measure" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
 physical_constants = { path = "../../nitrogen/util/physical_constants" }
+ot = { path = "../../asset/ot" }
 pt = { path = "../../asset/pt" }
 runtime = { path = "../../nitrogen/util/runtime" }
 ### Warning: this should not need to refer _up_ to the drawing layer. I think we

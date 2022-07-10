@@ -21,17 +21,18 @@ use shape::DrawState;
 use std::time::Duration;
 use xt::TypeRef;
 
-const _AFTERBURNER_ENABLE_SOUND: &'static str = "&AFTBURN.11K";
+const _AFTERBURNER_ENABLE_SOUND: &str = "&AFTBURN.11K";
 const ENGINE_IDLE_CONSUMPTION: f32 = 0.2;
 
 /// Target performance as a percentage with optional afterburner.
 /// Actual engine thrust is modeled with other considerations.
 /// TODO: better model engine behavior based on atmosphere and nozzle velocity, etc
-#[derive(Debug, Copy, Clone)]
 pub(crate) enum JetEnginePerformance {
     Military(f32),
     Afterburner,
     OutOfFuel,
+    // TODO: model flameout
+    #[allow(unused)]
     FlameOut,
 }
 
@@ -95,7 +96,6 @@ impl ToString for JetEnginePerformance {
     }
 }
 
-#[derive(Clone, Debug)]
 pub struct JetEngine {
     perf_target: JetEnginePerformance,
 
@@ -136,19 +136,11 @@ impl JetEngine {
         match self.perf_target {
             JetEnginePerformance::Afterburner => self.afterburner_thrust,
             JetEnginePerformance::Military(pct) => {
-                let power_f = self.perf_target.military() / 100.;
+                let power_f = pct / 100.;
                 scalar!(power_f) * self.max_military_thrust
             }
             JetEnginePerformance::OutOfFuel | JetEnginePerformance::FlameOut => newtons!(0_f64),
         }
-        // (&if self.perf_target.is_afterburner() {
-        //     self.afterburner_thrust
-        // } else {
-        //     // TODO: can we assume zero thrust at engine off? Probably close enough.
-        //     let power_f = self.perf_target.military() / 100.;
-        //     scalar!(power_f) * self.max_military_thrust
-        // })
-        //     .into()
     }
 
     pub fn fuel_consumption(&self, dt: &Duration) -> Mass<Kilograms> {
@@ -172,42 +164,38 @@ impl JetEngine {
         dt: &Duration,
         draw_state: &mut DrawState,
     ) {
-        if self.perf_target.military() < throttle.position().military() {
-            if self
+        if self.perf_target.military() < throttle.position().military()
+            && self
                 .perf_target
                 .increase(self.throttle_acc * dt.as_secs_f32(), throttle.position())
-            {
-                // TODO: play sound
-                draw_state.enable_afterburner();
-            }
+        {
+            // TODO: play sound
+            draw_state.enable_afterburner();
         }
-        if self.perf_target.military() > throttle.position().military() {
-            if self
+        if self.perf_target.military() > throttle.position().military()
+            && self
                 .perf_target
                 .decrease(self.throttle_dacc * dt.as_secs_f32(), throttle.position())
-            {
-                draw_state.disable_afterburner();
-            }
+        {
+            draw_state.disable_afterburner();
         }
     }
 }
 
 /// Non-jet engines are very weakly modeled in FA
-#[derive(Debug, Copy, Clone)]
 pub struct PistonEngine {
     // todo!
 }
 
 impl PistonEngine {}
 
-#[derive(Clone, Debug)]
 pub enum PowerPlant {
     Jet(JetEngine),
     Piston(PistonEngine),
 }
 
 impl PowerPlant {
-    pub fn new_min_power(xt: TypeRef, draw_state: &mut DrawState) -> Self {
+    pub fn new_min_power(xt: &TypeRef, draw_state: &mut DrawState) -> Self {
         if let Some(pt) = xt.pt() {
             Self::Jet(JetEngine::new_min_power(pt, draw_state))
         } else {

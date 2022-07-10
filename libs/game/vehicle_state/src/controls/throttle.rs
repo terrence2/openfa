@@ -22,10 +22,6 @@ pub enum ThrottlePosition {
 }
 
 impl ThrottlePosition {
-    pub(crate) fn new_min_power() -> Self {
-        Self::Military(0.)
-    }
-
     pub(crate) fn military(&self) -> f32 {
         match self {
             Self::Military(m) => *m,

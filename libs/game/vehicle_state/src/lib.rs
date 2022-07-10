@@ -13,9 +13,13 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 mod controls;
+mod inertia;
 mod systems;
 
-pub use crate::controls::throttle::Throttle;
+pub use crate::{
+    controls::throttle::Throttle,
+    inertia::{Inertia, InertiaTensor},
+};
 
 use crate::systems::{fuel_tank::FuelTank, power_plant::PowerPlant};
 use absolute_unit::{kilograms, scalar, Kilograms, Mass, PoundsWeight, Weight};
@@ -24,14 +28,11 @@ use anyhow::Result;
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent};
 use runtime::{Extension, Runtime};
-use shape::DrawState;
+use shape::{DrawState, ShapeBuffer, ShapeId};
 use xt::TypeRef;
 
 #[derive(Clone, Debug)]
 pub struct Munition {}
-
-#[derive(Clone, Debug)]
-pub struct Inertia {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
 pub enum VehicleStep {
@@ -41,7 +42,7 @@ pub enum VehicleStep {
 /// Maintain machine related properties in common between all vehicle types, independent
 /// of the specific dynamics that are being applied. This is things like the fuel levels,
 /// stores levels, inertial tensors, etc.
-#[derive(Debug, Component, NitrousComponent)]
+#[derive(Component, NitrousComponent)]
 #[Name = "vehicle"]
 pub struct VehicleState {
     // self pointer for updating markers
@@ -56,8 +57,8 @@ pub struct VehicleState {
 
     // Stores
     internal_fuel: Option<FuelTank>,
-    external_fuel: Vec<FuelTank>,
-    munitions: Vec<Munition>,
+    // external_fuel: Vec<FuelTank>,
+    // munitions: Vec<Munition>,
 
     // Inertial tensor: distribution of the masses of the above
     inertia: Inertia,
@@ -72,7 +73,7 @@ impl Extension for VehicleState {
 
 #[inject_nitrous_component]
 impl VehicleState {
-    pub fn new(id: Entity, xt: TypeRef, mut heap: HeapMut) -> Self {
+    pub fn new(id: Entity, xt: &TypeRef, mut heap: HeapMut) -> Self {
         let empty_mass = xt.ot().empty_weight.mass::<Kilograms>();
         let internal_fuel = xt
             .pt()
@@ -80,19 +81,26 @@ impl VehicleState {
         // TODO: fuel weight
         let current_mass = empty_mass;
         let power_plant = PowerPlant::new_min_power(xt, &mut heap.get_mut::<DrawState>(id));
+        let inertia = Inertia::from_extent(
+            xt.ot(),
+            heap.resource::<ShapeBuffer>()
+                .metadata(*heap.get::<ShapeId>(id))
+                .read()
+                .extent(),
+        );
         Self {
             id,
             power_plant,
             empty_mass,
             current_mass,
-            munitions: Vec::new(),
             internal_fuel,
-            external_fuel: Vec::new(),
-            inertia: Inertia {},
+            // external_fuel: Vec::new(),
+            // munitions: Vec::new(),
+            inertia,
         }
     }
 
-    pub fn install_on(id: Entity, xt: TypeRef, mut heap: HeapMut) -> Result<()> {
+    pub fn install_on(id: Entity, xt: &TypeRef, mut heap: HeapMut) -> Result<()> {
         let throttle = Throttle::new_min_power();
         let vehicle = VehicleState::new(id, xt, heap.as_mut());
         heap.named_entity_mut(id)
@@ -121,8 +129,28 @@ impl VehicleState {
             .unwrap_or(false)
     }
 
+    #[method]
+    pub fn refuel(&mut self) {
+        if let Some(tank) = self.internal_fuel.as_mut() {
+            tank.refuel();
+        }
+    }
+
     pub fn power_plant(&self) -> &PowerPlant {
         &self.power_plant
+    }
+
+    pub fn inertia(&self) -> &Inertia {
+        &self.inertia
+    }
+
+    pub fn inertia_tensor(&self) -> InertiaTensor {
+        self.inertia.recompute_tensor(
+            self.internal_fuel
+                .as_ref()
+                .map(|tank| tank.current())
+                .unwrap_or_else(|| kilograms!(0_f64)),
+        )
     }
 
     fn sys_update_state(

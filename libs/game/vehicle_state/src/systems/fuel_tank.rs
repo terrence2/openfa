@@ -14,32 +14,35 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{kilograms, Kilograms, Mass};
 
-#[derive(Clone, Debug)]
-pub struct FuelTank {
+pub(crate) struct FuelTank {
     max: Mass<Kilograms>,
     current: Mass<Kilograms>,
 }
 
 impl FuelTank {
-    pub fn full(max: Mass<Kilograms>) -> Self {
+    pub(crate) fn full(max: Mass<Kilograms>) -> Self {
         Self { max, current: max }
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         debug_assert!(self.current.is_finite());
         self.current < kilograms!(0.001)
     }
 
-    pub fn current(&self) -> Mass<Kilograms> {
+    pub(crate) fn current(&self) -> Mass<Kilograms> {
         self.current
     }
 
-    pub fn consume(&mut self, mass: Mass<Kilograms>) {
+    pub(crate) fn consume(&mut self, mass: Mass<Kilograms>) {
         self.current -= mass;
         self.current = self.current.max(kilograms!(0_f64));
     }
 
-    pub fn override_fuel_mass(&mut self, mass: Mass<Kilograms>) {
+    pub(crate) fn override_fuel_mass(&mut self, mass: Mass<Kilograms>) {
         self.current = mass;
+    }
+
+    pub(crate) fn refuel(&mut self) {
+        self.current = self.max;
     }
 }
