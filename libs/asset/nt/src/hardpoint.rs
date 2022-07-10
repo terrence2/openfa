@@ -18,7 +18,7 @@ use ot::{
     make_type_struct,
     parse::{parse_string, FieldRow, FromRow},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum HardpointTypeVersion {
@@ -66,6 +66,12 @@ impl FromRow for HardpointDefault {
             let name = parse_string(&values[0])?.to_uppercase();
             Ok(HardpointDefault::new(name))
         }
+    }
+}
+
+impl fmt::Display for HardpointDefault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.name)
     }
 }
 

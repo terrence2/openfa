@@ -16,7 +16,9 @@ mod envelope;
 
 pub use crate::envelope::{Envelope, EnvelopeIntersection};
 
-use absolute_unit::{Hours, Length, Meters, Miles, Seconds, Velocity};
+use absolute_unit::{
+    Force, Hours, Length, Meters, Miles, PoundsForce, PoundsWeight, Seconds, Velocity, Weight,
+};
 use anyhow::{bail, ensure, Result};
 use nt::NpcType;
 use ot::{
@@ -198,6 +200,12 @@ impl Envelopes {
     }
 }
 
+impl fmt::Display for Envelopes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<Envelopes:{},{}>", self.min_g, self.max_g)
+    }
+}
+
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct SystemDamage {
@@ -213,6 +221,12 @@ impl fmt::Debug for SystemDamage {
             .collect::<Vec<String>>()
             .join(", ");
         write!(f, "SystemDamage {{ limits: {:?} }}", s)
+    }
+}
+
+impl fmt::Display for SystemDamage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -270,6 +284,16 @@ impl Default for PhysBounds {
     }
 }
 
+impl fmt::Display for PhysBounds {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{:0.2}, {:0.2}], *[{:0.2}, {:0.2}]",
+            self.min, self.max, self.acc, self.dacc
+        )
+    }
+}
+
 make_type_struct![
 PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Num,   [Dec, Hex],        "flags",Unsigned, flags,                u32, V0, panic!()), // dword $2d ; flags
@@ -277,7 +301,7 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],            "envMin",  Signed, env_min,              i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
 (Word,  [Dec],            "envMax",  Signed, env_max,              i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
 (Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,  u16, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
-(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,        Velocity<Miles, Hours>, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
+(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,Velocity<Miles, Hours>, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
 (Word,  [Dec],            "_bv.x.", CustomN, bv_x,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.y.", CustomN, bv_y,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.z.", CustomN, bv_z,          PhysBounds, V0, panic!()),
@@ -318,16 +342,16 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],         "crashRoll",  Signed, crash_roll,           i16, V0, panic!()), // word 10 ; crashRoll
 (Byte,  [Dec],           "engines",Unsigned, engines,               u8, V0, panic!()), // byte 1 ; engines
 (Word,  [Dec],         "negGLimit",  Signed, neg_g_limit,          i16, V0, panic!()), // word 2560 ; negGLimit
-(DWord, [Dec],            "thrust",Unsigned, thrust,               u32, V0, panic!()), // dword 17687 ; thrust
-(DWord, [Dec],         "aftThrust",Unsigned, aft_thrust,           u32, V0, panic!()), // dword 0 ; aftThrust
+(DWord, [Dec],            "thrust",Unsigned, thrust,               Force<PoundsForce>, V0, panic!()), // dword 17687 ; thrust
+(DWord, [Dec],         "aftThrust",Unsigned, aft_thrust,           Force<PoundsForce>, V0, panic!()), // dword 0 ; aftThrust
 (Word,  [Dec],       "throttleAcc",  Signed, throttle_acc,         i16, V0, panic!()), // word 40 ; throttleAcc
 (Word,  [Dec],      "throttleDacc",  Signed, throttle_dacc,        i16, V0, panic!()), // word 60 ; throttleDacc
 (Word,  [Dec],         "vtLimitUp",  Signed, vt_limit_up,          i16, V1, 0),        // word -60 ; vtLimitUp
 (Word,  [Dec],       "vtLimitDown",  Signed, vt_limit_down,        i16, V1, 0),        // word -120 ; vtLimitDown
 (Word,  [Dec],           "vtSpeed",  Signed, vt_speed,             i16, V1, 0),        // word 100 ; vtSpeed
-(Word,  [Dec],   "fuelConsumption",  Signed, fuel_consumption,     i16, V0, panic!()), // word 1 ; fuelConsumption
-(Word,  [Dec],"aftFuelConsumption",  Signed, aft_fuel_consumption, i16, V0, panic!()), // word 0 ; aftFuelConsumption
-(DWord, [Dec],      "internalFuel",Unsigned, internal_fuel,        u32, V0, panic!()), // dword 6200 ; internalFuel
+(Word,  [Dec],   "fuelConsumption",  Signed, fuel_consumption,     Weight<PoundsWeight>, V0, panic!()), // word 1 ; fuelConsumption
+(Word,  [Dec],"aftFuelConsumption",  Signed, aft_fuel_consumption, Weight<PoundsWeight>, V0, panic!()), // word 0 ; aftFuelConsumption
+(DWord, [Dec],      "internalFuel",Unsigned, internal_fuel,        Weight<PoundsWeight>, V0, panic!()), // dword 6200 ; internalFuel
 (Word,  [Dec],          "coefDrag",  Signed, coef_drag,            i16, V0, panic!()), // word 256 ; coefDrag
 (Word,  [Dec],        "_gpullDrag",  Signed, _gpull_drag,          i16, V0, panic!()), // word 12 ; _gpullDrag
 (Word,  [Dec],     "airBrakesDrag",  Signed, air_brakes_drag,      i16, V0, panic!()), // word 256 ; airBrakesDrag

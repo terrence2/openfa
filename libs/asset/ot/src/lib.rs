@@ -19,7 +19,7 @@ use absolute_unit::{PoundsWeight, Weight};
 use anyhow::{bail, ensure, Result};
 use bitflags::bitflags;
 use nalgebra::Point3;
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, fmt, mem};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -43,6 +43,12 @@ impl FromRow for TypeTag {
     type Produces = TypeTag;
     fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         TypeTag::from_byte(field.value().numeric()?.byte()?)
+    }
+}
+
+impl fmt::Display for TypeTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -80,6 +86,12 @@ impl ObjectKind {
     }
 }
 
+impl fmt::Display for ObjectKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl FromRow for ObjectKind {
     type Produces = ObjectKind;
     fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
@@ -113,6 +125,12 @@ impl ProcKind {
             "_CATGUYProc" => ProcKind::CATGUY,
             _ => bail!("Unexpected proc kind: {}", s),
         })
+    }
+}
+
+impl fmt::Display for ProcKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -160,6 +178,16 @@ impl FromRow for ObjectNames {
             long_name: parse::parse_string(&values[1])?,
             file_name: parse::parse_string(&values[2])?,
         })
+    }
+}
+
+impl fmt::Display for ObjectNames {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} ({})[{}]",
+            self.short_name, self.long_name, self.file_name
+        )
     }
 }
 

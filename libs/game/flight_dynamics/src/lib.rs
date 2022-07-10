@@ -18,7 +18,7 @@ mod inertia;
 pub use crate::{
     control::{
         ailerons::Ailerons, airbrake::Airbrake, bay::Bay, elevator::Elevator, flaps::Flaps,
-        gear::Gear, hook::Hook, rudder::Rudder, throttle::Throttle,
+        gear::Gear, hook::Hook, rudder::Rudder,
     },
     inertia::Inertia,
 };
@@ -42,6 +42,7 @@ use physical_constants::{StandardAtmosphere, STANDARD_GRAVITY};
 use pt::{GloadExtrema, PlaneType};
 use runtime::{Extension, Runtime};
 use shape::{DrawState, ShapeBuffer, ShapeId};
+use vehicle_state::VehicleState;
 use xt::TypeRef;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
@@ -55,9 +56,6 @@ pub enum FlightStep {
 pub struct FlightDynamics {
     // self pointer for updating markers
     id: Entity,
-
-    // Aggregate current weight with all stores and fuel
-    weight_lbs: Weight<PoundsWeight>,
 
     // Current envelope
     max_g_load: GloadExtrema,
@@ -122,17 +120,15 @@ impl FlightDynamics {
     pub fn new(id: Entity) -> Self {
         Self {
             id,
-            weight_lbs: pounds_weight!(0.),
             max_g_load: GloadExtrema::Stall(0.),
             alpha: radians!(0.),
             beta: radians!(0.),
             // Pitch coefficients
             coef_m0: radians!(0_f64),
-            coef_malpha: scalar!(-0.01_f64),
+            coef_malpha: scalar!(0.5_f64),
             coef_mde: scalar!(0.1_f64),
-            coef_mq: scalar!(-10_f64),
-            coef_malphadot: scalar!(-100_f64),
-            // Inertia tensor
+            coef_mq: scalar!(-5000_f64),
+            coef_malphadot: scalar!(0.001_f64),
         }
     }
 
@@ -147,7 +143,6 @@ impl FlightDynamics {
         let hook = Hook::new(&mut heap.get_mut::<DrawState>(id));
         let bay = Bay::new(&mut heap.get_mut::<DrawState>(id));
         let gear = Gear::new(on_ground, &mut heap.get_mut::<DrawState>(id));
-        let throttle = Throttle::new(pt, &mut heap.get_mut::<DrawState>(id));
         let ailerons = Ailerons::default();
         let elevator = Elevator::default();
         let rudder = Rudder::default();
@@ -164,7 +159,6 @@ impl FlightDynamics {
             .insert_named(hook)?
             .insert_named(gear)?
             .insert_named(bay)?
-            .insert_named(throttle)?
             .insert_named(ailerons)?
             .insert_named(elevator)?
             .insert_named(rudder)?
@@ -411,14 +405,6 @@ impl FlightDynamics {
         self.beta
     }
 
-    pub fn weight(&self) -> Weight<PoundsWeight> {
-        self.weight_lbs
-    }
-
-    pub fn weight_lbs(&self) -> f32 {
-        self.weight_lbs.f32()
-    }
-
     pub fn max_g_load(&self) -> GloadExtrema {
         self.max_g_load
     }
@@ -433,6 +419,46 @@ impl FlightDynamics {
         self.coef_m0 = radians!(v);
     }
 
+    #[method]
+    pub fn coef_malpha(&self) -> f64 {
+        self.coef_malpha.f64()
+    }
+
+    #[method]
+    pub fn set_coef_malpha(&mut self, v: f64) {
+        self.coef_malpha = scalar!(v);
+    }
+
+    #[method]
+    pub fn coef_malphadot(&self) -> f64 {
+        self.coef_malphadot.f64()
+    }
+
+    #[method]
+    pub fn set_coef_malphadot(&mut self, v: f64) {
+        self.coef_malphadot = scalar!(v);
+    }
+
+    #[method]
+    pub fn coef_mde(&self) -> f64 {
+        self.coef_mde.f64()
+    }
+
+    #[method]
+    pub fn set_coef_mde(&mut self, v: f64) {
+        self.coef_mde = scalar!(v);
+    }
+
+    #[method]
+    pub fn coef_mq(&self) -> f64 {
+        self.coef_mq.f64()
+    }
+
+    #[method]
+    pub fn set_coef_mq(&mut self, v: f64) {
+        self.coef_mq = scalar!(v);
+    }
+
     fn update_state(
         &mut self,
         timestep: &TimeStep,
@@ -443,7 +469,6 @@ impl FlightDynamics {
         bay: &mut Bay,
         gear: &mut Gear,
 
-        throttle: &mut Throttle,
         ailerons: &mut Ailerons,
         elevator: &mut Elevator,
         rudder: &mut Rudder,
@@ -459,7 +484,6 @@ impl FlightDynamics {
         hook.sys_tick(draw_state);
         bay.sys_tick(dt, draw_state);
         gear.sys_tick(dt, draw_state);
-        throttle.sys_tick(dt, pt, draw_state);
         ailerons.sys_tick(dt, draw_state);
         elevator.sys_tick(dt, draw_state);
         rudder.sys_tick(dt, draw_state);
@@ -475,7 +499,7 @@ impl FlightDynamics {
         hook: &Hook,
         bay: &Bay,
         gear: &Gear,
-        throttle: &mut Throttle,
+        vehicle: &VehicleState,
         ailerons: &Ailerons,
         elevator: &Elevator,
         rudder: &Rudder,
@@ -495,10 +519,8 @@ impl FlightDynamics {
         let grat = frame.position_graticule();
 
         let altitude = grat.distance;
-        let air_density = {
-            let atmosphere = StandardAtmosphere::at_altitude(altitude);
-            atmosphere.density::<Kilograms, Meters>()
-        };
+        let atmosphere = StandardAtmosphere::at_altitude(altitude);
+        let air_density = atmosphere.density::<Kilograms, Meters>();
         assert!(air_density.is_finite(), "NaN air density at {altitude}");
 
         let mut u = motion.vehicle_forward_velocity();
@@ -515,24 +537,17 @@ impl FlightDynamics {
         let mut v_dot = motion.vehicle_sideways_acceleration(); // v*
         let mut w_dot = motion.vehicle_vertical_acceleration(); // w*
         let max_aoa = radians!(degrees!(pt.gpull_aoa));
-        let alpha = if relative_eq!(u.f64(), 0f64) {
-            radians!(0_f64)
-        } else {
-            radians!((w / u).atan())
-        };
-        if alpha > max_aoa {
-            println!(
-                "OOB alpha > max_aoa: {} > {}",
-                degrees!(alpha),
-                degrees!(max_aoa)
-            );
+        let alpha = radians!(w.f64().atan2(u.f64()));
+        let beta = radians!(v.f64().atan2(uw_mag.f64()));
+        if let Some(_) = markers.as_mut() {
+            if alpha > max_aoa {
+                println!(
+                    "OOB alpha > max_aoa: {} > {}",
+                    degrees!(alpha),
+                    degrees!(max_aoa)
+                );
+            }
         }
-        let beta = if relative_eq!(uw_mag.f64(), 0f64) {
-            radians!(0_f64)
-        } else {
-            radians!((v / uw_mag).atan())
-        };
-        // println!("alpha: {w}, {u}, {alpha}");
 
         // Alpha_dot and beta_dot are trig approximations, so the units intentionally don't
         // make much of any sense.
@@ -570,14 +585,10 @@ impl FlightDynamics {
         let gravity_z = meters_per_second2!(-gravity_wf.y);
 
         // //////////////////// THRUST ////////////////////
-        // FIXME: do not consume fuel internally if there are drop tanks
-        // TODO: better model engine behavior based on atmosphere and nozzle velocity
-        throttle.consume_fuel(dt, pt);
-        let engine_thrust_x = throttle.compute_thrust::<Newtons>(pt);
+        let engine_thrust_x = vehicle.power_plant().forward_thrust(&atmosphere, motion);
         let engine_thrust_y = newtons!(0_f64);
         let engine_thrust_z = newtons!(0_f64);
-        let weight_lb = pounds_weight!(pt.nt.ot.empty_weight) + throttle.internal_fuel();
-        let mass_kg = weight_lb.mass::<Kilograms>();
+        let mass_kg = vehicle.current_mass();
         let engine_moment_pitch = newton_meters!(0_f64);
         let engine_moment_yaw = newton_meters!(0_f64);
         let engine_moment_roll = newton_meters!(0_f64);
@@ -596,7 +607,7 @@ impl FlightDynamics {
         let stall_speed = if let Some(stall_speed) = pt.envelopes.find_min_lift_speed_at(altitude) {
             // TODO: helicopters have an envelope that stalls at 0; bump this so that we
             //       at least don't get a NaN in the works for the moment.
-            stall_speed.max(meters_per_second!(1))
+            stall_speed.max(meters_per_second!(1_f64))
         } else {
             meters_per_second!(pt.max_speed_36a)
         };
@@ -744,11 +755,9 @@ impl FlightDynamics {
 
         let coef_1 =
             self.coef_m0 + self.coef_malpha * alpha + self.coef_mde * radians!(elevator.position());
-
         let coef_2a = self.coef_mq * q;
         let coef_2b = self.coef_malphadot.as_dyn() * alpha_dot.as_dyn();
-        // let coef_2 = self.coef_mq * q; // + self.coef_malphadot.as_dyn() * alpha_dot.as_dyn();
-        let coef_2 = coef_2a;
+        let coef_2 = coef_2a.as_dyn() + coef_2b;
 
         let m_stab: Torque<Newtons, Meters> = ((scalar!(0.5).as_dyn()
             * air_density.as_dyn()
@@ -756,8 +765,7 @@ impl FlightDynamics {
             * velocity_cg.as_dyn()
             * meters2!(1f64).as_dyn() // s
             * meters!(1f64).as_dyn() // c_bar
-            * radians!(coef_1
-                ).as_dyn())
+            * coef_1.as_dyn())
             + (scalar!(0.25).as_dyn()
                 * air_density.as_dyn()
                 * velocity_cg.as_dyn()
@@ -778,12 +786,12 @@ impl FlightDynamics {
             + gear_moment_pitch;
         debug_assert!(m.is_finite(), "m is NaN");
 
-        let i_xx = inertia.i_xx();
+        let i_xx = kilograms_meter2!(100f64);
         let i_zz = kilograms_meter2!(100f64);
         let i_xz = kilograms_meter2!(100f64);
-        let i_yy = kilograms_meter2!(100f64);
-        // Compute body frame accelerations
-        // (kg*m^2 / s^2) / kg*m^2 => rad / s^2
+        let i_yy = inertia.i_xx(); // I totally got the axis wrong here
+                                   // Compute body frame accelerations
+                                   // (kg*m^2 / s^2) / kg*m^2 => rad / s^2
         assert_eq!(r, radians_per_second!(0f64));
         assert_eq!(p, radians_per_second!(0f64));
         let q_dot: AngularAcceleration<Radians, Seconds> = ((m.as_dyn() * radians!(1f64).as_dyn()
@@ -804,10 +812,13 @@ impl FlightDynamics {
 
         motion.set_vehicle_forward_acceleration(u_dot);
         motion.set_vehicle_forward_velocity(u);
+
         // motion.set_vehicle_sideways_acceleration(v_dot);
         // motion.set_vehicle_sideways_velocity(v);
+
         motion.set_vehicle_vertical_acceleration(w_dot);
         motion.set_vehicle_vertical_velocity(w);
+
         motion.set_vehicle_pitch_velocity(q);
 
         // Update the frame facing with our angular velocities.
@@ -844,7 +855,6 @@ impl FlightDynamics {
 
         // let delta_quat = UnitQuaternion::from
 
-        self.weight_lbs = weight_lb;
         self.alpha = alpha;
         self.beta = beta;
     }
@@ -854,14 +864,14 @@ impl FlightDynamics {
         mut query: Query<(
             &mut FlightDynamics,
             (&Airbrake, &Flaps, &Hook, &mut Bay, &mut Gear),
-            (&mut Throttle, &mut Ailerons, &mut Elevator, &mut Rudder),
+            (&mut Ailerons, &mut Elevator, &mut Rudder),
             (&TypeRef, &mut DrawState),
         )>,
     ) {
         for (
             mut dynamics,
             (airbrake, flaps, hook, mut bay, mut gear),
-            (mut throttle, mut ailerons, mut elevator, mut rudder),
+            (mut ailerons, mut elevator, mut rudder),
             (xt, mut draw_state),
         ) in query.iter_mut()
         {
@@ -872,7 +882,6 @@ impl FlightDynamics {
                 &hook,
                 &mut bay,
                 &mut gear,
-                &mut throttle,
                 &mut ailerons,
                 &mut elevator,
                 &mut rudder,
@@ -887,8 +896,8 @@ impl FlightDynamics {
         mut query: Query<(
             &mut FlightDynamics,
             &mut Inertia,
-            (&Airbrake, &Flaps, &Hook, &Bay, &Gear),
-            (&mut Throttle, &Ailerons, &Elevator, &Rudder),
+            (&Airbrake, &Flaps, &Hook, &Bay, &Gear, &VehicleState),
+            (&Ailerons, &Elevator, &Rudder),
             (&TypeRef, &mut BodyMotion, &mut WorldSpaceFrame),
             Option<&mut EntityMarkers>,
         )>,
@@ -896,8 +905,8 @@ impl FlightDynamics {
         for (
             mut dynamics,
             mut inertia,
-            (airbrake, flaps, hook, bay, gear),
-            (mut throttle, ailerons, elevator, rudder),
+            (airbrake, flaps, hook, bay, gear, vehicle),
+            (ailerons, elevator, rudder),
             (xt, mut motion, mut frame),
             markers,
         ) in query.iter_mut()
@@ -910,7 +919,7 @@ impl FlightDynamics {
                 &hook,
                 &bay,
                 &gear,
-                &mut throttle,
+                &vehicle,
                 &ailerons,
                 &elevator,
                 &rudder,

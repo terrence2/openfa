@@ -12,21 +12,23 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{Kilograms, Mass};
+mod controls;
+mod systems;
+
+pub use crate::controls::throttle::Throttle;
+
+use crate::systems::{fuel_tank::FuelTank, power_plant::PowerPlant};
+use absolute_unit::{kilograms, scalar, Kilograms, Mass, PoundsWeight, Weight};
 use animate::TimeStep;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent};
 use runtime::{Extension, Runtime};
+use shape::DrawState;
+use xt::TypeRef;
 
 #[derive(Clone, Debug)]
 pub struct Munition {}
-
-#[derive(Clone, Debug)]
-pub struct FuelTank {}
-
-#[derive(Clone, Debug)]
-pub struct PowerPlant {}
 
 #[derive(Clone, Debug)]
 pub struct Inertia {}
@@ -53,9 +55,9 @@ pub struct VehicleState {
     current_mass: Mass<Kilograms>,
 
     // Stores
-    munitions: Vec<Munition>,
-    internal_fuel: Vec<FuelTank>,
+    internal_fuel: Option<FuelTank>,
     external_fuel: Vec<FuelTank>,
+    munitions: Vec<Munition>,
 
     // Inertial tensor: distribution of the masses of the above
     inertia: Inertia,
@@ -70,9 +72,82 @@ impl Extension for VehicleState {
 
 #[inject_nitrous_component]
 impl VehicleState {
-    fn sys_update_state(timestep: Res<TimeStep>, mut query: Query<(&mut VehicleState)>) {
-        for vehicle in query.iter() {
-            println!("Consume!")
+    pub fn new(id: Entity, xt: TypeRef, mut heap: HeapMut) -> Self {
+        let empty_mass = xt.ot().empty_weight.mass::<Kilograms>();
+        let internal_fuel = xt
+            .pt()
+            .map(|pt| FuelTank::full(pt.internal_fuel.mass::<Kilograms>()));
+        // TODO: fuel weight
+        let current_mass = empty_mass;
+        let power_plant = PowerPlant::new_min_power(xt, &mut heap.get_mut::<DrawState>(id));
+        Self {
+            id,
+            power_plant,
+            empty_mass,
+            current_mass,
+            munitions: Vec::new(),
+            internal_fuel,
+            external_fuel: Vec::new(),
+            inertia: Inertia {},
+        }
+    }
+
+    pub fn install_on(id: Entity, xt: TypeRef, mut heap: HeapMut) -> Result<()> {
+        let throttle = Throttle::new_min_power();
+        let vehicle = VehicleState::new(id, xt, heap.as_mut());
+        heap.named_entity_mut(id)
+            .insert_named(throttle)?
+            .insert_named(vehicle)?;
+        Ok(())
+    }
+
+    pub fn set_internal_fuel_lbs(&mut self, fuel: Weight<PoundsWeight>) {
+        let mass = fuel.mass::<Kilograms>();
+        let per_tank = mass / scalar!(4_f64);
+        for tank in &mut self.internal_fuel {
+            tank.override_fuel_mass(per_tank);
+        }
+    }
+
+    pub fn current_mass(&self) -> Mass<Kilograms> {
+        self.current_mass
+    }
+
+    #[method]
+    pub fn is_out_of_fuel(&self) -> bool {
+        self.internal_fuel
+            .as_ref()
+            .map(|tank| tank.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn power_plant(&self) -> &PowerPlant {
+        &self.power_plant
+    }
+
+    fn sys_update_state(
+        timestep: Res<TimeStep>,
+        mut query: Query<(&mut VehicleState, &mut DrawState, &Throttle)>,
+    ) {
+        for (mut vehicle, mut draw_state, throttle) in query.iter_mut() {
+            // Perform engine spooling to move towards target power
+            vehicle
+                .power_plant
+                .sys_tick(throttle, timestep.step(), &mut draw_state);
+
+            // Consume fuel
+            // TODO: drop tanks
+            let fuel_used = vehicle.power_plant.fuel_consumption(timestep.step());
+            let (fuel_mass, is_empty) = if let Some(tank) = vehicle.internal_fuel.as_mut() {
+                tank.consume(fuel_used);
+                (tank.current(), tank.is_empty())
+            } else {
+                (kilograms!(0_f64), false)
+            };
+            if is_empty {
+                vehicle.power_plant.set_out_of_fuel();
+            }
+            vehicle.current_mass = vehicle.empty_mass + fuel_mass;
         }
     }
 }

@@ -18,7 +18,7 @@ use crate::{
     util::{maybe_hex, parse_header_delimited},
     waypoint::Waypoints,
 };
-use absolute_unit::{degrees, meters, Angle, Degrees};
+use absolute_unit::{degrees, meters, pounds_weight, Angle, Degrees, PoundsWeight, Weight};
 use anyhow::{anyhow, bail, ensure, Result};
 use catalog::Catalog;
 use geodesy::{Graticule, Target};
@@ -179,7 +179,7 @@ pub struct ObjectInfo {
     preferred_target_id: Option<u32>,
     npc_flags: Option<u8>,
     hardpoint_overrides: Option<HashMap<usize, (u8, Option<TypeRef>)>>,
-    fuel_override: Option<u8>, // Only in VIET03.M
+    fuel_override: Option<Weight<PoundsWeight>>, // Only in VIET03.M
 }
 
 impl ObjectInfo {
@@ -361,7 +361,7 @@ impl ObjectInfo {
                 }
                 "fuel" => {
                     let unk = str::parse::<u8>(tokens.next().expect("fuel unk"))?;
-                    fuel_override = Some(unk);
+                    fuel_override = Some(pounds_weight!(unk));
                 }
                 "." => break,
                 _ => {
@@ -424,7 +424,7 @@ impl ObjectInfo {
         self.speed
     }
 
-    pub fn fuel_override(&self) -> Option<u8> {
+    pub fn fuel_override(&self) -> Option<Weight<PoundsWeight>> {
         self.fuel_override
     }
 }

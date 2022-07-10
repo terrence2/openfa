@@ -12,28 +12,5 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-
-pub(crate) mod ailerons;
-pub(crate) mod airbrake;
-pub(crate) mod bay;
-pub(crate) mod elevator;
-pub(crate) mod flaps;
-pub(crate) mod gear;
-pub(crate) mod hook;
-pub(crate) mod rudder;
-
-// Takes position and returns the modified value.
-pub(crate) fn surface_position_tick(target: f64, dt: f64, mut position: f64) -> f64 {
-    if target > position {
-        position += dt;
-        if target < position {
-            position = target;
-        }
-    } else if target < position {
-        position -= dt;
-        if target > position {
-            position = target;
-        }
-    }
-    position.max(-1.).min(1.)
-}
+pub(crate) mod fuel_tank;
+pub(crate) mod power_plant;

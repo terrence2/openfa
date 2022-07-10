@@ -105,4 +105,4 @@ game.load_mission("~V02.M");
 //libs.find("~*.M");
 
 @Player.dynamics.show_force_vectors();
-@Player.dynamics.show_velocity_vector();
+//@Player.dynamics.show_velocity_vector();

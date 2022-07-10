@@ -24,6 +24,7 @@ nitrous = { path = "../../nitrogen/util/nitrous" }
 runtime = { path = "../../nitrogen/util/runtime" }
 shape = { path = "../../wgpu-buffer/shape" }
 t2_terrain = { path = "../../wgpu-buffer/t2_terrain" }
+vehicle_state = { path = "../../game/vehicle_state" }
 xt = { path = "../../asset/xt" }
 
 [dev-dependencies]

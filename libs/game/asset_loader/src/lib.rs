@@ -16,7 +16,7 @@ use absolute_unit::{degrees, feet, feet_per_second, meters, scalar, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
-use flight_dynamics::{FlightDynamics, Throttle};
+use flight_dynamics::FlightDynamics;
 use geodesy::{GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
@@ -38,6 +38,8 @@ use std::{
     sync::Arc,
 };
 use t2_terrain::{T2TerrainBuffer, T2TileSet};
+use vehicle_state::Throttle;
+use vehicle_state::VehicleState;
 use xt::TypeManager;
 
 const FEET_TO_METERS: f32 = 1. / 3.28084;
@@ -288,16 +290,21 @@ impl AssetLoader {
             .insert(ShapeScale::new(scale.into_inner() as f32))
             .insert(info.xt());
 
-        // If the type is a plane, install a flight model
-        if let Some(pt) = info.xt().pt() {
+        if info.xt().is_jt() || info.xt().is_nt() || info.xt().is_pt() {
             heap.named_entity_mut(id)
                 .insert(BodyMotion::new_forward(feet_per_second!(info.speed())));
+            VehicleState::install_on(id, info.xt(), heap.as_mut())?;
+            if let Some(fuel_override) = info.fuel_override() {
+                heap.get_mut::<VehicleState>(id)
+                    .set_internal_fuel_lbs(fuel_override);
+            }
+            // TODO: hardpoint overrides
+        }
+
+        // If the type is a plane, install a flight model
+        if let Some(pt) = info.xt().pt() {
             let on_ground = info.position().y == 0;
             FlightDynamics::install_on(id, pt, on_ground, heap.as_mut())?;
-            if let Some(fuel_override) = info.fuel_override() {
-                heap.get_mut::<Throttle>(id)
-                    .set_internal_fuel_lbs(fuel_override as f64);
-            }
         }
 
         Ok(id)

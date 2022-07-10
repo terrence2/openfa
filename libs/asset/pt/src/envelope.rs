@@ -21,7 +21,7 @@ use ot::{
     make_type_struct,
     parse::{FieldRow, FromRows},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum EnvelopeVersion {
@@ -224,6 +224,12 @@ impl EnvelopeShape {
         }
 
         minima
+    }
+}
+
+impl fmt::Display for EnvelopeShape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<EnvelopeShape:{}>", self.shape.len())
     }
 }
 

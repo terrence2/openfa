@@ -22,7 +22,7 @@ use ot::{
     parse::{FieldRow, FromRow},
     ObjectType,
 };
-use std::{collections::HashMap, slice::Iter};
+use std::{collections::HashMap, fmt, slice::Iter};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 enum NpcTypeVersion {
@@ -70,6 +70,12 @@ impl FromRow for Hardpoints {
             off += 12;
         }
         Ok(Hardpoints { all: hards })
+    }
+}
+
+impl fmt::Display for Hardpoints {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<Hardpoints:{}>", self.all.len())
     }
 }
 

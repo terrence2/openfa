@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, knots, PoundsForce};
+use absolute_unit::{degrees, knots, pdl, PoundsForce, PoundsWeight};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::{AssetLoader, PlayerMarker};
@@ -22,7 +22,7 @@ use camera::{ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera};
 use composite::CompositeRenderPass;
 use csscolorparser::Color;
 use event_mapper::EventMapper;
-use flight_dynamics::{FlightDynamics, Throttle};
+use flight_dynamics::FlightDynamics;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
@@ -36,6 +36,7 @@ use marker::Markers;
 use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
 use orrery::Orrery;
+use physical_constants::StandardAtmosphere;
 use platform_dirs::AppDirs;
 use player::PlayerCameraController;
 use runtime::{report, ExitRequest, Extension, Runtime, StartupOpts};
@@ -48,7 +49,7 @@ use terminal_size::{terminal_size, Width};
 use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
-use vehicle_state::VehicleState;
+use vehicle_state::{Throttle, VehicleState};
 use widget::{
     FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, PositionH, PositionV,
     Terminal, WidgetBuffer,
@@ -259,6 +260,7 @@ impl System {
                 &BodyMotion,
                 &TypeRef,
                 &Throttle,
+                &VehicleState,
                 &FlightDynamics,
             ),
             With<PlayerMarker>,
@@ -279,6 +281,7 @@ impl System {
                 &BodyMotion,
                 &TypeRef,
                 &Throttle,
+                &VehicleState,
                 &FlightDynamics,
             ),
             With<PlayerMarker>,
@@ -291,26 +294,34 @@ impl System {
             .get_mut(self.visible_widgets.camera_fov)?
             .set_text(format!("FoV: {}", degrees!(camera.fov_y())));
 
-        if let Ok((frame, motion, xt, throttle, dynamics)) = query.get_single() {
+        if let Ok((frame, motion, xt, throttle, vehicle, dynamics)) = query.get_single() {
             labels
                 .get_mut(self.visible_widgets.weight_label)?
-                .set_text(format!("Weight: {:0.1} lbs", dynamics.weight_lbs()));
+                .set_text(format!(
+                    "Weight: {:0.1} lbs",
+                    vehicle.current_mass().weight::<PoundsWeight>()
+                ));
+            let altitude = frame.position_graticule().distance;
+            let atmosphere = StandardAtmosphere::at_altitude(altitude);
             labels
                 .get_mut(self.visible_widgets.engine_label)?
                 .set_text(format!(
                     "Engine: {} ({:0.0})",
-                    throttle.engine_display(),
-                    throttle.compute_thrust::<PoundsForce>(xt.pt().unwrap())
+                    vehicle.power_plant().engine_display(),
+                    pdl!(vehicle.power_plant().forward_thrust(&atmosphere, &motion))
                 ));
             labels
                 .get_mut(self.visible_widgets.accel_label)?
-                .set_text(format!("Accel: {:0.4}", motion.acceleration_m_s2().z));
+                .set_text(format!(
+                    "Accel: {:0.4}",
+                    motion.vehicle_forward_acceleration()
+                ));
             labels
                 .get_mut(self.visible_widgets.alpha_label)?
                 .set_text(format!("Alpha: {:0.2}", degrees!(dynamics.alpha())));
             labels
                 .get_mut(self.visible_widgets.camera_direction)?
-                .set_text(format!("V: {:0.4}", motion.cg_velocity()));
+                .set_text(format!("V: {:0.4}", knots!(motion.cg_velocity())));
             labels
                 .get_mut(self.visible_widgets.camera_position)?
                 .set_text(format!("Position: {:0.4}", frame.position(),));
