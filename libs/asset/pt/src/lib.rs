@@ -17,7 +17,8 @@ mod envelope;
 pub use crate::envelope::{Envelope, EnvelopeIntersection};
 
 use absolute_unit::{
-    Force, Hours, Length, Meters, Miles, PoundsForce, PoundsWeight, Seconds, Velocity, Weight,
+    Angle, Degrees, Force, Hours, Length, Mass, MassRate, Meters, Miles, PoundsForce, PoundsMass,
+    Seconds, Velocity,
 };
 use anyhow::{bail, ensure, Result};
 use nt::NpcType;
@@ -308,7 +309,7 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],           "_brv.x.", CustomN, brv_x,         PhysBounds, V0, panic!()),
 (Word,  [Dec],           "_brv.y.", CustomN, brv_y,         PhysBounds, V0, panic!()),
 (Word,  [Dec],           "_brv.z.", CustomN, brv_z,         PhysBounds, V0, panic!()),
-(Word,  [Dec],          "gpullAOA",  Signed, gpull_aoa,            i16, V0, panic!()), // word 20 ; gpullAOA
+(Word,  [Dec],          "gpullAOA",  Signed, gpull_aoa, Angle<Degrees>, V0, panic!()), // word 20 ; gpullAOA
 (Word,  [Dec],       "lowAOASpeed",  Signed, low_aoa_speed,        i16, V0, panic!()), // word 70 ; lowAOASpeed
 (Word,  [Dec],       "lowAOAPitch",  Signed, low_aoa_pitch,        i16, V0, panic!()), // word 15 ; lowAOAPitch
 (Word,  [Dec], "turbulencePercent",  Signed, turbulence_percent,   i16, V1, 0),        // word 149 ; turbulencePercent
@@ -349,9 +350,9 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],         "vtLimitUp",  Signed, vt_limit_up,          i16, V1, 0),        // word -60 ; vtLimitUp
 (Word,  [Dec],       "vtLimitDown",  Signed, vt_limit_down,        i16, V1, 0),        // word -120 ; vtLimitDown
 (Word,  [Dec],           "vtSpeed",  Signed, vt_speed,             i16, V1, 0),        // word 100 ; vtSpeed
-(Word,  [Dec],   "fuelConsumption",  Signed, fuel_consumption,     Weight<PoundsWeight>, V0, panic!()), // word 1 ; fuelConsumption
-(Word,  [Dec],"aftFuelConsumption",  Signed, aft_fuel_consumption, Weight<PoundsWeight>, V0, panic!()), // word 0 ; aftFuelConsumption
-(DWord, [Dec],      "internalFuel",Unsigned, internal_fuel,        Weight<PoundsWeight>, V0, panic!()), // dword 6200 ; internalFuel
+(Word,  [Dec],   "fuelConsumption",  Signed, fuel_consumption,     MassRate<PoundsMass,Seconds>, V0, panic!()), // word 1 ; fuelConsumption
+(Word,  [Dec],"aftFuelConsumption",  Signed, aft_fuel_consumption, MassRate<PoundsMass,Seconds>, V0, panic!()), // word 0 ; aftFuelConsumption
+(DWord, [Dec],      "internalFuel",Unsigned, internal_fuel,        Mass<PoundsMass>, V0, panic!()), // dword 6200 ; internalFuel
 (Word,  [Dec],          "coefDrag",  Signed, coef_drag,            i16, V0, panic!()), // word 256 ; coefDrag
 (Word,  [Dec],        "_gpullDrag",  Signed, _gpull_drag,          i16, V0, panic!()), // word 12 ; _gpullDrag
 (Word,  [Dec],     "airBrakesDrag",  Signed, air_brakes_drag,      i16, V0, panic!()), // word 256 ; airBrakesDrag
@@ -370,7 +371,7 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Byte,  [Dec],  "systemDamage [i]", CustomN, system_damage,SystemDamage,V0, panic!()), // byte 20 ; systemDamage [i] ...
 (Word,  [Dec],     "miscPerFlight",  Signed, misc_per_flight,      i16, V0, panic!()), // word 10 ; miscPerFlight
 (Word,  [Dec],  "repairMultiplier",  Signed, repair_multiplier,    i16, V0, panic!()), // word 10 ; repairMultiplier
-(DWord, [Dec],  "maxTakeoffWeight",Unsigned, max_takeoff_weight,   u32, V0, panic!())  // dword 16000 ; maxTakeoffWeight
+(DWord, [Dec],  "maxTakeoffWeight",Unsigned, max_takeoff_weight,   Mass<PoundsMass>, V0, panic!())  // dword 16000 ; maxTakeoffWeight
 }];
 
 impl PlaneType {

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, knots, pdl, PoundsWeight};
+use absolute_unit::{degrees, knots, pounds_force, pounds_mass};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::{AssetLoader, PlayerMarker};
@@ -291,8 +291,8 @@ impl System {
             labels
                 .get_mut(self.visible_widgets.weight_label)?
                 .set_text(format!(
-                    "Weight: {:0.1} lbs",
-                    vehicle.current_mass().weight::<PoundsWeight>()
+                    "Weight: {:0.1}",
+                    pounds_mass!(vehicle.current_mass())
                 ));
             let altitude = frame.position_graticule().distance;
             let atmosphere = StandardAtmosphere::at_altitude(altitude);
@@ -301,7 +301,7 @@ impl System {
                 .set_text(format!(
                     "Engine: {} ({:0.0})",
                     vehicle.power_plant().engine_display(),
-                    pdl!(vehicle.power_plant().forward_thrust(&atmosphere, motion))
+                    pounds_force!(vehicle.power_plant().forward_thrust(&atmosphere, motion))
                 ));
             labels
                 .get_mut(self.visible_widgets.accel_label)?

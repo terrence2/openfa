@@ -19,10 +19,10 @@ pub use crate::control::{
     hook::Hook, rudder::Rudder,
 };
 use absolute_unit::{
-    degrees, kilograms_meter2, knots, meters, meters2, meters_per_second, meters_per_second2,
-    newton_meters, newtons, pounds_weight, radians, radians_per_second, radians_per_second2,
+    degrees, kilograms, kilograms_meter2, knots, meters, meters2, meters_per_second,
+    meters_per_second2, newton_meters, newtons, radians, radians_per_second, radians_per_second2,
     scalar, seconds, Acceleration, Angle, AngularAcceleration, AngularVelocity, Force, Kilograms,
-    Meters, Newtons, Radians, RotationalInertia, Scalar, Seconds, Torque, Velocity, Weight,
+    Meters, Newtons, Radians, RotationalInertia, Scalar, Seconds, Torque, Velocity,
 };
 use animate::TimeStep;
 use anyhow::Result;
@@ -58,36 +58,51 @@ pub struct FlightDynamics {
     alpha: Angle<Radians>,
     beta: Angle<Radians>,
 
+    // //////////// Force coefficients //////////// //
+
+    // Cd (drag coefficient) is the same for all PT! It's probably not that huge
+    // a differentiator between aircraft models compared to induced drag, thrust
+    // and other factors, so makes some sense. Typical Cd are 0.01 to 0.02 range,
+    // whereas the sum above is going to be 256 + modifiers.
+    // Typical drags are on the order of 0.01 to 0.03.
+    #[property]
+    coef_drag_divisor: f64,
+
     // //////////// Pitch coefficients //////////// //
 
     // The contribution of the distribution of mass of the aircraft to the pitching moment.
-    // Coef_m0 changes with the cener of gravity (cg) position and the effect of the flaps
-    // and undercarrage are often included in this term. The cg position depends on the
+    // Coef_m0 changes with the center of gravity (cg) position and the effect of the flaps
+    // and undercarriage are often included in this term. The cg position depends on the
     // mass and distribution of the fuel, crew, passengers, and luggage and is usually
     // quoted as a percentage of the chord (c_bar).
     // In FA, planes are always assumed to be well balanced. Or that the implicit
     // compensations are factored into the drag coefficients already.
-    coef_m0: Angle<Radians>,
+    #[property]
+    coef_m0: f64,
 
     // The major contribution to pitching stability. It determines the natural frequency
     // of the short period plugoid. It also determines the aircraft response to pilot
     // inputs and gusts. The value should be sufficiently large to give an acceptable
     // response to pilot inputs.
-    coef_malpha: Scalar,
+    #[property]
+    coef_malpha: f64,
 
     // The term is often referred to as 'elevator effectiveness' or 'elevator power'.
     // It is mainly influenced by the area of the elevator surface and the angular range
     // of movement of the manoeuver or in response to a disturbance.
-    coef_mde: Scalar,
+    #[property]
+    coef_mde: f64,
 
     // As the aircraft pitches, resistance to the angular velocity is provided by this term.
     // coef_mq is commonly referred to a pitch damping as it dampens the short period
     // plugoid. It provides a major contribution to longitudinal stability and aircraft
     // handling qualities.
-    coef_mq: Scalar,
+    #[property]
+    coef_mq: f64,
 
     // This derivative also contributes to damping of the short period plugoid.
-    coef_malphadot: Scalar,
+    #[property]
+    coef_malphadot: f64,
 }
 
 impl Extension for FlightDynamics {
@@ -112,12 +127,14 @@ impl FlightDynamics {
             max_g_load: GloadExtrema::Stall(0.),
             alpha: radians!(0.),
             beta: radians!(0.),
+            // Drag coefficients
+            coef_drag_divisor: 4_096_f64,
             // Pitch coefficients
-            coef_m0: radians!(0_f64),
-            coef_malpha: scalar!(0.5_f64),
-            coef_mde: scalar!(0.1_f64),
-            coef_mq: scalar!(-5000_f64),
-            coef_malphadot: scalar!(0.001_f64),
+            coef_m0: 0_f64,
+            coef_malpha: 0.5_f64,
+            coef_mde: 0.1_f64,
+            coef_mq: -5000_f64,
+            coef_malphadot: 0.001_f64,
         }
     }
 
@@ -390,56 +407,6 @@ impl FlightDynamics {
         self.max_g_load
     }
 
-    #[method]
-    pub fn coef_m0(&self) -> f64 {
-        self.coef_m0.f64()
-    }
-
-    #[method]
-    pub fn set_coef_m0(&mut self, v: f64) {
-        self.coef_m0 = radians!(v);
-    }
-
-    #[method]
-    pub fn coef_malpha(&self) -> f64 {
-        self.coef_malpha.f64()
-    }
-
-    #[method]
-    pub fn set_coef_malpha(&mut self, v: f64) {
-        self.coef_malpha = scalar!(v);
-    }
-
-    #[method]
-    pub fn coef_malphadot(&self) -> f64 {
-        self.coef_malphadot.f64()
-    }
-
-    #[method]
-    pub fn set_coef_malphadot(&mut self, v: f64) {
-        self.coef_malphadot = scalar!(v);
-    }
-
-    #[method]
-    pub fn coef_mde(&self) -> f64 {
-        self.coef_mde.f64()
-    }
-
-    #[method]
-    pub fn set_coef_mde(&mut self, v: f64) {
-        self.coef_mde = scalar!(v);
-    }
-
-    #[method]
-    pub fn coef_mq(&self) -> f64 {
-        self.coef_mq.f64()
-    }
-
-    #[method]
-    pub fn set_coef_mq(&mut self, v: f64) {
-        self.coef_mq = scalar!(v);
-    }
-
     fn update_state(
         &mut self,
         timestep: &TimeStep,
@@ -516,15 +483,34 @@ impl FlightDynamics {
         let mut u_dot = motion.vehicle_forward_acceleration(); // u*
         let mut v_dot = motion.vehicle_sideways_acceleration(); // v*
         let mut w_dot = motion.vehicle_vertical_acceleration(); // w*
-        let max_aoa = radians!(degrees!(pt.gpull_aoa));
+        let max_aoa = radians!(pt.gpull_aoa);
         let alpha = radians!(w.f64().atan2(u.f64()));
         let beta = radians!(v.f64().atan2(uw_mag.f64()));
         if markers.is_some() && alpha > max_aoa {
             println!(
                 "OOB alpha > max_aoa: {} > {}",
                 degrees!(alpha),
-                degrees!(max_aoa)
+                degrees!(max_aoa),
             );
+        }
+        if markers.is_some() {
+            let v0 = Vector3::new(
+                meters_per_second!(0_f64),
+                meters_per_second!(0_f64),
+                -motion.cg_velocity(),
+            );
+            let v1 = motion.velocity();
+            let a0 = meters_per_second!((v0 - v1).map(|v| v.f64()).magnitude())
+                / seconds!(dt.as_secs_f64());
+
+            let a1 = q.f64() * motion.cg_velocity().f64() / 9.806_65_f64;
+            // println!(
+            //     "DV: {:0.2} vs {:0.2} a: {:0.2} in {:0.2}",
+            //     a0.g_number(),
+            //     a1,
+            //     degrees!(alpha),
+            //     vehicle.current_mass()
+            // );
         }
 
         // Alpha_dot and beta_dot are trig approximations, so the units intentionally don't
@@ -604,7 +590,7 @@ impl FlightDynamics {
         debug_assert!(coef_divisor > newtons!(0_f64), "0 lift coef divisor");
         debug_assert!(coef_divisor.is_finite(), "NaN lift coef divisor");
         let coef_lift_0 = (mass_kg * gravity_z).f64() / coef_divisor.f64();
-        let coef_lift_max = (pounds_weight!(pt.max_takeoff_weight).mass::<Kilograms>()
+        let coef_lift_max = (kilograms!(pt.max_takeoff_weight)
             * scalar!(pt.envelopes.max_g_load())
             * *STANDARD_GRAVITY)
             .f64()
@@ -613,7 +599,6 @@ impl FlightDynamics {
         debug_assert!(coef_lift_max.is_finite(), "NaN liftMax coef");
         let coef_lift = coef_lift_0 + (alpha.f64() / max_aoa.f64()) * (coef_lift_max - coef_lift_0);
         debug_assert!(coef_lift.is_finite(), "NaN lift coef");
-
         let lift: Force<Newtons> = (scalar!(0.5).as_dyn()
             * air_density.as_dyn()
             * velocity_cg_2.as_dyn()
@@ -632,11 +617,12 @@ impl FlightDynamics {
             em.update_arrow_vector("lift", Vector3::new(na, lift_body_y, lift_body_z));
             em.update_arrow_vector("lift_x", Vector3::new(na, na, lift_body_z));
             em.update_arrow_vector("lift_z", Vector3::new(na, lift_body_y, na));
+            // println!(
+            //     "CL: {:0.2} in [{:0.2},{:0.2}]",
+            //     coef_lift, coef_lift_0, coef_lift_max
+            // );
         }
-        // assert!(lift < scalar!(15_f64) * mass_kg * *STANDARD_GRAVITY);
-        // if velocity_cg > meters_per_second!(340) {
-        //     println!("speed: {velocity_cg:0.1}, lift: {lift:0.1}, vel: {u:0.1}, {v:0.1}, {w:0.1}, acc: {u_dot:0.1}, {v_dot:0.1}, {w_dot:0.1}");
-        // }
+        assert!(lift < scalar!(15_f64) * mass_kg * *STANDARD_GRAVITY);
 
         // //////////////////// DRAG ////////////////////
         // A is usually assumed to be 1, and FA doesn't track it anyway.
@@ -644,20 +630,13 @@ impl FlightDynamics {
         // FIXME: add in _gpull_drag; e.g. induced drag coefficient
         // FIXME: add in control surface drag; e.g. rudder_drag
         let mut coef_drag = scalar!(
-            (pt.coef_drag as f32
-                    + airbrake.coefficient_of_drag(pt)
-                    + flaps.coefficient_of_drag(pt)
-                    + hook.coefficient_of_drag(pt)
-                    + bay.coefficient_of_drag(pt)
-                    + gear.coefficient_of_drag(pt))
-                // Cd (drag coefficient) is the same for all PT! It's probably not that huge
-                // a differentiator between aircraft models compared to induced drag, thrust
-                // and other factors, so makes some sense. Typical Cd are 0.01 to 0.02 range,
-                // whereas the sum above is going to be 256 + modifiers.
-                // Typical drags are on the order of 0.01 to 0.03. Divide by ~10_000.
-                // / 10_000.
-                / 8_192.
-        );
+            pt.coef_drag as f32
+                + airbrake.coefficient_of_drag(pt)
+                + flaps.coefficient_of_drag(pt)
+                + hook.coefficient_of_drag(pt)
+                + bay.coefficient_of_drag(pt)
+                + gear.coefficient_of_drag(pt)
+        ) / scalar!(self.coef_drag_divisor);
         // If the plane is moving backwards, drag should oppose the direction of movement.
         if u < meters_per_second!(0_f64) {
             coef_drag = -coef_drag;
@@ -717,6 +696,12 @@ impl FlightDynamics {
                 "force_z",
                 Vector3::new(na, meters!(-force_z.f64() / 100.), na),
             );
+            // println!(
+            //     "LIFT: {:0.2}, DRAG: {:0.2}, GRAV: {:0.2}",
+            //     alpha.cos() * lift,
+            //     alpha.sin() * drag,
+            //     mass_kg * gravity_z
+            // );
         }
 
         // //////////////////// BODY FRAME ACCELERATIONS ////////////////////
@@ -731,10 +716,11 @@ impl FlightDynamics {
         let dist_cg_to_lift = meters!(0f64);
         let gear_moment_pitch = newton_meters!(0f64);
 
-        let coef_1 =
-            self.coef_m0 + self.coef_malpha * alpha + self.coef_mde * radians!(elevator.position());
-        let coef_2a = self.coef_mq * q;
-        let coef_2b = self.coef_malphadot.as_dyn() * alpha_dot.as_dyn();
+        let coef_1 = radians!(self.coef_m0)
+            + scalar!(self.coef_malpha) * alpha
+            + scalar!(self.coef_mde) * radians!(elevator.position());
+        let coef_2a = scalar!(self.coef_mq) * q;
+        let coef_2b = scalar!(self.coef_malphadot).as_dyn() * alpha_dot.as_dyn();
         let coef_2 = coef_2a.as_dyn() + coef_2b;
 
         let m_stab: Torque<Newtons, Meters> = ((scalar!(0.5).as_dyn()

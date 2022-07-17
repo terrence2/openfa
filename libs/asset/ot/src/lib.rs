@@ -15,7 +15,7 @@
 pub mod parse;
 
 pub use crate::parse::{parse_string, FieldRow, FieldType, FromRow, Repr};
-use absolute_unit::{PoundsWeight, Weight};
+use absolute_unit::{Mass, PoundsMass};
 use anyhow::{bail, ensure, Result};
 use bitflags::bitflags;
 use nalgebra::Point3;
@@ -245,7 +245,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Word,  [Dec],          "damage [i]", Unsigned, damage_on_other,          u16, V0, panic!()), // word 0 ; damage [i]
     (Byte,  [Dec],             "expType", Unsigned, explosion_type,            u8, V0, panic!()), // byte 15 ; expType
     (Byte,  [Dec],          "craterSize", Unsigned, crater_size,/*ft?*/        u8, V0, panic!()), // byte 0 ; craterSize
-    (DWord, [Dec],              "weight", Unsigned, empty_weight,Weight<PoundsWeight>,V0,panic!()), // dword 0 ; weight
+    (DWord, [Dec],              "weight", Unsigned, empty_weight, Mass<PoundsMass>,V0,panic!()), // dword 0 ; weight
     (Word,  [Dec],          "cmdBufSize", Unsigned, cmd_buf_size,             u16, V0, panic!()), // word 0 ; cmdBufSize
     // Movement Info
     (Word,  [Dec],           "_turnRate", Unsigned, turn_rate,                u16, V0, panic!()), // word 0 ; _turnRate

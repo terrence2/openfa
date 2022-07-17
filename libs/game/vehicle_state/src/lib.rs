@@ -22,7 +22,7 @@ pub use crate::{
 };
 
 use crate::systems::{fuel_tank::FuelTank, power_plant::PowerPlant};
-use absolute_unit::{kilograms, scalar, Kilograms, Mass, PoundsWeight, Weight};
+use absolute_unit::{kilograms, scalar, Kilograms, Mass, PoundsMass};
 use animate::TimeStep;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
@@ -74,10 +74,10 @@ impl Extension for VehicleState {
 #[inject_nitrous_component]
 impl VehicleState {
     pub fn new(id: Entity, xt: &TypeRef, mut heap: HeapMut) -> Self {
-        let empty_mass = xt.ot().empty_weight.mass::<Kilograms>();
+        let empty_mass = kilograms!(xt.ot().empty_weight);
         let internal_fuel = xt
             .pt()
-            .map(|pt| FuelTank::full(pt.internal_fuel.mass::<Kilograms>()));
+            .map(|pt| FuelTank::full(kilograms!(pt.internal_fuel)));
         // TODO: fuel weight
         let current_mass = empty_mass;
         let power_plant = PowerPlant::new_min_power(xt, &mut heap.get_mut::<DrawState>(id));
@@ -109,11 +109,9 @@ impl VehicleState {
         Ok(())
     }
 
-    pub fn set_internal_fuel_lbs(&mut self, fuel: Weight<PoundsWeight>) {
-        let mass = fuel.mass::<Kilograms>();
-        let per_tank = mass / scalar!(4_f64);
-        for tank in &mut self.internal_fuel {
-            tank.override_fuel_mass(per_tank);
+    pub fn set_internal_fuel_lbs(&mut self, fuel: Mass<PoundsMass>) {
+        if let Some(tank) = self.internal_fuel.as_mut() {
+            tank.override_fuel_mass(kilograms!(fuel));
         }
     }
 

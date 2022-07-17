@@ -13,7 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::controls::throttle::{Throttle, ThrottlePosition};
-use absolute_unit::{kilograms, newtons, scalar, Force, Kilograms, Mass, Newtons};
+use absolute_unit::{
+    kilograms, kilograms_per_second, newtons, scalar, seconds, Force, Kilograms, Mass, MassRate,
+    Newtons, Seconds,
+};
 use measure::BodyMotion;
 use physical_constants::StandardAtmosphere;
 use pt::PlaneType;
@@ -105,9 +108,9 @@ pub struct JetEngine {
 
     // model parameters
     max_military_thrust: Force<Newtons>,
-    fuel_consumption: Mass<Kilograms>,
+    fuel_consumption: MassRate<Kilograms, Seconds>,
     afterburner_thrust: Force<Newtons>,
-    afterburner_fuel_consumption: Mass<Kilograms>,
+    afterburner_fuel_consumption: MassRate<Kilograms, Seconds>,
 }
 
 impl JetEngine {
@@ -118,9 +121,9 @@ impl JetEngine {
             throttle_acc: pt.throttle_acc as f32,
             throttle_dacc: pt.throttle_dacc as f32,
             max_military_thrust: newtons!(pt.thrust),
-            fuel_consumption: pt.fuel_consumption.mass::<Kilograms>(),
+            fuel_consumption: kilograms_per_second!(pt.fuel_consumption),
             afterburner_thrust: newtons!(pt.aft_thrust),
-            afterburner_fuel_consumption: pt.aft_fuel_consumption.mass::<Kilograms>(),
+            afterburner_fuel_consumption: kilograms_per_second!(pt.aft_fuel_consumption),
         }
     }
 
@@ -151,7 +154,7 @@ impl JetEngine {
             let consumption_f = power_f * (1. - ENGINE_IDLE_CONSUMPTION) + ENGINE_IDLE_CONSUMPTION;
             scalar!(consumption_f) * self.fuel_consumption
         };
-        scalar!(dt.as_secs_f32()) * consumption_rate
+        consumption_rate * seconds!(dt.as_secs_f64())
     }
 
     pub fn set_out_of_fuel(&mut self) {

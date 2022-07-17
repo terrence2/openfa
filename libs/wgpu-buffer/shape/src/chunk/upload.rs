@@ -13,12 +13,12 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::draw_state::DrawState;
-use absolute_unit::{feet, meters, Length, Meters};
+use absolute_unit::{feet, meters, Feet, Length, Meters};
 use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};
 use bitflags::bitflags;
 use catalog::Catalog;
-use geometry::{intersect::sphere_vs_ray, Aabb, Aabb3, Cylinder, Ray, Sphere};
+use geometry::{intersect::sphere_vs_ray, Aabb3, Ray, Sphere};
 use gpu::Gpu;
 use i386::Interpreter;
 use image::Rgba;
@@ -661,45 +661,50 @@ impl Transformer {
 
 #[derive(Clone, Debug)]
 pub struct ShapeExtent {
-    // Bounding box in feet
-    aabb: Aabb3<Meters>,
+    // Bounding box in meters (including all drawn stuff)
+    aabb_full: Aabb3<Meters>,
+
+    // Bounding box in meters (not including afterburner)
+    aabb_body: Aabb3<Meters>,
 
     // Pre-compute useful metrics
-    radius: Length<Meters>,
-    height: Length<Meters>,
-    length: Length<Meters>,
+    sphere: Sphere, // meters
     offset_to_ground: Length<Meters>,
 }
 
 impl ShapeExtent {
-    pub fn new(lo: [f32; 3], hi: [f32; 3]) -> Self {
-        let lo_v = Vector3::new(lo[0], lo[1], lo[2]);
-        let hi_v = Vector3::new(hi[0], hi[1], hi[2]);
-        let lo_v = lo_v.map(|v| meters!(feet!(v)));
-        let hi_v = hi_v.map(|v| meters!(feet!(v)));
-        let lo2 = lo_v.map(|v| v.f64()).magnitude_squared();
-        let hi2 = hi_v.map(|v| v.f64()).magnitude_squared();
-        let lo_p = Point3::from(lo_v);
-        let hi_p = Point3::from(hi_v);
+    pub fn new(aabb_full: Aabb3<Feet>, aabb_body: Aabb3<Feet>) -> Self {
+        let aabb_full = Aabb3::<Meters>::from_bounds(
+            aabb_full.lo().map(|v| meters!(v)),
+            aabb_full.hi().map(|v| meters!(v)),
+        );
+        let aabb_body = Aabb3::<Meters>::from_bounds(
+            aabb_body.lo().map(|v| meters!(v)),
+            aabb_body.hi().map(|v| meters!(v)),
+        );
+
+        let sphere = aabb_full.bounding_sphere();
+        let offset_to_ground = -aabb_full.lo()[1];
+
         Self {
-            aabb: Aabb3::from_bounds(lo_p, hi_p),
-            radius: meters!(lo2.max(hi2).sqrt()),
-            height: meters!(hi_v[1] - lo_v[1]),
-            length: meters!(hi_v[2] - hi_v[2]),
-            offset_to_ground: meters!(-lo_v[1]),
+            aabb_full,
+            aabb_body,
+            sphere,
+            offset_to_ground,
         }
     }
 
-    pub fn aabb(&self) -> &Aabb3<Meters> {
-        &self.aabb
+    #[allow(unused)]
+    pub fn aabb_full(&self) -> &Aabb3<Meters> {
+        &self.aabb_full
     }
 
-    pub fn radius(&self) -> Length<Meters> {
-        self.radius
+    pub fn aabb_body(&self) -> &Aabb3<Meters> {
+        &self.aabb_body
     }
 
-    pub fn height(&self) -> Length<Meters> {
-        self.height
+    pub fn sphere(&self) -> &Sphere {
+        &self.sphere
     }
 
     pub fn offset_to_ground(&self) -> Length<Meters> {
@@ -715,8 +720,10 @@ impl ShapeExtent {
         // if let Some(intersect) = aabb_vs_ray(&self.aabb, ray) {
         // }
 
-        let hit_sphere =
-            Sphere::from_center_and_radius(&position, meters!(self.radius()).f64() * scale);
+        let hit_sphere = Sphere::from_center_and_radius(
+            &(position + self.sphere.center().coords),
+            self.sphere.radius() * scale,
+        );
         if let Some(intersect) = sphere_vs_ray(&hit_sphere, ray) {
             return Some(intersect);
         }
@@ -757,7 +764,7 @@ impl ShapeMetadata {
     }
 
     pub fn non_shape() -> Self {
-        let extent = ShapeExtent::new([0f32; 3], [0f32; 3]);
+        let extent = ShapeExtent::new(Aabb3::empty(), Aabb3::empty());
         Self {
             shape_name: "hidden".to_owned(),
             transformers: vec![],
@@ -806,8 +813,8 @@ pub struct ShapeUploader<'a> {
     name: &'a str,
     palette: &'a Palette,
     catalog: &'a Catalog,
-    aabb_min: [f32; 3],
-    aabb_max: [f32; 3],
+    aabb_full: Aabb3<Feet>,
+    aabb_body: Aabb3<Feet>,
     vert_pool: Vec<Vertex>,
     vertices: Vec<Vertex>,
     loaded_frames: HashMap<String, Frame>,
@@ -820,8 +827,8 @@ impl<'a> ShapeUploader<'a> {
             name,
             palette,
             catalog,
-            aabb_min: [f32::INFINITY; 3],
-            aabb_max: [f32::NEG_INFINITY; 3],
+            aabb_full: Aabb3::empty(),
+            aabb_body: Aabb3::empty(),
             vert_pool: Vec::new(),
             vertices: Vec::new(),
             loaded_frames: HashMap::new(),
@@ -855,18 +862,16 @@ impl<'a> ShapeUploader<'a> {
                 flags: VertexFlags::STATIC,
                 xform_id: MAX_XFORM_ID,
             });
+        let is_ab = props.flags.contains(VertexFlags::AFTERBURNER_ON)
+            || props.flags.contains(VertexFlags::AFTERBURNER_OFF);
         for v in vert_buf.vertices() {
             // Note: given the unit positioning in MM files, STRIP*.SH needs to have its
             //       internal units scaled by 4 to line up with the MM units. It's unclear
             //       if this is special behavior, possibly controlled by flags in the MM.
-            let position = [feet!(v[0]).f32(), feet!(v[2]).f32(), feet!(-v[1]).f32()];
-            for (i, &p) in position.iter().enumerate() {
-                if p > self.aabb_max[i] {
-                    self.aabb_max[i] = p;
-                }
-                if p < self.aabb_min[i] {
-                    self.aabb_min[i] = p;
-                }
+            let position = Point3::new(feet!(v[0]), feet!(v[2]), feet!(-v[1]));
+            self.aabb_full.extend(&position);
+            if !is_ab {
+                self.aabb_body.extend(&position);
             }
             self.vert_pool.push(Vertex {
                 // Color and Tex Coords will be filled out by the
@@ -877,7 +882,7 @@ impl<'a> ShapeUploader<'a> {
                 normal: [0f32; 3],
                 // Base position, flags, and the xform are constant
                 // for this entire buffer, independent of the face.
-                position,
+                position: [position.x.f32(), position.y.f32(), position.z.f32()],
                 flags0: (props.flags.bits() & 0xFFFF_FFFF) as u32,
                 flags1: (props.flags.bits() >> 32) as u32,
                 xform_id: props.xform_id,
@@ -1352,18 +1357,12 @@ impl<'a> ShapeUploader<'a> {
         let mut verts = Vec::new();
         mem::swap(&mut verts, &mut self.vertices);
 
-        let (lo, hi) = if !verts.is_empty() {
-            (self.aabb_min, self.aabb_max)
-        } else {
-            ([0.; 3], [0.; 3])
-        };
-
         Ok((
             Arc::new(RwLock::new(ShapeMetadata::new(
                 self.name,
                 ShapeErrata::from_flags(&analysis),
                 analysis.transformers,
-                ShapeExtent::new(lo, hi),
+                ShapeExtent::new(self.aabb_full, self.aabb_body),
             ))),
             verts,
         ))

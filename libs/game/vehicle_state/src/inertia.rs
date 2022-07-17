@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{
-    kilograms_meter2, meters, scalar, Kilograms, Mass, Meters, RotationalInertia, Scalar,
+    kilograms, kilograms_meter2, meters, scalar, Kilograms, Mass, Meters, RotationalInertia, Scalar,
 };
 use bevy_ecs::prelude::*;
 use geometry::{Aabb3, Cylinder};
@@ -52,10 +52,10 @@ impl Inertia {
     pub fn from_extent(ot: &ObjectType, extent: &ShapeExtent) -> Self {
         // Assumption: fuselage is 1/4 the total elevator to gear height
         // Assumption: the wing chord is 1/5 the total plane length
-        let length = extent.aabb().span(2);
-        let height = extent.aabb().span(0).min(extent.aabb().span(1));
+        let length = extent.aabb_body().span(2);
+        let height = extent.aabb_body().span(0).min(extent.aabb_body().span(1));
         let fuselage_top = height * scalar!(0.25);
-        let wingspan = extent.aabb().span(0);
+        let wingspan = extent.aabb_body().span(0);
         let chord = length * scalar!(0.2);
 
         // The CG is the center of mass (duh!); what we're trying to model here
@@ -63,8 +63,8 @@ impl Inertia {
         //
         // We break the fuselage into front and back parts and compute the mass
         // as if each is the same weight (which it should be, cf cg).
-        let nose = Point3::new(meters!(0_f64), meters!(0_f64), *extent.aabb().low(2));
-        let tail = Point3::new(meters!(0_f64), meters!(0_f64), *extent.aabb().high(2));
+        let nose = Point3::new(meters!(0_f64), meters!(0_f64), *extent.aabb_body().low(2));
+        let tail = Point3::new(meters!(0_f64), meters!(0_f64), *extent.aabb_body().high(2));
         let fuselage_front = Cylinder::new(Point3::origin(), nose.coords, fuselage_top);
         let fuselage_back = Cylinder::new(Point3::origin(), tail.coords, fuselage_top);
 
@@ -93,7 +93,7 @@ impl Inertia {
             // munitions
 
             // Pre-computed factors
-            empty_mass: ot.empty_weight.mass::<Kilograms>(),
+            empty_mass: kilograms!(ot.empty_weight),
         }
     }
 
