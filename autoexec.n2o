@@ -1,54 +1,5 @@
-// Camera Controls
-bindings.bind("F1", "@camera.controller.set_mode('Forward')");
-bindings.bind("F2", "@camera.controller.set_mode('Backward')");
-bindings.bind("F3", "@camera.controller.set_mode('LookUp')");
-bindings.bind("F4", "@camera.controller.set_mode('Target')");
-bindings.bind("F5", "@camera.controller.set_mode('Incoming')");
-bindings.bind("F6", "@camera.controller.set_mode('Wingman')");
-bindings.bind("F7", "@camera.controller.set_mode('PlayerToTarget')");
-bindings.bind("F8", "@camera.controller.set_mode('TargetToPlayer')");
-bindings.bind("F9", "@camera.controller.set_mode('FlyBy')");
-bindings.bind("F10", "@camera.controller.set_mode('External')");
-bindings.bind("F12", "@camera.controller.set_mode('Missle')");
-bindings.bind("+mouse1", "@camera.controller.set_pan_view(pressed)");
-bindings.bind("mouseMotion", "@camera.controller.handle_mousemotion(dx, dy)");
-bindings.bind("mouseWheel", "@camera.controller.handle_mousewheel(vertical_delta)");
-// Flight controls
-bindings.bind("key1", "@Player.throttle.set_detent(0)");
-bindings.bind("key2", "@Player.throttle.set_detent(1)");
-bindings.bind("key3", "@Player.throttle.set_detent(2)");
-bindings.bind("key4", "@Player.throttle.set_detent(3)");
-bindings.bind("key5", "@Player.throttle.set_detent(4)");
-bindings.bind("key6", "@Player.throttle.set_detent(5)");
-bindings.bind("b", "@Player.airbrake.toggle()");
-bindings.bind("f", "@Player.flaps.toggle()");
-bindings.bind("h", "@Player.hook.toggle()");
-bindings.bind("o", "@Player.bay.toggle()");
-bindings.bind("g", "@Player.gear.toggle()");
-bindings.bind("+Up", "@Player.elevator.move_stick_forward(pressed)");
-bindings.bind("+Down", "@Player.elevator.move_stick_backward(pressed)");
-bindings.bind("+Left", "@Player.ailerons.move_stick_left(pressed)");
-bindings.bind("+Right", "@Player.ailerons.move_stick_right(pressed)");
-bindings.bind("+Comma", "@Player.rudder.move_pedals_left(pressed)");
-bindings.bind("+Period", "@Player.rudder.move_pedals_right(pressed)");
-//bindings.bind("joyX", "@Player.elevator.set_position(axis)");
-
 // Map debugging tools
 bindings.bind("space", "game.boresight()");
-bindings.bind("+mouse1", "@fallback_camera.arcball.pan_view(pressed)");
-bindings.bind("+mouse3", "@fallback_camera.arcball.move_view(pressed)");
-bindings.bind("mouseMotion", "@fallback_camera.arcball.handle_mousemotion(dx, dy)");
-bindings.bind("mouseWheel", "@fallback_camera.arcball.handle_mousewheel(vertical_delta)");
-bindings.bind("+Shift+Up", "@fallback_camera.arcball.target_up_fast(pressed)");
-bindings.bind("+Shift+Down", "@fallback_camera.arcball.target_down_fast(pressed)");
-bindings.bind("+Up", "@fallback_camera.arcball.target_up(pressed)");
-bindings.bind("+Down", "@fallback_camera.arcball.target_down(pressed)");
-
-//game.detach_camera();
-//let location := "Everest";
-//@fallback_camera.arcball.set_target(@fallback_camera.arcball.notable_location(location));
-//@fallback_camera.arcball.set_eye(@fallback_camera.arcball.eye_for(location));
-//orrery.set_date_time(1964, 2, 24, 12, 0, 0);
 
 // KuumNi, dawn
 // camera.set_target_latitude_radians(0.687693);
@@ -106,3 +57,9 @@ game.load_mission("~V02.M");
 
 @Player.dynamics.show_force_vectors();
 @Player.dynamics.show_velocity_vector();
+
+@Player.dynamics.coef_mq := 0.0;
+@Player.dynamics.coef_malpha := 0.0;
+@Player.dynamics.coef_malphadot := 0.0;
+@Player.dynamics.coef_mde := 1.0;
+@Player.dynamics.coef_lift_slope := 1.0;
