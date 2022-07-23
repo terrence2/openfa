@@ -865,10 +865,11 @@ impl<'a> ShapeUploader<'a> {
         let is_ab = props.flags.contains(VertexFlags::AFTERBURNER_ON)
             || props.flags.contains(VertexFlags::AFTERBURNER_OFF);
         for v in vert_buf.vertices() {
-            // Note: given the unit positioning in MM files, STRIP*.SH needs to have its
-            //       internal units scaled by 4 to line up with the MM units. It's unclear
-            //       if this is special behavior, possibly controlled by flags in the MM.
-            let position = Point3::new(feet!(v[0]), feet!(v[2]), feet!(-v[1]));
+            // FA coordinates appear to be:
+            //   side / pitch: x
+            //   forward / roll: y
+            //   up / yaw: z
+            let position = Point3::new(feet!(v[0]), feet!(v[1]), feet!(v[2]));
             self.aabb_full.extend(&position);
             if !is_ab {
                 self.aabb_body.extend(&position);
