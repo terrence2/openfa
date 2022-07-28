@@ -17,14 +17,13 @@ mod components;
 mod instance_block;
 
 pub use crate::{
-    chunk::{DrawSelection, DrawState, ShapeWidgets},
+    chunk::{DrawSelection, DrawState, ShapeExtent, ShapeId, ShapeIds, ShapeMetadata},
     instance_block::SlotId,
 };
 pub use components::*;
 
 use crate::{
-    chunk::{ChunkId, ChunkManager, ChunkPart, ShapeErrata, ShapeId, ShapeIds, Vertex},
-    // component::Scale,
+    chunk::{ChunkId, ChunkManager, ShapeErrata, Vertex},
     instance_block::{BlockId, InstanceBlock, TransformType},
 };
 use absolute_unit::Meters;
@@ -37,11 +36,13 @@ use camera::ScreenCamera;
 use catalog::Catalog;
 use composite::CompositeRenderStep;
 use global_data::GlobalParametersBuffer;
-use gpu::Gpu;
+use gpu::{Gpu, GpuStep};
+use marker::MarkersStep;
 use measure::WorldSpaceFrame;
 use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
+use parking_lot::RwLock;
 use runtime::{Extension, FrameStage, Runtime};
 use sh::RawShape;
 use shader_shared::Group;
@@ -49,32 +50,27 @@ use smallvec::SmallVec;
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
+    sync::Arc,
     time::Instant,
 };
-use world::{WorldRenderPass, WorldRenderStep};
+use world::{WorldRenderPass, WorldStep};
 
 thread_local! {
-    pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeWidgets>> = RefCell::new(HashMap::new());
+    pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeMetadata >> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-enum ChunkUpload {}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-pub enum ShapeUploadStep {
+pub enum ShapeStep {
     ResetUploadCursor,
     AnimateDrawState,
     ApplyTransforms,
     ApplyFlags,
     ApplyXforms,
     PushToBlock,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
-pub enum ShapeRenderStep {
     UploadChunks,
     UploadBlocks,
     Render,
+    CleanupOpenChunks,
 }
 
 #[derive(Debug)]
@@ -84,6 +80,9 @@ pub struct ShapeBuffer {
     chunk_to_block_map: HashMap<ChunkId, Vec<BlockId>>,
     blocks: HashMap<BlockId, InstanceBlock>,
     next_block_id: u32,
+
+    // Map from any particular shape name to the ShapeIds we have on file for it.
+    shapes_cache: HashMap<String, ShapeIds>,
 
     bind_group_layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
@@ -98,52 +97,61 @@ impl Extension for ShapeBuffer {
         )?;
 
         runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_reset_upload_cursor.label(ShapeUploadStep::ResetUploadCursor));
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_ts_reset_upload_cursor.label(ShapeStep::ResetUploadCursor));
         runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_animate_draw_state.label(ShapeUploadStep::AnimateDrawState));
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_ts_animate_draw_state.label(ShapeStep::AnimateDrawState));
         runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_apply_transforms.label(ShapeUploadStep::ApplyTransforms));
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(Self::sys_ts_build_flag_mask.label(ShapeUploadStep::ApplyFlags));
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(
-                Self::sys_ts_apply_xforms
-                    .label(ShapeUploadStep::ApplyXforms)
-                    .after(ShapeUploadStep::ResetUploadCursor),
-            );
-        runtime
-            .frame_stage_mut(FrameStage::TrackStateChanges)
-            .add_system(
-                Self::sys_ts_push_values_to_block
-                    .label(ShapeUploadStep::PushToBlock)
-                    .after(ShapeUploadStep::ApplyTransforms)
-                    .after(ShapeUploadStep::ApplyFlags)
-                    .after(ShapeUploadStep::ApplyXforms),
-            );
+            .frame_stage_mut(FrameStage::Main)
+            .add_system(Self::sys_ts_apply_transforms.label(ShapeStep::ApplyTransforms));
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_ts_build_flag_mask
+                .label(ShapeStep::ApplyFlags)
+                .after(ShapeStep::AnimateDrawState),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_ts_apply_xforms
+                .label(ShapeStep::ApplyXforms)
+                .after(ShapeStep::ResetUploadCursor)
+                .after(ShapeStep::AnimateDrawState),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_ts_push_values_to_block
+                .label(ShapeStep::PushToBlock)
+                .after(ShapeStep::ApplyTransforms)
+                .after(ShapeStep::ApplyFlags)
+                .after(ShapeStep::ApplyXforms),
+        );
 
-        runtime
-            .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_close_open_chunks.label(ShapeRenderStep::UploadChunks));
-        runtime
-            .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_upload_block_frame_data.label(ShapeRenderStep::UploadBlocks));
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_close_open_chunks
+                .label(ShapeStep::UploadChunks)
+                .after(GpuStep::CreateCommandEncoder)
+                .before(GpuStep::SubmitCommands),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_upload_block_frame_data
+                .label(ShapeStep::UploadBlocks)
+                .after(ShapeStep::PushToBlock)
+                .after(GpuStep::CreateCommandEncoder)
+                .before(GpuStep::SubmitCommands),
+        );
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_draw_shapes
-                .label(ShapeRenderStep::Render)
-                .after(ShapeRenderStep::UploadChunks)
-                .after(ShapeRenderStep::UploadBlocks)
-                .after(WorldRenderStep::Render)
+                .label(ShapeStep::Render)
+                .after(ShapeStep::UploadChunks)
+                .after(ShapeStep::UploadBlocks)
+                .after(WorldStep::Render)
+                .before(MarkersStep::Render)
                 .before(CompositeRenderStep::Render),
         );
 
-        runtime
-            .frame_stage_mut(FrameStage::FrameEnd)
-            .add_system(Self::sys_cleanup_open_chunks_after_render);
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_cleanup_open_chunks_after_render
+                .label(ShapeStep::CleanupOpenChunks)
+                .after(GpuStep::PresentTargetSurface),
+        );
         runtime.insert_resource(shapes);
         Ok(())
     }
@@ -246,6 +254,9 @@ impl ShapeBuffer {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Cw,
+                    // Note: showing backfaces would minimize the impact of the many seams and gaps
+                    //       in FA models; however, many surfaces are co-planar, resulting in
+                    //       massive z-fighting between front and reversed back faces.
                     cull_mode: Some(wgpu::Face::Back),
                     unclipped_depth: true,
                     polygon_mode: wgpu::PolygonMode::Fill,
@@ -280,21 +291,18 @@ impl ShapeBuffer {
             chunk_to_block_map: HashMap::new(),
             blocks: HashMap::new(),
             next_block_id: 0,
+            shapes_cache: HashMap::new(),
             bind_group_layout,
             pipeline,
         })
     }
 
-    // pub fn block(&self, id: &BlockId) -> &InstanceBlock {
-    //     &self.blocks[id]
-    // }
-
-    pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {
-        self.chunk_man.part(shape_id)
+    pub fn metadata(&self, shape_id: ShapeId) -> Arc<RwLock<ShapeMetadata>> {
+        self.chunk_man.part(shape_id).metadata()
     }
 
     pub fn errata(&self, shape_id: ShapeId) -> ShapeErrata {
-        self.chunk_man.part(shape_id).widgets().read().errata()
+        self.chunk_man.part(shape_id).metadata().read().errata()
     }
 
     fn allocate_block_id(&mut self) -> BlockId {
@@ -321,14 +329,15 @@ impl ShapeBuffer {
         shape_file_names: &[S],
         catalog: &Catalog,
         gpu: &Gpu,
-    ) -> Result<HashMap<String, ShapeIds>> {
-        let mut out = HashMap::new();
-
+    ) -> Result<()> {
         // Load all SH files, including associated damage models (but not shadow shapes, those have
         // their own section in the OT files, for some reason).
         let mut shapes = HashMap::new();
         for shape_file_name in shape_file_names {
             let shape_file_name = shape_file_name.as_ref();
+            if self.shapes_cache.contains_key(shape_file_name) {
+                continue;
+            }
             shapes.insert(
                 shape_file_name.to_owned(),
                 RawShape::from_bytes(catalog.read_name(shape_file_name)?.as_ref())?,
@@ -350,6 +359,9 @@ impl ShapeBuffer {
         // Re-visit our shape_file_names and accumulate our uploaded shape data into useful results.
         for shape_file_name in shape_file_names {
             let shape_file_name = shape_file_name.as_ref();
+            if self.shapes_cache.contains_key(shape_file_name) {
+                continue;
+            }
             assert!(
                 upload_results.contains_key(shape_file_name),
                 "did not find expected loaded models"
@@ -380,13 +392,22 @@ impl ShapeBuffer {
                 }
             }
 
-            out.insert(
+            self.shapes_cache.insert(
                 shape_file_name.to_owned(),
                 ShapeIds::new(normal_shape_id, damage_shape_ids),
             );
         }
 
-        Ok(out)
+        Ok(())
+    }
+
+    pub fn shape_ids_for_preloaded_shape<S: AsRef<str>>(
+        &self,
+        shape_file_name: S,
+    ) -> Result<&ShapeIds> {
+        self.shapes_cache
+            .get(shape_file_name.as_ref())
+            .ok_or_else(|| anyhow!("request for shape not preloaded"))
     }
 
     fn sys_close_open_chunks(
@@ -433,7 +454,7 @@ impl ShapeBuffer {
             .get_mut(&block_id)
             .unwrap()
             .allocate_slot(draw_cmd);
-        let widgets = self.chunk_man.part(shape_id).widgets();
+        let widgets = self.chunk_man.part(shape_id).metadata();
         let errata: ShapeErrata = widgets.read().errata();
 
         entity.insert(shape_id);
@@ -446,21 +467,11 @@ impl ShapeBuffer {
         Ok(())
     }
 
-    // Note: should only be used interactively, as it is super wasteful of GPU resources.
-    pub fn instantiate_one(
-        &mut self,
-        mut entity: NamedEntityMut,
-        shape_name: &str,
-        palette: &Palette,
-        catalog: &Catalog,
-        gpu: &Gpu,
-    ) -> Result<()> {
-        let shape_map = self.upload_shapes(palette, &[shape_name], catalog, gpu)?;
-        let shape_ids = shape_map
-            .get(shape_name)
-            .ok_or_else(|| anyhow!("failed to load shape"))?;
-        entity.insert(shape_ids.to_owned());
-        self.instantiate(entity, shape_ids.normal(), gpu)
+    pub fn free_slot(&mut self, slot_id: SlotId) {
+        self.blocks
+            .get_mut(slot_id.block_id())
+            .expect("invalid slot block")
+            .deallocate_slot(slot_id);
     }
 
     #[inline]
@@ -559,7 +570,7 @@ impl ShapeBuffer {
                                 .unwrap();
                         }
                         Entry::Vacant(e) => {
-                            let mut widgets = part.widgets().read().clone();
+                            let mut widgets = part.metadata().read().clone();
                             widgets
                                 .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
                                 .unwrap();
@@ -859,14 +870,40 @@ mod test {
                 // FIXME: skip _?.SH shapes as those should be loaded automagically now
                 all_shapes.push(meta.name().to_owned());
             }
-            let out = runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
+            runtime.resource_scope(|heap, mut shapes: Mut<ShapeBuffer>| {
                 shapes.upload_shapes(palette, &all_shapes, catalog, heap.resource::<Gpu>())
             })?;
 
             // Create an instance of each core shape.
-            for (name, shape_ids) in out.iter() {
+            for fid in catalog.find_with_extension("SH")? {
+                let meta = catalog.stat(fid)?;
+                if meta.name().ends_with("_S.SH")
+                    || meta.name().ends_with("_A.SH")
+                    || meta.name().ends_with("_B.SH")
+                    || meta.name().ends_with("_C.SH")
+                    || meta.name().ends_with("_D.SH")
+                {
+                    continue;
+                }
+                // FIXME: re-try all of these
+                if skipped.contains(&meta.name()) {
+                    println!(
+                        "SKIP: {}:{:13} @ {}",
+                        game.test_dir,
+                        meta.name(),
+                        meta.path()
+                    );
+                    continue;
+                } else {
+                    println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
+                }
+                let shape_ids = runtime
+                    .resource::<ShapeBuffer>()
+                    .shape_ids_for_preloaded_shape(meta.name())?
+                    .to_owned();
+                // for (name, shape_ids) in out.iter() {
                 let id = runtime
-                    .spawn_named(&format!("{}:{}", game.test_dir, name))?
+                    .spawn_named(&format!("{}:{}", game.test_dir, meta.name()))?
                     .id();
                 runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
                     heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {

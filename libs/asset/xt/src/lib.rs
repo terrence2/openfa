@@ -47,26 +47,26 @@ impl Type {
         }
     }
 
-    pub fn jt(&self) -> Result<&ProjectileType> {
-        Ok(match self {
-            Type::JT(ref jt) => jt,
-            _ => bail!("Type: not a projectile"),
-        })
+    pub fn jt(&self) -> Option<&ProjectileType> {
+        match self {
+            Type::JT(ref jt) => Some(jt),
+            _ => None,
+        }
     }
 
-    pub fn nt(&self) -> Result<&NpcType> {
-        Ok(match self {
-            Type::NT(ref nt) => nt,
-            Type::PT(ref pt) => &pt.nt,
-            _ => bail!("Type: not an npc"),
-        })
+    pub fn nt(&self) -> Option<&NpcType> {
+        match self {
+            Type::NT(ref nt) => Some(nt),
+            Type::PT(ref pt) => Some(&pt.nt),
+            _ => None,
+        }
     }
 
-    pub fn pt(&self) -> Result<&PlaneType> {
-        Ok(match self {
-            Type::PT(ref pt) => pt,
-            _ => bail!("Type: not a plane"),
-        })
+    pub fn pt(&self) -> Option<&PlaneType> {
+        match self {
+            Type::PT(ref pt) => Some(pt),
+            _ => None,
+        }
     }
 }
 
@@ -85,28 +85,28 @@ impl TypeRef {
         self.0.ot()
     }
 
-    pub fn jt(&self) -> Result<&ProjectileType> {
+    pub fn jt(&self) -> Option<&ProjectileType> {
         self.0.jt()
     }
 
-    pub fn nt(&self) -> Result<&NpcType> {
+    pub fn nt(&self) -> Option<&NpcType> {
         self.0.nt()
     }
 
-    pub fn pt(&self) -> Result<&PlaneType> {
+    pub fn pt(&self) -> Option<&PlaneType> {
         self.0.pt()
     }
 
     pub fn is_pt(&self) -> bool {
-        self.pt().is_ok()
+        self.pt().is_some()
     }
 
     pub fn is_nt(&self) -> bool {
-        self.nt().is_ok()
+        self.nt().is_some()
     }
 
     pub fn is_jt(&self) -> bool {
-        self.jt().is_ok()
+        self.jt().is_some()
     }
 }
 

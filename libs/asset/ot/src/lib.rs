@@ -15,10 +15,11 @@
 pub mod parse;
 
 pub use crate::parse::{parse_string, FieldRow, FieldType, FromRow, Repr};
+use absolute_unit::{Mass, PoundsMass};
 use anyhow::{bail, ensure, Result};
 use bitflags::bitflags;
 use nalgebra::Point3;
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, fmt, mem};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -42,6 +43,12 @@ impl FromRow for TypeTag {
     type Produces = TypeTag;
     fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
         TypeTag::from_byte(field.value().numeric()?.byte()?)
+    }
+}
+
+impl fmt::Display for TypeTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -79,6 +86,12 @@ impl ObjectKind {
     }
 }
 
+impl fmt::Display for ObjectKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl FromRow for ObjectKind {
     type Produces = ObjectKind;
     fn from_row(field: &FieldRow, _pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces> {
@@ -112,6 +125,12 @@ impl ProcKind {
             "_CATGUYProc" => ProcKind::CATGUY,
             _ => bail!("Unexpected proc kind: {}", s),
         })
+    }
+}
+
+impl fmt::Display for ProcKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -159,6 +178,16 @@ impl FromRow for ObjectNames {
             long_name: parse::parse_string(&values[1])?,
             file_name: parse::parse_string(&values[2])?,
         })
+    }
+}
+
+impl fmt::Display for ObjectNames {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} ({})[{}]",
+            self.short_name, self.long_name, self.file_name
+        )
     }
 }
 
@@ -216,7 +245,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Word,  [Dec],          "damage [i]", Unsigned, damage_on_other,          u16, V0, panic!()), // word 0 ; damage [i]
     (Byte,  [Dec],             "expType", Unsigned, explosion_type,            u8, V0, panic!()), // byte 15 ; expType
     (Byte,  [Dec],          "craterSize", Unsigned, crater_size,/*ft?*/        u8, V0, panic!()), // byte 0 ; craterSize
-    (DWord, [Dec],              "weight", Unsigned, empty_weight,             u32, V0, panic!()), // dword 0 ; weight
+    (DWord, [Dec],              "weight", Unsigned, empty_weight, Mass<PoundsMass>,V0,panic!()), // dword 0 ; weight
     (Word,  [Dec],          "cmdBufSize", Unsigned, cmd_buf_size,             u16, V0, panic!()), // word 0 ; cmdBufSize
     // Movement Info
     (Word,  [Dec],           "_turnRate", Unsigned, turn_rate,                u16, V0, panic!()), // word 0 ; _turnRate
@@ -243,7 +272,7 @@ ObjectType(parent: (), version: ObjectTypeVersion) {
     (Word,  [Dec],"maxMinusDopplerPitch",   Signed, max_minus_doppler_pitch,  i16, V0, panic!()), // word 20 ; maxMinusDopplerPitch
     (Word,  [Dec],     "minDopplerSpeed",   Signed, min_doppler_speed,        i16, V0, panic!()), // word 20 ; minDopplerSpeed
     (Word,  [Dec],     "maxDopplerSpeed",   Signed, max_doppler_speed,        i16, V0, panic!()), // word 1000 ; maxDopplerSpeed
-    (Word,  [Dec],         "viewOffset.",     Vec3, unk_rear_view_pos,Point3<f32>, V0, panic!()), // word 0 ; viewOffset.x
+    (Word,  [Dec],         "viewOffset.",     Vec3, view_offset,      Point3<f32>, V0, panic!()), // word 0 ; viewOffset.x
     (Ptr,   [Dec,Sym],         "hudName",   PtrStr, hud,                   String, V2, None) // dword 0
 }];
 

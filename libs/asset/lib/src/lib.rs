@@ -158,16 +158,18 @@ impl PackedFileInfo {
     }
 }
 
-packed_struct!(LibHeader {
-    _0 => magic: [u8; 5], // EALIB
-    _1 => count: u16
-});
+#[packed_struct]
+struct LibHeader {
+    magic: [u8; 5], // EALIB
+    count: u16,
+}
 
-packed_struct!(LibEntry {
-    _0 => name: [u8; 13],
-    _1 => flags: u8,
-    _2 => offset: u32
-});
+#[packed_struct]
+struct LibEntry {
+    name: [u8; 13],
+    flags: u8,
+    offset: u32,
+}
 
 pub struct LibDrawer {
     drawer_index: HashMap<DrawerFileId, String>,
@@ -185,10 +187,8 @@ impl LibDrawer {
 
         // Header
         ensure!(map.len() > mem::size_of::<LibHeader>(), "lib too short");
-        let hdr_ptr: *const LibHeader = map.as_ptr() as *const _;
-        let hdr: &LibHeader = unsafe { &*hdr_ptr };
-        let magic = String::from_utf8(hdr.magic().to_vec())?;
-        ensure!(magic == "EALIB", "lib missing magic");
+        let hdr = LibHeader::overlay_prefix(&map)?;
+        ensure!(&hdr.magic == b"EALIB", "lib missing magic");
 
         // Entries
         let mut drawer_index: HashMap<DrawerFileId, String> = HashMap::new();
@@ -196,8 +196,7 @@ impl LibDrawer {
         let entries_start = mem::size_of::<LibHeader>();
         let entries_end = entries_start + hdr.count() as usize * mem::size_of::<LibEntry>();
         ensure!(map.len() > entries_end, "lib too short for entries");
-        // FIXME: use LayoutVerified from zerocopy here
-        let entries: &[LibEntry] = unsafe { mem::transmute(&map[entries_start..entries_end]) };
+        let entries = LibEntry::overlay_slice(&map[entries_start..entries_end])?;
         for i in 0..hdr.count() as usize {
             let dfid = DrawerFileId::from_u32(i as u32);
             let entry = &entries[i];
@@ -264,26 +263,28 @@ impl DrawerInterface for LibDrawer {
                 path: format!("{}[uncompressed]", self.name),
             },
             CompressionType::PkWare => {
-                let dwords: &[u32] =
-                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                let unpacked_size = u32::from_le_bytes(
+                    (&self.data[info.start_offset..info.start_offset + 4]).try_into()?,
+                ) as u64;
                 DrawerFileMetadata {
                     drawer_file_id: id,
                     name: self.drawer_index[&id].to_owned(),
                     compression: info.compression.name(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
-                    unpacked_size: u64::from(dwords[0]),
+                    unpacked_size,
                     path: format!("{}[pk]", self.name),
                 }
             }
             CompressionType::Lzss => {
-                let dwords: &[u32] =
-                    unsafe { mem::transmute(&self.data[info.start_offset..info.start_offset + 4]) };
+                let unpacked_size = u32::from_le_bytes(
+                    (&self.data[info.start_offset..info.start_offset + 4]).try_into()?,
+                ) as u64;
                 DrawerFileMetadata {
                     drawer_file_id: id,
                     name: self.drawer_index[&id].to_owned(),
                     compression: info.compression.name(),
                     packed_size: (info.end_offset - info.start_offset) as u64,
-                    unpacked_size: u64::from(dwords[0]),
+                    unpacked_size,
                     path: format!("{}[lz]", self.name),
                 }
             }

@@ -18,7 +18,7 @@ use ot::{
     parse::{parse_string, FieldRow, FromRow},
     ObjectType,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -44,6 +44,16 @@ impl FromRow for ProjectileNames {
             long_name: parse_string(&values[1])?,
             file_name,
         })
+    }
+}
+
+impl fmt::Display for ProjectileNames {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} ({} @ {:?})",
+            self.short_name, self.long_name, self.file_name
+        )
     }
 }
 

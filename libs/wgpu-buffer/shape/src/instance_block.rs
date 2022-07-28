@@ -62,6 +62,7 @@ pub struct InstanceBlock {
     chunk_id: ChunkId,
 
     // Current allocation head.
+    free_slot: usize,
     next_slot: u32,
 
     // Map from slot offset to the actual storage location. This must be derefed to
@@ -209,6 +210,7 @@ impl InstanceBlock {
 
         Self {
             block_id,
+            free_slot: 0,
             next_slot: 0,
             slot_map: Box::new([0; BLOCK_SIZE]),
             slots_dirty: false,
@@ -238,7 +240,7 @@ impl InstanceBlock {
     }
 
     pub(crate) fn has_open_slot(&self) -> bool {
-        self.len() < BLOCK_SIZE
+        self.free_slot < BLOCK_SIZE
     }
 
     pub(crate) fn allocate_slot(&mut self, draw_cmd: DrawIndirectCommand) -> SlotId {
@@ -249,11 +251,27 @@ impl InstanceBlock {
         // Slots always start pointing at themselves -- as we remove entities and GC,
         // stuff will get mixed around. Also mark ourself as dirty so that we will get
         // uploaded, once we enter the draw portion.
-        self.slot_map[slot_id.index()] = slot_id.index();
-        self.command_buffer_scratch[slot_id.index()] = draw_cmd;
+        self.command_buffer_scratch[self.free_slot] = draw_cmd;
+        self.slot_map[slot_id.index()] = self.free_slot;
+        self.free_slot += 1;
         self.slots_dirty = true;
 
         slot_id
+    }
+
+    pub(crate) fn deallocate_slot(&mut self, slot_id: SlotId) {
+        assert_eq!(self.block_id, slot_id.block_id, "wrong block in free");
+
+        // Swap tail with slot_id and zero tail
+        assert!(self.free_slot > 0, "freeing with no free blocks");
+        self.free_slot -= 1;
+        if slot_id.index() != self.free_slot {
+            self.command_buffer_scratch[slot_id.index()] =
+                self.command_buffer_scratch[self.free_slot];
+            self.slot_map[self.free_slot] = slot_id.index();
+        }
+        self.command_buffer_scratch[self.free_slot] = DrawIndirectCommand::default();
+        self.slots_dirty = true;
     }
 
     #[inline]
@@ -323,6 +341,6 @@ impl InstanceBlock {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.next_slot as usize
+        self.free_slot as usize
     }
 }

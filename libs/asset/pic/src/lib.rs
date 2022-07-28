@@ -13,31 +13,33 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::{bail, ensure, Result};
-use image::{DynamicImage, GenericImage, GenericImageView, RgbaImage};
+use image::{DynamicImage, GenericImage, RgbaImage};
 use packed_struct::packed_struct;
 use pal::Palette;
 use std::{borrow::Cow, mem};
 
-packed_struct!(Header {
-    _0 => format: u16,
-    _1 => width: u32,
-    _2 => height: u32,
-    _3 => pixels_offset: u32 as usize,
-    _4 => pixels_size: u32 as usize,
-    _5 => palette_offset: u32 as usize,
-    _6 => palette_size: u32 as usize,
-    _7 => spans_offset: u32 as usize,
-    _8 => spans_size: u32 as usize,
-    _9 => rowheads_offset: u32 as usize,
-    _a => rowheads_size: u32 as usize
-});
+#[packed_struct]
+struct Header {
+    format: u16,
+    width: u32,
+    height: u32,
+    pixels_offset: u32,   // as usize,
+    pixels_size: u32,     // as usize,
+    palette_offset: u32,  // as usize,
+    palette_size: u32,    // as usize,
+    spans_offset: u32,    // as usize,
+    spans_size: u32,      // as usize,
+    rowheads_offset: u32, // as usize,
+    rowheads_size: u32,   // as usize
+}
 
-packed_struct!(Span {
-    _row   => row: u16 as u32,
-    _start => start: u16 as u32,
-    _end   => end: u16 as u32,
-    _index => index: u32 as usize
-});
+#[packed_struct]
+struct Span {
+    row: u16,   // as u32,
+    start: u16, // as u32,
+    end: u16,   // as u32,
+    index: u32, // as usize
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PicFormat {
@@ -86,28 +88,28 @@ impl<'a> Pic<'a> {
         let format = PicFormat::from_word(header.format())?;
         ensure!(format != PicFormat::Jpeg);
 
+        let palette_start = header.palette_offset() as usize;
+        let palette_end = palette_start + header.palette_size() as usize;
         let palette = if header.palette_size() > 0 {
-            let palette_data =
-                &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
-            Some(Palette::from_bytes(palette_data)?)
+            Some(Palette::from_bytes(&data[palette_start..palette_end])?)
         } else {
             None
         };
 
+        // Note: last span is always a marker, so don't include it.
+        let spans_start = header.spans_offset() as usize;
+        let spans_end = spans_start + header.spans_size() as usize - mem::size_of::<Span>();
+        let pixels_start = header.pixels_offset() as usize;
+        let pixels_end = pixels_start + header.pixels_size() as usize;
         Ok(Pic {
             format: PicFormat::from_word(header.format())?,
             width: header.width(),
             height: header.height(),
             palette,
-            // Note: last span is always a marker.
-            spans: Span::overlay_slice(
-                &data[header.spans_offset()
-                    ..header.spans_offset() + header.spans_size() - mem::size_of::<Span>()],
-            )?,
-            pixels_offset: header.pixels_offset(),
-            pixels_size: header.pixels_size(),
-            pixels_data: &data
-                [header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
+            spans: Span::overlay_slice(&data[spans_start..spans_end])?,
+            pixels_offset: header.pixels_offset() as usize,
+            pixels_size: header.pixels_size() as usize,
+            pixels_data: &data[pixels_start..pixels_end],
         })
     }
 
@@ -139,21 +141,27 @@ impl<'a> Pic<'a> {
             PicFormat::Jpeg => image::load_from_memory(data)?,
             PicFormat::Format0 => {
                 let palette = Self::make_palette(header, data, palette)?;
+                let pixels_start = header.pixels_offset() as usize;
+                let pixels_end = pixels_start + header.pixels_size() as usize;
                 DynamicImage::ImageRgba8(Self::decode_format0(
                     header.width(),
                     header.height(),
-                    &palette,
-                    &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
+                    palette.as_ref(),
+                    &data[pixels_start..pixels_end],
                 ))
             }
             PicFormat::Format1 => {
                 let palette = Self::make_palette(header, data, palette)?;
+                let spans_start = header.spans_offset() as usize;
+                let spans_end = spans_start + header.spans_size() as usize; // include marker
+                let pixels_start = header.pixels_offset() as usize;
+                let pixels_end = pixels_start + header.pixels_size() as usize;
                 DynamicImage::ImageRgba8(Self::decode_format1(
                     header.width(),
                     header.height(),
-                    &palette,
-                    &data[header.spans_offset()..header.spans_offset() + header.spans_size()],
-                    &data[header.pixels_offset()..header.pixels_offset() + header.pixels_size()],
+                    palette.as_ref(),
+                    &data[spans_start..spans_end],
+                    &data[pixels_start..pixels_end],
                 )?)
             }
         })
@@ -244,18 +252,18 @@ impl<'a> Pic<'a> {
             PicFormat::Format1 => {
                 let mut out = vec![0u8; (self.width * self.height) as usize];
                 for span in self.spans {
-                    ensure!(span.row() < self.height);
-                    ensure!(span.index() < self.pixels_data.len());
-                    ensure!(span.start() < self.width);
-                    ensure!(span.end() < self.width);
+                    ensure!(u32::from(span.row()) < self.height);
+                    ensure!((span.index() as usize) < self.pixels_data.len());
+                    ensure!(u32::from(span.start()) < self.width);
+                    ensure!(u32::from(span.end()) < self.width);
                     ensure!(span.start() <= span.end());
                     ensure!(
-                        span.index() + ((span.end() - span.start()) as usize)
+                        span.index() as usize + ((span.end() - span.start()) as usize)
                             < self.pixels_data.len()
                     );
 
-                    let start_off = (span.row() * self.width + span.start()) as usize;
-                    let end_off = (span.row() * self.width + span.end()) as usize;
+                    let start_off = (span.row() as u32 * self.width + span.start() as u32) as usize;
+                    let end_off = (span.row() as u32 * self.width + span.end() as u32) as usize;
                     let cnt = (span.end() - span.start() + 1) as usize;
                     out[start_off..=end_off].copy_from_slice(
                         &self.pixels_data[span.index() as usize..span.index() as usize + cnt],
@@ -276,8 +284,8 @@ impl<'a> Pic<'a> {
             return Ok(Cow::from(system_palette));
         }
 
-        let palette_data =
-            &data[header.palette_offset()..header.palette_offset() + header.palette_size()];
+        let palette_data = &data[header.palette_offset() as usize
+            ..header.palette_offset() as usize + header.palette_size() as usize];
         let local_palette = Palette::from_bytes(palette_data)?;
         let mut palette = system_palette.clone();
         palette.overlay_at(&local_palette, 0)?;
@@ -355,18 +363,18 @@ impl<'a> Pic<'a> {
             let span = Span::overlay(
                 &spans[i * mem::size_of::<Span>()..(i + 1) * mem::size_of::<Span>()],
             )?;
-            assert!(span.row() < height);
-            assert!(span.index() < pixels.len());
-            assert!(span.start() < width);
-            assert!(span.end() < width);
+            assert!(u32::from(span.row()) < height);
+            assert!((span.index() as usize) < pixels.len());
+            assert!(u32::from(span.start()) < width);
+            assert!(u32::from(span.end()) < width);
             assert!(span.start() <= span.end());
-            assert!(span.index() + ((span.end() - span.start()) as usize) < pixels.len());
+            assert!(span.index() as usize + ((span.end() - span.start()) as usize) < pixels.len());
 
             for (j, column) in (span.start()..=span.end()).enumerate() {
-                let offset = span.index() + j;
+                let offset = span.index() as usize + j;
                 let pix = pixels[offset] as usize;
                 let clr = palette.rgba(pix);
-                imgbuf.put_pixel(column, span.row(), clr);
+                imgbuf.put_pixel(column as u32, span.row() as u32, clr);
             }
         }
         Ok(imgbuf)

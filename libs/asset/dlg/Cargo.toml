@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 byteorder = "^ 1"
-zerocopy = "^ 0.5"
+zerocopy = "^ 0.6"
 ansi = { path = "../../nitrogen/util/ansi" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 peff = { path = "../../util/peff" }

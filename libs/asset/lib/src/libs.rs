@@ -18,12 +18,15 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
+use nitrous::{inject_nitrous_resource, method, NitrousResource};
 use pal::Palette;
 use runtime::{Extension, Runtime};
 use std::{
     borrow::Cow,
     collections::HashSet,
-    env, fs,
+    env,
+    fmt::Write as _,
+    fs,
     path::{Path, PathBuf},
 };
 use structopt::StructOpt;
@@ -57,6 +60,7 @@ pub struct LibsOpts {
 
 /// Search for artifacts and create catalogs for any and every game we
 /// can get our hands on.
+#[derive(NitrousResource)]
 pub struct Libs {
     selected_game: Option<usize>,
     catalogs: Vec<(&'static GameInfo, Palette, Catalog)>,
@@ -67,8 +71,8 @@ impl Extension for Libs {
         let empty = LibsOpts::default();
         let opts = runtime.maybe_resource::<LibsOpts>().unwrap_or(&empty);
         let extra_paths = opts.lib_paths.clone();
-        let catalogs = Libs::bootstrap(opts)?;
-        runtime.insert_resource(catalogs);
+        let libs = Libs::bootstrap(opts)?;
+        runtime.insert_named_resource("libs", libs);
 
         runtime.insert_resource(CatalogOpts::from_extra_paths(extra_paths));
         runtime.load_extension::<Catalog>()?;
@@ -77,6 +81,7 @@ impl Extension for Libs {
     }
 }
 
+#[inject_nitrous_resource]
 impl Libs {
     /// Find out what we have to work with.
     pub fn bootstrap(opts: &LibsOpts) -> Result<Self> {
@@ -89,7 +94,7 @@ impl Libs {
         let game_files = Self::list_directory_canonical(&game_path)?;
 
         // Search for the game so we can figure out what is required to be loaded.
-        let mut catalogs = if let Some(game) = Self::detect_game_from_files(&game_files) {
+        let mut libs = if let Some(game) = Self::detect_game_from_files(&game_files) {
             // Load libs from the installdir
             let mut catalog = Catalog::empty(game.test_dir);
             Self::populate_catalog(game, &game_path, 0, &mut catalog)?;
@@ -152,28 +157,28 @@ impl Libs {
                 game_path.to_string_lossy()
             );
 
-            let mut catalogs = Self::for_testing()?;
+            let mut libs = Self::for_testing()?;
 
             if let Some(selected) = &opts.select_game {
-                for (i, (game, _, _)) in catalogs.catalogs.iter().enumerate() {
+                for (i, (game, _, _)) in libs.catalogs.iter().enumerate() {
                     if game.test_dir == selected {
-                        catalogs.selected_game = Some(i);
+                        libs.selected_game = Some(i);
                         break;
                     }
                 }
             }
 
-            catalogs
+            libs
         };
 
         // Load any additional libdirs into the catalog
-        for (_, _, catalog) in catalogs.catalogs.iter_mut() {
+        for (_, _, catalog) in libs.catalogs.iter_mut() {
             for (i, lib_path) in opts.lib_paths.iter().enumerate() {
                 catalog.add_drawer(DirectoryDrawer::from_directory(i as i64 + 1, lib_path)?)?;
             }
         }
 
-        Ok(catalogs)
+        Ok(libs)
     }
 
     /// Build a new catalog manager with whatever test data we can scrounge up.
@@ -226,6 +231,53 @@ impl Libs {
             selected_game: None,
             catalogs,
         })
+    }
+
+    #[method]
+    fn list_games(&self) -> String {
+        let mut s = String::new();
+        for (game, _, _) in &self.catalogs {
+            writeln!(
+                s,
+                "{:>7} - {} ({})",
+                game.test_dir,
+                game.long_name,
+                game.released_at()
+            )
+            .ok();
+        }
+        s
+    }
+
+    #[method]
+    fn select_game(&mut self, name: &str) -> Result<()> {
+        for (i, (game, _, _)) in self.catalogs.iter().enumerate() {
+            if game.test_dir == name {
+                self.selected_game = Some(i);
+                return Ok(());
+            }
+        }
+        bail!(
+            "did not find {}; use libs.list_games() to see what is available",
+            name
+        )
+    }
+
+    #[method]
+    fn find(&self, glob: &str) -> Result<String> {
+        let mut s = String::new();
+        for fid in self.catalog().find_glob(glob)? {
+            let stat = self.catalog().stat(fid)?;
+            writeln!(
+                s,
+                "{:<11} {:>4} {:>6}",
+                stat.name(),
+                stat.compression().unwrap_or("none"),
+                stat.unpacked_size()
+            )
+            .ok();
+        }
+        Ok(s)
     }
 
     pub fn all(&self) -> impl Iterator<Item = (&'static GameInfo, &Palette, &Catalog)> + '_ {

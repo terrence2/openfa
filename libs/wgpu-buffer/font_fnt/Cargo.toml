@@ -7,10 +7,9 @@ edition = "2021"
 [dependencies]
 codepage-437 = "^ 0.1"
 anyhow = { version = "^ 1", features = ["backtrace"] }
-image = "^ 0.23"
+image = "^ 0.24"
 lazy_static = "^ 1"
 log = "^ 0.4"
-parking_lot = "^ 0.11"
 wgpu = { version = "^ 0.12", features = ["spirv"] }
 fnt = { path = "../../asset/fnt" }
 font_common = { path = "../../nitrogen/wgpu-buffer/font_common" }

@@ -1,0 +1,33 @@
+[package]
+name = "asset_loader"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = { version = "^ 0.7", features = ["trace"] }
+once_cell = "^ 1"
+ordered-float = "^ 3"
+parking_lot = "^ 0.12"
+rand = "^ 0.8"
+absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+camera = { path = "../../nitrogen/sim/camera" }
+flight_dynamics = { path = "../../game/flight_dynamics" }
+geodesy = { path = "../../nitrogen/util/geodesy" }
+geometry = { path = "../../nitrogen/util/geometry" }
+gpu = { path = "../../nitrogen/system/gpu" }
+lib = { path = "../../asset/lib" }
+marker = { path = "../../nitrogen/wgpu-buffer/marker" }
+measure = { path = "../../nitrogen/sim/measure" }
+mmm = { path = "../../asset/mmm" }
+nitrous = { path = "../../nitrogen/util/nitrous" }
+runtime = { path = "../../nitrogen/util/runtime" }
+shape = { path = "../../wgpu-buffer/shape" }
+t2_terrain = { path = "../../wgpu-buffer/t2_terrain" }
+vehicle_state = { path = "../../game/vehicle_state" }
+xt = { path = "../../asset/xt" }
+
+[dev-dependencies]
+atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
+global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
+terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }

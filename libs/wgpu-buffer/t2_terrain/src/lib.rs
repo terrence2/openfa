@@ -15,18 +15,17 @@
 mod t2_info;
 
 use crate::t2_info::T2Info;
-use absolute_unit::{degrees, meters, radians, Angle, Degrees, Feet, Length, Meters};
+use absolute_unit::{degrees, meters, radians, scalar, Angle, Degrees, Feet, Length, Meters};
 use anyhow::{ensure, Result};
 use atlas::AtlasPacker;
 use bevy_ecs::prelude::*;
 use catalog::Catalog;
 use geodesy::{GeoSurface, Graticule};
-use global_data::{GlobalParametersBuffer, GlobalsRenderStep};
+use global_data::{GlobalParametersBuffer, GlobalsStep};
 use gpu::wgpu::CommandEncoder;
-use gpu::{texture_format_size, Gpu};
+use gpu::{texture_format_size, Gpu, GpuStep};
 use image::Rgba;
 use lay::Layer;
-use log::warn;
 use mmm::{MissionMap, TLoc};
 use nalgebra::Point3;
 use nitrous::{
@@ -42,8 +41,8 @@ use std::{
     num::{NonZeroU32, NonZeroU64},
 };
 use t2::Terrain as T2;
-use terrain::{TerrainBuffer, TerrainRenderStep};
-use world::WorldRenderStep;
+use terrain::{TerrainBuffer, TerrainStep};
+use world::WorldStep;
 use zerocopy::AsBytes;
 
 #[derive(Debug)]
@@ -86,6 +85,9 @@ impl T2Mapper {
         let lat_span_adj = adjust.span_offset[0].f32();
         let lon_span_adj = adjust.span_offset[1].f32();
         let extent_ft = [t2.extent_north_south_in_ft(), t2.extent_east_west_in_ft()];
+        // Need to figure out what's missing here.
+        // factor for ft to nautical ft: / (5280. / 6080.)
+        // factor for offset from equator: * radians!(base[0]).cos() as f32
         let extent = [
             degrees!(extent_ft[0] / (364_000. + lat_span_adj)),
             degrees!(extent_ft[1] / (364_000. + lon_span_adj)),
@@ -120,10 +122,10 @@ impl T2Mapper {
         // lon_f = ((pos.lon() - base.lon) / span.lon) * cos(pos.lat)
         // lon_f / cos(pos.lat) * span.lon = (pos.lon - base.lon)
         // pos.lon = (lon_f / cos(pos.lat) * span.lon) + base.lon
-        let lat_f = pos[2] as f32 / self.extent_ft[0];
-        let lon_f = pos[0] as f32 / self.extent_ft[1];
+        let lat_f = scalar!(pos[2] as f32 / self.extent_ft[0]);
+        let lon_f = scalar!(pos[0] as f32 / self.extent_ft[1]);
         let lat = self.base[0] + (self.extent[0] * lat_f) - self.extent[0];
-        let lon = -((self.extent[1] / lat.cos() as f32 * lon_f) + self.base[1]);
+        let lon = -((self.extent[1] / lat.cos() * lon_f) + self.base[1]);
         Graticule::new(lat, lon, meters!(offset_from_ground))
     }
 }
@@ -169,7 +171,6 @@ pub struct T2TerrainBuffer {
     displace_height_pipeline: wgpu::ComputePipeline,
     accumulate_color_pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    loaded: HashSet<String>,
     uploads: Vec<T2TileSetUpload>,
 }
 
@@ -182,43 +183,34 @@ impl Extension for T2TerrainBuffer {
         )?;
         runtime.insert_named_resource("terrain2", terrain2);
 
-        runtime
-            .frame_stage_mut(FrameStage::Render)
-            .add_system(Self::sys_finish_uploads.label(T2TerrainRenderStep::FinishUploads));
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
+            Self::sys_finish_uploads
+                .label(T2TerrainRenderStep::FinishUploads)
+                .after(TerrainStep::Tesselate)
+                .before(TerrainStep::RenderDeferredTexture),
+        );
 
         // Ensure both relative order and ensure each step follows the equivalent base Terrain step
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_encode_uploads
                 .label(T2TerrainRenderStep::EncodeUploads)
                 .after(T2TerrainRenderStep::FinishUploads)
-                .after(TerrainRenderStep::EncodeUploads)
-                .after(GlobalsRenderStep::EnsureUpdated),
+                .after(TerrainStep::EncodeUploads)
+                .after(GlobalsStep::EnsureUpdated)
+                .after(GpuStep::CreateCommandEncoder)
+                .before(GpuStep::SubmitCommands),
         );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
-            Self::sys_paint_atlas_indices
-                .label(T2TerrainRenderStep::PaintAtlasIndices)
-                .after(T2TerrainRenderStep::EncodeUploads)
-                .after(TerrainRenderStep::PaintAtlasIndices),
-        );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_terrain_tesselate
                 .label(T2TerrainRenderStep::Tesselate)
-                .after(T2TerrainRenderStep::PaintAtlasIndices)
-                .after(TerrainRenderStep::Tesselate)
-                .before(TerrainRenderStep::RenderDeferredTexture),
+                .after(TerrainStep::Tesselate)
+                .before(TerrainStep::RenderDeferredTexture),
         );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
-            Self::sys_deferred_texture
-                .label(T2TerrainRenderStep::RenderDeferredTexture)
-                .after(T2TerrainRenderStep::Tesselate)
-                .after(TerrainRenderStep::RenderDeferredTexture),
-        );
-        runtime.frame_stage_mut(FrameStage::Render).add_system(
+        runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_accumulate_normal_and_color
                 .label(T2TerrainRenderStep::AccumulateNormalsAndColor)
-                .after(T2TerrainRenderStep::RenderDeferredTexture)
-                .after(TerrainRenderStep::AccumulateNormalsAndColor)
-                .before(WorldRenderStep::Render),
+                .after(TerrainStep::AccumulateNormalsAndColor)
+                .before(WorldStep::Render),
         );
 
         Ok(())
@@ -386,7 +378,6 @@ impl T2TerrainBuffer {
             displace_height_pipeline,
             accumulate_color_pipeline,
             bind_group_layout,
-            loaded: HashSet::new(),
             uploads: Vec::new(),
             // shared_adjustment,
             // layouts: HashMap::new(),
@@ -440,8 +431,6 @@ impl T2TerrainBuffer {
         }
     }
 
-    fn sys_paint_atlas_indices() {}
-
     fn sys_terrain_tesselate(
         t2_terrain: Res<T2TerrainBuffer>,
         query: Query<&T2TileSet>,
@@ -459,8 +448,6 @@ impl T2TerrainBuffer {
             }
         }
     }
-
-    fn sys_deferred_texture() {}
 
     fn sys_accumulate_normal_and_color(
         t2_terrain: Res<T2TerrainBuffer>,
@@ -495,10 +482,6 @@ impl T2TerrainBuffer {
         // groups.
         let t2_data = catalog.read_name(&mm.map_name().t2_name())?;
         let t2 = T2::from_bytes(t2_data.as_ref())?;
-
-        if self.loaded.contains(t2.name()) {
-            warn!("Skipping duplicate add_map for {}", t2.name());
-        }
 
         // Do some deep magic to build up a palette.
         let palette = self._load_palette(system_palette, mm, catalog)?;

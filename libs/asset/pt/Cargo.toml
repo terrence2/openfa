@@ -6,6 +6,8 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
+nalgebra = "^ 0.31"
+absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 nt = { path = "../../asset/nt" }
 ot = { path = "../../asset/ot" }
 

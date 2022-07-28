@@ -259,46 +259,45 @@ After USNF, it looks like the BITE format changed without changing the
 magic word. Now there is a description / name after the magic and the pic
 is moved lower. There is also a big block of zeros removed from the middle.
 */
-packed_struct!(BITEHeader0 {
-    _0 => magic: [u8; 4],
+#[packed_struct]
+struct BITEHeader0 {
+    magic: [u8; 4],
 
-    _1 => pic_file: [u8; 16],
+    pic_file: [u8; 16],
 
-    _2a => pad0a: [u8; 32],
-    _2b => pad0b: [u8; 6],
+    pad0a: [u8; 32],
+    pad0b: [u8; 6],
 
-    _3 => unk0: u32,
-    _4 => unk1: u32,
-    _5 => unk2: u32,
-    _6 => unk3: u32,
+    unk0: u32,
+    unk1: u32,
+    unk2: u32,
+    unk3: u32,
 
-    _7a => pad1a: [u8; 32],
-    _7b => pad1b: [u8; 32],
-    _7c => pad1c: [u8; 13],
+    pad1a: [u8; 32],
+    pad1b: [u8; 32],
+    pad1c: [u8; 13],
 
-    _9 => unk4: u16,
+    unk4: u16,
 
-    _a => width_ft: u16,
-    _b => height_ft: u16,
+    width_ft: u16,
+    height_ft: u16,
 
-    _c => unk5: [u8; 5],
+    unk5: [u8; 5],
 
-    _d => phys_width: u16 as usize,
-    _e => phys_height: u16 as usize,
+    phys_width: u16,
+    phys_height: u16,
 
-    _f => block_size: u16 as usize,
-    _10 => block_count_x: u16 as usize,
-    _11 => block_count_z: u16 as usize
-});
+    block_size: u16,
+    block_count_x: u16,
+    block_count_z: u16,
+}
 
 impl Terrain {
     // This format is used exclusively by the first game in the series: USNF.
     // It has the same BITE header as in later games, but is missing the name
     // field.
     fn from_bite0(data: &[u8]) -> Result<Self> {
-        // FIXME: overlay
-        let header_ptr: *const BITEHeader0 = data.as_ptr() as *const _;
-        let header: &BITEHeader0 = unsafe { &*header_ptr };
+        let header = BITEHeader0::overlay_prefix(data)?;
         ensure!(header.magic() == MAGIC_BITE, "missing magic");
         ensure!(header.pad0a() == [0u8; 32], "pad0a");
         ensure!(header.pad0b() == [0u8; 6], "pad0b");
@@ -333,15 +332,15 @@ impl Terrain {
 
         // We can now skip the row offsets block to get to the height entries.
         let offsets_start = mem::size_of::<BITEHeader0>();
-        let offsets_size = header.phys_height() * mem::size_of::<u32>();
-        let num_pix = header.phys_width() * header.phys_height();
+        let offsets_size = header.phys_height() as usize * mem::size_of::<u32>();
+        let num_pix = header.phys_width() as usize * header.phys_height() as usize;
         let data_start = offsets_start + offsets_size;
         let entries = &data[data_start..];
 
-        let blk_size = header.block_size();
+        let blk_size = header.block_size() as usize;
         ensure!(blk_size == 16, "expect block size of 16");
-        let block_count_z = header.block_count_z();
-        let block_count_x = header.block_count_x();
+        let block_count_z = header.block_count_z() as usize;
+        let block_count_x = header.block_count_x() as usize;
         ensure!(block_count_x == 13, "can't handle other sizes");
         ensure!(block_count_x == block_count_z, "only support square maps");
 
@@ -390,39 +389,38 @@ impl Terrain {
     }
 }
 
-packed_struct!(BITEHeader1 {
-    _0 => magic: [u8; 4],
+#[packed_struct]
+struct BITEHeader1 {
+    magic: [u8; 4],
 
     // Note: we have to split this up because Debug is only
     // implemented up through array sizes of 32.
-    _1a => name0: [u8; 32],
-    _1b => name1: [u8; 32],
-    _1c => name2: [u8; 16],
+    name0: [u8; 32],
+    name1: [u8; 32],
+    name2: [u8; 16],
 
-    _3 => pic_file: [u8; 15],
+    pic_file: [u8; 15],
 
-    _4 => unk0: [u32; 5],
-    _9 => unk_pad0: [u8; 1],
-    _10 => unk_a: u16,
+    unk0: [u32; 5],
+    unk_pad0: [u8; 1],
+    unk_a: u16,
 
-    _11 => width_ft: u16,
-    _12 => height_ft: u16,
+    width_ft: u16,
+    height_ft: u16,
 
-    _9a => unk_after: [u8; 5],
+    unk_after: [u8; 5],
 
-    _14 => phys_width: u16 as usize,
-    _15 => phys_height: u16 as usize,
+    phys_width: u16,
+    phys_height: u16,
 
-    _16 => block_size: u16 as usize,
-    _17 => block_count_z: u16 as usize,
-    _18 => block_count_x: u16 as usize
-});
+    block_size: u16,
+    block_count_z: u16,
+    block_count_x: u16,
+}
 
 impl Terrain {
     fn from_bite1(data: &[u8]) -> Result<Self> {
-        // FIXME: overlay
-        let header_ptr: *const BITEHeader1 = data.as_ptr() as *const _;
-        let header: &BITEHeader1 = unsafe { &*header_ptr };
+        let header = BITEHeader1::overlay_prefix(data)?;
         ensure!(header.magic() == MAGIC_BITE, "missing magic");
 
         let name = read_name(&header.name0())?
@@ -449,15 +447,15 @@ impl Terrain {
 
         // We can now skip the row offsets block to get to the height entries.
         let offsets_start = mem::size_of::<BITEHeader1>();
-        let offsets_size = header.phys_height() * mem::size_of::<u32>();
-        let num_pix = header.phys_width() * header.phys_height();
+        let offsets_size = header.phys_height() as usize * mem::size_of::<u32>();
+        let num_pix = header.phys_width() as usize * header.phys_height() as usize;
         let data_start = offsets_start + offsets_size;
         let entries = &data[data_start..];
 
-        let blk_size = header.block_size();
+        let blk_size = header.block_size() as usize;
         ensure!(blk_size == 16, "expect block size of 16");
-        let block_count_z = header.block_count_z();
-        let block_count_x = header.block_count_x();
+        let block_count_z = header.block_count_z() as usize;
+        let block_count_x = header.block_count_x() as usize;
         ensure!(block_count_x == block_count_z, "only support square maps");
 
         // For each block in the input.
@@ -536,38 +534,35 @@ impl Terrain {
 
 const MAGIC_BIT2: &[u8] = &[b'B', b'I', b'T', b'2'];
 
-packed_struct!(BIT2Header {
-    _0 => magic: [u8; 4],
+#[packed_struct]
+struct BIT2Header {
+    magic: [u8; 4],
 
     // Actually 80 bytes, but split up because Debug is not implemented for arrays past 32.
-    _1a => name0: [u8; 32],
-    _1b => name1: [u8; 32],
-    _1c => name2: [u8; 16],
+    name0: [u8; 32],
+    name1: [u8; 32],
+    name2: [u8; 16],
 
-    _2 => pic_file:  [u8; 15],
+    pic_file: [u8; 15],
 
-    _3 => unk0: [u32; 6],
+    unk0: [u32; 6],
 
-    _4 => width_ft: u32,
-    _5 => height_ft: u32,
+    width_ft: u32,
+    height_ft: u32,
 
-    _6 => unk_zero: u16,
-    _7 => unk1: u16,
-    _8 => unk_small: u16,
+    unk_zero: u16,
+    unk1: u16,
+    unk_small: u16,
 
-    _12 => width: u32,
-    _13 => height: u32,
+    width: u32,
+    height: u32,
 
-    _14 => unk2: u32
-
-    // data
-});
+    unk2: u32, // data
+}
 
 impl Terrain {
     fn from_bit2(data: &[u8]) -> Result<Self> {
-        // FIXME: overlay
-        let header_pointer: &[BIT2Header] = unsafe { mem::transmute(data) };
-        let header = &header_pointer[0];
+        let header = BIT2Header::overlay_prefix(data)?;
 
         // 4 byte of magic
         ensure!(header.magic() == MAGIC_BIT2, "missing magic");

@@ -1,7 +1,5 @@
-//let location := "Everest";
-//@player.arcball.set_target(@player.arcball.notable_location(location));
-//@player.arcball.set_eye(@player.arcball.eye_for(location));
-//orrery.set_date_time(1964, 2, 24, 12, 0, 0);
+// Map debugging tools
+bindings.bind("space", "game.boresight()");
 
 // KuumNi, dawn
 // camera.set_target_latitude_radians(0.687693);
@@ -13,21 +11,55 @@
 // orrery.set_unix_ms(-168993517833.82);
 
 // Panama, shape demo
-let tgt_lat := 0.162171181505292;
-let tgt_lon := 1.379423469142956;
-let tgt_height := 1500. - 6. * 150.;
-let eye_lat := 0.29670346;
-let eye_lon := 14.5683351;
-let eye_dist := 610.595;
-@player.arcball.set_target_latitude_radians(tgt_lat);
-@player.arcball.set_target_longitude_radians(tgt_lon);
-@player.arcball.set_target_height_meters(tgt_height);
-@player.arcball.set_eye_latitude_radians(eye_lat);
-@player.arcball.set_eye_longitude_radians(eye_lon);
-@player.arcball.set_eye_distance_meters(eye_dist);
-orrery.set_unix_ms(-168993517833.82);
+//let tgt_lat := 0.162171181505292;
+//let tgt_lon := 1.379423469142956;
+//let tgt_height := 1500. - 6. * 150.;
+//let eye_lat := 0.29670346;
+//let eye_lon := 14.5683351;
+//let eye_dist := 610.595;
+//@Player.arcball.set_target_latitude_radians(tgt_lat);
+//@Player.arcball.set_target_longitude_radians(tgt_lon);
+//@Player.arcball.set_target_height_meters(tgt_height);
+//@Player.arcball.set_eye_latitude_radians(eye_lat);
+//@Player.arcball.set_eye_longitude_radians(eye_lon);
+//@Player.arcball.set_eye_distance_meters(eye_dist);
+//orrery.set_unix_ms(-168993517833.82);
+//orrery.set_unix_ms(1648921040614.2175);
+orrery.set_unix_ms(1648903175246.7478);
 
-game.load_map("APA.MM");
-game.spawn("test", "F16.PT");
-//game.spawn("test", "WTRBUF.OT");
-//game.spawn("test", "C130.PT");
+game.load_mission("~V02.M");
+//game.load_mission("~B02.M");
+//game.load_mission("UKR01.M");
+//game.load_mission("~T02.M");
+//game.load_mission("~T01.M");
+//game.load_mission("~T02.M");
+//game.load_mission("~T03.M");
+//game.load_mission("~T04.M");
+//game.load_mission("~T05.M");
+//game.load_mission("~T06.M");
+//game.load_mission("~T07.M");
+//game.load_mission("~T08.M");
+//game.load_mission("~T09.M");
+//game.load_mission("~T10.M");
+
+@camera.controller.set_mode("external");
+
+//game.load_map("APA.MM");
+//bindings.bind("space", "game.boresight(pressed)");
+
+
+//bindings.bind("f", "@test.draw_state.toggle_flaps()");
+//bindings.bind("g", "@test.draw_state.toggle_gear()");
+//bindings.bind("b", "@test.draw_state.toggle_airbreak()");
+
+//widget.toggle_terminal();
+//libs.find("~*.M");
+
+@Player.dynamics.show_force_vectors();
+@Player.dynamics.show_velocity_vector();
+
+@Player.dynamics.coef_mq := 0.0;
+@Player.dynamics.coef_malpha := 0.0;
+@Player.dynamics.coef_malphadot := 0.0;
+@Player.dynamics.coef_mde := 1.0;
+@Player.dynamics.coef_lift_slope := 1.0;

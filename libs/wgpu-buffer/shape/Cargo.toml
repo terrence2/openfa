@@ -6,17 +6,17 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = "^ 0.6"
-bevy_tasks = "^ 0.6"
+bevy_ecs = { version = "^ 0.7", features = ["trace"] }
+bevy_tasks = "^ 0.7"
 bitflags = "^ 1"
-image = "^ 0.23"
+image = "^ 0.24"
 lazy_static = "^ 1"
 log = "^ 0.4"
 memoffset = "^ 0.6"
-nalgebra = "^ 0.29"
-parking_lot = "^ 0.11"
-smallvec = "^ 1.4"
-zerocopy = "^ 0.5"
+nalgebra = "^ 0.31"
+parking_lot = "^ 0.12"
+smallvec = "^ 1"
+zerocopy = "^ 0.6"
 wgpu = { version = "^ 0.12", features = ["spirv"] }
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 animate = { path = "../../nitrogen/sim/animate" }
@@ -30,6 +30,7 @@ geometry = { path = "../../nitrogen/util/geometry" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
+marker = { path = "../../nitrogen/wgpu-buffer/marker" }
 measure = { path = "../../nitrogen/sim/measure" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
 ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }

@@ -147,7 +147,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
                 if opt.quiet {
                     println!("{}", out);
                 } else {
-                    println!("{:60}: {}", meta.name(), out);
+                    println!("{:13}: {}", meta.name(), out);
                 }
             }
         }

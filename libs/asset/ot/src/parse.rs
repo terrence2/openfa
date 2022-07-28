@@ -305,6 +305,16 @@ macro_rules! make_storage_type {
     };
 }
 
+#[macro_export]
+macro_rules! make_show_field {
+    (PtrStr, $myself:ident, $field_name:ident) => {
+        format!("{:?}", $myself.$field_name)
+    };
+    ($_:ident, $myself:ident, $field_name:ident) => {
+        format!("{}", $myself.$field_name)
+    };
+}
+
 pub trait FromRow {
     type Produces;
     fn from_row(row: &FieldRow, pointers: &HashMap<&str, Vec<&str>>) -> Result<Self::Produces>;
@@ -328,10 +338,10 @@ macro_rules! make_consume_fields {
         ($rows[0].value().numeric()?.byte()? as $field_type, 1)
     };
     (Word, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
-        ($rows[0].value().numeric()?.word()? as $field_type, 1)
+        (<$field_type>::from($rows[0].value().numeric()?.word()?), 1)
     };
     (DWord, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
-        ($rows[0].value().numeric()?.dword()? as $field_type, 1)
+        (<$field_type>::from($rows[0].value().numeric()?.dword()?), 1)
     };
     (Num, Unsigned, $field_type:path, $rows:expr, $_p:ident) => {
         ($rows[0].value().numeric()?.unsigned()? as $field_type, 1)
@@ -341,7 +351,10 @@ macro_rules! make_consume_fields {
         ($rows[0].value().numeric()?.byte()? as i8 as $field_type, 1)
     };
     (Word, Signed, $field_type:path, $rows:expr, $_p:ident) => {
-        ($rows[0].value().numeric()?.word()? as i16 as $field_type, 1)
+        (
+            <$field_type>::from($rows[0].value().numeric()?.word()? as i16),
+            1,
+        )
     };
     (DWord, Signed, $field_type:path, $rows:expr, $_p:ident) => {
         (
@@ -496,7 +509,7 @@ macro_rules! make_type_struct {
             pub fn get_field(&self, field: &'static str) -> String {
                 match field {
                     $(
-                        stringify!($field_name) => format!("{:?}", self.$field_name)
+                        stringify!($field_name) => $crate::make_show_field!($parse_type, self, $field_name)
                     ),*,
                     _ => String::new()
                 }

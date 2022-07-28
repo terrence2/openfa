@@ -59,6 +59,7 @@ layout(set = 3, binding = 3) readonly buffer ShapeInstanceBlockXforms {
 };
 
 void main() {
+    // No slicing primitive, so do it manually.
     uint base_transform = gl_InstanceIndex * 8;
     float transform[8] = {
         shape_transforms[base_transform + 0],
@@ -80,10 +81,13 @@ void main() {
         }
     }
 
+    // Move FA coordinates into Nitrogen coordinate system
+    vec4 pos = vec4(position.x, position.z, -position.y, 1);
+
     v_position_w_m = camera_perspective_m *
                      matrix_for_transform(transform) *
                      matrix_for_xform(xform) *
-                     vec4(position, 1.0);
+                     pos;
 
     v_normal_w = (rotation_for_xform(transform) *
                   rotation_for_xform(xform) *

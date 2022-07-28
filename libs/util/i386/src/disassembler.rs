@@ -19,7 +19,7 @@ use ansi::ansi;
 use anyhow::{bail, ensure, Result};
 use log::trace;
 use reverse::bs2s;
-use std::{cell::RefCell, fmt, mem, rc::Rc};
+use std::{cell::RefCell, fmt, fmt::Write, mem, rc::Rc};
 use thiserror::Error;
 
 pub use crate::lut::{Memonic, HAS_INLINE_REG, OPCODES, PREFIX_CODES, USE_REG_OPCODES};
@@ -1045,12 +1045,14 @@ impl ByteCode {
         let mut pos = 0;
         let mut s = String::new();
         for instr in self.instrs.iter() {
-            s += &format!(
-                "  @{:02X}|{:04X}               {}\n",
+            writeln!(
+                s,
+                "  @{:02X}|{:04X}               {}",
                 pos,
                 base + pos,
                 instr.show_relative(base + pos)
-            );
+            )
+            .ok();
             pos += instr.size();
         }
         s

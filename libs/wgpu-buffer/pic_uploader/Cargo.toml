@@ -7,15 +7,15 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
 wgpu = { version = "^ 0.12", features = ["spirv"] }
-zerocopy = "^ 0.5"
+zerocopy = "^ 0.6"
 gpu = { path = "../../nitrogen/system/gpu" }
 pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
 
 [dev-dependencies]
-env_logger = "^ 0.8"
+env_logger = "^ 0.9"
 futures-lite = "^ 1"
-image = "^ 0.23"
+image = "^ 0.24"
 catalog = { path = "../../nitrogen/system/catalog" }
 lib = { path = "../../asset/lib" }
 runtime = { path = "../../nitrogen/util/runtime" }

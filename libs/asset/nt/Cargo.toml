@@ -6,7 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-nalgebra = "^ 0.29"
+nalgebra = "^ 0.31"
 ot = { path = "../../asset/ot" }
 
 [dev-dependencies]

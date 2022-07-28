@@ -22,7 +22,7 @@ pub use chunks::{
     ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId, ShapeIds,
 };
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, ShapeErrata, ShapeWidgets, Vertex};
+pub use upload::{DrawSelection, ShapeErrata, ShapeExtent, ShapeMetadata, Vertex};
 
 #[cfg(test)]
 mod test {
@@ -97,7 +97,7 @@ mod test {
         for (game, mut results) in result_maps.drain() {
             for (name, mut shape_ids) in results.drain() {
                 for (sel, shape_id) in shape_ids.drain() {
-                    let lifetime = chunk_man.part(shape_id).widgets();
+                    let lifetime = chunk_man.part(shape_id).metadata();
                     let widgets = lifetime.read();
                     println!(
                         "{}:{}:{:?} => {} - {}",
