@@ -15,4 +15,21 @@
 
 // Controls are generally scriptable components that take in user input.
 
+pub(crate) mod pitch_inceptor;
 pub(crate) mod throttle;
+
+// Takes position and returns the modified value.
+pub(crate) fn inceptor_position_tick(target: f64, dt: f64, mut position: f64) -> f64 {
+    if target > position {
+        position += dt;
+        if target < position {
+            position = target;
+        }
+    } else if target < position {
+        position -= dt;
+        if target > position {
+            position = target;
+        }
+    }
+    position.max(-1.).min(1.)
+}

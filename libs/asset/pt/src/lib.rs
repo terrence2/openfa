@@ -255,6 +255,24 @@ pub struct PhysBounds {
     dacc: f32,
 }
 
+impl PhysBounds {
+    pub fn min64(&self) -> f64 {
+        self.min as f64
+    }
+
+    pub fn max64(&self) -> f64 {
+        self.max as f64
+    }
+
+    pub fn acc64(&self) -> f64 {
+        self.acc as f64
+    }
+
+    pub fn dacc64(&self) -> f64 {
+        self.dacc as f64
+    }
+}
+
 impl FromRows for PhysBounds {
     type Produces = PhysBounds;
 
@@ -408,15 +426,23 @@ mod tests {
     #[test]
     fn it_can_parse_all_plane_files() -> Result<()> {
         let libs = Libs::for_testing()?;
+        let mut check_count = 0;
         for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("PT")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
                 let contents = from_dos_string(catalog.read(fid)?);
                 let pt = PlaneType::from_text(contents.as_ref())?;
+                if pt.puff_rot_x.acc != pt.brv_x.acc || pt.puff_rot_x.dacc != pt.brv_x.dacc {
+                    check_count += 1;
+                }
+                assert_eq!(-pt.brv_x.min, pt.brv_x.max);
+                assert_eq!(pt.brv_y.acc, pt.brv_y.dacc);
                 assert_eq!(pt.nt.ot.file_name(), meta.name());
             }
         }
+        // TODO: figure out why puff_rot != brv in only a handful of models
+        assert!(check_count <= 77);
 
         Ok(())
     }

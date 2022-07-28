@@ -19,10 +19,11 @@ pub use crate::control::{
     hook::Hook, rudder::Rudder,
 };
 use absolute_unit::{
-    degrees, kilograms, kilograms_meter2, knots, meters, meters2, meters_per_second,
-    meters_per_second2, newton_meters, newtons, radians, radians_per_second, radians_per_second2,
-    scalar, seconds, Acceleration, Angle, AngularAcceleration, AngularVelocity, Force, Kilograms,
-    Meters, Newtons, Radians, RotationalInertia, Scalar, Seconds, Torque, Velocity,
+    degrees, degrees_per_second, degrees_per_second2, kilograms, kilograms_meter2, knots, meters,
+    meters2, meters_per_second, meters_per_second2, newton_meters, newtons, radians,
+    radians_per_second, radians_per_second2, scalar, seconds, Acceleration, Angle,
+    AngularAcceleration, AngularVelocity, Degrees, Force, Kilograms, Meters, Newtons, Radians,
+    RotationalInertia, Scalar, Seconds, Torque, Velocity,
 };
 use animate::TimeStep;
 use anyhow::Result;
@@ -36,7 +37,7 @@ use physical_constants::{StandardAtmosphere, STANDARD_GRAVITY};
 use pt::{GloadExtrema, PlaneType};
 use runtime::{Extension, Runtime};
 use shape::DrawState;
-use vehicle_state::{VehicleState, VehicleStep};
+use vehicle_state::{PitchInceptor, VehicleState, VehicleStep};
 use xt::TypeRef;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
@@ -57,6 +58,10 @@ pub struct FlightDynamics {
     // Intermediates
     alpha: Angle<Radians>,
     beta: Angle<Radians>,
+
+    // //////////// Lift coefficients //////////// //
+    #[property]
+    coef_lift_slope: f64,
 
     // //////////// Force coefficients //////////// //
 
@@ -127,14 +132,16 @@ impl FlightDynamics {
             max_g_load: GloadExtrema::Stall(0.),
             alpha: radians!(0.),
             beta: radians!(0.),
+            // Lift coefficients
+            coef_lift_slope: 1.4,
             // Drag coefficients
             coef_drag_divisor: 4_096_f64,
             // Pitch coefficients
             coef_m0: 0_f64,
-            coef_malpha: 0.5_f64,
-            coef_mde: 0.1_f64,
+            coef_mde: 10.0_f64,
             coef_mq: -5000_f64,
-            coef_malphadot: 0.001_f64,
+            coef_malpha: -100.0_f64,
+            coef_malphadot: -100.0_f64,
         }
     }
 
@@ -418,7 +425,7 @@ impl FlightDynamics {
         gear: &mut Gear,
 
         ailerons: &mut Ailerons,
-        elevator: &mut Elevator,
+        // elevator: &mut Elevator,
         rudder: &mut Rudder,
 
         xt: &TypeRef,
@@ -433,7 +440,7 @@ impl FlightDynamics {
         bay.sys_tick(dt, draw_state);
         gear.sys_tick(dt, draw_state);
         ailerons.sys_tick(dt, draw_state);
-        elevator.sys_tick(dt, draw_state);
+        // elevator.sys_tick(dt, draw_state);
         rudder.sys_tick(dt, draw_state);
     }
 
@@ -449,7 +456,7 @@ impl FlightDynamics {
         gear: &Gear,
         vehicle: &VehicleState,
         ailerons: &Ailerons,
-        elevator: &Elevator,
+        pitch_inceptor: &PitchInceptor,
         rudder: &Rudder,
         motion: &mut BodyMotion,
         frame: &mut WorldSpaceFrame,
@@ -457,6 +464,19 @@ impl FlightDynamics {
     ) {
         let dt = timestep.step();
         let pt = xt.pt().expect("PT");
+
+        // Relevant fields on pt are:
+        //   bv_x: [-73,0], d/acc: [73,73] Except d/acc [36,36] for blimp
+        //   bv_y: [-146,146], d/acc: [7, 7], Except m/m [-73,73] for blimp
+        //   bv_z: [-146,146], d/acc: [73,73], Except m/m [-73,73] for blimp
+        //
+        //   brv_x: all over the place
+        //   brv_y: [0,0], [4 to 9ish]
+        //   brv_z: [-45,45]*[90,90] or [-30,30]*[90,90]
+        //
+        //   puff_rot_x: [-30/50/90,+30/50/90], varied, but not as much as brv_x
+        //   puff_rot_y: mostly 30/60/90, varied acc
+        //   puff_rot_z: similar to y
 
         // Allerton defines the SDoF axes as:
         // fwd   axis: X, u, L, p
@@ -486,31 +506,22 @@ impl FlightDynamics {
         let max_aoa = radians!(pt.gpull_aoa);
         let alpha = radians!(w.f64().atan2(u.f64()));
         let beta = radians!(v.f64().atan2(uw_mag.f64()));
+
+        let v0 = Vector3::new(
+            meters_per_second!(0_f64),
+            meters_per_second!(0_f64),
+            -motion.cg_velocity(),
+        );
+        let v1 = motion.velocity();
+        let turn_accel =
+            meters_per_second!((v0 - v1).map(|v| v.f64()).magnitude()) / seconds!(dt.as_secs_f64());
+        let turn_g_force = turn_accel.f32() / STANDARD_GRAVITY.f32();
         if markers.is_some() && alpha > max_aoa {
             println!(
                 "OOB alpha > max_aoa: {} > {}",
                 degrees!(alpha),
                 degrees!(max_aoa),
             );
-        }
-        if markers.is_some() {
-            let v0 = Vector3::new(
-                meters_per_second!(0_f64),
-                meters_per_second!(0_f64),
-                -motion.cg_velocity(),
-            );
-            let v1 = motion.velocity();
-            let a0 = meters_per_second!((v0 - v1).map(|v| v.f64()).magnitude())
-                / seconds!(dt.as_secs_f64());
-
-            let a1 = q.f64() * motion.cg_velocity().f64() / 9.806_65_f64;
-            // println!(
-            //     "DV: {:0.2} vs {:0.2} a: {:0.2} in {:0.2}",
-            //     a0.g_number(),
-            //     a1,
-            //     degrees!(alpha),
-            //     vehicle.current_mass()
-            // );
         }
 
         // Alpha_dot and beta_dot are trig approximations, so the units intentionally don't
@@ -590,11 +601,12 @@ impl FlightDynamics {
         debug_assert!(coef_divisor > newtons!(0_f64), "0 lift coef divisor");
         debug_assert!(coef_divisor.is_finite(), "NaN lift coef divisor");
         let coef_lift_0 = (mass_kg * gravity_z).f64() / coef_divisor.f64();
-        let coef_lift_max = (kilograms!(pt.max_takeoff_weight)
-            * scalar!(pt.envelopes.max_g_load())
-            * *STANDARD_GRAVITY)
-            .f64()
-            / coef_divisor.f64();
+        // let coef_lift_max = (kilograms!(pt.max_takeoff_weight)
+        //     * scalar!(pt.envelopes.max_g_load())
+        //     * *STANDARD_GRAVITY)
+        //     .f64()
+        //     / coef_divisor.f64();
+        let coef_lift_max = coef_lift_0 * self.coef_lift_slope;
         debug_assert!(coef_lift_0.is_finite(), "NaN lift0 coef");
         debug_assert!(coef_lift_max.is_finite(), "NaN liftMax coef");
         let coef_lift = coef_lift_0 + (alpha.f64() / max_aoa.f64()) * (coef_lift_max - coef_lift_0);
@@ -636,6 +648,7 @@ impl FlightDynamics {
                 + hook.coefficient_of_drag(pt)
                 + bay.coefficient_of_drag(pt)
                 + gear.coefficient_of_drag(pt)
+                + pt._gpull_drag as f32 * turn_g_force
         ) / scalar!(self.coef_drag_divisor);
         // If the plane is moving backwards, drag should oppose the direction of movement.
         if u < meters_per_second!(0_f64) {
@@ -716,9 +729,34 @@ impl FlightDynamics {
         let dist_cg_to_lift = meters!(0f64);
         let gear_moment_pitch = newton_meters!(0f64);
 
+        // Figure out the desired turn rate from the pitch inceptor
+        let max_target_alpha =
+            pt.gpull_aoa * scalar!(self.max_g_load.max_g_load() / pt.envelopes.max_g_load() as f64);
+        let target_alpha = max_target_alpha * scalar!(pitch_inceptor.position());
+        let delta_alpha: Angle<Degrees> = target_alpha - alpha;
+        let delta_alpha_f = (delta_alpha.f64() / pt.gpull_aoa.f64()).min(1_f64);
+        let brv_x_max = degrees_per_second!(pt.brv_x.max64() / 255.);
+        let brv_x_acc = degrees_per_second2!(pt.brv_x.acc64() / 255.);
+        let target_velocity = brv_x_max * scalar!(delta_alpha_f);
+        let delta_velocity = target_velocity - q;
+        let delta_velocity_f = delta_velocity.f64() / brv_x_max.f64();
+        // TODO: Puff_rot_x? Use acc/dacc?
+        let target_accel = brv_x_acc * scalar!(delta_velocity_f);
+        let q_dot: AngularAcceleration<Radians, Seconds> = radians_per_second2!(target_accel);
+        if let Some(em) = markers.as_mut() {
+            println!(
+                "target: {:0.4} - {:0.4} -> {:0.4} / {:0.4}",
+                degrees!(target_alpha),
+                degrees!(alpha),
+                degrees_per_second!(target_velocity),
+                degrees_per_second2!(target_accel),
+            );
+        }
+
+        /*
         let coef_1 = radians!(self.coef_m0)
             + scalar!(self.coef_malpha) * alpha
-            + scalar!(self.coef_mde) * radians!(elevator.position());
+            + scalar!(self.coef_mde) * radians!(pitch_inceptor.position());
         let coef_2a = scalar!(self.coef_mq) * q;
         let coef_2b = scalar!(self.coef_malphadot).as_dyn() * alpha_dot.as_dyn();
         let coef_2 = coef_2a.as_dyn() + coef_2b;
@@ -765,6 +803,8 @@ impl FlightDynamics {
             / i_yy)
             .into();
         debug_assert!(q_dot.is_finite(), "q_dot is NaN");
+         */
+
         // rad/s
         q += q_dot * seconds!(dt.as_secs_f64());
         debug_assert!(q.is_finite(), "q is NaN");
@@ -829,14 +869,14 @@ impl FlightDynamics {
         mut query: Query<(
             &mut FlightDynamics,
             (&Airbrake, &Flaps, &Hook, &mut Bay, &mut Gear),
-            (&mut Ailerons, &mut Elevator, &mut Rudder),
+            (&mut Ailerons, &mut Rudder),
             (&TypeRef, &mut DrawState),
         )>,
     ) {
         for (
             mut dynamics,
             (airbrake, flaps, hook, mut bay, mut gear),
-            (mut ailerons, mut elevator, mut rudder),
+            (mut ailerons, mut rudder),
             (xt, mut draw_state),
         ) in query.iter_mut()
         {
@@ -848,7 +888,6 @@ impl FlightDynamics {
                 &mut bay,
                 &mut gear,
                 &mut ailerons,
-                &mut elevator,
                 &mut rudder,
                 xt,
                 &mut draw_state,
@@ -861,7 +900,7 @@ impl FlightDynamics {
         mut query: Query<(
             &mut FlightDynamics,
             (&Airbrake, &Flaps, &Hook, &Bay, &Gear, &VehicleState),
-            (&Ailerons, &Elevator, &Rudder),
+            (&Ailerons, &PitchInceptor, &Rudder),
             (&TypeRef, &mut BodyMotion, &mut WorldSpaceFrame),
             Option<&mut EntityMarkers>,
         )>,
@@ -869,7 +908,7 @@ impl FlightDynamics {
         for (
             mut dynamics,
             (airbrake, flaps, hook, bay, gear, vehicle),
-            (ailerons, elevator, rudder),
+            (ailerons, pitch_inceptor, rudder),
             (xt, mut motion, mut frame),
             markers,
         ) in query.iter_mut()
@@ -884,7 +923,7 @@ impl FlightDynamics {
                 gear,
                 vehicle,
                 ailerons,
-                elevator,
+                pitch_inceptor,
                 rudder,
                 &mut motion,
                 &mut frame,

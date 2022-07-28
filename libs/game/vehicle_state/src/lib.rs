@@ -17,7 +17,7 @@ mod inertia;
 mod systems;
 
 pub use crate::{
-    controls::throttle::Throttle,
+    controls::{pitch_inceptor::PitchInceptor, throttle::Throttle},
     inertia::{Inertia, InertiaTensor},
 };
 
@@ -101,9 +101,11 @@ impl VehicleState {
     }
 
     pub fn install_on(id: Entity, xt: &TypeRef, mut heap: HeapMut) -> Result<()> {
+        let pitch_inceptor = PitchInceptor::default();
         let throttle = Throttle::new_min_power();
         let vehicle = VehicleState::new(id, xt, heap.as_mut());
         heap.named_entity_mut(id)
+            .insert_named(pitch_inceptor)?
             .insert_named(throttle)?
             .insert_named(vehicle)?;
         Ok(())
@@ -153,9 +155,16 @@ impl VehicleState {
 
     fn sys_update_state(
         timestep: Res<TimeStep>,
-        mut query: Query<(&mut VehicleState, &mut DrawState, &Throttle)>,
+        mut query: Query<(
+            &mut VehicleState,
+            &mut DrawState,
+            &mut PitchInceptor,
+            &Throttle,
+        )>,
     ) {
-        for (mut vehicle, mut draw_state, throttle) in query.iter_mut() {
+        for (mut vehicle, mut draw_state, mut pitch_inceptor, throttle) in query.iter_mut() {
+            pitch_inceptor.sys_tick(timestep.step());
+
             // Perform engine spooling to move towards target power
             vehicle
                 .power_plant
