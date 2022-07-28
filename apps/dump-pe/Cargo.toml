@@ -9,5 +9,6 @@ anyhow = { version = "^ 1", features = ["backtrace"] }
 structopt = "^ 0.3"
 ansi = { path = "../../libs/nitrogen/util/ansi" }
 catalog = { path = "../../libs/nitrogen/system/catalog" }
+i386 = { path = "../../libs/util/i386" }
 lib = { path = "../../libs/asset/lib" }
 peff = { path = "../../libs/util/peff" }

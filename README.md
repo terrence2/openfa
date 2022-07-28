@@ -37,7 +37,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
       * `cargo run -p dump-pal`: extract PAL to PNG
   * Objects
     * [x] OT, PT, JT, NT
-      * `cargo run -p dump-xt -- FA:F22.PT`
+      * `cargo run -p dump-xt -- -S FA F22.PT`
           ```
                ObjectType
                ==========
@@ -55,12 +55,12 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
     * [ ] SEE
   * PE
     * [x] PE Wrapper
-      * `cargo run -p dump-pe -- FA:F22.SH`
+      * `cargo run -p dump-pe -- -S FA F22.SH`
   * Font
     * [x] FNT
   * Shape
     * [x] SH
-      * `cargo run -p dump-sh -- FA:F18.Sh`
+      * `cargo run -p dump-sh -- -S FA F18.SH`
         ```
         0: @0000 Header: FF FF| 0000(0) 8C00(140) 0800(8) 9900(153) 4800(72) F200(242) 
         1: @000E 2EndO: F2 00| BD 4D  (delta:4DBD, target:4DCF)
@@ -74,7 +74,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
         9: @0070 TexRf: _f22.PIC
         ...
         ```
-      * `cargo run -p show-sh -- FA:F18.Sh`
+      * `cargo run -p show-sh -- -S FA F18.SH`
         ![Shape Explorer Demo](assets/sh_explorer_demo-19-03-10.gif)
   * Terrain
     * [x] T2: 3 bytes with height, metadata, and color; older versions have strange packing, probably for disk
@@ -90,6 +90,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
                   games. It appears to be completely unused. I believe that M files are used for campaigns and loose
                   missions and MM files are the "base" maps for the mission editor, but that is just supposition at this
                   point.
+    * [ ] MC: A PE file. Appears to be scripted mission events.
   * Sound
     * [ ] 11K, 8K, 5K: Raw PCM with the given sample rate
     * [ ] XMI: eXtended MIdi, probably
@@ -106,13 +107,12 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
   * Menu
     * [ ] DLG: PE laying out the main game menu system
     * [ ] MNU: PE laying out the in-game menu bar at the top of the pause screen
+    * [ ] PTS: PE file that has something to do with how planes are laid out in the plane selection screens.
   * Encyclopedia
     * [ ] INF: Textual encyclopedia entries
     * [ ] VDO: Video encyclopedia entries
   * Unknown Purpose
-    * [ ] MC: PE
     * [ ] MUS: PE; maybe music sequencing?
-    * [ ] PTS: PE
     * [ ] BIN: binary
     * [ ] CB8: binary
     * [ ] FBC: binary

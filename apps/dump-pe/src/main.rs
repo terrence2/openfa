@@ -15,6 +15,7 @@
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use catalog::{Catalog, FileId};
+use i386::{ByteCode, DisassemblyError};
 use lib::{Libs, LibsOpts};
 use peff::PortableExecutable;
 use std::collections::HashSet;
@@ -25,6 +26,9 @@ use structopt::StructOpt;
 struct Opt {
     /// PE files to dump
     inputs: Vec<String>,
+
+    #[structopt(short, long)]
+    disassemble: bool,
 
     #[structopt(flatten)]
     libs_opts: LibsOpts,
@@ -42,7 +46,7 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_pe(fid, catalog)?;
+                show_pe(fid, catalog, opt.disassemble)?;
             }
         }
     }
@@ -50,7 +54,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn show_pe(fid: FileId, catalog: &Catalog) -> Result<()> {
+fn show_pe(fid: FileId, catalog: &Catalog, disassemble: bool) -> Result<()> {
     let (_, width) = terminal_size();
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
@@ -95,23 +99,34 @@ fn show_pe(fid: FileId, catalog: &Catalog) -> Result<()> {
     }
     println!();
 
-    println!("code -");
-    print!("  ");
-    let mut offset = 0;
-    for (i, b) in pe.code.iter().enumerate() {
-        if offset == bytes_per_line {
-            offset = 0;
-            println!();
-            print!("  ");
+    if disassemble {
+        let bc = ByteCode::disassemble_until(0, &pe.code, |_| false);
+        if let Err(ref e) = bc {
+            if !DisassemblyError::maybe_show(e, &pe.code) {
+                println!("ERROR: {}", e);
+            }
         }
-        if relocs.contains(&(i as u32)) {
-            print!("{}{:02X}{} ", ansi().green(), b, ansi());
-        } else {
-            print!("{:02X} ", b);
+        let bc = bc?;
+        println!("i386 -\n{}", bc);
+    } else {
+        println!("code -");
+        print!("  ");
+        let mut offset = 0;
+        for (i, b) in pe.code.iter().enumerate() {
+            if offset == bytes_per_line {
+                offset = 0;
+                println!();
+                print!("  ");
+            }
+            if relocs.contains(&(i as u32)) {
+                print!("{}{:02X}{} ", ansi().green(), b, ansi());
+            } else {
+                print!("{:02X} ", b);
+            }
+            offset += 1;
         }
-        offset += 1;
+        println!();
     }
-    println!();
 
     println!();
     Ok(())
