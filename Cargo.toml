@@ -24,6 +24,7 @@ members = [
     "libs/asset/jt",
     "libs/asset/lay",
     "libs/asset/lib",
+    "libs/asset/mc",
     "libs/asset/mmm",
     "libs/asset/mnu",
     "libs/asset/nt",

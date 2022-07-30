@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(clippy::new_without_default, clippy::transmute_ptr_to_ptr)]
+#![allow(clippy::new_without_default)]
 
 use crate::{
     disassembler::{ByteCode, MemRef, Memonic, Operand, Reg},

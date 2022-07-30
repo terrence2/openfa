@@ -12,8 +12,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(clippy::transmute_ptr_to_ptr)]
-
 use crate::lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use ansi::ansi;
 use anyhow::{bail, ensure, Result};
@@ -463,7 +461,12 @@ impl Operand {
                         MemRef::size_for_type(desc.ty, state)?,
                         &state.prefix,
                     )),
-                    _ => unreachable!(),
+                    OperandType::w => Operand::Memory(MemRef::base(
+                        Self::register(rm),
+                        MemRef::size_for_type(desc.ty, state)?,
+                        &state.prefix,
+                    )),
+                    _ => unreachable!("E/00/0-7"),
                 },
                 4 => {
                     let (scale, index, base) = state.read_sib(mod_, code, ip)?;
@@ -481,7 +484,7 @@ impl Operand {
                     MemRef::size_for_type(desc.ty, state)?,
                     &state.prefix,
                 )),
-                _ => unreachable!(),
+                _ => unreachable!("E/00"),
             },
             0b01 => {
                 let base = Self::register(rm);
@@ -510,9 +513,9 @@ impl Operand {
                     Self::register(rm),
                     state.prefix.toggle_operand_size,
                 )),
-                _ => unreachable!(),
+                _ => unreachable!("E/11"),
             },
-            _ => unreachable!(),
+            _ => unreachable!("E/"),
         })
     }
 
@@ -798,6 +801,7 @@ impl fmt::Display for Operand {
     }
 }
 
+#[derive(Debug)]
 struct OpPrefix {
     toggle_address_size: bool,
     toggle_operand_size: bool,
@@ -984,7 +988,7 @@ pub struct ByteCode {
 impl ByteCode {
     pub fn disassemble_until<F>(at_offset: usize, code: &[u8], f: F) -> Result<Self>
     where
-        F: Fn(&[Instr]) -> bool,
+        F: Fn(&[Instr], &[u8]) -> bool,
     {
         trace!(
             "Disassembling ->Ret @{:04X}: {}...",
@@ -997,7 +1001,7 @@ impl ByteCode {
             let instr = Instr::decode_one(code, &mut ip)?;
             trace!("  @{}: {}", ip, instr);
             instrs.push(instr);
-            if f(&instrs) {
+            if f(&instrs, &code[ip..]) {
                 break;
             }
         }
@@ -1009,7 +1013,7 @@ impl ByteCode {
     }
 
     pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Result<Self> {
-        Self::disassemble_until(at_offset, code, |instrs| {
+        Self::disassemble_until(at_offset, code, |instrs, _rem| {
             instrs[instrs.len() - 1].memonic == Memonic::Return
         })
     }

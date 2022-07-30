@@ -100,7 +100,7 @@ fn show_pe(fid: FileId, catalog: &Catalog, disassemble: bool) -> Result<()> {
     println!();
 
     if disassemble {
-        let bc = ByteCode::disassemble_until(0, &pe.code, |_| false);
+        let bc = ByteCode::disassemble_until(0, &pe.code, |_, _| false);
         if let Err(ref e) = bc {
             if !DisassemblyError::maybe_show(e, &pe.code) {
                 println!("ERROR: {}", e);

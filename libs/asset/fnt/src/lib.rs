@@ -122,7 +122,7 @@ impl Fnt {
             let glyph_index = (i - 1) as u8;
             let glyph_char = String::from_cp437(vec![glyph_index], &CP437_CONTROL);
 
-            let maybe_bytecode = ByteCode::disassemble_until(0, span, |_| false);
+            let maybe_bytecode = ByteCode::disassemble_until(0, span, |_, _| false);
             if let Err(e) = maybe_bytecode {
                 i386::DisassemblyError::maybe_show(&e, span);
                 bail!("Don't know how to disassemble at {}: {:?}", 0, e);

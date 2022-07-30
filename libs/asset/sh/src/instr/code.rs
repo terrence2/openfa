@@ -16,28 +16,26 @@ use crate::{instr::read_name, Instr, RawShape, UnknownData, SHAPE_LOAD_BASE};
 use ansi::ansi;
 use anyhow::{bail, ensure, Result};
 use i386::{ByteCode, Memonic, Operand};
-use lazy_static::lazy_static;
 use log::trace;
+use once_cell::sync::Lazy;
 use peff::{PortableExecutable, Thunk};
 use reverse::bs2s;
 use std::{cmp, collections::HashSet, mem};
 
-lazy_static! {
-    pub static ref DATA_RELOCATIONS: HashSet<String> = {
-        [
-            "_currentTicks",
-            "_effectsAllowed",
-            "brentObjId",
-            "viewer_x",
-            "viewer_z",
-            "xv32",
-            "zv32",
-        ]
-        .iter()
-        .map(|&n| n.to_owned())
-        .collect()
-    };
-}
+pub static DATA_RELOCATIONS: Lazy<HashSet<String>> = Lazy::new(|| {
+    [
+        "_currentTicks",
+        "_effectsAllowed",
+        "brentObjId",
+        "viewer_x",
+        "viewer_z",
+        "xv32",
+        "zv32",
+    ]
+    .iter()
+    .map(|&n| n.to_owned())
+    .collect()
+});
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct X86Trampoline {
@@ -325,8 +323,10 @@ impl X86Code {
     ) -> Result<(ByteCode, ReturnKind)> {
         // Note that there are internal calls that we need to filter out, so we
         // have to consult the list of trampolines to find the interpreter return.
-        let maybe_bc =
-            i386::ByteCode::disassemble_until(SHAPE_LOAD_BASE as usize + offset, code, |instrs| {
+        let maybe_bc = i386::ByteCode::disassemble_until(
+            SHAPE_LOAD_BASE as usize + offset,
+            code,
+            |instrs, _rem| {
                 if instrs.len() < 2 {
                     return false;
                 }
@@ -342,7 +342,8 @@ impl X86Code {
                     }
                 }
                 false
-            });
+            },
+        );
         if let Err(e) = maybe_bc {
             i386::DisassemblyError::maybe_show(&e, code);
             bail!("Don't know how to disassemble at {}: {:?}", offset, e);

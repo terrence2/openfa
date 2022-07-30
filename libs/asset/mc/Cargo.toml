@@ -1,16 +1,10 @@
 [package]
-name = "sh"
-version = "0.0.0"
+name = "mc"
+version = "0.1.0"
 edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-bitflags = "^ 1"
-byteorder = "^ 1"
-once_cell = "^ 1"
-log = "^ 0.4"
-thiserror = "^ 1"
 zerocopy = "^ 0.6"
 ansi = { path = "../../nitrogen/util/ansi" }
 i386 = { path = "../../util/i386" }

@@ -24,7 +24,7 @@ use std::str;
 use thiserror::Error;
 
 pub use crate::instr::{
-    code::{X86Code, X86Message, X86Trampoline},
+    code::{X86Code, X86Message, X86Trampoline, DATA_RELOCATIONS},
     geometry::{Facet, FacetFlags, TextureIndex, TextureRef, VertexBuf, VertexNormal},
     jump::{Jump, JumpToDamage, JumpToDetail, JumpToFrame, JumpToLOD},
     marker::PtrToObjEnd,

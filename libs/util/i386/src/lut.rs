@@ -16,7 +16,7 @@ use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 
 // Specifies where to find the operand.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum AddressingMethod {
     // A ModR/M byte follows the opcode and specifies the operand. The operand is either a
     // general-purpose register or a memory address. If it is a memory address, the address is
@@ -93,7 +93,7 @@ pub enum OperandType {
     const1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OperandDef {
     pub method: AddressingMethod,
     pub ty: OperandType,
@@ -205,7 +205,7 @@ pub enum Memonic {
     Xor,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OpCodeDef {
     pub memonic: Memonic,
     pub operands: Vec<OperandDef>,
@@ -304,18 +304,35 @@ lazy_static! {
             (0x05, 0, make_op!(Add:     Imp/eAX, I/v)),
             (0x07, 0, make_op!(Pop:     Imp/ES)),
             (0x0B, 0, make_op!(Or:      G/v, E/v)),
+            (0x0D, 0, make_op!(Or:      Imp/eAX, I/v)),
             (0x16, 0, make_op!(Push:    Imp/SS)),
+            (0x22, 0, make_op!(And:     G/b, E/b)),
             (0x25, 0, make_op!(And:     Imp/eAX, I/v)),
             (0x2A, 0, make_op!(Sub:     G/b, E/b)),
             (0x2B, 0, make_op!(Sub:     G/v, E/v)),
             (0x2D, 0, make_op!(Sub:     Imp/eAX, I/v)),
             (0x32, 0, make_op!(Xor:     G/b, E/b)),
             (0x33, 0, make_op!(Xor:     G/v, E/v)),
+            (0x3A, 0, make_op!(Compare: G/b, E/b)),
             (0x3B, 0, make_op!(Compare: G/v, E/v)),
             (0x3C, 0, make_op!(Compare: Imp/AL, I/b)),
             (0x3D, 0, make_op!(Compare: Imp/eAX, I/v)),
             (0x40, 0, make_op!(Inc:     Z/v)),
+            (0x41, 0, make_op!(Inc:     Z/v)),
+            (0x42, 0, make_op!(Inc:     Z/v)),
+            (0x43, 0, make_op!(Inc:     Z/v)),
+            (0x44, 0, make_op!(Inc:     Z/v)),
+            (0x45, 0, make_op!(Inc:     Z/v)),
+            (0x46, 0, make_op!(Inc:     Z/v)),
+            (0x47, 0, make_op!(Inc:     Z/v)),
             (0x48, 0, make_op!(Dec:     Z/v)),
+            (0x49, 0, make_op!(Dec:     Z/v)),
+            (0x4A, 0, make_op!(Dec:     Z/v)),
+            (0x4B, 0, make_op!(Dec:     Z/v)),
+            (0x4C, 0, make_op!(Dec:     Z/v)),
+            (0x4D, 0, make_op!(Dec:     Z/v)),
+            (0x4E, 0, make_op!(Dec:     Z/v)),
+            (0x4F, 0, make_op!(Dec:     Z/v)),
             (0x50, 0, make_op!(Push:    Z/v)),
             (0x58, 0, make_op!(Pop:     Z/v)),
             (0x60, 0, make_op!(PushAll:)),
@@ -357,6 +374,7 @@ lazy_static! {
             (0x8B, 0, make_op!(Move:    G/v, E/v)),
             (0x8D, 0, make_op!(LEA:     G/v, M/v)),
             (0xA1, 0, make_op!(Move:    Imp/eAX, O/v)),
+            (0xA3, 0, make_op!(Move:    O/v, Imp/eAX)),
             (0xA4, 0, make_op!(MoveStr: Y/b, X/b)),
             (0xB8, 0, make_op!(Move:    Z/v, I/v)),
             (0xC1, 4, make_op!(ShiftL:  E/v, I/b)),
@@ -382,10 +400,11 @@ lazy_static! {
             (0xFF, 1, make_op!(Dec:     E/v)),
             (0xFF, 4, make_op!(Jump:    E/v)),
 
+            (0x0F84, 0, make_op!(J|ZF=1: J/v)),
             (0x0F85, 0, make_op!(J|ZF=0: J/v)),
             (0x0FAF, 0, make_op!(IMul2:  G/v, E/v)),
-            (0x0FB6, 0, make_op!(MoveZX: G/v, E/b)),
-            (0x0FB7, 0, make_op!(MoveZX: G/v, E/w)),
+            (0x0FB6, 0, make_op!(MoveZX: G/v, E/b)), // move byte to word or doubleword with zero extension
+            (0x0FB7, 0, make_op!(MoveZX: G/v, E/w)), // move word to doubleword with zero extension
         ];
         for &(ref op, ref ext, ref def) in ops.iter() {
             out.insert((*op, *ext), (*def).clone());

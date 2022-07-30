@@ -20,14 +20,15 @@ pub use crate::instr::{
     read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
     JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
     Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, X86Trampoline, XformUnmask,
-    XformUnmask4,
+    XformUnmask4, DATA_RELOCATIONS,
 };
 use ansi::{ansi, Color};
 use anyhow::{anyhow, bail, ensure, Result};
 use byteorder::{ByteOrder, LittleEndian};
-use lazy_static::lazy_static;
 use log::trace;
+use once_cell::sync::Lazy;
 use packed_struct::packed_struct;
+use peff::{PortableExecutable, Trampoline};
 use reverse::{bs2s, bs_2_i16, p2s};
 use std::{
     cmp,
@@ -55,11 +56,9 @@ use std::{
 
 pub const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
 
-lazy_static! {
-    // Virtual instructions that have a one-byte header instead of
-    static ref ONE_BYTE_MAGIC: HashSet<u8> =
-        [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect();
-}
+// Virtual instructions that have a one-byte header instead of the regular word.
+static ONE_BYTE_MAGIC: Lazy<HashSet<u8>> =
+    Lazy::new(|| [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect());
 
 // No idea what this does, but there is a 16bit count in the middle with
 // count bytes following it.
@@ -1144,16 +1143,21 @@ pub struct RawShape {
     pub instrs: Vec<Instr>,
     pub trampolines: Vec<X86Trampoline>,
     offset_map: HashMap<usize, usize>,
-    pub pe: peff::PortableExecutable,
+    pub pe: PortableExecutable,
 }
 
 impl RawShape {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
-        let mut pe = peff::PortableExecutable::from_bytes(data)?;
+        let mut pe = PortableExecutable::from_bytes(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
         // 0-based and tags all local pointers with an obvious flag.
         pe.relocate(SHAPE_LOAD_BASE)?;
+        for trampoline in pe.trampolines.iter_mut() {
+            if DATA_RELOCATIONS.contains(&trampoline.name) {
+                trampoline.is_data = true;
+            }
+        }
         let trampolines = Self::find_trampolines(&pe)?;
         let eos = Self::find_end_of_shape(&pe, &trampolines)?;
         let mut trailer = trampolines
@@ -1203,7 +1207,7 @@ impl RawShape {
         uniq
     }
 
-    fn find_trampolines(pe: &peff::PortableExecutable) -> Result<Vec<X86Trampoline>> {
+    fn find_trampolines(pe: &PortableExecutable) -> Result<Vec<X86Trampoline>> {
         if !pe.thunks.is_empty() {
             trace!("Looking for thunks in the following table:");
             for thunk in &pe.thunks {
@@ -1227,7 +1231,7 @@ impl RawShape {
     }
 
     fn find_end_of_shape(
-        pe: &peff::PortableExecutable,
+        pe: &PortableExecutable,
         trampolines: &[X86Trampoline],
     ) -> Result<EndOfShape> {
         let end_offset = pe.code.len() - trampolines.len() * X86Trampoline::SIZE;
@@ -1258,7 +1262,7 @@ impl RawShape {
     }
 
     fn read_sections(
-        pe: &peff::PortableExecutable,
+        pe: &PortableExecutable,
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
     ) -> Result<Vec<Instr>> {
@@ -1281,7 +1285,7 @@ impl RawShape {
 
     fn read_instr(
         offset: &mut usize,
-        pe: &peff::PortableExecutable,
+        pe: &PortableExecutable,
         trampolines: &[X86Trampoline],
         trailer: &[Instr],
         instrs: &mut Vec<Instr>,
