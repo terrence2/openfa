@@ -18,9 +18,9 @@ use anyhow::{bail, ensure, Result};
 use i386::{ByteCode, Memonic, Operand};
 use log::trace;
 use once_cell::sync::Lazy;
-use peff::{PortableExecutable, Thunk};
+use peff::{PortableExecutable, Trampoline};
 use reverse::bs2s;
-use std::{cmp, collections::HashSet, mem};
+use std::{cmp, collections::HashSet};
 
 pub static DATA_RELOCATIONS: Lazy<HashSet<String>> = Lazy::new(|| {
     [
@@ -36,145 +36,6 @@ pub static DATA_RELOCATIONS: Lazy<HashSet<String>> = Lazy::new(|| {
     .map(|&n| n.to_owned())
     .collect()
 });
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct X86Trampoline {
-    // Offset is from the start of the code section.
-    pub offset: usize,
-
-    // The name attached to the thunk that would populate this trampoline.
-    pub name: String,
-
-    // Where this trampoline would indirect to, if jumped to.
-    pub target: u32,
-
-    // Shape files call into engine functions by setting up a stack frame
-    // and then returning. The target of this is always one of these trampolines
-    // stored at the tail of the PE. Store the in-memory location of the
-    // thunk for fast comparison with relocated addresses.
-    pub mem_location: u32,
-
-    // Whatever tool was used to link .SH's bakes in a direct pointer to the GOT
-    // PLT base (e.g. target) as the data location. Presumably when doing
-    // runtime linking, it uses the IAT's name as a tag and rewrites the direct
-    // load to the real address of the symbol (and not a split read of the code
-    // and reloc in the GOT). These appear to be both global and per-object data
-    // depending on the data -- e.g. brentObjectId is probably per-object and
-    // _currentTicks is probably global?
-    //
-    // A concrete example; if the inline assembly does:
-    //    `mov %ebp, [<addr of GOT of data>]`
-    //
-    // The runtime would presumably use the relocation of the above addr as an
-    // opportunity to rewrite the load as a reference to the real memory. We
-    // need to take all of this into account when interpreting the referencing
-    // code.
-    pub is_data: bool,
-}
-
-impl X86Trampoline {
-    pub const SIZE: usize = 6;
-
-    pub fn has_trampoline(offset: usize, pe: &PortableExecutable) -> bool {
-        pe.section_info.contains_key(".idata")
-            && pe.code.len() >= offset + 6
-            && pe.code[offset] == 0xFF
-            && pe.code[offset + 1] == 0x25
-    }
-
-    pub fn from_pe(offset: usize, pe: &PortableExecutable) -> Result<Self> {
-        ensure!(Self::has_trampoline(offset, pe), "not a trampoline");
-        let target = {
-            let vp: &[u32] = unsafe { mem::transmute(&pe.code[offset + 2..offset + 6]) };
-            vp[0]
-        };
-
-        let thunk = Self::find_matching_thunk(target, pe)?;
-        let is_data = DATA_RELOCATIONS.contains(&thunk.name);
-        Ok(X86Trampoline {
-            offset,
-            name: thunk.name.clone(),
-            target,
-            mem_location: SHAPE_LOAD_BASE + offset as u32,
-            is_data,
-        })
-    }
-
-    fn find_matching_thunk(addr: u32, pe: &PortableExecutable) -> Result<&Thunk> {
-        // The thunk table is code and therefore should have had a relocation entry
-        // to move those pointers when we called relocate on the PE.
-        trace!(
-            "looking for target 0x{:X} in {} thunks",
-            addr,
-            pe.thunks.len()
-        );
-        for thunk in pe.thunks.iter() {
-            if addr == thunk.vaddr {
-                return Ok(thunk);
-            }
-        }
-
-        // That said, not all SH files actually contain relocations for the thunk
-        // targets(!). This is yet more evidence that they're not actually using
-        // LoadLibrary to put shapes in memory. They're probably only using the
-        // relocation list to rewrite data access with the thunks as tags. We're
-        // using relocation, however, to help decode. So if the thunks are not
-        // relocated automatically we have to check the relocated value
-        // manually.
-        let thunk_target = pe.relocate_thunk_pointer(SHAPE_LOAD_BASE, addr);
-        trace!(
-            "looking for target 0x{:X} in {} thunks",
-            thunk_target,
-            pe.thunks.len()
-        );
-        for thunk in pe.thunks.iter() {
-            if thunk_target == thunk.vaddr {
-                return Ok(thunk);
-            }
-        }
-
-        // Also, in USNF, some of the thunks contain the base address already,
-        // so treat them like a normal code pointer.
-        let thunk_target = pe.relocate_pointer(SHAPE_LOAD_BASE, addr);
-        trace!(
-            "looking for target 0x{:X} in {} thunks",
-            thunk_target,
-            pe.thunks.len()
-        );
-        for thunk in pe.thunks.iter() {
-            if thunk_target == thunk.vaddr {
-                return Ok(thunk);
-            }
-        }
-
-        bail!("did not find thunk with a target of {:08X}", thunk_target)
-    }
-
-    pub fn size(&self) -> usize {
-        6
-    }
-
-    pub fn magic(&self) -> &'static str {
-        "Tramp"
-    }
-
-    pub fn at_offset(&self) -> usize {
-        self.offset
-    }
-
-    pub fn show(&self) -> String {
-        format!(
-            "@{:04X} {}Tramp{}: {}{}{} = {:04X}",
-            self.offset,
-            ansi().yellow().bold(),
-            ansi(),
-            ansi().yellow(),
-            self.name,
-            ansi(),
-            self.target
-        )
-    }
-}
 
 #[derive(Debug, Eq, PartialEq)]
 enum ReturnKind {
@@ -291,8 +152,8 @@ impl X86Code {
 
     fn find_trampoline_for_target(
         target_addr: u32,
-        trampolines: &[X86Trampoline],
-    ) -> Result<&X86Trampoline> {
+        trampolines: &[Trampoline],
+    ) -> Result<&Trampoline> {
         for tramp in trampolines {
             trace!(
                 "checking {:08X} against {:20} @ loc:{:08X}",
@@ -307,7 +168,7 @@ impl X86Code {
         bail!("no matching trampoline for exit")
     }
 
-    fn find_trampoline_for_offset(offset: usize, trampolines: &[X86Trampoline]) -> &X86Trampoline {
+    fn find_trampoline_for_offset(offset: usize, trampolines: &[Trampoline]) -> &Trampoline {
         for trampoline in trampolines {
             if trampoline.offset == offset {
                 return trampoline;
@@ -319,7 +180,7 @@ impl X86Code {
     fn disassemble_to_ret(
         code: &[u8],
         offset: usize,
-        trampolines: &[X86Trampoline],
+        trampolines: &[Trampoline],
     ) -> Result<(ByteCode, ReturnKind)> {
         // Note that there are internal calls that we need to filter out, so we
         // have to consult the list of trampolines to find the interpreter return.
@@ -411,7 +272,6 @@ impl X86Code {
         _name: &str,
         offset: &mut usize,
         pe: &PortableExecutable,
-        trampolines: &[X86Trampoline],
         trailer: &[Instr],
         vinstrs: &mut Vec<Instr>,
     ) -> Result<()> {
@@ -441,7 +301,7 @@ impl X86Code {
                 trace!("ip reached external jump");
 
                 let (bc, return_state) =
-                    Self::disassemble_to_ret(&pe.code[*offset..], *offset, trampolines)?;
+                    Self::disassemble_to_ret(&pe.code[*offset..], *offset, &pe.trampolines)?;
                 trace!("decoded {} instructions", bc.instrs.len());
 
                 Self::find_external_jumps(*offset, &bc, &mut external_jumps);
@@ -521,7 +381,7 @@ impl X86Code {
             );
             let saved_offset = *offset;
             let mut have_vinstr = true;
-            let maybe = RawShape::read_instr(offset, pe, trampolines, trailer, vinstrs);
+            let maybe = RawShape::read_instr(offset, pe, trailer, vinstrs);
             #[allow(clippy::if_same_then_else)]
             if let Err(_e) = maybe {
                 have_vinstr = false;

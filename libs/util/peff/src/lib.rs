@@ -665,7 +665,7 @@ impl PortableExecutable {
     }
 
     pub fn relocate(&mut self, target: u32) -> Result<()> {
-        let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
+        let reloc_delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
         for &reloc in self.relocs.iter() {
             let reloc = reloc as usize;
             let pcode = u32::from_le_bytes((&self.code[reloc..reloc + 4]).try_into()?);
@@ -673,41 +673,61 @@ impl PortableExecutable {
                 "Relocating word at 0x{:04X} from 0x{:08X} to 0x{:08X}",
                 reloc as usize,
                 pcode,
-                delta.apply(pcode)
+                reloc_delta.apply(pcode)
             );
             // The safe version is less clear, but supports non little-endian architectures.
-            // { *pcode = delta.apply(*pcode); }
-            self.code[reloc..reloc + 4].copy_from_slice(&delta.apply(pcode).to_le_bytes());
+            // { *pcode = reloc_delta.apply(*pcode); }
+            self.code[reloc..reloc + 4].copy_from_slice(&reloc_delta.apply(pcode).to_le_bytes());
         }
 
         // Note: section headers and thunks do not get image base I guess?
-        let delta = RelocationDelta::new(target, self.code_vaddr);
+        let thunk_delta = RelocationDelta::new(target, self.code_vaddr);
         for info in self.section_info.values_mut() {
             trace!(
                 "Relocating section vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
                 info.virtual_address,
-                delta.delta(),
-                delta.apply(info.virtual_address)
+                thunk_delta.delta(),
+                thunk_delta.apply(info.virtual_address)
             );
-            info.virtual_address = delta.apply(info.virtual_address);
+            info.virtual_address = thunk_delta.apply(info.virtual_address);
         }
         for thunk in self.thunks.iter_mut() {
             trace!(
                 "Relocating thunk vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
                 thunk.vaddr,
-                delta.delta(),
-                delta.apply(thunk.vaddr)
+                thunk_delta.delta(),
+                thunk_delta.apply(thunk.vaddr)
             );
-            thunk.vaddr = delta.apply(thunk.vaddr);
+            thunk.vaddr = thunk_delta.apply(thunk.vaddr);
         }
+
+        // Note: trampolines are part of the code, so they already have vcode from reloc
+        //       ...except for USNF, which doesn't include the trampoline table in relocs
+        let tramp_delta = RelocationDelta::new(target, self.image_base);
         for trampoline in self.trampolines.iter_mut() {
             trace!(
                 "Relocating trampoline location: 0x{:08X} + 0x{:08X} = 0x{:08X}",
                 trampoline.mem_location,
-                delta.delta(),
-                delta.apply(trampoline.mem_location)
+                tramp_delta.delta(),
+                tramp_delta.apply(trampoline.mem_location)
             );
-            trampoline.mem_location = delta.apply(trampoline.mem_location);
+            let mut mem_location = tramp_delta.apply(trampoline.mem_location);
+            if mem_location & target != target {
+                let usnf_delta = RelocationDelta::new(target, self.code_vaddr);
+                trace!(
+                    "Adjust failed trampoline with vaddr: {:08X} + {:08X} => {:08X}",
+                    trampoline.mem_location,
+                    usnf_delta.delta(),
+                    usnf_delta.apply(trampoline.mem_location)
+                );
+                mem_location = usnf_delta.apply(trampoline.mem_location) + self.code_vaddr;
+            }
+            trampoline.mem_location = mem_location;
+            assert_eq!(
+                trampoline.mem_location & target,
+                target,
+                "failed relocation"
+            );
         }
 
         Ok(())

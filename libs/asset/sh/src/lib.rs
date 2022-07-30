@@ -19,8 +19,8 @@ mod instr;
 pub use crate::instr::{
     read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
     JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
-    Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, X86Trampoline, XformUnmask,
-    XformUnmask4, DATA_RELOCATIONS,
+    Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, XformUnmask, XformUnmask4,
+    DATA_RELOCATIONS,
 };
 use ansi::{ansi, Color};
 use anyhow::{anyhow, bail, ensure, Result};
@@ -1004,7 +1004,7 @@ pub enum Instr {
 
     // Raw i386 bitcode used as a scripting language.
     X86Code(X86Code),
-    X86Trampoline(X86Trampoline),
+    X86Trampoline(Trampoline),
     X86Message(X86Message),
     UnknownUnknown(UnknownUnknown),
     UnknownData(UnknownData),
@@ -1141,7 +1141,6 @@ macro_rules! consume_instr2 {
 
 pub struct RawShape {
     pub instrs: Vec<Instr>,
-    pub trampolines: Vec<X86Trampoline>,
     offset_map: HashMap<usize, usize>,
     pub pe: PortableExecutable,
 }
@@ -1158,15 +1157,15 @@ impl RawShape {
                 trampoline.is_data = true;
             }
         }
-        let trampolines = Self::find_trampolines(&pe)?;
-        let eos = Self::find_end_of_shape(&pe, &trampolines)?;
-        let mut trailer = trampolines
+        let eos = Self::find_end_of_shape(&pe)?;
+        let mut trailer = pe
+            .trampolines
             .iter()
             .map(|t| Instr::X86Trampoline(t.to_owned()))
             .collect::<Vec<_>>();
         trailer.insert(0, Instr::EndOfShape(eos));
 
-        let mut instrs = Self::read_sections(&pe, &trampolines, &trailer)?;
+        let mut instrs = Self::read_sections(&pe, &trailer)?;
         instrs.append(&mut trailer);
 
         // References inside shape are relative byte offsets. We map these
@@ -1181,7 +1180,6 @@ impl RawShape {
 
         Ok(RawShape {
             instrs,
-            trampolines,
             offset_map,
             pe,
         })
@@ -1207,34 +1205,8 @@ impl RawShape {
         uniq
     }
 
-    fn find_trampolines(pe: &PortableExecutable) -> Result<Vec<X86Trampoline>> {
-        if !pe.thunks.is_empty() {
-            trace!("Looking for thunks in the following table:");
-            for thunk in &pe.thunks {
-                trace!("    {:20} @ 0x{:X}", thunk.name, thunk.vaddr);
-            }
-        }
-        let mut offset = pe.code.len() - 6;
-        let mut trampolines = Vec::new();
-        while offset > 0 {
-            if X86Trampoline::has_trampoline(offset, pe) {
-                let tramp = X86Trampoline::from_pe(offset, pe)?;
-                trace!("found trampoline: {}", tramp.show());
-                trampolines.push(tramp);
-            } else {
-                break;
-            }
-            offset -= 6;
-        }
-        trampolines.reverse();
-        Ok(trampolines)
-    }
-
-    fn find_end_of_shape(
-        pe: &PortableExecutable,
-        trampolines: &[X86Trampoline],
-    ) -> Result<EndOfShape> {
-        let end_offset = pe.code.len() - trampolines.len() * X86Trampoline::SIZE;
+    fn find_end_of_shape(pe: &PortableExecutable) -> Result<EndOfShape> {
+        let end_offset = pe.code.len() - pe.trampolines.len() * Trampoline::SIZE;
         let mut offset = end_offset - 1;
         while pe.code[offset] == 0 {
             offset -= 1;
@@ -1261,11 +1233,7 @@ impl RawShape {
         sum
     }
 
-    fn read_sections(
-        pe: &PortableExecutable,
-        trampolines: &[X86Trampoline],
-        trailer: &[Instr],
-    ) -> Result<Vec<Instr>> {
+    fn read_sections(pe: &PortableExecutable, trailer: &[Instr]) -> Result<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         let end_offset = pe.code.len() - Self::end_size(trailer);
@@ -1276,7 +1244,7 @@ impl RawShape {
             //     bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)])
             // );
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
-            Self::read_instr(&mut offset, pe, trampolines, trailer, &mut instrs)?;
+            Self::read_instr(&mut offset, pe, trailer, &mut instrs)?;
             trace!("=>: {}", instrs.last().unwrap().show());
         }
 
@@ -1286,7 +1254,6 @@ impl RawShape {
     fn read_instr(
         offset: &mut usize,
         pe: &PortableExecutable,
-        trampolines: &[X86Trampoline],
         trailer: &[Instr],
         instrs: &mut Vec<Instr>,
     ) -> Result<()> {
@@ -1359,7 +1326,7 @@ impl RawShape {
                     } else {
                         "unknown_source".to_owned()
                     };
-                X86Code::from_bytes(&name, offset, pe, trampolines, trailer, instrs)?;
+                X86Code::from_bytes(&name, offset, pe, trailer, instrs)?;
             }
             // Zero is the magic for the trailer (sans trampolines).
             0 => {
@@ -1473,22 +1440,22 @@ impl RawShape {
         bail!("no instruction at x86_offset: {:08X}", x86_offset)
     }
 
-    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Result<&X86Trampoline> {
-        for tramp in &self.trampolines {
+    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Result<&Trampoline> {
+        for tramp in &self.pe.trampolines {
             if tramp.at_offset() == abs_offset as usize {
                 return Ok(tramp);
             }
         }
-        bail!("no trampoline at absolute offset: {:08X}", abs_offset);
+        bail!("no trampoline at absolute offset: {:08X}", abs_offset)
     }
 
-    pub fn lookup_trampoline_by_name(&self, name: &str) -> Result<&X86Trampoline> {
-        for tramp in &self.trampolines {
+    pub fn lookup_trampoline_by_name(&self, name: &str) -> Result<&Trampoline> {
+        for tramp in &self.pe.trampolines {
             if tramp.name == name {
                 return Ok(tramp);
             }
         }
-        bail!("no trampoline with name: {}", name);
+        bail!("no trampoline with name: {}", name)
     }
 
     pub fn has_damage_section(&self) -> bool {
@@ -1523,7 +1490,6 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 mod tests {
     use super::*;
     use lib::Libs;
-    use simplelog::{Config, LevelFilter, TermLogger};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
         let mut offset = None;
@@ -1572,7 +1538,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Result<()> {
-        TermLogger::init(LevelFilter::Info, Config::default())?;
+        env_logger::init();
 
         #[allow(unused_variables, unused_mut)]
         let mut freq: HashMap<&'static str, usize> = HashMap::new();

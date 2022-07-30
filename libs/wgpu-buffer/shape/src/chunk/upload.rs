@@ -28,8 +28,9 @@ use memoffset::offset_of;
 use nalgebra::{Point3, Vector3};
 use pal::Palette;
 use parking_lot::RwLock;
+use peff::Trampoline;
 use pic_uploader::PicUploader;
-use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, X86Trampoline, SHAPE_LOAD_BASE};
+use sh::{Facet, FacetFlags, Instr, RawShape, VertexBuf, X86Code, SHAPE_LOAD_BASE};
 use std::{
     collections::{HashMap, HashSet},
     mem,
@@ -977,7 +978,7 @@ impl<'a> ShapeUploader<'a> {
     fn find_external_references<'b>(
         x86: &X86Code,
         sh: &'b RawShape,
-    ) -> HashMap<&'b str, &'b X86Trampoline> {
+    ) -> HashMap<&'b str, &'b Trampoline> {
         let mut out = HashMap::new();
         for instr in &x86.bytecode.instrs {
             for operand in &instr.operands {
@@ -996,7 +997,7 @@ impl<'a> ShapeUploader<'a> {
     fn find_external_calls<'b>(
         x86: &X86Code,
         sh: &'b RawShape,
-    ) -> Result<HashMap<&'b str, &'b X86Trampoline>> {
+    ) -> Result<HashMap<&'b str, &'b Trampoline>> {
         let mut out = HashMap::new();
         let mut push_value = 0;
         for instr in &x86.bytecode.instrs {
@@ -1069,7 +1070,7 @@ impl<'a> ShapeUploader<'a> {
     }
 
     fn update_buffer_properties_for_toggle(
-        trampoline: &X86Trampoline,
+        trampoline: &Trampoline,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,
@@ -1106,7 +1107,7 @@ impl<'a> ShapeUploader<'a> {
     }
 
     fn update_buffer_properties_for_num_loaded(
-        brent_obj_id: &X86Trampoline,
+        brent_obj_id: &Trampoline,
         pc: &ProgramCounter,
         x86: &X86Code,
         sh: &RawShape,

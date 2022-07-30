@@ -35,6 +35,7 @@ measure = { path = "../../nitrogen/sim/measure" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
 ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
 pal = { path = "../../asset/pal" }
+peff = { path = "../../util/peff" }
 pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
 runtime = { path = "../../nitrogen/util/runtime" }
 sh = { path = "../../asset/sh" }
