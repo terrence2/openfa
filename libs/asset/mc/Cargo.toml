@@ -8,6 +8,7 @@ anyhow = { version = "^ 1", features = ["backtrace"] }
 zerocopy = "^ 0.6"
 ansi = { path = "../../nitrogen/util/ansi" }
 i386 = { path = "../../util/i386" }
+log = "^ 0.4"
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }

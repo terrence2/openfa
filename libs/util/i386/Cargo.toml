@@ -10,4 +10,9 @@ lazy_static = "^ 1"
 log = "^ 0.4"
 thiserror = "^ 1"
 ansi = { path = "../../nitrogen/util/ansi" }
+peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }
+
+[dev-dependencies]
+env_logger = "^ 0.9"
+lib = { path = "../../asset/lib" }

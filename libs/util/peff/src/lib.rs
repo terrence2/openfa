@@ -732,32 +732,6 @@ impl PortableExecutable {
 
         Ok(())
     }
-
-    // Relocates a relative pointer to a section or thunk to an absolute address,
-    // given the target load address.
-    pub fn relocate_thunk_pointer(&self, target: u32, addr: u32) -> u32 {
-        let delta = RelocationDelta::new(target, self.code_vaddr);
-        trace!(
-            "Relocating pointer: 0x{:08X} + 0x{:08X} = 0x{:08X}",
-            addr,
-            delta.delta(),
-            delta.apply(addr)
-        );
-        delta.apply(addr)
-    }
-
-    // Relocates a relative pointer to code to an absolute address, given the
-    // target load address.
-    pub fn relocate_pointer(&self, target: u32, addr: u32) -> u32 {
-        let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
-        trace!(
-            "Relocating pointer: 0x{:08X} + 0x{:08X} = 0x{:08X}",
-            addr,
-            delta.delta(),
-            delta.apply(addr)
-        );
-        delta.apply(addr)
-    }
 }
 
 enum RelocationDelta {

@@ -400,6 +400,7 @@ lazy_static! {
             (0xFF, 1, make_op!(Dec:     E/v)),
             (0xFF, 4, make_op!(Jump:    E/v)),
 
+            (0x0F83, 0, make_op!(J|CF=0: J/v)),
             (0x0F84, 0, make_op!(J|ZF=1: J/v)),
             (0x0F85, 0, make_op!(J|ZF=0: J/v)),
             (0x0FAF, 0, make_op!(IMul2:  G/v, E/v)),

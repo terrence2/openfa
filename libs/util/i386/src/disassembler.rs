@@ -15,12 +15,21 @@
 use crate::lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use ansi::ansi;
 use anyhow::{bail, ensure, Result};
-use log::trace;
+use log::{debug, trace};
+use peff::{PortableExecutable, Trampoline};
 use reverse::bs2s;
-use std::{cell::RefCell, fmt, fmt::Write, mem, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    fmt,
+    fmt::Write,
+    mem,
+    rc::Rc,
+};
 use thiserror::Error;
 
 pub use crate::lut::{Memonic, HAS_INLINE_REG, OPCODES, PREFIX_CODES, USE_REG_OPCODES};
+use std::fmt::Formatter;
 
 #[derive(Debug, Error)]
 pub enum DisassemblyError {
@@ -35,7 +44,7 @@ impl DisassemblyError {
         if let Some(&DisassemblyError::UnknownOpcode { ip, op: (op, ext) }) =
             e.downcast_ref::<DisassemblyError>()
         {
-            trace!("Unknown OpCode: {:2X} /{}", op, ext);
+            trace!("Unknown OpCode: 0x{:2X} /{}", op, ext);
             let line1 = bs2s(&code[0..(ip + 20).min(code.len())]);
             let mut line2 = String::new();
             for _ in 0..(ip - 1) * 3 {
@@ -978,6 +987,214 @@ impl fmt::Display for Instr {
     }
 }
 
+pub enum MemBlock {
+    Code(ByteCode),
+    Data((usize, Vec<u8>)),
+}
+
+impl fmt::Display for MemBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Code(block) => write!(f, "{}", block),
+            Self::Data((start, data)) => {
+                writeln!(f, "  @{:04X}: {}", start, bs2s(data));
+                writeln!(
+                    f,
+                    "  ascii: {}",
+                    std::str::from_utf8(&data).unwrap_or_else(|e| "not text")
+                )
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Disassembler {
+    // All offsets are from pe.code start.
+    blocks: Vec<ByteCode>,
+}
+
+impl Disassembler {
+    /// Find all bytecode and data blocks in the fragment at offset. Uses configuration
+    /// for knowing what targets should exit. We can start at an offset in code, but
+    /// we don't know how far to decode because of the variable word length.
+    pub fn disassemble_at(&mut self, offset: usize, pe: &PortableExecutable) -> Result<()> {
+        // Start with the implicit jump into this code block.
+        let mut jump_targets = HashSet::new();
+        jump_targets.insert(offset);
+
+        // Follow all jumps until there is nothing left to follow.
+        while !jump_targets.is_empty() {
+            let jump_offset = *jump_targets.iter().next().unwrap();
+            jump_targets.remove(&jump_offset);
+            trace!(
+                "disassembling at 0x{:08X} with {} targets remaining",
+                jump_offset,
+                jump_targets.len()
+            );
+
+            // Check if we have already disassembled a block at this offset.
+            if !self.has_disassembled_at(jump_offset) {
+                let (block, new_jump_targets) = Self::disassemble_block_at(jump_offset, pe)?;
+                trace!(
+                    "disassembled block of {} instrs at 0x{:08X}",
+                    block.instrs.len(),
+                    jump_offset
+                );
+                self.insert_block(block);
+                trace!("adding {} new jump targets", new_jump_targets.len(),);
+                jump_targets.extend(new_jump_targets);
+            } else {
+                trace!("skipping duplicate block {:04X}", jump_offset);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn blocks(&self) -> impl Iterator<Item = &ByteCode> {
+        self.blocks.iter()
+    }
+
+    // TODO: make this faster somehow
+    pub fn build_memory_view(&self, pe: &PortableExecutable) -> Vec<MemBlock> {
+        let mut out = Vec::new();
+        for (i, block) in self.blocks.iter().enumerate() {
+            if i == 0 {
+                out.push(MemBlock::Code(block.to_owned()));
+            } else {
+                let prev = &self.blocks[i - 1];
+                let prev_end = prev.start_addr + prev.size;
+                if prev_end < block.start_addr {
+                    out.push(MemBlock::Data((
+                        prev_end as usize,
+                        pe.code[prev_end as usize..block.start_addr as usize].to_owned(),
+                    )));
+                }
+                out.push(MemBlock::Code(block.to_owned()));
+            }
+        }
+        out
+    }
+
+    // Insert in sorted order
+    fn insert_block(&mut self, block: ByteCode) {
+        // TODO: this is super slow
+        self.blocks.push(block);
+        self.blocks.sort_by_key(|block| block.start_addr);
+    }
+
+    fn has_disassembled_at(&self, offset: usize) -> bool {
+        for bc in &self.blocks {
+            if offset >= bc.start_addr as usize && offset < (bc.start_addr + bc.size) as usize {
+                return true;
+            }
+        }
+        false
+    }
+
+    // Execution (may) continue in a straight path until an unconditional jump happens.
+    // Conditional jumps off the mainline path expose other blocks that may need to be
+    // decoded. Some of these jumps will be above. Some of these jumps maybe into another
+    // block. We don't really care about this, but do need to track it.
+    fn disassemble_block_at(
+        offset: usize,
+        pe: &PortableExecutable,
+    ) -> Result<(ByteCode, HashSet<usize>)> {
+        let mut jump_targets = HashSet::new();
+        let mut instrs = Vec::new();
+        let initial_ip = offset;
+        let mut ip = offset;
+        while ip < pe.code.len() {
+            let instr = Instr::decode_one(&pe.code, &mut ip)?;
+            trace!("  @{:04X}: {}", ip, instr);
+            instrs.push(instr);
+            if let Some(jump_target) = Self::maybe_jump_target(&instrs, ip, pe) {
+                jump_targets.insert(jump_target);
+            }
+            if Self::is_unconditional_jump(instrs[instrs.len() - 1].memonic) {
+                break;
+            }
+        }
+        Ok((
+            ByteCode {
+                size: (ip - initial_ip) as u32,
+                start_addr: initial_ip as u32,
+                instrs,
+            },
+            jump_targets,
+        ))
+    }
+
+    // If the given instruction is a jump, return the target offset (from pe.code start).
+    fn maybe_jump_target(instrs: &[Instr], ip: usize, pe: &PortableExecutable) -> Option<usize> {
+        let instr = &instrs[instrs.len() - 1];
+        match instr.memonic {
+            Memonic::Jump | Memonic::Jcc(_) => {
+                return Some(match &instr.operands[0] {
+                    // IP is already at end of instruction
+                    Operand::Imm32s(delta) => ip as isize + *delta as isize,
+                    // Note that backwards jumps can be encoded as unsigned in the instruction.
+                    Operand::Imm32(delta) => ip as isize + *delta as i32 as isize,
+                    _ => {
+                        panic!("unknown operand kind for jump: {:?}", instr.operands[0]);
+                    }
+                } as usize);
+            }
+            Memonic::Return => {
+                // If the return is not predictable, we don't need to track it, since we
+                // will only have gotten here via a matching call. If the prior op is a
+                // push, however, we are using a ret-poline and should track the target.
+                if instrs.len() < 2 {
+                    return None;
+                }
+                let push = &instrs[instrs.len() - 2];
+                if push.memonic == Memonic::Push {
+                    if let Operand::Imm32s(v) = push.operands[0] {
+                        // TODO: why does this look different in SH?
+                        let tramp_target = (v as u32).wrapping_sub(pe.code_vaddr) as usize;
+                        let _trampoline =
+                            Self::find_trampoline_for_offset(tramp_target, &pe.trampolines);
+
+                        if instrs.len() < 3 {
+                            panic!(
+                                "unhandled push operand kind before ret: {:?}",
+                                push.operands[0]
+                            );
+                        }
+                        let retaddr = &instrs[instrs.len() - 3];
+                        if retaddr.memonic == Memonic::Push {
+                            match retaddr.operands[0] {
+                                Operand::Imm32s(v) => {
+                                    let ret_target =
+                                        (v as u32).wrapping_sub(pe.code_vaddr) as usize;
+                                    return Some(ret_target);
+                                }
+                                _ => panic!("unknown operand kind for retpoline push"),
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn is_unconditional_jump(memonic: Memonic) -> bool {
+        matches!(memonic, Memonic::Jump | Memonic::Return)
+    }
+
+    fn find_trampoline_for_offset(offset: usize, trampolines: &[Trampoline]) -> &Trampoline {
+        for trampoline in trampolines {
+            if trampoline.offset == offset {
+                return trampoline;
+            }
+        }
+        panic!("expected all returns to jump to a trampoline")
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ByteCode {
     pub start_addr: u32,
@@ -999,7 +1216,7 @@ impl ByteCode {
         let mut ip = 0usize;
         while ip < code.len() {
             let instr = Instr::decode_one(code, &mut ip)?;
-            trace!("  @{}: {}", ip, instr);
+            trace!("  @{:04X}: {}", ip, instr);
             instrs.push(instr);
             if f(&instrs, &code[ip..]) {
                 break;
@@ -1046,12 +1263,12 @@ impl ByteCode {
     }
 
     pub fn show_relative(&self, base: usize) -> String {
-        let mut pos = 0;
+        let mut pos = self.start_addr as usize;
         let mut s = String::new();
         for instr in self.instrs.iter() {
             writeln!(
                 s,
-                "  @{:02X}|{:04X}               {}",
+                "  @{:04X}|{:04X}               {}",
                 pos,
                 base + pos,
                 instr.show_relative(base + pos)
@@ -1065,9 +1282,9 @@ impl ByteCode {
 
 impl fmt::Display for ByteCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut pos = 0;
+        let mut pos = self.start_addr as usize;
         for instr in self.instrs.iter() {
-            writeln!(f, "  @{:02X}: {}", pos, instr)?;
+            writeln!(f, "  @{:04X}: {}", pos, instr)?;
             pos += instr.size();
         }
         Ok(())
@@ -1077,31 +1294,24 @@ impl fmt::Display for ByteCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lib::Libs;
 
     #[test]
     fn it_works() -> Result<()> {
-        /*
-        use std::fs;
-        for game in &["ATF", "ATFGOLD", "ATFNATO", "FA", "MF", "USNF", "USNF97"] {
-            let dirname = format!("../../../dump/i386/{}", game);
-            let paths = fs::read_dir(&dirname)?;
-            for i in paths {
-                let entry = i?;
-                let path = format!("{}", entry.path().display());
-                println!("AT: {}", path);
+        env_logger::init();
 
-                let data = fs::read(entry.path())?;
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
+            for fid in catalog.find_with_extension("MC")? {
+                let meta = catalog.stat(fid)?;
+                let data = catalog.read(fid)?;
+                let mut pe = peff::PortableExecutable::from_bytes(&data)?;
+                pe.relocate(0xAA00_0000)?;
 
-                let bc = ByteCode::disassemble_until(0, &data, |_| false);
-                if let Err(ref e) = bc {
-                    if !DisassemblyError::maybe_show(e, &data) {
-                        println!("Error: {}", e);
-                    }
-                }
-                let _ = bc?;
+                let mut disasm = Disassembler::default();
+                disasm.disassemble_at(0, &pe);
             }
         }
-         */
 
         Ok(())
     }

@@ -184,10 +184,8 @@ impl X86Code {
     ) -> Result<(ByteCode, ReturnKind)> {
         // Note that there are internal calls that we need to filter out, so we
         // have to consult the list of trampolines to find the interpreter return.
-        let maybe_bc = i386::ByteCode::disassemble_until(
-            SHAPE_LOAD_BASE as usize + offset,
-            code,
-            |instrs, _rem| {
+        let maybe_bc =
+            ByteCode::disassemble_until(SHAPE_LOAD_BASE as usize + offset, code, |instrs, _rem| {
                 if instrs.len() < 2 {
                     return false;
                 }
@@ -203,8 +201,7 @@ impl X86Code {
                     }
                 }
                 false
-            },
-        );
+            });
         if let Err(e) = maybe_bc {
             i386::DisassemblyError::maybe_show(&e, code);
             bail!("Don't know how to disassemble at {}: {:?}", offset, e);

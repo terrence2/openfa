@@ -44,7 +44,7 @@ fn main() -> Result<()> {
     let mut data = Vec::new();
     fp.read_to_end(&mut data)?;
 
-    let bc = ByteCode::disassemble_until(0, &data, |_| false);
+    let bc = ByteCode::disassemble_until(0, &data, |_, _| false);
     if let Err(ref e) = bc {
         if !DisassemblyError::maybe_show(e, &data) {
             println!("ERROR: {}", e);
