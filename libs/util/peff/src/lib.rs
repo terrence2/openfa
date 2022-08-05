@@ -44,6 +44,9 @@ pub struct PortableExecutable {
     // Stored section headers, so that we can interpret thunks and relocs.
     pub section_info: HashMap<String, SectionInfo>,
 
+    // Whatever value relocate was called with.
+    pub relocation_target: u32,
+
     // The assumed mmap location of the file.
     pub image_base: u32,
 
@@ -421,6 +424,7 @@ impl PortableExecutable {
                 relocs,
                 code: Vec::new(),
                 section_info: Self::owned_section_info(&sections),
+                relocation_target: 0,
                 image_base: win.image_base(),
                 code_vaddr: 0,
                 code_addr: 0,
@@ -446,6 +450,7 @@ impl PortableExecutable {
             relocs,
             code: code.to_owned(),
             section_info: Self::owned_section_info(&sections),
+            relocation_target: 0,
             image_base: win.image_base(),
             code_vaddr: code_section.virtual_address(),
             code_addr: code_section.virtual_address(),
@@ -665,6 +670,7 @@ impl PortableExecutable {
     }
 
     pub fn relocate(&mut self, target: u32) -> Result<()> {
+        self.relocation_target = target;
         let reloc_delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
         for &reloc in self.relocs.iter() {
             let reloc = reloc as usize;

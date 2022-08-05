@@ -18,6 +18,7 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
+use log::trace;
 use nitrous::{inject_nitrous_resource, method, NitrousResource};
 use pal::Palette;
 use runtime::{Extension, Runtime};
@@ -141,9 +142,9 @@ impl Libs {
                         (None, Some(_)) => bail!("You must provide a CD1 path before a CD2 path!"),
                     }
                 }
-                println!("Detected {} in game and CD paths...", game.name);
+                trace!("Detected {} in game and CD paths...", game.name);
             } else {
-                println!("Detected {} in game path...", game.name);
+                trace!("Detected {} in game path...", game.name);
             }
 
             let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
@@ -152,7 +153,7 @@ impl Libs {
                 catalogs: vec![(game, palette, catalog)],
             }
         } else {
-            println!(
+            trace!(
                 "Did not detect any games in {}, falling back to test mode...",
                 game_path.to_string_lossy()
             );

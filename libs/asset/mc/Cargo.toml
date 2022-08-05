@@ -14,5 +14,5 @@ peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }
 
 [dev-dependencies]
-simplelog = "^ 0.5"
+env_logger = "^ 0.9"
 lib = { path = "../../asset/lib" }

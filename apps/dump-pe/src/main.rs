@@ -15,7 +15,7 @@
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use i386::{ByteCode, Disassembler, DisassemblyError};
+use i386::{Disassembler, DisassemblyError};
 use lib::{Libs, LibsOpts};
 use peff::PortableExecutable;
 use std::collections::HashSet;
@@ -35,6 +35,7 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let opt = Opt::from_args();
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, _palette, catalog) in libs.selected() {
@@ -55,14 +56,13 @@ fn main() -> Result<()> {
 }
 
 fn show_pe(fid: FileId, catalog: &Catalog, disassemble: bool) -> Result<()> {
-    env_logger::init();
-
     let (_, width) = terminal_size();
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
 
     let content = catalog.read(fid)?;
-    let pe = PortableExecutable::from_bytes(&content)?;
+    let mut pe = PortableExecutable::from_bytes(&content)?;
+    pe.relocate(0xAA00_0000)?;
 
     println!("image base: 0x{:08X}", pe.image_base);
 

@@ -744,13 +744,13 @@ impl FlightDynamics {
         let target_accel = brv_x_acc * scalar!(delta_velocity_f);
         let q_dot: AngularAcceleration<Radians, Seconds> = radians_per_second2!(target_accel);
         if let Some(em) = markers.as_mut() {
-            println!(
-                "target: {:0.4} - {:0.4} -> {:0.4} / {:0.4}",
-                degrees!(target_alpha),
-                degrees!(alpha),
-                degrees_per_second!(target_velocity),
-                degrees_per_second2!(target_accel),
-            );
+            // println!(
+            //     "target: {:0.4} - {:0.4} -> {:0.4} / {:0.4}",
+            //     degrees!(target_alpha),
+            //     degrees!(alpha),
+            //     degrees_per_second!(target_velocity),
+            //     degrees_per_second2!(target_accel),
+            // );
         }
 
         /*

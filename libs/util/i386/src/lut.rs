@@ -174,6 +174,7 @@ pub enum Memonic {
     And,
     Call,
     ClearDF,
+    ConvertToQuad, // cdq/cltd: Sign extend eax into edx:eax
     Compare,
     Debugger,
     Dec,
@@ -303,6 +304,7 @@ lazy_static! {
             (0x03, 0, make_op!(Add:     G/v, E/v)),
             (0x05, 0, make_op!(Add:     Imp/eAX, I/v)),
             (0x07, 0, make_op!(Pop:     Imp/ES)),
+            (0x0A, 0, make_op!(Or:      G/b, E/b)),
             (0x0B, 0, make_op!(Or:      G/v, E/v)),
             (0x0D, 0, make_op!(Or:      Imp/eAX, I/v)),
             (0x16, 0, make_op!(Push:    Imp/SS)),
@@ -313,6 +315,7 @@ lazy_static! {
             (0x2D, 0, make_op!(Sub:     Imp/eAX, I/v)),
             (0x32, 0, make_op!(Xor:     G/b, E/b)),
             (0x33, 0, make_op!(Xor:     G/v, E/v)),
+            (0x39, 0, make_op!(Compare: E/v, G/v)),
             (0x3A, 0, make_op!(Compare: G/b, E/b)),
             (0x3B, 0, make_op!(Compare: G/v, E/v)),
             (0x3C, 0, make_op!(Compare: Imp/AL, I/b)),
@@ -373,6 +376,7 @@ lazy_static! {
             (0x8A, 0, make_op!(Move:    G/b, E/b)),
             (0x8B, 0, make_op!(Move:    G/v, E/v)),
             (0x8D, 0, make_op!(LEA:     G/v, M/v)),
+            (0x99, 0, make_op!(ConvertToQuad:)),
             (0xA1, 0, make_op!(Move:    Imp/eAX, O/v)),
             (0xA3, 0, make_op!(Move:    O/v, Imp/eAX)),
             (0xA4, 0, make_op!(MoveStr: Y/b, X/b)),
@@ -386,6 +390,7 @@ lazy_static! {
             (0xCC, 0, make_op!(Debugger:)),
             (0xD1, 1, make_op!(RotCR:   E/v, Imp/const1)),
             (0xD1, 4, make_op!(ShiftL:  E/v)),
+            (0xD1, 5, make_op!(ShiftR:  E/v)),
             (0xD1, 7, make_op!(Sar:     E/v, Imp/const1)),
             (0xE8, 0, make_op!(Call:    J/v)),
             (0xE9, 0, make_op!(Jump:    J/v)),
@@ -399,10 +404,13 @@ lazy_static! {
             (0xFC, 0, make_op!(ClearDF:)),
             (0xFF, 1, make_op!(Dec:     E/v)),
             (0xFF, 4, make_op!(Jump:    E/v)),
+            (0xFF, 6, make_op!(Push:    E/v)),
 
+            (0x0F82, 0, make_op!(J|CF=1: J/v)),
             (0x0F83, 0, make_op!(J|CF=0: J/v)),
             (0x0F84, 0, make_op!(J|ZF=1: J/v)),
             (0x0F85, 0, make_op!(J|ZF=0: J/v)),
+            (0x0F8E, 0, make_op!(J|ZF=1||SF!=OF: J/v)),
             (0x0FAF, 0, make_op!(IMul2:  G/v, E/v)),
             (0x0FB6, 0, make_op!(MoveZX: G/v, E/b)), // move byte to word or doubleword with zero extension
             (0x0FB7, 0, make_op!(MoveZX: G/v, E/w)), // move word to doubleword with zero extension

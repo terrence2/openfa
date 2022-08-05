@@ -321,58 +321,6 @@ impl MapName {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum CodeCookie {
-    CatFail,
-    Extra01,
-    Extra02,
-    K16,
-    K17,
-    Train01,
-    U01,
-    U07,
-    U08,
-    U11,
-    U12,
-    U15,
-    U22,
-    U23,
-    U24,
-    U25,
-    U29,
-    U34,
-    Ukr02,
-    Viet03,
-}
-
-impl CodeCookie {
-    fn from_str(s: &str) -> Result<Self> {
-        Ok(match s {
-            "catfail" => Self::CatFail,
-            "extra01" => Self::Extra01,
-            "extra02" => Self::Extra02,
-            "k16" => Self::K16,
-            "k17" => Self::K17,
-            "train01" => Self::Train01,
-            "u01" => Self::U01,
-            "u07" => Self::U07,
-            "u08" => Self::U08,
-            "u11" => Self::U11,
-            "u12" => Self::U12,
-            "u15" => Self::U15,
-            "u22" => Self::U22,
-            "u23" => Self::U23,
-            "u24" => Self::U24,
-            "u25" => Self::U25,
-            "u29" => Self::U29,
-            "u34" => Self::U34,
-            "ukr02" => Self::Ukr02,
-            "viet03" => Self::Viet03,
-            _ => bail!("unknown code type {}", s),
-        })
-    }
-}
-
 bitflags! {
     pub struct ScreenSet : u8 {
         const BRIEFING = 0x01;
@@ -391,7 +339,7 @@ enum MValue {
     ArmPlane,
     AllowRearmRefuel(bool),
     PrintMissionOutcome(bool),
-    Code(CodeCookie),
+    Code(String),
     MapName(MapName),
     Layer((String, usize)),
     Clouds(u32),
@@ -513,8 +461,14 @@ impl MValue {
                     mm.push(MValue::View((x, y, z)));
                 }
                 "code" => {
-                    let cookie = CodeCookie::from_str(tokens.next().expect("code cookie"))?;
-                    mm.push(MValue::Code(cookie));
+                    let mc_name =
+                        format!("{}.MC", tokens.next().expect("code name")).to_uppercase();
+                    ensure!(
+                        catalog.exists(&mc_name),
+                        "mission references non-existing code file {}",
+                        mc_name
+                    );
+                    mm.push(MValue::Code(mc_name));
                 }
                 "time" => {
                     let h = str::parse::<u8>(tokens.next().expect("time h"))?;
@@ -874,7 +828,7 @@ pub struct Mission {
     guns_only: bool,
     allow_rearm_refuel: Option<bool>,
     print_mission_outcome: Option<bool>,
-    code_cookie: Option<CodeCookie>,
+    mission_code_file: Option<String>,
     revive: Option<(u8, u8, u8)>,
     end_scenario: Option<(u32, u32, u32)>,
     sides: Vec<u8>,
@@ -890,7 +844,7 @@ impl Mission {
         let mut screens = ScreenSet::empty();
         let mut allow_rearm_refuel = None;
         let mut print_mission_outcome = None;
-        let mut code_cookie = None;
+        let mut mission_code_file = None;
         let mut wind = None;
         let mut revive = None;
         let mut end_scenario = None;
@@ -921,7 +875,7 @@ impl Mission {
                 MValue::ArmPlane => screens |= ScreenSet::ARM_PLANE,
                 MValue::AllowRearmRefuel(v) => allow_rearm_refuel = Some(v),
                 MValue::PrintMissionOutcome(v) => print_mission_outcome = Some(v),
-                MValue::Code(v) => code_cookie = Some(v),
+                MValue::Code(v) => mission_code_file = Some(v),
                 MValue::Wind(v) => wind = Some(v),
                 MValue::Revive(v) => revive = Some(v),
                 MValue::EndScenario(v) => end_scenario = Some(v),
@@ -935,6 +889,7 @@ impl Mission {
                 }
                 MValue::Sides(v) => sides = Some(v),
                 MValue::MapName(map) => {
+                    debug!("using mission parent map: {}", map.parent());
                     let mm_raw = catalog.read_name(&map.parent())?;
                     let mm_content = from_dos_string(mm_raw);
                     mm = Some(MissionMap::from_str(
@@ -981,7 +936,7 @@ impl Mission {
             guns_only,
             allow_rearm_refuel,
             print_mission_outcome,
-            code_cookie,
+            mission_code_file,
             revive,
             end_scenario,
             sides: sides.ok_or_else(|| anyhow!("missions must have sides defined"))?,
@@ -1057,8 +1012,8 @@ impl Mission {
         self.print_mission_outcome.unwrap_or(false)
     }
 
-    pub fn code_cookie(&self) -> Option<CodeCookie> {
-        self.code_cookie
+    pub fn mission_code_file(&self) -> Option<&str> {
+        self.mission_code_file.as_ref().map(|s| s.as_str())
     }
 
     pub fn revive(&self) -> Option<(u8, u8, u8)> {
