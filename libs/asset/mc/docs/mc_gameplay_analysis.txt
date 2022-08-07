@@ -1,0 +1,234 @@
+July 28, 2022
+-------------
+
+The notes below were compiled by @Anry from the "Combat Sim Tavern" on Discord.
+
+=============
+Mission Codes
+=============
+
+- Some of the (mostly) campaign missions have special codes for certain
+  missions. The best known example is code u01 for the 1st campaign mission of
+  the Ukraine campaign. When Yeltsin's aircraft receives damage, it broadcast
+  "THIS IS AEROFLOT FLIGHT 261. EMERGENCY! EMERGENCY!".
+
+
+- The line used in the mission is: "code u01", typically place between "view"
+  and "sides" in the top section of the mission file.
+
+
+- The file the code is actually located in is a ".MC" file, example: "U01.MC".
+  These can be editted using a hex editor program.
+
+
+- In order for the codes to work, certain conditions have to be met. In the case
+  of code u01, the aircraft that broadcast the emergency must be: "alias -2" and
+  the player's aircraft must be alias -12. When the aircraft takes damage from
+  enemy fire, it'll play the broadcast.
+
+
+- All items involved with the code must have the alias as listed below. The item
+  does not have to be the same type as in the original mission. In default code
+  u34, both items were Sacramento ships. In the now modified U3D, the first item
+  became an aircraft carrier (WASHINGTON) and the second item became an air-
+  craft (RAWHIDES). As each one receives damage, it sends its message and makes
+  its broadcast.
+
+
+- Many of the codes come with sound. Most are just a beep sound ( ^RADIOBP.5K )
+  while some speak a message such as the AEROFLOT ( ^AEROFLT.5K ) broadcast in
+  code u01 OR "BOGEYS, HIGH INBOUND FROM THE NORTHEAST" ( ^BOGEYHI.5K and
+  ^FROMTHE.5K and ^NTHEAST.5K ) broadcast in code u07.
+
+
+Codes:
+------
+
+B18 (Playset - Baltic NATO 2009 campaign)
+broadcast: E-2C: "CONTACT, BOMBERS HIGH INBOUND FROM THE NORTHEAST"
+broadcast: E-2C: "TU-160s PROTECTED BY SU-35s, SPLASH 'EM!"
+condition: player's aircraft must be alias -50
+notes: timed.
+
+
+B20 (Playset - Baltic NATO 1976/2009 campaigns)
+broadcast: CLEMENCEAU: "WE'RE UNDER FIRE, PLEASE ASSIST!"
+broadcast:  DE GAULLE: "WE'RE UNDER FIRE, PLEASE ASSIST!"
+condition: attacked ships are alias -3 and -4 ; player's aircraft alias -12
+notes: message given when ships receive damage. this works on aircraft too.
+
+
+CATFAIL (default)
+broadcast:
+condition:
+notes: this code causes a catapult launch failure.
+
+
+EXTRA01 (default)
+broadcast:
+condition:
+notes: No noticeable action.
+
+
+FOO (default)
+broadcast: The time is now >= 10 seconds!
+condition:
+notes: ^RADIOBP.5K. Code is not found in any mission.
+
+
+K16 (default)
+broadcast: J-STARS: "SCRAMBLE TO ALPHA AND AWAIT INSTRUCTIONS
+broadcast: J-STARS: "DESTROY DESIGNATED TANKS AT ALPHA"
+broadcast: J-STARS: "WHEN FINISHED, EGRESS TO BRAVO"
+broadcast: J-STARS: "DESTROY DESIGNATED TANKS AT BRAVO"
+broadcast: J-STARS: "WHEN FINISHED, AWAIT INSTRUCTIONS AT ALPHA"
+broadcast: J-STARS: "DESTROY DESIGNATED TANKS AT ALPHA"
+broadcast: J-STARS: "WHEN FINISHED, EGRESS TO BRAVO"
+broadcast: J-STARS: "DESTROY DESIGNATED TANKS AT BRAVO"
+broadcast: J-STARS: "WHEN FINISHED, AWAIT INSTRUCTIONS AT ALPHA"
+condition: tank aliases: -8, -9, -10, -39, -40, -41, -73, -74; player alias -36.
+notes: T-72s in order of appearance: -8 & -10, -40 & -41, -9 & -73, -39 & -74.
+   Tanks must be destroyed in a timely manner, otherwise mission failure.
+
+
+K17 (default)
+broadcast: SH-60: "WE'RE PICKING UP THE PILOT"
+broadcast: SH-60: "THE PILOT IS ON BOARD"
+condition: SH-60 alias -56; pilot down (PLTDWN.NT) alias -57; player alias -59.
+notes: when SH-60 reaches waypoint B, 1st message is played. when SH-60 reaches
+  waypoint C, 2nd message is played. There is nothing special about the waypoints
+  themselves. At waypoint C, the downed pilot (PLTDWN.NT) will disappear.
+
+
+TRAIN01 (default)
+broadcast:
+condition:
+notes:  No noticeable action.
+
+
+U01 (default)
+broadcast: "THIS IS AEROFLOT FLIGHT 261. EMERGENCY! EMERGENCY!"
+broadcast: IL-96: "THANKS FOR THE HELP"
+condition: The craft making the broadcast must have alias -2; player is alias -12.
+notes: when the aircraft receives damage, it makes the 1st broadcast. It
+   makes the 2nd broadcast at mission completion.
+
+
+U07 (default)
+broadcast: E-2C: "BOGEYS, HIGH INBOUND FROM THE NORTHEAST"
+condition: player's aircraft must be alias -43
+notes: timed.
+
+
+U08 (default)
+broadcast: None.
+condition: Kirov must be alias -34.
+notes: this causes Kirov (or any craft)to have 50% damage.
+
+
+U11 (default)
+broadcast: KRIVAK DESTROYED BY FRIENDLY SUB
+broadcast: SOVREMENNYY DESTROYED BY FRIENDLY SUB
+broadcast: KRIVAK DESTROYED BY FRIENDLY SUB
+condition: aliases -41, -46, and -45, in order.
+notes: timed. Computer destroys those ships.
+
+
+U12 (default)
+broadcast: AWACS: "Bogeys to the NW, obtain visual ID"
+condition: player's aircraft must be alias -41
+notes: timed.
+
+
+U15 (default) - [Bad Code]
+broadcast: AWACS: "BOGEYS, HIGH INBOUND OUT OF THE NORTHEAST"
+broadcast: F-14: "Go on home, we'll take it from here"
+condition: player's aircraft must be alias -22
+notes: timed. Bad code: this code causes aircraft to get "hung up."
+
+
+U22 (default)
+broadcast: E-2C: "CONTACT, BOGEYS, LOW INBOUND FROM THE NORTH"
+condition: player's aircraft must be alias -17
+notes: timed.
+
+
+U23 (default)
+broadcast: FAC: "FEBA IS 10 MILES WEST OF WAYPOINT ALPHA"
+broadcast: FAC: "ATTACK ADVANCING TANKS AND APC'S, THEY'RE CROSSING THE HIGHWAY"
+condition: player's aircraft must be alias -7
+notes: timed.
+
+
+U2C (Playset - Ukraine 1994 campaign)
+broadcast: FAC: "FEBA IS LOCATED NEAR WAYPOINT DELTA"
+broadcast: FAC: "ATTACK ADVANCING TANKS AND APC'S, THEY'RE CROSSING THE HIGHWAY"
+condition: player's aircraft must be alias -7
+notes: timed.
+
+
+U24 (default)
+broadcast: KNIGHT HAWKS: "COMMENCING BOMBING RUN"
+condition: player's aircraft must be alias -30
+notes: timed.
+
+
+U2D (Playset - Ukraine 1994 campaign)
+broadcast: BLUE BLASTERS: "ENTERING MOLDOVA NOW"
+condition: player's aircraft must be alias -30
+notes: timed.
+
+
+U25 (default)
+broadcast: USAF F-15: "BINGO FUEL.  TAKE OVER, WE'RE GOING HOME"
+broadcast: CONVOY: "THANKS FOR THE TOP COVER"
+condition: player's aircraft must be alias -23
+notes: 1st is timed; 2nd may be based on mission complete.
+
+
+U29 (default)
+broadcast: AWACS: "CONTACT, BOGEYS HIGH INBOUND FROM THE SOUTHEAST"
+broadcast: AWACS: "SU-34'S PROTECTED BY MIG-29'S, TAKE THEM!
+condition: player's aircraft must be alias -50
+notes: timed.
+
+
+U2I (Playset - Ukraine 1994 campaign)
+broadcast: CG-51: "CONTACT, BOGEYS HIGH INBOUND FROM THE NORTHEAST"
+broadcast: CG-51: "SU-24s PROTECTED BY SU-27s, SPLASH 'EM!"
+condition: player's aircraft must be alias -50
+notes: timed.
+
+
+U34 (default)
+broadcast: SACRAMENTO: "WE'RE UNDER FIRE, PLEASE ASSIST!"
+broadcast: SACRAMENTO: "WE'RE UNDER FIRE, PLEASE ASSIST!"
+condition: attacked ships are alias -3 and -4 ; player's aircraft alias -12
+notes: message given when ships receive damage. this works on aircraft too.
+
+
+U3D (Playset - Ukraine 1994 campaign)
+broadcast: WASHINGTON: "WE'RE UNDER FIRE, PLEASE ASSIST!"
+broadcast: RAWHIDES: "WE'RE UNDER FIRE, PLEASE ASSIST!!!"
+condition: attacked ships are alias -3 and -4 ; player's aircraft alias -12
+notes: message given when ships receive damage. this works on aircraft too.
+
+
+UKR01 (default)
+broadcast:
+condition:
+notes: No noticeable action. Code is not found in any mission.
+
+
+UKR02 (default)
+broadcast:
+condition:
+notes: No noticeable action.
+
+
+VIET03 (default)
+broadcast:
+condition:
+notes: No noticeable action.
+
+
