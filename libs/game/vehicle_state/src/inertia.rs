@@ -13,11 +13,11 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{
-    kilograms, kilograms_meter2, meters, scalar, Kilograms, Mass, Meters, RotationalInertia, Scalar,
+    kilograms, meters, scalar, Kilograms, Mass, Meters, RotationalInertia, Scalar,
 };
 use bevy_ecs::prelude::*;
 use geometry::{Aabb3, Cylinder};
-use nalgebra::{Point3, Vector3};
+use nalgebra::Point3;
 use nitrous::{inject_nitrous_component, NitrousComponent};
 use ot::ObjectType;
 use shape::ShapeExtent;

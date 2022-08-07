@@ -1151,12 +1151,7 @@ impl Instr {
             _ => false,
         };
 
-        if b0 {
-            if prefix.len() > 1 && prefix[1] == 0 {
-                return true;
-            }
-        }
-        false
+        b0 && prefix.len() > 1 && prefix[1] == 0
     }
 
     pub fn show(&self) -> String {

@@ -1013,7 +1013,7 @@ impl Mission {
     }
 
     pub fn mission_code_file(&self) -> Option<&str> {
-        self.mission_code_file.as_ref().map(|s| s.as_str())
+        self.mission_code_file.as_deref()
     }
 
     pub fn revive(&self) -> Option<(u8, u8, u8)> {

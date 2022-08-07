@@ -18,7 +18,7 @@ use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use std::time::Duration;
 
 #[derive(Component, NitrousComponent, Debug, Default, Copy, Clone)]
-#[Name = "stick_y"]
+#[Name = "pitch_inceptor"]
 pub struct PitchInceptor {
     position: f64,        // [-1, 1]
     key_move_target: f64, // target of move, depending on what key is held

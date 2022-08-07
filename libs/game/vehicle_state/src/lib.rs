@@ -22,7 +22,7 @@ pub use crate::{
 };
 
 use crate::systems::{fuel_tank::FuelTank, power_plant::PowerPlant};
-use absolute_unit::{kilograms, scalar, Kilograms, Mass, PoundsMass};
+use absolute_unit::{kilograms, Kilograms, Mass, PoundsMass};
 use animate::TimeStep;
 use anyhow::Result;
 use bevy_ecs::prelude::*;
@@ -46,7 +46,7 @@ pub enum VehicleStep {
 #[Name = "vehicle"]
 pub struct VehicleState {
     // self pointer for updating markers
-    id: Entity,
+    _id: Entity,
 
     // Simulation of aggregate engines for this vehicle
     power_plant: PowerPlant,
@@ -89,7 +89,7 @@ impl VehicleState {
                 .extent(),
         );
         Self {
-            id,
+            _id: id,
             power_plant,
             empty_mass,
             current_mass,

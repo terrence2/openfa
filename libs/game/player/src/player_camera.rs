@@ -172,11 +172,3 @@ impl PlayerCameraController {
         self.mode.handle_mousewheel(vertical_delta);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
-}

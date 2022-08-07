@@ -1006,7 +1006,7 @@ impl fmt::Display for MemBlock {
                 writeln!(
                     f,
                     "  ascii: {}",
-                    std::str::from_utf8(&data).unwrap_or_else(|_| "not text")
+                    std::str::from_utf8(data).unwrap_or("not text")
                 )
             }
         }

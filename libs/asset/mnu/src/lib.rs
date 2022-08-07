@@ -18,18 +18,21 @@ use ansi::ansi;
 use anyhow::Result;
 use peff::PortableExecutable;
 use reverse::bs2s;
-use std::collections::{HashMap, HashSet};
-use std::mem;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write,
+    mem,
+};
 
 pub struct Menu {}
 
 impl Menu {
     pub fn from_bytes(name: &str, bytes: &[u8]) -> Result<Self> {
-        let pe = PortableExecutable::from_bytes(bytes)?;
-
+        let mut pe = PortableExecutable::from_bytes(bytes)?;
         if !pe.section_info.contains_key("CODE") {
             return Ok(Self {});
         }
+        pe.relocate(0xAA00_0000)?;
 
         let vaddr = pe.section_info["CODE"].virtual_address as usize;
 
@@ -108,33 +111,41 @@ impl Menu {
         while offset < pe.code.len() {
             let b = bs2s(&pe.code[offset..offset + 1]);
             if relocs.contains(&(offset, 0)) && targets.contains(&offset) {
-                out += &format!("\n{:04X}: {}{}{}", offset, ansi().magenta(), &b, ansi());
+                write!(
+                    out,
+                    "\n{:04X}: {}{}{}",
+                    offset,
+                    ansi().magenta(),
+                    &b,
+                    ansi()
+                )?;
             } else if (relocs.contains(&(offset, 1))
                 || relocs.contains(&(offset, 2))
                 || relocs.contains(&(offset, 3)))
                 && targets.contains(&offset)
             {
-                out += &format!("{}{}{}", ansi().magenta(), &b, ansi());
+                write!(out, "{}{}{}", ansi().magenta(), &b, ansi())?;
             } else if relocs.contains(&(offset, 0)) {
-                out += &format!("\n{:04X}: {}{}{}", offset, ansi().green(), &b, ansi());
+                write!(out, "\n{:04X}: {}{}{}", offset, ansi().green(), &b, ansi())?;
             } else if relocs.contains(&(offset, 1)) {
-                out += &format!("{}{}{}", ansi().green(), &b, ansi());
+                write!(out, "{}{}{}", ansi().green(), &b, ansi())?;
             } else if relocs.contains(&(offset, 2)) {
-                out += &format!("{}{}{}", ansi().cyan(), &b, ansi());
+                write!(out, "{}{}{}", ansi().cyan(), &b, ansi())?;
             } else if relocs.contains(&(offset, 3)) {
                 if target_names.contains_key(&offset) {
-                    out += &format!(
+                    write!(
+                        out,
                         "{}{}{}[{}] ",
                         ansi().green(),
                         &b,
                         ansi(),
                         target_names[&offset]
-                    );
+                    )?;
                 } else {
-                    out += &format!("{}{}{}", ansi().green(), &b, ansi());
+                    write!(out, "{}{}{}", ansi().green(), &b, ansi())?;
                 }
             } else if targets.contains(&offset) {
-                out += &format!("{}{}{}", ansi().red(), &b, ansi());
+                write!(out, "{}{}{}", ansi().red(), &b, ansi())?;
             } else {
                 out += &b;
             }

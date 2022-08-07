@@ -6,7 +6,6 @@ edition = "2021"
 
 [workspace]
 members = [
-    "apps/dump-asm",
     "apps/dump-lay",
     "apps/dump-lib",
     "apps/dump-m",

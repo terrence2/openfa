@@ -12,15 +12,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::{instr::read_name, Instr, RawShape, UnknownData, SHAPE_LOAD_BASE};
+use crate::{Instr, RawShape, UnknownData};
 use ansi::ansi;
-use anyhow::{bail, ensure, Result};
-use i386::{ByteCode, Disassembler, MemBlock, Memonic, Operand};
+use anyhow::Result;
+use i386::{ByteCode, Disassembler, MemBlock};
 use log::trace;
 use once_cell::sync::Lazy;
-use peff::{PortableExecutable, Trampoline};
-use reverse::bs2s;
-use std::{cmp, collections::HashSet};
+use peff::PortableExecutable;
+use std::collections::HashSet;
 
 pub static DATA_RELOCATIONS: Lazy<HashSet<String>> = Lazy::new(|| {
     [
@@ -36,22 +35,6 @@ pub static DATA_RELOCATIONS: Lazy<HashSet<String>> = Lazy::new(|| {
     .map(|&n| n.to_owned())
     .collect()
 });
-
-#[derive(Debug, Eq, PartialEq)]
-enum ReturnKind {
-    Interp,
-    Error,
-}
-
-impl ReturnKind {
-    fn from_name(s: &str) -> Result<Self> {
-        Ok(match s {
-            "do_start_interp" => ReturnKind::Interp,
-            "_ErrorExit" => ReturnKind::Error,
-            _ => bail!("unexpected return trampoline name"),
-        })
-    }
-}
 
 #[derive(Debug)]
 pub struct X86Message {
@@ -241,8 +224,8 @@ impl X86Code {
                         let fragment = &pe.code[*offset + 2..end_offset];
                         // Note: if the data ends at F0_00, it will be automagically counted
                         //       in the next code block because we extract from the PE directly.
-                        if fragment.len() > 0 {
-                            let mut bc = Disassembler::disassemble_fragment_at_virtual_offset(
+                        if !fragment.is_empty() {
+                            let bc = Disassembler::disassemble_fragment_at_virtual_offset(
                                 fragment,
                                 *offset + 2,
                                 pe,

@@ -145,7 +145,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
         for sh_instr in shape.instrs.iter() {
             if let sh::Instr::X86Code(x86) = sh_instr {
                 let mut pos = 0;
-                for instr in &x86.bytecode.instrs {
+                for instr in x86.bytecode.instrs() {
                     for operand in &instr.operands {
                         if let i386::Operand::Memory(memref) = operand {
                             if let Ok(tramp) = shape.lookup_trampoline_by_offset(
@@ -187,7 +187,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
         let mut dedup = HashMap::new();
         for vinstr in shape.instrs {
             if let sh::Instr::X86Code(x86) = vinstr {
-                for instr in &x86.bytecode.instrs {
+                for instr in x86.bytecode.instrs() {
                     for operand in &instr.operands {
                         if let i386::Operand::Memory(memref) = operand {
                             let key = format!("{}", memref);

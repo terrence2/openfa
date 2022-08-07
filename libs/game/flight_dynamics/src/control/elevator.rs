@@ -12,40 +12,26 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::control::surface_position_tick;
 use bevy_ecs::prelude::*;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use shape::DrawState;
-use std::time::Duration;
 
 #[derive(Component, NitrousComponent, Debug, Default, Copy, Clone)]
 #[Name = "elevator"]
 pub struct Elevator {
-    position: f64,        // [-1, 1]
-    key_move_target: f64, // target of move, depending on what key is held
+    position: f64, // [-1, 1]
 }
 
 #[inject_nitrous_component]
 impl Elevator {
     #[method]
-    pub fn move_stick_backward(&mut self, pressed: bool) {
-        self.key_move_target = if pressed { 1. } else { 0. };
-    }
-
-    #[method]
-    pub fn move_stick_forward(&mut self, pressed: bool) {
-        self.key_move_target = if pressed { -1. } else { 0. };
-    }
-
-    #[method]
     pub fn position(&self) -> f64 {
         self.position as f64
     }
 
-    pub(crate) fn sys_tick(&mut self, dt: &Duration, draw_state: &mut DrawState) {
-        self.position =
-            surface_position_tick(self.key_move_target, dt.as_secs_f64(), self.position);
-
+    #[allow(unused)]
+    pub(crate) fn update_position(&mut self, position: f64, draw_state: &mut DrawState) {
+        self.position = position;
         if self.position > 0.1 {
             draw_state.move_elevator_up();
         } else if self.position < 0.1 {

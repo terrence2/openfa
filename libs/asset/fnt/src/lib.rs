@@ -106,9 +106,9 @@ impl Fnt {
             p.push("__dump__");
             p.push("fnt");
             p.push(name.replace(':', "_"));
-            let p = p.with_extension("asm").to_owned();
+            let p = p.with_extension("asm");
             let mut fp = File::create(p)?;
-            fp.write(&pe.code)?;
+            fp.write_all(&pe.code)?;
         }
 
         let dwords: &[u32] = unsafe { mem::transmute(&pe.code[0..1028]) };
