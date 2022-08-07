@@ -19,12 +19,10 @@ use log::{debug, trace};
 use peff::{PortableExecutable, Trampoline};
 use reverse::bs2s;
 use std::{
-    cell::RefCell,
     collections::{HashSet, VecDeque},
     fmt,
     fmt::Write,
     mem,
-    rc::Rc,
 };
 use thiserror::Error;
 
@@ -908,21 +906,21 @@ impl Instr {
         Err(DisassemblyError::UnknownOpcode { ip: *ip, op }.into())
     }
 
-    pub fn decode_one(code: &[u8], ip: &mut usize) -> Result<Instr> {
-        let initial_ip = *ip;
+    pub fn decode_one(code: &[u8], ipo: &mut usize) -> Result<Instr> {
+        let initial_ip = *ipo;
 
-        let prefix = OpPrefix::from_bytes(code, ip)?;
+        let prefix = OpPrefix::from_bytes(code, ipo)?;
 
-        let op = Self::read_op(code, ip)?;
+        let op = Self::read_op(code, ipo)?;
 
-        let opcode_desc = Self::lookup_op(op, ip)?;
+        let opcode_desc = Self::lookup_op(op, ipo)?;
 
         let mut operands = Vec::new();
         let mut decode_state = OperandDecodeState::initial(prefix, op.0);
         for operand_desc in opcode_desc.operands.iter() {
             operands.push(Operand::from_bytes(
                 code,
-                ip,
+                ipo,
                 operand_desc,
                 &mut decode_state,
             )?);
@@ -930,7 +928,7 @@ impl Instr {
         Ok(Instr {
             memonic: opcode_desc.memonic,
             operands,
-            raw: code[initial_ip..*ip].to_vec(),
+            raw: code[initial_ip..*ipo].to_vec(),
             context: None,
         })
     }
@@ -990,15 +988,21 @@ impl fmt::Display for Instr {
 // A chunk of code or data to map into the address space.
 pub enum MemBlock {
     Code(ByteCode),
-    Data((usize, Vec<u8>)),
+    Data {
+        start_offset: usize,
+        start_addr: u32,
+        data: Vec<u8>,
+    },
 }
 
 impl fmt::Display for MemBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Code(block) => write!(f, "{}", block),
-            Self::Data((start, data)) => {
-                writeln!(f, "  @{:04X}: {}", start, bs2s(data))?;
+            Self::Data {
+                start_offset, data, ..
+            } => {
+                writeln!(f, "  @{:04X}: {}", start_offset, bs2s(data))?;
                 writeln!(
                     f,
                     "  ascii: {}",
@@ -1013,11 +1017,41 @@ impl fmt::Display for MemBlock {
 pub struct Disassembler {
     // All offsets are from pe.code start.
     blocks: Vec<ByteCode>,
+
+    // Configuration.
+    non_standard_retpoline_names: HashSet<String>,
 }
 
 impl Disassembler {
+    // Configure with any retpoline targets that expect a non-x86 stack (and thus where the first
+    // push target is not a jump back into x86.)
+    pub fn add_non_standard_retpoline(&mut self, name: &str) {
+        self.non_standard_retpoline_names.insert(name.to_owned());
+    }
+
+    pub fn disassemble_fragment_at_virtual_offset(
+        code: &[u8],
+        offset: usize,
+        pe: &PortableExecutable,
+    ) -> Result<ByteCode> {
+        let mut instrs = Vec::new();
+        let initial_ip = 0;
+        let mut ip = 0;
+        while ip < code.len() {
+            let instr = Instr::decode_one(code, &mut ip)?;
+            debug!("  @{:04X}: {}", ip, instr);
+            instrs.push(instr);
+        }
+        Ok(ByteCode {
+            start_offset: initial_ip + offset,
+            start_addr: u32::try_from(initial_ip)?.wrapping_add(pe.relocation_target),
+            size: ip - initial_ip,
+            instrs,
+        })
+    }
+
     /// Find all bytecode and data blocks in the fragment at offset. Uses configuration
-    /// for knowing what targets should exit. We can start at an offset in code, but
+    /// for knowing what targets should exit. We can start at an offset into .code, but
     /// we don't know how far to decode because of the variable word length.
     pub fn disassemble_at(&mut self, offset: usize, pe: &PortableExecutable) -> Result<()> {
         // Start with the implicit jump into this code block.
@@ -1035,7 +1069,7 @@ impl Disassembler {
 
             // Check if we have already disassembled a block at this offset.
             if !self.has_disassembled_at(jump_offset) {
-                let (block, new_jump_targets) = Self::disassemble_block_at(jump_offset, pe)?;
+                let (block, new_jump_targets) = self.disassemble_block_at(jump_offset, pe)?;
                 debug!(
                     "disassembled block of {} instrs at 0x{:08X}",
                     block.instrs.len(),
@@ -1060,7 +1094,7 @@ impl Disassembler {
     fn insert_block(&mut self, block: ByteCode) {
         if let Err(cursor) = self
             .blocks
-            .binary_search_by_key(&block.start_addr, |v| v.start_addr)
+            .binary_search_by_key(&block.start_offset, |v| v.start_offset)
         {
             self.blocks.insert(cursor, block);
         }
@@ -1068,7 +1102,7 @@ impl Disassembler {
 
     fn has_disassembled_at(&self, offset: usize) -> bool {
         for bc in &self.blocks {
-            if offset >= bc.start_addr as usize && offset < (bc.start_addr + bc.size) as usize {
+            if offset >= bc.start_offset as usize && offset < (bc.start_offset + bc.size) as usize {
                 return true;
             }
         }
@@ -1080,15 +1114,16 @@ impl Disassembler {
     // decoded. Some of these jumps will be above. Some of these jumps maybe into another
     // block. We don't really care about this, but do need to track it.
     fn disassemble_block_at(
+        &self,
         offset: usize,
         pe: &PortableExecutable,
     ) -> Result<(ByteCode, HashSet<usize>)> {
         let mut jump_targets = HashSet::new();
         let mut instrs = Vec::new();
-        let initial_ip = offset;
-        let mut ip = offset;
-        while ip < pe.code.len() {
-            let mut instr = Instr::decode_one(&pe.code, &mut ip)?;
+        let initial_ipo = offset;
+        let mut ipo = offset;
+        while ipo < pe.code.len() {
+            let mut instr = Instr::decode_one(&pe.code, &mut ipo)?;
             Self::annotate_instruction(
                 &mut instr,
                 if instrs.is_empty() {
@@ -1098,9 +1133,9 @@ impl Disassembler {
                 },
                 pe,
             );
-            debug!("  @{:04X}: {}", ip, instr);
+            debug!("  @{:04X}: {}", ipo, instr);
             instrs.push(instr);
-            if let Some(jump_target) = Self::maybe_jump_target(&instrs, ip, pe) {
+            if let Some(jump_target) = self.maybe_jump_target(&instrs, ipo, pe) {
                 jump_targets.insert(jump_target);
             }
             if Self::is_unconditional_jump(instrs[instrs.len() - 1].memonic) {
@@ -1109,8 +1144,9 @@ impl Disassembler {
         }
         Ok((
             ByteCode {
-                size: (ip - initial_ip) as u32,
-                start_addr: initial_ip as u32,
+                start_offset: initial_ipo,
+                size: ipo - initial_ipo,
+                start_addr: u32::try_from(initial_ipo)?.wrapping_add(pe.relocation_target),
                 instrs,
             },
             jump_targets,
@@ -1145,7 +1181,12 @@ impl Disassembler {
     }
 
     // If the given instruction is a jump, return the target offset (from pe.code start).
-    fn maybe_jump_target(instrs: &[Instr], ip: usize, pe: &PortableExecutable) -> Option<usize> {
+    fn maybe_jump_target(
+        &self,
+        instrs: &[Instr],
+        ip: usize,
+        pe: &PortableExecutable,
+    ) -> Option<usize> {
         let instr = &instrs[instrs.len() - 1];
         match instr.memonic {
             Memonic::Jump | Memonic::Jcc(_) => {
@@ -1169,10 +1210,14 @@ impl Disassembler {
                 let push = &instrs[instrs.len() - 2];
                 if push.memonic == Memonic::Push {
                     if let Operand::Imm32s(v) = push.operands[0] {
-                        // TODO: why does this look different in SH?
                         let tramp_target = (v as u32).wrapping_sub(pe.relocation_target) as usize;
-                        let _trampoline =
+                        let trampoline =
                             Self::find_trampoline_for_offset(tramp_target, &pe.trampolines);
+
+                        // TODO: maybe there is a better way to filter out do_start_interp?
+                        if self.non_standard_retpoline_names.contains(&trampoline.name) {
+                            return None;
+                        }
 
                         if instrs.len() < 3 {
                             panic!(
@@ -1241,16 +1286,18 @@ impl Disassembler {
                 out.push(MemBlock::Code(block));
             } else {
                 let prev = &out[out.len() - 1];
-                let prev_end = match prev {
-                    MemBlock::Code(bc) => bc.start_addr + bc.size,
-                    MemBlock::Data(_) => panic!("data should always abut next block"),
+                let prev_end: usize = match prev {
+                    MemBlock::Code(bc) => bc.end_offset(),
+                    MemBlock::Data { .. } => panic!("data should always abut next block"),
                 };
-                assert!(prev_end <= block.start_addr);
-                if prev_end < block.start_addr {
-                    out.push(MemBlock::Data((
-                        prev_end as usize,
-                        pe.code[prev_end as usize..block.start_addr as usize].to_owned(),
-                    )));
+                assert!(prev_end <= block.start_offset());
+                if prev_end < block.start_offset() {
+                    out.push(MemBlock::Data {
+                        start_offset: prev_end,
+                        // Safe because we try_from for code blocks and this is derived.
+                        start_addr: (prev_end as u32).wrapping_add(pe.relocation_target),
+                        data: pe.code[prev_end..block.start_offset].to_owned(),
+                    });
                 }
                 out.push(MemBlock::Code(block));
             }
@@ -1261,73 +1308,56 @@ impl Disassembler {
 
 #[derive(Clone, Debug)]
 pub struct ByteCode {
-    pub start_addr: u32,
-    pub size: u32,
-    pub instrs: Vec<Instr>,
+    pub(crate) instrs: Vec<Instr>,
+
+    // Initial offset within the code fragment passed to code.
+    start_offset: usize,
+
+    // Size in bytes of this code.
+    size: usize,
+
+    // Address when loaded into memory.
+    start_addr: u32,
 }
 
 impl ByteCode {
-    pub fn disassemble_until<F>(at_offset: usize, code: &[u8], f: F) -> Result<Self>
-    where
-        F: Fn(&[Instr], &[u8]) -> bool,
-    {
-        debug!(
-            "Disassembling ->Ret @{:04X}: {}...",
-            at_offset,
-            bs2s(&code[..100.min(code.len())])
-        );
-        let mut instrs = Vec::new();
-        let mut ip = 0usize;
-        while ip < code.len() {
-            let instr = Instr::decode_one(code, &mut ip)?;
-            debug!("  @{:04X}: {}", ip, instr);
-            instrs.push(instr);
-            if f(&instrs, &code[ip..]) {
-                break;
-            }
-        }
-        Ok(Self {
-            start_addr: at_offset as u32,
-            size: Self::compute_size(&instrs) as u32,
-            instrs,
-        })
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.size
     }
 
-    pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Result<Self> {
-        Self::disassemble_until(at_offset, code, |instrs, _rem| {
-            instrs[instrs.len() - 1].memonic == Memonic::Return
-        })
+    #[inline]
+    pub fn start_offset(&self) -> usize {
+        self.start_offset
     }
 
-    pub fn disassemble_one(at_offset: usize, code: &[u8]) -> Result<Self> {
-        debug!(
-            "Disassembling One @{:04X}: {}...",
-            at_offset,
-            bs2s(&code[..10.min(code.len())])
-        );
-        let mut ip = 0usize;
-        let instrs = vec![Instr::decode_one(code, &mut ip)?];
-        Ok(Self {
-            start_addr: at_offset as u32,
-            size: Self::compute_size(&instrs) as u32,
-            instrs,
-        })
+    #[inline]
+    pub fn end_offset(&self) -> usize {
+        self.start_offset + self.size
     }
 
-    fn compute_size(instrs: &[Instr]) -> usize {
-        let mut sz = 0;
-        for instr in instrs.iter() {
-            sz += instr.size();
-        }
-        sz
+    #[inline]
+    pub fn start_address(&self) -> u32 {
+        self.start_addr
     }
 
-    pub fn into_rc(self) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(self))
+    #[inline]
+    pub fn end_address(&self) -> u32 {
+        self.start_addr + self.size as u32
+    }
+
+    pub fn instrs(&self) -> impl Iterator<Item = &Instr> {
+        self.instrs.iter()
+    }
+
+    pub fn merge(&mut self, mut other: ByteCode) {
+        assert_eq!(self.start_offset + self.size, other.start_offset);
+        self.size += other.size;
+        self.instrs.append(&mut other.instrs);
     }
 
     pub fn show_relative(&self, base: usize) -> String {
-        let mut pos = self.start_addr as usize;
+        let mut pos = self.start_offset as usize;
         let mut s = String::new();
         for instr in self.instrs.iter() {
             writeln!(
@@ -1346,7 +1376,7 @@ impl ByteCode {
 
 impl fmt::Display for ByteCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut pos = self.start_addr as usize;
+        let mut pos = self.start_offset as usize;
         for instr in self.instrs.iter() {
             writeln!(f, "  @{:04X}: {}", pos, instr)?;
             pos += instr.size();

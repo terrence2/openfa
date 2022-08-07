@@ -154,42 +154,43 @@ impl EnvelopeInstrument {
         win: Res<Window>,
         paint_context: Res<PaintContext>,
     ) {
-        let (motion, frame, dynamics) = player.single();
-        for (mut instrument, packing, mut measure) in instruments.iter_mut() {
-            instrument.max_g_load_output.select_all();
-            instrument
-                .max_g_load_output
-                .insert(&format!("{:0.1}", dynamics.max_g_load()));
+        if let Ok((motion, frame, dynamics)) = player.get_single() {
+            for (mut instrument, packing, mut measure) in instruments.iter_mut() {
+                instrument.max_g_load_output.select_all();
+                instrument
+                    .max_g_load_output
+                    .insert(&format!("{:0.1}", dynamics.max_g_load()));
 
-            instrument.altitude_output.select_all();
-            instrument.altitude_output.insert(&format!(
-                "{:0.0}",
-                feet!(frame.position_graticule().distance)
-            ));
+                instrument.altitude_output.select_all();
+                instrument.altitude_output.insert(&format!(
+                    "{:0.0}",
+                    feet!(frame.position_graticule().distance)
+                ));
 
-            instrument.velocity_output.select_all();
-            instrument.velocity_output.insert(&format!(
-                "{:0.0}",
-                knots!(motion.vehicle_forward_velocity())
-            ));
+                instrument.velocity_output.select_all();
+                instrument.velocity_output.insert(&format!(
+                    "{:0.0}",
+                    knots!(motion.vehicle_forward_velocity())
+                ));
 
-            report!(instrument
-                .altitude_output
-                .measure(&win, &paint_context.font_context));
-            report!(instrument
-                .velocity_output
-                .measure(&win, &paint_context.font_context));
-            report!(instrument
-                .max_g_load_output
-                .measure(&win, &paint_context.font_context));
+                report!(instrument
+                    .altitude_output
+                    .measure(&win, &paint_context.font_context));
+                report!(instrument
+                    .velocity_output
+                    .measure(&win, &paint_context.font_context));
+                report!(instrument
+                    .max_g_load_output
+                    .measure(&win, &paint_context.font_context));
 
-            let extent = Extent::<RelSize>::new(
-                Size::from_px(INSTRUMENT_WIDTH as f32 * instrument.scale)
-                    .as_rel(&win, ScreenDir::Horizontal),
-                Size::from_px(INSTRUMENT_HEIGHT as f32 * instrument.scale)
-                    .as_rel(&win, ScreenDir::Vertical),
-            );
-            measure.set_child_extent(extent, packing);
+                let extent = Extent::<RelSize>::new(
+                    Size::from_px(INSTRUMENT_WIDTH as f32 * instrument.scale)
+                        .as_rel(&win, ScreenDir::Horizontal),
+                    Size::from_px(INSTRUMENT_HEIGHT as f32 * instrument.scale)
+                        .as_rel(&win, ScreenDir::Vertical),
+                );
+                measure.set_child_extent(extent, packing);
+            }
         }
     }
 
@@ -203,219 +204,220 @@ impl EnvelopeInstrument {
         gpu: Res<Gpu>,
         mut paint_context: ResMut<PaintContext>,
     ) {
-        let (xt, motion, frame, _dynamics) = player.single();
-        for (instrument, measure) in instruments.iter() {
-            let panel_border = Border::new(
-                Size::from_px(10.) * instrument.scale,
-                Size::from_px(12.) * instrument.scale,
-                Size::from_px(6.) * instrument.scale,
-                Size::from_px(6.) * instrument.scale,
-            )
-            .as_rel(&win);
-            let info = paint_context.push_widget(&WidgetInfo::default());
-            let mut region = measure.child_allocation().to_owned();
-            // TODO: draw the panel image here instead of a gray square
-            WidgetVertex::push_region(
-                region.clone(),
-                &Color::from(Self::TMP_BACKGROUND_COLOR),
-                info,
-                &mut paint_context.background_pool,
-            );
-            region.remove_border_rel(&panel_border);
+        if let Ok((xt, motion, frame, _dynamics)) = player.get_single() {
+            for (instrument, measure) in instruments.iter() {
+                let panel_border = Border::new(
+                    Size::from_px(10.) * instrument.scale,
+                    Size::from_px(12.) * instrument.scale,
+                    Size::from_px(6.) * instrument.scale,
+                    Size::from_px(6.) * instrument.scale,
+                )
+                .as_rel(&win);
+                let info = paint_context.push_widget(&WidgetInfo::default());
+                let mut region = measure.child_allocation().to_owned();
+                // TODO: draw the panel image here instead of a gray square
+                WidgetVertex::push_region(
+                    region.clone(),
+                    &Color::from(Self::TMP_BACKGROUND_COLOR),
+                    info,
+                    &mut paint_context.background_pool,
+                );
+                region.remove_border_rel(&panel_border);
 
-            if let Some(pt) = xt.pt() {
-                // Generate poly and discover background color offsets
-                let display_width = meters_per_second!(miles_per_hour!(2000f32));
-                let display_height = meters!(feet!(95_000f32));
-                let mut max_x = 0f32;
-                let mut max_y = 0f32;
-                let mut x_of_max_y = 0f32;
-                let mut y_of_max_x = 0f32;
-                let mut polygons: Vec<(i16, Vec<Vec<PathVert>>)> = Vec::new();
-                for env in pt.envelopes.iter() {
-                    // FIXME: get current gload from flight model
-                    if instrument.mode == EnvelopeMode::All && env.gload >= 0
-                        || instrument.mode == EnvelopeMode::Current && env.gload == 1
-                    {
-                        let mut polygon: Vec<Vec<PathVert>> = vec![vec![]];
-                        for i in 0..env.count {
-                            let coord = env.shape.coord(i as usize);
+                if let Some(pt) = xt.pt() {
+                    // Generate poly and discover background color offsets
+                    let display_width = meters_per_second!(miles_per_hour!(2000f32));
+                    let display_height = meters!(feet!(95_000f32));
+                    let mut max_x = 0f32;
+                    let mut max_y = 0f32;
+                    let mut x_of_max_y = 0f32;
+                    let mut y_of_max_x = 0f32;
+                    let mut polygons: Vec<(i16, Vec<Vec<PathVert>>)> = Vec::new();
+                    for env in pt.envelopes.iter() {
+                        // FIXME: get current gload from flight model
+                        if instrument.mode == EnvelopeMode::All && env.gload >= 0
+                            || instrument.mode == EnvelopeMode::Current && env.gload == 1
+                        {
+                            let mut polygon: Vec<Vec<PathVert>> = vec![vec![]];
+                            for i in 0..env.count {
+                                let coord = env.shape.coord(i as usize);
 
-                            let xf = coord.speed().f32() / display_width.f32();
-                            let yf = coord.altitude().f32() / display_height.f32();
-                            let x = region.position().left().as_percent()
-                                + region.extent().width().as_percent() * xf;
-                            let y = region.position().bottom().as_percent()
-                                + region.extent().height().as_percent() * yf;
+                                let xf = coord.speed().f32() / display_width.f32();
+                                let yf = coord.altitude().f32() / display_height.f32();
+                                let x = region.position().left().as_percent()
+                                    + region.extent().width().as_percent() * xf;
+                                let y = region.position().bottom().as_percent()
+                                    + region.extent().height().as_percent() * yf;
 
-                            if instrument.mode == EnvelopeMode::All && env.gload == 1
-                                || instrument.mode == EnvelopeMode::Current
-                            {
-                                if y > max_y {
-                                    max_y = y;
-                                    x_of_max_y = x;
+                                if instrument.mode == EnvelopeMode::All && env.gload == 1
+                                    || instrument.mode == EnvelopeMode::Current
+                                {
+                                    if y > max_y {
+                                        max_y = y;
+                                        x_of_max_y = x;
+                                    }
+                                    if x > max_x {
+                                        max_x = x;
+                                        y_of_max_x = y;
+                                    }
                                 }
-                                if x > max_x {
-                                    max_x = x;
-                                    y_of_max_x = y;
-                                }
+
+                                polygon[0].push(PathVert { x, y });
                             }
-
-                            polygon[0].push(PathVert { x, y });
-                        }
-                        polygons.push((env.gload, polygon));
-                    }
-                }
-
-                // Paint background
-                let extent_left = RelSize::Percent(x_of_max_y) - region.position().left();
-                let extent_bottom = RelSize::Percent(y_of_max_x) - region.position().bottom();
-                WidgetVertex::push_region(
-                    Region::new(
-                        region.position().clone_with_depth_adjust(0.1),
-                        Extent::new(extent_left, region.extent().height()),
-                    ),
-                    &Color::from(Self::LEFT_COLOR),
-                    info,
-                    &mut paint_context.background_pool,
-                );
-                WidgetVertex::push_region(
-                    Region::new(
-                        Position::new_with_depth(
-                            RelSize::Percent(x_of_max_y),
-                            region.position().bottom(),
-                            region.position().depth() + RelSize::Gpu(0.1),
-                        ),
-                        Extent::new(region.extent().width() - extent_left, extent_bottom),
-                    ),
-                    &Color::from(Self::BOTTOM_COLOR),
-                    info,
-                    &mut paint_context.background_pool,
-                );
-                WidgetVertex::push_region(
-                    Region::new(
-                        Position::new_with_depth(
-                            RelSize::Percent(x_of_max_y),
-                            region.position().bottom() + extent_bottom,
-                            region.position().depth() + RelSize::Gpu(0.1),
-                        ),
-                        Extent::new(
-                            region.extent().width() - extent_left,
-                            region.extent().height() - extent_bottom,
-                        ),
-                    ),
-                    &Color::from(Self::TOP_COLOR),
-                    info,
-                    &mut paint_context.background_pool,
-                );
-
-                // Triangulate and paint envelope(s)
-                for (i, (gload, polygon)) in polygons.iter().enumerate() {
-                    let mut out: Vec<Vec<PathVert>> = vec![];
-                    polygon
-                        .triangulate::<builders::VecVecFanBuilder<_>>(&mut out)
-                        .unwrap();
-                    let depth = region.position().depth().as_gpu() + 0.2 + 0.01 * i as f32;
-                    let color = Self::ENVELOPE_LAYER_COLORS[(gload.unsigned_abs() as usize)
-                        .min(Self::ENVELOPE_LAYER_COLORS.len() - 1)];
-                    for tri in &out {
-                        // For each tri in the fan
-                        let v0 = &tri[0];
-                        for i in 0..tri.len() - 2 {
-                            paint_context
-                                .background_pool
-                                .push(v0.to_widget(depth, info, color));
-                            paint_context
-                                .background_pool
-                                .push(tri[i + 1].to_widget(depth, info, color));
-                            paint_context
-                                .background_pool
-                                .push(tri[i + 2].to_widget(depth, info, color));
+                            polygons.push((env.gload, polygon));
                         }
                     }
-                }
 
-                // Paint cursor
-                let xf = motion.vehicle_forward_velocity().f32() / display_width.f32();
-                let yf = frame.altitude_asl().f32() / display_height.f32();
-                let x = region.position().left().as_percent()
-                    + region.extent().width().as_percent() * xf;
-                let y = region.position().bottom().as_percent()
-                    + region.extent().height().as_percent() * yf;
-                WidgetVertex::push_region(
-                    Region::new(
-                        Position::new_with_depth(
-                            RelSize::Percent(x)
-                                - (Size::from_px(1.) * instrument.scale)
+                    // Paint background
+                    let extent_left = RelSize::Percent(x_of_max_y) - region.position().left();
+                    let extent_bottom = RelSize::Percent(y_of_max_x) - region.position().bottom();
+                    WidgetVertex::push_region(
+                        Region::new(
+                            region.position().clone_with_depth_adjust(0.1),
+                            Extent::new(extent_left, region.extent().height()),
+                        ),
+                        &Color::from(Self::LEFT_COLOR),
+                        info,
+                        &mut paint_context.background_pool,
+                    );
+                    WidgetVertex::push_region(
+                        Region::new(
+                            Position::new_with_depth(
+                                RelSize::Percent(x_of_max_y),
+                                region.position().bottom(),
+                                region.position().depth() + RelSize::Gpu(0.1),
+                            ),
+                            Extent::new(region.extent().width() - extent_left, extent_bottom),
+                        ),
+                        &Color::from(Self::BOTTOM_COLOR),
+                        info,
+                        &mut paint_context.background_pool,
+                    );
+                    WidgetVertex::push_region(
+                        Region::new(
+                            Position::new_with_depth(
+                                RelSize::Percent(x_of_max_y),
+                                region.position().bottom() + extent_bottom,
+                                region.position().depth() + RelSize::Gpu(0.1),
+                            ),
+                            Extent::new(
+                                region.extent().width() - extent_left,
+                                region.extent().height() - extent_bottom,
+                            ),
+                        ),
+                        &Color::from(Self::TOP_COLOR),
+                        info,
+                        &mut paint_context.background_pool,
+                    );
+
+                    // Triangulate and paint envelope(s)
+                    for (i, (gload, polygon)) in polygons.iter().enumerate() {
+                        let mut out: Vec<Vec<PathVert>> = vec![];
+                        polygon
+                            .triangulate::<builders::VecVecFanBuilder<_>>(&mut out)
+                            .unwrap();
+                        let depth = region.position().depth().as_gpu() + 0.2 + 0.01 * i as f32;
+                        let color = Self::ENVELOPE_LAYER_COLORS[(gload.unsigned_abs() as usize)
+                            .min(Self::ENVELOPE_LAYER_COLORS.len() - 1)];
+                        for tri in &out {
+                            // For each tri in the fan
+                            let v0 = &tri[0];
+                            for i in 0..tri.len() - 2 {
+                                paint_context
+                                    .background_pool
+                                    .push(v0.to_widget(depth, info, color));
+                                paint_context
+                                    .background_pool
+                                    .push(tri[i + 1].to_widget(depth, info, color));
+                                paint_context
+                                    .background_pool
+                                    .push(tri[i + 2].to_widget(depth, info, color));
+                            }
+                        }
+                    }
+
+                    // Paint cursor
+                    let xf = motion.vehicle_forward_velocity().f32() / display_width.f32();
+                    let yf = frame.altitude_asl().f32() / display_height.f32();
+                    let x = region.position().left().as_percent()
+                        + region.extent().width().as_percent() * xf;
+                    let y = region.position().bottom().as_percent()
+                        + region.extent().height().as_percent() * yf;
+                    WidgetVertex::push_region(
+                        Region::new(
+                            Position::new_with_depth(
+                                RelSize::Percent(x)
+                                    - (Size::from_px(1.) * instrument.scale)
+                                        .as_rel(&win, ScreenDir::Horizontal),
+                                RelSize::Percent(y)
+                                    - (Size::from_px(1.) * instrument.scale)
+                                        .as_rel(&win, ScreenDir::Vertical),
+                                region.position().depth() + RelSize::Gpu(0.3),
+                            ),
+                            Extent::new(
+                                (Size::from_px(2.) * instrument.scale)
                                     .as_rel(&win, ScreenDir::Horizontal),
-                            RelSize::Percent(y)
-                                - (Size::from_px(1.) * instrument.scale)
+                                (Size::from_px(2.) * instrument.scale)
                                     .as_rel(&win, ScreenDir::Vertical),
-                            region.position().depth() + RelSize::Gpu(0.3),
+                            ),
                         ),
-                        Extent::new(
-                            (Size::from_px(2.) * instrument.scale)
-                                .as_rel(&win, ScreenDir::Horizontal),
-                            (Size::from_px(2.) * instrument.scale)
-                                .as_rel(&win, ScreenDir::Vertical),
-                        ),
-                    ),
-                    &Color::from(Self::CURSOR_COLOR),
-                    info,
-                    &mut paint_context.background_pool,
-                );
+                        &Color::from(Self::CURSOR_COLOR),
+                        info,
+                        &mut paint_context.background_pool,
+                    );
 
-                // Draw text on top
-                let mut pos = region.position().clone_with_depth_adjust(0.4);
-                *pos.left_mut() += region.extent().width()
-                    - instrument
-                        .max_g_load_output
-                        .metrics()
-                        .width
-                        .as_rel(&win, ScreenDir::Horizontal);
-                *pos.bottom_mut() += region.extent().height()
-                    - instrument
-                        .max_g_load_output
-                        .metrics()
-                        .height
-                        .as_rel(&win, ScreenDir::Vertical);
-                report!(instrument.max_g_load_output.upload(
-                    pos.into(),
-                    info,
-                    &win,
-                    &gpu,
-                    &mut paint_context
-                ));
+                    // Draw text on top
+                    let mut pos = region.position().clone_with_depth_adjust(0.4);
+                    *pos.left_mut() += region.extent().width()
+                        - instrument
+                            .max_g_load_output
+                            .metrics()
+                            .width
+                            .as_rel(&win, ScreenDir::Horizontal);
+                    *pos.bottom_mut() += region.extent().height()
+                        - instrument
+                            .max_g_load_output
+                            .metrics()
+                            .height
+                            .as_rel(&win, ScreenDir::Vertical);
+                    report!(instrument.max_g_load_output.upload(
+                        pos.into(),
+                        info,
+                        &win,
+                        &gpu,
+                        &mut paint_context
+                    ));
 
-                let mut pos = region.position().clone_with_depth_adjust(0.4);
-                *pos.bottom_mut() += region.extent().height()
-                    - instrument
-                        .altitude_output
-                        .metrics()
-                        .height
-                        .as_rel(&win, ScreenDir::Vertical);
-                report!(instrument.altitude_output.upload(
-                    pos.into(),
-                    info,
-                    &win,
-                    &gpu,
-                    &mut paint_context
-                ));
+                    let mut pos = region.position().clone_with_depth_adjust(0.4);
+                    *pos.bottom_mut() += region.extent().height()
+                        - instrument
+                            .altitude_output
+                            .metrics()
+                            .height
+                            .as_rel(&win, ScreenDir::Vertical);
+                    report!(instrument.altitude_output.upload(
+                        pos.into(),
+                        info,
+                        &win,
+                        &gpu,
+                        &mut paint_context
+                    ));
 
-                let mut pos = region.position().clone_with_depth_adjust(0.4);
-                *pos.left_mut() += region.extent().width()
-                    - instrument
-                        .velocity_output
-                        .metrics()
-                        .width
-                        .as_rel(&win, ScreenDir::Horizontal);
-                report!(instrument.velocity_output.upload(
-                    pos.into(),
-                    info,
-                    &win,
-                    &gpu,
-                    &mut paint_context
-                ));
+                    let mut pos = region.position().clone_with_depth_adjust(0.4);
+                    *pos.left_mut() += region.extent().width()
+                        - instrument
+                            .velocity_output
+                            .metrics()
+                            .width
+                            .as_rel(&win, ScreenDir::Horizontal);
+                    report!(instrument.velocity_output.upload(
+                        pos.into(),
+                        info,
+                        &win,
+                        &gpu,
+                        &mut paint_context
+                    ));
+                }
             }
         }
         // println!("ENV: {:?}", now.elapsed());

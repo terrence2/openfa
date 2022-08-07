@@ -1082,6 +1082,83 @@ macro_rules! impl_for_all_instr {
 }
 
 impl Instr {
+    fn is_instruction_header(prefix: &[u8]) -> bool {
+        let b0 = match prefix[0] {
+            Header::MAGIC => true,
+            PtrToObjEnd::MAGIC => true,
+            SourceRef::MAGIC => true,
+            Jump::MAGIC => true,
+            JumpToDamage::MAGIC => true,
+            JumpToDetail::MAGIC => true,
+            JumpToFrame::MAGIC => true,
+            JumpToLOD::MAGIC => true,
+            TextureRef::MAGIC => true,
+            TextureIndex::MAGIC => true,
+            VertexBuf::MAGIC => true,
+            Facet::MAGIC => true,
+            VertexNormal::MAGIC => true,
+            Unmask::MAGIC => true,
+            Unmask4::MAGIC => true,
+            XformUnmask::MAGIC => true,
+            XformUnmask4::MAGIC => true,
+            Unk06::MAGIC => true,
+            Unk08::MAGIC => true,
+            Unk0C::MAGIC => true,
+            Unk0E::MAGIC => true,
+            Unk10::MAGIC => true,
+            Unk2E::MAGIC => true,
+            Unk3A::MAGIC => true,
+            Unk44::MAGIC => true,
+            Unk46::MAGIC => true,
+            Unk4E::MAGIC => true,
+            Unk66::MAGIC => true,
+            Unk68::MAGIC => true,
+            Unk6C::MAGIC => true,
+            Unk50::MAGIC => true,
+            Unk72::MAGIC => true,
+            Unk74::MAGIC => true,
+            Unk76::MAGIC => true,
+            Unk78::MAGIC => true,
+            Unk7A::MAGIC => true,
+            Unk96::MAGIC => true,
+            UnkB2::MAGIC => true,
+            UnkB8::MAGIC => true,
+            UnkCA::MAGIC => true,
+            UnkCE::MAGIC => true,
+            UnkD0::MAGIC => true,
+            UnkD2::MAGIC => true,
+            UnkDA::MAGIC => true,
+            UnkDC::MAGIC => true,
+            UnkE4::MAGIC => true,
+            UnkE6::MAGIC => true,
+            UnkE8::MAGIC => true,
+            UnkEA::MAGIC => true,
+            UnkEE::MAGIC => true,
+
+            UnkBC::MAGIC => true,
+            X86Code::MAGIC => true,
+
+            Pad1E::MAGIC => return true,
+            Unk38::MAGIC => return true,
+
+            // TrailerUnknown::MAGIC => true,
+            // Trampoline::MAGIC => true,
+            // X86Message::MAGIC => true,
+            // UnknownUnknown::MAGIC => true,
+            // UnknownData::MAGIC => true,
+            // EndOfObject::MAGIC => true,
+            // EndOfShape::MAGIC => true,
+            _ => false,
+        };
+
+        if b0 {
+            if prefix.len() > 1 && prefix[1] == 0 {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn show(&self) -> String {
         impl_for_all_instr!(self, show)
     }
@@ -1408,7 +1485,7 @@ impl RawShape {
                     offset: *offset,
                     data: pe.code[*offset..end_offset].to_owned(),
                 };
-                *offset = pe.code.len();
+                *offset = end_offset;
                 instrs.push(Instr::UnknownUnknown(instr));
 
                 // Someday we'll be able to turn on this bail.
@@ -1600,7 +1677,12 @@ mod tests {
                 // Ensure that all offsets and sizes line up.
                 let mut expect_offset = 0;
                 for instr in &shape.instrs {
-                    assert_eq!(expect_offset, instr.at_offset());
+                    assert_eq!(
+                        expect_offset,
+                        instr.at_offset(),
+                        "instr size and offset misaligned at 0x{:08X}",
+                        expect_offset
+                    );
                     expect_offset += instr.size();
                 }
             }

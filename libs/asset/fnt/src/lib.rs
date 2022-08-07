@@ -14,12 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{ensure, Result};
 use codepage_437::{FromCp437, CP437_CONTROL};
-use i386::{ByteCode, Interpreter, Reg};
+use i386::{ByteCode, Disassembler, Interpreter, MemBlock, Reg};
 use image::{ImageBuffer, LumaA};
 use peff::PortableExecutable;
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, fs::File, io::Write, mem};
 
 // Save chars to png when testing.
 const DUMP_CHARS: bool = false;
@@ -94,9 +94,22 @@ pub struct Fnt {
 const FNT_LOAD_BASE: u32 = 0x0000_0000;
 
 impl Fnt {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    pub fn from_bytes(name: &str, bytes: &[u8]) -> Result<Self> {
         let mut pe = PortableExecutable::from_bytes(bytes)?;
         pe.relocate(FNT_LOAD_BASE)?;
+
+        if false {
+            let p = std::env::current_dir()?;
+            let p = p.parent().unwrap();
+            let p = p.parent().unwrap();
+            let mut p = p.parent().unwrap().to_owned();
+            p.push("__dump__");
+            p.push("fnt");
+            p.push(name.replace(':', "_"));
+            let p = p.with_extension("asm").to_owned();
+            let mut fp = File::create(p)?;
+            fp.write(&pe.code)?;
+        }
 
         let dwords: &[u32] = unsafe { mem::transmute(&pe.code[0..1028]) };
         let height = dwords[0] as usize;
@@ -113,25 +126,21 @@ impl Fnt {
             ensure!(next <= pe.code.len(), "next out of bounds");
             ensure!(pe.code[next - 1] == 0xC3, "expected to end in C3");
 
-            let span = &pe.code[target..next];
-            if span.len() == 1 {
-                // No glyph at index
-                continue;
-            }
-
             let glyph_index = (i - 1) as u8;
             let glyph_char = String::from_cp437(vec![glyph_index], &CP437_CONTROL);
 
-            let maybe_bytecode = ByteCode::disassemble_until(0, span, |_, _| false);
-            if let Err(e) = maybe_bytecode {
-                i386::DisassemblyError::maybe_show(&e, span);
-                bail!("Don't know how to disassemble at {}: {:?}", 0, e);
-            }
-            let bytecode = maybe_bytecode?;
+            let mut disasm = Disassembler::default();
+            disasm.disassemble_at(target, &pe)?;
+            let mut blocks = disasm.build_memory_view(&pe);
+            ensure!(blocks.len() == 1);
+            let bytecode = match blocks.pop().unwrap() {
+                MemBlock::Code(bc) => bc,
+                MemBlock::Data { .. } => panic!("expected code in FNT file"),
+            };
 
             // Compute glyph width by observing the rightmost write
             let mut width = 0;
-            for instr in &bytecode.instrs {
+            for instr in bytecode.instrs() {
                 for operand in &instr.operands {
                     if let i386::Operand::Memory(memref) = operand {
                         let offset = memref.displacement + i32::from(memref.size) - 1;
@@ -179,7 +188,7 @@ impl Fnt {
                 interp.set_register_value(Reg::EDI, 0x30_0000);
                 interp.map_writable(0x30_0000, edi_map)?;
 
-                let rv = interp.interpret(0)?;
+                let rv = interp.interpret(glyph.bytecode.start_address())?;
                 let (trampoline_name, args) = rv.ok_trampoline()?;
                 ensure!(trampoline_name == "finish", "expect return to finish");
                 ensure!(args.is_empty(), "expect no args out");
@@ -225,12 +234,16 @@ mod tests {
 
     #[test]
     fn it_can_parse_all_fnt_files() -> Result<()> {
+        env_logger::init();
         let libs = Libs::for_testing()?;
         for (game, _palette, catalog) in libs.all() {
             for fid in catalog.find_with_extension("FNT")? {
                 let meta = catalog.stat(fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                let fnt = Fnt::from_bytes(catalog.read(fid)?.as_ref())?;
+                let fnt = Fnt::from_bytes(
+                    &format!("{}_{}", game.test_dir, meta.name()),
+                    catalog.read(fid)?.as_ref(),
+                )?;
                 fnt.analyze(game.test_dir, meta.name())?;
             }
         }

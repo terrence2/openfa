@@ -64,6 +64,8 @@ debug = true
 # slow in debug builds. Note that we have to turn it on from _all_, not just
 # dependencies because of inlining.
 [profile.dev]
+debug = true
+debug-assertions = true
 opt-level = 1
 
 [dependencies]
