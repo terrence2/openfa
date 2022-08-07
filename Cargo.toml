@@ -6,7 +6,6 @@ edition = "2021"
 
 [workspace]
 members = [
-    "apps/dump-asm",
     "apps/dump-lay",
     "apps/dump-lib",
     "apps/dump-m",
@@ -24,6 +23,7 @@ members = [
     "libs/asset/jt",
     "libs/asset/lay",
     "libs/asset/lib",
+    "libs/asset/mc",
     "libs/asset/mmm",
     "libs/asset/mnu",
     "libs/asset/nt",
@@ -63,6 +63,8 @@ debug = true
 # slow in debug builds. Note that we have to turn it on from _all_, not just
 # dependencies because of inlining.
 [profile.dev]
+debug = true
+debug-assertions = true
 opt-level = 1
 
 [dependencies]

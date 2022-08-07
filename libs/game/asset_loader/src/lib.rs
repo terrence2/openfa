@@ -546,9 +546,8 @@ mod tests {
             .load_extension::<T2TerrainBuffer>()?
             .load_extension::<ShapeBuffer>()?;
 
-        runtime.resource_scope(|mut heap, world: Mut<AssetLoader>| {
-            world.load_mission("UKR01.M", heap)
-        })?;
+        runtime
+            .resource_scope(|heap, world: Mut<AssetLoader>| world.load_mission("UKR01.M", heap))?;
 
         Ok(())
     }

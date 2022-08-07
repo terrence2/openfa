@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(clippy::new_without_default, clippy::transmute_ptr_to_ptr)]
+#![allow(clippy::new_without_default)]
 
 use crate::{
     disassembler::{ByteCode, MemRef, Memonic, Operand, Reg},
@@ -137,6 +137,11 @@ impl Interpreter {
     }
 
     pub fn add_code(&mut self, bc: ByteCode) {
+        trace!(
+            "adding bytecode at 0x{:08X}-{:08X}",
+            bc.start_address(),
+            bc.end_address(),
+        );
         self.bytecode.push(bc);
     }
 
@@ -148,9 +153,9 @@ impl Interpreter {
         trace!("searching for instr at ip: {:08X}", self.eip());
         for (bc_offset, bc) in self.bytecode.iter().enumerate() {
             //let bc = bc_ref.borrow();
-            if self.eip() >= bc.start_addr && self.eip() < bc.start_addr + bc.size {
-                trace!("in bc at {:08X}", bc.start_addr);
-                let mut pos = bc.start_addr;
+            if self.eip() >= bc.start_address() && self.eip() < bc.end_address() {
+                trace!("in bc at {:08X}", bc.start_address());
+                let mut pos = bc.start_address();
                 for (offset, instr) in bc.instrs.iter().enumerate() {
                     trace!("checking {}: {:08X} of {:08X}", offset, pos, self.eip());
                     if pos == self.eip() {

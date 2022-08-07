@@ -15,7 +15,7 @@
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
 use catalog::{Catalog, FileId};
-use i386::{ByteCode, DisassemblyError};
+use i386::{Disassembler, DisassemblyError};
 use lib::{Libs, LibsOpts};
 use peff::PortableExecutable;
 use std::collections::HashSet;
@@ -35,6 +35,7 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let opt = Opt::from_args();
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, _palette, catalog) in libs.selected() {
@@ -60,7 +61,8 @@ fn show_pe(fid: FileId, catalog: &Catalog, disassemble: bool) -> Result<()> {
     let bytes_per_line = (width - 3) / 3;
 
     let content = catalog.read(fid)?;
-    let pe = PortableExecutable::from_bytes(&content)?;
+    let mut pe = PortableExecutable::from_bytes(&content)?;
+    pe.relocate(0xAA00_0000)?;
 
     println!("image base: 0x{:08X}", pe.image_base);
 
@@ -97,17 +99,21 @@ fn show_pe(fid: FileId, catalog: &Catalog, disassemble: bool) -> Result<()> {
         print!("0x{:04X} ", reloc);
         offset += 1;
     }
-    println!();
+    println!("\n");
 
     if disassemble {
-        let bc = ByteCode::disassemble_until(0, &pe.code, |_| false);
-        if let Err(ref e) = bc {
+        let mut disasm = Disassembler::default();
+        let out = disasm.disassemble_at(0, &pe);
+        if let Err(ref e) = out {
             if !DisassemblyError::maybe_show(e, &pe.code) {
                 println!("ERROR: {}", e);
             }
         }
-        let bc = bc?;
-        println!("i386 -\n{}", bc);
+
+        println!("i386 -");
+        for bc in disasm.build_memory_view(&pe) {
+            println!("{}", bc);
+        }
     } else {
         println!("code -");
         print!("  ");

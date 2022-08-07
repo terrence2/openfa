@@ -27,6 +27,7 @@ bindings.bind("space", "game.boresight()");
 //orrery.set_unix_ms(1648921040614.2175);
 orrery.set_unix_ms(1648903175246.7478);
 
+game.attach_camera();
 game.load_mission("~V02.M");
 //game.load_mission("~B02.M");
 //game.load_mission("UKR01.M");
@@ -55,11 +56,13 @@ game.load_mission("~V02.M");
 //widget.toggle_terminal();
 //libs.find("~*.M");
 
-@Player.dynamics.show_force_vectors();
-@Player.dynamics.show_velocity_vector();
+//@Player.dynamics.show_force_vectors();
+//@Player.dynamics.show_velocity_vector();
+//
+//@Player.dynamics.coef_mq := 0.0;
+//@Player.dynamics.coef_malpha := 0.0;
+//@Player.dynamics.coef_malphadot := 0.0;
+//@Player.dynamics.coef_mde := 1.0;
+//@Player.dynamics.coef_lift_slope := 1.0;
 
-@Player.dynamics.coef_mq := 0.0;
-@Player.dynamics.coef_malpha := 0.0;
-@Player.dynamics.coef_malphadot := 0.0;
-@Player.dynamics.coef_mde := 1.0;
-@Player.dynamics.coef_lift_slope := 1.0;
+//game.spawn_in("F29.PT");

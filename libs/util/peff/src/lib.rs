@@ -12,8 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(clippy::transmute_ptr_to_ptr)]
-
+use ansi::ansi;
 use anyhow::{anyhow, bail, ensure, Result};
 use bitflags::bitflags;
 use log::trace;
@@ -32,6 +31,9 @@ pub struct PortableExecutable {
     // Maps from vaddr (as we may see in CODE) to the function name to thunk to.
     pub thunks: Vec<Thunk>,
 
+    // Indirect jump block at end of code
+    pub trampolines: Vec<Trampoline>,
+
     // A list of offsets in CODE containing a 32bit address that needs to be relocated in memory.
     // The base is always 0, so just add the address of CODE.
     pub relocs: Vec<u32>,
@@ -41,6 +43,9 @@ pub struct PortableExecutable {
 
     // Stored section headers, so that we can interpret thunks and relocs.
     pub section_info: HashMap<String, SectionInfo>,
+
+    // Whatever value relocate was called with.
+    pub relocation_target: u32,
 
     // The assumed mmap location of the file.
     pub image_base: u32,
@@ -54,11 +59,140 @@ pub struct PortableExecutable {
 
 #[derive(Debug, Clone)]
 pub struct Thunk {
-    pub name: String,
     // The name of this import.
-    pub ordinal: u32,
+    pub name: String,
+
     // The ordinal of this import.
-    pub vaddr: u32, // Virtual address of the thunk of this symbol.
+    pub ordinal: u32,
+
+    // Virtual address of the thunk of this symbol.
+    pub vaddr: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Trampoline {
+    // Offset is from the start of the code section.
+    pub offset: usize,
+
+    // The name attached to the thunk that would populate this trampoline.
+    pub name: String,
+
+    // Where this trampoline would indirect to, if jumped to.
+    pub target: u32,
+
+    // Shape files call into engine functions by setting up a stack frame
+    // and then returning. The target of this is always one of these trampolines
+    // stored at the tail of the PE. Store the in-memory location of the
+    // thunk for fast comparison with relocated addresses.
+    pub mem_location: u32,
+
+    // Whatever tool was used to link .SH's bakes in a direct pointer to the GOT
+    // PLT base (e.g. target) as the data location. Presumably when doing
+    // runtime linking, it uses the IAT's name as a tag and rewrites the direct
+    // load to the real address of the symbol (and not a split read of the code
+    // and reloc in the GOT). These appear to be both global and per-object data
+    // depending on the data -- e.g. brentObjectId is probably per-object and
+    // _currentTicks is probably global?
+    //
+    // A concrete example; if the inline assembly does:
+    //    `mov %ebp, [<addr of GOT of data>]`
+    //
+    // The runtime would presumably use the relocation of the above addr as an
+    // opportunity to rewrite the load as a reference to the real memory. We
+    // need to take all of this into account when interpreting the referencing
+    // code.
+    pub is_data: bool,
+}
+
+impl Trampoline {
+    pub const SIZE: usize = 6;
+
+    pub fn has_trampoline(offset: usize, code: &[u8]) -> bool {
+        // pe.section_info.contains_key(".idata") &&
+        code.len() >= offset + Self::SIZE && code[offset] == 0xFF && code[offset + 1] == 0x25
+    }
+
+    pub fn from_code(
+        thunks: &[Thunk],
+        image_vbase: u32,
+        offset: usize,
+        code: &[u8],
+    ) -> Result<Self> {
+        ensure!(Self::has_trampoline(offset, code), "not a trampoline");
+        let target = TrampolineEntry::overlay(&code[offset..offset + Self::SIZE])?.target;
+        let thunk = Self::find_matching_thunk(image_vbase, target, thunks)?;
+        // FIXME: update is_data in caller?
+        // let is_data = DATA_RELOCATIONS.contains(&thunk.name);
+        Ok(Trampoline {
+            offset,
+            name: thunk.name.clone(),
+            target,
+            mem_location: offset as u32,
+            is_data: false,
+        })
+    }
+
+    fn find_matching_thunk(image_vbase: u32, addr: u32, thunks: &[Thunk]) -> Result<&Thunk> {
+        // The reason we have to process trampolines during load and not, perhaps,
+        // after relocation is that not all SH files contain relocs for the thunk
+        // targets(!). This is yet more evidence that they're not actually using
+        // LoadLibrary to put shapes in memory. They're probably only using the
+        // relocation list to rewrite data access with the thunks as tags. We're
+        // using relocation, however, to help decode. So if the thunks are not
+        // relocated automatically we have to check the relocated value
+        // manually.
+
+        // Since we're checking before relocation, this should "just work", even
+        // though not all of the pointers here have relocation entries. e.g. the
+        // raw values should be the same.
+        trace!("looking for target 0x{:X} in {} thunks", addr, thunks.len());
+        for thunk in thunks.iter() {
+            if addr == thunk.vaddr {
+                return Ok(thunk);
+            }
+        }
+
+        // Also, in USNF, some of the thunks contain the base address already,
+        // so treat them like a normal code pointer.
+        let thunk_target = addr - image_vbase;
+        trace!(
+            "looking for target 0x{:X} in {} thunks",
+            thunk_target,
+            thunks.len()
+        );
+        for thunk in thunks.iter() {
+            if thunk_target == thunk.vaddr {
+                return Ok(thunk);
+            }
+        }
+
+        bail!("did not find thunk with a target of {:08X}", thunk_target)
+    }
+
+    pub fn size(&self) -> usize {
+        6
+    }
+
+    pub fn magic(&self) -> &'static str {
+        "Tramp"
+    }
+
+    pub fn at_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn show(&self) -> String {
+        format!(
+            "@{:04X} {}Tramp{}: {}{}{} = {:04X}",
+            self.offset,
+            ansi().yellow().bold(),
+            ansi(),
+            ansi().yellow(),
+            self.name,
+            ansi(),
+            self.target
+        )
+    }
 }
 
 pub struct SectionInfo {
@@ -286,9 +420,11 @@ impl PortableExecutable {
             let relocs = PortableExecutable::parse_relocs(reloc_data, None)?;
             return Ok(PortableExecutable {
                 thunks,
+                trampolines: Vec::new(),
                 relocs,
                 code: Vec::new(),
                 section_info: Self::owned_section_info(&sections),
+                relocation_target: 0,
                 image_base: win.image_base(),
                 code_vaddr: 0,
                 code_addr: 0,
@@ -302,12 +438,19 @@ impl PortableExecutable {
         };
         let (_, reloc_data) = sections[".reloc"];
         let relocs = PortableExecutable::parse_relocs(reloc_data, Some(code_section))?;
+        let trampolines = PortableExecutable::parse_trampolines(
+            &thunks,
+            win.image_base(), /*+ code_section.virtual_address()*/
+            code,
+        )?;
 
         Ok(PortableExecutable {
             thunks,
+            trampolines,
             relocs,
             code: code.to_owned(),
             section_info: Self::owned_section_info(&sections),
+            relocation_target: 0,
             image_base: win.image_base(),
             code_vaddr: code_section.virtual_address(),
             code_addr: code_section.virtual_address(),
@@ -502,8 +645,33 @@ impl PortableExecutable {
         0
     }
 
+    fn parse_trampolines(
+        thunks: &[Thunk],
+        image_vbase: u32,
+        code: &[u8],
+    ) -> Result<Vec<Trampoline>> {
+        let mut trampolines = Vec::new();
+        if code.len() < Trampoline::SIZE {
+            return Ok(trampolines);
+        }
+        let mut offset = code.len() - Trampoline::SIZE;
+        while offset > 0 {
+            if Trampoline::has_trampoline(offset, code) {
+                let tramp = Trampoline::from_code(thunks, image_vbase, offset, code)?;
+                trace!("found trampoline: {}", tramp.show());
+                trampolines.push(tramp);
+            } else {
+                break;
+            }
+            offset -= Trampoline::SIZE;
+        }
+        trampolines.reverse();
+        Ok(trampolines)
+    }
+
     pub fn relocate(&mut self, target: u32) -> Result<()> {
-        let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
+        self.relocation_target = target;
+        let reloc_delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
         for &reloc in self.relocs.iter() {
             let reloc = reloc as usize;
             let pcode = u32::from_le_bytes((&self.code[reloc..reloc + 4]).try_into()?);
@@ -511,61 +679,64 @@ impl PortableExecutable {
                 "Relocating word at 0x{:04X} from 0x{:08X} to 0x{:08X}",
                 reloc as usize,
                 pcode,
-                delta.apply(pcode)
+                reloc_delta.apply(pcode)
             );
             // The safe version is less clear, but supports non little-endian architectures.
-            // { *pcode = delta.apply(*pcode); }
-            self.code[reloc..reloc + 4].copy_from_slice(&delta.apply(pcode).to_le_bytes());
+            // { *pcode = reloc_delta.apply(*pcode); }
+            self.code[reloc..reloc + 4].copy_from_slice(&reloc_delta.apply(pcode).to_le_bytes());
         }
 
         // Note: section headers and thunks do not get image base I guess?
-        let delta = RelocationDelta::new(target, self.code_vaddr);
+        let thunk_delta = RelocationDelta::new(target, self.code_vaddr);
         for info in self.section_info.values_mut() {
             trace!(
                 "Relocating section vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
                 info.virtual_address,
-                delta.delta(),
-                delta.apply(info.virtual_address)
+                thunk_delta.delta(),
+                thunk_delta.apply(info.virtual_address)
             );
-            info.virtual_address = delta.apply(info.virtual_address);
+            info.virtual_address = thunk_delta.apply(info.virtual_address);
         }
         for thunk in self.thunks.iter_mut() {
             trace!(
                 "Relocating thunk vaddr: 0x{:08X} + 0x{:08X} = 0x{:08X}",
                 thunk.vaddr,
-                delta.delta(),
-                delta.apply(thunk.vaddr)
+                thunk_delta.delta(),
+                thunk_delta.apply(thunk.vaddr)
             );
-            thunk.vaddr = delta.apply(thunk.vaddr);
+            thunk.vaddr = thunk_delta.apply(thunk.vaddr);
+        }
+
+        // Note: trampolines are part of the code, so they already have vcode from reloc
+        //       ...except for USNF, which doesn't include the trampoline table in relocs
+        let tramp_delta = RelocationDelta::new(target, self.image_base);
+        for trampoline in self.trampolines.iter_mut() {
+            trace!(
+                "Relocating trampoline location: 0x{:08X} + 0x{:08X} = 0x{:08X}",
+                trampoline.mem_location,
+                tramp_delta.delta(),
+                tramp_delta.apply(trampoline.mem_location)
+            );
+            let mut mem_location = tramp_delta.apply(trampoline.mem_location);
+            if mem_location & target != target {
+                let usnf_delta = RelocationDelta::new(target, self.code_vaddr);
+                trace!(
+                    "Adjust failed trampoline with vaddr: {:08X} + {:08X} => {:08X}",
+                    trampoline.mem_location,
+                    usnf_delta.delta(),
+                    usnf_delta.apply(trampoline.mem_location)
+                );
+                mem_location = usnf_delta.apply(trampoline.mem_location) + self.code_vaddr;
+            }
+            trampoline.mem_location = mem_location;
+            assert_eq!(
+                trampoline.mem_location & target,
+                target,
+                "failed relocation"
+            );
         }
 
         Ok(())
-    }
-
-    // Relocates a relative pointer to a section or thunk to an absolute address,
-    // given the target load address.
-    pub fn relocate_thunk_pointer(&self, target: u32, addr: u32) -> u32 {
-        let delta = RelocationDelta::new(target, self.code_vaddr);
-        trace!(
-            "Relocating pointer: 0x{:08X} + 0x{:08X} = 0x{:08X}",
-            addr,
-            delta.delta(),
-            delta.apply(addr)
-        );
-        delta.apply(addr)
-    }
-
-    // Relocates a relative pointer to code to an absolute address, given the
-    // target load address.
-    pub fn relocate_pointer(&self, target: u32, addr: u32) -> u32 {
-        let delta = RelocationDelta::new(target, self.image_base + self.code_vaddr);
-        trace!(
-            "Relocating pointer: 0x{:08X} + 0x{:08X} = 0x{:08X}",
-            addr,
-            delta.delta(),
-            delta.apply(addr)
-        );
-        delta.apply(addr)
     }
 }
 
@@ -667,6 +838,12 @@ struct SectionHeader {
     characteristics: u32,
 }
 
+#[packed_struct]
+struct TrampolineEntry {
+    jmp: u16,
+    target: u32,
+}
+
 bitflags! {
     struct SectionFlags : u32 {
         const _1 = 0x0000_0001;  // Reserved for future use.
@@ -763,6 +940,7 @@ mod tests {
                 .chain(catalog.find_with_extension("LAY")?.iter())
                 .chain(catalog.find_with_extension("DLG")?.iter())
                 .chain(catalog.find_with_extension("MNU")?.iter())
+                .chain(catalog.find_with_extension("MC")?.iter())
             {
                 let meta = catalog.stat(*fid)?;
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());

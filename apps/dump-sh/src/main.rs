@@ -17,17 +17,12 @@ use catalog::{Catalog, FileId};
 use lib::{GameInfo, Libs, LibsOpts};
 use reverse::b2h;
 use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
-use simplelog::*;
 use std::{collections::HashMap, fs};
 use structopt::StructOpt;
 
 /// SH format slicing and discovery tooling
 #[derive(Debug, StructOpt)]
 struct Opt {
-    /// Trace execution
-    #[structopt(short, long)]
-    verbose: bool,
-
     /// Show all instructions
     #[structopt(short = "a", long = "all")]
     show_all: bool,
@@ -81,13 +76,8 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     let opt = Opt::from_args();
-    let level = if opt.verbose {
-        LevelFilter::Trace
-    } else {
-        LevelFilter::Warn
-    };
-    TermLogger::init(level, Config::default())?;
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
@@ -155,7 +145,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
         for sh_instr in shape.instrs.iter() {
             if let sh::Instr::X86Code(x86) = sh_instr {
                 let mut pos = 0;
-                for instr in &x86.bytecode.instrs {
+                for instr in x86.bytecode.instrs() {
                     for operand in &instr.operands {
                         if let i386::Operand::Memory(memref) = operand {
                             if let Ok(tramp) = shape.lookup_trampoline_by_offset(
@@ -197,7 +187,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
         let mut dedup = HashMap::new();
         for vinstr in shape.instrs {
             if let sh::Instr::X86Code(x86) = vinstr {
-                for instr in &x86.bytecode.instrs {
+                for instr in x86.bytecode.instrs() {
                     for operand in &instr.operands {
                         if let i386::Operand::Memory(memref) = operand {
                             let key = format!("{}", memref);

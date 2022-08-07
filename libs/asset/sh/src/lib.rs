@@ -19,15 +19,16 @@ mod instr;
 pub use crate::instr::{
     read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
     JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
-    Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, X86Trampoline, XformUnmask,
-    XformUnmask4,
+    Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, XformUnmask, XformUnmask4,
+    DATA_RELOCATIONS,
 };
 use ansi::{ansi, Color};
 use anyhow::{anyhow, bail, ensure, Result};
 use byteorder::{ByteOrder, LittleEndian};
-use lazy_static::lazy_static;
 use log::trace;
+use once_cell::sync::Lazy;
 use packed_struct::packed_struct;
+use peff::{PortableExecutable, Trampoline};
 use reverse::{bs2s, bs_2_i16, p2s};
 use std::{
     cmp,
@@ -55,11 +56,9 @@ use std::{
 
 pub const SHAPE_LOAD_BASE: u32 = 0xAA00_0000;
 
-lazy_static! {
-    // Virtual instructions that have a one-byte header instead of
-    static ref ONE_BYTE_MAGIC: HashSet<u8> =
-        [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect();
-}
+// Virtual instructions that have a one-byte header instead of the regular word.
+static ONE_BYTE_MAGIC: Lazy<HashSet<u8>> =
+    Lazy::new(|| [0x1E, 0x66, 0xFC, 0xFF].iter().cloned().collect());
 
 // No idea what this does, but there is a 16bit count in the middle with
 // count bytes following it.
@@ -1005,7 +1004,7 @@ pub enum Instr {
 
     // Raw i386 bitcode used as a scripting language.
     X86Code(X86Code),
-    X86Trampoline(X86Trampoline),
+    X86Trampoline(Trampoline),
     X86Message(X86Message),
     UnknownUnknown(UnknownUnknown),
     UnknownData(UnknownData),
@@ -1083,6 +1082,78 @@ macro_rules! impl_for_all_instr {
 }
 
 impl Instr {
+    fn is_instruction_header(prefix: &[u8]) -> bool {
+        let b0 = match prefix[0] {
+            Header::MAGIC => true,
+            PtrToObjEnd::MAGIC => true,
+            SourceRef::MAGIC => true,
+            Jump::MAGIC => true,
+            JumpToDamage::MAGIC => true,
+            JumpToDetail::MAGIC => true,
+            JumpToFrame::MAGIC => true,
+            JumpToLOD::MAGIC => true,
+            TextureRef::MAGIC => true,
+            TextureIndex::MAGIC => true,
+            VertexBuf::MAGIC => true,
+            Facet::MAGIC => true,
+            VertexNormal::MAGIC => true,
+            Unmask::MAGIC => true,
+            Unmask4::MAGIC => true,
+            XformUnmask::MAGIC => true,
+            XformUnmask4::MAGIC => true,
+            Unk06::MAGIC => true,
+            Unk08::MAGIC => true,
+            Unk0C::MAGIC => true,
+            Unk0E::MAGIC => true,
+            Unk10::MAGIC => true,
+            Unk2E::MAGIC => true,
+            Unk3A::MAGIC => true,
+            Unk44::MAGIC => true,
+            Unk46::MAGIC => true,
+            Unk4E::MAGIC => true,
+            Unk66::MAGIC => true,
+            Unk68::MAGIC => true,
+            Unk6C::MAGIC => true,
+            Unk50::MAGIC => true,
+            Unk72::MAGIC => true,
+            Unk74::MAGIC => true,
+            Unk76::MAGIC => true,
+            Unk78::MAGIC => true,
+            Unk7A::MAGIC => true,
+            Unk96::MAGIC => true,
+            UnkB2::MAGIC => true,
+            UnkB8::MAGIC => true,
+            UnkCA::MAGIC => true,
+            UnkCE::MAGIC => true,
+            UnkD0::MAGIC => true,
+            UnkD2::MAGIC => true,
+            UnkDA::MAGIC => true,
+            UnkDC::MAGIC => true,
+            UnkE4::MAGIC => true,
+            UnkE6::MAGIC => true,
+            UnkE8::MAGIC => true,
+            UnkEA::MAGIC => true,
+            UnkEE::MAGIC => true,
+
+            UnkBC::MAGIC => true,
+            X86Code::MAGIC => true,
+
+            Pad1E::MAGIC => return true,
+            Unk38::MAGIC => return true,
+
+            // TrailerUnknown::MAGIC => true,
+            // Trampoline::MAGIC => true,
+            // X86Message::MAGIC => true,
+            // UnknownUnknown::MAGIC => true,
+            // UnknownData::MAGIC => true,
+            // EndOfObject::MAGIC => true,
+            // EndOfShape::MAGIC => true,
+            _ => false,
+        };
+
+        b0 && prefix.len() > 1 && prefix[1] == 0
+    }
+
     pub fn show(&self) -> String {
         impl_for_all_instr!(self, show)
     }
@@ -1142,27 +1213,31 @@ macro_rules! consume_instr2 {
 
 pub struct RawShape {
     pub instrs: Vec<Instr>,
-    pub trampolines: Vec<X86Trampoline>,
     offset_map: HashMap<usize, usize>,
-    pub pe: peff::PortableExecutable,
+    pub pe: PortableExecutable,
 }
 
 impl RawShape {
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
-        let mut pe = peff::PortableExecutable::from_bytes(data)?;
+        let mut pe = PortableExecutable::from_bytes(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
         // 0-based and tags all local pointers with an obvious flag.
         pe.relocate(SHAPE_LOAD_BASE)?;
-        let trampolines = Self::find_trampolines(&pe)?;
-        let eos = Self::find_end_of_shape(&pe, &trampolines)?;
-        let mut trailer = trampolines
+        for trampoline in pe.trampolines.iter_mut() {
+            if DATA_RELOCATIONS.contains(&trampoline.name) {
+                trampoline.is_data = true;
+            }
+        }
+        let eos = Self::find_end_of_shape(&pe)?;
+        let mut trailer = pe
+            .trampolines
             .iter()
             .map(|t| Instr::X86Trampoline(t.to_owned()))
             .collect::<Vec<_>>();
         trailer.insert(0, Instr::EndOfShape(eos));
 
-        let mut instrs = Self::read_sections(&pe, &trampolines, &trailer)?;
+        let mut instrs = Self::read_sections(&pe, &trailer)?;
         instrs.append(&mut trailer);
 
         // References inside shape are relative byte offsets. We map these
@@ -1177,7 +1252,6 @@ impl RawShape {
 
         Ok(RawShape {
             instrs,
-            trampolines,
             offset_map,
             pe,
         })
@@ -1203,34 +1277,8 @@ impl RawShape {
         uniq
     }
 
-    fn find_trampolines(pe: &peff::PortableExecutable) -> Result<Vec<X86Trampoline>> {
-        if !pe.thunks.is_empty() {
-            trace!("Looking for thunks in the following table:");
-            for thunk in &pe.thunks {
-                trace!("    {:20} @ 0x{:X}", thunk.name, thunk.vaddr);
-            }
-        }
-        let mut offset = pe.code.len() - 6;
-        let mut trampolines = Vec::new();
-        while offset > 0 {
-            if X86Trampoline::has_trampoline(offset, pe) {
-                let tramp = X86Trampoline::from_pe(offset, pe)?;
-                trace!("found trampoline: {}", tramp.show());
-                trampolines.push(tramp);
-            } else {
-                break;
-            }
-            offset -= 6;
-        }
-        trampolines.reverse();
-        Ok(trampolines)
-    }
-
-    fn find_end_of_shape(
-        pe: &peff::PortableExecutable,
-        trampolines: &[X86Trampoline],
-    ) -> Result<EndOfShape> {
-        let end_offset = pe.code.len() - trampolines.len() * X86Trampoline::SIZE;
+    fn find_end_of_shape(pe: &PortableExecutable) -> Result<EndOfShape> {
+        let end_offset = pe.code.len() - pe.trampolines.len() * Trampoline::SIZE;
         let mut offset = end_offset - 1;
         while pe.code[offset] == 0 {
             offset -= 1;
@@ -1257,11 +1305,7 @@ impl RawShape {
         sum
     }
 
-    fn read_sections(
-        pe: &peff::PortableExecutable,
-        trampolines: &[X86Trampoline],
-        trailer: &[Instr],
-    ) -> Result<Vec<Instr>> {
+    fn read_sections(pe: &PortableExecutable, trailer: &[Instr]) -> Result<Vec<Instr>> {
         let mut offset = 0;
         let mut instrs = Vec::new();
         let end_offset = pe.code.len() - Self::end_size(trailer);
@@ -1272,7 +1316,7 @@ impl RawShape {
             //     bs2s(&pe.code[offset..cmp::min(pe.code.len(), offset + 20)])
             // );
             //assert!(ALL_OPCODES.contains(&pe.code[offset]));
-            Self::read_instr(&mut offset, pe, trampolines, trailer, &mut instrs)?;
+            Self::read_instr(&mut offset, pe, trailer, &mut instrs)?;
             trace!("=>: {}", instrs.last().unwrap().show());
         }
 
@@ -1281,8 +1325,7 @@ impl RawShape {
 
     fn read_instr(
         offset: &mut usize,
-        pe: &peff::PortableExecutable,
-        trampolines: &[X86Trampoline],
+        pe: &PortableExecutable,
         trailer: &[Instr],
         instrs: &mut Vec<Instr>,
     ) -> Result<()> {
@@ -1355,7 +1398,7 @@ impl RawShape {
                     } else {
                         "unknown_source".to_owned()
                     };
-                X86Code::from_bytes(&name, offset, pe, trampolines, trailer, instrs)?;
+                X86Code::from_bytes(&name, offset, pe, trailer, instrs)?;
             }
             // Zero is the magic for the trailer (sans trampolines).
             0 => {
@@ -1437,7 +1480,7 @@ impl RawShape {
                     offset: *offset,
                     data: pe.code[*offset..end_offset].to_owned(),
                 };
-                *offset = pe.code.len();
+                *offset = end_offset;
                 instrs.push(Instr::UnknownUnknown(instr));
 
                 // Someday we'll be able to turn on this bail.
@@ -1469,22 +1512,22 @@ impl RawShape {
         bail!("no instruction at x86_offset: {:08X}", x86_offset)
     }
 
-    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Result<&X86Trampoline> {
-        for tramp in &self.trampolines {
+    pub fn lookup_trampoline_by_offset(&self, abs_offset: u32) -> Result<&Trampoline> {
+        for tramp in &self.pe.trampolines {
             if tramp.at_offset() == abs_offset as usize {
                 return Ok(tramp);
             }
         }
-        bail!("no trampoline at absolute offset: {:08X}", abs_offset);
+        bail!("no trampoline at absolute offset: {:08X}", abs_offset)
     }
 
-    pub fn lookup_trampoline_by_name(&self, name: &str) -> Result<&X86Trampoline> {
-        for tramp in &self.trampolines {
+    pub fn lookup_trampoline_by_name(&self, name: &str) -> Result<&Trampoline> {
+        for tramp in &self.pe.trampolines {
             if tramp.name == name {
                 return Ok(tramp);
             }
         }
-        bail!("no trampoline with name: {}", name);
+        bail!("no trampoline with name: {}", name)
     }
 
     pub fn has_damage_section(&self) -> bool {
@@ -1519,7 +1562,6 @@ fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
 mod tests {
     use super::*;
     use lib::Libs;
-    use simplelog::{Config, LevelFilter, TermLogger};
 
     fn offset_of_trailer(shape: &RawShape) -> Option<usize> {
         let mut offset = None;
@@ -1568,7 +1610,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Result<()> {
-        TermLogger::init(LevelFilter::Info, Config::default())?;
+        env_logger::init();
 
         #[allow(unused_variables, unused_mut)]
         let mut freq: HashMap<&'static str, usize> = HashMap::new();
@@ -1630,7 +1672,12 @@ mod tests {
                 // Ensure that all offsets and sizes line up.
                 let mut expect_offset = 0;
                 for instr in &shape.instrs {
-                    assert_eq!(expect_offset, instr.at_offset());
+                    assert_eq!(
+                        expect_offset,
+                        instr.at_offset(),
+                        "instr size and offset misaligned at 0x{:08X}",
+                        expect_offset
+                    );
                     expect_offset += instr.size();
                 }
             }

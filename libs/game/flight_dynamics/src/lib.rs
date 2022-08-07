@@ -19,11 +19,10 @@ pub use crate::control::{
     hook::Hook, rudder::Rudder,
 };
 use absolute_unit::{
-    degrees, degrees_per_second, degrees_per_second2, kilograms, kilograms_meter2, knots, meters,
-    meters2, meters_per_second, meters_per_second2, newton_meters, newtons, radians,
-    radians_per_second, radians_per_second2, scalar, seconds, Acceleration, Angle,
-    AngularAcceleration, AngularVelocity, Degrees, Force, Kilograms, Meters, Newtons, Radians,
-    RotationalInertia, Scalar, Seconds, Torque, Velocity,
+    degrees, degrees_per_second, degrees_per_second2, meters, meters2, meters_per_second,
+    meters_per_second2, newton_meters, newtons, radians, radians_per_second, radians_per_second2,
+    scalar, seconds, Angle, AngularAcceleration, Degrees, Force, Kilograms, Meters, Newtons,
+    Radians, Seconds,
 };
 use animate::TimeStep;
 use anyhow::Result;
@@ -414,6 +413,7 @@ impl FlightDynamics {
         self.max_g_load
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn update_state(
         &mut self,
         timestep: &TimeStep,
@@ -432,7 +432,7 @@ impl FlightDynamics {
         draw_state: &mut DrawState,
     ) {
         let dt = timestep.step();
-        let pt = xt.pt().expect("PT");
+        let _pt = xt.pt().expect("PT");
 
         airbrake.sys_tick(draw_state);
         flaps.sys_tick(draw_state);
@@ -445,6 +445,7 @@ impl FlightDynamics {
     }
 
     // Algorithm taken from David Allerton's Principles of Flight Simulation.
+    #[allow(clippy::too_many_arguments)]
     fn simulate(
         &mut self,
         timestep: &TimeStep,
@@ -455,9 +456,9 @@ impl FlightDynamics {
         bay: &Bay,
         gear: &Gear,
         vehicle: &VehicleState,
-        ailerons: &Ailerons,
+        _ailerons: &Ailerons,
         pitch_inceptor: &PitchInceptor,
-        rudder: &Rudder,
+        _rudder: &Rudder,
         motion: &mut BodyMotion,
         frame: &mut WorldSpaceFrame,
         mut markers: Option<Mut<EntityMarkers>>,
@@ -491,7 +492,7 @@ impl FlightDynamics {
         assert!(air_density.is_finite(), "NaN air density at {altitude}");
 
         let mut u = motion.vehicle_forward_velocity();
-        let mut v = motion.vehicle_sideways_velocity();
+        let v = motion.vehicle_sideways_velocity();
         let mut w = motion.vehicle_vertical_velocity();
         let mut q = motion.vehicle_pitch_velocity();
         let p = motion.vehicle_roll_velocity();
@@ -501,7 +502,7 @@ impl FlightDynamics {
         let velocity_cg_2 = u * u + v * v + w * w; // m^2/s^2
         let velocity_cg = velocity_cg_2.sqrt();
         let mut u_dot = motion.vehicle_forward_acceleration(); // u*
-        let mut v_dot = motion.vehicle_sideways_acceleration(); // v*
+        let v_dot = motion.vehicle_sideways_acceleration(); // v*
         let mut w_dot = motion.vehicle_vertical_acceleration(); // w*
         let max_aoa = radians!(pt.gpull_aoa);
         let alpha = radians!(w.f64().atan2(u.f64()));
@@ -526,7 +527,7 @@ impl FlightDynamics {
 
         // Alpha_dot and beta_dot are trig approximations, so the units intentionally don't
         // make much of any sense.
-        let alpha_dot = radians_per_second!(if relative_eq!(uw_mag.f64(), 0f64) {
+        let _alpha_dot = radians_per_second!(if relative_eq!(uw_mag.f64(), 0f64) {
             0_f64
         } else {
             (u.f64() * w_dot.f64() - w.f64() * u_dot.f64()) / uw_mag.f64()
@@ -538,7 +539,7 @@ impl FlightDynamics {
         let beta_dot_numerator_2 = v.f64() * (u.f64() * u_dot.f64() + w.f64() * w_dot.f64());
         let beta_dot_numerator = beta_dot_numerator_1 - beta_dot_numerator_2;
         let beta_dot_denominator = uw_mag.f64() * velocity_cg_2.f64();
-        let beta_dot = radians_per_second!(if relative_eq!(beta_dot_denominator, 0f64) {
+        let _beta_dot = radians_per_second!(if relative_eq!(beta_dot_denominator, 0f64) {
             0f64
         } else {
             beta_dot_numerator / beta_dot_denominator
@@ -564,9 +565,9 @@ impl FlightDynamics {
         let engine_thrust_y = newtons!(0_f64);
         let engine_thrust_z = newtons!(0_f64);
         let mass_kg = vehicle.current_mass();
-        let engine_moment_pitch = newton_meters!(0_f64);
-        let engine_moment_yaw = newton_meters!(0_f64);
-        let engine_moment_roll = newton_meters!(0_f64);
+        let _engine_moment_pitch = newton_meters!(0_f64);
+        let _engine_moment_yaw = newton_meters!(0_f64);
+        let _engine_moment_roll = newton_meters!(0_f64);
 
         // //////////////////// LIFT ////////////////////
         // Coefficients of lift are linear from C{L0} to C{Lmax}. FA specifies the max
@@ -726,8 +727,8 @@ impl FlightDynamics {
         debug_assert!(w_dot.is_finite(), "NaN w_dot");
 
         // //////////////////// PITCH ////////////////////
-        let dist_cg_to_lift = meters!(0f64);
-        let gear_moment_pitch = newton_meters!(0f64);
+        let _dist_cg_to_lift = meters!(0f64);
+        let _gear_moment_pitch = newton_meters!(0f64);
 
         // Figure out the desired turn rate from the pitch inceptor
         let max_target_alpha =
@@ -743,14 +744,14 @@ impl FlightDynamics {
         // TODO: Puff_rot_x? Use acc/dacc?
         let target_accel = brv_x_acc * scalar!(delta_velocity_f);
         let q_dot: AngularAcceleration<Radians, Seconds> = radians_per_second2!(target_accel);
-        if let Some(em) = markers.as_mut() {
-            println!(
-                "target: {:0.4} - {:0.4} -> {:0.4} / {:0.4}",
-                degrees!(target_alpha),
-                degrees!(alpha),
-                degrees_per_second!(target_velocity),
-                degrees_per_second2!(target_accel),
-            );
+        if let Some(_em) = markers.as_mut() {
+            // println!(
+            //     "target: {:0.4} - {:0.4} -> {:0.4} / {:0.4}",
+            //     degrees!(target_alpha),
+            //     degrees!(alpha),
+            //     degrees_per_second!(target_velocity),
+            //     degrees_per_second2!(target_accel),
+            // );
         }
 
         /*
@@ -931,12 +932,4 @@ impl FlightDynamics {
             );
         }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
 }

@@ -12,17 +12,22 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-#![allow(clippy::transmute_ptr_to_ptr)]
-
 use crate::lut::{AddressingMethod, OpCodeDef, OperandDef, OperandType};
 use ansi::ansi;
 use anyhow::{bail, ensure, Result};
-use log::trace;
+use log::{debug, trace};
+use peff::{PortableExecutable, Trampoline};
 use reverse::bs2s;
-use std::{cell::RefCell, fmt, fmt::Write, mem, rc::Rc};
+use std::{
+    collections::{HashSet, VecDeque},
+    fmt,
+    fmt::Write,
+    mem,
+};
 use thiserror::Error;
 
 pub use crate::lut::{Memonic, HAS_INLINE_REG, OPCODES, PREFIX_CODES, USE_REG_OPCODES};
+use std::fmt::Formatter;
 
 #[derive(Debug, Error)]
 pub enum DisassemblyError {
@@ -37,15 +42,15 @@ impl DisassemblyError {
         if let Some(&DisassemblyError::UnknownOpcode { ip, op: (op, ext) }) =
             e.downcast_ref::<DisassemblyError>()
         {
-            trace!("Unknown OpCode: {:2X} /{}", op, ext);
+            debug!("Unknown OpCode: 0x{:2X} /{}", op, ext);
             let line1 = bs2s(&code[0..(ip + 20).min(code.len())]);
             let mut line2 = String::new();
             for _ in 0..(ip - 1) * 3 {
                 line2 += "-";
             }
             line2 += "^";
-            trace!("{}", line1);
-            trace!("{}", line2);
+            debug!("{}", line1);
+            debug!("{}", line2);
 
             use std::fs::File;
             use std::io::*;
@@ -463,7 +468,12 @@ impl Operand {
                         MemRef::size_for_type(desc.ty, state)?,
                         &state.prefix,
                     )),
-                    _ => unreachable!(),
+                    OperandType::w => Operand::Memory(MemRef::base(
+                        Self::register(rm),
+                        MemRef::size_for_type(desc.ty, state)?,
+                        &state.prefix,
+                    )),
+                    _ => unreachable!("E/00/0-7"),
                 },
                 4 => {
                     let (scale, index, base) = state.read_sib(mod_, code, ip)?;
@@ -481,7 +491,7 @@ impl Operand {
                     MemRef::size_for_type(desc.ty, state)?,
                     &state.prefix,
                 )),
-                _ => unreachable!(),
+                _ => unreachable!("E/00"),
             },
             0b01 => {
                 let base = Self::register(rm);
@@ -510,9 +520,9 @@ impl Operand {
                     Self::register(rm),
                     state.prefix.toggle_operand_size,
                 )),
-                _ => unreachable!(),
+                _ => unreachable!("E/11"),
             },
-            _ => unreachable!(),
+            _ => unreachable!("E/"),
         })
     }
 
@@ -798,6 +808,7 @@ impl fmt::Display for Operand {
     }
 }
 
+#[derive(Debug)]
 struct OpPrefix {
     toggle_address_size: bool,
     toggle_operand_size: bool,
@@ -895,21 +906,21 @@ impl Instr {
         Err(DisassemblyError::UnknownOpcode { ip: *ip, op }.into())
     }
 
-    pub fn decode_one(code: &[u8], ip: &mut usize) -> Result<Instr> {
-        let initial_ip = *ip;
+    pub fn decode_one(code: &[u8], ipo: &mut usize) -> Result<Instr> {
+        let initial_ip = *ipo;
 
-        let prefix = OpPrefix::from_bytes(code, ip)?;
+        let prefix = OpPrefix::from_bytes(code, ipo)?;
 
-        let op = Self::read_op(code, ip)?;
+        let op = Self::read_op(code, ipo)?;
 
-        let opcode_desc = Self::lookup_op(op, ip)?;
+        let opcode_desc = Self::lookup_op(op, ipo)?;
 
         let mut operands = Vec::new();
         let mut decode_state = OperandDecodeState::initial(prefix, op.0);
         for operand_desc in opcode_desc.operands.iter() {
             operands.push(Operand::from_bytes(
                 code,
-                ip,
+                ipo,
                 operand_desc,
                 &mut decode_state,
             )?);
@@ -917,7 +928,7 @@ impl Instr {
         Ok(Instr {
             memonic: opcode_desc.memonic,
             operands,
-            raw: code[initial_ip..*ip].to_vec(),
+            raw: code[initial_ip..*ipo].to_vec(),
             context: None,
         })
     }
@@ -974,80 +985,384 @@ impl fmt::Display for Instr {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ByteCode {
-    pub start_addr: u32,
-    pub size: u32,
-    pub instrs: Vec<Instr>,
+// A chunk of code or data to map into the address space.
+pub enum MemBlock {
+    Code(ByteCode),
+    Data {
+        start_offset: usize,
+        start_addr: u32,
+        data: Vec<u8>,
+    },
 }
 
-impl ByteCode {
-    pub fn disassemble_until<F>(at_offset: usize, code: &[u8], f: F) -> Result<Self>
-    where
-        F: Fn(&[Instr]) -> bool,
-    {
-        trace!(
-            "Disassembling ->Ret @{:04X}: {}...",
-            at_offset,
-            bs2s(&code[..100.min(code.len())])
-        );
+impl fmt::Display for MemBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Code(block) => write!(f, "{}", block),
+            Self::Data {
+                start_offset, data, ..
+            } => {
+                writeln!(f, "  @{:04X}: {}", start_offset, bs2s(data))?;
+                writeln!(
+                    f,
+                    "  ascii: {}",
+                    std::str::from_utf8(data).unwrap_or("not text")
+                )
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Disassembler {
+    // All offsets are from pe.code start.
+    blocks: Vec<ByteCode>,
+
+    // Configuration.
+    non_standard_retpoline_names: HashSet<String>,
+}
+
+impl Disassembler {
+    // Configure with any retpoline targets that expect a non-x86 stack (and thus where the first
+    // push target is not a jump back into x86.)
+    pub fn add_non_standard_retpoline(&mut self, name: &str) {
+        self.non_standard_retpoline_names.insert(name.to_owned());
+    }
+
+    pub fn disassemble_fragment_at_virtual_offset(
+        code: &[u8],
+        offset: usize,
+        pe: &PortableExecutable,
+    ) -> Result<ByteCode> {
         let mut instrs = Vec::new();
-        let mut ip = 0usize;
+        let initial_ip = 0;
+        let mut ip = 0;
         while ip < code.len() {
             let instr = Instr::decode_one(code, &mut ip)?;
-            trace!("  @{}: {}", ip, instr);
+            debug!("  @{:04X}: {}", ip, instr);
             instrs.push(instr);
-            if f(&instrs) {
+        }
+        Ok(ByteCode {
+            start_offset: initial_ip + offset,
+            start_addr: u32::try_from(initial_ip)?.wrapping_add(pe.relocation_target),
+            size: ip - initial_ip,
+            instrs,
+        })
+    }
+
+    /// Find all bytecode and data blocks in the fragment at offset. Uses configuration
+    /// for knowing what targets should exit. We can start at an offset into .code, but
+    /// we don't know how far to decode because of the variable word length.
+    pub fn disassemble_at(&mut self, offset: usize, pe: &PortableExecutable) -> Result<()> {
+        // Start with the implicit jump into this code block.
+        let mut jump_targets = VecDeque::new();
+        jump_targets.push_back(offset);
+
+        // Follow all jumps until there is nothing left to follow.
+        while !jump_targets.is_empty() {
+            let jump_offset = jump_targets.pop_front().unwrap();
+            debug!(
+                "disassembling at 0x{:08X} with {} targets remaining",
+                jump_offset,
+                jump_targets.len()
+            );
+
+            // Check if we have already disassembled a block at this offset.
+            if !self.has_disassembled_at(jump_offset) {
+                let (block, new_jump_targets) = self.disassemble_block_at(jump_offset, pe)?;
+                debug!(
+                    "disassembled block of {} instrs at 0x{:08X}",
+                    block.instrs.len(),
+                    jump_offset
+                );
+                self.insert_block(block);
+                debug!("adding {} new jump targets", new_jump_targets.len(),);
+                for tgt in new_jump_targets {
+                    if let Err(cursor) = jump_targets.binary_search(&tgt) {
+                        jump_targets.insert(cursor, tgt);
+                    }
+                }
+            } else {
+                debug!("skipping duplicate block {:04X}", jump_offset);
+            }
+        }
+
+        Ok(())
+    }
+
+    // Insert in sorted order
+    fn insert_block(&mut self, block: ByteCode) {
+        if let Err(cursor) = self
+            .blocks
+            .binary_search_by_key(&block.start_offset, |v| v.start_offset)
+        {
+            self.blocks.insert(cursor, block);
+        }
+    }
+
+    fn has_disassembled_at(&self, offset: usize) -> bool {
+        for bc in &self.blocks {
+            if offset >= bc.start_offset as usize && offset < (bc.start_offset + bc.size) as usize {
+                return true;
+            }
+        }
+        false
+    }
+
+    // Execution (may) continue in a straight path until an unconditional jump happens.
+    // Conditional jumps off the mainline path expose other blocks that may need to be
+    // decoded. Some of these jumps will be above. Some of these jumps maybe into another
+    // block. We don't really care about this, but do need to track it.
+    fn disassemble_block_at(
+        &self,
+        offset: usize,
+        pe: &PortableExecutable,
+    ) -> Result<(ByteCode, HashSet<usize>)> {
+        let mut jump_targets = HashSet::new();
+        let mut instrs = Vec::new();
+        let initial_ipo = offset;
+        let mut ipo = offset;
+        while ipo < pe.code.len() {
+            let mut instr = Instr::decode_one(&pe.code, &mut ipo)?;
+            Self::annotate_instruction(
+                &mut instr,
+                if instrs.is_empty() {
+                    None
+                } else {
+                    Some(&instrs[instrs.len() - 1])
+                },
+                pe,
+            );
+            debug!("  @{:04X}: {}", ipo, instr);
+            instrs.push(instr);
+            if let Some(jump_target) = self.maybe_jump_target(&instrs, ipo, pe) {
+                jump_targets.insert(jump_target);
+            }
+            if Self::is_unconditional_jump(instrs[instrs.len() - 1].memonic) {
                 break;
             }
         }
-        Ok(Self {
-            start_addr: at_offset as u32,
-            size: Self::compute_size(&instrs) as u32,
-            instrs,
-        })
+        Ok((
+            ByteCode {
+                start_offset: initial_ipo,
+                size: ipo - initial_ipo,
+                start_addr: u32::try_from(initial_ipo)?.wrapping_add(pe.relocation_target),
+                instrs,
+            },
+            jump_targets,
+        ))
     }
 
-    pub fn disassemble_to_ret(at_offset: usize, code: &[u8]) -> Result<Self> {
-        Self::disassemble_until(at_offset, code, |instrs| {
-            instrs[instrs.len() - 1].memonic == Memonic::Return
-        })
-    }
-
-    pub fn disassemble_one(at_offset: usize, code: &[u8]) -> Result<Self> {
-        trace!(
-            "Disassembling One @{:04X}: {}...",
-            at_offset,
-            bs2s(&code[..10.min(code.len())])
-        );
-        let mut ip = 0usize;
-        let instrs = vec![Instr::decode_one(code, &mut ip)?];
-        Ok(Self {
-            start_addr: at_offset as u32,
-            size: Self::compute_size(&instrs) as u32,
-            instrs,
-        })
-    }
-
-    fn compute_size(instrs: &[Instr]) -> usize {
-        let mut sz = 0;
-        for instr in instrs.iter() {
-            sz += instr.size();
+    fn annotate_instruction(instr: &mut Instr, prev: Option<&Instr>, pe: &PortableExecutable) {
+        let mut context = None;
+        for op in &instr.operands {
+            if let Operand::Memory(ref mr) = op {
+                let mt = Self::find_trampoline_for_target(mr.displacement as u32, &pe.trampolines);
+                if let Ok(tramp) = mt {
+                    context = Some(tramp.name.to_owned());
+                }
+            }
         }
-        sz
+        if let Some(s) = context {
+            instr.set_context(&s);
+        }
+        if instr.memonic == Memonic::Return {
+            if let Some(push) = prev {
+                if push.memonic == Memonic::Push {
+                    if let Operand::Imm32s(v) = push.operands[0] {
+                        let push_value = (v as u32).wrapping_sub(pe.relocation_target) as usize;
+                        let trampoline =
+                            Self::find_trampoline_for_offset(push_value, &pe.trampolines);
+                        instr.set_context(&trampoline.name);
+                    }
+                }
+            }
+        }
     }
 
-    pub fn into_rc(self) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(self))
+    // If the given instruction is a jump, return the target offset (from pe.code start).
+    fn maybe_jump_target(
+        &self,
+        instrs: &[Instr],
+        ip: usize,
+        pe: &PortableExecutable,
+    ) -> Option<usize> {
+        let instr = &instrs[instrs.len() - 1];
+        match instr.memonic {
+            Memonic::Jump | Memonic::Jcc(_) => {
+                return Some(match &instr.operands[0] {
+                    // IP is already at end of instruction
+                    Operand::Imm32s(delta) => ip as isize + *delta as isize,
+                    // Note that backwards jumps can be encoded as unsigned in the instruction.
+                    Operand::Imm32(delta) => ip as isize + *delta as i32 as isize,
+                    _ => {
+                        panic!("unknown operand kind for jump: {:?}", instr.operands[0]);
+                    }
+                } as usize);
+            }
+            Memonic::Return => {
+                // If the return is not predictable, we don't need to track it, since we
+                // will only have gotten here via a matching call. If the prior op is a
+                // push, however, we are using a ret-poline and should track the target.
+                if instrs.len() < 2 {
+                    return None;
+                }
+                let push = &instrs[instrs.len() - 2];
+                if push.memonic == Memonic::Push {
+                    if let Operand::Imm32s(v) = push.operands[0] {
+                        let tramp_target = (v as u32).wrapping_sub(pe.relocation_target) as usize;
+                        let trampoline =
+                            Self::find_trampoline_for_offset(tramp_target, &pe.trampolines);
+
+                        // TODO: maybe there is a better way to filter out do_start_interp?
+                        if self.non_standard_retpoline_names.contains(&trampoline.name) {
+                            return None;
+                        }
+
+                        if instrs.len() < 3 {
+                            panic!(
+                                "unhandled push operand kind before ret: {:?}",
+                                push.operands[0]
+                            );
+                        }
+                        let retaddr = &instrs[instrs.len() - 3];
+                        if retaddr.memonic == Memonic::Push {
+                            match retaddr.operands[0] {
+                                Operand::Imm32s(v) => {
+                                    let ret_target =
+                                        (v as u32).wrapping_sub(pe.relocation_target) as usize;
+                                    return Some(ret_target);
+                                }
+                                _ => panic!("unknown operand kind for retpoline push"),
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn is_unconditional_jump(memonic: Memonic) -> bool {
+        matches!(memonic, Memonic::Jump | Memonic::Return)
+    }
+
+    fn find_trampoline_for_offset(offset: usize, trampolines: &[Trampoline]) -> &Trampoline {
+        for trampoline in trampolines {
+            if trampoline.offset == offset {
+                return trampoline;
+            }
+        }
+        panic!("expected all returns to jump to a trampoline")
+    }
+
+    fn find_trampoline_for_target(
+        target_addr: u32,
+        trampolines: &[Trampoline],
+    ) -> Result<&Trampoline> {
+        for tramp in trampolines {
+            trace!(
+                "checking {:08X} against {:20} @ loc:{:08X}",
+                target_addr,
+                tramp.name,
+                tramp.mem_location
+            );
+            if target_addr == tramp.mem_location {
+                return Ok(tramp);
+            }
+        }
+        bail!("no matching trampoline for exit")
+    }
+
+    pub fn blocks(&self) -> impl Iterator<Item = &ByteCode> {
+        self.blocks.iter()
+    }
+
+    pub fn build_memory_view(mut self, pe: &PortableExecutable) -> Vec<MemBlock> {
+        let mut out = Vec::new();
+        for (i, block) in self.blocks.drain(..).enumerate() {
+            if i == 0 {
+                out.push(MemBlock::Code(block));
+            } else {
+                let prev = &out[out.len() - 1];
+                let prev_end: usize = match prev {
+                    MemBlock::Code(bc) => bc.end_offset(),
+                    MemBlock::Data { .. } => panic!("data should always abut next block"),
+                };
+                assert!(prev_end <= block.start_offset());
+                if prev_end < block.start_offset() {
+                    out.push(MemBlock::Data {
+                        start_offset: prev_end,
+                        // Safe because we try_from for code blocks and this is derived.
+                        start_addr: (prev_end as u32).wrapping_add(pe.relocation_target),
+                        data: pe.code[prev_end..block.start_offset].to_owned(),
+                    });
+                }
+                out.push(MemBlock::Code(block));
+            }
+        }
+        out
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ByteCode {
+    pub(crate) instrs: Vec<Instr>,
+
+    // Initial offset within the code fragment passed to code.
+    start_offset: usize,
+
+    // Size in bytes of this code.
+    size: usize,
+
+    // Address when loaded into memory.
+    start_addr: u32,
+}
+
+impl ByteCode {
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    #[inline]
+    pub fn start_offset(&self) -> usize {
+        self.start_offset
+    }
+
+    #[inline]
+    pub fn end_offset(&self) -> usize {
+        self.start_offset + self.size
+    }
+
+    #[inline]
+    pub fn start_address(&self) -> u32 {
+        self.start_addr
+    }
+
+    #[inline]
+    pub fn end_address(&self) -> u32 {
+        self.start_addr + self.size as u32
+    }
+
+    pub fn instrs(&self) -> impl Iterator<Item = &Instr> {
+        self.instrs.iter()
+    }
+
+    pub fn merge(&mut self, mut other: ByteCode) {
+        assert_eq!(self.start_offset + self.size, other.start_offset);
+        self.size += other.size;
+        self.instrs.append(&mut other.instrs);
     }
 
     pub fn show_relative(&self, base: usize) -> String {
-        let mut pos = 0;
+        let mut pos = self.start_offset as usize;
         let mut s = String::new();
         for instr in self.instrs.iter() {
             writeln!(
                 s,
-                "  @{:02X}|{:04X}               {}",
+                "  @{:04X}|{:04X}               {}",
                 pos,
                 base + pos,
                 instr.show_relative(base + pos)
@@ -1061,9 +1376,9 @@ impl ByteCode {
 
 impl fmt::Display for ByteCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut pos = 0;
+        let mut pos = self.start_offset as usize;
         for instr in self.instrs.iter() {
-            writeln!(f, "  @{:02X}: {}", pos, instr)?;
+            writeln!(f, "  @{:04X}: {}", pos, instr)?;
             pos += instr.size();
         }
         Ok(())
@@ -1073,31 +1388,31 @@ impl fmt::Display for ByteCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lib::Libs;
 
     #[test]
     fn it_works() -> Result<()> {
-        /*
-        use std::fs;
-        for game in &["ATF", "ATFGOLD", "ATFNATO", "FA", "MF", "USNF", "USNF97"] {
-            let dirname = format!("../../../dump/i386/{}", game);
-            let paths = fs::read_dir(&dirname)?;
-            for i in paths {
-                let entry = i?;
-                let path = format!("{}", entry.path().display());
-                println!("AT: {}", path);
+        env_logger::init();
 
-                let data = fs::read(entry.path())?;
+        let libs = Libs::for_testing()?;
+        for (game, _palette, catalog) in libs.all() {
+            for fid in catalog.find_with_extension("MC")? {
+                let meta = catalog.stat(fid)?;
+                println!(
+                    "At: {:>7}:{:13} @ {}",
+                    game.test_dir,
+                    meta.name(),
+                    meta.path()
+                );
 
-                let bc = ByteCode::disassemble_until(0, &data, |_| false);
-                if let Err(ref e) = bc {
-                    if !DisassemblyError::maybe_show(e, &data) {
-                        println!("Error: {}", e);
-                    }
-                }
-                let _ = bc?;
+                let data = catalog.read(fid)?;
+                let mut pe = peff::PortableExecutable::from_bytes(&data)?;
+                pe.relocate(0xAA00_0000)?;
+
+                let mut disasm = Disassembler::default();
+                disasm.disassemble_at(0, &pe)?;
             }
         }
-         */
 
         Ok(())
     }

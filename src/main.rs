@@ -57,6 +57,10 @@ use world::WorldRenderPass;
 use xt::TypeManager;
 
 const PRELUDE: &str = r#"
+// System controls
+bindings.bind("Escape", "exit()");
+bindings.bind("q", "exit()");
+
 // Camera Controls
 bindings.bind("F1", "@camera.controller.set_mode('Forward')");
 bindings.bind("F2", "@camera.controller.set_mode('Backward')");
@@ -104,11 +108,12 @@ bindings.bind("+Up", "@fallback_camera.arcball.target_up(pressed)");
 bindings.bind("+Down", "@fallback_camera.arcball.target_down(pressed)");
 
 // Load at Mt Everest if nothing else is loaded
-// game.detach_camera();
-// let location := "Everest";
-// @fallback_camera.arcball.set_target(@fallback_camera.arcball.notable_location(location));
-// @fallback_camera.arcball.set_eye(@fallback_camera.arcball.eye_for(location));
-// orrery.set_date_time(1964, 2, 24, 12, 0, 0);
+game.detach_camera();
+let location := "Everest";
+@fallback_camera.arcball.set_target(@fallback_camera.arcball.notable_location(location));
+@fallback_camera.arcball.set_eye(@fallback_camera.arcball.eye_for(location));
+orrery.set_date_time(1964, 2, 24, 12, 0, 0);
+
 "#;
 
 /// Show resources from Jane's Fighters Anthology engine LIB files.
@@ -157,12 +162,6 @@ impl Extension for System {
         runtime.insert_named_resource("system", system);
         runtime
             .add_frame_system(Self::sys_track_visible_state.after(GpuStep::PresentTargetSurface));
-        runtime.run_string(
-            r#"
-                bindings.bind("Escape", "exit()");
-                bindings.bind("q", "exit()");
-            "#,
-        )?;
         Ok(())
     }
 }
@@ -176,7 +175,10 @@ impl System {
     }
 
     pub fn build_gui(mut heap: HeapMut) -> Result<VisibleWidgets> {
-        let fnt = Fnt::from_bytes(heap.resource::<Libs>().read_name("HUD11.FNT")?.as_ref())?;
+        let fnt = Fnt::from_bytes(
+            "HUD11.FNT",
+            heap.resource::<Libs>().read_name("HUD11.FNT")?.as_ref(),
+        )?;
         let font = FntFont::from_fnt(&fnt)?;
         heap.resource_mut::<PaintContext>().add_font("HUD11", font);
         let font_id = heap

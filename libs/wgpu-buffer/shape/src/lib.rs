@@ -799,10 +799,9 @@ mod test {
                     continue;
                 }
 
-                let results = runtime.resource_scope(|heap, mut inst_man: Mut<ShapeBuffer>| {
+                runtime.resource_scope(|heap, mut inst_man: Mut<ShapeBuffer>| {
                     inst_man.upload_shapes(palette, &[meta.name()], catalog, heap.resource::<Gpu>())
                 })?;
-                println!("RESULT: {:#?}", results);
             }
         }
         Ok(())

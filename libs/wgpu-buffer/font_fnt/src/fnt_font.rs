@@ -173,7 +173,7 @@ impl FntFont {
 
         let mut x = 0i32;
         let mut glyph_frames = HashMap::new();
-        for glyph_index in 0..=255 {
+        for glyph_index in 1..=255 {
             if !fnt.glyphs.contains_key(&glyph_index) {
                 continue;
             }
@@ -183,7 +183,7 @@ impl FntFont {
             interp.add_code(glyph.bytecode.clone());
             interp.push_stack_value(0x60_0000);
 
-            let rv = interp.interpret(0)?;
+            let rv = interp.interpret(glyph.bytecode.start_address())?;
             let (trampoline_name, args) = rv.ok_trampoline()?;
             ensure!(trampoline_name == "finish", "expect return to finish");
             ensure!(args.is_empty(), "expect no args out");
