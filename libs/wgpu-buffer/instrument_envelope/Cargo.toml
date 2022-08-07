@@ -9,7 +9,6 @@ bevy_ecs = { version = "^ 0.7", features = ["trace"] }
 csscolorparser = "^ 0.6"
 triangulate = "^ 0.1"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-asset_loader = { path = "../../game/asset_loader" }
 flight_dynamics = { path = "../../game/flight_dynamics" }
 gpu = { path = "../../nitrogen/system/gpu" }
 measure = { path = "../../nitrogen/sim/measure" }

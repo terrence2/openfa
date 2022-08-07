@@ -30,4 +30,5 @@ xt = { path = "../../asset/xt" }
 [dev-dependencies]
 atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
+player = { path = "../../game/player" }
 terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }

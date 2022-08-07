@@ -23,13 +23,14 @@ use gpu::Gpu;
 use lib::{from_dos_string, Libs};
 use measure::{BodyMotion, WorldSpaceFrame};
 use mmm::{Mission, MissionMap, ObjectInfo};
-use nitrous::EntityName;
-use nitrous::{inject_nitrous_resource, make_symbol, method, HeapMut, NitrousResource, Value};
+use nitrous::{
+    inject_nitrous_resource, make_symbol, method, EntityName, HeapMut, NitrousResource, Value,
+};
 use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use parking_lot::RwLock;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use runtime::{Extension, Runtime};
+use runtime::{Extension, PlayerMarker, Runtime};
 use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
 use std::{
     borrow::Borrow,
@@ -61,9 +62,6 @@ static SCALE_OVERRIDE: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
 
 #[derive(Debug, Default, Component)]
 pub struct MissionMarker;
-
-#[derive(Debug, Default, Component)]
-pub struct PlayerMarker;
 
 #[derive(Debug, Default, NitrousResource)]
 pub struct AssetLoader;
@@ -530,7 +528,9 @@ impl AssetLoader {
 mod tests {
     use super::*;
     use atmosphere::AtmosphereBuffer;
+    use camera::CameraSystem;
     use global_data::GlobalParametersBuffer;
+    use player::PlayerCameraController;
     use terrain::TerrainBuffer;
 
     #[test]
@@ -544,10 +544,19 @@ mod tests {
             .load_extension::<AtmosphereBuffer>()?
             .load_extension::<TerrainBuffer>()?
             .load_extension::<T2TerrainBuffer>()?
-            .load_extension::<ShapeBuffer>()?;
+            .load_extension::<ShapeBuffer>()?
+            .load_extension::<CameraSystem>()?
+            .load_extension::<PlayerCameraController>()?;
 
-        runtime
-            .resource_scope(|heap, world: Mut<AssetLoader>| world.load_mission("UKR01.M", heap))?;
+        let _fallback_camera_ent = runtime
+            .spawn_named("fallback_camera")?
+            .insert(WorldSpaceFrame::default())
+            .insert_named(ArcBallController::default())?
+            .id();
+
+        runtime.resource_scope(|heap, assets: Mut<AssetLoader>| {
+            assets.load_mission("UKR01.M", heap)
+        })?;
 
         Ok(())
     }

@@ -756,8 +756,8 @@ impl RelocationDelta {
 
     pub fn apply(&self, vaddr: u32) -> u32 {
         match self {
-            RelocationDelta::Up(delta) => vaddr + *delta,
-            RelocationDelta::Down(delta) => vaddr - *delta,
+            RelocationDelta::Up(delta) => vaddr.wrapping_add(*delta),
+            RelocationDelta::Down(delta) => vaddr.wrapping_sub(*delta),
         }
     }
 

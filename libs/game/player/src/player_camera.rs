@@ -14,13 +14,12 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::cameras::ExternalCameraController;
 use anyhow::{bail, Result};
-use asset_loader::PlayerMarker;
 use bevy_ecs::prelude::*;
 use camera::{CameraStep, ScreenCameraController};
 use flight_dynamics::FlightStep;
 use measure::WorldSpaceFrame;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
-use runtime::{Extension, Runtime};
+use runtime::{Extension, PlayerMarker, Runtime};
 use std::str::FromStr;
 
 #[derive(Debug)]

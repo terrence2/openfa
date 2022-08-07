@@ -15,7 +15,7 @@
 use absolute_unit::{degrees, knots, pounds_force, pounds_mass};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
-use asset_loader::{AssetLoader, PlayerMarker};
+use asset_loader::AssetLoader;
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera};
@@ -38,7 +38,7 @@ use orrery::Orrery;
 use physical_constants::StandardAtmosphere;
 use platform_dirs::AppDirs;
 use player::PlayerCameraController;
-use runtime::{report, ExitRequest, Extension, Runtime, StartupOpts};
+use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime, StartupOpts};
 use shape::ShapeBuffer;
 use stars::StarsBuffer;
 use std::{fs::create_dir_all, time::Instant};

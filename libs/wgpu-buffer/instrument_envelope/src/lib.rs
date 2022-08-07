@@ -14,14 +14,13 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{feet, knots, meters, meters_per_second, miles_per_hour};
 use anyhow::{bail, Result};
-use asset_loader::PlayerMarker;
 use bevy_ecs::prelude::*;
 use csscolorparser::Color;
 use flight_dynamics::FlightDynamics;
 use gpu::Gpu;
 use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent};
-use runtime::{report, Extension, Runtime};
+use runtime::{report, Extension, PlayerMarker, Runtime};
 use std::str::FromStr;
 use triangulate::{builders, Triangulate, Vertex};
 use widget::{
