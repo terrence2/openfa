@@ -1,0 +1,28 @@
+before_script:
+  - whoami
+  - groups
+  - nix-shell --run "rustc --version"
+
+check_format:
+  tags:
+    - rust
+    - nix
+  script:
+    - nix-shell --run "cargo fmt --all -- --check"
+
+check_clippy:
+  interruptible: true
+  tags:
+    - rust
+    - nix
+  script:
+    - nix-shell --run "cargo clippy --all --all-targets -- --deny warnings"
+
+check_test:
+  interruptible: true
+  tags:
+    - rust
+    - nix
+  script:
+    - nix-shell --run "cargo test --workspace --all-targets --no-fail-fast"
+  retry: 2 # Sometimes X clients just crash
