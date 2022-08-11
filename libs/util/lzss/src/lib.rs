@@ -78,29 +78,30 @@ mod tests {
 
     #[test]
     fn it_doesnt_crash() -> Result<()> {
-        let paths = fs::read_dir("../../../test_data/lzss/inputs")?;
-        for i in paths {
-            let entry = i?;
-            let path = format!("{}", entry.path().display());
-            let expect = find_expect_data(&path)?;
-            // println!("At: {}", path);
-            let mut fp = fs::File::open(&path)?;
-            let mut contents = Vec::new();
-            fp.read_to_end(&mut contents)?;
-            let out = explode(&contents, None)?;
+        if let Ok(paths) = fs::read_dir("../../../test_data/lzss/inputs") {
+            for i in paths {
+                let entry = i?;
+                let path = format!("{}", entry.path().display());
+                let expect = find_expect_data(&path)?;
+                // println!("At: {}", path);
+                let mut fp = fs::File::open(&path)?;
+                let mut contents = Vec::new();
+                fp.read_to_end(&mut contents)?;
+                let out = explode(&contents, None)?;
 
-            if let Some(want) = &expect {
-                assert_eq!(want, &out);
+                if let Some(want) = &expect {
+                    assert_eq!(want, &out);
+                }
+
+                // use std::fs::File;
+                // use std::io::Write;
+                // let outname = format!(
+                //     "output/{}",
+                //     entry.path().file_stem()?.to_str()?
+                // );
+                // let mut fp = File::create(&outname).unwrap();
+                // fp.write(&out);
             }
-
-            // use std::fs::File;
-            // use std::io::Write;
-            // let outname = format!(
-            //     "output/{}",
-            //     entry.path().file_stem()?.to_str()?
-            // );
-            // let mut fp = File::create(&outname).unwrap();
-            // fp.write(&out);
         }
         Ok(())
     }
