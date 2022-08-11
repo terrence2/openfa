@@ -403,15 +403,16 @@ mod tests {
 
     #[test]
     fn it_doesnt_crash() {
-        let paths = fs::read_dir("../../../test_data/pkware").unwrap();
-        for i in paths {
-            let entry = i.unwrap();
-            let path = format!("{}", entry.path().display());
-            println!("At: {}", path);
-            let mut fp = fs::File::open(path).unwrap();
-            let mut contents = Vec::new();
-            fp.read_to_end(&mut contents).unwrap();
-            let _out = explode(&contents, None).unwrap();
+        if let Ok(paths) = fs::read_dir("../../../test_data/pkware") {
+            for i in paths {
+                let entry = i.unwrap();
+                let path = format!("{}", entry.path().display());
+                println!("At: {}", path);
+                let mut fp = fs::File::open(path).unwrap();
+                let mut contents = Vec::new();
+                fp.read_to_end(&mut contents).unwrap();
+                let _out = explode(&contents, None).unwrap();
+            }
         }
     }
 }
