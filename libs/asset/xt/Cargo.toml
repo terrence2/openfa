@@ -6,7 +6,7 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.7", features = ["trace"] }
+bevy_ecs = { version = "^ 0.8", features = ["trace"] }
 log = "^ 0.4"
 parking_lot = "^ 0.12"
 catalog = { path = "../../nitrogen/system/catalog" }
