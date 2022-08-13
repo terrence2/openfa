@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.7", features = ["trace"] }
+bevy_ecs = { version = "^ 0.8", features = ["trace"] }
 csscolorparser = "^ 0.6"
 triangulate = "^ 0.1"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }

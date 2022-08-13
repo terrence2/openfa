@@ -31,7 +31,6 @@ use animate::TimeStep;
 use anyhow::{anyhow, Result};
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
-use bevy_tasks::TaskPool;
 use camera::ScreenCamera;
 use catalog::Catalog;
 use composite::CompositeRenderStep;
@@ -509,12 +508,11 @@ impl ShapeBuffer {
     }
 
     pub fn sys_ts_apply_transforms(
-        task_pool: Res<TaskPool>,
         camera: Res<ScreenCamera>,
         mut query: Query<(&WorldSpaceFrame, &ShapeScale, &mut ShapeTransformBuffer)>,
     ) {
         let view = camera.view::<Meters>().to_homogeneous();
-        query.par_for_each_mut(&task_pool, 1024, |(frame, scale, mut transform_buffer)| {
+        query.par_for_each_mut(1024, |(frame, scale, mut transform_buffer)| {
             // Transform must be performed in f64, then moved into view space (where precision
             // errors are at least far away), before being truncated to f32.
             let pos = frame.position().point64().to_homogeneous();
@@ -536,12 +534,11 @@ impl ShapeBuffer {
     }
 
     pub fn sys_ts_build_flag_mask(
-        task_pool: Res<TaskPool>,
         step: Res<TimeStep>,
         mut query: Query<(&DrawState, &mut ShapeFlagBuffer)>,
     ) {
         let start = step.start();
-        query.par_for_each_mut(&task_pool, 1024, |(draw_state, mut flag_buffer)| {
+        query.par_for_each_mut(1024, |(draw_state, mut flag_buffer)| {
             draw_state
                 .build_mask_into(start, &mut flag_buffer.buffer)
                 .unwrap();
@@ -550,36 +547,31 @@ impl ShapeBuffer {
 
     pub fn sys_ts_apply_xforms(
         shapes: Res<ShapeBuffer>,
-        task_pool: Res<TaskPool>,
         step: Res<TimeStep>,
         mut query: Query<(&ShapeId, &DrawState, &mut ShapeXformBuffer)>,
     ) {
         let start = step.start();
         let now = step.now();
         assert!(now >= start);
-        query.par_for_each_mut(
-            &task_pool,
-            1024,
-            |(shape_id, draw_state, mut xform_buffer)| {
-                let part = shapes.chunk_man.part(*shape_id);
-                WIDGET_CACHE.with(|widget_cache| {
-                    match widget_cache.borrow_mut().entry(*shape_id) {
-                        Entry::Occupied(mut e) => {
-                            e.get_mut()
-                                .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
-                                .unwrap();
-                        }
-                        Entry::Vacant(e) => {
-                            let mut widgets = part.metadata().read().clone();
-                            widgets
-                                .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
-                                .unwrap();
-                            e.insert(widgets);
-                        }
+        query.par_for_each_mut(1024, |(shape_id, draw_state, mut xform_buffer)| {
+            let part = shapes.chunk_man.part(*shape_id);
+            WIDGET_CACHE.with(
+                |widget_cache| match widget_cache.borrow_mut().entry(*shape_id) {
+                    Entry::Occupied(mut e) => {
+                        e.get_mut()
+                            .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
+                            .unwrap();
                     }
-                });
-            },
-        );
+                    Entry::Vacant(e) => {
+                        let mut widgets = part.metadata().read().clone();
+                        widgets
+                            .animate_into(draw_state, start, now, &mut xform_buffer.buffer)
+                            .unwrap();
+                        e.insert(widgets);
+                    }
+                },
+            );
+        });
     }
 
     pub fn track_state_changes(
