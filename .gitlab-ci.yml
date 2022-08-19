@@ -29,3 +29,32 @@ check_test:
   script:
     - nix-shell --run "cargo test --workspace --all-targets --no-fail-fast"
   retry: 2 # Sometimes X clients just crash
+
+build_release_x64:
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME != $CI_DEFAULT_BRANCH'
+      when: never
+  interruptible: true
+  tags:
+    - rust
+    - nix
+  script:
+    - export VERSION=$(date +%Y.%m.%d.%H.%M)
+    - export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/openfa/${VERSION}"
+    - export PACKAGE_LINUX_X64="openfa-linux-x86_64.tar.xz"
+    - export PACKAGE_WINDOWS_X64="openfa-win-x86_64.zip"
+    - nix-shell --run "cargo build --release --all"
+    - mkdir "openfa-$VERSION"
+    - cp target/release/openfa "openfa-$VERSION"/
+    - cp target/release/dump-pic "openfa-$VERSION"/
+    - tar -C "openfa-$VERSION/" -cJvf "../${PACKAGE_LINUX_X64}" .
+    - mv "../${PACKAGE_LINUX_X64}" .
+    - rm -rfv "openfa-$VERSION"
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file ${PACKAGE_LINUX_X64} "${PACKAGE_REGISTRY_URL}/${PACKAGE_LINUX_X64}"'
+    - nix-shell --run "cargo build --target x86_64-pc-windows-gnu --release --all"
+    - zip $PACKAGE_WINDOWS_X64 target/x86_64-pc-windows-gnu/release/openfa.exe  target/x86_64-pc-windows-gnu/release/dump-pic.exe
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file ${PACKAGE_WINDOWS_X64} "${PACKAGE_REGISTRY_URL}/${PACKAGE_WINDOWS_X64}"'
+    - |
+      /etc/nixos/release-cli create --name "Release $VERSION" --tag-name $VERSION \
+        --assets-link "{\"name\":\"${PACKAGE_LINUX_X64}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${PACKAGE_LINUX_X64}\"}"
+        --assets-link "{\"name\":\"${PACKAGE_WINDOWS_X64}\",\"url\":\"${PACKAGE_REGISTRY_URL}/${PACKAGE_WINDOWS_X64}\"}"
