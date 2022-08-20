@@ -2,9 +2,15 @@
 
 A black-box, open-source, re-implementation of the Janes Fighters Anthology's engine.
 
-[![Download](https://img.shields.io/static/v1.svg?label=download&message=latest&color=success)](https://github.com/terrence2/openfa/releases/latest)
-[![Build status](https://badge.buildkite.com/5f5710df0c75ea999ada3ed52d0967537cdc7859253fcf89ab.svg?branch=master)](https://buildkite.com/openfa/continuous-release)
+[![Latest Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+[![Build Status](https://gitlab.com/terrence_too/openfa/badges/main/pipeline.svg)](https://gitlab.com/terrence_too/openfa/-/commits/main)
 [![License](https://img.shields.io/static/v1.svg?label=license&message=GPLv3&color=informational)](https://github.com/terrence2/openfa/blob/master/LICENSE)
+
+## Installing
+
+Download the [![Latest Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+or your platform and architecture, extract openfa.exe into the FA directory (ext to FA.EXE).
+Double-click openfa.exe, or create a shortcut, to run OpenFA.
 
 ## Why Fighters Anthology
 1) The technology of the original Fighters Anthology engine represents the best of a bygone era of computing. Reverse
