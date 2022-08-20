@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "^ 1", features = ["backtrace"] }
-simplelog = "^ 0.5"
+env_logger = "^ 0.9"
 structopt = "^ 0.3"
 absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
 catalog = { path = "../../libs/nitrogen/system/catalog" }

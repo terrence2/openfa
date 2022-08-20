@@ -773,10 +773,9 @@ mod test {
     use stars::StarsBuffer;
     use terrain::TerrainBuffer;
 
-    #[cfg(unix)]
     #[test]
     fn test_find_damage() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?
+        let mut runtime = Gpu::for_test()?
             .with_extension::<GlobalParametersBuffer>()?
             .with_extension::<AtmosphereBuffer>()?
             .with_extension::<ShapeBuffer>()?;
@@ -799,10 +798,9 @@ mod test {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[test]
     fn test_creation() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test()?;
         runtime
             .load_extension::<TimeStep>()?
             .load_extension::<Catalog>()?

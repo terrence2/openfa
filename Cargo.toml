@@ -16,6 +16,7 @@ members = [
     "apps/dump-sh",
     "apps/dump-t2",
     "apps/dump-xt",
+    "apps/pack-lib",
     # "apps/pack-pic",
 
     # "libs/asset/dlg",

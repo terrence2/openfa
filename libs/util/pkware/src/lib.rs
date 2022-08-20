@@ -45,18 +45,18 @@ use log::trace;
 
 /// Simple interface: uncompress all of data at once from memory to memory.
 pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>> {
-    let mut state = State {
+    let mut state = DecodeState {
         data,
         offset: 0,
         bitbuf: 0,
         bitcnt: 0,
-        out: Vec::with_capacity(expect_output_size.unwrap_or(0)),
+        out: Vec::with_capacity(expect_output_size.unwrap_or(data.len())),
     };
     state.decomp()?;
     Ok(state.out)
 }
 
-struct State<'a> {
+struct DecodeState<'a> {
     // Fixed-length input data.
     data: &'a [u8],
 
@@ -209,7 +209,7 @@ fn construct(rep: &[u8]) -> Result<Huffman> {
     Ok(h)
 }
 
-impl<'a> State<'a> {
+impl<'a> DecodeState<'a> {
     /*
      * Decode PKWare Compression Library stream.
      *
@@ -255,11 +255,16 @@ impl<'a> State<'a> {
         let dict = self.bits(8)?;
         ensure!((4..=6).contains(&dict), "invalid dict-bits");
 
+        // Note: take the locks at the top, rather than every byte.
+        let literal_codes = &LITERAL_CODES;
+        let length_codes = &LENGTH_CODES;
+        let distance_codes = &DISTANCE_CODES;
+
         /* decode literals and length/distance pairs */
         loop {
             if self.bits(1)? != 0 {
                 /* get length */
-                let len_code = self.decode(&LENGTH_CODES)? as usize;
+                let len_code = self.decode(length_codes)? as usize;
                 let len = BASE[len_code] + i16::from(self.bits(EXTRA[len_code])?);
                 /* end code */
                 if len == 519 {
@@ -268,7 +273,7 @@ impl<'a> State<'a> {
 
                 /* get distance */
                 let dist_shift = if len == 2 { 2 } else { dict };
-                let mut dist = self.decode(&DISTANCE_CODES)? << dist_shift;
+                let mut dist = self.decode(distance_codes)? << dist_shift;
                 dist += u16::from(self.bits(dist_shift)?);
                 dist += 1;
 
@@ -281,7 +286,7 @@ impl<'a> State<'a> {
             } else {
                 /* get literal and write it */
                 let symbol = if lit == 1 {
-                    self.decode(&LITERAL_CODES)?
+                    self.decode(literal_codes)?
                 } else {
                     u16::from(self.bits(8)?)
                 };

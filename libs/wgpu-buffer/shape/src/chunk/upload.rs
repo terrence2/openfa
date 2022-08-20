@@ -272,7 +272,7 @@ pub enum TransformInput {
     SwingWing(u32),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ShapeErrata {
     pub no_upper_aileron: bool,
     pub has_frame_animation: bool,

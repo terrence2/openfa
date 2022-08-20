@@ -316,16 +316,21 @@ impl fmt::Display for PhysBounds {
 make_type_struct![
 PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Num,   [Dec, Hex],        "flags",Unsigned, flags,                u32, V0, panic!()), // dword $2d ; flags
+// Pitch response appears to be largely based on envelope.
 (Ptr,   [Sym],               "env",  Custom, envelopes,      Envelopes, V0, panic!()),  // ptr env
 (Word,  [Dec],            "envMin",  Signed, env_min,              i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
 (Word,  [Dec],            "envMax",  Signed, env_max,              i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
 (Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,  u16, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
 (Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,Velocity<Miles, Hours>, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
+// Only blimp.pt has bv_* different from all others. Probably unused?
 (Word,  [Dec],            "_bv.x.", CustomN, bv_x,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.y.", CustomN, bv_y,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.z.", CustomN, bv_z,          PhysBounds, V0, panic!()),
+// Max roll rate left, then right; acc is rate towards inceptor away from neutral, dacc is rate towards roll inceptor towards neutral
 (Word,  [Dec],           "_brv.x.", CustomN, brv_x,         PhysBounds, V0, panic!()),
+// No apparent effects; most are [-0,0], [-small,small]; check correlation with rudder_yaw_*
 (Word,  [Dec],           "_brv.y.", CustomN, brv_y,         PhysBounds, V0, panic!()),
+// No apparent effects
 (Word,  [Dec],           "_brv.z.", CustomN, brv_z,         PhysBounds, V0, panic!()),
 (Word,  [Dec],          "gpullAOA",  Signed, gpull_aoa, Angle<Degrees>, V0, panic!()), // word 20 ; gpullAOA
 (Word,  [Dec],       "lowAOASpeed",  Signed, low_aoa_speed,        i16, V0, panic!()), // word 70 ; lowAOASpeed
@@ -338,6 +343,7 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Word,  [Dec],        "rudderSlip",  Signed, rudder_slip,          i16, V0, panic!()), // word 10 ; rudderSlip
 (Word,  [Dec],        "rudderDrag",  Signed, rudder_drag,          i16, V0, panic!()), // word 128 ; rudderDrag
 (Word,  [Dec],        "rudderBank",  Signed, rudder_bank,          i16, V0, panic!()), // word 5 ; rudderBank
+// No apparent effect? Highly specialized acc/dacc
 (Word,  [Dec],        "puffRot.x.", CustomN, puff_rot_x,    PhysBounds, V1, Default::default()),
 (Word,  [Dec],        "puffRot.y.", CustomN, puff_rot_y,    PhysBounds, V1, Default::default()),
 (Word,  [Dec],        "puffRot.z.", CustomN, puff_rot_z,    PhysBounds, V1, Default::default()),
