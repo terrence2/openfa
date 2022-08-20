@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn it_works_quickly() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test()?;
         let mut gpu = runtime.resource_mut::<Gpu>();
 
         let catalogs = Libs::for_testing()?;
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn round_trip() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test()?;
         let mut gpu = runtime.resource_mut::<Gpu>();
 
         let libs = Libs::for_testing()?;

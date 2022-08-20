@@ -20,7 +20,7 @@ pub struct ShapeTransformBuffer {
     pub buffer: TransformType,
 }
 
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ShapeFlagBuffer {
     pub buffer: [u32; 2],
 }

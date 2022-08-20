@@ -16,7 +16,6 @@ use absolute_unit::{feet, knots};
 use anyhow::Result;
 use catalog::Catalog;
 use lib::{Libs, LibsOpts};
-use simplelog::{Config, LevelFilter, TermLogger};
 use structopt::StructOpt;
 use xt::{HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
 
@@ -35,7 +34,7 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
-    TermLogger::init(LevelFilter::Warn, Config::default())?;
+    env_logger::init();
     let opt = Opt::from_args();
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, _palette, catalog) in libs.selected() {

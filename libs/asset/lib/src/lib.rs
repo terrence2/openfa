@@ -14,14 +14,15 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
 // Load LIB files; find files in them; hand out immutable pointers on request.
-#![allow(clippy::transmute_ptr_to_ptr, clippy::new_ret_no_self)]
 
 mod game_info;
 mod libs;
+mod writer;
 
 pub use crate::{
     game_info::{GameInfo, GAME_INFO},
     libs::{Libs, LibsOpts},
+    writer::LibWriter,
 };
 
 use anyhow::{anyhow, ensure, Result};
@@ -164,11 +165,33 @@ struct LibHeader {
     count: u16,
 }
 
+impl LibHeader {
+    pub fn new(count: u16) -> Self {
+        Self {
+            magic: [b'E', b'A', b'L', b'I', b'B'],
+            count,
+        }
+    }
+}
+
 #[packed_struct]
 struct LibEntry {
     name: [u8; 13],
     flags: u8,
     offset: u32,
+}
+
+impl LibEntry {
+    pub fn new(filename: &[u8], offset: u32) -> Result<Self> {
+        ensure!(filename.len() < 13);
+        let mut name: [u8; 13] = [0u8; 13];
+        name[0..filename.len()].copy_from_slice(filename);
+        Ok(Self {
+            name,
+            flags: 0,
+            offset,
+        })
+    }
 }
 
 pub struct LibDrawer {

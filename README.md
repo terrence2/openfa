@@ -191,6 +191,24 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
   * Opening Videos
     * [ ] VDO decode
 
+#### Specific Format Notes
+
+* **PAL**: PALETTE.PAL is the only file of this type. It contains palette data consisting of 256 3-byte entries.
+  Each byte contains a 6-bit (VGA) color, so must be re-sampled for use in modern systems. Large parts of this
+  palette contain the "transparent" color #FF00FF. These sections are used by the terrain and (presumably) the HUD/menu
+  to give custom look and feel to each area and plane.
+* **SH**: Shape files contain a virtual machine using word codes inside the PE wrapper, with embedded fragments of x86.
+  Execution jumps between virtual and machine instructions in order to achieve most dynamic plane effects.
+* **T2**: Just heights and metadata about the terrain. The textures to be rendered onto that heightmap are stored
+  in the MM/M files in tmap and tdict sections. Both the textures and the base colors in the T2 itself are outside
+  the range of the base PALETTE.PAL and depend on a fragment of the LAY file being copied into the right part of
+  the palette. Time-of-day effects as well as distance fogging are acheived by swapping out the palette with values
+  from the LAY.
+* **VDO**: These video files start with RATPAC, which is probably short for Rate-Packed. This is probably a standard
+  format of some sort. Unfortunately, a basic google search for files with that header turned up absolutely nothing.
+  If anyone has any information about this format, please drop me a line.
+
+
 ## Development Environment Setup
 
 1) Pull from git. The [main branch](https://gitlab.com/terrence_too/openfa.git) if you do not plan to submit changes, 
@@ -214,24 +232,45 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
    2) `cargo run -p dump-lib -- unpack FA_1.LIB`
 6) Run through the setup process in Nitrogen's readme. You will (for the moment) need to download and
    build terrain data locally.
-7) `cargo run`; by default OpenFA will use the latest game in test_data if it does not find a game in
+7) `cargo run`; by default OpenFA will use the latest game in disk_dumps if it does not find a game in
    the current directory. You can use the `--game-path`, `--cd-path`, and `--cd2-path` to select the
    relevant directories, if needed. CD paths are not needed if you copy the LIBs on the CD into the
    game directory.
 
-#### Specific Format Notes
+### Developing OpenFA (Windows)
+There is a variety of software that is needed to build OpenFA. On Windows,
+the `scoop` installer is the best way to grab most of these dependencies, but you
+will still have to install some of them manually. Specifically, you will need the
+shell that ships with the MSI installer for Git and the latest stable version of
+Rust via Rustup.
 
-* **PAL**: PALETTE.PAL is the only file of this type. It contains palette data consisting of 256 3-byte entries.
-Each byte contains a 6-bit (VGA) color, so must be re-sampled for use in modern systems. Large parts of this
-palette contain the "transparent" color #FF00FF. These sections are used by the terrain and (presumably) the HUD/menu
-to give custom look and feel to each area and plane.
-* **SH**: Shape files contain a virtual machine using word codes inside the PE wrapper, with embedded fragments of x86.
-Execution jumps between virtual and machine instructions in order to achieve most dynamic plane effects.
-* **T2**: Just heights and metadata about the terrain. The textures to be rendered onto that heightmap are stored
-in the MM/M files in tmap and tdict sections. Both the textures and the base colors in the T2 itself are outside
-the range of the base PALETTE.PAL and depend on a fragment of the LAY file being copied into the right part of
-the palette. Time-of-day effects as well as distance fogging are acheived by swapping out the palette with values
-from the LAY.
-* **VDO**: These video files start with RATPAC, which is probably short for Rate-Packed. This is probably a standard
-format of some sort. Unfortunately, a basic google search for files with that header turned up absolutely nothing.
-If anyone has any information about this format, please drop us a line.
+1. Rust: visit rustup.rs and follow the directions
+2. git (and the Git Bash shell on Windows)
+3. C build tools (VS Build Tools on Windows, LLVM on other platforms)
+4. cmake
+5. ninja
+6. SSL
+
+The Git Bash shell is recommended over CMD or the Windows terminal, even the shiny new one.
+In particular, I noticed issues with case insensitivity, though the build still ran fine. YMMV.
+
+Git symlinks do not currently create windows symlinks: the mklink command is only available
+from CMD and is not yet exposed in msys. Once created in a windows CMD shell, however, git will
+treat the Windows symlink like a normal symlink and not be problematic. You will need to open
+up a CMD instance with "Run as Administrator" and then type:
+```
+> cd C:\Path\To\nitrogen\libs
+> del nitrogen
+> mklink /D nitrogen ..\nitrogen\libs
+```
+
+Once that is set up, you can test that your development environment is ready by running a quick check.
+```
+$ cargo check --all --all-targets
+$ cargo test --all --all-targets
+```
+
+If that succeeds, you can build the release by running:
+```
+$ cargo build --all --all-targets --release
+```

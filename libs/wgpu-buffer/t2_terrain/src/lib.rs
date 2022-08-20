@@ -1028,7 +1028,7 @@ mod tests {
     fn it_can_load_all_t2() -> Result<()> {
         env_logger::init();
 
-        let mut runtime = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test()?;
         runtime
             .load_extension::<Libs>()?
             .load_extension::<GlobalParametersBuffer>()?

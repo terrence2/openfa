@@ -33,10 +33,9 @@ mod test {
     use sh::RawShape;
     use std::collections::HashMap;
 
-    #[cfg(unix)]
     #[test]
     fn test_load_all() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test()?;
 
         let skipped = vec![
             "CATGUY.SH",  // 640

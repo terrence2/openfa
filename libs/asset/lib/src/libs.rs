@@ -18,7 +18,7 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
-use log::trace;
+use log::{error, trace};
 use nitrous::{inject_nitrous_resource, method, NitrousResource};
 use pal::Palette;
 use runtime::{Extension, Runtime};
@@ -187,13 +187,19 @@ impl Libs {
         // Look up until we find the disk_dumps directory or run out of up.
         let mut test_path = env::current_dir()?;
         test_path.push("disk_dumps");
-        while !test_path.exists() && test_path.to_string_lossy() != "/disk_dumps" {
+        trace!("Looking for disk_dumps at: {}", test_path.to_string_lossy());
+        while !test_path.exists() {
             test_path.pop();
-            test_path.pop();
+            let at_top = !test_path.pop();
             test_path.push("disk_dumps");
+            if at_top {
+                error!("No disk_dumps directory in path");
+                break;
+            }
+            trace!("Looking for disk_dumps at: {}", test_path.to_string_lossy());
         }
         ensure!(
-            test_path.to_string_lossy() != "/disk_dumps",
+            test_path.exists(),
             "Unable to find the 'disk_dumps' directory for testing"
         );
 

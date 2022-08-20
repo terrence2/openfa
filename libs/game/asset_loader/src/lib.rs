@@ -535,7 +535,7 @@ mod tests {
 
     #[test]
     fn it_works() -> Result<()> {
-        let mut runtime = Gpu::for_test_unix()?;
+        let mut runtime = Gpu::for_test()?;
         runtime
             .load_extension::<AssetLoader>()?
             .load_extension::<Libs>()?
