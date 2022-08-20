@@ -10,6 +10,8 @@ check_format:
   tags:
     - rust
     - nix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
     - nix-shell --run "cargo fmt --all -- --check"
 
@@ -18,6 +20,8 @@ check_clippy:
   tags:
     - rust
     - nix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
     - nix-shell --run "cargo clippy --all --all-targets -- --deny warnings"
 
@@ -26,18 +30,21 @@ check_test:
   tags:
     - rust
     - nix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
     - nix-shell --run "cargo test --workspace --all-targets --no-fail-fast"
   retry: 2 # Sometimes X clients just crash
 
 build_release_x64:
-  rules:
-    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME != $CI_DEFAULT_BRANCH'
-      when: never
   interruptible: true
   tags:
     - rust
     - nix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+  allow_failure: true
   script:
     - export VERSION=$(date +%Y.%m.%d.%H.%M)
     - export PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/openfa/${VERSION}"
