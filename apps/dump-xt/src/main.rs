@@ -12,10 +12,11 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{feet, knots};
+use absolute_unit::{feet, knots, meters, meters_per_second};
 use anyhow::Result;
 use catalog::Catalog;
 use lib::{Libs, LibsOpts};
+use pt::EnvelopeIntersection;
 use structopt::StructOpt;
 use xt::{HardpointType, NpcType, ObjectType, PlaneType, ProjectileType, TypeManager};
 
@@ -28,6 +29,10 @@ struct Opt {
     /// Show just one field
     #[structopt(short, long)]
     field: Option<String>,
+
+    /// Show envelope intercept at altitude
+    #[structopt(short, long)]
+    altitude: Option<i32>,
 
     #[structopt(flatten)]
     libs_opts: LibsOpts,
@@ -45,7 +50,7 @@ fn main() -> Result<()> {
                     show_xt_field(meta.name(), req_field, catalog)?;
                 } else {
                     println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
-                    show_xt(meta.name(), catalog)?;
+                    show_xt(meta.name(), opt.altitude, catalog)?;
                 }
             }
         }
@@ -87,7 +92,7 @@ fn show_xt_field(name: &str, req_field: &str, catalog: &Catalog) -> Result<()> {
     Ok(())
 }
 
-fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
+fn show_xt(name: &str, altitude: Option<i32>, catalog: &Catalog) -> Result<()> {
     let type_manager = TypeManager::empty();
     let xt = type_manager.load(name, catalog)?;
 
@@ -136,26 +141,47 @@ fn show_xt(name: &str, catalog: &Catalog) -> Result<()> {
             }
             println!("{:>25}: {}", field, pt.get_field(field));
         }
-        for (i, env) in pt.envelopes.iter().enumerate() {
-            println!();
-            println!("{:>25}: {:02}", "Envelope", i + 1);
-            println!("{:>25}====", "========");
-            println!("{:>25}: {}", "gload", env.get_field("gload"));
-            println!("{:>25}: {}", "stall_lift", env.get_field("stall_lift"));
-            println!(
-                "{:>25}: {}",
-                "max_speed_idx",
-                env.get_field("max_speed_index")
-            );
-            println!("{:>25}:", "shape");
-            for i in 0..env.count {
-                let shape = &env.shape.coord(i as usize);
+        if let Some(altitude) = altitude {
+            if let Some(env) = pt.envelopes.envelope(1) {
+                if let Some(stall_speed) = env.find_min_lift_speed_at(meters!(feet!(altitude))) {
+                    if let EnvelopeIntersection::Inside { to_over_speed, .. } = env
+                        .find_g_load_extrema(
+                            stall_speed + meters_per_second!(1f64),
+                            meters!(feet!(altitude)),
+                        )
+                    {
+                        println!(
+                            "{} @{}: {:0.0}, {:0.0}",
+                            env.gload,
+                            altitude,
+                            knots!(stall_speed),
+                            knots!(meters_per_second!(stall_speed.f64() + to_over_speed + 1f64))
+                        );
+                    }
+                }
+            }
+        } else {
+            for (i, env) in pt.envelopes.iter().enumerate() {
+                println!();
+                println!("{:>25}: {:02}", "Envelope", i + 1);
+                println!("{:>25}====", "========");
+                println!("{:>25}: {}", "gload", env.get_field("gload"));
+                println!("{:>25}: {}", "stall_lift", env.get_field("stall_lift"));
                 println!(
-                    "{:>25}     {:>4.4} {:>6.4}",
-                    " ",
-                    knots!(shape.speed()),
-                    feet!(shape.altitude())
+                    "{:>25}: {}",
+                    "max_speed_idx",
+                    env.get_field("max_speed_index")
                 );
+                println!("{:>25}:", "shape");
+                for i in 0..env.count {
+                    let shape = &env.shape.coord(i as usize);
+                    println!(
+                        "{:>25}     {:>4.4} {:>6.4}",
+                        " ",
+                        knots!(shape.speed()),
+                        feet!(shape.altitude())
+                    );
+                }
             }
         }
     }

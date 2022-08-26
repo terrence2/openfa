@@ -6,11 +6,36 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
 [![Build Status](https://gitlab.com/terrence_too/openfa/badges/main/pipeline.svg)](https://gitlab.com/terrence_too/openfa/-/commits/main)
 [![License](https://img.shields.io/static/v1.svg?label=license&message=GPLv3&color=informational)](https://github.com/terrence2/openfa/blob/master/LICENSE)
 
+[[_TOC_]]
+
 ## Installing
 
-Download the [![Latest Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
-or your platform and architecture, extract openfa.exe into the FA directory (ext to FA.EXE).
-Double-click openfa.exe, or create a shortcut, to run OpenFA.
+1) Install one of the following games:
+   * USNF
+   * US Marine Fighters (e.g. USNF with the Marine Fighters expansion)
+   * ATF: Advanced Tactical Fighters
+   * ATF: Nato (e.g. ATF with the Nato expansion installed)
+   * ATF: Gold
+   * USNF '97
+   * Fighters Anthology
+2) Download the [![Latest Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+for your platform and architecture
+3) Extract the downloaded zip file into the install directory of the game
+   * Example: C:\JANES\FA
+   * `Hot tip: openfa.exe should be in the same directory as the game executable (e.g. FA.EXE)`
+4) Double-click openfa.exe to run
+   * `Hot tip: Right click and drag to create a shortcut wherever you want one`
+
+## Using the Command Line Tools
+
+1) Install as above
+   * `Note: the modding tools come packaged with the normal OpenFA install`
+2) Open a command prompt
+   * Example: C:\Windows\System32\cmd.exe, but others should work
+3) Change directory into the game directory
+   * Example: `> cd C:\JANES\FA`
+4) Individual CLI command documentation
+   * [dump-pic](https://gitlab.com/terrence_too/openfa/apps/dump-pic)
 
 ## Why Fighters Anthology
 1) The technology of the original Fighters Anthology engine represents the best of a bygone era of computing. Reverse
