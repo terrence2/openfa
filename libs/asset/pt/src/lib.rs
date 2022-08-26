@@ -135,6 +135,15 @@ impl Envelopes {
         self.max_g
     }
 
+    pub fn envelope(&self, gload: i16) -> Option<&Envelope> {
+        for env in &self.all {
+            if env.gload == gload {
+                return Some(env);
+            }
+        }
+        None
+    }
+
     pub fn find_min_lift_speed_at(
         &self,
         altitude: Length<Meters>,

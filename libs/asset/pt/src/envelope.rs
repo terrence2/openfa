@@ -54,6 +54,7 @@ impl EnvelopeCoord {
 
 // Result of testing a position with an envelope. Tracks where inside we are, or how far out in
 // what direction. This lets us interpolate to get sub-G results from a nested envelope set.
+#[derive(Debug)]
 pub enum EnvelopeIntersection {
     Inside {
         to_stall: f64,
