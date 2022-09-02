@@ -18,6 +18,7 @@ use crate::{
 };
 use anyhow::{bail, ensure, Result};
 use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
+use glob::{glob_with, MatchOptions};
 use log::{error, trace};
 use nitrous::{inject_nitrous_resource, method, NitrousResource};
 use pal::Palette;
@@ -84,6 +85,30 @@ impl Extension for Libs {
 
 #[inject_nitrous_resource]
 impl Libs {
+    /// For some tools, the input list may be a empty (in which case glob), or a set of files,
+    /// in which case return the set of paths, or a list of names of lib entries.
+    /// If no files match, this returns None, otherwise Some and the set of matching files.
+    pub fn input_files(inputs: &[String], glob_pattern: &str) -> Result<Vec<PathBuf>> {
+        Ok(if inputs.is_empty() {
+            glob_with(
+                glob_pattern,
+                MatchOptions {
+                    case_sensitive: false,
+                    require_literal_separator: false,
+                    require_literal_leading_dot: false,
+                },
+            )?
+            .filter_map(|v| v.ok())
+            .collect()
+        } else {
+            inputs
+                .iter()
+                .map(|v| Path::new(v).to_owned())
+                .filter(|v| v.exists())
+                .collect()
+        })
+    }
+
     /// Find out what we have to work with.
     pub fn bootstrap(opts: &LibsOpts) -> Result<Self> {
         // If we didn't specify a path, use cwd.
