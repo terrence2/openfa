@@ -22,8 +22,8 @@ in
       pkgs.vulkan-tools
       pkgs.xorg.libX11
       pkgs.xorg.libXrandr
-      pkgs.libudev
+      pkgs.udev
     ];
-    LD_LIBRARY_PATH = with pkgs.xlibs; "${pkgs.vulkan-loader}/lib:${pkgs.mesa}/lib:${libX11}/lib:${libXcursor}/lib:${libXxf86vm}/lib:${libXi}/lib:${libXrandr}/lib";
+    LD_LIBRARY_PATH = with pkgs.xorg; "${pkgs.vulkan-loader}/lib:${pkgs.mesa}/lib:${libX11}/lib:${libXcursor}/lib:${libXxf86vm}/lib:${libXi}/lib:${libXrandr}/lib";
     DISPLAY = ":0";
   }

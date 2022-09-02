@@ -18,7 +18,10 @@ use image::GenericImageView;
 use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use pic::Pic;
-use std::{fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 use structopt::StructOpt;
 
 /// Extract PICs to PNG files and show PIC metadata
@@ -57,6 +60,12 @@ struct Opt {
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
+    let files = Libs::input_files(&opt.inputs, "*.PIC")?;
+    if !files.is_empty() {
+        if let Some(exe_root) = env::current_exe()?.parent() {
+            env::set_current_dir(exe_root)?;
+        }
+    }
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, palette, catalog) in libs.selected() {
         for input in &opt.inputs {
@@ -67,7 +76,20 @@ fn main() -> Result<()> {
             }
         }
     }
+    if let Some((_, palette, _)) = libs.selected().next() {
+        for path in &files {
+            transcribe_pic(path, palette)?;
+        }
+    }
 
+    Ok(())
+}
+
+fn transcribe_pic(path: &Path, palette: &Palette) -> Result<()> {
+    let image = Pic::decode(palette, &fs::read(path)?)?;
+    let mut path = path.to_owned();
+    path.set_extension("png");
+    image.save(path)?;
     Ok(())
 }
 
