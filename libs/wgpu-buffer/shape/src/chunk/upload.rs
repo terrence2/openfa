@@ -1336,14 +1336,14 @@ impl<'a> ShapeUploader<'a> {
                     self.load_vertex_buffer(&analysis.prop_man.props, vert_buf);
                 }
 
-                Instr::VertexNormal(vert_extra) => {
+                Instr::VertexNormal(vert_norm) => {
                     let n = Vector3::new(
-                        f32::from(vert_extra.norm[0]),
-                        f32::from(vert_extra.norm[1]),
-                        f32::from(vert_extra.norm[2]),
+                        f32::from(vert_norm.norm[0]),
+                        f32::from(vert_norm.norm[1]),
+                        f32::from(vert_norm.norm[2]),
                     )
                     .normalize();
-                    self.vert_pool[vert_extra.index].normal = [n.x, n.y, n.z];
+                    self.vert_pool[vert_norm.index].normal = [n.x, n.y, n.z];
                 }
 
                 Instr::Facet(facet) => {

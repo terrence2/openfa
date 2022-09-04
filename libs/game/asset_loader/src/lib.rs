@@ -16,7 +16,7 @@ use absolute_unit::{degrees, feet, feet_per_second, meters, scalar, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
-use flight_dynamics::FlightDynamics;
+use flight_dynamics::ClassicFlightModel;
 use geodesy::{GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
@@ -36,9 +36,14 @@ use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 use t2_terrain::{T2TerrainBuffer, T2TileSet};
-use vehicle_state::VehicleState;
+use vehicle::{
+    AirbrakeControl, AirbrakeEffector, BayControl, BayEffector, FlapsControl, FlapsEffector,
+    GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, RollInceptor,
+    ThrottleInceptor, YawInceptor,
+};
 use xt::TypeManager;
 
 const FEET_TO_METERS: f32 = 1. / 3.28084;
@@ -289,18 +294,39 @@ impl AssetLoader {
         if info.xt().is_jt() || info.xt().is_nt() || info.xt().is_pt() {
             heap.named_entity_mut(id)
                 .insert(BodyMotion::new_forward(feet_per_second!(info.speed())));
-            VehicleState::install_on(id, &info.xt(), heap.as_mut())?;
-            if let Some(fuel_override) = info.fuel_override() {
-                heap.get_mut::<VehicleState>(id)
-                    .set_internal_fuel_lbs(fuel_override);
-            }
+
+            // TODO: use audio effect time for timing the animation and effector deployment times
+            let on_ground = info.position().y == 0;
+            heap.named_entity_mut(id)
+                .insert_named(PitchInceptor::default())?
+                .insert_named(RollInceptor::default())?
+                .insert_named(YawInceptor::default())?
+                .insert_named(ThrottleInceptor::new_min_power())?
+                .insert_named(AirbrakeControl::default())?
+                .insert_named(AirbrakeEffector::new(0., Duration::from_millis(1)))?
+                .insert_named(BayControl::default())?
+                .insert_named(BayEffector::new(0., Duration::from_secs(2)))?
+                .insert_named(FlapsControl::default())?
+                .insert_named(FlapsEffector::new(0., Duration::from_millis(1)))?
+                .insert_named(GearControl::new(on_ground))?
+                .insert_named(GearEffector::new(
+                    if on_ground { 1. } else { 0. },
+                    Duration::from_secs(4),
+                ))?
+                .insert_named(HookControl::default())?
+                .insert_named(HookEffector::new(0., Duration::from_millis(1)))?;
+            // TODO: fuel overrides
+            // if let Some(fuel_override) = info.fuel_override() {
+            //     heap.get_mut::<VehicleState>(id)
+            //         .set_internal_fuel_lbs(fuel_override);
+            // }
             // TODO: hardpoint overrides
         }
 
         // If the type is a plane, install a flight model
-        if let Some(pt) = info.xt().pt() {
-            let on_ground = info.position().y == 0;
-            FlightDynamics::install_on(id, pt, on_ground, heap.as_mut())?;
+        if let Some(_pt) = info.xt().pt() {
+            heap.named_entity_mut(id)
+                .insert_named(ClassicFlightModel::new(id))?;
         }
 
         Ok(id)

@@ -16,7 +16,7 @@ use crate::cameras::ExternalCameraController;
 use anyhow::{bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{CameraStep, ScreenCameraController};
-use flight_dynamics::FlightStep;
+use flight_dynamics::ClassicFlightModelStep;
 use measure::WorldSpaceFrame;
 use nitrous::{inject_nitrous_component, method, NitrousComponent};
 use runtime::{Extension, PlayerMarker, Runtime};
@@ -108,7 +108,7 @@ impl Extension for PlayerCameraController {
             Self::sys_update_camera
                 .label(PlayerCameraStep::ApplyInput)
                 .before(CameraStep::ApplyInput)
-                .after(FlightStep::Simulate),
+                .after(ClassicFlightModelStep::Simulate),
         );
 
         Ok(())

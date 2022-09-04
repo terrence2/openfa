@@ -16,7 +16,7 @@ use absolute_unit::{feet, knots, meters, meters_per_second, miles_per_hour};
 use anyhow::{bail, Result};
 use bevy_ecs::prelude::*;
 use csscolorparser::Color;
-use flight_dynamics::FlightDynamics;
+use flight_dynamics::ClassicFlightModel;
 use gpu::Gpu;
 use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_component, method, HeapMut, NitrousComponent};
@@ -144,7 +144,7 @@ impl EnvelopeInstrument {
     ];
 
     fn sys_measure(
-        player: Query<(&BodyMotion, &WorldSpaceFrame, &FlightDynamics), With<PlayerMarker>>,
+        player: Query<(&BodyMotion, &WorldSpaceFrame, &ClassicFlightModel), With<PlayerMarker>>,
         mut instruments: Query<(
             &mut EnvelopeInstrument,
             &LayoutPacking,
@@ -195,7 +195,7 @@ impl EnvelopeInstrument {
 
     fn sys_upload(
         player: Query<
-            (&TypeRef, &BodyMotion, &WorldSpaceFrame, &FlightDynamics),
+            (&TypeRef, &BodyMotion, &WorldSpaceFrame, &ClassicFlightModel),
             With<PlayerMarker>,
         >,
         instruments: Query<(&EnvelopeInstrument, &mut LayoutMeasurements)>,
