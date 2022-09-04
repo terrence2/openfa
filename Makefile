@@ -23,7 +23,11 @@ PKG_OFA_WIN_X64 := openfa-$(V)-win-x86_64.zip
 PKG_TOOLS_WIN_X64 := ofa-tools-$(V)-win-x86_64.zip
 
 clean:
-	rm -rf $(TMP) $(PKG_OFA_LINUX_X64) $(PKG_TOOLS_LINUX_X64) $(PKG_OFA_WIN_X64) $(PKG_TOOLS_WIN_X64)
+	rm -rf $(TMP) \
+		openfa-win-x86_64.zip \
+		ofa-tools-win-x86_64.zip \
+		openfa-linux-x86_64.tar.bz2 \
+		ofa-tools-linux-x86_64.tar.bz2
 
 
 target/x86_64-pc-windows-gnu/release/openfa.exe:
@@ -73,3 +77,7 @@ release: openfa-linux-x86_64.tar.bz2 ofa-tools-linux-x86_64.tar.bz2 openfa-win-x
         --assets-link "{\"name\":\"${PKG_TOOLS_LINUX_X64}\",\"url\":\"${OFA_BUCKET_URL}/${PKG_TOOLS_LINUX_X64}\"}" \
         --assets-link "{\"name\":\"${PKG_OFA_WIN_X64}\",\"url\":\"${OFA_BUCKET_URL}/${PKG_OFA_WIN_X64}\"}" \
         --assets-link "{\"name\":\"${PKG_TOOLS_WIN_X64}\",\"url\":\"${OFA_BUCKET_URL}/${PKG_TOOLS_WIN_X64}\"}"
+	aws s3api put-object-acl --bucket openfa --key $(PKG_OFA_LINUX_X64) --acl public-read
+	aws s3api put-object-acl --bucket openfa --key $(PKG_TOOLS_LINUX_X64) --acl public-read
+	aws s3api put-object-acl --bucket openfa --key $(PKG_OFA_WIN_X64) --acl public-read
+	aws s3api put-object-acl --bucket openfa --key $(PKG_TOOLS_WIN_X64) --acl public-read
