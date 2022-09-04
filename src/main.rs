@@ -22,7 +22,7 @@ use camera::{ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera};
 use composite::CompositeRenderPass;
 use csscolorparser::Color;
 use event_mapper::EventMapper;
-use flight_dynamics::FlightDynamics;
+use flight_dynamics::ClassicFlightModel;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
@@ -48,6 +48,10 @@ use terminal_size::{terminal_size, Width};
 use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
+use vehicle::{
+    AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, PitchInceptor,
+    RollInceptor, YawInceptor,
+};
 use vehicle_state::VehicleState;
 use widget::{
     FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, Terminal, WidgetBuffer,
@@ -85,9 +89,9 @@ bindings.bind("key4", "@Player.throttle.set_detent(3)");
 bindings.bind("key5", "@Player.throttle.set_detent(4)");
 bindings.bind("key6", "@Player.throttle.set_detent(5)");
 bindings.bind("b", "@Player.airbrake.toggle()");
+bindings.bind("o", "@Player.bay.toggle()");
 bindings.bind("f", "@Player.flaps.toggle()");
 bindings.bind("h", "@Player.hook.toggle()");
-bindings.bind("o", "@Player.bay.toggle()");
 bindings.bind("g", "@Player.gear.toggle()");
 bindings.bind("+Up", "@Player.stick_y.key_move_forward(pressed)");
 bindings.bind("+Down", "@Player.stick_y.key_move_backward(pressed)");
@@ -313,7 +317,7 @@ impl System {
                 &WorldSpaceFrame,
                 &BodyMotion,
                 &VehicleState,
-                &FlightDynamics,
+                &ClassicFlightModel,
             ),
             With<PlayerMarker>,
         >,
@@ -332,7 +336,7 @@ impl System {
                 &WorldSpaceFrame,
                 &BodyMotion,
                 &VehicleState,
-                &FlightDynamics,
+                &ClassicFlightModel,
             ),
             With<PlayerMarker>,
         >,
@@ -368,7 +372,7 @@ impl System {
                 ));
             labels
                 .get_mut(self.visible_widgets.alpha_label)?
-                .set_text(format!("Alpha: {:0.2}", degrees!(dynamics.alpha())));
+                .set_text(format!("MaxG: {:0.2}", dynamics.max_g_load()));
             labels
                 .get_mut(self.visible_widgets.camera_direction)?
                 .set_text(format!("V: {:0.4}", knots!(motion.cg_velocity())));
@@ -444,8 +448,16 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
         .load_extension::<VehicleState>()?
-        .load_extension::<FlightDynamics>()?
-        .load_extension::<EnvelopeInstrument>()?;
+        .load_extension::<ClassicFlightModel>()?
+        .load_extension::<EnvelopeInstrument>()?
+        .load_extension::<PitchInceptor>()?
+        .load_extension::<RollInceptor>()?
+        .load_extension::<YawInceptor>()?
+        .load_extension::<AirbrakeEffector>()?
+        .load_extension::<BayEffector>()?
+        .load_extension::<FlapsEffector>()?
+        .load_extension::<GearEffector>()?
+        .load_extension::<HookEffector>()?;
 
     // Have an arcball camera controller sitting around that we can fall back to for debugging.
     let _fallback_camera_ent = runtime

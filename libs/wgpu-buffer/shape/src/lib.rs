@@ -52,6 +52,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use vehicle::{AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector};
 use world::{WorldRenderPass, WorldStep};
 
 thread_local! {
@@ -500,10 +501,37 @@ impl ShapeBuffer {
         }
     }
 
-    pub fn sys_ts_animate_draw_state(step: Res<TimeStep>, mut query: Query<&mut DrawState>) {
+    pub fn sys_ts_animate_draw_state(
+        step: Res<TimeStep>,
+        mut query: Query<(
+            &mut DrawState,
+            Option<&AirbrakeEffector>,
+            Option<&BayEffector>,
+            Option<&FlapsEffector>,
+            Option<&GearEffector>,
+            Option<&HookEffector>,
+        )>,
+    ) {
         let now = step.now();
-        for mut draw_state in query.iter_mut() {
+        for (mut draw_state, airbrake, bay, flaps, gear, hook) in query.iter_mut() {
             draw_state.animate(now);
+            if let Some(airbrake) = airbrake {
+                draw_state.set_airbrake(airbrake.position() > 0.1);
+            }
+            if let Some(bay) = bay {
+                draw_state.set_bay_visible(bay.position() > 0.);
+                draw_state.set_bay_position(bay.position() as f32);
+            }
+            if let Some(flaps) = flaps {
+                draw_state.set_flaps(flaps.position() > 0.1);
+            }
+            if let Some(gear) = gear {
+                draw_state.set_gear_visible(gear.position() > 0.);
+                draw_state.set_gear_position(gear.position() as f32);
+            }
+            if let Some(hook) = hook {
+                draw_state.set_hook(hook.position() > 0.1);
+            }
         }
     }
 

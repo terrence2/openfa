@@ -27,7 +27,6 @@ bindings.bind("space", "game.boresight()");
 //orrery.set_unix_ms(1648921040614.2175);
 orrery.set_unix_ms(1648903175246.7478);
 
-game.attach_camera();
 game.load_mission("~V02.M");
 //game.load_mission("~B02.M");
 //game.load_mission("UKR01.M");

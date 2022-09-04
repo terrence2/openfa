@@ -83,6 +83,7 @@ void main() {
 
     // Move FA coordinates into Nitrogen coordinate system
     vec4 pos = vec4(position.x, position.z, -position.y, 1);
+    vec4 normal = vec4(normal.x, normal.z, -normal.y, 1);
 
     v_position_w_m = camera_perspective_m *
                      matrix_for_transform(transform) *
@@ -91,7 +92,7 @@ void main() {
 
     v_normal_w = (rotation_for_xform(transform) *
                   rotation_for_xform(xform) *
-                  vec4(normal, 1.0)).xyz;
+                  normal).xyz;
 
     v_color = color;
     v_tex_coord = vec2(

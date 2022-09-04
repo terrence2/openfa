@@ -21,5 +21,6 @@ runtime = { path = "../../nitrogen/util/runtime" }
 ### Warning: this should not need to refer _up_ to the drawing layer. I think we
 ###          need some sort of intermediate shape loading process external to draw?
 shape = { path = "../../wgpu-buffer/shape" }
+vehicle = { path = "../../nitrogen/sim/vehicle" }
 vehicle_state = { path = "../../game/vehicle_state" }
 xt = { path = "../../asset/xt" }

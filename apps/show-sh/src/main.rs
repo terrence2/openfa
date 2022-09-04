@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, knots, meters, pounds_force, pounds_mass};
+use absolute_unit::{degrees, feet, knots, meters};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::AssetLoader;
@@ -23,7 +23,7 @@ use catalog::{Catalog, DirectoryDrawer};
 use composite::CompositeRenderPass;
 use csscolorparser::Color;
 use event_mapper::EventMapper;
-use flight_dynamics::FlightDynamics;
+use flight_dynamics::ClassicFlightModel;
 use fnt::Fnt;
 use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
@@ -38,20 +38,26 @@ use measure::{BodyMotion, WorldSpaceFrame};
 use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
 use once_cell::sync::Lazy;
 use orrery::Orrery;
-use physical_constants::StandardAtmosphere;
 use platform_dirs::AppDirs;
 use player::PlayerCameraController;
 use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime};
 use shape::{ShapeBuffer, ShapeScale};
 use stars::StarsBuffer;
-use std::{fs::create_dir_all, time::Instant};
+use std::{
+    fs::create_dir_all,
+    time::{Duration, Instant},
+};
 use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
 use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
-use vehicle_state::VehicleState;
+use vehicle::{
+    AirbrakeControl, AirbrakeEffector, BayControl, BayEffector, FlapsControl, FlapsEffector,
+    GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, RollInceptor,
+    ThrottleInceptor, YawInceptor,
+};
 use widget::{
     FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, Terminal, WidgetBuffer,
 };
@@ -160,10 +166,7 @@ struct VisibleWidgets {
     camera_fov: Entity,
     fps_label: Entity,
 
-    weight_label: Entity,
-    engine_label: Entity,
     accel_label: Entity,
-    alpha_label: Entity,
 }
 
 #[derive(Debug, NitrousResource)]
@@ -244,17 +247,11 @@ impl System {
                 .wrapped(name, heap)
         }
 
-        let weight_label = make_label("weight", font_id, heap.as_mut())?;
-        let engine_label = make_label("engine", font_id, heap.as_mut())?;
         let accel_label = make_label("accel", font_id, heap.as_mut())?;
-        let alpha_label = make_label("alpha", font_id, heap.as_mut())?;
 
         let mut player_box = LayoutNode::new_vbox("player_box", heap.as_mut())?;
         let player_box_id = player_box.id();
-        player_box.push_widget(weight_label)?;
-        player_box.push_widget(engine_label)?;
         player_box.push_widget(accel_label)?;
-        player_box.push_widget(alpha_label)?;
         heap.resource_mut::<WidgetBuffer>()
             .root_mut()
             .push_layout(player_box)?;
@@ -310,10 +307,7 @@ impl System {
             camera_position,
             camera_fov,
             fps_label,
-            weight_label,
-            engine_label,
             accel_label,
-            alpha_label,
         })
     }
 
@@ -323,15 +317,7 @@ impl System {
         orrery: Res<Orrery>,
         system: Res<System>,
         mut labels: Query<&mut Label>,
-        query: Query<
-            (
-                &WorldSpaceFrame,
-                &BodyMotion,
-                &VehicleState,
-                &FlightDynamics,
-            ),
-            With<PlayerMarker>,
-        >,
+        query: Query<(&WorldSpaceFrame, &BodyMotion), With<PlayerMarker>>,
     ) {
         report!(system.track_visible_state(&camera, &timestep, &orrery, &mut labels, &query));
     }
@@ -342,15 +328,7 @@ impl System {
         timestep: &TimeStep,
         orrery: &Orrery,
         labels: &mut Query<&mut Label>,
-        query: &Query<
-            (
-                &WorldSpaceFrame,
-                &BodyMotion,
-                &VehicleState,
-                &FlightDynamics,
-            ),
-            With<PlayerMarker>,
-        >,
+        query: &Query<(&WorldSpaceFrame, &BodyMotion), With<PlayerMarker>>,
     ) -> Result<()> {
         labels
             .get_mut(self.visible_widgets.sim_time)?
@@ -359,31 +337,13 @@ impl System {
             .get_mut(self.visible_widgets.camera_fov)?
             .set_text(format!("FoV: {}", degrees!(camera.fov_y())));
 
-        if let Ok((frame, motion, vehicle, dynamics)) = query.get_single() {
-            labels
-                .get_mut(self.visible_widgets.weight_label)?
-                .set_text(format!(
-                    "Weight: {:0.1}",
-                    pounds_mass!(vehicle.current_mass())
-                ));
-            let altitude = frame.position_graticule().distance;
-            let atmosphere = StandardAtmosphere::at_altitude(altitude);
-            labels
-                .get_mut(self.visible_widgets.engine_label)?
-                .set_text(format!(
-                    "Engine: {} ({:0.0})",
-                    vehicle.power_plant().engine_display(),
-                    pounds_force!(vehicle.power_plant().forward_thrust(&atmosphere, motion))
-                ));
+        if let Ok((frame, motion)) = query.get_single() {
             labels
                 .get_mut(self.visible_widgets.accel_label)?
                 .set_text(format!(
                     "Accel: {:0.4}",
                     motion.vehicle_forward_acceleration()
                 ));
-            labels
-                .get_mut(self.visible_widgets.alpha_label)?
-                .set_text(format!("Alpha: {:0.2}", degrees!(dynamics.alpha())));
             labels
                 .get_mut(self.visible_widgets.camera_direction)?
                 .set_text(format!("V: {:0.4}", knots!(motion.cg_velocity())));
@@ -455,10 +415,17 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<ArcBallSystem>()?
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
-        .load_extension::<AssetLoader>()?;
-    // .load_extension::<VehicleState>()?
-    // .load_extension::<FlightDynamics>()?
-    // .load_extension::<EnvelopeInstrument>()?;
+        .load_extension::<AssetLoader>()?
+        .load_extension::<ClassicFlightModel>()?
+        .load_extension::<EnvelopeInstrument>()?
+        .load_extension::<PitchInceptor>()?
+        .load_extension::<RollInceptor>()?
+        .load_extension::<YawInceptor>()?
+        .load_extension::<AirbrakeEffector>()?
+        .load_extension::<BayEffector>()?
+        .load_extension::<FlapsEffector>()?
+        .load_extension::<GearEffector>()?
+        .load_extension::<HookEffector>()?;
 
     // Have an arcball camera controller sitting around that we can fall back to for debugging.
     let _fallback_camera_ent = runtime
@@ -512,6 +479,20 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .spawn_named("Player")?
         .insert(frame)
         .insert(ShapeScale::new(1.))
+        .insert_named(PitchInceptor::default())?
+        .insert_named(RollInceptor::default())?
+        .insert_named(YawInceptor::default())?
+        .insert_named(ThrottleInceptor::new_min_power())?
+        .insert_named(AirbrakeControl::default())?
+        .insert_named(AirbrakeEffector::new(0., Duration::from_millis(1)))?
+        .insert_named(BayControl::default())?
+        .insert_named(BayEffector::new(0., Duration::from_secs(2)))?
+        .insert_named(FlapsControl::default())?
+        .insert_named(FlapsEffector::new(0., Duration::from_millis(1)))?
+        .insert_named(GearControl::default())?
+        .insert_named(GearEffector::new(0., Duration::from_secs(4)))?
+        .insert_named(HookControl::default())?
+        .insert_named(HookEffector::new(0., Duration::from_millis(1)))?
         .id();
     runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
         heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
