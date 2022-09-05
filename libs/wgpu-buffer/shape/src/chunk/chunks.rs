@@ -283,7 +283,7 @@ impl ClosedChunk {
         let vertex_buffer = gpu.push_slice(
             "shape-chunk-vertices",
             &chunk.vertex_upload_buffer,
-            wgpu::BufferUsages::VERTEX,
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::MAP_READ,
         );
 
         let atlas_properties =
@@ -337,6 +337,17 @@ impl ClosedChunk {
 
     pub fn vertex_buffer(&self) -> wgpu::BufferSlice {
         self.vertex_buffer.slice(..)
+    }
+
+    pub fn vertex_buffer_part(&self, part: &ChunkPart) -> wgpu::BufferSlice {
+        let sz = mem::size_of::<Vertex>() as u64;
+        let start_offset = part.vertex_start as u64 * sz;
+        let end_offset = start_offset + part.vertex_count as u64 * sz;
+        self.vertex_buffer.slice(start_offset..end_offset)
+    }
+
+    pub fn unmap_vertex_buffer(&self) {
+        self.vertex_buffer.unmap();
     }
 
     pub fn part(&self, shape_id: ShapeId) -> &ChunkPart {

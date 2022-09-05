@@ -16,6 +16,7 @@ use crate::instr::read_name;
 use ansi::ansi;
 use anyhow::{bail, ensure, Result};
 use bitflags::bitflags;
+use packed_struct::packed_struct;
 use reverse::p2s;
 use std::{mem, slice::Iter};
 
@@ -567,21 +568,27 @@ pub struct VertexNormal {
     pub norm: [i8; 3],
 }
 
+#[packed_struct]
+pub struct VertexNormalOverlay {
+    magic: u8,
+    index: u16,
+    color: u8,
+    norm: [i8; 3],
+}
+
 impl VertexNormal {
     pub const MAGIC: u8 = 0xF6;
     pub const SIZE: usize = 7;
 
     pub fn from_bytes_after(offset: usize, data: &[u8]) -> Result<Self> {
-        assert_eq!(data[0], Self::MAGIC);
-        let uword_ref: &[i16] = unsafe { mem::transmute(&data[1..]) };
-        let index = uword_ref[0] as usize;
-        let idata: &[i8] = unsafe { mem::transmute(&data[4..]) };
+        let overlay = VertexNormalOverlay::overlay(&data[..Self::SIZE])?;
+        assert_eq!(overlay.magic(), Self::MAGIC);
         Ok(Self {
             offset,
             data: data.as_ptr(),
-            index,
-            color: data[3],
-            norm: [idata[0], idata[1], idata[2]],
+            index: overlay.index() as usize,
+            norm: overlay.norm(),
+            color: overlay.color(),
         })
     }
 

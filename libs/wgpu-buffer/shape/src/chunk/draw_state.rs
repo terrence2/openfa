@@ -210,6 +210,10 @@ impl DrawState {
         self.eject_state %= 5;
     }
 
+    pub fn set_afterburner_enabled(&mut self, enabled: bool) {
+        self.flags.set(DrawStateFlags::AFTERBURNER_ENABLED, enabled);
+    }
+
     pub fn enable_afterburner(&mut self) {
         self.flags.insert(DrawStateFlags::AFTERBURNER_ENABLED);
     }

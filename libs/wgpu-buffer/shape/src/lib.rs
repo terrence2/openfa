@@ -34,6 +34,7 @@ use bevy_ecs::prelude::*;
 use camera::ScreenCamera;
 use catalog::Catalog;
 use composite::CompositeRenderStep;
+use futures_lite::future::block_on;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, GpuStep};
 use marker::MarkersStep;
@@ -52,7 +53,9 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use vehicle::{AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector};
+use vehicle::{
+    AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, SimpleJetEngine,
+};
 use world::{WorldRenderPass, WorldStep};
 
 thread_local! {
@@ -505,6 +508,7 @@ impl ShapeBuffer {
         step: Res<TimeStep>,
         mut query: Query<(
             &mut DrawState,
+            Option<&SimpleJetEngine>,
             Option<&AirbrakeEffector>,
             Option<&BayEffector>,
             Option<&FlapsEffector>,
@@ -513,8 +517,11 @@ impl ShapeBuffer {
         )>,
     ) {
         let now = step.now();
-        for (mut draw_state, airbrake, bay, flaps, gear, hook) in query.iter_mut() {
+        for (mut draw_state, engine, airbrake, bay, flaps, gear, hook) in query.iter_mut() {
             draw_state.animate(now);
+            if let Some(engine) = engine {
+                draw_state.set_afterburner_enabled(engine.power().is_afterburner());
+            }
             if let Some(airbrake) = airbrake {
                 draw_state.set_airbrake(airbrake.position() > 0.1);
             }
@@ -742,6 +749,18 @@ impl ShapeBuffer {
                 block.make_upload_buffer(&gpu, encoder);
             }
         }
+    }
+
+    pub fn read_back_vertices(&self, shape_id: ShapeId, gpu: &Gpu) -> Result<Vec<Vertex>> {
+        let chunk = self.chunk_man.chunk(self.chunk_man.shape_chunk(shape_id));
+        let part = chunk.part(shape_id);
+        let full = chunk.vertex_buffer_part(part);
+        let mapper = full.map_async(wgpu::MapMode::Read);
+        gpu.device().poll(wgpu::Maintain::Wait);
+        block_on(mapper)?;
+        let verts = Vertex::overlay_slice(&full.get_mapped_range())?.to_owned();
+        chunk.unmap_vertex_buffer();
+        Ok(verts)
     }
 
     fn sys_draw_shapes(
