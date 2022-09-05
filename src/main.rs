@@ -50,7 +50,7 @@ use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use vehicle::{
     AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, PitchInceptor,
-    RollInceptor, YawInceptor,
+    RollInceptor, SimpleJetEngine, YawInceptor,
 };
 use vehicle_state::VehicleState;
 use widget::{
@@ -453,6 +453,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<PitchInceptor>()?
         .load_extension::<RollInceptor>()?
         .load_extension::<YawInceptor>()?
+        .load_extension::<SimpleJetEngine>()?
         .load_extension::<AirbrakeEffector>()?
         .load_extension::<BayEffector>()?
         .load_extension::<FlapsEffector>()?

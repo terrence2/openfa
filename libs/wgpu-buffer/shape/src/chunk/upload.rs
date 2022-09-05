@@ -112,6 +112,8 @@ bitflags! {
         const EJECT_STATE_3        = 0x0040_0000_0000_0000;
         const EJECT_STATE_4        = 0x0080_0000_0000_0000;
 
+        const IS_VERTEX_NORMAL     = 0x0100_0000_0000_0000;
+
         const AILERONS_DOWN        = Self::LEFT_AILERON_DOWN.bits | Self::RIGHT_AILERON_DOWN.bits;
         const AILERONS_UP          = Self::LEFT_AILERON_UP.bits | Self::RIGHT_AILERON_UP.bits;
     }
@@ -222,6 +224,24 @@ impl Vertex {
         );
 
         tmp
+    }
+
+    pub fn overlay_slice(buf: &[u8]) -> Result<&[Self]> {
+        zerocopy::LayoutVerified::<&[u8], [Self]>::new_slice(buf)
+            .map(|v| v.into_slice())
+            .ok_or_else(|| anyhow!("cannot overlay slice"))
+    }
+
+    pub fn point(&self) -> Point3<f32> {
+        Point3::new(self.position[0], self.position[2], -self.position[1])
+    }
+
+    pub fn normal(&self) -> Vector3<f32> {
+        Vector3::new(self.normal[0], self.normal[2], -self.normal[1])
+    }
+
+    pub fn is_vertex_normal(&self) -> bool {
+        self.flags1 & (VertexFlags::IS_VERTEX_NORMAL.bits() >> 32) as u32 != 0
     }
 }
 
@@ -941,7 +961,7 @@ impl<'a> ShapeUploader<'a> {
                     v.flags1 = (flags.bits() >> 32) as u32;
                 }
                 // Set normal if not set by vertex normals
-                if v.normal[0] == 0. && v.normal[1] == 0. && v.normal[2] == 0. {
+                if !v.is_vertex_normal() {
                     v.normal = normal;
                 }
                 v.color = self.palette.rgba_f32(facet.color as usize)?;
@@ -1339,10 +1359,12 @@ impl<'a> ShapeUploader<'a> {
                 Instr::VertexNormal(vert_norm) => {
                     let n = Vector3::new(
                         f32::from(vert_norm.norm[0]),
-                        f32::from(vert_norm.norm[1]),
                         f32::from(vert_norm.norm[2]),
+                        f32::from(vert_norm.norm[1]),
                     )
                     .normalize();
+                    self.vert_pool[vert_norm.index].flags1 |=
+                        (VertexFlags::IS_VERTEX_NORMAL.bits() >> 32) as u32;
                     self.vert_pool[vert_norm.index].normal = [n.x, n.y, n.z];
                 }
 

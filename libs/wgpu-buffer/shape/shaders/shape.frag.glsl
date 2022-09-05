@@ -86,6 +86,11 @@ void main() {
         camera_direction_w
     );
 
+    // Afterburner tagged (and enabled), act as emissive
+    if ((f_flags0 & 0x00000004u) != 0) {
+        radiance = diffuse.rgb * 10.5;
+    }
+
     // We can only discard after doing all texture reads.
     // TODO: see if we can discard early by storing dx/dy and using sample_grad
     if (should_discard) {

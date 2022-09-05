@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, knots, meters};
+use absolute_unit::{degrees, feet, meters, newtons};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::AssetLoader;
@@ -33,15 +33,15 @@ use gpu::{DetailLevelOpts, Gpu, GpuStep};
 use input::{InputSystem, InputTarget};
 use instrument_envelope::EnvelopeInstrument;
 use lib::{Libs, LibsOpts};
-use marker::Markers;
-use measure::{BodyMotion, WorldSpaceFrame};
-use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
+use marker::{EntityMarkers, Markers};
+use measure::WorldSpaceFrame;
+use nitrous::{inject_nitrous_resource, method, HeapMut, NitrousResource};
 use once_cell::sync::Lazy;
 use orrery::Orrery;
 use platform_dirs::AppDirs;
 use player::PlayerCameraController;
 use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime};
-use shape::{ShapeBuffer, ShapeScale};
+use shape::{ShapeBuffer, ShapeId, ShapeScale};
 use stars::StarsBuffer;
 use std::{
     fs::create_dir_all,
@@ -56,10 +56,11 @@ use ui::UiRenderPass;
 use vehicle::{
     AirbrakeControl, AirbrakeEffector, BayControl, BayEffector, FlapsControl, FlapsEffector,
     GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, RollInceptor,
-    ThrottleInceptor, YawInceptor,
+    SimpleJetEngine, ThrottleInceptor, YawInceptor,
 };
 use widget::{
-    FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, Terminal, WidgetBuffer,
+    Label, Labeled, LayoutMeasurements, LayoutNode, LayoutPacking, PaintContext, Terminal,
+    WidgetBuffer,
 };
 use window::{size::Size, DisplayOpts, Window, WindowBuilder};
 use world::WorldRenderPass;
@@ -92,12 +93,12 @@ bindings.bind("mouseMotion", "@camera.controller.handle_mousemotion(dx, dy)");
 bindings.bind("mouseWheel", "@camera.controller.handle_mousewheel(vertical_delta)");
 
 // Flight controls
-bindings.bind("key1", "@Player.throttle.set_detent(0)");
-bindings.bind("key2", "@Player.throttle.set_detent(1)");
-bindings.bind("key3", "@Player.throttle.set_detent(2)");
-bindings.bind("key4", "@Player.throttle.set_detent(3)");
-bindings.bind("key5", "@Player.throttle.set_detent(4)");
-bindings.bind("key6", "@Player.throttle.set_detent(5)");
+bindings.bind("key1", "@Player.throttle.set_military(0.)");
+bindings.bind("key2", "@Player.throttle.set_military(25.)");
+bindings.bind("key3", "@Player.throttle.set_military(50.)");
+bindings.bind("key4", "@Player.throttle.set_military(75.)");
+bindings.bind("key5", "@Player.throttle.set_military(100.)");
+bindings.bind("key6", "@Player.throttle.set_afterburner(0)");
 bindings.bind("b", "@Player.airbrake.toggle()");
 bindings.bind("f", "@Player.flaps.toggle()");
 bindings.bind("h", "@Player.hook.toggle()");
@@ -110,6 +111,9 @@ bindings.bind("+Right", "@Player.ailerons.move_stick_right(pressed)");
 bindings.bind("+Comma", "@Player.rudder.move_pedals_left(pressed)");
 bindings.bind("+Period", "@Player.rudder.move_pedals_right(pressed)");
 //bindings.bind("joyX", "@Player.elevator.set_position(axis)");
+bindings.bind("n", "system.toggle_show_normals()");
+bindings.bind("Shift+Slash", "system.toggle_show_help()");
+bindings.bind("F1", "system.toggle_show_help()");
 
 // Debug camera controls
 bindings.bind("+mouse1", "@fallback_camera.arcball.pan_view(pressed)");
@@ -159,18 +163,25 @@ struct Opt {
 
 #[derive(Debug)]
 struct VisibleWidgets {
-    _demo_label: Entity,
     sim_time: Entity,
-    camera_direction: Entity,
-    camera_position: Entity,
     camera_fov: Entity,
     fps_label: Entity,
 
-    accel_label: Entity,
+    engine_label: Entity,
+    airbrake_label: Entity,
+    bay_label: Entity,
+    flaps_label: Entity,
+    gear_label: Entity,
+    hook_label: Entity,
+
+    help_box_id: Entity,
+    help_line_ids: Vec<Entity>,
 }
 
 #[derive(Debug, NitrousResource)]
 struct System {
+    showing_normals: bool,
+    showing_help: bool,
     visible_widgets: VisibleWidgets,
 }
 
@@ -188,7 +199,11 @@ impl Extension for System {
 impl System {
     pub fn new(heap: HeapMut) -> Result<Self> {
         let visible_widgets = Self::build_gui(heap)?;
-        let system = Self { visible_widgets };
+        let system = Self {
+            showing_normals: false,
+            showing_help: false,
+            visible_widgets,
+        };
         Ok(system)
     }
 
@@ -199,28 +214,70 @@ impl System {
         )?;
         let font = FntFont::from_fnt(&fnt)?;
         heap.resource_mut::<PaintContext>().add_font("HUD11", font);
-        let font_id = heap
-            .resource::<PaintContext>()
-            .font_context
-            .font_id_for_name("HUD11");
+        let _font_id = heap.resource::<PaintContext>().font_id_for_name("HUD11");
+
+        let help = r#"How to use this program:
+------------------------
+F1, ?  - show or hide this help text
+f      - toggle flaps
+g      - toggle gear
+b      - toggle airbrake
+o      - toggle bay
+h      - toggle hook
+1-5    - turn off afterburner
+6      - turn on afterburner
+n      - toggle normals display
+"#;
+        let mut help_box = LayoutNode::new_vbox("help_box", heap.as_mut())?;
+        let mut help_line_ids = Vec::<Entity>::new();
+        for (i, line) in help.lines().enumerate() {
+            let help_line_id = Label::new(line)
+                .with_font(heap.resource::<PaintContext>().font_id_for_name("mono"))
+                .with_color(&Color::from([0, 255, 0]))
+                .with_size(Size::from_pts(20.0))
+                .wrapped(&format!("help_text_{}", i), heap.as_mut())?;
+            heap.get_mut::<LayoutMeasurements>(help_line_id)
+                .set_display(false);
+            help_line_ids.push(help_line_id);
+            help_box.push_widget(help_line_id)?;
+        }
+        let help_box_id = help_box.id();
+        let help_packing = LayoutPacking::default()
+            .float_middle()
+            .float_center()
+            .set_display(false)
+            .set_background("#222a")?
+            .set_padding_left("10px", heap.as_mut())?
+            .set_padding_bottom("6px", heap.as_mut())?
+            .set_padding_top("4px", heap.as_mut())?
+            .set_padding_right("4px", heap.as_mut())?
+            .set_border_color("#000")?
+            .set_border_left("3px", heap.as_mut())?
+            .set_border_right("3px", heap.as_mut())?
+            .set_border_top("3px", heap.as_mut())?
+            .set_border_bottom("3px", heap.as_mut())?
+            .to_owned();
+        *heap.get_mut::<LayoutPacking>(help_box_id) = help_packing;
+        heap.resource_mut::<WidgetBuffer>()
+            .root_mut()
+            .push_layout(help_box)?;
 
         let sim_time = Label::new("")
             .with_color(&Color::from([255, 255, 255]))
+            .with_font(heap.resource::<PaintContext>().font_id_for_name("mono"))
             .wrapped("sim_time", heap.as_mut())?;
-        let camera_direction = Label::new("")
+        let fps_label = Label::new("")
             .with_color(&Color::from([255, 255, 255]))
-            .wrapped("camera_direction", heap.as_mut())?;
-        let camera_position = Label::new("")
-            .with_color(&Color::from([255, 255, 255]))
-            .wrapped("camera_position", heap.as_mut())?;
+            .with_font(heap.resource::<PaintContext>().font_id_for_name("mono"))
+            .wrapped("fps_label", heap.as_mut())?;
         let camera_fov = Label::new("")
             .with_color(&Color::from([255, 255, 255]))
+            .with_font(heap.resource::<PaintContext>().font_id_for_name("mono"))
             .wrapped("camera_fov", heap.as_mut())?;
         let mut controls_box = LayoutNode::new_vbox("controls_box", heap.as_mut())?;
         let controls_id = controls_box.id();
         controls_box.push_widget(sim_time)?;
-        controls_box.push_widget(camera_direction)?;
-        controls_box.push_widget(camera_position)?;
+        controls_box.push_widget(fps_label)?;
         controls_box.push_widget(camera_fov)?;
         heap.resource_mut::<WidgetBuffer>()
             .root_mut()
@@ -239,19 +296,28 @@ impl System {
             .to_owned();
         *heap.get_mut::<LayoutPacking>(controls_id) = controls_packing;
 
-        fn make_label(name: &str, font_id: FontId, heap: HeapMut) -> Result<Entity> {
+        fn make_label(name: &str, heap: HeapMut) -> Result<Entity> {
             Label::new("empty")
-                .with_font(font_id)
+                .with_font(heap.resource::<PaintContext>().font_id_for_name("mono"))
                 .with_color(&Color::from([0, 255, 0]))
                 .with_size(Size::from_pts(12.0))
                 .wrapped(name, heap)
         }
-
-        let accel_label = make_label("accel", font_id, heap.as_mut())?;
+        let engine_label = make_label("engine_label", heap.as_mut())?;
+        let airbrake_label = make_label("airbrake_label", heap.as_mut())?;
+        let bay_label = make_label("bay_label", heap.as_mut())?;
+        let flaps_label = make_label("flaps_label", heap.as_mut())?;
+        let gear_label = make_label("gear_label", heap.as_mut())?;
+        let hook_label = make_label("hook_label", heap.as_mut())?;
 
         let mut player_box = LayoutNode::new_vbox("player_box", heap.as_mut())?;
         let player_box_id = player_box.id();
-        player_box.push_widget(accel_label)?;
+        player_box.push_widget(engine_label)?;
+        player_box.push_widget(airbrake_label)?;
+        player_box.push_widget(bay_label)?;
+        player_box.push_widget(flaps_label)?;
+        player_box.push_widget(gear_label)?;
+        player_box.push_widget(hook_label)?;
         heap.resource_mut::<WidgetBuffer>()
             .root_mut()
             .push_layout(player_box)?;
@@ -269,23 +335,6 @@ impl System {
             .to_owned();
         *heap.get_mut::<LayoutPacking>(player_box_id) = player_box_packing;
 
-        let fps_label = Label::new("")
-            .with_font(
-                heap.resource::<PaintContext>()
-                    .font_context
-                    .font_id_for_name("sans"),
-            )
-            .with_color(&Color::from([255, 0, 0]))
-            .with_size(Size::from_pts(13.0))
-            .with_pre_blended_text()
-            .wrapped("fps_label", heap.as_mut())?;
-        heap.resource_mut::<WidgetBuffer>()
-            .root_mut()
-            .push_widget(fps_label)?;
-        heap.get_mut::<LayoutPacking>(fps_label).float_bottom();
-
-        let demo_label = Label::new("").wrapped("demo_label", heap.as_mut())?;
-
         let mut envelope = EnvelopeInstrument::new(heap.resource::<PaintContext>());
         envelope.set_scale(2.).set_mode("all")?;
         let envelope_id = envelope.wrapped("envelope_instrument", heap.as_mut())?;
@@ -301,13 +350,19 @@ impl System {
             .push_widget(envelope_id)?;
 
         Ok(VisibleWidgets {
-            _demo_label: demo_label,
             sim_time,
-            camera_direction,
-            camera_position,
             camera_fov,
             fps_label,
-            accel_label,
+
+            engine_label,
+            airbrake_label,
+            bay_label,
+            flaps_label,
+            gear_label,
+            hook_label,
+
+            help_box_id,
+            help_line_ids,
         })
     }
 
@@ -317,9 +372,19 @@ impl System {
         orrery: Res<Orrery>,
         system: Res<System>,
         mut labels: Query<&mut Label>,
-        query: Query<(&WorldSpaceFrame, &BodyMotion), With<PlayerMarker>>,
+        query: Query<
+            (
+                &SimpleJetEngine,
+                &AirbrakeEffector,
+                &BayEffector,
+                &FlapsEffector,
+                &GearEffector,
+                &HookEffector,
+            ),
+            With<PlayerMarker>,
+        >,
     ) {
-        report!(system.track_visible_state(&camera, &timestep, &orrery, &mut labels, &query));
+        report!(system.track_visible_state(&camera, &timestep, &orrery, &mut labels, query));
     }
 
     fn track_visible_state(
@@ -328,36 +393,90 @@ impl System {
         timestep: &TimeStep,
         orrery: &Orrery,
         labels: &mut Query<&mut Label>,
-        query: &Query<(&WorldSpaceFrame, &BodyMotion), With<PlayerMarker>>,
+        query: Query<
+            (
+                &SimpleJetEngine,
+                &AirbrakeEffector,
+                &BayEffector,
+                &FlapsEffector,
+                &GearEffector,
+                &HookEffector,
+            ),
+            With<PlayerMarker>,
+        >,
     ) -> Result<()> {
         labels
             .get_mut(self.visible_widgets.sim_time)?
-            .set_text(format!("Date: {}", orrery.get_time()));
+            .set_text(format!("Date: {:0.3}", orrery.get_time()));
         labels
             .get_mut(self.visible_widgets.camera_fov)?
             .set_text(format!("FoV: {}", degrees!(camera.fov_y())));
+        labels
+            .get_mut(self.visible_widgets.fps_label)?
+            .set_text(format!(
+                "Frame Time: {:>17.3}",
+                timestep.now().elapsed().as_secs_f64() * 1000.
+            ));
 
-        if let Ok((frame, motion)) = query.get_single() {
-            labels
-                .get_mut(self.visible_widgets.accel_label)?
-                .set_text(format!(
-                    "Accel: {:0.4}",
-                    motion.vehicle_forward_acceleration()
-                ));
-            labels
-                .get_mut(self.visible_widgets.camera_direction)?
-                .set_text(format!("V: {:0.4}", knots!(motion.cg_velocity())));
-            labels
-                .get_mut(self.visible_widgets.camera_position)?
-                .set_text(format!("Position: {:0.4}", frame.position(),));
+        let (engine, airbrake, bay, flaps, gear, hook) = query.single();
+        labels
+            .get_mut(self.visible_widgets.engine_label)?
+            .set_text(format!("Engine:   {}", engine.power()));
+        labels
+            .get_mut(self.visible_widgets.airbrake_label)?
+            .set_text(format!("Airbrake: {}", airbrake.position() > 0.));
+        labels
+            .get_mut(self.visible_widgets.bay_label)?
+            .set_text(format!("Bay:      {}", bay.position() > 0.));
+        labels
+            .get_mut(self.visible_widgets.flaps_label)?
+            .set_text(format!("Flaps:    {}", flaps.position() > 0.));
+        labels
+            .get_mut(self.visible_widgets.gear_label)?
+            .set_text(format!("Gear:     {}", gear.position() > 0.));
+        labels
+            .get_mut(self.visible_widgets.hook_label)?
+            .set_text(format!("Hook:     {}", hook.position() > 0.));
+
+        Ok(())
+    }
+
+    #[method]
+    fn toggle_show_help(&mut self, mut heap: HeapMut) -> Result<()> {
+        self.showing_help = !self.showing_help;
+        heap.get_mut::<LayoutPacking>(self.visible_widgets.help_box_id)
+            .set_display(self.showing_help);
+        for &line_id in &self.visible_widgets.help_line_ids {
+            heap.get_mut::<LayoutMeasurements>(line_id)
+                .set_display(self.showing_help);
         }
-        let frame_time = timestep.now().elapsed();
-        let ts = format!(
-            "frame: {}.{}ms",
-            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
-            frame_time.subsec_micros(),
-        );
-        labels.get_mut(self.visible_widgets.fps_label)?.set_text(ts);
+        Ok(())
+    }
+
+    #[method]
+    fn toggle_show_normals(&mut self, mut heap: HeapMut) -> Result<()> {
+        let id = heap.entity_by_name("Player");
+        if self.showing_normals {
+            heap.get_mut::<EntityMarkers>(id).clear_arrows();
+            self.showing_normals = false;
+            return Ok(());
+        }
+        self.showing_normals = true;
+
+        let shape_id = *heap.get::<ShapeId>(id);
+        let verts = heap
+            .resource::<ShapeBuffer>()
+            .read_back_vertices(shape_id, heap.resource::<Gpu>())?;
+        for (i, vert) in verts.iter().enumerate() {
+            heap.get_mut::<EntityMarkers>(id).add_arrow(
+                &format!("n-{}", i),
+                vert.point().map(|v| meters!(v)),
+                vert.normal().map(|v| meters!(v * 10f32)),
+                meters!(0.25_f64),
+                "#F0F".parse()?,
+            );
+        }
+
         Ok(())
     }
 }
@@ -421,6 +540,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<PitchInceptor>()?
         .load_extension::<RollInceptor>()?
         .load_extension::<YawInceptor>()?
+        .load_extension::<SimpleJetEngine>()?
         .load_extension::<AirbrakeEffector>()?
         .load_extension::<BayEffector>()?
         .load_extension::<FlapsEffector>()?
@@ -477,12 +597,19 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     );
     let shape_ent = runtime
         .spawn_named("Player")?
+        .insert(PlayerMarker)
         .insert(frame)
         .insert(ShapeScale::new(1.))
         .insert_named(PitchInceptor::default())?
         .insert_named(RollInceptor::default())?
         .insert_named(YawInceptor::default())?
         .insert_named(ThrottleInceptor::new_min_power())?
+        .insert_named(SimpleJetEngine::new_min_power(
+            newtons!(1),
+            newtons!(2),
+            60.,
+            80.,
+        ))?
         .insert_named(AirbrakeControl::default())?
         .insert_named(AirbrakeEffector::new(0., Duration::from_millis(1)))?
         .insert_named(BayControl::default())?
@@ -493,6 +620,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .insert_named(GearEffector::new(0., Duration::from_secs(4)))?
         .insert_named(HookControl::default())?
         .insert_named(HookEffector::new(0., Duration::from_millis(1)))?
+        .insert_named(EntityMarkers::default())?
         .id();
     runtime.resource_scope(|mut heap, mut shapes: Mut<ShapeBuffer>| {
         heap.resource_scope(|mut heap, gpu: Mut<Gpu>| {
