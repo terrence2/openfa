@@ -194,7 +194,7 @@ impl PicUploader {
             const WORKGROUP_WIDTH: u32 = 65536;
             let wg_x = (dispatch_group_count % WORKGROUP_WIDTH).max(1);
             let wg_y = (dispatch_group_count / WORKGROUP_WIDTH).max(1);
-            cpass.dispatch(wg_x, wg_y, 1)
+            cpass.dispatch_workgroups(wg_x, wg_y, 1)
         }
     }
 
@@ -220,10 +220,10 @@ impl PicUploader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures_lite::future::block_on;
     use image::RgbaImage;
     use lib::Libs;
-    use std::{env, time::Instant};
+    use parking_lot::Mutex;
+    use std::{env, sync::Arc, time::Instant};
     use zerocopy::AsBytes;
 
     #[test]
@@ -277,9 +277,15 @@ mod tests {
         gpu.device().poll(wgpu::Maintain::Wait);
 
         if env::var("DUMP") == Ok("1".to_owned()) {
-            let reader = buffer.slice(..).map_async(wgpu::MapMode::Read);
-            gpu.device().poll(wgpu::Maintain::Wait);
-            block_on(reader)?;
+            let waiter = Arc::new(Mutex::new(false));
+            let waiter_ref = waiter.clone();
+            buffer.slice(..).map_async(wgpu::MapMode::Read, move |err| {
+                err.expect("failed to read back texture");
+                *waiter_ref.lock() = true;
+            });
+            while !*waiter.lock() {
+                gpu.device().poll(wgpu::Maintain::Wait);
+            }
             let view = buffer.slice(..).get_mapped_range();
             let rgba = RgbaImage::from_raw(width, height, view.as_bytes().to_vec()).unwrap();
             rgba.save("../../../__dump__/test_pic_uploader_catb.png")

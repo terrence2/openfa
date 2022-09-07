@@ -34,7 +34,6 @@ use bevy_ecs::prelude::*;
 use camera::ScreenCamera;
 use catalog::Catalog;
 use composite::CompositeRenderStep;
-use futures_lite::future::block_on;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, GpuStep};
 use marker::MarkersStep;
@@ -42,7 +41,7 @@ use measure::WorldSpaceFrame;
 use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use runtime::{Extension, FrameStage, Runtime};
 use sh::RawShape;
 use shader_shared::Group;
@@ -247,11 +246,11 @@ impl ShapeBuffer {
                 fragment: Some(wgpu::FragmentState {
                     module: &frag_shader,
                     entry_point: "main",
-                    targets: &[wgpu::ColorTargetState {
+                    targets: &[Some(wgpu::ColorTargetState {
                         format: Gpu::SCREEN_FORMAT,
                         blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
-                    }],
+                    })],
                 }),
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
@@ -755,9 +754,15 @@ impl ShapeBuffer {
         let chunk = self.chunk_man.chunk(self.chunk_man.shape_chunk(shape_id));
         let part = chunk.part(shape_id);
         let full = chunk.vertex_buffer_part(part);
-        let mapper = full.map_async(wgpu::MapMode::Read);
-        gpu.device().poll(wgpu::Maintain::Wait);
-        block_on(mapper)?;
+        let waiter = Arc::new(Mutex::new(false));
+        let waiter_ref = waiter.clone();
+        full.map_async(wgpu::MapMode::Read, move |err| {
+            err.expect("failed to read back vertices");
+            *waiter_ref.lock() = true;
+        });
+        while !*waiter.lock() {
+            gpu.device().poll(wgpu::Maintain::Wait);
+        }
         let verts = Vertex::overlay_slice(&full.get_mapped_range())?.to_owned();
         chunk.unmap_vertex_buffer();
         Ok(verts)

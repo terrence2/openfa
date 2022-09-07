@@ -8,7 +8,6 @@ edition = "2021"
 anyhow = { version = "^ 1", features = ["backtrace"] }
 bevy_ecs = { version = "^ 0.8", features = ["trace"] }
 bitflags = "^ 1"
-futures-lite = "^ 1.12"
 image = "^ 0.24"
 lazy_static = "^ 1"
 log = "^ 0.4"
@@ -17,7 +16,7 @@ nalgebra = "^ 0.31"
 parking_lot = "^ 0.12"
 smallvec = "^ 1"
 zerocopy = "^ 0.6"
-wgpu = { version = "^ 0.12", features = ["spirv"] }
+wgpu = { version = "^ 0.13", features = ["spirv"] }
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 animate = { path = "../../nitrogen/sim/animate" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
