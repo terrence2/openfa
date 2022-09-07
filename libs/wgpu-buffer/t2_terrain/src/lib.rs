@@ -984,7 +984,7 @@ impl T2TileSet {
         const WORKGROUP_WIDTH: u32 = 65536;
         let wg_x = (vertex_count % WORKGROUP_WIDTH).max(1);
         let wg_y = (vertex_count / WORKGROUP_WIDTH).max(1);
-        cpass.dispatch(wg_x, wg_y, 1);
+        cpass.dispatch_workgroups(wg_x, wg_y, 1);
     }
 
     fn accumulate_colors(
@@ -1010,7 +1010,7 @@ impl T2TileSet {
             &self.tile_bind_group,
             &[],
         );
-        cpass.dispatch(extent.width / 8, extent.height / 8, 1);
+        cpass.dispatch_workgroups(extent.width / 8, extent.height / 8, 1);
     }
 
     pub fn mapper(&self) -> &T2Mapper {

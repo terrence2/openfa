@@ -218,15 +218,18 @@ impl System {
 
         let help = r#"How to use this program:
 ------------------------
-F1, ?  - show or hide this help text
-f      - toggle flaps
-g      - toggle gear
-b      - toggle airbrake
-o      - toggle bay
-h      - toggle hook
-1-5    - turn off afterburner
-6      - turn on afterburner
-n      - toggle normals display
+F1, ?        - show or hide this help text
+left mouse   - change view angle
+middle mouse - change time of day
+right mouse  - move view position
+f            - toggle flaps
+g            - toggle gear
+b            - toggle airbrake
+o            - toggle bay
+h            - toggle hook
+1-5          - turn off afterburner
+6            - turn on afterburner
+n            - toggle normals display
 "#;
         let mut help_box = LayoutNode::new_vbox("help_box", heap.as_mut())?;
         let mut help_line_ids = Vec::<Entity>::new();
