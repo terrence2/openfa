@@ -17,8 +17,9 @@
 use anyhow::Result;
 use catalog::Catalog;
 use humansize::{file_size_opts as options, FileSize};
-use lib::LibDrawer;
+use lib::{LibDrawer, Libs};
 use std::{
+    env,
     fs::{create_dir_all, remove_file, File},
     io::Write,
     path::PathBuf,
@@ -51,14 +52,20 @@ enum Opt {
 }
 
 fn main() -> Result<()> {
-    let opt = Opt::from_args();
-
-    match opt {
-        Opt::List { inputs } => handle_ls(inputs),
-        Opt::Unpack {
-            inputs,
-            output_path,
-        } => handle_unpack(inputs, output_path),
+    if let Ok(opt) = Opt::from_args_safe() {
+        match opt {
+            Opt::List { inputs } => handle_ls(inputs),
+            Opt::Unpack {
+                inputs,
+                output_path,
+            } => handle_unpack(inputs, output_path),
+        }
+    } else {
+        let files = Libs::input_files(&env::args().skip(1).collect::<Vec<_>>(), "*.LIB")?;
+        if !files.is_empty() {
+            handle_unpack(files, None)?;
+        }
+        Ok(())
     }
 }
 
@@ -115,15 +122,12 @@ fn handle_unpack(inputs: Vec<PathBuf>, output_path: Option<PathBuf>) -> Result<(
             } else {
                 PathBuf::from(".")
             };
-            parent.push(
-                input
-                    .file_name()
-                    .expect("no filename in input")
-                    .to_owned()
-                    .to_string_lossy()
-                    .replace(".LIB", ".L_B")
-                    .replace(".lib", ".l_b"),
-            );
+            let name = input
+                .file_name()
+                .expect("no filename in input")
+                .to_string_lossy()
+                .to_owned();
+            parent.push(&name[..name.len() - 4]);
             parent
         };
         let catalog = Catalog::with_drawers("main", vec![LibDrawer::from_path(0, input)?])?;
