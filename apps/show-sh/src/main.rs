@@ -44,6 +44,7 @@ use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime};
 use shape::{ShapeBuffer, ShapeId, ShapeScale};
 use stars::StarsBuffer;
 use std::{
+    env,
     fs::create_dir_all,
     time::{Duration, Instant},
 };
@@ -495,6 +496,9 @@ fn main() -> Result<()> {
 }
 
 fn simulation_main(mut runtime: Runtime) -> Result<()> {
+    if let Some(exe_root) = env::current_exe()?.parent() {
+        env::set_current_dir(exe_root)?;
+    }
     let opt = runtime.resource::<Opt>().to_owned();
 
     let app_dirs = AppDirs::new(Some("openfa"), true)
