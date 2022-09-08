@@ -135,7 +135,7 @@ pub enum T2TerrainRenderStep {
     FinishUploads,
     EncodeUploads,
     PaintAtlasIndices,
-    Tesselate,
+    Tessellate,
     RenderDeferredTexture,
     AccumulateNormalsAndColor,
 }
@@ -186,7 +186,7 @@ impl Extension for T2TerrainBuffer {
         runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_finish_uploads
                 .label(T2TerrainRenderStep::FinishUploads)
-                .after(TerrainStep::Tesselate)
+                .after(TerrainStep::Tessellate)
                 .before(TerrainStep::RenderDeferredTexture),
         );
 
@@ -202,8 +202,8 @@ impl Extension for T2TerrainBuffer {
         );
         runtime.frame_stage_mut(FrameStage::Main).add_system(
             Self::sys_terrain_tesselate
-                .label(T2TerrainRenderStep::Tesselate)
-                .after(TerrainStep::Tesselate)
+                .label(T2TerrainRenderStep::Tessellate)
+                .after(TerrainStep::Tessellate)
                 .before(TerrainStep::RenderDeferredTexture),
         );
         runtime.frame_stage_mut(FrameStage::Main).add_system(

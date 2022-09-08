@@ -8,9 +8,9 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
 
 [[_TOC_]]
 
-## Installing
+## Installing OpenFA
 
-1) Install one of the following games:
+1) Install any of the following games:
    * USNF
    * US Marine Fighters (e.g. USNF with the Marine Fighters expansion)
    * ATF: Advanced Tactical Fighters
@@ -18,7 +18,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
    * ATF: Gold
    * USNF '97
    * Fighters Anthology
-2) Download the [![Latest Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+2) Download the [![Latest OpenFA Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
 for your platform and architecture
 3) Extract the downloaded zip file into the install directory of the game
    * Example: C:\JANES\FA
@@ -26,7 +26,29 @@ for your platform and architecture
 4) Double-click openfa.exe to run
    * `Hot tip: Right click and drag to create a shortcut wherever you want one`
 
-## Using the Command Line Tools
+## Installing OFA Tools (FA Modding Toolkit)
+
+1) Install any of the following games:
+    * USNF
+    * US Marine Fighters (e.g. USNF with the Marine Fighters expansion)
+    * ATF: Advanced Tactical Fighters
+    * ATF: Nato (e.g. ATF with the Nato expansion installed)
+    * ATF: Gold
+    * USNF '97
+    * Fighters Anthology
+2) Download the [![Latest OFA Tools Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+   for your platform and architecture
+3) Extract the downloaded zip file into the install directory of the game
+    * Example: C:\JANES\FA
+    * `Hot tip: dump-pic.exe, etc should be in the same directory as the game executable (e.g. FA.EXE)`
+4) Drag and drop assets onto the appropriate tool to perform the action
+    * Example: Drag FA_2.LIB onto dump-lib.exe to extract the LIB to FA_2/
+    * Example: Drag one or more PIC files onto dump-pic.exe to create PNGs next to those PIC
+    * Example: Drag a SH file onto show-sh.exe to open a window showing that shape
+
+## Using the Command Line Tools (Detailed)
+
+The command line tools support a wide variety of uses in addition to drag-and-drop that may be accessed from the command line.
 
 1) Install as above
    * `Note: the modding tools come packaged with the normal OpenFA install`
