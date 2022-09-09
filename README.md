@@ -18,7 +18,7 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
    * ATF: Gold
    * USNF '97
    * Fighters Anthology
-2) Download the [![Latest OpenFA Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+2) Download the [![Latest OpenFA Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases/permalink/latest)
 for your platform and architecture
 3) Extract the downloaded zip file into the install directory of the game
    * Example: C:\JANES\FA
@@ -26,7 +26,7 @@ for your platform and architecture
 4) Double-click openfa.exe to run
    * `Hot tip: Right click and drag to create a shortcut wherever you want one`
 
-## Installing OFA Tools (FA Modding Toolkit)
+## Installing FA Modding Tools
 
 1) Install any of the following games:
     * USNF
@@ -36,7 +36,7 @@ for your platform and architecture
     * ATF: Gold
     * USNF '97
     * Fighters Anthology
-2) Download the [![Latest OFA Tools Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases)
+2) Download the [![Latest OFA Tools Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases/permalink/latest)
    for your platform and architecture
 3) Extract the downloaded zip file into the install directory of the game
     * Example: C:\JANES\FA

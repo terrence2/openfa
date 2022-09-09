@@ -13,7 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-V := $(shell date +%Y%m%d)
+POINT := 1
+V := $(shell date +%Y%m%d).$(POINT)
 TMP := ofa-$(V)
 PROJECT_ID := 18970786
 OFA_BUCKET_URL := https://openfa.s3.us-west-1.amazonaws.com
