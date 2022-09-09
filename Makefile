@@ -37,12 +37,13 @@ openfa-win-x86_64.zip: target/x86_64-pc-windows-gnu/release/openfa.exe
 	mkdir $(TMP)
 	cp target/x86_64-pc-windows-gnu/release/openfa.exe $(TMP)
 	strip $(TMP)/*
-	pushd $(TMP) && zip ../openfa-win-x86_64.zip $(TMP)/*
+	pushd $(TMP) && zip ../openfa-win-x86_64.zip ./* && popd
 	rm -rf $(TMP)
 
 ofa-tools-win-x86_64.zip: target/x86_64-pc-windows-gnu/release/openfa.exe
 	mkdir $(TMP)
 	find target/x86_64-pc-windows-gnu/release/ -type f -executable -name "dump-*.exe" -exec cp \{\} $(TMP) \;
+	find target/x86_64-pc-windows-gnu/release/ -type f -executable -name "show-*.exe" -exec cp \{\} $(TMP) \;
 	strip $(TMP)/*
 	pushd $(TMP) && zip ../ofa-tools-win-x86_64.zip ./* && popd
 	rm -rf $(TMP)
@@ -61,6 +62,7 @@ openfa-linux-x86_64.tar.bz2: target/release/openfa
 ofa-tools-linux-x86_64.tar.bz2: target/release/openfa
 	mkdir $(TMP)
 	find target/release/ -type f -executable -name "dump-*" -exec cp \{\} $(TMP) \;
+	find target/release/ -type f -executable -name "show-*" -exec cp \{\} $(TMP) \;
 	strip $(TMP)/*
 	tar -C $(TMP) -cjvf ofa-tools-linux-x86_64.tar.bz2 .
 	rm -rf $(TMP)
