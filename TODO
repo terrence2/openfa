@@ -4,6 +4,8 @@ TODO
 An unsorted list of project ideas, in case I run out of things to do. Some of these will
 inevitably be stale or already done.
 
+* Make clicking the close button work
+
 * Detect missing autoexec.n2o and do something even modestly useful
 
 * Collect startup logs somehow
