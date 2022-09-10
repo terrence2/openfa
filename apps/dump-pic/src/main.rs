@@ -19,7 +19,7 @@ use lib::{GameInfo, Libs, LibsOpts};
 use pal::Palette;
 use pic::Pic;
 use std::{
-    env, fs,
+    fs,
     path::{Path, PathBuf},
 };
 use structopt::StructOpt;
@@ -61,11 +61,6 @@ struct Opt {
 fn main() -> Result<()> {
     let opt = Opt::from_args();
     let files = Libs::input_files(&opt.inputs, "*.PIC")?;
-    if !files.is_empty() {
-        if let Some(exe_root) = env::current_exe()?.parent() {
-            env::set_current_dir(exe_root)?;
-        }
-    }
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, palette, catalog) in libs.selected() {
         for input in &opt.inputs {
