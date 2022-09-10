@@ -26,6 +26,7 @@ pub struct GameInfo {
     pub allow_packed_t2: bool,
     pub unique_files: &'static [&'static str],
     pub cd_libs: &'static [&'static str],
+    pub optional_cd_libs: &'static [&'static str],
 }
 
 impl GameInfo {
@@ -51,6 +52,7 @@ const USNF: GameInfo = GameInfo {
     allow_packed_t2: false,
     unique_files: &["USNF.EXE"],
     cd_libs: &["1.LIB", "2.LIB", "3.LIB", "5.LIB", "6.LIB", "7.LIB"],
+    optional_cd_libs: &[],
 };
 
 const USMF: GameInfo = GameInfo {
@@ -65,6 +67,7 @@ const USMF: GameInfo = GameInfo {
     allow_packed_t2: false,
     unique_files: &["42.2D", "KURILE.T2"],
     cd_libs: &["8.LIB"],
+    optional_cd_libs: &[],
 };
 
 const ATF: GameInfo = GameInfo {
@@ -79,6 +82,7 @@ const ATF: GameInfo = GameInfo {
     allow_packed_t2: false,
     unique_files: &["ATF.BAT"],
     cd_libs: &["4C.LIB", "9.LIB"],
+    optional_cd_libs: &[],
 };
 
 const ATF_NATO: GameInfo = GameInfo {
@@ -93,6 +97,7 @@ const ATF_NATO: GameInfo = GameInfo {
     allow_packed_t2: false,
     unique_files: &["NATO.BAT", "BAL.T2"],
     cd_libs: &["4C.LIB", "10.LIB"],
+    optional_cd_libs: &[],
 };
 
 const USNF97: GameInfo = GameInfo {
@@ -107,6 +112,7 @@ const USNF97: GameInfo = GameInfo {
     allow_packed_t2: true,
     unique_files: &["USNF.EXE", "USNF_1.LIB"],
     cd_libs: &["USNF_3.LIB", "USNF_7.LIB", "USNF_8.LIB", "USNF_10.LIB"],
+    optional_cd_libs: &[],
 };
 
 const ATF_GOLD: GameInfo = GameInfo {
@@ -121,6 +127,7 @@ const ATF_GOLD: GameInfo = GameInfo {
     allow_packed_t2: true,
     unique_files: &["ATF.EXE", "ATF_1.LIB"],
     cd_libs: &["ATF_3.LIB", "ATF_4C.LIB", "ATF_10.LIB"],
+    optional_cd_libs: &[],
 };
 
 const FIGHTERS_ANTHOLOGY: GameInfo = GameInfo {
@@ -138,6 +145,8 @@ const FIGHTERS_ANTHOLOGY: GameInfo = GameInfo {
         // CD1
         "FA_4C.LIB",
         "FA_7.LIB",
+    ],
+    optional_cd_libs: &[
         // CD2
         "FA_3.LIB",
         "FA_10.LIB",
