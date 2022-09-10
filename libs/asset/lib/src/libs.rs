@@ -16,10 +16,10 @@ use crate::{
     game_info::{GameInfo, GAME_INFO},
     LibDrawer, Priority,
 };
-use anyhow::{bail, ensure, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use catalog::{Catalog, CatalogOpts, DirectoryDrawer, FileId};
 use glob::{glob_with, MatchOptions};
-use log::{error, trace};
+use log::{error, info, trace, warn};
 use nitrous::{inject_nitrous_resource, method, NitrousResource};
 use pal::Palette;
 use runtime::{Extension, Runtime};
@@ -111,91 +111,7 @@ impl Libs {
 
     /// Find out what we have to work with.
     pub fn bootstrap(opts: &LibsOpts) -> Result<Self> {
-        // If we didn't specify a path, use cwd.
-        let game_path = if let Some(path) = &opts.game_path {
-            path.to_owned()
-        } else {
-            env::current_dir()?
-        };
-        let game_files = Self::list_directory_canonical(&game_path)?;
-
-        // Search for the game so we can figure out what is required to be loaded.
-        let mut libs = if let Some(game) = Self::detect_game_from_files(&game_files) {
-            // Load libs from the installdir
-            let mut catalog = Catalog::empty(game.test_dir);
-            Self::populate_catalog(game, &game_path, 0, &mut catalog)?;
-
-            // If the user has not copied over the CD libs, we need to search for them.
-            if !game.cd_libs.iter().all(|&name| game_files.contains(name)) {
-                // Accumulate all CD files we can find so we check if we have everything.
-                let mut all_cd_files = HashSet::new();
-                if let Some(cd_path) = &opts.cd_path {
-                    for name in Self::list_directory_canonical(cd_path)?.drain() {
-                        all_cd_files.insert(name);
-                    }
-                }
-                if let Some(cd2_path) = &opts.cd2_path {
-                    for name in Self::list_directory_canonical(cd2_path)?.drain() {
-                        all_cd_files.insert(name);
-                    }
-                }
-
-                if game.cd_libs.iter().all(|&path| all_cd_files.contains(path)) {
-                    if let Some(cd_path) = &opts.cd_path {
-                        Self::populate_catalog(game, cd_path, -10, &mut catalog)?;
-                    }
-                    if let Some(cd2_path) = &opts.cd2_path {
-                        Self::populate_catalog(game, cd2_path, -20, &mut catalog)?;
-                    }
-                } else {
-                    match (&opts.cd_path, &opts.cd2_path) {
-                        (Some(p1), Some(p2)) => bail!(
-                            "Did not find all expected CD LIBs in {} and {} for {}",
-                            p1.to_string_lossy(),
-                            p2.to_string_lossy(),
-                            game.name,
-                        ),
-                        (Some(p1), None) => bail!(
-                            "Did not find all expected CD LIBs in {} for {}",
-                            p1.to_string_lossy(),
-                            game.name,
-                        ),
-                        (None, None) => bail!(
-                            "Did not find CD LIBs for {}; please indicate the CD path(s)!",
-                            game.name
-                        ),
-                        (None, Some(_)) => bail!("You must provide a CD1 path before a CD2 path!"),
-                    }
-                }
-                trace!("Detected {} in game and CD paths...", game.name);
-            } else {
-                trace!("Detected {} in game path...", game.name);
-            }
-
-            let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
-            Self {
-                selected_game: Some(0),
-                catalogs: vec![(game, palette, catalog)],
-            }
-        } else {
-            trace!(
-                "Did not detect any games in {}, falling back to test mode...",
-                game_path.to_string_lossy()
-            );
-
-            let mut libs = Self::for_testing()?;
-
-            if let Some(selected) = &opts.select_game {
-                for (i, (game, _, _)) in libs.catalogs.iter().enumerate() {
-                    if game.test_dir == selected {
-                        libs.selected_game = Some(i);
-                        break;
-                    }
-                }
-            }
-
-            libs
-        };
+        let mut libs = Self::bootstrap_inner(opts)?;
 
         // Load any additional libdirs into the catalog
         for (_, _, catalog) in libs.catalogs.iter_mut() {
@@ -205,6 +121,96 @@ impl Libs {
         }
 
         Ok(libs)
+    }
+
+    fn bootstrap_inner(opts: &LibsOpts) -> Result<Self> {
+        // If we specified a path manually, expect to find a game there and fail otherwise.
+        if let Some(path) = &opts.game_path {
+            info!("Requiring game to be in specified path: {:?}", path);
+            let game = Self::detect_game_in_path(path)?
+                .ok_or_else(|| anyhow!("no game in command line game path"))?;
+            return Self::bootstrap_game_in_path(opts, game, path);
+        }
+
+        // If we didn't specify a path, try cwd first, in case we run from some other directory.
+        let current_dir = env::current_dir()?;
+        info!("Looking for game in CWD: {:?}", current_dir);
+        if let Some(game) = Self::detect_game_in_path(&current_dir)? {
+            info!("Loading game files in CWD: {:?}", current_dir);
+            if let Ok(v) = Self::bootstrap_game_in_path(opts, game, &current_dir) {
+                return Ok(v);
+            }
+        }
+
+        // If we failed to find a game in cwd, try the exe directory
+        let exe_dir = env::current_exe()?
+            .parent()
+            .map(|v| v.to_owned())
+            .ok_or_else(|| anyhow!("OpenFA should not be run in the root directory"))?;
+        info!("Looking for game in exe path: {:?}", exe_dir);
+        if let Some(game) = Self::detect_game_in_path(&exe_dir)? {
+            info!("Loading game files in exe path: {:?}", exe_dir);
+            if let Ok(v) = Self::bootstrap_game_in_path(opts, game, &exe_dir) {
+                return Ok(v);
+            }
+        }
+
+        // If we cannot find a game anywhere, try seeing if this is a test environment.
+        info!("Did not detect any games, falling back to test mode...",);
+        let mut libs = Self::for_testing()?;
+        if let Some(selected) = &opts.select_game {
+            for (i, (game, _, _)) in libs.catalogs.iter().enumerate() {
+                if game.test_dir == selected {
+                    libs.selected_game = Some(i);
+                    break;
+                }
+            }
+        }
+
+        Ok(libs)
+    }
+
+    fn bootstrap_game_in_path(
+        opts: &LibsOpts,
+        game: &'static GameInfo,
+        game_path: &Path,
+    ) -> Result<Self> {
+        // Load libs from the installdir
+        let mut catalog = Catalog::empty(game.test_dir);
+        Self::populate_catalog(game, game_path, 0, &mut catalog)?;
+
+        // If the user has not copied over the CD libs, we need to search for them.
+        if !Self::found_cd_libs(game, &Self::list_directory_canonical(game_path)?) {
+            let cd1_path = opts
+                .cd_path
+                .to_owned()
+                .or_else(|| Self::detect_cd_path(game.cd_libs[0]))
+                .ok_or_else(|| anyhow!("failed to find CD1 path"))?;
+            info!("Using CD1 path: {:?}", cd1_path);
+            Self::populate_catalog(game, &cd1_path, -10, &mut catalog)?;
+
+            if let Some(&sentinel) = game.optional_cd_libs.first() {
+                if let Some(cd2_path) = opts
+                    .cd2_path
+                    .to_owned()
+                    .or_else(|| Self::detect_cd_path(sentinel))
+                {
+                    info!("Using CD2 path: {:?}", cd2_path);
+                    Self::populate_catalog(game, &cd2_path, -20, &mut catalog)?;
+                } else {
+                    warn!("Failed to find CD2 path");
+                }
+            }
+        }
+
+        info!("Successfully found {} at {:?}...", game.name, game_path);
+
+        let palette = Palette::from_bytes(catalog.read_name("PALETTE.PAL")?.as_ref())?;
+
+        Ok(Self {
+            selected_game: Some(0),
+            catalogs: vec![(game, palette, catalog)],
+        })
     }
 
     /// Build a new catalog manager with whatever test data we can scrounge up.
@@ -388,6 +394,28 @@ impl Libs {
             }
         }
         Ok(())
+    }
+
+    fn found_cd_libs(game: &'static GameInfo, files: &HashSet<String>) -> bool {
+        game.cd_libs.iter().all(|&name| files.contains(name))
+    }
+
+    fn detect_cd_path(sentinel: &str) -> Option<PathBuf> {
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+            let mut buf = PathBuf::new();
+            buf.push(format!("{}:\\{}", letter, sentinel));
+            trace!("Checking for CD at {:?}", buf);
+            if buf.exists() {
+                return Some(buf.parent().unwrap().to_owned());
+            }
+        }
+        None
+    }
+
+    fn detect_game_in_path(path: &Path) -> Result<Option<&'static GameInfo>> {
+        Ok(Self::detect_game_from_files(
+            &Self::list_directory_canonical(path)?,
+        ))
     }
 
     fn detect_game_from_files(game_files: &HashSet<String>) -> Option<&'static GameInfo> {

@@ -4,11 +4,16 @@ TODO
 An unsorted list of project ideas, in case I run out of things to do. Some of these will
 inevitably be stale or already done.
 
+* Detect missing autoexec.n2o and do something even modestly useful
+
+* Collect startup logs somehow
+
+* Collect panics and other unhandled exceptions
+
+* Collect crash dumps
+
 * Draw regalia on planes
 It's a bit embarrasing that this isn't already done.
-
-* Terrain fixups
-Fix various artifacts when there is no loaded terrain
 
 * Flight dynamics model
 How hard could this be? :scream:
