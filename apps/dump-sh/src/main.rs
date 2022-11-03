@@ -27,6 +27,14 @@ struct Opt {
     #[structopt(short = "a", long = "all")]
     show_all: bool,
 
+    /// Show all faces
+    #[structopt(short = "f", long = "show-faces")]
+    show_faces: bool,
+
+    /// Show all vertex normals
+    #[structopt(short = "n", long = "show-normals")]
+    show_normals: bool,
+
     /// Show the min and max coordinates
     #[structopt(short = "e", long = "extents")]
     show_extents: bool,
@@ -56,7 +64,7 @@ struct Opt {
     show_memory: bool,
 
     /// Elide names in output
-    #[structopt(short = "n", long = "no-name")]
+    #[structopt(short = "b", long = "no-name")]
     quiet: bool,
 
     /// Dump all i386 code fragments
@@ -98,6 +106,18 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
     if opt.show_all {
         for (i, instr) in shape.instrs.iter().enumerate() {
             println!("{:3}: {}", i, instr.show());
+        }
+    } else if opt.show_faces {
+        for (i, instr) in shape.instrs.iter().enumerate() {
+            if let sh::Instr::Facet(_) = instr {
+                println!("{:3}: {}", i, instr.show());
+            }
+        }
+    } else if opt.show_normals {
+        for (i, instr) in shape.instrs.iter().enumerate() {
+            if let sh::Instr::VertexNormal(_) = instr {
+                println!("{:3}: {}", i, instr.show());
+            }
         }
     } else if opt.show_extents {
         let mut min = [std::i16::MAX; 3];
