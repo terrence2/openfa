@@ -12,15 +12,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, feet_per_second, meters, scalar, Meters};
+use absolute_unit::{degrees, feet, feet_per_second, kilograms, meters, scalar, Meters};
 use anyhow::{anyhow, bail, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
+use fa_vehicle::Turbojet;
 use flight_dynamics::ClassicFlightModel;
 use geodesy::{GeoSurface, Graticule};
 use geometry::Ray;
 use gpu::Gpu;
 use lib::{from_dos_string, Libs};
+use marker::EntityMarkers;
 use measure::{BodyMotion, WorldSpaceFrame};
 use mmm::{Mission, MissionMap, ObjectInfo};
 use nitrous::{
@@ -40,9 +42,9 @@ use std::{
 };
 use t2_terrain::{T2TerrainBuffer, T2TileSet};
 use vehicle::{
-    AirbrakeControl, AirbrakeEffector, BayControl, BayEffector, FlapsControl, FlapsEffector,
-    GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, RollInceptor,
-    ThrottleInceptor, YawInceptor,
+    AirbrakeControl, AirbrakeEffector, Airframe, BayControl, BayEffector, FlapsControl,
+    FlapsEffector, FuelSystem, FuelTank, FuelTankKind, GearControl, GearEffector, HookControl,
+    HookEffector, PitchInceptor, PowerSystem, RollInceptor, ThrottleInceptor, YawInceptor,
 };
 use xt::TypeManager;
 
@@ -287,17 +289,39 @@ impl AssetLoader {
         };
 
         heap.named_entity_mut(id)
-            .insert(frame)
-            .insert(ShapeScale::new(scale.into_inner() as f32))
+            .insert_named(frame)?
+            .insert_named(ShapeScale::new(scale.into_inner()))?
             .insert(info.xt());
 
         if info.xt().is_jt() || info.xt().is_nt() || info.xt().is_pt() {
             heap.named_entity_mut(id)
-                .insert(BodyMotion::new_forward(feet_per_second!(info.speed())));
+                .insert_named(BodyMotion::new_forward(feet_per_second!(info.speed())))?;
 
             // TODO: use audio effect time for timing the animation and effector deployment times
+            // heap.named_entity_mut(id)
+            // TODO: fuel overrides
+            // if let Some(fuel_override) = info.fuel_override() {
+            //     heap.get_mut::<VehicleState>(id)
+            //         .set_internal_fuel_lbs(fuel_override);
+            // }
+            // TODO: hardpoint overrides
+        }
+
+        // If the type is a plane, install a flight model
+        if let Some(pt) = info.xt().pt() {
             let on_ground = info.position().y == 0;
+
+            let fuel = FuelSystem::default().with_internal_tank(FuelTank::new(
+                FuelTankKind::Center,
+                kilograms!(pt.internal_fuel),
+            ))?;
+
+            let power = PowerSystem::default().with_engine(Turbojet::new_min_power(info.xt())?);
+
             heap.named_entity_mut(id)
+                .insert_named(Airframe::new(kilograms!(info.xt().ot().empty_weight)))?
+                .insert_named(fuel)?
+                .insert_named(power)?
                 .insert_named(PitchInceptor::default())?
                 .insert_named(RollInceptor::default())?
                 .insert_named(YawInceptor::default())?
@@ -314,19 +338,15 @@ impl AssetLoader {
                     Duration::from_secs(4),
                 ))?
                 .insert_named(HookControl::default())?
-                .insert_named(HookEffector::new(0., Duration::from_millis(1)))?;
-            // TODO: fuel overrides
-            // if let Some(fuel_override) = info.fuel_override() {
-            //     heap.get_mut::<VehicleState>(id)
-            //         .set_internal_fuel_lbs(fuel_override);
-            // }
-            // TODO: hardpoint overrides
+                .insert_named(HookEffector::new(0., Duration::from_millis(1)))?
+                .insert_named(ClassicFlightModel::new(id))?;
         }
 
-        // If the type is a plane, install a flight model
-        if let Some(_pt) = info.xt().pt() {
-            heap.named_entity_mut(id)
-                .insert_named(ClassicFlightModel::new(id))?;
+        if let Some(name) = info.name() {
+            if name == "Player" {
+                heap.named_entity_mut(id)
+                    .insert_named(EntityMarkers::default())?;
+            }
         }
 
         Ok(id)
@@ -576,7 +596,7 @@ mod tests {
 
         let _fallback_camera_ent = runtime
             .spawn_named("fallback_camera")?
-            .insert(WorldSpaceFrame::default())
+            .insert_named(WorldSpaceFrame::default())?
             .insert_named(ArcBallController::default())?
             .id();
 

@@ -1,5 +1,5 @@
 [package]
-name = "vehicle_state"
+name = "fa_vehicle"
 version = "0.1.0"
 edition = "2021"
 
@@ -23,3 +23,4 @@ runtime = { path = "../../nitrogen/util/runtime" }
 ###          need some sort of intermediate shape loading process external to draw?
 shape = { path = "../../wgpu-buffer/shape" }
 xt = { path = "../../asset/xt" }
+vehicle = { path = "../../nitrogen/sim/vehicle" }

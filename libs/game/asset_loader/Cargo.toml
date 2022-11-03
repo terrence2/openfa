@@ -12,6 +12,7 @@ parking_lot = "^ 0.12"
 rand = "^ 0.8"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 camera = { path = "../../nitrogen/sim/camera" }
+fa_vehicle = { path = "../../game/fa_vehicle" }
 flight_dynamics = { path = "../../game/flight_dynamics" }
 geodesy = { path = "../../nitrogen/util/geodesy" }
 geometry = { path = "../../nitrogen/util/geometry" }
@@ -25,7 +26,6 @@ runtime = { path = "../../nitrogen/util/runtime" }
 shape = { path = "../../wgpu-buffer/shape" }
 t2_terrain = { path = "../../wgpu-buffer/t2_terrain" }
 vehicle = { path = "../../nitrogen/sim/vehicle" }
-vehicle_state = { path = "../../game/vehicle_state" }
 xt = { path = "../../asset/xt" }
 
 [dev-dependencies]

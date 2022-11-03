@@ -192,14 +192,19 @@ impl EnvelopeShape {
         }
     }
 
-    pub fn find_min_lift_speed_at(
+    #[inline]
+    pub fn find_xy_extrema(
         &self,
         altitude: Length<Meters>,
-    ) -> Option<Velocity<Meters, Seconds>> {
+    ) -> (
+        Option<Velocity<Meters, Seconds>>,
+        Option<Velocity<Meters, Seconds>>,
+    ) {
         let origin = Vector2::new(0_f64, altitude.f64());
         let end = Vector2::new(10_000_f64, altitude.f64());
 
         let mut minima = None;
+        let mut maxima = None;
 
         for (i, coord0) in self.shape.iter().enumerate() {
             let j = (i + 1) % self.shape.len();
@@ -221,10 +226,33 @@ impl EnvelopeShape {
                 } else {
                     minima = Some(d);
                 }
+                if let Some(m) = maxima {
+                    if d > m {
+                        maxima = Some(d);
+                    }
+                } else {
+                    maxima = Some(d);
+                }
             }
         }
 
-        minima
+        assert!(minima.map(|v| maxima.unwrap() >= v).unwrap_or(true));
+
+        (minima, maxima)
+    }
+
+    pub fn find_min_lift_speed_at(
+        &self,
+        altitude: Length<Meters>,
+    ) -> Option<Velocity<Meters, Seconds>> {
+        self.find_xy_extrema(altitude).0
+    }
+
+    pub fn find_max_velocity_at(
+        &self,
+        altitude: Length<Meters>,
+    ) -> Option<Velocity<Meters, Seconds>> {
+        self.find_xy_extrema(altitude).1
     }
 }
 
@@ -252,10 +280,27 @@ impl Envelope {
         self.shape.is_in_envelope(speed, altitude)
     }
 
+    pub fn find_xy_extrema(
+        &self,
+        altitude: Length<Meters>,
+    ) -> (
+        Option<Velocity<Meters, Seconds>>,
+        Option<Velocity<Meters, Seconds>>,
+    ) {
+        self.shape.find_xy_extrema(altitude)
+    }
+
     pub fn find_min_lift_speed_at(
         &self,
         altitude: Length<Meters>,
     ) -> Option<Velocity<Meters, Seconds>> {
         self.shape.find_min_lift_speed_at(altitude)
+    }
+
+    pub fn find_max_velocity_at(
+        &self,
+        altitude: Length<Meters>,
+    ) -> Option<Velocity<Meters, Seconds>> {
+        self.shape.find_max_velocity_at(altitude)
     }
 }

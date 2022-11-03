@@ -29,6 +29,7 @@ geometry = { path = "../../nitrogen/util/geometry" }
 global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
 gpu = { path = "../../nitrogen/system/gpu" }
 i386 = { path = "../../util/i386" }
+lib = { path = "../../asset/lib" }
 marker = { path = "../../nitrogen/wgpu-buffer/marker" }
 measure = { path = "../../nitrogen/sim/measure" }
 nitrous = { path = "../../nitrogen/util/nitrous" }
@@ -44,7 +45,6 @@ world = { path = "../../nitrogen/wgpu-buffer/world" }
 
 [dev-dependencies]
 fullscreen = { path = "../../nitrogen/wgpu-buffer/fullscreen" }
-lib = { path = "../../asset/lib" }
 orrery = { path = "../../nitrogen/sim/orrery" }
 stars = { path = "../../nitrogen/wgpu-buffer/stars" }
 terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }

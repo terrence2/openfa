@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::chunk::upload::{ShapeErrata, VertexFlags};
+use crate::chunk::{shape_vertex::VertexFlags, upload::ShapeErrata};
 use anyhow::{bail, Result};
 use bevy_ecs::prelude::*;
 use bitflags::bitflags;

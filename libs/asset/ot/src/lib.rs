@@ -161,7 +161,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ObjectNames {
     pub short_name: String,
     pub long_name: String,

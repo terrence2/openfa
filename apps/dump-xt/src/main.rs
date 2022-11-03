@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{feet, knots, meters, meters_per_second};
+use absolute_unit::{feet, knots, meters, meters_per_second, nautical_miles_per_hour};
 use anyhow::Result;
 use catalog::Catalog;
 use lib::{Libs, LibsOpts};
@@ -139,7 +139,13 @@ fn show_xt(name: &str, altitude: Option<i32>, catalog: &Catalog) -> Result<()> {
             if field == &"envelopes" {
                 continue;
             }
-            println!("{:>25}: {}", field, pt.get_field(field));
+            if field == &"max_speed_sea_level" {
+                println!("{:>25}: {:0.0}", field, knots!(pt.max_speed_sea_level));
+            } else if field == &"max_speed_36a" {
+                println!("{:>25}: {:0.0}", field, knots!(pt.max_speed_36a));
+            } else {
+                println!("{:>25}: {}", field, pt.get_field(field));
+            }
         }
         if let Some(altitude) = altitude {
             if let Some(env) = pt.envelopes.envelope(1) {
@@ -180,6 +186,22 @@ fn show_xt(name: &str, altitude: Option<i32>, catalog: &Catalog) -> Result<()> {
                         " ",
                         knots!(shape.speed()),
                         feet!(shape.altitude())
+                    );
+                }
+            }
+            println!("@ Env 1 -");
+            for i in 0..9 {
+                if let (Some(min), Some(max)) = pt
+                    .envelopes
+                    .envelope(1)
+                    .unwrap()
+                    .find_xy_extrema(meters!(feet!(i * 5_000)))
+                {
+                    println!(
+                        "{}\t{:0.1}\t{:0.1}",
+                        i * 5_000,
+                        nautical_miles_per_hour!(min).f64(),
+                        nautical_miles_per_hour!(max).f64()
                     );
                 }
             }

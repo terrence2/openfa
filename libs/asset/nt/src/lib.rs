@@ -41,7 +41,7 @@ impl NpcTypeVersion {
 }
 
 // Wrap Vec<HP> so that we can impl FromField.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Hardpoints {
     #[allow(dead_code)]
     all: Vec<HardpointType>,

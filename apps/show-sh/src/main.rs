@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters, newtons};
+use absolute_unit::{degrees, feet, meters};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::AssetLoader;
@@ -43,10 +43,7 @@ use player::PlayerCameraController;
 use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime};
 use shape::{ShapeBuffer, ShapeId, ShapeScale};
 use stars::StarsBuffer;
-use std::{
-    fs::create_dir_all,
-    time::{Duration, Instant},
-};
+use std::{fs::create_dir_all, time::Duration};
 use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
@@ -55,8 +52,8 @@ use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use vehicle::{
     AirbrakeControl, AirbrakeEffector, BayControl, BayEffector, FlapsControl, FlapsEffector,
-    GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, RollInceptor,
-    SimpleJetEngine, ThrottleInceptor, YawInceptor,
+    GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, PowerSystem, RollInceptor,
+    ThrottleInceptor, YawInceptor,
 };
 use widget::{
     Label, Labeled, LayoutMeasurements, LayoutNode, LayoutPacking, PaintContext, Terminal,
@@ -377,7 +374,7 @@ n            - toggle normals display
         mut labels: Query<&mut Label>,
         query: Query<
             (
-                &SimpleJetEngine,
+                &PowerSystem,
                 &AirbrakeEffector,
                 &BayEffector,
                 &FlapsEffector,
@@ -398,7 +395,7 @@ n            - toggle normals display
         labels: &mut Query<&mut Label>,
         query: Query<
             (
-                &SimpleJetEngine,
+                &PowerSystem,
                 &AirbrakeEffector,
                 &BayEffector,
                 &FlapsEffector,
@@ -418,13 +415,13 @@ n            - toggle normals display
             .get_mut(self.visible_widgets.fps_label)?
             .set_text(format!(
                 "Frame Time: {:>17.3}",
-                timestep.now().elapsed().as_secs_f64() * 1000.
+                timestep.sim_time().elapsed().as_secs_f64() * 1000.
             ));
 
-        let (engine, airbrake, bay, flaps, gear, hook) = query.single();
+        let (power, airbrake, bay, flaps, gear, hook) = query.single();
         labels
             .get_mut(self.visible_widgets.engine_label)?
-            .set_text(format!("Engine:   {}", engine.power()));
+            .set_text(format!("Engine:   {}", power.engine(0).current_power()));
         labels
             .get_mut(self.visible_widgets.airbrake_label)?
             .set_text(format!("Airbrake: {}", airbrake.position() > 0.));
@@ -543,7 +540,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<PitchInceptor>()?
         .load_extension::<RollInceptor>()?
         .load_extension::<YawInceptor>()?
-        .load_extension::<SimpleJetEngine>()?
+        .load_extension::<PowerSystem>()?
         .load_extension::<AirbrakeEffector>()?
         .load_extension::<BayEffector>()?
         .load_extension::<FlapsEffector>()?
@@ -601,18 +598,12 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     let shape_ent = runtime
         .spawn_named("Player")?
         .insert(PlayerMarker)
-        .insert(frame)
         .insert(ShapeScale::new(1.))
+        .insert_named(frame)?
         .insert_named(PitchInceptor::default())?
         .insert_named(RollInceptor::default())?
         .insert_named(YawInceptor::default())?
         .insert_named(ThrottleInceptor::new_min_power())?
-        .insert_named(SimpleJetEngine::new_min_power(
-            newtons!(1),
-            newtons!(2),
-            60.,
-            80.,
-        ))?
         .insert_named(AirbrakeControl::default())?
         .insert_named(AirbrakeEffector::new(0., Duration::from_millis(1)))?
         .insert_named(BayControl::default())?
@@ -636,10 +627,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     runtime.run_startup();
     while runtime.resource::<ExitRequest>().still_running() {
         // Catch monotonic sim time up to system time.
-        let frame_start = Instant::now();
-        while runtime.resource::<TimeStep>().next_now() < frame_start {
-            runtime.run_sim_once();
-        }
+        TimeStep::run_sim_loop(&mut runtime);
 
         // Display a frame
         runtime.run_frame_once();

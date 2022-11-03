@@ -23,12 +23,13 @@ pub use crate::{
 pub use components::*;
 
 use crate::{
-    chunk::{ChunkId, ChunkManager, ShapeErrata, Vertex},
+    chunk::{ChunkId, ChunkManager, ShapeErrata, ShapeVertex},
     instance_block::{BlockId, InstanceBlock, TransformType},
 };
 use absolute_unit::Meters;
 use animate::TimeStep;
 use anyhow::{anyhow, Result};
+use atlas::AtlasPacker;
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
 use camera::ScreenCamera;
@@ -36,12 +37,15 @@ use catalog::Catalog;
 use composite::CompositeRenderStep;
 use global_data::GlobalParametersBuffer;
 use gpu::{Gpu, GpuStep};
+use image::Rgba;
+use lib::Libs;
 use marker::MarkersStep;
 use measure::WorldSpaceFrame;
 use nitrous::NamedEntityMut;
 use ofa_groups::Group as LocalGroup;
 use pal::Palette;
 use parking_lot::{Mutex, RwLock};
+use pic_uploader::PicUploader;
 use runtime::{Extension, FrameStage, Runtime};
 use sh::RawShape;
 use shader_shared::Group;
@@ -53,7 +57,7 @@ use std::{
     time::Instant,
 };
 use vehicle::{
-    AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, SimpleJetEngine,
+    AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, PowerSystem,
 };
 use world::{WorldRenderPass, WorldStep};
 
@@ -61,8 +65,17 @@ thread_local! {
     pub static WIDGET_CACHE: RefCell<HashMap<ShapeId, ShapeMetadata >> = RefCell::new(HashMap::new());
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum PlaneArtKind {
+    Left,
+    Right,
+    Nose,
+    Round,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash, SystemLabel)]
 pub enum ShapeStep {
+    UploadArt,
     ResetUploadCursor,
     AnimateDrawState,
     ApplyTransforms,
@@ -92,11 +105,15 @@ pub struct ShapeBuffer {
 
 impl Extension for ShapeBuffer {
     fn init(runtime: &mut Runtime) -> Result<()> {
-        let shapes = ShapeBuffer::new(
-            runtime.resource::<GlobalParametersBuffer>(),
-            runtime.resource::<AtmosphereBuffer>(),
-            runtime.resource::<Gpu>(),
-        )?;
+        let shapes = runtime.resource_scope(|heap, mut gpu: Mut<Gpu>| {
+            ShapeBuffer::new(
+                heap.resource::<Libs>().catalog(),
+                heap.resource::<Libs>().palette(),
+                heap.resource::<GlobalParametersBuffer>(),
+                heap.resource::<AtmosphereBuffer>(),
+                &mut gpu,
+            )
+        })?;
 
         runtime
             .frame_stage_mut(FrameStage::Main)
@@ -161,10 +178,55 @@ impl Extension for ShapeBuffer {
 
 impl ShapeBuffer {
     pub fn new(
+        catalog: &Catalog,
+        palette: &Palette,
         globals: &GlobalParametersBuffer,
         atmosphere: &AtmosphereBuffer,
-        gpu: &Gpu,
+        gpu: &mut Gpu,
     ) -> Result<Self> {
+        // An atlas with all nose, tail, wing, and country art.
+        let mut plane_art_map = HashMap::new();
+        let _atlas = {
+            let mut pic_uploader = PicUploader::new(gpu)?;
+            pic_uploader.set_shared_palette(palette, gpu);
+            let mut atlas_packer = AtlasPacker::<Rgba<u8>>::new(
+                "plane-art",
+                gpu,
+                Gpu::stride_for_row_size(12 * 129 * 4) / 4,
+                Gpu::stride_for_row_size(12 * 129 * 4) / 4,
+                wgpu::TextureFormat::Rgba8Unorm,
+                wgpu::FilterMode::Nearest, // TODO: see if we can "improve" things with filtering?
+            );
+            let pairs = vec![
+                (PlaneArtKind::Round, 5, "ROUND??.PIC"), // 60 images at 128x128
+                (PlaneArtKind::Left, 4, "LEFT??.PIC"),   // 25 images at 128x128
+                (PlaneArtKind::Right, 5, "RIGHT??.PIC"), // 25 images at 128x128
+                (PlaneArtKind::Nose, 4, "NOSE??.PIC"),   // 24 images at 64x64
+            ];
+            let usage = wgpu::BufferUsages::COPY_SRC;
+            for (kind, offset, glob) in pairs {
+                plane_art_map.insert(kind, HashMap::new());
+                for fid in catalog.find_glob_with_extension(glob, Some(".PIC"))? {
+                    let number = catalog.stat(fid)?.name()[offset..offset + 2].parse::<u32>()?;
+                    let data = catalog.read(fid)?;
+                    let (buffer, width, height, stride_bytes) =
+                        pic_uploader.upload(&data, gpu, usage)?;
+                    let frame = atlas_packer.push_buffer(buffer, width, height, stride_bytes)?;
+                    plane_art_map.get_mut(&kind).unwrap().insert(number, frame);
+                }
+            }
+            let mut encoder =
+                gpu.device()
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("plane-art-upload-encoder"),
+                    });
+            pic_uploader.expand_pics(&mut encoder);
+            atlas_packer.encode_frame_uploads(gpu, &mut encoder);
+            pic_uploader.finish_expand_pass();
+            gpu.queue_mut().submit(vec![encoder.finish()]);
+            atlas_packer
+        };
+
         let bind_group_layout =
             gpu.device()
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -241,7 +303,7 @@ impl ShapeBuffer {
                 vertex: wgpu::VertexState {
                     module: &vert_shader,
                     entry_point: "main",
-                    buffers: &[Vertex::descriptor()],
+                    buffers: &[ShapeVertex::descriptor()],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &frag_shader,
@@ -438,8 +500,7 @@ impl ShapeBuffer {
             block_id
         } else {
             let block_id = self.allocate_block_id();
-            let block =
-                InstanceBlock::new(block_id, chunk_id, &self.bind_group_layout, gpu.device());
+            let block = InstanceBlock::new(block_id, &self.bind_group_layout, gpu.device());
             self.chunk_to_block_map
                 .entry(chunk_id)
                 .or_insert_with(Vec::new)
@@ -507,7 +568,7 @@ impl ShapeBuffer {
         step: Res<TimeStep>,
         mut query: Query<(
             &mut DrawState,
-            Option<&SimpleJetEngine>,
+            Option<&PowerSystem>,
             Option<&AirbrakeEffector>,
             Option<&BayEffector>,
             Option<&FlapsEffector>,
@@ -515,11 +576,11 @@ impl ShapeBuffer {
             Option<&HookEffector>,
         )>,
     ) {
-        let now = step.now();
-        for (mut draw_state, engine, airbrake, bay, flaps, gear, hook) in query.iter_mut() {
+        let now = step.sim_time();
+        for (mut draw_state, power, airbrake, bay, flaps, gear, hook) in query.iter_mut() {
             draw_state.animate(now);
-            if let Some(engine) = engine {
-                draw_state.set_afterburner_enabled(engine.power().is_afterburner());
+            if let Some(power) = power {
+                draw_state.set_afterburner_enabled(power.is_afterburner());
             }
             if let Some(airbrake) = airbrake {
                 draw_state.set_airbrake(airbrake.position() > 0.1);
@@ -571,7 +632,7 @@ impl ShapeBuffer {
         step: Res<TimeStep>,
         mut query: Query<(&DrawState, &mut ShapeFlagBuffer)>,
     ) {
-        let start = step.start();
+        let start = step.sim_start_time();
         query.par_for_each_mut(1024, |(draw_state, mut flag_buffer)| {
             draw_state
                 .build_mask_into(start, &mut flag_buffer.buffer)
@@ -584,8 +645,8 @@ impl ShapeBuffer {
         step: Res<TimeStep>,
         mut query: Query<(&ShapeId, &DrawState, &mut ShapeXformBuffer)>,
     ) {
-        let start = step.start();
-        let now = step.now();
+        let start = step.sim_start_time();
+        let now = step.sim_time();
         assert!(now >= start);
         query.par_for_each_mut(1024, |(shape_id, draw_state, mut xform_buffer)| {
             let part = shapes.chunk_man.part(*shape_id);
@@ -750,7 +811,7 @@ impl ShapeBuffer {
         }
     }
 
-    pub fn read_back_vertices(&self, shape_id: ShapeId, gpu: &Gpu) -> Result<Vec<Vertex>> {
+    pub fn read_back_vertices(&self, shape_id: ShapeId, gpu: &Gpu) -> Result<Vec<ShapeVertex>> {
         let chunk = self.chunk_man.chunk(self.chunk_man.shape_chunk(shape_id));
         let part = chunk.part(shape_id);
         let full = chunk.vertex_buffer_part(part);
@@ -763,7 +824,7 @@ impl ShapeBuffer {
         while !*waiter.lock() {
             gpu.device().poll(wgpu::Maintain::Wait);
         }
-        let verts = Vertex::overlay_slice(&full.get_mapped_range())?.to_owned();
+        let verts = ShapeVertex::overlay_slice(&full.get_mapped_range())?.to_owned();
         chunk.unmap_vertex_buffer();
         Ok(verts)
     }
@@ -792,22 +853,24 @@ impl ShapeBuffer {
             rpass.set_bind_group(Group::Globals.index(), globals.bind_group(), &[]);
             rpass.set_bind_group(Group::Atmosphere.index(), atmosphere.bind_group(), &[]);
 
-            for block in shapes.blocks.values() {
-                let chunk = shapes.chunk_man.chunk(block.chunk_id());
-
-                // FIXME: reorganize blocks by chunk so that we can avoid thrashing this bind group
+            for (&chunk_id, block_list) in shapes.chunk_to_block_map.iter() {
+                let chunk = shapes.chunk_man.chunk(chunk_id);
                 rpass.set_bind_group(LocalGroup::ShapeChunk.index(), chunk.bind_group(), &[]);
-                rpass.set_bind_group(LocalGroup::ShapeBlock.index(), block.bind_group(), &[]);
-                rpass.set_vertex_buffer(0, chunk.vertex_buffer());
-                for i in 0..block.len() {
-                    //rpass.draw_indirect(block.command_buffer(), i as u64);
-                    let cmd = block.command_buffer_scratch[i];
-                    #[allow(clippy::range_plus_one)]
-                    rpass.draw(
-                        cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
-                        i as u32..i as u32 + 1,
-                        // 0..1,
-                    );
+
+                for block_id in block_list {
+                    let block = shapes.blocks.get(block_id).unwrap();
+                    rpass.set_bind_group(LocalGroup::ShapeBlock.index(), block.bind_group(), &[]);
+                    rpass.set_vertex_buffer(0, chunk.vertex_buffer());
+                    for i in 0..block.len() {
+                        //rpass.draw_indirect(block.command_buffer(), i as u64);
+                        let cmd = block.command_buffer_scratch[i];
+                        #[allow(clippy::range_plus_one)]
+                        rpass.draw(
+                            cmd.first_vertex..cmd.first_vertex + cmd.vertex_count,
+                            i as u32..i as u32 + 1,
+                            // 0..1,
+                        );
+                    }
                 }
             }
         }
@@ -827,10 +890,19 @@ mod test {
 
     #[test]
     fn test_find_damage() -> Result<()> {
-        let mut runtime = Gpu::for_test()?
-            .with_extension::<GlobalParametersBuffer>()?
-            .with_extension::<AtmosphereBuffer>()?
-            .with_extension::<ShapeBuffer>()?;
+        let mut runtime = Gpu::for_test()?;
+        runtime
+            .load_extension::<TimeStep>()?
+            .load_extension::<Libs>()?
+            .load_extension::<CameraSystem>()?
+            .load_extension::<GlobalParametersBuffer>()?
+            .load_extension::<FullscreenBuffer>()?
+            .load_extension::<AtmosphereBuffer>()?
+            .load_extension::<ShapeBuffer>()?
+            .load_extension::<StarsBuffer>()?
+            .load_extension::<TerrainBuffer>()?
+            .load_extension::<WorldRenderPass>()?
+            .load_extension::<Orrery>()?;
         let libs = Libs::for_testing()?;
         for (game, palette, catalog) in libs.selected() {
             if game.test_dir != "FA" {
@@ -855,7 +927,7 @@ mod test {
         let mut runtime = Gpu::for_test()?;
         runtime
             .load_extension::<TimeStep>()?
-            .load_extension::<Catalog>()?
+            .load_extension::<Libs>()?
             .load_extension::<CameraSystem>()?
             .load_extension::<GlobalParametersBuffer>()?
             .load_extension::<FullscreenBuffer>()?

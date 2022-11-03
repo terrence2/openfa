@@ -419,16 +419,11 @@ impl Libs {
     }
 
     fn detect_game_from_files(game_files: &HashSet<String>) -> Option<&'static GameInfo> {
-        for game in GAME_INFO {
-            if game
-                .unique_files
+        GAME_INFO.into_iter().find(|&game| {
+            game.unique_files
                 .iter()
                 .all(|&name| game_files.contains(name))
-            {
-                return Some(game);
-            }
-        }
-        None
+        })
     }
 
     fn list_directory_canonical(path: &Path) -> Result<HashSet<String>> {

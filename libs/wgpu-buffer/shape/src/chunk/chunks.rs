@@ -14,7 +14,8 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::chunk::{
     chunk_manager::TextureAtlasProperties,
-    upload::{AnalysisResults, DrawSelection, ShapeMetadata, ShapeUploader, Vertex},
+    shape_vertex::ShapeVertex,
+    upload::{AnalysisResults, DrawSelection, ShapeMetadata, ShapeUploader},
 };
 use anyhow::Result;
 use atlas::AtlasPacker;
@@ -40,7 +41,7 @@ use std::{
 use zerocopy::{AsBytes, FromBytes};
 
 const AVERAGE_VERTEX_BYTES: usize = 24_783;
-const VERTEX_CHUNK_COUNT: usize = AVERAGE_VERTEX_BYTES / mem::size_of::<Vertex>();
+const VERTEX_CHUNK_COUNT: usize = AVERAGE_VERTEX_BYTES / mem::size_of::<ShapeVertex>();
 
 #[repr(C)]
 #[derive(AsBytes, FromBytes, Copy, Clone, Debug, Default)]
@@ -168,7 +169,7 @@ pub struct OpenChunk {
     chunk_id: ChunkId,
     chunk_flags: ChunkFlags,
 
-    vertex_upload_buffer: Vec<Vertex>,
+    vertex_upload_buffer: Vec<ShapeVertex>,
     atlas_packer: AtlasPacker<Rgba<u8>>,
 
     // So we can give out unique ids to each shape in this chunk.
@@ -270,7 +271,7 @@ impl ClosedChunk {
         sampler: &wgpu::Sampler,
         gpu: &gpu::Gpu,
     ) -> Self {
-        let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<Vertex>();
+        let v_size = chunk.vertex_upload_buffer.len() * std::mem::size_of::<ShapeVertex>();
         let a_size = chunk.atlas_packer.atlas_size();
         info!(
             "uploading vertex/atlas buffer {:?} size {} / {} ({} total) bytes",
@@ -340,7 +341,7 @@ impl ClosedChunk {
     }
 
     pub fn vertex_buffer_part(&self, part: &ChunkPart) -> wgpu::BufferSlice {
-        let sz = mem::size_of::<Vertex>() as u64;
+        let sz = mem::size_of::<ShapeVertex>() as u64;
         let start_offset = part.vertex_start as u64 * sz;
         let end_offset = start_offset + part.vertex_count as u64 * sz;
         self.vertex_buffer.slice(start_offset..end_offset)

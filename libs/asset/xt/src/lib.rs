@@ -97,6 +97,18 @@ impl TypeRef {
         self.0.pt()
     }
 
+    pub fn xjt(&self) -> &ProjectileType {
+        self.0.jt().unwrap()
+    }
+
+    pub fn xnt(&self) -> &NpcType {
+        self.0.nt().unwrap()
+    }
+
+    pub fn xpt(&self) -> &PlaneType {
+        self.0.pt().unwrap()
+    }
+
     pub fn is_pt(&self) -> bool {
         self.pt().is_some()
     }
