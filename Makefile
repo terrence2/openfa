@@ -18,10 +18,10 @@ V := $(shell date +%Y%m%d).$(POINT)
 TMP := ofa-$(V)
 PROJECT_ID := 18970786
 OFA_BUCKET_URL := https://openfa.s3.us-west-1.amazonaws.com
-PKG_OFA_LINUX_X64 := openfa-$(V)-linux-x86_64.tar.bz2
-PKG_TOOLS_LINUX_X64 := ofa-tools-$(V)-linux-x86_64.tar.bz2
-PKG_OFA_WIN_X64 := openfa-$(V)-win-x86_64.zip
-PKG_TOOLS_WIN_X64 := ofa-tools-$(V)-win-x86_64.zip
+PKG_OFA_LINUX_X64 := openfa-alpha-$(V)-linux-x86_64.tar.bz2
+PKG_TOOLS_LINUX_X64 := ofa-tools-alpha-$(V)-linux-x86_64.tar.bz2
+PKG_OFA_WIN_X64 := openfa-alpha-$(V)-win-x86_64.zip
+PKG_TOOLS_WIN_X64 := ofa-tools-alpha-$(V)-win-x86_64.zip
 
 clean:
 	rm -rf $(TMP) \
@@ -75,7 +75,7 @@ release: openfa-linux-x86_64.tar.bz2 ofa-tools-linux-x86_64.tar.bz2 openfa-win-x
 	aws s3 cp openfa-win-x86_64.zip s3://openfa/$(PKG_OFA_WIN_X64)
 	aws s3 cp ofa-tools-win-x86_64.zip s3://openfa/$(PKG_TOOLS_WIN_X64)
 	release-cli --server-url "https://gitlab.com/" --project-id $(PROJECT_ID) --private-token $(shell cat ~/.gitlab/token) \
-        create --name "Release $(V)" --tag-name $(V) --ref $(shell git show-ref --hash --head HEAD | head -n1) \
+        create --name "Release Alpha-$(V)" --tag-name $(V) --ref $(shell git show-ref --hash --head HEAD | head -n1) \
         --assets-link "{\"name\":\"${PKG_OFA_LINUX_X64}\",\"url\":\"${OFA_BUCKET_URL}/${PKG_OFA_LINUX_X64}\"}" \
         --assets-link "{\"name\":\"${PKG_TOOLS_LINUX_X64}\",\"url\":\"${OFA_BUCKET_URL}/${PKG_TOOLS_LINUX_X64}\"}" \
         --assets-link "{\"name\":\"${PKG_OFA_WIN_X64}\",\"url\":\"${OFA_BUCKET_URL}/${PKG_OFA_WIN_X64}\"}" \
