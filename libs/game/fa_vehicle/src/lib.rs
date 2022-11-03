@@ -12,5 +12,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-pub(crate) mod fuel_tank;
-pub(crate) mod power_plant;
+mod inertia;
+mod turbojet;
+
+pub use crate::{
+    inertia::{Inertia, InertiaTensor},
+    turbojet::Turbojet,
+};

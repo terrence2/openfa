@@ -15,6 +15,7 @@
 mod chunk_manager;
 mod chunks;
 mod draw_state;
+mod shape_vertex;
 mod upload;
 
 pub(crate) use chunk_manager::ChunkManager;
@@ -22,7 +23,8 @@ pub use chunks::{
     ChunkId, ChunkPart, ClosedChunk, DrawIndirectCommand, OpenChunk, ShapeId, ShapeIds,
 };
 pub use draw_state::DrawState;
-pub use upload::{DrawSelection, ShapeErrata, ShapeExtent, ShapeMetadata, Vertex, VertexFlags};
+pub use shape_vertex::{ShapeVertex, VertexFlags};
+pub use upload::{DrawSelection, ShapeErrata, ShapeExtent, ShapeMetadata};
 
 #[cfg(test)]
 mod test {

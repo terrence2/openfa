@@ -28,6 +28,7 @@ camera = { path = "../../libs/nitrogen/sim/camera" }
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 composite = { path = "../../libs/nitrogen/wgpu-buffer/composite" }
 event_mapper = { path = "../../libs/nitrogen/sim/event_mapper" }
+fa_vehicle = { path = "../../libs/game/fa_vehicle" }
 flight_dynamics = { path = "../../libs/game/flight_dynamics" }
 fnt = { path = "../../libs/asset/fnt" }
 font_fnt = { path = "../../libs/wgpu-buffer/font_fnt" }
@@ -55,7 +56,6 @@ terrain = { path = "../../libs/nitrogen/wgpu-buffer/terrain" }
 tracelog = { path = "../../libs/nitrogen/system/tracelog" }
 ui = { path = "../../libs/nitrogen/wgpu-buffer/ui" }
 vehicle = { path = "../../libs/nitrogen/sim/vehicle" }
-vehicle_state = { path = "../../libs/game/vehicle_state" }
 widget = { path = "../../libs/nitrogen/wgpu-buffer/widget" }
 window = { path = "../../libs/nitrogen/system/window" }
 world = { path = "../../libs/nitrogen/wgpu-buffer/world" }

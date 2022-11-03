@@ -14,6 +14,7 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use crate::TransformType;
 use bevy_ecs::prelude::*;
+use nitrous::{inject_nitrous_component, NitrousComponent};
 
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeTransformBuffer {
@@ -30,20 +31,25 @@ pub struct ShapeXformBuffer {
     pub buffer: [[f32; 6]; 14],
 }
 
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
-pub struct ShapeScale(f32);
+#[derive(Component, NitrousComponent, Clone, Copy, Debug, PartialEq)]
+#[Name = "scale"]
+pub struct ShapeScale {
+    #[property]
+    scale: f64,
+}
 
+#[inject_nitrous_component]
 impl ShapeScale {
-    pub fn new(v: f32) -> Self {
-        Self(v)
+    pub fn new(scale: f64) -> Self {
+        Self { scale }
     }
 
     // Convert to dense pack for upload.
     pub fn compact(self) -> [f32; 1] {
-        [self.0]
+        [self.scale as f32]
     }
 
     pub fn scale(&self) -> f32 {
-        self.0
+        self.scale as f32
     }
 }

@@ -260,10 +260,5 @@ fn format_unk(xs: &[u8]) -> String {
 }
 
 fn _find_instr_at_offset(offset: usize, instrs: &[Instr]) -> Option<&Instr> {
-    for instr in instrs.iter() {
-        if instr.at_offset() == offset {
-            return Some(instr);
-        }
-    }
-    None
+    instrs.iter().find(|&instr| instr.at_offset() == offset)
 }

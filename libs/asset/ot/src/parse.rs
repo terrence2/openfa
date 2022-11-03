@@ -440,7 +440,7 @@ macro_rules! make_type_struct {
     ($structname:ident($parent:ident: $parent_ty:ty, version: $version_ty:ident) {
         $( ($row_type:ident, [ $( $row_format:ident ),* ], $comment:expr, $parse_type:ident, $field_name:ident, $field_type:path, $version_supported:ident, $default_value:expr) ),*
     }) => {
-        #[derive(Debug)]
+        #[derive(Clone, Debug)]
         #[allow(dead_code)]
         pub struct $structname {
             pub $parent: $parent_ty,

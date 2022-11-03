@@ -10,6 +10,7 @@ bevy_ecs = { version = "^ 0.8", features = ["trace"] }
 nalgebra = "^ 0.31"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 animate = { path = "../../nitrogen/sim/animate" }
+fa_vehicle = { path = "../../game/fa_vehicle" }
 geodesy = { path = "../../nitrogen/util/geodesy" }
 geometry = { path = "../../nitrogen/util/geometry" }
 marker = { path = "../../nitrogen/wgpu-buffer/marker" }
@@ -22,5 +23,4 @@ runtime = { path = "../../nitrogen/util/runtime" }
 ###          need some sort of intermediate shape loading process external to draw?
 shape = { path = "../../wgpu-buffer/shape" }
 vehicle = { path = "../../nitrogen/sim/vehicle" }
-vehicle_state = { path = "../../game/vehicle_state" }
 xt = { path = "../../asset/xt" }

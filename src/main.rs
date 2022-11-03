@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, knots, pounds_force, pounds_mass};
+use absolute_unit::prelude::*;
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::AssetLoader;
@@ -41,7 +41,7 @@ use player::PlayerCameraController;
 use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime, StartupOpts};
 use shape::ShapeBuffer;
 use stars::StarsBuffer;
-use std::{fs::create_dir_all, time::Instant};
+use std::fs::create_dir_all;
 use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
@@ -49,10 +49,9 @@ use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use vehicle::{
-    AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, PitchInceptor,
-    RollInceptor, SimpleJetEngine, YawInceptor,
+    AirbrakeEffector, BayEffector, FlapsEffector, FuelSystem, GearEffector, HookEffector,
+    PitchInceptor, PowerSystem, RollInceptor, YawInceptor,
 };
-use vehicle_state::VehicleState;
 use widget::{
     FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, Terminal, WidgetBuffer,
 };
@@ -64,6 +63,7 @@ const PRELUDE: &str = r#"
 // System controls
 bindings.bind("Escape", "exit()");
 bindings.bind("q", "exit()");
+bindings.bind("c", "time.next_time_compression()");
 
 // Camera Controls
 bindings.bind("F1", "@camera.controller.set_mode('Forward')");
@@ -82,23 +82,23 @@ bindings.bind("mouseMotion", "@camera.controller.handle_mousemotion(dx, dy)");
 bindings.bind("mouseWheel", "@camera.controller.handle_mousewheel(vertical_delta)");
 
 // Flight controls
-bindings.bind("key1", "@Player.throttle.set_detent(0)");
-bindings.bind("key2", "@Player.throttle.set_detent(1)");
-bindings.bind("key3", "@Player.throttle.set_detent(2)");
-bindings.bind("key4", "@Player.throttle.set_detent(3)");
-bindings.bind("key5", "@Player.throttle.set_detent(4)");
-bindings.bind("key6", "@Player.throttle.set_detent(5)");
+bindings.bind("key1", "@Player.throttle.set_military(0.)");
+bindings.bind("key2", "@Player.throttle.set_military(25.)");
+bindings.bind("key3", "@Player.throttle.set_military(50.)");
+bindings.bind("key4", "@Player.throttle.set_military(75.)");
+bindings.bind("key5", "@Player.throttle.set_military(100.)");
+bindings.bind("key6", "@Player.throttle.set_afterburner()");
 bindings.bind("b", "@Player.airbrake.toggle()");
 bindings.bind("o", "@Player.bay.toggle()");
 bindings.bind("f", "@Player.flaps.toggle()");
 bindings.bind("h", "@Player.hook.toggle()");
 bindings.bind("g", "@Player.gear.toggle()");
-bindings.bind("+Up", "@Player.stick_y.key_move_forward(pressed)");
-bindings.bind("+Down", "@Player.stick_y.key_move_backward(pressed)");
-bindings.bind("+Left", "@Player.ailerons.move_stick_left(pressed)");
-bindings.bind("+Right", "@Player.ailerons.move_stick_right(pressed)");
-bindings.bind("+Comma", "@Player.rudder.move_pedals_left(pressed)");
-bindings.bind("+Period", "@Player.rudder.move_pedals_right(pressed)");
+bindings.bind("+Up", "@Player.stick_pitch.key_move_front(pressed)");
+bindings.bind("+Down", "@Player.stick_pitch.key_move_back(pressed)");
+bindings.bind("+Left", "@Player.stick_roll.key_move_left(pressed)");
+bindings.bind("+Right", "@Player.stick_roll.key_move_right(pressed)");
+bindings.bind("+Comma", "@Player.pedals_yaw.key_move_left(pressed)");
+bindings.bind("+Period", "@Player.pedals_yaw.key_move_right(pressed)");
 //bindings.bind("joyX", "@Player.elevator.set_position(axis)");
 
 // Debug camera controls
@@ -117,7 +117,6 @@ let location := "Everest";
 @fallback_camera.arcball.set_target(@fallback_camera.arcball.notable_location(location));
 @fallback_camera.arcball.set_eye(@fallback_camera.arcball.eye_for(location));
 orrery.set_date_time(1964, 2, 24, 12, 0, 0);
-
 "#;
 
 /// Show resources from Jane's Fighters Anthology engine LIB files.
@@ -316,8 +315,9 @@ impl System {
             (
                 &WorldSpaceFrame,
                 &BodyMotion,
-                &VehicleState,
                 &ClassicFlightModel,
+                &PowerSystem,
+                &FuelSystem,
             ),
             With<PlayerMarker>,
         >,
@@ -327,7 +327,7 @@ impl System {
 
     fn track_visible_state(
         &self,
-        camera: &ScreenCamera,
+        _camera: &ScreenCamera,
         timestep: &TimeStep,
         orrery: &Orrery,
         labels: &mut Query<&mut Label>,
@@ -335,8 +335,9 @@ impl System {
             (
                 &WorldSpaceFrame,
                 &BodyMotion,
-                &VehicleState,
                 &ClassicFlightModel,
+                &PowerSystem,
+                &FuelSystem,
             ),
             With<PlayerMarker>,
         >,
@@ -346,23 +347,22 @@ impl System {
             .set_text(format!("Date: {}", orrery.get_time()));
         labels
             .get_mut(self.visible_widgets.camera_fov)?
-            .set_text(format!("FoV: {}", degrees!(camera.fov_y())));
+            .set_text(format!("Time Comp: {}", timestep.time_compression()));
 
-        if let Ok((frame, motion, vehicle, dynamics)) = query.get_single() {
+        if let Ok((frame, motion, flight, power, fuel)) = query.get_single() {
             labels
                 .get_mut(self.visible_widgets.weight_label)?
-                .set_text(format!(
-                    "Weight: {:0.1}",
-                    pounds_mass!(vehicle.current_mass())
-                ));
+                .set_text(format!("Fuel: {:0.1}", pounds_mass!(fuel.fuel_mass())));
             let altitude = frame.position_graticule().distance;
             let atmosphere = StandardAtmosphere::at_altitude(altitude);
             labels
                 .get_mut(self.visible_widgets.engine_label)?
                 .set_text(format!(
                     "Engine: {} ({:0.0})",
-                    vehicle.power_plant().engine_display(),
-                    pounds_force!(vehicle.power_plant().forward_thrust(&atmosphere, motion))
+                    power.engine(0).current_power(),
+                    pounds_force!(
+                        power.current_thrust(&atmosphere, motion.vehicle_forward_velocity())
+                    )
                 ));
             labels
                 .get_mut(self.visible_widgets.accel_label)?
@@ -372,15 +372,20 @@ impl System {
                 ));
             labels
                 .get_mut(self.visible_widgets.alpha_label)?
-                .set_text(format!("MaxG: {:0.2}", dynamics.max_g_load()));
+                .set_text(format!(
+                    "Drag: {:0.2} : {:0.2}",
+                    flight.coef_of_drag(),
+                    pounds_force!(newtons!(flight.force_of_drag()))
+                ));
+            // .set_text(format!("MaxG: {:0.2}", flight.max_g_load()));
             labels
                 .get_mut(self.visible_widgets.camera_direction)?
-                .set_text(format!("V: {:0.4}", knots!(motion.cg_velocity())));
+                .set_text(format!("V: {:0.4}", miles_per_hour!(motion.cg_velocity())));
             labels
                 .get_mut(self.visible_widgets.camera_position)?
                 .set_text(format!("Position: {:0.4}", frame.position(),));
         }
-        let frame_time = timestep.now().elapsed();
+        let frame_time = timestep.sim_time().elapsed();
         let ts = format!(
             "frame: {}.{}ms",
             frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
@@ -447,13 +452,12 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<TypeManager>()?
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
-        .load_extension::<VehicleState>()?
         .load_extension::<ClassicFlightModel>()?
         .load_extension::<EnvelopeInstrument>()?
+        .load_extension::<PowerSystem>()?
         .load_extension::<PitchInceptor>()?
         .load_extension::<RollInceptor>()?
         .load_extension::<YawInceptor>()?
-        .load_extension::<SimpleJetEngine>()?
         .load_extension::<AirbrakeEffector>()?
         .load_extension::<BayEffector>()?
         .load_extension::<FlapsEffector>()?
@@ -470,10 +474,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
     runtime.run_startup();
     while runtime.resource::<ExitRequest>().still_running() {
         // Catch monotonic sim time up to system time.
-        let frame_start = Instant::now();
-        while runtime.resource::<TimeStep>().next_now() < frame_start {
-            runtime.run_sim_once();
-        }
+        TimeStep::run_sim_loop(&mut runtime);
 
         // Display a frame
         runtime.run_frame_once();

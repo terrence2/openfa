@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::chunk::{ChunkId, DrawIndirectCommand};
+use crate::chunk::DrawIndirectCommand;
 use bevy_ecs::prelude::*;
 use gpu::Gpu;
 use log::trace;
@@ -57,9 +57,6 @@ impl SlotId {
 pub struct InstanceBlock {
     // Our own block id, for creating slots.
     block_id: BlockId,
-
-    // Weak reference to the associated chunk in the Manager.
-    chunk_id: ChunkId,
 
     // Current allocation head.
     free_slot: usize,
@@ -123,7 +120,6 @@ impl InstanceBlock {
 
     pub(crate) fn new(
         block_id: BlockId,
-        chunk_id: ChunkId,
         layout: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
     ) -> Self {
@@ -215,7 +211,6 @@ impl InstanceBlock {
             slot_map: Box::new([0; BLOCK_SIZE]),
             slots_dirty: false,
             xform_cursor: 0,
-            chunk_id,
             command_buffer_scratch: [DrawIndirectCommand {
                 vertex_count: 0,
                 instance_count: 0,
@@ -334,10 +329,6 @@ impl InstanceBlock {
             self.xform_buffer.clone(),
             encoder,
         );
-    }
-
-    pub(crate) fn chunk_id(&self) -> ChunkId {
-        self.chunk_id
     }
 
     pub(crate) fn len(&self) -> usize {

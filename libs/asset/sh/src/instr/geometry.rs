@@ -429,22 +429,22 @@ impl Facet {
             data: data.as_ptr(),
             length: off,
 
-            flags_pointer: (&data[flags_offset..]).as_ptr(),
+            flags_pointer: data[flags_offset..].as_ptr(),
             flags,
 
-            color_pointer: (&data[color_offset..]).as_ptr(),
+            color_pointer: data[color_offset..].as_ptr(),
             color,
 
-            material_pointer: (&data[material_offset..]).as_ptr(),
+            material_pointer: data[material_offset..].as_ptr(),
             material_size,
             raw_material,
 
-            _indices_count_pointer: (&data[index_count_offset..]).as_ptr(),
-            indices_pointer: (&data[indices_offset..]).as_ptr(),
+            _indices_count_pointer: data[index_count_offset..].as_ptr(),
+            indices_pointer: data[indices_offset..].as_ptr(),
             indices_size,
             indices,
 
-            tc_pointer: (&data[tc_offset..]).as_ptr(),
+            tc_pointer: data[tc_offset..].as_ptr(),
             tc_size,
             tex_coords,
         })

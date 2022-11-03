@@ -16,7 +16,7 @@
 // Unpack lib files.
 use anyhow::Result;
 use catalog::Catalog;
-use humansize::{file_size_opts as options, FileSize};
+use humansize::{format_size, BINARY};
 use lib::{LibDrawer, Libs};
 use std::{
     env,
@@ -81,11 +81,11 @@ fn handle_ls(inputs: Vec<PathBuf>) -> Result<()> {
         }
         for &fid in catalog.find_glob("*")?.iter() {
             let info = catalog.stat(fid)?;
-            let mut psize = info.packed_size().file_size(options::BINARY).unwrap();
+            let mut psize = format_size(info.packed_size(), BINARY);
             if psize.ends_with(" B") {
                 psize += "  ";
             }
-            let mut asize = info.unpacked_size().file_size(options::BINARY).unwrap();
+            let mut asize = format_size(info.unpacked_size(), BINARY);
             if asize.ends_with(" B") {
                 asize += "  ";
             }

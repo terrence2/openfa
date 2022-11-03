@@ -17,8 +17,8 @@ mod envelope;
 pub use crate::envelope::{Envelope, EnvelopeIntersection};
 
 use absolute_unit::{
-    Angle, Degrees, Force, Hours, Length, Mass, MassRate, Meters, Miles, PoundsForce, PoundsMass,
-    Seconds, Velocity,
+    Angle, Degrees, Feet, Force, Length, Mass, MassRate, Meters, PoundsForce, PoundsMass, Seconds,
+    Velocity,
 };
 use anyhow::{bail, ensure, Result};
 use nt::NpcType;
@@ -74,14 +74,23 @@ impl GloadExtrema {
         *match self {
             Self::Inside(f) => f,
             Self::Stall(f) => f,
-            Self::OverSpeed(f) => f,
-            Self::LiftFail(f) => f,
+            Self::OverSpeed(_) => &1f64,
+            Self::LiftFail(_) => &0f64,
+        }
+    }
+
+    pub fn min_g_load(&self) -> f64 {
+        *match self {
+            Self::Inside(f) => f,
+            Self::Stall(f) => f,
+            Self::OverSpeed(_) => &0f64,
+            Self::LiftFail(_) => &0f64,
         }
     }
 }
 
 // Wrap Vec<HP> so that we can impl FromRow.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Envelopes {
     all: Vec<Envelope>,
     min_g: i16,
@@ -136,12 +145,12 @@ impl Envelopes {
     }
 
     pub fn envelope(&self, gload: i16) -> Option<&Envelope> {
-        for env in &self.all {
-            if env.gload == gload {
-                return Some(env);
-            }
+        if gload < self.min_g || gload > self.max_g {
+            return None;
         }
-        None
+        let out = &self.all[gload as usize + (-self.min_g) as usize];
+        assert_eq!(out.gload, gload);
+        Some(out)
     }
 
     pub fn find_min_lift_speed_at(
@@ -179,10 +188,63 @@ impl Envelopes {
                         envelope.gload as f64 + (to_stall / (to_stall + v))
                     }
                     Some(EnvelopeIntersection::OverSpeed(v)) => {
-                        envelope.gload as f64 + (to_over_speed / (to_over_speed + v))
+                        (envelope.gload as f64 + (to_over_speed / (to_over_speed + v))).max(1.)
                     }
                     Some(EnvelopeIntersection::LiftFail(v)) => {
                         envelope.gload as f64 + (to_lift_fail / (to_lift_fail + v))
+                    }
+                    Some(EnvelopeIntersection::Inside { .. }) => {
+                        panic!("found non-returned intersection?")
+                    }
+                });
+            } else {
+                prior = Some(intersect);
+            }
+
+            // Our negative extrema is a different loop.
+            if envelope.gload == 0 {
+                break;
+            }
+        }
+
+        // Inside no envelopes... map from the last failed envelope, which should be 0.
+        match prior {
+            None => panic!("empty envelope!"),
+            Some(EnvelopeIntersection::Stall(v)) => GloadExtrema::Stall(v),
+            Some(EnvelopeIntersection::OverSpeed(v)) => GloadExtrema::OverSpeed(v),
+            Some(EnvelopeIntersection::LiftFail(v)) => GloadExtrema::LiftFail(v),
+            // Broke after first envelope, therefore must be 0
+            Some(EnvelopeIntersection::Inside { .. }) => GloadExtrema::Inside(0.),
+        }
+    }
+
+    pub fn find_g_load_minima(
+        &self,
+        speed: Velocity<Meters, Seconds>,
+        altitude: Length<Meters>,
+    ) -> GloadExtrema {
+        // From inside (tightest envelope) outwards.
+        let mut prior = None;
+        for envelope in self.all.iter() {
+            // Check if we are fully in this envelope.
+            let intersect = envelope.find_g_load_extrema(speed, altitude);
+            if let EnvelopeIntersection::Inside {
+                to_stall,
+                to_over_speed,
+                to_lift_fail,
+            } = intersect
+            {
+                return GloadExtrema::Inside(match prior {
+                    // If we are in the highest g-load envelope, that is our max.
+                    None => envelope.gload as f64,
+                    Some(EnvelopeIntersection::Stall(v)) => {
+                        envelope.gload as f64 - (to_stall / (to_stall + v))
+                    }
+                    Some(EnvelopeIntersection::OverSpeed(v)) => {
+                        envelope.gload as f64 - (to_over_speed / (to_over_speed + v))
+                    }
+                    Some(EnvelopeIntersection::LiftFail(v)) => {
+                        envelope.gload as f64 - (to_lift_fail / (to_lift_fail + v))
                     }
                     Some(EnvelopeIntersection::Inside { .. }) => {
                         panic!("found non-returned intersection?")
@@ -329,30 +391,36 @@ PlaneType(nt: NpcType, version: PlaneTypeVersion) { // CMCHE.PT
 (Ptr,   [Sym],               "env",  Custom, envelopes,      Envelopes, V0, panic!()),  // ptr env
 (Word,  [Dec],            "envMin",  Signed, env_min,              i16, V0, panic!()), // word -1 ; envMin -- num negative g envelopes
 (Word,  [Dec],            "envMax",  Signed, env_max,              i16, V0, panic!()), // word 4 ; envMax -- num positive g envelopes
-(Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,  u16, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
-(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,Velocity<Miles, Hours>, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
+(Word,  [Dec],     "structure [0]",Unsigned, max_speed_sea_level,Velocity<Feet, Seconds>, V0, panic!()), // word 1182 ; structure [0] -- Max Speed @ Sea-Level (Mph)
+(Word,  [Dec],     "structure [1]",Unsigned, max_speed_36a,Velocity<Feet, Seconds>, V0, panic!()), // word 1735 ; structure [1] -- Max Speed @ 36K Feet (Mph)
 // Only blimp.pt has bv_* different from all others. Probably unused?
 (Word,  [Dec],            "_bv.x.", CustomN, bv_x,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.y.", CustomN, bv_y,          PhysBounds, V0, panic!()),
 (Word,  [Dec],            "_bv.z.", CustomN, bv_z,          PhysBounds, V0, panic!()),
 // Max roll rate left, then right; acc is rate towards inceptor away from neutral, dacc is rate towards roll inceptor towards neutral
 (Word,  [Dec],           "_brv.x.", CustomN, brv_x,         PhysBounds, V0, panic!()),
-// No apparent effects; most are [-0,0], [-small,small]; check correlation with rudder_yaw_*
+// Acceleration of the elevator response from 0 to max-g; mostly are [-0,0], [-small,small], probably accel in g/s
 (Word,  [Dec],           "_brv.y.", CustomN, brv_y,         PhysBounds, V0, panic!()),
-// No apparent effects
+// No apparent effect.
+// All acc/dacc are 90/90; Some, but not all, jumbos have -30/30 for min/max; all others have -45/45.
 (Word,  [Dec],           "_brv.z.", CustomN, brv_z,         PhysBounds, V0, panic!()),
 (Word,  [Dec],          "gpullAOA",  Signed, gpull_aoa, Angle<Degrees>, V0, panic!()), // word 20 ; gpullAOA
 (Word,  [Dec],       "lowAOASpeed",  Signed, low_aoa_speed,        i16, V0, panic!()), // word 70 ; lowAOASpeed
 (Word,  [Dec],       "lowAOAPitch",  Signed, low_aoa_pitch,        i16, V0, panic!()), // word 15 ; lowAOAPitch
 (Word,  [Dec], "turbulencePercent",  Signed, turbulence_percent,   i16, V1, 0),        // word 149 ; turbulencePercent
-(Word,  [Dec],     "rudderYaw.min",  Signed, rudder_yaw_min,       i16, V0, panic!()), // word -1 ; rudderYaw.min
-(Word,  [Dec],     "rudderYaw.max",  Signed, rudder_yaw_max,       i16, V0, panic!()), // word 1 ; rudderYaw.max
-(Word,  [Dec],     "rudderYaw.acc",  Signed, rudder_yaw_acc,       i16, V0, panic!()), // word 1 ; rudderYaw.acc
-(Word,  [Dec],    "rudderYaw.dacc",  Signed, rudder_yaw_dacc,      i16, V0, panic!()), // word 3 ; rudderYaw.dacc
+// Velocity and Acceleration of yaw offsets, like for roll, but within rudderSlip bounds.
+// Actual rate of yaw of plane appears independent of anything here.
+(Word,  [Dec],     "rudderYaw.",    CustomN, rudder_yaw,    PhysBounds, V0, panic!()), // word -1 ; rudderYaw.min
+// Left and right yaw deflection offset
+// 90 appears about 45 degrees
+// 255 point to ~135 degrees
+// 360 points ~180 or a bit more off centere
 (Word,  [Dec],        "rudderSlip",  Signed, rudder_slip,          i16, V0, panic!()), // word 10 ; rudderSlip
 (Word,  [Dec],        "rudderDrag",  Signed, rudder_drag,          i16, V0, panic!()), // word 128 ; rudderDrag
+// Velocity of roll appears fixed and proportional to yaw, but much lower than degrees per second
+// at 360, takes about 5 seconds to do a full roll
 (Word,  [Dec],        "rudderBank",  Signed, rudder_bank,          i16, V0, panic!()), // word 5 ; rudderBank
-// No apparent effect? Highly specialized acc/dacc
+// No apparent effect? Highly specialized acc/dacc. Maybe for vtol? Would make sense, given the name.
 (Word,  [Dec],        "puffRot.x.", CustomN, puff_rot_x,    PhysBounds, V1, Default::default()),
 (Word,  [Dec],        "puffRot.y.", CustomN, puff_rot_y,    PhysBounds, V1, Default::default()),
 (Word,  [Dec],        "puffRot.z.", CustomN, puff_rot_z,    PhysBounds, V1, Default::default()),
@@ -453,6 +521,8 @@ mod tests {
                 }
                 assert_eq!(-pt.brv_x.min, pt.brv_x.max);
                 assert_eq!(pt.brv_y.acc, pt.brv_y.dacc);
+                assert_eq!(pt.brv_z.acc, 90.);
+                assert_eq!(pt.brv_z.dacc, 90.);
                 assert_eq!(pt.nt.ot.file_name(), meta.name());
             }
         }

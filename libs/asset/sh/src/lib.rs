@@ -1550,12 +1550,7 @@ impl RawShape {
 
 fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
     let expect = format!("{:02X}", kind);
-    for instr in instrs.iter() {
-        if expect == instr.magic() {
-            return Some(instr);
-        }
-    }
-    None
+    instrs.iter().find(|&instr| expect == instr.magic())
 }
 
 #[cfg(test)]
