@@ -67,7 +67,7 @@ fn show_pe(content: &[u8], disassemble: bool) -> Result<()> {
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
 
-    let mut pe = PortableExecutable::from_bytes(&content)?;
+    let mut pe = PortableExecutable::from_bytes(content)?;
     pe.relocate(0xAA00_0000)?;
 
     println!("image base: 0x{:08X}", pe.image_base);
