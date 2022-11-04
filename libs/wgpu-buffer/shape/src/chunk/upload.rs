@@ -1116,8 +1116,8 @@ impl<'a> ShapeUploader<'a> {
                     }
                 }
 
-                Instr::TextureIndex(texture) => {
-                    println!("TEX: {:#?}", texture);
+                Instr::TextureIndex(_texture) => {
+                    // println!("TEX: {:#?}", texture);
                 }
 
                 Instr::VertexBuf(vert_buf) => {

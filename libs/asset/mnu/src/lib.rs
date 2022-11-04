@@ -34,7 +34,7 @@ impl Menu {
         }
         pe.relocate(0xAA00_0000)?;
 
-        let vaddr = pe.section_info["CODE"].virtual_address as usize;
+        let vaddr = pe.section_info["CODE"].mapped_address() as usize;
 
         let mut all_thunk_descrs = Vec::new();
         for thunk in &pe.thunks {

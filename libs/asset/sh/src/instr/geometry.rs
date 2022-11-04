@@ -606,15 +606,29 @@ impl VertexNormal {
 
     pub fn show(&self) -> String {
         format!(
-            "@{:04X} {}VxNrm{}: {}{}{}   | {}{}{}",
+            "@{:04X} {}VxNrm: F6{}   | {}{}{}({}{}{}); {}{}{}({}{}{}); {}{}{}({}{}, {}, {}{})",
             self.offset,
             ansi().blue().bold(),
             ansi(),
             ansi().blue().bold(),
-            p2s(self.data, 0, 1).trim(),
+            p2s(self.data, 1, 3),
             ansi(),
-            ansi().blue(),
-            p2s(self.data, 1, Self::SIZE),
+            ansi().white().dimmed(),
+            self.index,
+            ansi(),
+            ansi().blue().bold(),
+            p2s(self.data, 3, 4),
+            ansi(),
+            ansi().white().dimmed(),
+            self.color,
+            ansi(),
+            ansi().blue().bold(),
+            p2s(self.data, 4, 7),
+            ansi(),
+            ansi().white().dimmed(),
+            self.norm[0],
+            self.norm[1],
+            self.norm[2],
             ansi(),
         )
     }
