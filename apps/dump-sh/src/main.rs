@@ -13,7 +13,6 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use catalog::{Catalog, FileId};
 use lib::{GameInfo, Libs, LibsOpts};
 use reverse::b2h;
 use sh::{Instr, RawShape, SHAPE_LOAD_BASE};
@@ -86,23 +85,34 @@ struct Opt {
 fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
+    let files = Libs::input_files(&opt.inputs, "*.SH")?;
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
             for fid in catalog.find_glob(input)? {
-                show_sh(fid, game, catalog, &opt)?;
+                let name = catalog.stat(fid)?.name().to_owned();
+                let data = catalog.read(fid)?;
+                show_sh(&name, &data, game, &opt)?;
             }
+        }
+    }
+    if let Some((game, _, _)) = libs.selected().next() {
+        for path in &files {
+            let data = fs::read(path)?;
+            show_sh(
+                &path.file_name().unwrap().to_string_lossy(),
+                &data,
+                game,
+                &opt,
+            )?;
         }
     }
 
     Ok(())
 }
 
-fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result<()> {
-    let meta = catalog.stat(fid)?;
-    let data = catalog.read(fid)?;
-    let shape = RawShape::from_bytes(&data)?;
-
+fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
+    let shape = RawShape::from_bytes(data)?;
     if opt.show_all {
         for (i, instr) in shape.instrs.iter().enumerate() {
             println!("{:3}: {}", i, instr.show());
@@ -157,7 +167,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
                 if opt.quiet {
                     println!("{}", out);
                 } else {
-                    println!("{:13}: {}", meta.name(), out);
+                    println!("{:13}: {}", name, out);
                 }
             }
         }
@@ -177,7 +187,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
                                         tramp.name,
                                         sh_instr.at_offset(),
                                         game.test_dir,
-                                        meta.name(),
+                                        name,
                                         instr.show_relative(sh_instr.at_offset() + pos)
                                     );
                                 }
@@ -195,12 +205,12 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
             .map(sh::Instr::show)
             .ok_or("NO INSTRUCTIONS")
             .unwrap();
-        println!("{:20}: {}", meta.name(), fmt);
+        println!("{:20}: {}", name, fmt);
     } else if opt.show_unknown {
         for i in shape.instrs.iter() {
             if let sh::Instr::UnknownUnknown(unk) = i {
-                //println!("{:20}: {}", meta.name(), i.show());
-                println!("{}, {:20}", format_unk(&unk.data), meta.name());
+                //println!("{:20}: {}", name, i.show());
+                println!("{}, {:20}", format_unk(&unk.data), name);
             }
         }
     } else if opt.show_memory {
@@ -232,7 +242,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
                 let filename = format!(
                     "dump/i386/{}/{}-{:04X}.i386",
                     game.test_dir,
-                    meta.name(),
+                    name,
                     vinstr.at_offset()
                 );
                 let mut v: Vec<u8> = Vec::new();
@@ -252,7 +262,7 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
                 if let sh::Instr::UnknownData(_) = suc {
                     let suc2 = &shape.instrs[offset + 2];
                     if let sh::Instr::X86Code(_) = suc2 {
-                        println!("{} - {:?}", suc.magic(), meta.name());
+                        println!("{} - {:?}", suc.magic(), name);
                         //println!("{}", suc.magic());
                     }
                     offset += 1;
@@ -260,6 +270,10 @@ fn show_sh(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Result
                 offset += 1;
             }
             offset += 1;
+        }
+    } else {
+        for (i, instr) in shape.instrs.iter().enumerate() {
+            println!("{:3}: {}", i, instr.show());
         }
     }
     Ok(())

@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use absolute_unit::{degrees, feet, meters};
+use absolute_unit::{degrees, feet, kilograms, meters};
 use animate::{TimeStep, Timeline};
 use anyhow::{anyhow, Result};
 use asset_loader::AssetLoader;
@@ -51,9 +51,10 @@ use terrain::TerrainBuffer;
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use vehicle::{
-    AirbrakeControl, AirbrakeEffector, BayControl, BayEffector, FlapsControl, FlapsEffector,
-    GearControl, GearEffector, HookControl, HookEffector, PitchInceptor, PowerSystem, RollInceptor,
-    ThrottleInceptor, YawInceptor,
+    AirbrakeControl, AirbrakeEffector, Airframe, BayControl, BayEffector, FlapsControl,
+    FlapsEffector, FuelSystem, FuelTank, FuelTankKind, GearControl, GearEffector, GliderEngine,
+    HookControl, HookEffector, PitchInceptor, PowerSystem, RollInceptor, ThrottleInceptor,
+    YawInceptor,
 };
 use widget::{
     Label, Labeled, LayoutMeasurements, LayoutNode, LayoutPacking, PaintContext, Terminal,
@@ -537,10 +538,10 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         .load_extension::<AssetLoader>()?
         .load_extension::<ClassicFlightModel>()?
         .load_extension::<EnvelopeInstrument>()?
+        .load_extension::<PowerSystem>()?
         .load_extension::<PitchInceptor>()?
         .load_extension::<RollInceptor>()?
         .load_extension::<YawInceptor>()?
-        .load_extension::<PowerSystem>()?
         .load_extension::<AirbrakeEffector>()?
         .load_extension::<BayEffector>()?
         .load_extension::<FlapsEffector>()?
@@ -595,11 +596,17 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
             meters!(feet!(200.0_f64)),
         ),
     );
+    let fuel = FuelSystem::default()
+        .with_internal_tank(FuelTank::new(FuelTankKind::Center, kilograms!(0.)))?;
+    let power = PowerSystem::default().with_engine(GliderEngine::default());
     let shape_ent = runtime
         .spawn_named("Player")?
         .insert(PlayerMarker)
         .insert(ShapeScale::new(1.))
         .insert_named(frame)?
+        .insert_named(Airframe::new(kilograms!(10.)))?
+        .insert_named(fuel)?
+        .insert_named(power)?
         .insert_named(PitchInceptor::default())?
         .insert_named(RollInceptor::default())?
         .insert_named(YawInceptor::default())?

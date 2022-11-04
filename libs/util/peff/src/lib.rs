@@ -196,7 +196,9 @@ impl Trampoline {
 }
 
 pub struct SectionInfo {
-    pub virtual_address: u32,
+    file_offset: u32,
+    mapped_address: u32,
+    virtual_address: u32,
     pub virtual_size: u32,
     pub size_of_raw_data: u32,
 }
@@ -204,10 +206,24 @@ pub struct SectionInfo {
 impl SectionInfo {
     fn from_header(header: &SectionHeader) -> Self {
         Self {
+            file_offset: header.pointer_to_raw_data(),
+            mapped_address: header.virtual_address(),
             virtual_address: header.virtual_address(),
             virtual_size: header.virtual_size(),
             size_of_raw_data: header.size_of_raw_data(),
         }
+    }
+
+    pub fn file_offset(&self) -> u32 {
+        self.file_offset
+    }
+
+    pub fn virtual_address(&self) -> u32 {
+        self.virtual_address
+    }
+
+    pub fn mapped_address(&self) -> u32 {
+        self.mapped_address
     }
 }
 
@@ -695,7 +711,7 @@ impl PortableExecutable {
                 thunk_delta.delta(),
                 thunk_delta.apply(info.virtual_address)
             );
-            info.virtual_address = thunk_delta.apply(info.virtual_address);
+            info.mapped_address = thunk_delta.apply(info.virtual_address);
         }
         for thunk in self.thunks.iter_mut() {
             trace!(

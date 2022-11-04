@@ -14,11 +14,10 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use ansi::{ansi, terminal_size};
 use anyhow::Result;
-use catalog::{Catalog, FileId};
 use i386::{Disassembler, DisassemblyError};
 use lib::{Libs, LibsOpts};
 use peff::PortableExecutable;
-use std::collections::HashSet;
+use std::{collections::HashSet, fs};
 use structopt::StructOpt;
 
 /// Dump PE files
@@ -37,6 +36,7 @@ struct Opt {
 fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
+    let files = Libs::input_files(&opt.inputs, "*.PE")?;
     let libs = Libs::bootstrap(&opt.libs_opts)?;
     for (game, _palette, catalog) in libs.selected() {
         for input in &opt.inputs {
@@ -47,29 +47,37 @@ fn main() -> Result<()> {
                     "{}",
                     "=".repeat(1 + game.test_dir.len() + meta.name().len())
                 );
-                show_pe(fid, catalog, opt.disassemble)?;
+                show_pe(&catalog.read(fid)?, opt.disassemble)?;
             }
         }
+    }
+    for path in &files {
+        let name = path.file_name().unwrap().to_string_lossy().to_owned();
+        println!("{}", name);
+        println!("{}", "=".repeat(name.len()));
+        let data = fs::read(path)?;
+        show_pe(&data, opt.disassemble)?;
     }
 
     Ok(())
 }
 
-fn show_pe(fid: FileId, catalog: &Catalog, disassemble: bool) -> Result<()> {
+fn show_pe(content: &[u8], disassemble: bool) -> Result<()> {
     let (_, width) = terminal_size();
     let relocs_per_line = (width - 3) / 7;
     let bytes_per_line = (width - 3) / 3;
 
-    let content = catalog.read(fid)?;
-    let mut pe = PortableExecutable::from_bytes(&content)?;
+    let mut pe = PortableExecutable::from_bytes(content)?;
     pe.relocate(0xAA00_0000)?;
 
     println!("image base: 0x{:08X}", pe.image_base);
 
     for (name, section) in &pe.section_info {
         println!("{} @", name);
-        println!("\tvaddr: 0x{:04X}", section.virtual_address);
+        println!("\tvfile: 0x{:04X}", section.file_offset());
+        println!("\tvaddr: 0x{:04X}", section.virtual_address());
         println!("\tvsize: 0x{:04X}", section.virtual_size);
+        println!("\tmaddr: 0x{:04X}", section.mapped_address());
         println!("\trawsz: 0x{:04X}", section.size_of_raw_data);
     }
 
