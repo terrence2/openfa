@@ -53,6 +53,11 @@ pub struct ClassicFlightModel {
 
     coef_of_drag: f64,
     force_of_drag: f64,
+
+    // In classic FA, the AoA is faked. We always do aerodynamic calculations off
+    // of the real/stability facing and then add in pitch and yaw offsets from that
+    // for the facing that gets rendered.
+    stability: UnitQuaternion<f64>,
 }
 
 impl Extension for ClassicFlightModel {
@@ -64,13 +69,14 @@ impl Extension for ClassicFlightModel {
 
 #[inject_nitrous_component]
 impl ClassicFlightModel {
-    pub fn new(id: Entity) -> Self {
+    pub fn new(id: Entity, facing: UnitQuaternion<f64>) -> Self {
         Self {
             id,
             max_g_load: GloadExtrema::Stall(0.),
             g_load: 1f64,
             coef_of_drag: 0.,
             force_of_drag: 0.,
+            stability: facing,
         }
     }
 
@@ -406,7 +412,7 @@ impl ClassicFlightModel {
         let beta = radians!(v.f64().atan2(uw_mag.f64()));
 
         // Translate world frame gravity into the plane's body frame (Allerton)
-        let gravity_wf = frame.facing().inverse()
+        let gravity_wf = self.stability.inverse()
             * (-frame.position().vec64().normalize() * STANDARD_GRAVITY.f64());
         let gravity_x = meters_per_second2!(-gravity_wf.z);
         let gravity_y = meters_per_second2!(gravity_wf.x);
@@ -507,7 +513,7 @@ impl ClassicFlightModel {
         // 15. Compute the Earth velocities
         // Rotate our body velocity into the earth frame.
         // let body_velocity = Vector3::new(u.f64(), v.f64(), w.f64());
-        // let world_velocity = frame.facing() * body_velocity;
+        // let world_velocity = self.stability * body_velocity;
         // let (latitude_velocity, longitude_velocity, height_velocity) = {
         //     // Use arcball's transform from abs to lat/lon here
         //     let x = world_velocity.x;
@@ -529,7 +535,7 @@ impl ClassicFlightModel {
         // 17. Compute the aircraft position
         // TODO: do this from map space
         let velocity_m_s =
-            (frame.facing() * motion.velocity().map(|v| v.f64())).map(|v| meters_per_second!(v));
+            (self.stability * motion.velocity().map(|v| v.f64())).map(|v| meters_per_second!(v));
         let world_pos = frame.position_pt3() + velocity_m_s.map(|v| v * seconds!(dt.as_secs_f64()));
         debug_assert!(world_pos.x.is_finite(), "world x is NaN");
         debug_assert!(world_pos.y.is_finite(), "world y is NaN");
@@ -564,7 +570,12 @@ impl ClassicFlightModel {
         // 24. Compute the DCM
         // 25. Compute the Euler angles
         // Or maybe just use the quaternion? ¯\_(ツ)_/¯
-        *frame.facing_mut() = frame.facing() * rot;
+        self.stability = self.stability * rot;
+
+        // Apply additional rotations off of stability axis
+        let rot =
+            UnitQuaternion::from_euler_angles(0_f64, -radians!(degrees!(20_f64)).f64(), 0_f64);
+        *frame.facing_mut() = self.stability * rot;
     }
 
     fn sys_simulate(

@@ -288,6 +288,7 @@ impl AssetLoader {
             Self::frame_for_interactive(&mut heap)
         };
 
+        let facing = *frame.facing();
         heap.named_entity_mut(id)
             .insert_named(frame)?
             .insert_named(ShapeScale::new(scale.into_inner()))?
@@ -339,7 +340,7 @@ impl AssetLoader {
                 ))?
                 .insert_named(HookControl::default())?
                 .insert_named(HookEffector::new(0., Duration::from_millis(1)))?
-                .insert_named(ClassicFlightModel::new(id))?;
+                .insert_named(ClassicFlightModel::new(id, facing))?;
         }
 
         if let Some(name) = info.name() {
