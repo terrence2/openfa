@@ -13,9 +13,9 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bevy_ecs.workspace = true
-log = "^ 0.4"
-image = "^ 0.24"
-nalgebra = "^ 0.31"
+log.workspace = true
+image.workspace = true
+nalgebra.workspace = true
 parking_lot = "^ 0.12"
 wgpu = { version = "^ 0.13", features = ["spirv"] }
 zerocopy = "^ 0.6"
@@ -40,7 +40,7 @@ world = { path = "../../nitrogen/wgpu-buffer/world" }
 xt = { path = "../../asset/xt" }
 
 [dev-dependencies]
-env_logger = "^ 0.9"
+env_logger.workspace = true
 lib = { path = "../../asset/lib" }
 
 [build-dependencies]

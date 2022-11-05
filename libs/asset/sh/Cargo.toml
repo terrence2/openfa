@@ -14,8 +14,8 @@ license.workspace = true
 anyhow.workspace = true
 bitflags = "^ 1"
 byteorder = "^ 1"
-once_cell = "^ 1"
-log = "^ 0.4"
+once_cell.workspace = true
+log.workspace = true
 thiserror = "^ 1"
 zerocopy = "^ 0.6"
 ansi = { path = "../../nitrogen/util/ansi" }
@@ -25,5 +25,5 @@ peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }
 
 [dev-dependencies]
-env_logger = "^ 0.9"
+env_logger.workspace = true
 lib = { path = "../../asset/lib" }

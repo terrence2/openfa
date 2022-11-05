@@ -13,8 +13,8 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bevy_ecs.workspace = true
-once_cell = "^ 1"
-ordered-float = "^ 3"
+once_cell.workspace = true
+ordered-float.workspace = true
 parking_lot = "^ 0.12"
 rand = "^ 0.8"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }

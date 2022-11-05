@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bevy_ecs.workspace = true
-csscolorparser = "^ 0.6"
+csscolorparser.workspace = true
 triangulate = "^ 0.1"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 flight_dynamics = { path = "../../game/flight_dynamics" }

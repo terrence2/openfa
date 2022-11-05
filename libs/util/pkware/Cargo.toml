@@ -16,4 +16,4 @@ benchmark = []
 [dependencies]
 anyhow.workspace = true
 lazy_static = "^ 1"
-log = "^ 0.4"
+log.workspace = true

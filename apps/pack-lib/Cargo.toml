@@ -12,6 +12,6 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-env_logger = "^ 0.9"
+env_logger.workspace = true
 structopt = "^ 0.3"
 lib = { path = "../../libs/asset/lib" }

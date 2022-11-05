@@ -12,7 +12,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-nalgebra = "^ 0.31"
+nalgebra.workspace = true
 ot = { path = "../../asset/ot" }
 
 [dev-dependencies]

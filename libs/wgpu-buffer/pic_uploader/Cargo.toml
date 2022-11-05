@@ -19,8 +19,8 @@ pal = { path = "../../asset/pal" }
 pic = { path = "../../asset/pic" }
 
 [dev-dependencies]
-env_logger = "^ 0.9"
-image = "^ 0.24"
+env_logger.workspace = true
+image.workspace = true
 parking_lot = "^ 0.12"
 catalog = { path = "../../nitrogen/system/catalog" }
 lib = { path = "../../asset/lib" }

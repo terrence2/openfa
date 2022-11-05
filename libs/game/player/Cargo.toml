@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bevy_ecs.workspace = true
-nalgebra = "^ 0.31"
+nalgebra.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 camera = { path = "../../nitrogen/sim/camera" }
 flight_dynamics = { path = "../../game/flight_dynamics" }

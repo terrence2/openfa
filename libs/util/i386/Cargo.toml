@@ -13,12 +13,12 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 lazy_static = "^ 1"
-log = "^ 0.4"
+log.workspace = true
 thiserror = "^ 1"
 ansi = { path = "../../nitrogen/util/ansi" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }
 
 [dev-dependencies]
-env_logger = "^ 0.9"
+env_logger.workspace = true
 lib = { path = "../../asset/lib" }

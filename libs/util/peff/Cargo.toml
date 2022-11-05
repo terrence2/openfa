@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bitflags = "^ 1"
-log = "^ 0.4"
+log.workspace = true
 thiserror = "^ 1"
 zerocopy = "^ 0.6"
 ansi = { path = "../../nitrogen/util/ansi" }

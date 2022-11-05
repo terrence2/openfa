@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 bitflags = "^ 1"
 anyhow.workspace = true
-nalgebra = "^ 0.31"
+nalgebra.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 
 [dev-dependencies]
