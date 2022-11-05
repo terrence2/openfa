@@ -1,7 +1,14 @@
 [package]
 name = "show-sh"
-version = "0.1.0"
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 chrono = "^ 0.4"

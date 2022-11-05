@@ -1,8 +1,29 @@
 [package]
 name = "openfa"
-version = "0.0.0"
+description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
+version = "0.0.3"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2021"
+readme = "https://gitlab.com/terrence_too/openfa/-/blob/main/README.md"
+homepage = "https://gitlab.com/terrence_too/openfa"
+documentation = "https://gitlab.com/terrence_too/openfa"
+repository = "https://gitlab.com/terrence_too/openfa"
+license = "GPL-3.0-only"
+exclude = []
+include = []
+keywords = ["aerospace", "emulation", "classic-gaming", "simulation"]
+categories = ["aerospace", "emulation", "simulation"]
+
+[workspace.package]
+description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
+version = "0.0.3"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2021"
+readme = "https://gitlab.com/terrence_too/openfa/-/blob/main/README.md"
+homepage = "https://gitlab.com/terrence_too/openfa"
+documentation = "https://gitlab.com/terrence_too/openfa"
+repository = "https://gitlab.com/terrence_too/openfa"
+license = "GPL-3.0-only"
 
 [workspace]
 members = [
