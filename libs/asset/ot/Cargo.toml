@@ -11,7 +11,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-bitflags = "^ 1"
+bitflags.workspace = true
 anyhow.workspace = true
 nalgebra.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }

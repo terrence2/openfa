@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 image.workspace = true
-structopt = "^ 0.3"
+structopt.workspace = true
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/asset/lib" }
 pal = { path = "../../libs/asset/pal" }

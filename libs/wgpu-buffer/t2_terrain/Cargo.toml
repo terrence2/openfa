@@ -16,9 +16,9 @@ bevy_ecs.workspace = true
 log.workspace = true
 image.workspace = true
 nalgebra.workspace = true
-parking_lot = "^ 0.12"
-wgpu = { version = "^ 0.13", features = ["spirv"] }
-zerocopy = "^ 0.6"
+parking_lot.workspace = true
+wgpu.workspace = true
+zerocopy.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
 camera = { path = "../../nitrogen/sim/camera" }

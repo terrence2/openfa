@@ -13,7 +13,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 image.workspace = true
-zerocopy = "^ 0.6"
+zerocopy.workspace = true
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 pal = { path = "../../asset/pal" }
 

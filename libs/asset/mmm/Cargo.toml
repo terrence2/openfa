@@ -12,11 +12,11 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-bitflags = "^ 1"
+bitflags.workspace = true
 log.workspace = true
-itertools = "^ 0.10"
+itertools.workspace = true
 nalgebra.workspace = true
-num-traits = "^ 0.2"
+num-traits.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 catalog = { path = "../../nitrogen/system/catalog" }
 geodesy = { path = "../../nitrogen/util/geodesy" }

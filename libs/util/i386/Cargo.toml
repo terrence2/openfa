@@ -12,9 +12,9 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-lazy_static = "^ 1"
+lazy_static.workspace = true
 log.workspace = true
-thiserror = "^ 1"
+thiserror.workspace = true
 ansi = { path = "../../nitrogen/util/ansi" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }

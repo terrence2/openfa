@@ -12,9 +12,9 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-lazy_static = "^ 1"
+lazy_static.workspace = true
 log.workspace = true
-zerocopy = "^ 0.6"
+zerocopy.workspace = true
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 
 [dev-dependencies]

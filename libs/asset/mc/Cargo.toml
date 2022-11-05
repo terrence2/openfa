@@ -12,10 +12,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-zerocopy = "^ 0.6"
+log.workspace = true
+zerocopy.workspace = true
 ansi = { path = "../../nitrogen/util/ansi" }
 i386 = { path = "../../util/i386" }
-log.workspace = true
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }

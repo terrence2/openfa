@@ -13,9 +13,9 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 image.workspace = true
-rand = "^ 0.8"
-structopt = "^ 0.3"
-zerocopy = "^ 0.6"
+rand.workspace = true
+structopt.workspace = true
+zerocopy.workspace = true
 catalog = { path = "../../libs/nitrogen/system/catalog" }
 lib = { path = "../../libs/asset/lib" }
 pal = { path = "../../libs/asset/pal" }

@@ -11,12 +11,12 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-codepage-437 = "^ 0.1"
+codepage-437.workspace = true
 anyhow.workspace = true
 image.workspace = true
-lazy_static = "^ 1"
+lazy_static.workspace = true
 log.workspace = true
-wgpu = { version = "^ 0.13", features = ["spirv"] }
+wgpu.workspace = true
 fnt = { path = "../../asset/fnt" }
 font_common = { path = "../../nitrogen/wgpu-buffer/font_common" }
 gpu = { path = "../../nitrogen/system/gpu" }

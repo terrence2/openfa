@@ -78,16 +78,72 @@ members = [
 ]
 
 [workspace.dependencies]
+# nitrogen deps
 anyhow = { version = "^ 1", features = ["backtrace"] }
+approx = "^ 0.5"
 bevy_ecs = { version = "^ 0.8", features = ["trace"] }
+bevy_tasks = "^ 0.8"
+bitflags = "^ 1"
 chrono = "^ 0.4"
 csscolorparser = "^ 0.6"
+ellipse = "^ 0.2"
 env_logger = "^ 0.9"
+futures = "^ 0.3"
+futures-lite = "^ 1"
+gilrs = "^ 0.9"
+glob = "^ 0.3"
+hashbag = "^ 0.1"
 image = "^ 0.24"
+itertools = "^ 0.10"
+lalrpop = "0.19.4"
+lalrpop-util = { version = "^ 0.19", features = ["lexer"] }
+lazy_static = "^ 1"
+libc = "0.2"
 log = "^ 0.4"
+lyon_geom = "^ 0.17"
+memmap = "^ 0.7"
+memoffset = "^ 0.6"
+naga = { version = "^ 0.8", features = ["spv-in", "spv-out", "dot-out", "glsl-in", "glsl-out", "glsl-validate"] }
 nalgebra = "^ 0.31"
+num = "^ 0.4"
+num-traits = "^ 0.2"
 once_cell = "^ 1"
 ordered-float = "^ 3"
+parking_lot = "^ 0.12"
+paste = "^ 1"
+platform-dirs = "^ 0.3"
+pretty-type-name = "1.0"
+proc-macro2 = "^ 1"
+quote = "^ 1"
+rand = "^ 0.8"
+raw-window-handle = "^ 0.4"
+regex = "^ 1"
+shaderc = "^ 0.8"
+simba = { version = "^ 0.7", default-features = false }
+smallvec = "^ 1"
+strsim = "^ 0.10"
+structopt = "^ 0.3"
+syn = { version = "= 1.0.92", features = ["default", "extra-traits", "full", "visit"] }
+terminal_size = "^ 0.1"
+tracing = { version = "0.1", features = ["release_max_level_info"] }
+tracing-subscriber = { version = "0.3.1", features = ["registry", "env-filter"] }
+tracing-chrome = "0.4.0"
+tracing-log = "0.1.2"
+tracing-error = "0.2.0"
+triggered = "^ 0.1"
+unicase = "^ 2.6"
+wasm-bindgen = "=0.2.82"
+web-sys = { version = "=0.3.59", features = ["console"] }
+wgpu = { version = "^ 0.13", features = ["spirv"] }
+winit = "^ 0.26"
+zerocopy = "^ 0.6"
+# openfa deps
+byteorder = "^ 1"
+codepage-437 = "^ 0.1"
+humansize = "^ 2"
+md5 = "^ 0.3"
+thiserror = "^ 1"
+triangulate = "^ 0.1"
 
 # Emit debugging symbols for tracing
 [profile.release]
@@ -113,12 +169,9 @@ log.workspace = true
 nalgebra.workspace = true
 once_cell.workspace = true
 ordered-float.workspace = true
-parking_lot = "^ 0.12"
-paste = "^ 1"
-platform-dirs = "^ 0.3"
-structopt = "^ 0.3"
-terminal_size = "^ 0.1"
-winit = "^ 0.26"
+platform-dirs.workspace = true
+structopt.workspace = true
+terminal_size.workspace = true
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
 animate = { path = "libs/nitrogen/sim/animate" }
 asset_loader = { path = "libs/game/asset_loader" }

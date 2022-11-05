@@ -12,7 +12,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-approx = "^ 0.5"
+approx.workspace = true
 bevy_ecs.workspace = true
 nalgebra.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }

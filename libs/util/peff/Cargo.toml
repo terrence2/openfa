@@ -12,10 +12,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-bitflags = "^ 1"
+bitflags.workspace = true
 log.workspace = true
-thiserror = "^ 1"
-zerocopy = "^ 0.6"
+thiserror.workspace = true
+zerocopy.workspace = true
 ansi = { path = "../../nitrogen/util/ansi" }
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 

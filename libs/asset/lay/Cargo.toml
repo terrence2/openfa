@@ -11,10 +11,10 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-bitflags = "^ 1"
+bitflags.workspace = true
 anyhow.workspace = true
-md5 = "^ 0.3"
-zerocopy = "^ 0.6"
+md5.workspace = true
+zerocopy.workspace = true
 packed_struct = { path = "../../nitrogen/util/packed_struct" }
 pal = { path = "../../asset/pal" }
 peff = { path = "../../util/peff" }

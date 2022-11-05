@@ -13,20 +13,13 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bevy_ecs.workspace = true
-chrono.workspace = true
 csscolorparser.workspace = true
 env_logger.workspace = true
-image.workspace = true
-log.workspace = true
-nalgebra.workspace = true
 once_cell.workspace = true
-ordered-float.workspace = true
-parking_lot = "^ 0.12"
-paste = "^ 1"
-platform-dirs = "^ 0.3"
-structopt = "^ 0.3"
-terminal_size = "^ 0.1"
-winit = "^ 0.26"
+platform-dirs.workspace = true
+structopt.workspace = true
+terminal_size.workspace = true
+winit.workspace = true
 absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
 animate = { path = "../../libs/nitrogen/sim/animate" }
 asset_loader = { path = "../../libs/game/asset_loader" }

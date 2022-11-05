@@ -15,8 +15,8 @@ anyhow.workspace = true
 bevy_ecs.workspace = true
 once_cell.workspace = true
 ordered-float.workspace = true
-parking_lot = "^ 0.12"
-rand = "^ 0.8"
+parking_lot.workspace = true
+rand.workspace = true
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 camera = { path = "../../nitrogen/sim/camera" }
 fa_vehicle = { path = "../../game/fa_vehicle" }
