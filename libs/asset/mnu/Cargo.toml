@@ -11,7 +11,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 ansi = { path = "../../nitrogen/util/ansi" }
 peff = { path = "../../util/peff" }
 reverse = { path = "../../util/reverse" }

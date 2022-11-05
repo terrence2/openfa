@@ -12,7 +12,7 @@ license.workspace = true
 
 [dependencies]
 codepage-437 = "^ 0.1.0"
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 image = "^ 0.24"
 ansi = { path = "../../nitrogen/util/ansi" }
 i386 = { path = "../../util/i386" }

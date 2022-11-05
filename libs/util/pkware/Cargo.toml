@@ -14,6 +14,6 @@ license.workspace = true
 benchmark = []
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 lazy_static = "^ 1"
 log = "^ 0.4"

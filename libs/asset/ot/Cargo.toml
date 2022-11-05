@@ -12,7 +12,7 @@ license.workspace = true
 
 [dependencies]
 bitflags = "^ 1"
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 nalgebra = "^ 0.31"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
 

@@ -11,7 +11,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 nalgebra = "^ 0.31"
 ot = { path = "../../asset/ot" }
 

@@ -11,8 +11,8 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
+anyhow.workspace = true
+bevy_ecs.workspace = true
 csscolorparser = "^ 0.6"
 triangulate = "^ 0.1"
 absolute_unit = { path = "../../nitrogen/util/absolute_unit" }

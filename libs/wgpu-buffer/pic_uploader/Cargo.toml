@@ -11,7 +11,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 wgpu = { version = "^ 0.13", features = ["spirv"] }
 zerocopy = "^ 0.6"
 gpu = { path = "../../nitrogen/system/gpu" }

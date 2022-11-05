@@ -16,7 +16,7 @@ benchmark = []
 [dependencies]
 byteorder = "^ 1"
 codepage-437 = "^ 0.1"
-anyhow = { version = "^ 1", features = ["backtrace"] }
+anyhow.workspace = true
 glob = "^ 0.3"
 lazy_static = "^ 1"
 log = "^ 0.4"

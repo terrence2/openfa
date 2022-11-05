@@ -77,6 +77,10 @@ members = [
     "libs/util/reverse",
 ]
 
+[workspace.dependencies]
+anyhow = { version = "^ 1", features = ["backtrace"] }
+bevy_ecs = { version = "^ 0.8", features = ["trace"] }
+
 # Emit debugging symbols for tracing
 [profile.release]
 debug = true
@@ -91,9 +95,9 @@ debug-assertions = true
 opt-level = 1
 
 [dependencies]
+anyhow.workspace = true
+bevy_ecs.workspace = true
 chrono = "^ 0.4"
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
 csscolorparser = "^ 0.6"
 env_logger = "^ 0.9"
 image = "^ 0.24"
