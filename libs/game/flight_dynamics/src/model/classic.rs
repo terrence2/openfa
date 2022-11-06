@@ -570,7 +570,7 @@ impl ClassicFlightModel {
         // 24. Compute the DCM
         // 25. Compute the Euler angles
         // Or maybe just use the quaternion? ¯\_(ツ)_/¯
-        self.stability = self.stability * rot;
+        self.stability *= rot;
 
         // Apply additional rotations off of stability axis
         let rot =

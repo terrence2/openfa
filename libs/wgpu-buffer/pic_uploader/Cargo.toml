@@ -14,17 +14,19 @@ license.workspace = true
 anyhow.workspace = true
 wgpu.workspace = true
 zerocopy.workspace = true
-gpu = { path = "../../nitrogen/system/gpu" }
-pal = { path = "../../asset/pal" }
-pic = { path = "../../asset/pic" }
+# libs
+gpu.workspace = true
+pal.workspace = true
+pic.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
 image.workspace = true
 parking_lot.workspace = true
-catalog = { path = "../../nitrogen/system/catalog" }
-lib = { path = "../../asset/lib" }
-runtime = { path = "../../nitrogen/util/runtime" }
+# libs
+catalog.workspace = true
+lib.workspace = true
+runtime.workspace = true
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/util/build_shaders" }
+build_shaders.workspace = true

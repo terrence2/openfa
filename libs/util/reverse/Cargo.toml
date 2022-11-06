@@ -12,5 +12,6 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-ansi = { path = "../../nitrogen/util/ansi/" }
-peff = { path = "../../util/peff/" }
+# libs
+ansi.workspace = true
+peff.workspace = true

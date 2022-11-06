@@ -14,8 +14,9 @@ license.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
 structopt.workspace = true
-absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/asset/lib" }
-xt = { path = "../../libs/asset/xt" }
-pt = { path = "../../libs/asset/pt" }
+# libs
+absolute_unit.workspace = true
+catalog.workspace = true
+lib.workspace = true
+xt.workspace = true
+pt.workspace = true

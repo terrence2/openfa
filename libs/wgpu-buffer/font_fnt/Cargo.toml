@@ -17,8 +17,9 @@ image.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 wgpu.workspace = true
-fnt = { path = "../../asset/fnt" }
-font_common = { path = "../../nitrogen/wgpu-buffer/font_common" }
-gpu = { path = "../../nitrogen/system/gpu" }
-i386 = { path = "../../util/i386" }
-window = { path = "../../nitrogen/system/window" }
+# libs
+fnt.workspace = true
+font_common.workspace = true
+gpu.workspace = true
+i386.workspace = true
+window.workspace = true

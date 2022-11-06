@@ -15,10 +15,11 @@ anyhow.workspace = true
 bevy_ecs.workspace = true
 log.workspace = true
 parking_lot.workspace = true
-catalog = { path = "../../nitrogen/system/catalog" }
-jt = { path = "../../asset/jt" }
-lib = { path = "../../asset/lib" }
-nt = { path = "../../asset/nt" }
-ot = { path = "../../asset/ot" }
-pt = { path = "../../asset/pt" }
-runtime = { path = "../../nitrogen/util/runtime" }
+# libs
+catalog.workspace = true
+jt.workspace = true
+lib.workspace = true
+nt.workspace = true
+ot.workspace = true
+pt.workspace = true
+runtime.workspace = true

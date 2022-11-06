@@ -15,9 +15,10 @@ bitflags.workspace = true
 anyhow.workspace = true
 md5.workspace = true
 zerocopy.workspace = true
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-pal = { path = "../../asset/pal" }
-peff = { path = "../../util/peff" }
+# libs
+packed_struct.workspace = true
+pal.workspace = true
+peff.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

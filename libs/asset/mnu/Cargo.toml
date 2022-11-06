@@ -12,9 +12,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-ansi = { path = "../../nitrogen/util/ansi" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+# libs
+ansi.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

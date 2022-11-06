@@ -14,8 +14,9 @@ license.workspace = true
 anyhow.workspace = true
 image.workspace = true
 zerocopy.workspace = true
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-pal = { path = "../../asset/pal" }
+# libs
+packed_struct.workspace = true
+pal.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

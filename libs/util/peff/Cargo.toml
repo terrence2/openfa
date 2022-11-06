@@ -16,8 +16,9 @@ bitflags.workspace = true
 log.workspace = true
 thiserror.workspace = true
 zerocopy.workspace = true
-ansi = { path = "../../nitrogen/util/ansi" }
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
+# libs
+ansi.workspace = true
+packed_struct.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

@@ -14,13 +14,14 @@ license.workspace = true
 anyhow.workspace = true
 bevy_ecs.workspace = true
 nalgebra.workspace = true
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-camera = { path = "../../nitrogen/sim/camera" }
-flight_dynamics = { path = "../../game/flight_dynamics" }
-geodesy = { path = "../../nitrogen/util/geodesy" }
-global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
-measure = { path = "../../nitrogen/sim/measure" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
-runtime = { path = "../../nitrogen/util/runtime" }
-shape = { path = "../../wgpu-buffer/shape" }
-terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
+# libs
+absolute_unit.workspace = true
+camera.workspace = true
+flight_dynamics.workspace = true
+geodesy.workspace = true
+global_data.workspace = true
+measure.workspace = true
+nitrous.workspace = true
+runtime.workspace = true
+shape.workspace = true
+terrain.workspace = true

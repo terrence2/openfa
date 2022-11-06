@@ -12,7 +12,8 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-ot = { path = "../../asset/ot" }
+# libs
+ot.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

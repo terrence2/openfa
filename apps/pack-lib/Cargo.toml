@@ -14,4 +14,5 @@ license.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
 structopt.workspace = true
-lib = { path = "../../libs/asset/lib" }
+# libs
+lib.workspace = true

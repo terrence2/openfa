@@ -14,8 +14,9 @@ license.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
 structopt.workspace = true
-ansi = { path = "../../libs/nitrogen/util/ansi" }
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-i386 = { path = "../../libs/util/i386" }
-lib = { path = "../../libs/asset/lib" }
-peff = { path = "../../libs/util/peff" }
+# libs
+ansi.workspace = true
+catalog.workspace = true
+i386.workspace = true
+lib.workspace = true
+peff.workspace = true

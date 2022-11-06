@@ -14,11 +14,13 @@ license.workspace = true
 codepage-437.workspace = true
 anyhow.workspace = true
 image.workspace = true
-ansi = { path = "../../nitrogen/util/ansi" }
-i386 = { path = "../../util/i386" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+# libs
+ansi.workspace = true
+i386.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
-lib = { path = "../../asset/lib" }
+# libs
+lib.workspace = true

@@ -15,10 +15,12 @@ anyhow.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 thiserror.workspace = true
-ansi = { path = "../../nitrogen/util/ansi" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+# libs
+ansi.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
-lib = { path = "../../asset/lib" }
+# libs
+lib.workspace = true

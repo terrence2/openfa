@@ -14,12 +14,14 @@ license.workspace = true
 anyhow.workspace = true
 log.workspace = true
 zerocopy.workspace = true
-ansi = { path = "../../nitrogen/util/ansi" }
-i386 = { path = "../../util/i386" }
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+# libs
+ansi.workspace = true
+i386.workspace = true
+packed_struct.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
-lib = { path = "../../asset/lib" }
+# libs
+lib.workspace = true

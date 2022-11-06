@@ -13,7 +13,8 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 structopt.workspace = true
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/asset/lib" }
-lay = { path = "../../libs/asset/lay" }
-pal = { path = "../../libs/asset/pal" }
+# libs
+catalog.workspace = true
+lib.workspace = true
+lay.workspace = true
+pal.workspace = true

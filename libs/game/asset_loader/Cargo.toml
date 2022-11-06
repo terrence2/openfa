@@ -17,26 +17,28 @@ once_cell.workspace = true
 ordered-float.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-camera = { path = "../../nitrogen/sim/camera" }
-fa_vehicle = { path = "../../game/fa_vehicle" }
-flight_dynamics = { path = "../../game/flight_dynamics" }
-geodesy = { path = "../../nitrogen/util/geodesy" }
-geometry = { path = "../../nitrogen/util/geometry" }
-gpu = { path = "../../nitrogen/system/gpu" }
-lib = { path = "../../asset/lib" }
-marker = { path = "../../nitrogen/wgpu-buffer/marker" }
-measure = { path = "../../nitrogen/sim/measure" }
-mmm = { path = "../../asset/mmm" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
-runtime = { path = "../../nitrogen/util/runtime" }
-shape = { path = "../../wgpu-buffer/shape" }
-t2_terrain = { path = "../../wgpu-buffer/t2_terrain" }
-vehicle = { path = "../../nitrogen/sim/vehicle" }
-xt = { path = "../../asset/xt" }
+# libs
+absolute_unit.workspace = true
+camera.workspace = true
+fa_vehicle.workspace = true
+flight_dynamics.workspace = true
+geodesy.workspace = true
+geometry.workspace = true
+gpu.workspace = true
+lib.workspace = true
+marker.workspace = true
+measure.workspace = true
+mmm.workspace = true
+nitrous.workspace = true
+runtime.workspace = true
+shape.workspace = true
+t2_terrain.workspace = true
+vehicle.workspace = true
+xt.workspace = true
 
 [dev-dependencies]
-atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
-global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
-player = { path = "../../game/player" }
-terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
+# libs
+atmosphere.workspace = true
+global_data.workspace = true
+player.workspace = true
+terrain.workspace = true

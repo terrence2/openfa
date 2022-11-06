@@ -63,7 +63,7 @@ members = [
 ]
 
 [workspace.dependencies]
-# nitrogen deps
+# nitrogen transitive deps
 anyhow = { version = "^ 1", features = ["backtrace"] }
 approx = "^ 0.5"
 bevy_ecs = { version = "^ 0.8", features = ["trace"] }
@@ -133,6 +133,45 @@ web-sys = { version = "=0.3.59", features = ["console"] }
 wgpu = { version = "^ 0.13", features = ["spirv"] }
 winit = "^ 0.26"
 zerocopy = "^ 0.6"
+# nitrogen libs
+absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
+ansi = { path = "libs/nitrogen/util/ansi" }
+build_shaders = { path = "libs/nitrogen/util/build_shaders" }
+geodesy = { path = "libs/nitrogen/util/geodesy" }
+geometry = { path = "libs/nitrogen/util/geometry" }
+nitrous = { path = "libs/nitrogen/util/nitrous" }
+nitrous_injector = { path = "libs/nitrogen/util/nitrous_injector" }
+packed_struct = { path = "libs/nitrogen/util/packed_struct" }
+packed_injector = { path = "libs/nitrogen/util/packed_injector" }
+physical_constants = { path = "libs/nitrogen/util/physical_constants" }
+runtime = { path = "libs/nitrogen/util/runtime" }
+star_catalog = { path = "libs/nitrogen/util/star_catalog" }
+catalog = { path = "libs/nitrogen/system/catalog" }
+gpu = { path = "libs/nitrogen/system/gpu" }
+input = { path = "libs/nitrogen/system/input" }
+jilrs = { path = "libs/nitrogen/system/jilrs" }
+tracelog = { path = "libs/nitrogen/system/tracelog" }
+window = { path = "libs/nitrogen/system/window" }
+animate = { path = "libs/nitrogen/sim/animate" }
+camera = { path = "libs/nitrogen/sim/camera" }
+event_mapper = { path = "libs/nitrogen/sim/event_mapper" }
+measure = { path = "libs/nitrogen/sim/measure" }
+orrery = { path = "libs/nitrogen/sim/orrery" }
+vehicle = { path = "libs/nitrogen/sim/vehicle" }
+atlas = { path = "libs/nitrogen/wgpu-buffer/atlas" }
+atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
+composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
+font_common = { path = "libs/nitrogen/wgpu-buffer/font_common" }
+font_ttf = { path = "libs/nitrogen/wgpu-buffer/font_ttf" }
+fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
+global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
+marker = { path = "libs/nitrogen/wgpu-buffer/marker" }
+shader_shared = { path = "libs/nitrogen/wgpu-buffer/shader_shared" }
+stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
+terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
+ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
+widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
+world = { path = "libs/nitrogen/wgpu-buffer/world" }
 # openfa deps
 byteorder = "^ 1"
 codepage-437 = "^ 0.1"
@@ -140,6 +179,37 @@ humansize = "^ 2"
 md5 = "^ 0.3"
 thiserror = "^ 1"
 triangulate = "^ 0.1"
+# openfa libs
+fnt = { path = "libs/asset/fnt" }
+jt = { path = "libs/asset/jt" }
+lay = { path = "libs/asset/lay" }
+lib = { path = "libs/asset/lib" }
+mc = { path = "libs/asset/mc" }
+mmm = { path = "libs/asset/mmm" }
+mnu = { path = "libs/asset/mnu" }
+nt = { path = "libs/asset/nt" }
+ot = { path = "libs/asset/ot" }
+pal = { path = "libs/asset/pal" }
+pic = { path = "libs/asset/pic" }
+pt = { path = "libs/asset/pt" }
+sh = { path = "libs/asset/sh" }
+t2 = { path = "libs/asset/t2" }
+xt = { path = "libs/asset/xt" }
+asset_loader = { path = "libs/game/asset_loader" }
+flight_dynamics = { path = "libs/game/flight_dynamics" }
+player = { path = "libs/game/player" }
+fa_vehicle = { path = "libs/game/fa_vehicle" }
+font_fnt = { path = "libs/wgpu-buffer/font_fnt" }
+instrument_envelope = { path = "libs/wgpu-buffer/instrument_envelope" }
+ofa_groups = { path = "libs/wgpu-buffer/ofa_groups" }
+pic_uploader = { path = "libs/wgpu-buffer/pic_uploader" }
+shape = { path = "libs/wgpu-buffer/shape" }
+t2_terrain = { path = "libs/wgpu-buffer/t2_terrain" }
+i386 = { path = "libs/util/i386" }
+lzss = { path = "libs/util/lzss" }
+peff = { path = "libs/util/peff" }
+pkware = { path = "libs/util/pkware" }
+reverse = { path = "libs/util/reverse" }
 
 # Emit debugging symbols for tracing
 [profile.release]
@@ -185,43 +255,44 @@ ordered-float.workspace = true
 platform-dirs.workspace = true
 structopt.workspace = true
 terminal_size.workspace = true
-absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
-animate = { path = "libs/nitrogen/sim/animate" }
-asset_loader = { path = "libs/game/asset_loader" }
-atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }
-camera = { path = "libs/nitrogen/sim/camera" }
-catalog = { path = "libs/nitrogen/system/catalog" }
-composite = { path = "libs/nitrogen/wgpu-buffer/composite" }
-event_mapper = { path = "libs/nitrogen/sim/event_mapper" }
-fa_vehicle = { path = "libs/game/fa_vehicle" }
-flight_dynamics = { path = "libs/game/flight_dynamics" }
-fnt = { path = "libs/asset/fnt" }
-font_fnt = { path = "libs/wgpu-buffer/font_fnt" }
-fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
-geodesy = { path = "libs/nitrogen/util/geodesy" }
-geometry = { path = "libs/nitrogen/util/geometry" }
-global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
-gpu = { path = "libs/nitrogen/system/gpu" }
-input = { path = "libs/nitrogen/system/input" }
-instrument_envelope = { path = "libs/wgpu-buffer/instrument_envelope" }
-lib = { path = "libs/asset/lib" }
-marker = { path = "libs/nitrogen/wgpu-buffer/marker" }
-measure = { path = "libs/nitrogen/sim/measure" }
-mmm = { path = "libs/asset/mmm" }
-nitrous = { path = "libs/nitrogen/util/nitrous" }
-orrery = { path = "libs/nitrogen/sim/orrery" }
-pal = { path = "libs/asset/pal" }
-physical_constants = { path = "libs/nitrogen/util/physical_constants" }
-player = { path = "libs/game/player" }
-runtime = { path = "libs/nitrogen/util/runtime" }
-shape = { path = "libs/wgpu-buffer/shape" }
-stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
-t2_terrain = { path = "libs/wgpu-buffer/t2_terrain" }
-terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
-tracelog = { path = "libs/nitrogen/system/tracelog" }
-ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
-vehicle = { path = "libs/nitrogen/sim/vehicle" }
-widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
-window = { path = "libs/nitrogen/system/window" }
-world = { path = "libs/nitrogen/wgpu-buffer/world" }
-xt = { path = "libs/asset/xt" }
+# libs
+absolute_unit.workspace = true
+animate.workspace = true
+asset_loader.workspace = true
+atmosphere.workspace = true
+camera.workspace = true
+catalog.workspace = true
+composite.workspace = true
+event_mapper.workspace = true
+fa_vehicle.workspace = true
+flight_dynamics.workspace = true
+fnt.workspace = true
+font_fnt.workspace = true
+fullscreen.workspace = true
+geodesy.workspace = true
+geometry.workspace = true
+global_data.workspace = true
+gpu.workspace = true
+input.workspace = true
+instrument_envelope.workspace = true
+lib.workspace = true
+marker.workspace = true
+measure.workspace = true
+mmm.workspace = true
+nitrous.workspace = true
+orrery.workspace = true
+pal.workspace = true
+physical_constants.workspace = true
+player.workspace = true
+runtime.workspace = true
+shape.workspace = true
+stars.workspace = true
+t2_terrain.workspace = true
+terrain.workspace = true
+tracelog.workspace = true
+ui.workspace = true
+vehicle.workspace = true
+widget.workspace = true
+window.workspace = true
+world.workspace = true
+xt.workspace = true

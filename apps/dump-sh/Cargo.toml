@@ -14,8 +14,9 @@ license.workspace = true
 anyhow.workspace = true
 env_logger.workspace = true
 structopt.workspace = true
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-i386 = { path = "../../libs/util/i386" }
-lib = { path = "../../libs/asset/lib" }
-reverse = { path = "../../libs/util/reverse" }
-sh = { path = "../../libs/asset/sh" }
+# libs
+catalog.workspace = true
+i386.workspace = true
+lib.workspace = true
+reverse.workspace = true
+sh.workspace = true

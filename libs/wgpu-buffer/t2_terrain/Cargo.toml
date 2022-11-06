@@ -19,29 +19,31 @@ nalgebra.workspace = true
 parking_lot.workspace = true
 wgpu.workspace = true
 zerocopy.workspace = true
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
-camera = { path = "../../nitrogen/sim/camera" }
-catalog = { path = "../../nitrogen/system/catalog" }
-geodesy = { path = "../../nitrogen/util/geodesy"}
-global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
-gpu = { path = "../../nitrogen/system/gpu" }
-lay = { path = "../../asset/lay" }
-mmm = { path = "../../asset/mmm" }
-nitrous = { path = "../../nitrogen/util/nitrous"}
-pal = { path = "../../asset/pal" }
-pic = { path = "../../asset/pic" }
-pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
-runtime = { path = "../../nitrogen/util/runtime" }
-shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
-t2 = { path = "../../asset/t2" }
-terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
-world = { path = "../../nitrogen/wgpu-buffer/world" }
-xt = { path = "../../asset/xt" }
+# libs
+absolute_unit.workspace = true
+atlas.workspace = true
+camera.workspace = true
+catalog.workspace = true
+geodesy.workspace = true
+global_data.workspace = true
+gpu.workspace = true
+lay.workspace = true
+mmm.workspace = true
+nitrous.workspace = true
+pal.workspace = true
+pic.workspace = true
+pic_uploader.workspace = true
+runtime.workspace = true
+shader_shared.workspace = true
+t2.workspace = true
+terrain.workspace = true
+world.workspace = true
+xt.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
-lib = { path = "../../asset/lib" }
+# libs
+lib.workspace = true
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/util/build_shaders" }
+build_shaders.workspace = true

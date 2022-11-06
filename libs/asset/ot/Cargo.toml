@@ -14,7 +14,8 @@ license.workspace = true
 bitflags.workspace = true
 anyhow.workspace = true
 nalgebra.workspace = true
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+# libs
+absolute_unit.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

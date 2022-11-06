@@ -14,10 +14,11 @@ license.workspace = true
 anyhow.workspace = true
 byteorder.workspace = true
 zerocopy.workspace = true
-ansi = { path = "../../nitrogen/util/ansi" }
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+# libs
+ansi.workspace = true
+packed_struct.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true
