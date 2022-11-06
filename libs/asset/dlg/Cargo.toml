@@ -1,17 +1,24 @@
 [package]
 name = "dlg"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-byteorder = "^ 1"
-zerocopy = "^ 0.6"
-ansi = { path = "../../nitrogen/util/ansi" }
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+anyhow.workspace = true
+byteorder.workspace = true
+zerocopy.workspace = true
+# libs
+ansi.workspace = true
+packed_struct.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

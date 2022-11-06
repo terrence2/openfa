@@ -1,17 +1,24 @@
 [package]
 name = "peff"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bitflags = "^ 1"
-log = "^ 0.4"
-thiserror = "^ 1"
-zerocopy = "^ 0.6"
-ansi = { path = "../../nitrogen/util/ansi" }
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
+anyhow.workspace = true
+bitflags.workspace = true
+log.workspace = true
+thiserror.workspace = true
+zerocopy.workspace = true
+# libs
+ansi.workspace = true
+packed_struct.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

@@ -1,18 +1,25 @@
 [package]
 name = "xt"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-log = "^ 0.4"
-parking_lot = "^ 0.12"
-catalog = { path = "../../nitrogen/system/catalog" }
-jt = { path = "../../asset/jt" }
-lib = { path = "../../asset/lib" }
-nt = { path = "../../asset/nt" }
-ot = { path = "../../asset/ot" }
-pt = { path = "../../asset/pt" }
-runtime = { path = "../../nitrogen/util/runtime" }
+anyhow.workspace = true
+bevy_ecs.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+# libs
+catalog.workspace = true
+jt.workspace = true
+lib.workspace = true
+nt.workspace = true
+ot.workspace = true
+pt.workspace = true
+runtime.workspace = true

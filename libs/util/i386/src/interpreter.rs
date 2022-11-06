@@ -381,7 +381,7 @@ impl Interpreter {
     fn do_adc(&mut self, op1: &Operand, op2: &Operand) -> Result<()> {
         let a = self.get(op1)?;
         let b = self.get(op2)?;
-        let carry = if self.cf { 1 } else { 0 };
+        let carry = u32::from(self.cf);
         self.put(op1, a + b + carry)
     }
 

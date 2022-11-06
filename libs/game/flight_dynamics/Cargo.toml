@@ -1,26 +1,34 @@
 [package]
 name = "flight_dynamics"
-version = "0.0.0"
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-approx = "^ 0.5"
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-nalgebra = "^ 0.31"
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-animate = { path = "../../nitrogen/sim/animate" }
-fa_vehicle = { path = "../../game/fa_vehicle" }
-geodesy = { path = "../../nitrogen/util/geodesy" }
-geometry = { path = "../../nitrogen/util/geometry" }
-marker = { path = "../../nitrogen/wgpu-buffer/marker" }
-measure = { path = "../../nitrogen/sim/measure" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
-physical_constants = { path = "../../nitrogen/util/physical_constants" }
-pt = { path = "../../asset/pt" }
-runtime = { path = "../../nitrogen/util/runtime" }
+anyhow.workspace = true
+approx.workspace = true
+bevy_ecs.workspace = true
+nalgebra.workspace = true
+# libs
+absolute_unit.workspace = true
+animate.workspace = true
+fa_vehicle.workspace = true
+geodesy.workspace = true
+geometry.workspace = true
+marker.workspace = true
+measure.workspace = true
+nitrous.workspace = true
+physical_constants.workspace = true
+pt.workspace = true
+runtime.workspace = true
 ### Warning: this should not need to refer _up_ to the drawing layer. I think we
 ###          need some sort of intermediate shape loading process external to draw?
-shape = { path = "../../wgpu-buffer/shape" }
-vehicle = { path = "../../nitrogen/sim/vehicle" }
-xt = { path = "../../asset/xt" }
+shape.workspace = true
+vehicle.workspace = true
+xt.workspace = true

@@ -1,17 +1,24 @@
 [package]
 name = "lay"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-bitflags = "^ 1"
-anyhow = { version = "^ 1", features = ["backtrace"] }
-md5 = "^ 0.3"
-zerocopy = "^ 0.6"
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-pal = { path = "../../asset/pal" }
-peff = { path = "../../util/peff" }
+bitflags.workspace = true
+anyhow.workspace = true
+md5.workspace = true
+zerocopy.workspace = true
+# libs
+packed_struct.workspace = true
+pal.workspace = true
+peff.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

@@ -1,27 +1,34 @@
 [package]
 name = "lib"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [features]
 benchmark = []
 
 [dependencies]
-byteorder = "^ 1"
-codepage-437 = "^ 0.1"
-anyhow = { version = "^ 1", features = ["backtrace"] }
-glob = "^ 0.3"
-lazy_static = "^ 1"
-log = "^ 0.4"
-memmap = "^ 0.7"
-regex = "^ 1"
-structopt = "^ 0.3"
-zerocopy = "^ 0.6"
-lzss = { path = "../../util/lzss" }
-catalog = { path = "../../nitrogen/system/catalog" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
-packed_struct = { path = "../../nitrogen/util/packed_struct" }
-pal = { path = "../../asset/pal" }
-pkware = { path = "../../util/pkware" }
-runtime = { path = "../../nitrogen/util/runtime" }
+byteorder.workspace = true
+codepage-437.workspace = true
+anyhow.workspace = true
+glob.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+memmap.workspace = true
+regex.workspace = true
+structopt.workspace = true
+zerocopy.workspace = true
+# libs
+lzss.workspace = true
+catalog.workspace = true
+nitrous.workspace = true
+packed_struct.workspace = true
+pal.workspace = true
+pkware.workspace = true
+runtime.workspace = true

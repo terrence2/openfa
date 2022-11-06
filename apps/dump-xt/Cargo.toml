@@ -1,15 +1,22 @@
 [package]
 name = "dump-xt"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-env_logger = "^ 0.9"
-structopt = "^ 0.3"
-absolute_unit = { path = "../../libs/nitrogen/util/absolute_unit" }
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/asset/lib" }
-xt = { path = "../../libs/asset/xt" }
-pt = { path = "../../libs/asset/pt" }
+anyhow.workspace = true
+env_logger.workspace = true
+structopt.workspace = true
+# libs
+absolute_unit.workspace = true
+catalog.workspace = true
+lib.workspace = true
+xt.workspace = true
+pt.workspace = true

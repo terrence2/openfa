@@ -1,18 +1,25 @@
 [package]
 name = "font_fnt"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-codepage-437 = "^ 0.1"
-anyhow = { version = "^ 1", features = ["backtrace"] }
-image = "^ 0.24"
-lazy_static = "^ 1"
-log = "^ 0.4"
-wgpu = { version = "^ 0.13", features = ["spirv"] }
-fnt = { path = "../../asset/fnt" }
-font_common = { path = "../../nitrogen/wgpu-buffer/font_common" }
-gpu = { path = "../../nitrogen/system/gpu" }
-i386 = { path = "../../util/i386" }
-window = { path = "../../nitrogen/system/window" }
+codepage-437.workspace = true
+anyhow.workspace = true
+image.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+wgpu.workspace = true
+# libs
+fnt.workspace = true
+font_common.workspace = true
+gpu.workspace = true
+i386.workspace = true
+window.workspace = true

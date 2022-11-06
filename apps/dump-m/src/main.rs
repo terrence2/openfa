@@ -65,7 +65,7 @@ fn show_mission(
     opt: &Opt,
 ) -> Result<()> {
     let raw = catalog.read(fid)?;
-    let content = from_dos_string(raw).to_owned();
+    let content = from_dos_string(raw);
 
     if opt.profile {
         let start = Instant::now();

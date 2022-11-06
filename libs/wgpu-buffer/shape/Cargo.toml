@@ -1,53 +1,61 @@
 [package]
 name = "shape"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-bitflags = "^ 1"
-image = "^ 0.24"
-lazy_static = "^ 1"
-log = "^ 0.4"
-memoffset = "^ 0.6"
-nalgebra = "^ 0.31"
-parking_lot = "^ 0.12"
-smallvec = "^ 1"
-zerocopy = "^ 0.6"
-wgpu = { version = "^ 0.13", features = ["spirv"] }
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-animate = { path = "../../nitrogen/sim/animate" }
-atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
-atmosphere = { path = "../../nitrogen/wgpu-buffer/atmosphere" }
-camera = { path = "../../nitrogen/sim/camera" }
-catalog = { path = "../../nitrogen/system/catalog" }
-composite = { path = "../../nitrogen/wgpu-buffer/composite" }
-geodesy = { path = "../../nitrogen/util/geodesy" }
-geometry = { path = "../../nitrogen/util/geometry" }
-global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
-gpu = { path = "../../nitrogen/system/gpu" }
-i386 = { path = "../../util/i386" }
-lib = { path = "../../asset/lib" }
-marker = { path = "../../nitrogen/wgpu-buffer/marker" }
-measure = { path = "../../nitrogen/sim/measure" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
-ofa_groups = { path = "../../wgpu-buffer/ofa_groups" }
-pal = { path = "../../asset/pal" }
-peff = { path = "../../util/peff" }
-pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
-runtime = { path = "../../nitrogen/util/runtime" }
-sh = { path = "../../asset/sh" }
-shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
-vehicle = { path = "../../nitrogen/sim/vehicle" }
-world = { path = "../../nitrogen/wgpu-buffer/world" }
+anyhow.workspace = true
+bevy_ecs.workspace = true
+bitflags.workspace = true
+image.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+memoffset.workspace = true
+nalgebra.workspace = true
+parking_lot.workspace = true
+smallvec.workspace = true
+zerocopy.workspace = true
+wgpu.workspace = true
+# libs
+absolute_unit.workspace = true
+animate.workspace = true
+atlas.workspace = true
+atmosphere.workspace = true
+camera.workspace = true
+catalog.workspace = true
+composite.workspace = true
+geodesy.workspace = true
+geometry.workspace = true
+global_data.workspace = true
+gpu.workspace = true
+i386.workspace = true
+lib.workspace = true
+marker.workspace = true
+measure.workspace = true
+nitrous.workspace = true
+ofa_groups.workspace = true
+pal.workspace = true
+peff.workspace = true
+pic_uploader.workspace = true
+runtime.workspace = true
+sh.workspace = true
+shader_shared.workspace = true
+vehicle.workspace = true
+world.workspace = true
 
 [dev-dependencies]
-fullscreen = { path = "../../nitrogen/wgpu-buffer/fullscreen" }
-orrery = { path = "../../nitrogen/sim/orrery" }
-stars = { path = "../../nitrogen/wgpu-buffer/stars" }
-terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
+# libs
+fullscreen.workspace = true
+orrery.workspace = true
+stars.workspace = true
+terrain.workspace = true
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/util/build_shaders" }
+build_shaders.workspace = true

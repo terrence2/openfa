@@ -630,7 +630,7 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         })
     })?;
 
-    runtime.run_string(&*PRELUDE)?;
+    runtime.run_string(&PRELUDE)?;
     runtime.run_startup();
     while runtime.resource::<ExitRequest>().still_running() {
         // Catch monotonic sim time up to system time.

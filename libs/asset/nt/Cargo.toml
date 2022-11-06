@@ -1,13 +1,20 @@
 [package]
 name = "nt"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-nalgebra = "^ 0.31"
-ot = { path = "../../asset/ot" }
+anyhow.workspace = true
+nalgebra.workspace = true
+# libs
+ot.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

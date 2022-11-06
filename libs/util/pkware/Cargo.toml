@@ -1,13 +1,19 @@
 [package]
 name = "pkware"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [features]
 benchmark = []
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-lazy_static = "^ 1"
-log = "^ 0.4"
+anyhow.workspace = true
+lazy_static.workspace = true
+log.workspace = true

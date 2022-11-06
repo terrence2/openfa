@@ -1,14 +1,21 @@
 [package]
 name = "ot"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-bitflags = "^ 1"
-anyhow = { version = "^ 1", features = ["backtrace"] }
-nalgebra = "^ 0.31"
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
+bitflags.workspace = true
+anyhow.workspace = true
+nalgebra.workspace = true
+# libs
+absolute_unit.workspace = true
 
 [dev-dependencies]
-lib = { path = "../../asset/lib" }
+lib.workspace = true

@@ -1,18 +1,26 @@
 [package]
 name = "fnt"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-codepage-437 = "^ 0.1.0"
-anyhow = { version = "^ 1", features = ["backtrace"] }
-image = "^ 0.24"
-ansi = { path = "../../nitrogen/util/ansi" }
-i386 = { path = "../../util/i386" }
-peff = { path = "../../util/peff" }
-reverse = { path = "../../util/reverse" }
+codepage-437.workspace = true
+anyhow.workspace = true
+image.workspace = true
+# libs
+ansi.workspace = true
+i386.workspace = true
+peff.workspace = true
+reverse.workspace = true
 
 [dev-dependencies]
-env_logger = "^ 0.9"
-lib = { path = "../../asset/lib" }
+env_logger.workspace = true
+# libs
+lib.workspace = true

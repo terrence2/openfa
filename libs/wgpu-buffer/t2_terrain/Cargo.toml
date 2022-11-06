@@ -1,41 +1,49 @@
 [package]
 name = "t2_terrain"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-log = "^ 0.4"
-image = "^ 0.24"
-nalgebra = "^ 0.31"
-parking_lot = "^ 0.12"
-wgpu = { version = "^ 0.13", features = ["spirv"] }
-zerocopy = "^ 0.6"
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-atlas = { path = "../../nitrogen/wgpu-buffer/atlas" }
-camera = { path = "../../nitrogen/sim/camera" }
-catalog = { path = "../../nitrogen/system/catalog" }
-geodesy = { path = "../../nitrogen/util/geodesy"}
-global_data = { path = "../../nitrogen/wgpu-buffer/global_data" }
-gpu = { path = "../../nitrogen/system/gpu" }
-lay = { path = "../../asset/lay" }
-mmm = { path = "../../asset/mmm" }
-nitrous = { path = "../../nitrogen/util/nitrous"}
-pal = { path = "../../asset/pal" }
-pic = { path = "../../asset/pic" }
-pic_uploader = { path = "../../wgpu-buffer/pic_uploader" }
-runtime = { path = "../../nitrogen/util/runtime" }
-shader_shared = { path = "../../nitrogen/wgpu-buffer/shader_shared" }
-t2 = { path = "../../asset/t2" }
-terrain = { path = "../../nitrogen/wgpu-buffer/terrain" }
-world = { path = "../../nitrogen/wgpu-buffer/world" }
-xt = { path = "../../asset/xt" }
+anyhow.workspace = true
+bevy_ecs.workspace = true
+log.workspace = true
+image.workspace = true
+nalgebra.workspace = true
+parking_lot.workspace = true
+wgpu.workspace = true
+zerocopy.workspace = true
+# libs
+absolute_unit.workspace = true
+atlas.workspace = true
+camera.workspace = true
+catalog.workspace = true
+geodesy.workspace = true
+global_data.workspace = true
+gpu.workspace = true
+lay.workspace = true
+mmm.workspace = true
+nitrous.workspace = true
+pal.workspace = true
+pic.workspace = true
+pic_uploader.workspace = true
+runtime.workspace = true
+shader_shared.workspace = true
+t2.workspace = true
+terrain.workspace = true
+world.workspace = true
+xt.workspace = true
 
 [dev-dependencies]
-env_logger = "^ 0.9"
-lib = { path = "../../asset/lib" }
+env_logger.workspace = true
+# libs
+lib.workspace = true
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/util/build_shaders" }
+build_shaders.workspace = true

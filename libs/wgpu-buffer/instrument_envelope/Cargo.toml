@@ -1,19 +1,27 @@
 [package]
 name = "instrument_envelope"
-version = "0.0.0"
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-csscolorparser = "^ 0.6"
-triangulate = "^ 0.1"
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-flight_dynamics = { path = "../../game/flight_dynamics" }
-gpu = { path = "../../nitrogen/system/gpu" }
-measure = { path = "../../nitrogen/sim/measure" }
-nitrous = { path = "../../nitrogen/util/nitrous" }
-runtime = { path = "../../nitrogen/util/runtime" }
-widget = { path = "../../nitrogen/wgpu-buffer/widget" }
-window = { path = "../../nitrogen/system/window" }
-xt = { path = "../../asset/xt" }
+anyhow.workspace = true
+bevy_ecs.workspace = true
+csscolorparser.workspace = true
+triangulate.workspace = true
+# libs
+absolute_unit.workspace = true
+flight_dynamics.workspace = true
+gpu.workspace = true
+measure.workspace = true
+nitrous.workspace = true
+runtime.workspace = true
+widget.workspace = true
+window.workspace = true
+xt.workspace = true

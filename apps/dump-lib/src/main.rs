@@ -125,8 +125,7 @@ fn handle_unpack(inputs: Vec<PathBuf>, output_path: Option<PathBuf>) -> Result<(
             let name = input
                 .file_name()
                 .expect("no filename in input")
-                .to_string_lossy()
-                .to_owned();
+                .to_string_lossy();
             parent.push(&name[..name.len() - 4]);
             parent
         };

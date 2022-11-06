@@ -1,24 +1,32 @@
 [package]
 name = "pic_uploader"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-wgpu = { version = "^ 0.13", features = ["spirv"] }
-zerocopy = "^ 0.6"
-gpu = { path = "../../nitrogen/system/gpu" }
-pal = { path = "../../asset/pal" }
-pic = { path = "../../asset/pic" }
+anyhow.workspace = true
+wgpu.workspace = true
+zerocopy.workspace = true
+# libs
+gpu.workspace = true
+pal.workspace = true
+pic.workspace = true
 
 [dev-dependencies]
-env_logger = "^ 0.9"
-image = "^ 0.24"
-parking_lot = "^ 0.12"
-catalog = { path = "../../nitrogen/system/catalog" }
-lib = { path = "../../asset/lib" }
-runtime = { path = "../../nitrogen/util/runtime" }
+env_logger.workspace = true
+image.workspace = true
+parking_lot.workspace = true
+# libs
+catalog.workspace = true
+lib.workspace = true
+runtime.workspace = true
 
 [build-dependencies]
-build_shaders = { path = "../../nitrogen/util/build_shaders" }
+build_shaders.workspace = true

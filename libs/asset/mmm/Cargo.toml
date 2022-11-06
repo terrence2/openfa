@@ -1,18 +1,25 @@
 [package]
 name = "mmm"
-version = "0.0.0"
-edition = "2021"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-bitflags = "^ 1"
-log = "^ 0.4"
-itertools = "^ 0.10"
-nalgebra = "^ 0.31"
-num-traits = "^ 0.2"
-absolute_unit = { path = "../../nitrogen/util/absolute_unit" }
-catalog = { path = "../../nitrogen/system/catalog" }
-geodesy = { path = "../../nitrogen/util/geodesy" }
-lib = { path = "../../asset/lib" }
-xt = { path = "../../asset/xt" }
+anyhow.workspace = true
+bitflags.workspace = true
+log.workspace = true
+itertools.workspace = true
+nalgebra.workspace = true
+num-traits.workspace = true
+# libs
+absolute_unit.workspace = true
+catalog.workspace = true
+geodesy.workspace = true
+lib.workspace = true
+xt.workspace = true

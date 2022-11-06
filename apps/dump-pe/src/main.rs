@@ -52,7 +52,7 @@ fn main() -> Result<()> {
         }
     }
     for path in &files {
-        let name = path.file_name().unwrap().to_string_lossy().to_owned();
+        let name = path.file_name().unwrap().to_string_lossy();
         println!("{}", name);
         println!("{}", "=".repeat(name.len()));
         let data = fs::read(path)?;

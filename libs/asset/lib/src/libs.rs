@@ -377,7 +377,7 @@ impl Libs {
                 "t2",
             )?)?;
         }
-        for entry in (fs::read_dir(&path)?).flatten() {
+        for entry in (fs::read_dir(path)?).flatten() {
             if let Some(ext) = entry.path().extension() {
                 if ext.to_string_lossy().to_ascii_lowercase() == "lib" {
                     catalog.add_drawer(LibDrawer::from_path(

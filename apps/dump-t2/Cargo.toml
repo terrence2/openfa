@@ -1,12 +1,20 @@
 [package]
 name = "dump-t2"
-version = "0.0.0"
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-env_logger = "^ 0.9"
-structopt = "^ 0.3"
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/asset/lib" }
-t2 = { path = "../../libs/asset/t2" }
+anyhow.workspace = true
+env_logger.workspace = true
+structopt.workspace = true
+# libs
+catalog.workspace = true
+lib.workspace = true
+t2.workspace = true

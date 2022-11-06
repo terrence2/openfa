@@ -1,13 +1,20 @@
 [package]
 name = "dump-lay"
-version = "0.0.0"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
+description.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-anyhow = { version = "^ 1", features = ["backtrace"] }
-structopt = "^ 0.3"
-catalog = { path = "../../libs/nitrogen/system/catalog" }
-lib = { path = "../../libs/asset/lib" }
-lay = { path = "../../libs/asset/lay" }
-pal = { path = "../../libs/asset/pal" }
+anyhow.workspace = true
+structopt.workspace = true
+# libs
+catalog.workspace = true
+lib.workspace = true
+lay.workspace = true
+pal.workspace = true

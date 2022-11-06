@@ -124,7 +124,7 @@ impl FontInterface for FntFont {
     }
 
     // rendering
-    fn render_glyph(&self, c: char, scale: AbsSize) -> GrayImage {
+    fn render_glyph(&self, c: char, _scale: AbsSize) -> GrayImage {
         // Note: Rendering is done via pic or x86 assembly, so we can't really scale effectively.
         //       Instead we set up the above numbers so that upscaling works upscale well.
         if let Some(frame) = self.glyph_frames.get(&c) {
@@ -143,7 +143,7 @@ impl FontInterface for FntFont {
         } else if c == ' ' {
             GrayImage::new(1, 1)
         } else {
-            self.render_glyph('?', scale)
+            self.render_glyph('?', _scale)
         }
     }
 }
