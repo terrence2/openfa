@@ -4,7 +4,7 @@ variables:
 before_script:
   - whoami
   - groups
-  - nix-shell --run "rustc --version"
+  - nix shell github:oxalica/rust-overlay -c rustc --version
 
 check_format:
   tags:
