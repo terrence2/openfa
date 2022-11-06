@@ -1,24 +1,9 @@
-[package]
-name = "openfa"
-description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
-version = "0.0.3"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-edition = "2021"
-readme = "https://gitlab.com/terrence_too/openfa/-/blob/main/README.md"
-homepage = "https://gitlab.com/terrence_too/openfa"
-documentation = "https://gitlab.com/terrence_too/openfa"
-repository = "https://gitlab.com/terrence_too/openfa"
-license = "GPL-3.0-only"
-exclude = []
-include = []
-keywords = ["aerospace", "emulation", "classic-gaming", "simulation"]
-categories = ["aerospace", "emulation", "simulation"]
-
 [workspace.package]
 description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
 version = "0.0.3"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2021"
+rust-version = "1.64"
 readme = "https://gitlab.com/terrence_too/openfa/-/blob/main/README.md"
 homepage = "https://gitlab.com/terrence_too/openfa"
 documentation = "https://gitlab.com/terrence_too/openfa"
@@ -168,6 +153,23 @@ debug = true
 debug = true
 debug-assertions = true
 opt-level = 1
+
+[package]
+name = "openfa"
+description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+readme.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+license.workspace = true
+exclude = []
+include = []
+keywords = ["aerospace", "emulation", "classic-gaming", "simulation"]
+categories = ["aerospace", "emulation", "simulation"]
 
 [dependencies]
 anyhow.workspace = true
