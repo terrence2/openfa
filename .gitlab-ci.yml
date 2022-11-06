@@ -23,7 +23,7 @@ check_clippy:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
-    - nix shell github:oxalica/rust-overlay -c cargo clippy --all --all-targets -- --deny warnings
+    - nix shell github:oxalica/rust-overlay -c nix-shell --run "cargo clippy --all --all-targets -- --deny warnings"
 
 check_test:
   interruptible: true
