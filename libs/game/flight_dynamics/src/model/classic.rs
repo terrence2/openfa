@@ -53,11 +53,6 @@ pub struct ClassicFlightModel {
 
     coef_of_drag: f64,
     force_of_drag: f64,
-
-    // In classic FA, the AoA is faked. We always do aerodynamic calculations off
-    // of the real/stability facing and then add in pitch and yaw offsets from that
-    // for the facing that gets rendered.
-    stability: UnitQuaternion<f64>,
 }
 
 impl Extension for ClassicFlightModel {
@@ -69,14 +64,13 @@ impl Extension for ClassicFlightModel {
 
 #[inject_nitrous_component]
 impl ClassicFlightModel {
-    pub fn new(id: Entity, facing: UnitQuaternion<f64>) -> Self {
+    pub fn new(id: Entity) -> Self {
         Self {
             id,
             max_g_load: GloadExtrema::Stall(0.),
             g_load: 1f64,
             coef_of_drag: 0.,
             force_of_drag: 0.,
-            stability: facing,
         }
     }
 
@@ -211,8 +205,10 @@ impl ClassicFlightModel {
     //
     // Note: The effects of atmospheric density etc are baked into the envelope shape.
     //
-    // FIXME: for velocity less than 0... lift needs to not be totally normal.
-    // FIXME: account for `flaps_lift`
+    // FIXME: for over-speed, narrow to 0g, with some small wiggle window
+    // FIXME: what do we even do when we're above the envelope? Probably same as for over-speed.
+    // FIXME: for velocity less than 0... lift needs to not be totally normal. There are PT params.
+    // FIXME: what about ground-effect?
     fn compute_target_g_load(
         &mut self,
         pt: &PlaneType,
@@ -248,11 +244,29 @@ impl ClassicFlightModel {
             -(min_g_load * pitch_inceptor.position())
         };
 
+        // actual target is not instantaneous with control input, it is controlled by a g/s value
+        // in acc/dacc of brv_y of the PT.
         let acc = pt.brv_y.acc64() * dt.as_secs_f64();
         let dacc = pt.brv_y.dacc64() * dt.as_secs_f64();
-
-        // The symmetry in this algorithm is far more helpful here than clippy's pedantry.
+        let target_g_load = {
+            // The symmetry in this algorithm is far more helpful here than clippy's pedantry.
+            #[allow(clippy::collapsible_else_if)]
+            if target_g_load < 0. {
+                if target_g_load < self.g_load {
+                    (self.g_load - acc).max(target_g_load)
+                } else {
+                    (self.g_load + dacc).min(target_g_load)
+                }
+            } else {
+                if target_g_load > self.g_load {
+                    (self.g_load + acc).min(target_g_load)
+                } else {
+                    (self.g_load - dacc).max(target_g_load)
+                }
+            }
+        };
         self.g_load = {
+            // The symmetry in this algorithm is far more helpful here than clippy's pedantry.
             #[allow(clippy::collapsible_else_if)]
             if target_g_load < 0. {
                 if target_g_load < self.g_load {
@@ -269,7 +283,6 @@ impl ClassicFlightModel {
             }
         };
 
-        // FIXME: actual target is not instantaneous with control input, it is controlled by g/s value in acc/dacc of brv_y
         self.g_load
     }
 
@@ -326,40 +339,71 @@ impl ClassicFlightModel {
 
         // TODO: rudder yaw rate (based on max-g-loading)
 
-        let mut weathervane = if beta <= radians!(0) {
+        let mut weathervane_yaw_rate = if beta <= radians!(0) {
             (yaw_rate - dacc).max(min)
         } else {
             (yaw_rate + dacc).min(max)
         };
         if degrees!(beta) < degrees!(1.) {
-            weathervane *= scalar!(degrees!(beta).f64()) * scalar!(degrees!(beta).f64());
+            let s = scalar!(degrees!(beta).f64());
+            weathervane_yaw_rate *= s * s;
         }
 
-        weathervane
+        weathervane_yaw_rate
     }
 
     fn compute_pitch_rate(
-        stall_speed: Option<Velocity<Meters, Seconds>>,
-        velocity_cg: Velocity<Meters, Seconds>,
-        target_g_load: f64,
-        gravity_z: Acceleration<Meters, Seconds>,
+        pt: &PlaneType,
+        (stall_speed, max_altitude): (Option<Velocity<Meters, Seconds>>, Option<Length<Meters>>),
+        (velocity_cg, _altitude): (Velocity<Meters, Seconds>, Length<Meters>),
+        (target_g_load, alpha): (f64, Angle<Radians>),
+        (gravity_z, air_density): (Acceleration<Meters, Seconds>, Density<Kilograms, Meters>),
+        dt: &Duration,
     ) -> AngularVelocity<Radians, Seconds> {
         // The target g load gives us a circle radius and angular speed, which gives us a deflection.
         // a = v^2/r = vw
         // w = a / v
         let turn_accel = (scalar!(target_g_load) * *STANDARD_GRAVITY) - gravity_z;
 
-        #[allow(clippy::let_and_return)]
-        let elevator_pitch_rate = if stall_speed.is_none() || velocity_cg < stall_speed.unwrap() {
-            radians_per_second!(0.)
-        } else {
+        let mut elevator_pitch_rate = if velocity_cg > meters_per_second!(feet_per_second!(1_f64)) {
             (turn_accel.as_dyn() / velocity_cg.as_dyn()).into()
+        } else {
+            radians_per_second!(0_f64)
         };
+        if stall_speed.is_none() {
+            // Above the atmospheric lift limits for 1-g.
+            // Modulate the pitch authority by fractional density relative to top of envelope
+            if let Some(max_altitude) = max_altitude {
+                let max_density =
+                    StandardAtmosphere::at_altitude(max_altitude).density::<Kilograms, Meters>();
+                elevator_pitch_rate *= max_density / air_density;
+            }
+        }
 
-        // TODO: weathervane
-        // TODO: handle stall pitch
+        let max = radians_per_second!(degrees_per_second!(pt.brv_z.max64()));
+        let min = radians_per_second!(degrees_per_second!(pt.brv_z.min64()));
+        let _acc = degrees_per_second2!(pt.brv_z.acc64()) * seconds!(dt.as_secs_f64());
+        let dacc = degrees_per_second2!(pt.brv_z.dacc64()) * seconds!(dt.as_secs_f64());
+        let mut weathervane_pitch_rate = if alpha <= radians!(0_f64) {
+            (elevator_pitch_rate + dacc).min(max)
+        } else {
+            (elevator_pitch_rate - dacc).max(min)
+        };
+        if degrees!(alpha) < degrees!(1_f64) {
+            let s = scalar!(degrees!(alpha).f64());
+            weathervane_pitch_rate *= s * s;
+        }
 
-        elevator_pitch_rate
+        // TODO: Handle stall nose-down motion
+        // If we are stalling and if the nose to horizon angle is above pt.stall_pitch_down,
+        // add to the pitch rate a stall_pitch_severity/s (divided by cos of roll) pitch down
+        if let Some(stall_speed) = stall_speed {
+            if velocity_cg < stall_speed {
+                // TODO: actually, weathervane forces are probably going to feel better here?
+            }
+        }
+
+        weathervane_pitch_rate
     }
 
     fn simulate(
@@ -393,7 +437,6 @@ impl ClassicFlightModel {
         assert!(air_density.is_finite(), "NaN air density at {altitude}");
 
         let mass_kg = airframe.dry_mass() + fuel.fuel_mass();
-        let stall_speed = pt.envelopes.find_min_lift_speed_at(altitude);
 
         // 2. Compute AoA and side-slip
         let mut u = motion.vehicle_forward_velocity();
@@ -411,8 +454,12 @@ impl ClassicFlightModel {
         let alpha = radians!(w.f64().atan2(u.f64()));
         let beta = radians!(v.f64().atan2(uw_mag.f64()));
 
+        // FA specific heuristics
+        let stall_speed = pt.envelopes.find_min_lift_speed_at(altitude);
+        let max_altitude = pt.envelopes.find_max_lift_altitude_at(velocity_cg);
+
         // Translate world frame gravity into the plane's body frame (Allerton)
-        let gravity_wf = self.stability.inverse()
+        let gravity_wf = motion.stability().inverse()
             * (-frame.position().vec64().normalize() * STANDARD_GRAVITY.f64());
         let gravity_x = meters_per_second2!(-gravity_wf.z);
         let gravity_y = meters_per_second2!(gravity_wf.x);
@@ -448,11 +495,11 @@ impl ClassicFlightModel {
         let drag: Force<Newtons> = (coef_drag.as_dyn()
             * air_density.as_dyn()
             * (velocity_cg * velocity_cg).as_dyn()
-            * meters2!(1.).as_dyn())
+            * meters2!(1_f64).as_dyn())
         .into();
         debug_assert!(drag.is_finite(), "NaN drag");
         self.force_of_drag = drag.f64();
-        let side_force = newtons!(0.);
+        let side_force = newtons!(0_f64);
 
         // 8. Compute engine forces and moments
         let engine_thrust_x = power.current_thrust(&atmosphere, u);
@@ -513,7 +560,7 @@ impl ClassicFlightModel {
         // 15. Compute the Earth velocities
         // Rotate our body velocity into the earth frame.
         // let body_velocity = Vector3::new(u.f64(), v.f64(), w.f64());
-        // let world_velocity = self.stability * body_velocity;
+        // let world_velocity = motion.stability() * body_velocity;
         // let (latitude_velocity, longitude_velocity, height_velocity) = {
         //     // Use arcball's transform from abs to lat/lon here
         //     let x = world_velocity.x;
@@ -534,8 +581,8 @@ impl ClassicFlightModel {
 
         // 17. Compute the aircraft position
         // TODO: do this from map space
-        let velocity_m_s =
-            (self.stability * motion.velocity().map(|v| v.f64())).map(|v| meters_per_second!(v));
+        let velocity_m_s = (motion.stability() * motion.velocity().map(|v| v.f64()))
+            .map(|v| meters_per_second!(v));
         let world_pos = frame.position_pt3() + velocity_m_s.map(|v| v * seconds!(dt.as_secs_f64()));
         debug_assert!(world_pos.x.is_finite(), "world x is NaN");
         debug_assert!(world_pos.y.is_finite(), "world y is NaN");
@@ -549,7 +596,14 @@ impl ClassicFlightModel {
         // 22. Compute the body rates
         // Or shortcut all of it like FA does...
         p = Self::compute_roll_rate(pt, roll_inceptor, dt, p);
-        q = Self::compute_pitch_rate(stall_speed, velocity_cg, target_g_load, gravity_z);
+        q = Self::compute_pitch_rate(
+            pt,
+            (stall_speed, max_altitude),
+            (velocity_cg, altitude),
+            (target_g_load, alpha),
+            (gravity_z, air_density),
+            dt,
+        );
         if let Some(_markers) = markers.as_ref() {
             r = Self::compute_yaw_rate(pt, yaw_inceptor, dt, beta, r);
         }
@@ -570,12 +624,12 @@ impl ClassicFlightModel {
         // 24. Compute the DCM
         // 25. Compute the Euler angles
         // Or maybe just use the quaternion? ¯\_(ツ)_/¯
-        self.stability *= rot;
+        *motion.stability_mut() *= rot;
 
         // Apply additional rotations off of stability axis
-        let rot =
-            UnitQuaternion::from_euler_angles(0_f64, -radians!(degrees!(20_f64)).f64(), 0_f64);
-        *frame.facing_mut() = self.stability * rot;
+        let extra_pitch = degrees!(self.g_load / f64::from(pt.env_max) * f64::from(pt.gpull_aoa));
+        let rot = UnitQuaternion::from_euler_angles(radians!(extra_pitch).f64(), 0_f64, 0_f64);
+        *frame.facing_mut() = motion.stability() * rot;
     }
 
     fn sys_simulate(

@@ -195,7 +195,7 @@ fn show_xt(name: &str, altitude: Option<i32>, catalog: &Catalog) -> Result<()> {
                     .envelopes
                     .envelope(1)
                     .unwrap()
-                    .find_xy_extrema(meters!(feet!(i * 5_000)))
+                    .find_x_extrema(meters!(feet!(i * 5_000)))
                 {
                     println!(
                         "{}\t{:0.1}\t{:0.1}",

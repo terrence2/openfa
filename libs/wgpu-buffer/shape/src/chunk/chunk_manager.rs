@@ -17,7 +17,7 @@ use crate::chunk::{
     upload::DrawSelection,
     upload::ShapeUploader,
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use catalog::Catalog;
 use gpu::Gpu;
 use pal::Palette;
@@ -229,27 +229,31 @@ impl ChunkManager {
         for (shape_file_name, sh) in shapes.iter() {
             out.insert(shape_file_name.to_owned(), HashMap::new());
 
-            let (normal_shape_id, has_damage_model) = self.push_one_shape(
-                palette,
-                shape_file_name,
-                sh,
-                DrawSelection::NormalModel,
-                catalog,
-                gpu,
-            )?;
+            let (normal_shape_id, has_damage_model) = self
+                .push_one_shape(
+                    palette,
+                    shape_file_name,
+                    sh,
+                    DrawSelection::NormalModel,
+                    catalog,
+                    gpu,
+                )
+                .with_context(|| format!("normal shape file {shape_file_name}"))?;
             out.get_mut(shape_file_name)
                 .unwrap()
                 .insert(DrawSelection::NormalModel, normal_shape_id);
 
             if has_damage_model {
-                let (damage_shape_id, has_damage_model) = self.push_one_shape(
-                    palette,
-                    shape_file_name,
-                    sh,
-                    DrawSelection::DamageModel,
-                    catalog,
-                    gpu,
-                )?;
+                let (damage_shape_id, has_damage_model) = self
+                    .push_one_shape(
+                        palette,
+                        shape_file_name,
+                        sh,
+                        DrawSelection::DamageModel,
+                        catalog,
+                        gpu,
+                    )
+                    .with_context(|| format!("damage shape file {shape_file_name}"))?;
                 assert!(has_damage_model);
                 out.get_mut(shape_file_name)
                     .unwrap()

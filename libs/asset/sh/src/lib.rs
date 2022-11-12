@@ -1212,13 +1212,14 @@ macro_rules! consume_instr2 {
 }
 
 pub struct RawShape {
+    name: String,
     pub instrs: Vec<Instr>,
     offset_map: HashMap<usize, usize>,
     pub pe: PortableExecutable,
 }
 
 impl RawShape {
-    pub fn from_bytes(data: &[u8]) -> Result<Self> {
+    pub fn from_bytes(name: &str, data: &[u8]) -> Result<Self> {
         let mut pe = PortableExecutable::from_bytes(data)?;
 
         // Do default relocation to a high address. This makes offsets appear
@@ -1251,10 +1252,15 @@ impl RawShape {
             .collect();
 
         Ok(RawShape {
+            name: name.to_owned(),
             instrs,
             offset_map,
             pe,
         })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn bytes_to_index(&self, absolute_byte_offset: usize) -> Result<usize> {
@@ -1617,7 +1623,7 @@ mod tests {
                 println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
 
                 let data = catalog.read(fid)?;
-                let shape = RawShape::from_bytes(data.as_ref())?;
+                let shape = RawShape::from_bytes(meta.name(), data.as_ref())?;
 
                 // Ensure that f2 points to the trailer if it exists.
                 // And conversely that we found the trailer in the right place.

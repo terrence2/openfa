@@ -112,7 +112,7 @@ fn main() -> Result<()> {
 }
 
 fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
-    let shape = RawShape::from_bytes(data)?;
+    let shape = RawShape::from_bytes(name, data)?;
     if opt.show_all {
         for (i, instr) in shape.instrs.iter().enumerate() {
             println!("{:3}: {}", i, instr.show());

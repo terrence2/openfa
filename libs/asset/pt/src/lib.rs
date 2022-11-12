@@ -123,6 +123,12 @@ impl FromRow for Envelopes {
             off += 44;
         }
         envs.sort_by_cached_key(|envelope| envelope.gload);
+        for (i, env) in envs.iter().enumerate() {
+            ensure!(
+                env.gload == i as i16 + min_g,
+                "envelopes are not contiguous"
+            );
+        }
         Ok(Envelopes {
             all: envs,
             min_g,
@@ -163,6 +169,13 @@ impl Envelopes {
             }
         }
         None
+    }
+
+    pub fn find_max_lift_altitude_at(
+        &self,
+        speed: Velocity<Meters, Seconds>,
+    ) -> Option<Length<Meters>> {
+        self.envelope(1).unwrap().find_max_lift_altitude_at(speed)
     }
 
     pub fn find_g_load_maxima(

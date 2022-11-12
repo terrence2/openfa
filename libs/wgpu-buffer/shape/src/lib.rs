@@ -28,7 +28,7 @@ use crate::{
 };
 use absolute_unit::Meters;
 use animate::TimeStep;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use atlas::AtlasPacker;
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
@@ -404,13 +404,21 @@ impl ShapeBuffer {
             }
             shapes.insert(
                 shape_file_name.to_owned(),
-                RawShape::from_bytes(catalog.read_name(shape_file_name)?.as_ref())?,
+                RawShape::from_bytes(
+                    shape_file_name,
+                    catalog.read_name(shape_file_name)?.as_ref(),
+                )
+                .with_context(|| format!("raw shape {shape_file_name}"))?,
             );
             let (base_name, _sh) = shape_file_name.rsplit_once('.').unwrap();
             for suffix in ["_A", "_B", "_C", "_D"] {
                 let assoc_name = format!("{}{}.SH", base_name, suffix);
                 if let Ok(data) = catalog.read_name(&assoc_name) {
-                    shapes.insert(assoc_name, RawShape::from_bytes(data.as_ref())?);
+                    shapes.insert(
+                        assoc_name.clone(),
+                        RawShape::from_bytes(&assoc_name, data.as_ref())
+                            .with_context(|| format!("raw shape {assoc_name}"))?,
+                    );
                 }
             }
         }
