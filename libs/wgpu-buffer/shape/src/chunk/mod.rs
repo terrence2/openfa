@@ -70,7 +70,7 @@ mod test {
                 }
                 all_shapes.insert(
                     meta.name().to_owned(),
-                    RawShape::from_bytes(catalog.read_name(meta.name())?.as_ref())?,
+                    RawShape::from_bytes(meta.name(), catalog.read_name(meta.name())?.as_ref())?,
                 );
             }
             let results = chunk_man.upload_shapes(

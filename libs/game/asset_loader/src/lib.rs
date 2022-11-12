@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use absolute_unit::{degrees, feet, feet_per_second, kilograms, meters, scalar, Meters};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bevy_ecs::prelude::*;
 use camera::{ArcBallController, ScreenCamera, ScreenCameraController};
 use fa_vehicle::Turbojet;
@@ -47,8 +47,6 @@ use vehicle::{
     HookEffector, PitchInceptor, PowerSystem, RollInceptor, ThrottleInceptor, YawInceptor,
 };
 use xt::TypeManager;
-
-const FEET_TO_METERS: f32 = 1. / 3.28084;
 
 static SCALE_OVERRIDE: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
     let mut m: HashMap<&str, i32> = HashMap::new();
@@ -274,12 +272,12 @@ impl AssetLoader {
             &info.xt().ot().ot_names.file_name,
         ));
         let scale = *scale.unwrap_or(&1i32) as f32;
-        let scale = scalar!(scale * FEET_TO_METERS); // Internal units are meters
+        let scale_m = scalar!(meters!(feet!(scale)).f64()); // Internal units are meters
 
         let frame = if let Some(tile_id) = tile_id {
             let tile_mapper = heap.get::<T2TileSet>(tile_id).mapper();
             let offset_from_ground =
-                (metadata.read().extent().offset_to_ground() + feet!(info.position().y)) * scale;
+                metadata.read().extent().offset_to_ground() + meters!(feet!(info.position().y));
             // FIXME: figure out the terrain height here and raise to at least that level
             let position = tile_mapper.fa2grat(info.position(), feet!(offset_from_ground));
             // FIXME: manually re-align strip halfs
@@ -291,12 +289,15 @@ impl AssetLoader {
         let facing = *frame.facing();
         heap.named_entity_mut(id)
             .insert_named(frame)?
-            .insert_named(ShapeScale::new(scale.into_inner()))?
+            .insert_named(ShapeScale::new(scale_m.into_inner()))?
             .insert(info.xt());
 
         if info.xt().is_jt() || info.xt().is_nt() || info.xt().is_pt() {
             heap.named_entity_mut(id)
-                .insert_named(BodyMotion::new_forward(feet_per_second!(info.speed())))?;
+                .insert_named(BodyMotion::new_forward(
+                    feet_per_second!(info.speed()),
+                    &facing,
+                ))?;
 
             // TODO: use audio effect time for timing the animation and effector deployment times
             // heap.named_entity_mut(id)
@@ -340,7 +341,7 @@ impl AssetLoader {
                 ))?
                 .insert_named(HookControl::default())?
                 .insert_named(HookEffector::new(0., Duration::from_millis(1)))?
-                .insert_named(ClassicFlightModel::new(id, facing))?;
+                .insert_named(ClassicFlightModel::new(id))?;
         }
 
         if let Some(name) = info.name() {
@@ -395,7 +396,8 @@ impl AssetLoader {
                 libs.catalog(),
                 heap.resource::<Gpu>(),
             )
-        })?;
+        })
+        .with_context(|| format!("loading map {map_name}"))?;
 
         // Create all entities as we go.
         let game_name = heap.resource::<Libs>().catalog().label().to_owned();

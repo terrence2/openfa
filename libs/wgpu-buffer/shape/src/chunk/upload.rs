@@ -17,7 +17,7 @@ use crate::chunk::{
     shape_vertex::{ShapeVertex, VertexFlags},
 };
 use absolute_unit::{feet, meters, Feet, Length, Meters};
-use anyhow::{bail, ensure, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};
 use catalog::Catalog;
 use geometry::{intersect::sphere_vs_ray, Aabb3, Ray, Sphere};
@@ -269,6 +269,7 @@ lazy_static! {
     };
 }
 
+#[derive(Debug)]
 struct ProgramCounter {
     instr_offset: usize,
     byte_offset: usize,
@@ -476,6 +477,10 @@ pub struct ShapeExtent {
 }
 
 impl ShapeExtent {
+    // FA coordinates appear to be:
+    //   side / pitch: x
+    //   forward / roll: y
+    //   up / yaw: z
     pub fn new(aabb_full: Aabb3<Feet>, aabb_body: Aabb3<Feet>) -> Self {
         let aabb_full = Aabb3::<Meters>::from_bounds(
             aabb_full.lo().map(|v| meters!(v)),
@@ -487,7 +492,7 @@ impl ShapeExtent {
         );
 
         let sphere = aabb_full.bounding_sphere();
-        let offset_to_ground = -aabb_full.lo()[1];
+        let offset_to_ground = -aabb_full.lo()[2];
 
         Self {
             aabb_full,
@@ -744,7 +749,7 @@ impl<'a> ShapeUploader<'a> {
                         self.active_frame.is_some(),
                         "no frame active at facet with texcoords defined"
                     );
-                    let frame = self.active_frame.as_ref().unwrap();
+                    let frame = self.active_frame.as_ref().expect("active frame");
                     let (base_s, base_t) = frame.raw_base();
                     v.set_raw_tex_coords(
                         base_s + tex_coord[0] as u32,
@@ -1216,12 +1221,18 @@ impl<'a> ShapeUploader<'a> {
         while pc.valid() {
             if let Some(byte_offset) = damage_model_byte_offset {
                 if pc.matches_byte(byte_offset) && *selection != DrawSelection::DamageModel {
-                    pc.set_byte_offset(end_byte_offset.unwrap(), sh)?;
+                    pc.set_byte_offset(
+                        end_byte_offset.ok_or_else(|| anyhow!("end for damage"))?,
+                        sh,
+                    )?;
                 }
             }
             if let Some(byte_offset) = section_close_byte_offset {
                 if pc.matches_byte(byte_offset) {
-                    pc.set_byte_offset(end_byte_offset.unwrap(), sh)?;
+                    pc.set_byte_offset(
+                        end_byte_offset.ok_or_else(|| anyhow!("end for section"))?,
+                        sh,
+                    )?;
                 }
             }
 

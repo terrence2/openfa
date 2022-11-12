@@ -193,7 +193,7 @@ impl EnvelopeShape {
     }
 
     #[inline]
-    pub fn find_xy_extrema(
+    pub fn find_x_extrema(
         &self,
         altitude: Length<Meters>,
     ) -> (
@@ -241,18 +241,58 @@ impl EnvelopeShape {
         (minima, maxima)
     }
 
+    #[inline]
+    pub fn find_y_extrema(&self, speed: Velocity<Meters, Seconds>) -> Option<Length<Meters>> {
+        let origin = Vector2::new(speed.f64(), 0f64);
+        let end = Vector2::new(speed.f64(), 1_000_000f64);
+
+        let mut maxima = None;
+
+        for (i, coord0) in self.shape.iter().enumerate() {
+            let j = (i + 1) % self.shape.len();
+            let coord1 = &self.shape[j];
+
+            if let Some((intersect_x, intersect_y)) = Self::segment_intersection(
+                (origin.x, origin.y),
+                (end.x, end.y),
+                (coord0.speed().f64(), coord0.altitude().f64()),
+                (coord1.speed().f64(), coord1.altitude().f64()),
+            ) {
+                let dx = intersect_x - origin.x;
+                let dy = intersect_y - origin.y;
+                let d = meters!((dx * dx + dy * dy).sqrt());
+                if let Some(m) = maxima {
+                    if d > m {
+                        maxima = Some(d);
+                    }
+                } else {
+                    maxima = Some(d);
+                }
+            }
+        }
+
+        maxima
+    }
+
     pub fn find_min_lift_speed_at(
         &self,
         altitude: Length<Meters>,
     ) -> Option<Velocity<Meters, Seconds>> {
-        self.find_xy_extrema(altitude).0
+        self.find_x_extrema(altitude).0
     }
 
     pub fn find_max_velocity_at(
         &self,
         altitude: Length<Meters>,
     ) -> Option<Velocity<Meters, Seconds>> {
-        self.find_xy_extrema(altitude).1
+        self.find_x_extrema(altitude).1
+    }
+
+    pub fn find_max_lift_altitude_at(
+        &self,
+        speed: Velocity<Meters, Seconds>,
+    ) -> Option<Length<Meters>> {
+        self.find_y_extrema(speed)
     }
 }
 
@@ -280,14 +320,14 @@ impl Envelope {
         self.shape.is_in_envelope(speed, altitude)
     }
 
-    pub fn find_xy_extrema(
+    pub fn find_x_extrema(
         &self,
         altitude: Length<Meters>,
     ) -> (
         Option<Velocity<Meters, Seconds>>,
         Option<Velocity<Meters, Seconds>>,
     ) {
-        self.shape.find_xy_extrema(altitude)
+        self.shape.find_x_extrema(altitude)
     }
 
     pub fn find_min_lift_speed_at(
@@ -302,5 +342,12 @@ impl Envelope {
         altitude: Length<Meters>,
     ) -> Option<Velocity<Meters, Seconds>> {
         self.shape.find_max_velocity_at(altitude)
+    }
+
+    pub fn find_max_lift_altitude_at(
+        &self,
+        speed: Velocity<Meters, Seconds>,
+    ) -> Option<Length<Meters>> {
+        self.shape.find_max_lift_altitude_at(speed)
     }
 }
