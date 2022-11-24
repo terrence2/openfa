@@ -20,6 +20,7 @@ use absolute_unit::{feet, meters, Feet, Length, Meters};
 use anyhow::{anyhow, bail, ensure, Result};
 use atlas::{AtlasPacker, Frame};
 use catalog::Catalog;
+use geodesy::{Cartesian, GeoCenter};
 use geometry::{intersect::sphere_vs_ray, Aabb3, Ray, Sphere};
 use gpu::Gpu;
 use i386::Interpreter;
@@ -521,7 +522,7 @@ impl ShapeExtent {
 
     pub fn intersect_ray(
         &self,
-        position: Point3<f64>,
+        position: &Cartesian<GeoCenter, Meters>,
         scale: f64,
         ray: &Ray,
     ) -> Option<Point3<f64>> {
@@ -529,9 +530,10 @@ impl ShapeExtent {
         // }
 
         let hit_sphere = Sphere::from_center_and_radius(
-            &(position + self.sphere.center().coords),
+            &(position.point64() + self.sphere.center().coords),
             self.sphere.radius() * scale,
         );
+
         if let Some(intersect) = sphere_vs_ray(&hit_sphere, ray) {
             return Some(intersect);
         }

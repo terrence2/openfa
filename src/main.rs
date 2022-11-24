@@ -111,6 +111,12 @@ bindings.bind("+Shift+Down", "@fallback_camera.arcball.target_down_fast(pressed)
 bindings.bind("+Up", "@fallback_camera.arcball.target_up(pressed)");
 bindings.bind("+Down", "@fallback_camera.arcball.target_down(pressed)");
 
+// Camera internal control
+bindings.bind("+PageUp", "camera.increase_fov(pressed)");
+bindings.bind("+PageDown", "camera.decrease_fov(pressed)");
+bindings.bind("Shift+LBracket", "camera.decrease_exposure()");
+bindings.bind("Shift+RBracket", "camera.increase_exposure()");
+
 // Load at Mt Everest if nothing else is loaded
 game.detach_camera();
 let location := "Everest";

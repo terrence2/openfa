@@ -100,7 +100,7 @@ impl AssetLoader {
                 {
                     let metadata = shapes.metadata(*shape_id);
                     if let Some(intersect) = metadata.read().extent().intersect_ray(
-                        frame.position().point64(),
+                        frame.position(),
                         scale.scale() as f64,
                         &view_ray,
                     ) {

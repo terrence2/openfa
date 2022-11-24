@@ -132,8 +132,15 @@ game.load_map("BAL.MM");
 @fallback_camera.arcball.set_eye_latitude_degrees(14.94270422048709);
 @fallback_camera.arcball.set_eye_longitude_degrees(260.0);
 @fallback_camera.arcball.set_eye_distance_meters(101.60619925904378);
+
+// Camera internal control
+bindings.bind("+PageUp", "camera.increase_fov(pressed)");
+bindings.bind("+PageDown", "camera.decrease_fov(pressed)");
+bindings.bind("Shift+LBracket", "camera.decrease_exposure()");
+bindings.bind("Shift+RBracket", "camera.increase_exposure()");
+
+// Let there be light
 orrery.set_unix_ms(13459754321.0);
-// orrery.set_unix_ms(1662157226046.4653
 "#,
         LATITUDE, LONGITUDE
     )
@@ -458,7 +465,7 @@ n            - toggle normals display
     fn toggle_show_normals(&mut self, mut heap: HeapMut) -> Result<()> {
         let id = heap.entity_by_name("Player");
         if self.showing_normals {
-            heap.get_mut::<EntityMarkers>(id).clear_arrows();
+            heap.get_mut::<EntityMarkers>(id).clear_body_arrows();
             self.showing_normals = false;
             return Ok(());
         }
@@ -469,7 +476,7 @@ n            - toggle normals display
             .resource::<ShapeBuffer>()
             .read_back_vertices(shape_id, heap.resource::<Gpu>())?;
         for (i, vert) in verts.iter().enumerate() {
-            heap.get_mut::<EntityMarkers>(id).add_arrow(
+            heap.get_mut::<EntityMarkers>(id).add_body_arrow(
                 &format!("n-{}", i),
                 vert.point().map(|v| meters!(v)),
                 vert.normal().map(|v| meters!(v * 10f32)),

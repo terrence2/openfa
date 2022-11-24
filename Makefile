@@ -13,8 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-POINT := 1
-V := $(shell date +%Y%m%d).$(POINT)
+V := 0.1.0
 TMP := ofa-$(V)
 PROJECT_ID := 18970786
 OFA_BUCKET_URL := https://openfa.s3.us-west-1.amazonaws.com
@@ -31,8 +30,13 @@ clean:
 		ofa-tools-linux-x86_64.tar.bz2
 
 
+website:
+	pushd site && zola build && popd
+	rsync -rav --stats --progress ./site/public/ root@openfa.home.arpa:/var/www/openfa.org/
+
+
 target/x86_64-pc-windows-gnu/release/openfa.exe:
-	cargo build --target x86_64-pc-windows-gnu --release --all
+	cargo build --target x86_64-pc-windows-gnu --workspace --all-targets --release
 
 openfa-win-x86_64.zip: target/x86_64-pc-windows-gnu/release/openfa.exe
 	mkdir $(TMP)
@@ -51,7 +55,7 @@ ofa-tools-win-x86_64.zip: target/x86_64-pc-windows-gnu/release/openfa.exe
 
 
 target/release/openfa:
-	cargo build --all --release
+	cargo build --workspace --all-targets --release
 
 openfa-linux-x86_64.tar.bz2: target/release/openfa
 	mkdir $(TMP)
@@ -84,3 +88,4 @@ release: openfa-linux-x86_64.tar.bz2 ofa-tools-linux-x86_64.tar.bz2 openfa-win-x
 	aws s3api put-object-acl --bucket openfa --key $(PKG_TOOLS_LINUX_X64) --acl public-read
 	aws s3api put-object-acl --bucket openfa --key $(PKG_OFA_WIN_X64) --acl public-read
 	aws s3api put-object-acl --bucket openfa --key $(PKG_TOOLS_WIN_X64) --acl public-read
+

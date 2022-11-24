@@ -74,8 +74,8 @@ impl GloadExtrema {
         *match self {
             Self::Inside(f) => f,
             Self::Stall(f) => f,
-            Self::OverSpeed(_) => &1f64,
-            Self::LiftFail(_) => &0f64,
+            Self::OverSpeed(f) => f,
+            Self::LiftFail(f) => f,
         }
     }
 
@@ -83,8 +83,8 @@ impl GloadExtrema {
         *match self {
             Self::Inside(f) => f,
             Self::Stall(f) => f,
-            Self::OverSpeed(_) => &0f64,
-            Self::LiftFail(_) => &0f64,
+            Self::OverSpeed(f) => f,
+            Self::LiftFail(f) => f,
         }
     }
 }
@@ -159,6 +159,7 @@ impl Envelopes {
         Some(out)
     }
 
+    /// Speed at which we cross 1g of lift
     pub fn find_min_lift_speed_at(
         &self,
         altitude: Length<Meters>,
@@ -201,7 +202,7 @@ impl Envelopes {
                         envelope.gload as f64 + (to_stall / (to_stall + v))
                     }
                     Some(EnvelopeIntersection::OverSpeed(v)) => {
-                        (envelope.gload as f64 + (to_over_speed / (to_over_speed + v))).max(1.)
+                        envelope.gload as f64 + (to_over_speed / (to_over_speed + v))
                     }
                     Some(EnvelopeIntersection::LiftFail(v)) => {
                         envelope.gload as f64 + (to_lift_fail / (to_lift_fail + v))
@@ -223,9 +224,12 @@ impl Envelopes {
         // Inside no envelopes... map from the last failed envelope, which should be 0.
         match prior {
             None => panic!("empty envelope!"),
-            Some(EnvelopeIntersection::Stall(v)) => GloadExtrema::Stall(v),
-            Some(EnvelopeIntersection::OverSpeed(v)) => GloadExtrema::OverSpeed(v),
-            Some(EnvelopeIntersection::LiftFail(v)) => GloadExtrema::LiftFail(v),
+            // Intersection here is distance in m/s from the nearest wall speed at this altitude.
+            // In stall or lift fail we have no control authority, in overspeed we can't pull g's
+            // without over-stressing the airframe.
+            Some(EnvelopeIntersection::Stall(_)) => GloadExtrema::Stall(0.),
+            Some(EnvelopeIntersection::OverSpeed(_)) => GloadExtrema::OverSpeed(0.),
+            Some(EnvelopeIntersection::LiftFail(_)) => GloadExtrema::LiftFail(0.),
             // Broke after first envelope, therefore must be 0
             Some(EnvelopeIntersection::Inside { .. }) => GloadExtrema::Inside(0.),
         }
@@ -276,9 +280,12 @@ impl Envelopes {
         // Inside no envelopes... map from the last failed envelope, which should be 0.
         match prior {
             None => panic!("empty envelope!"),
-            Some(EnvelopeIntersection::Stall(v)) => GloadExtrema::Stall(v),
-            Some(EnvelopeIntersection::OverSpeed(v)) => GloadExtrema::OverSpeed(v),
-            Some(EnvelopeIntersection::LiftFail(v)) => GloadExtrema::LiftFail(v),
+            // Intersection here is distance in m/s from the nearest wall speed at this altitude.
+            // In stall or lift fail we have no control authority, in overspeed we can't pull g's
+            // without over-stressing the airframe.
+            Some(EnvelopeIntersection::Stall(_)) => GloadExtrema::Stall(0.),
+            Some(EnvelopeIntersection::OverSpeed(_)) => GloadExtrema::OverSpeed(0.),
+            Some(EnvelopeIntersection::LiftFail(_)) => GloadExtrema::LiftFail(0.),
             // Broke after first envelope, therefore must be 0
             Some(EnvelopeIntersection::Inside { .. }) => GloadExtrema::Inside(0.),
         }
