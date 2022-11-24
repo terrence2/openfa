@@ -1,0 +1,41 @@
+base_url = "https://openfa.org"
+
+title = "OpenFA Blog"
+description = ""
+default_language = "en"
+theme = "zola.386"
+
+compile_sass = true
+highlight_code = true
+build_search_index = true
+generate_rss = true
+generate_feed = true
+feed_filename = "rss.xml"
+
+taxonomies = [
+    {name="categories", rss=true},
+    {name="tags", rss=true},
+]
+
+[extra]
+author = "Terrence Cole"
+year = "2022"
+
+keywords = "openfa, flightsim, retro, hacking"
+theme_color = "#000084"
+zola386_menu = [
+    {path="", name="Home"},
+    {path="downloads/openfa", name="Downloads"},
+    {path="about/openfa", name="About"},
+]
+
+### I18N WORDS
+label_tags = "Tags"
+label_tag = "Tag"
+label_categories = "Categories"
+label_category = "Category"
+label_author = "Author"
+label_date = "Date"
+label_taxonomy = "Taxonomy"
+label_reading = "Reading time"
+label_read_more = "Read more"

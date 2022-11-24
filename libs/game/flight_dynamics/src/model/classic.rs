@@ -97,7 +97,7 @@ impl ClassicFlightModel {
             heap.entity_mut(self.id).insert(EntityMarkers::default());
         }
         let mut markers = heap.get_mut::<EntityMarkers>(self.id);
-        markers.add_arrow(
+        markers.add_motion_arrow(
             "velocity",
             Point3::origin(),
             Vector3::new(meters!(0f64), meters!(0f64), meters!(0f64)),
@@ -110,7 +110,7 @@ impl ClassicFlightModel {
     #[method]
     pub fn hide_velocity_vector(&mut self, mut heap: HeapMut) -> Result<()> {
         if let Some(mut markers) = heap.maybe_get_mut::<EntityMarkers>(self.id) {
-            markers.remove_arrow("velocity");
+            markers.remove_motion_arrow("velocity");
         }
         Ok(())
     }
@@ -121,28 +121,28 @@ impl ClassicFlightModel {
             heap.entity_mut(self.id).insert(EntityMarkers::default());
         }
         let mut markers = heap.get_mut::<EntityMarkers>(self.id);
-        markers.add_arrow(
+        markers.add_motion_arrow(
             "gravity",
             Point3::origin(),
             Vector3::new(meters!(0f64), meters!(0f64), meters!(0f64)),
             meters!(0.25_f64),
             "#F7F".parse()?,
         );
-        markers.add_arrow(
+        markers.add_motion_arrow(
             "gravity_x",
             Point3::origin(),
             Vector3::new(meters!(0f64), meters!(0f64), meters!(0f64)),
             meters!(0.25_f64),
             "#F77".parse()?,
         );
-        markers.add_arrow(
+        markers.add_motion_arrow(
             "gravity_y",
             Point3::origin(),
             Vector3::new(meters!(0f64), meters!(0f64), meters!(0f64)),
             meters!(0.25_f64),
             "#7F7".parse()?,
         );
-        markers.add_arrow(
+        markers.add_motion_arrow(
             "gravity_z",
             Point3::new(meters!(0f64), meters!(0f64), meters!(0f64)),
             Vector3::new(meters!(0f64), meters!(0f64), meters!(0f64)),
@@ -155,18 +155,28 @@ impl ClassicFlightModel {
     #[method]
     pub fn hide_gravity_vectors(&mut self, mut heap: HeapMut) -> Result<()> {
         if let Some(mut markers) = heap.maybe_get_mut::<EntityMarkers>(self.id) {
-            markers.remove_arrow("gravity");
-            markers.remove_arrow("gravity_x");
-            markers.remove_arrow("gravity_y");
-            markers.remove_arrow("gravity_z");
+            markers.remove_motion_arrow("gravity");
+            markers.remove_motion_arrow("gravity_x");
+            markers.remove_motion_arrow("gravity_y");
+            markers.remove_motion_arrow("gravity_z");
         }
         Ok(())
+    }
+
+    fn update_gravity_vectors(m: &mut EntityMarkers, gravity_wf: &Vector3<f64>) {
+        let gravity_x = meters_per_second2!(-gravity_wf.z);
+        let gravity_y = meters_per_second2!(gravity_wf.x);
+        let gravity_z = meters_per_second2!(-gravity_wf.y);
+        let na = meters!(0_f64);
+        m.update_motion_arrow_vector("gravity", gravity_wf.map(|tmp| meters!(tmp)));
+        m.update_motion_arrow_vector("gravity_x", Vector3::new(na, na, -meters!(gravity_x.f64())));
+        m.update_motion_arrow_vector("gravity_y", Vector3::new(meters!(gravity_y.f64()), na, na));
+        m.update_motion_arrow_vector("gravity_z", Vector3::new(na, -meters!(gravity_z.f64()), na));
     }
 
     // Sorry, Clippy, planes are complicated.
     #[allow(clippy::too_many_arguments)]
     fn compute_coef_drag(
-        &self,
         pt: &PlaneType,
         airbrake: &AirbrakeEffector,
         bay: &BayEffector,
@@ -205,23 +215,18 @@ impl ClassicFlightModel {
     //
     // Note: The effects of atmospheric density etc are baked into the envelope shape.
     //
-    // FIXME: for over-speed, narrow to 0g, with some small wiggle window
-    // FIXME: what do we even do when we're above the envelope? Probably same as for over-speed.
-    // FIXME: for velocity less than 0... lift needs to not be totally normal. There are PT params.
+    // FIXME: test for "backwards" velocities... lift needs to not be totally normal. There are PT params?
     // FIXME: what about ground-effect?
     fn compute_target_g_load(
-        &mut self,
+        &self,
         pt: &PlaneType,
-        pitch_inceptor: &PitchInceptor,
-        flaps: &FlapsEffector,
-        velocity_cg: Velocity<Meters, Seconds>,
-        altitude: Length<Meters>,
+        (pitch_inceptor, flaps): (&PitchInceptor, &FlapsEffector),
+        (velocity_cg, altitude, gs_z): (Velocity<Meters, Seconds>, Length<Meters>, f64),
         dt: &Duration,
-    ) -> f64 {
-        // Compute current max g-loading
+    ) -> (GloadExtrema, f64) {
+        // Compute current min/max g-loading range
         let g_load_minima = pt.envelopes.find_g_load_minima(velocity_cg, altitude);
         let g_load_maxima = pt.envelopes.find_g_load_maxima(velocity_cg, altitude);
-        self.max_g_load = g_load_maxima;
 
         let min_g_load = g_load_minima.min_g_load();
         let max_g_load =
@@ -231,7 +236,7 @@ impl ClassicFlightModel {
         let incept = pitch_inceptor.position();
         let target_g_load = if relative_eq!(incept, 0.) {
             // 1g unless we max below 1g
-            max_g_load.min(1.)
+            max_g_load.min(gs_z)
         } else if incept > 0. {
             if max_g_load >= 1. {
                 // linear in [1..max]
@@ -265,7 +270,7 @@ impl ClassicFlightModel {
                 }
             }
         };
-        self.g_load = {
+        let g_load = {
             // The symmetry in this algorithm is far more helpful here than clippy's pedantry.
             #[allow(clippy::collapsible_else_if)]
             if target_g_load < 0. {
@@ -283,17 +288,20 @@ impl ClassicFlightModel {
             }
         };
 
-        self.g_load
+        (g_load_maxima, g_load)
     }
 
     fn compute_roll_rate(
         pt: &PlaneType,
         roll_inceptor: &RollInceptor,
+        max_g_load: GloadExtrema,
         dt: &Duration,
         roll_rate: AngularVelocity<Radians, Seconds>,
     ) -> AngularVelocity<Radians, Seconds> {
         debug_assert_eq!(-pt.brv_x.min64(), pt.brv_x.max64());
-        let target_roll_rate = degrees_per_second!(roll_inceptor.position() * pt.brv_x.max64());
+        let authority = max_g_load.max_g_load().min(1.);
+        let target_roll_rate =
+            degrees_per_second!(roll_inceptor.position() * pt.brv_x.max64() * authority);
         let target_roll_rad = radians_per_second!(target_roll_rate);
         if relative_eq!(target_roll_rate.f64(), 0.) {
             return radians_per_second!(0f64);
@@ -328,28 +336,18 @@ impl ClassicFlightModel {
         // At max turn rate all planes appear to traverse 360 degrees in 120 seconds.
         // let target_yaw_rad = degrees_per_second!(yaw_inceptor.postion() * 3.);
 
-        if relative_eq!(beta.f64(), 0.) {
-            return radians_per_second!(0f64);
-        }
+        // TODO: rudder yaw rate (based on max-g-loading? how is the caret chosen?)
 
+        // weathervane into the motion vector
         let max = radians_per_second!(degrees_per_second!(pt.rudder_yaw.max64()));
         let min = radians_per_second!(degrees_per_second!(pt.rudder_yaw.min64()));
         let _acc = degrees_per_second2!(pt.rudder_yaw.acc64()) * seconds!(dt.as_secs_f64());
         let dacc = degrees_per_second2!(pt.rudder_yaw.dacc64()) * seconds!(dt.as_secs_f64());
-
-        // TODO: rudder yaw rate (based on max-g-loading)
-
-        let mut weathervane_yaw_rate = if beta <= radians!(0) {
-            (yaw_rate - dacc).max(min)
-        } else {
-            (yaw_rate + dacc).min(max)
-        };
-        if degrees!(beta) < degrees!(1.) {
-            let s = scalar!(degrees!(beta).f64());
-            weathervane_yaw_rate *= s * s;
+        let mut s = scalar!(degrees!(beta).f64());
+        if degrees!(radians!(beta.f64().abs())) < degrees!(1.) {
+            s = s * s * scalar!(beta.sign());
         }
-
-        weathervane_yaw_rate
+        (yaw_rate + dacc * s).max(min * s).min(max * s)
     }
 
     fn compute_pitch_rate(
@@ -380,30 +378,16 @@ impl ClassicFlightModel {
             }
         }
 
+        // weathervane into the motion vector
         let max = radians_per_second!(degrees_per_second!(pt.brv_z.max64()));
         let min = radians_per_second!(degrees_per_second!(pt.brv_z.min64()));
         let _acc = degrees_per_second2!(pt.brv_z.acc64()) * seconds!(dt.as_secs_f64());
         let dacc = degrees_per_second2!(pt.brv_z.dacc64()) * seconds!(dt.as_secs_f64());
-        let mut weathervane_pitch_rate = if alpha <= radians!(0_f64) {
-            (elevator_pitch_rate + dacc).min(max)
-        } else {
-            (elevator_pitch_rate - dacc).max(min)
-        };
-        if degrees!(alpha) < degrees!(1_f64) {
-            let s = scalar!(degrees!(alpha).f64());
-            weathervane_pitch_rate *= s * s;
+        let mut s = scalar!(degrees!(alpha).f64());
+        if degrees!(radians!(alpha.f64().abs())) < degrees!(1.) {
+            s = s * s * scalar!(alpha.sign());
         }
-
-        // TODO: Handle stall nose-down motion
-        // If we are stalling and if the nose to horizon angle is above pt.stall_pitch_down,
-        // add to the pitch rate a stall_pitch_severity/s (divided by cos of roll) pitch down
-        if let Some(stall_speed) = stall_speed {
-            if velocity_cg < stall_speed {
-                // TODO: actually, weathervane forces are probably going to feel better here?
-            }
-        }
-
-        weathervane_pitch_rate
+        (elevator_pitch_rate - dacc * s).min(max * s).max(min * s)
     }
 
     fn simulate(
@@ -466,25 +450,24 @@ impl ClassicFlightModel {
         let gravity_z = meters_per_second2!(-gravity_wf.y);
         let gs_z = gravity_z.f64() / STANDARD_GRAVITY.f64();
         if let Some(em) = markers.as_mut() {
-            let na = meters!(0_f64);
-            em.update_arrow_vector("gravity", gravity_wf.map(|tmp| meters!(tmp)));
-            em.update_arrow_vector("gravity_x", Vector3::new(na, na, -meters!(gravity_x.f64())));
-            em.update_arrow_vector("gravity_y", Vector3::new(meters!(gravity_y.f64()), na, na));
-            em.update_arrow_vector("gravity_z", Vector3::new(na, -meters!(gravity_z.f64()), na));
+            Self::update_gravity_vectors(em, &gravity_wf);
         }
 
         // 3. Compute coefficients of lift, lift_t, drag, yaw_beta, yaw_inceptor_yaw
-        let target_g_load =
-            self.compute_target_g_load(pt, pitch_inceptor, flaps, velocity_cg, altitude, dt);
+        let (max_g_load, target_g_load) = self.compute_target_g_load(
+            pt,
+            (pitch_inceptor, flaps),
+            (velocity_cg, altitude, gs_z),
+            dt,
+        );
         debug_assert!(target_g_load.is_finite(), "NaN target_g_load");
         let drag_g_load = (target_g_load - gs_z).abs();
         debug_assert!(drag_g_load.is_finite(), "NaN drag_g_load");
         // TODO: reflect munitions in the is_loaded category
         let is_loaded = fuel.has_drop_tanks();
         let coef_drag =
-            self.compute_coef_drag(pt, airbrake, bay, flaps, gear, hook, drag_g_load, is_loaded);
+            Self::compute_coef_drag(pt, airbrake, bay, flaps, gear, hook, drag_g_load, is_loaded);
         debug_assert!(coef_drag.f64().is_finite(), "NaN Cd");
-        self.coef_of_drag = coef_drag.f64();
 
         // 4. Compute coefficients of aerodynamic moments of pitch
         // 5. Compute coefficients of aerodynamic moments of roll
@@ -498,7 +481,6 @@ impl ClassicFlightModel {
             * meters2!(1_f64).as_dyn())
         .into();
         debug_assert!(drag.is_finite(), "NaN drag");
-        self.force_of_drag = drag.f64();
         let side_force = newtons!(0_f64);
 
         // 8. Compute engine forces and moments
@@ -548,7 +530,7 @@ impl ClassicFlightModel {
         motion.set_vehicle_vertical_acceleration(w_dot);
         motion.set_vehicle_vertical_velocity(w);
         if let Some(em) = markers.as_mut() {
-            em.update_arrow_vector(
+            em.update_motion_arrow_vector(
                 "velocity",
                 Vector3::new(v, -w, -u).map(|tmp| meters!(tmp.f64() / 10.)),
             );
@@ -595,7 +577,7 @@ impl ClassicFlightModel {
         // 21. Compute the body frame angular accelerations
         // 22. Compute the body rates
         // Or shortcut all of it like FA does...
-        p = Self::compute_roll_rate(pt, roll_inceptor, dt, p);
+        p = Self::compute_roll_rate(pt, roll_inceptor, max_g_load, dt, p);
         q = Self::compute_pitch_rate(
             pt,
             (stall_speed, max_altitude),
@@ -604,9 +586,7 @@ impl ClassicFlightModel {
             (gravity_z, air_density),
             dt,
         );
-        if let Some(_markers) = markers.as_ref() {
-            r = Self::compute_yaw_rate(pt, yaw_inceptor, dt, beta, r);
-        }
+        r = Self::compute_yaw_rate(pt, yaw_inceptor, dt, beta, r);
         debug_assert!(p.is_finite(), "NaN p");
         debug_assert!(q.is_finite(), "NaN q");
         debug_assert!(r.is_finite(), "NaN r");
@@ -623,13 +603,19 @@ impl ClassicFlightModel {
 
         // 24. Compute the DCM
         // 25. Compute the Euler angles
-        // Or maybe just use the quaternion? ¯\_(ツ)_/¯
+        // Or maybe just use quaternions? ¯\_(ツ)_/¯
         *motion.stability_mut() *= rot;
 
         // Apply additional rotations off of stability axis
-        let extra_pitch = degrees!(self.g_load / f64::from(pt.env_max) * f64::from(pt.gpull_aoa));
+        let extra_pitch = degrees!(target_g_load / f64::from(pt.env_max) * f64::from(pt.gpull_aoa));
         let rot = UnitQuaternion::from_euler_angles(radians!(extra_pitch).f64(), 0_f64, 0_f64);
         *frame.facing_mut() = motion.stability() * rot;
+
+        // Store values for various displays
+        self.coef_of_drag = coef_drag.f64();
+        self.force_of_drag = drag.f64();
+        self.max_g_load = max_g_load;
+        self.g_load = target_g_load;
     }
 
     fn sys_simulate(

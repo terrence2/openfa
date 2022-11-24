@@ -1,3 +1,6 @@
 [submodule "nitrogen"]
 	path = nitrogen
 	url = ../../terrence_too/nitrogen
+[submodule "site/themes/zola.386"]
+	path = site/themes/zola.386
+	url = https://github.com/lopes/zola.386

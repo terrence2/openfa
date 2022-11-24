@@ -10,21 +10,21 @@ A black-box, open-source, re-implementation of the Janes Fighters Anthology's en
 
 ## Installing OpenFA
 
-1) Install any of the following games:
-   * USNF
-   * US Marine Fighters (e.g. USNF with the Marine Fighters expansion)
-   * ATF: Advanced Tactical Fighters
-   * ATF: Nato (e.g. ATF with the Nato expansion installed)
-   * ATF: Gold
-   * USNF '97
-   * Fighters Anthology
-2) Download the [![Latest OpenFA Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases/permalink/latest)
-for your platform and architecture
-3) Extract the downloaded zip file into the install directory of the game
-   * Example: C:\JANES\FA
-   * `Hot tip: openfa.exe should be in the same directory as the game executable (e.g. FA.EXE)`
-4) Double-click openfa.exe to run
-   * `Hot tip: Right click and drag to create a shortcut wherever you want one`
+1. Install any of the following games:
+    * USNF
+    * US Marine Fighters (e.g. USNF with the Marine Fighters expansion)
+    * ATF: Advanced Tactical Fighters
+    * ATF: Nato (e.g. ATF with the Nato expansion installed)
+    * ATF: Gold
+    * USNF '97
+    * Fighters Anthology
+2. Download the [![Latest OpenFA Release](https://gitlab.com/terrence_too/openfa/-/badges/release.svg)](https://gitlab.com/terrence_too/openfa/-/releases/permalink/latest)
+   for your platform and architecture
+3. Extract the downloaded zip file into the install directory of the game
+    * Example: C:\JANES\FA
+    * `openfa.exe should be FA.EXE`
+4. Double-click openfa.exe to run
+    * `Or right-click and drag to create a shortcut wherever you want one`
 
 ## Installing FA Modding Tools
 
@@ -40,7 +40,7 @@ for your platform and architecture
    for your platform and architecture
 3) Extract the downloaded zip file into the install directory of the game
     * Example: C:\JANES\FA
-    * `Hot tip: dump-pic.exe, etc should be in the same directory as the game executable (e.g. FA.EXE)`
+    * `dump-pic.exe, etc should be next to FA.EXE`
 4) Drag and drop assets onto the appropriate tool to perform the action
     * Example: Drag FA_2.LIB onto dump-lib.exe to extract the LIB to FA_2/
     * Example: Drag one or more PIC files onto dump-pic.exe to create PNGs next to those PIC
