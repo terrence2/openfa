@@ -520,7 +520,7 @@ impl Interpreter {
             a.wrapping_add(b)
         };
         self.zf = v == 0;
-        self.sf = (v as i32) < 0;
+        self.sf = v < 0;
         trace!(
             "    compare {:08X}, {:08X} -> {:04X} => cf:{}, of:{}, zf:{}, sf:{}",
             a,

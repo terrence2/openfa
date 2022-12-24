@@ -339,7 +339,7 @@ impl<'a> DecodeState<'a> {
                 if code < first + count {
                     /* if length len, return symbol */
                     self.bitbuf = bitbuf;
-                    self.bitcnt = (self.bitcnt as isize - len as usize as isize) as usize & 7;
+                    self.bitcnt = (self.bitcnt as isize - len as isize) as usize & 7;
                     return Ok(h.symbol[index + (code - first)]);
                 }
                 index += count; /* else update for next length */
@@ -397,7 +397,7 @@ impl<'a> DecodeState<'a> {
 
     // Write out one byte.
     fn outb(&mut self, symbol: u8) {
-        self.out.push(symbol as u8);
+        self.out.push(symbol);
     }
 }
 

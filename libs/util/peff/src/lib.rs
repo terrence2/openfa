@@ -693,7 +693,7 @@ impl PortableExecutable {
             let pcode = u32::from_le_bytes((&self.code[reloc..reloc + 4]).try_into()?);
             trace!(
                 "Relocating word at 0x{:04X} from 0x{:08X} to 0x{:08X}",
-                reloc as usize,
+                reloc,
                 pcode,
                 reloc_delta.apply(pcode)
             );

@@ -1102,7 +1102,7 @@ impl Disassembler {
 
     fn has_disassembled_at(&self, offset: usize) -> bool {
         for bc in &self.blocks {
-            if offset >= bc.start_offset as usize && offset < (bc.start_offset + bc.size) as usize {
+            if offset >= bc.start_offset && offset < (bc.start_offset + bc.size) {
                 return true;
             }
         }
@@ -1357,7 +1357,7 @@ impl ByteCode {
     }
 
     pub fn show_relative(&self, base: usize) -> String {
-        let mut pos = self.start_offset as usize;
+        let mut pos = self.start_offset;
         let mut s = String::new();
         for instr in self.instrs.iter() {
             writeln!(
@@ -1376,7 +1376,7 @@ impl ByteCode {
 
 impl fmt::Display for ByteCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut pos = self.start_offset as usize;
+        let mut pos = self.start_offset;
         for instr in self.instrs.iter() {
             writeln!(f, "  @{:04X}: {}", pos, instr)?;
             pos += instr.size();
