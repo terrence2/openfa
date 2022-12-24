@@ -117,7 +117,7 @@ bindings.bind("+PageDown", "camera.decrease_fov(pressed)");
 bindings.bind("Shift+LBracket", "camera.decrease_exposure()");
 bindings.bind("Shift+RBracket", "camera.increase_exposure()");
 
-// Load at Mt Everest if nothing else is loaded
+// Load at Mt. Everest if nothing else is loaded
 game.detach_camera();
 let location := "Everest";
 @fallback_camera.arcball.set_target(@fallback_camera.arcball.notable_location(location));
