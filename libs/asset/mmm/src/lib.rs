@@ -644,10 +644,7 @@ impl MValue {
 
         for tmap in tmaps.iter() {
             if let TLoc::Index(i) = tmap.1.loc {
-                ensure!(
-                    (i as usize) < tdics.len(),
-                    "expected at tdict for each tmap index"
-                );
+                ensure!(i < tdics.len(), "expected at tdict for each tmap index");
             }
         }
 

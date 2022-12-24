@@ -101,7 +101,7 @@ impl Layer {
 
         let mut frag_offsets = Vec::new();
 
-        let palette_digest = md5::compute(&palette.as_bytes());
+        let palette_digest = md5::compute(palette.as_bytes());
 
         let dump_stuff = false;
 

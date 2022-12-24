@@ -56,7 +56,7 @@ impl FieldNumber {
         let num = match kind {
             FieldType::Byte => FieldNumber::Byte(v32 as u8),
             FieldType::Word => FieldNumber::Word(v32 as u16),
-            FieldType::DWord => FieldNumber::DWord(v32 as u32),
+            FieldType::DWord => FieldNumber::DWord(v32),
             _ => bail!("not a number"),
         };
         Ok((repr, num))

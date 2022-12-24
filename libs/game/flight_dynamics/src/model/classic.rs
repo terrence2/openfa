@@ -347,7 +347,7 @@ impl ClassicFlightModel {
         if degrees!(radians!(beta.f64().abs())) < degrees!(1.) {
             s = s * s * scalar!(beta.sign());
         }
-        (yaw_rate + dacc * s).max(min * s).min(max * s)
+        (yaw_rate + dacc * s).clamp(min * s.abs(), max * s.abs())
     }
 
     fn compute_pitch_rate(
@@ -387,7 +387,7 @@ impl ClassicFlightModel {
         if degrees!(radians!(alpha.f64().abs())) < degrees!(1.) {
             s = s * s * scalar!(alpha.sign());
         }
-        (elevator_pitch_rate - dacc * s).min(max * s).max(min * s)
+        (elevator_pitch_rate - dacc * s).clamp(min * s.abs(), max * s.abs())
     }
 
     fn simulate(

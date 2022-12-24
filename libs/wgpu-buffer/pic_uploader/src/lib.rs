@@ -176,7 +176,7 @@ impl PicUploader {
                     ],
                 });
                 let group_count = (pic.raw_data().len() as u32 / 4 + Self::GROUP_SIZE - 1)
-                    & !(Self::GROUP_SIZE as u32 - 1);
+                    & !(Self::GROUP_SIZE - 1);
                 self.depalettize.push((group_count, bind_group));
                 (tgt_buffer, pic.width(), pic.height(), tgt_buffer_stride)
             }

@@ -75,9 +75,12 @@ fn show_pal(fid: FileId, game: &GameInfo, catalog: &Catalog, opt: &Opt) -> Resul
                 }
             }
         }
-        fs::create_dir_all(&format!("dump/palette/{}-{}", game.test_dir, meta.name()))?;
-        let output = format!("dump/palette/{}-{}/palette.png", game.test_dir, meta.name());
-        buf.save(&output)?;
+        fs::create_dir_all(format!("dump/palette/{}-{}", game.test_dir, meta.name()))?;
+        buf.save(&format!(
+            "dump/palette/{}-{}/palette.png",
+            game.test_dir,
+            meta.name()
+        ))?;
 
         return Ok(());
     }
