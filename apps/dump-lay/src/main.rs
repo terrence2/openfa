@@ -52,7 +52,7 @@ fn main() -> Result<()> {
 
 fn show_lay(fid: FileId, game: &GameInfo, palette: &Palette, catalog: &Catalog) -> Result<()> {
     let name = catalog.stat(fid)?.name().to_owned();
-    fs::create_dir_all(&format!("__dump__/lay-pal/{}-{}", game.test_dir, name))?;
+    fs::create_dir_all(format!("__dump__/lay-pal/{}-{}", game.test_dir, name))?;
 
     let layer_data = catalog.read(fid)?;
     let layer = Layer::from_bytes(layer_data.as_ref(), palette)?;

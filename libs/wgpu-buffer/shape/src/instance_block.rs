@@ -332,6 +332,6 @@ impl InstanceBlock {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.free_slot as usize
+        self.free_slot
     }
 }

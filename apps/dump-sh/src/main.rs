@@ -236,7 +236,7 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
             println!("{} - {}", dedup[memref], memref);
         }
     } else if opt.dump_code {
-        fs::create_dir_all(&format!("dump/i386/{}", game.test_dir))?;
+        fs::create_dir_all(format!("dump/i386/{}", game.test_dir))?;
         for vinstr in shape.instrs {
             if let sh::Instr::X86Code(ref x86) = vinstr {
                 let filename = format!(
@@ -250,7 +250,7 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
                 for i in start..x86.length {
                     v.push(unsafe { *x86.data.add(i) });
                 }
-                fs::write(&filename, &v)?;
+                fs::write(filename, &v)?;
             }
         }
     } else if opt.custom {

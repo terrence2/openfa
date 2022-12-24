@@ -669,9 +669,8 @@ impl Terrain {
     fn make_debug_images(&self, path: &str) -> Result<()> {
         use std::cmp;
 
-        let mut metabuf = image::ImageBuffer::new(self.phys_width as u32, self._phys_height as u32);
-        let mut heightbuf =
-            image::ImageBuffer::new(self.phys_width as u32, self._phys_height as u32);
+        let mut metabuf = image::ImageBuffer::new(self.phys_width, self._phys_height);
+        let mut heightbuf = image::ImageBuffer::new(self.phys_width, self._phys_height);
         for (pos, sample) in self.samples.iter().enumerate() {
             let mut metaclr = if sample.modifiers == 16 {
                 image::Rgb([255, 0, 255])
