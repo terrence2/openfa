@@ -24,6 +24,7 @@ members = [
     "apps/dump-xt",
     "apps/pack-lib",
     # "apps/pack-pic",
+    "apps/pack-sh",
     "apps/show-sh",
 
     # "libs/asset/dlg",
@@ -174,6 +175,7 @@ world = { path = "libs/nitrogen/wgpu-buffer/world" }
 # openfa deps
 byteorder = "^ 1"
 codepage-437 = "^ 0.1"
+dxf = "^ 0.5"
 humansize = "^ 2"
 md5 = "^ 0.3"
 thiserror = "^ 1"

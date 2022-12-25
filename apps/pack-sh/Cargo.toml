@@ -1,5 +1,5 @@
 [package]
-name = "dump-sh"
+name = "pack-sh"
 description.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -15,9 +15,5 @@ anyhow.workspace = true
 dxf.workspace = true
 env_logger.workspace = true
 structopt.workspace = true
-# libs
-catalog.workspace = true
-i386.workspace = true
-lib.workspace = true
-reverse.workspace = true
-sh.workspace = true
+# openfa deps
+peff.workspace = true
