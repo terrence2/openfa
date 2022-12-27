@@ -12,7 +12,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-dxf.workspace = true
+gltf = { version = "^ 1", features = ["extras", "names"] }
 env_logger.workspace = true
 structopt.workspace = true
 # libs

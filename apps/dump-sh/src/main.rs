@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-mod export_dxf;
+mod export_gltf;
 
 use anyhow::Result;
 use lib::{GameInfo, Libs, LibsOpts};
@@ -72,9 +72,9 @@ struct Opt {
     #[structopt(short, long)]
     dump_code: bool,
 
-    /// Write to the given DXF file
+    /// Write to the given glTF 2.0 file
     #[structopt(long)]
-    dxf: Option<String>,
+    gltf: Option<String>,
 
     /// Run a custom action
     #[structopt(long)]
@@ -119,8 +119,8 @@ fn main() -> Result<()> {
 
 fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
     let shape = RawShape::from_bytes(name, data)?;
-    if let Some(filename) = opt.dxf.as_ref() {
-        export_dxf::export_dxf(&shape, filename)?;
+    if let Some(filename) = opt.gltf.as_ref() {
+        export_gltf::export_gltf(&shape, filename)?;
     } else if opt.show_all {
         for (i, instr) in shape.instrs.iter().enumerate() {
             println!("{:3}: {}", i, instr.show());
