@@ -41,7 +41,7 @@ pub enum ClassicFlightModelStep {
 /// impacting handling characteristics, linear engine thrust handling
 /// with no altitude falloff, strict bounding to the 0G envelope, and
 /// all the rest of the annoying bits.
-#[derive(Debug, Component, NitrousComponent)]
+#[derive(Debug, NitrousComponent)]
 #[Name = "flight"]
 pub struct ClassicFlightModel {
     // self pointer for updating markers
@@ -56,7 +56,8 @@ pub struct ClassicFlightModel {
 }
 
 impl Extension for ClassicFlightModel {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         runtime.add_sim_system(Self::sys_simulate.label(ClassicFlightModelStep::Simulate));
         Ok(())
     }

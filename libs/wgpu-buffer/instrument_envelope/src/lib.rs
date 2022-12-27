@@ -95,7 +95,7 @@ impl FromStr for EnvelopeMode {
     }
 }
 
-#[derive(Component, NitrousComponent, Debug)]
+#[derive(NitrousComponent, Debug)]
 #[Name = "envelope"]
 pub struct EnvelopeInstrument {
     scale: f32,
@@ -106,7 +106,8 @@ pub struct EnvelopeInstrument {
 }
 
 impl Extension for EnvelopeInstrument {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         runtime.add_frame_system(
             EnvelopeInstrument::sys_measure
                 .label(EnvelopeRenderStep::Measure)

@@ -31,7 +31,7 @@ pub struct ShapeXformBuffer {
     pub buffer: [[f32; 6]; 14],
 }
 
-#[derive(Component, NitrousComponent, Clone, Copy, Debug, PartialEq)]
+#[derive(NitrousComponent, Clone, Copy, Debug, PartialEq)]
 #[Name = "scale"]
 pub struct ShapeScale {
     #[property]

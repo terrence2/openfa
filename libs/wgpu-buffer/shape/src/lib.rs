@@ -36,7 +36,7 @@ use camera::ScreenCamera;
 use catalog::Catalog;
 use composite::CompositeRenderStep;
 use global_data::GlobalParametersBuffer;
-use gpu::{Gpu, GpuStep};
+use gpu::{CurrentEncoder, Gpu, GpuStep};
 use image::Rgba;
 use lib::Libs;
 use marker::MarkersStep;
@@ -88,7 +88,7 @@ pub enum ShapeStep {
     CleanupOpenChunks,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct ShapeBuffer {
     chunk_man: ChunkManager,
 
@@ -104,7 +104,8 @@ pub struct ShapeBuffer {
 }
 
 impl Extension for ShapeBuffer {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         let shapes = runtime.resource_scope(|heap, mut gpu: Mut<Gpu>| {
             ShapeBuffer::new(
                 heap.resource::<Libs>().catalog(),
@@ -485,9 +486,9 @@ impl ShapeBuffer {
     fn sys_close_open_chunks(
         mut shapes: ResMut<ShapeBuffer>,
         gpu: Res<Gpu>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             shapes.chunk_man.close_open_chunks(&gpu, encoder)
         }
     }
@@ -810,9 +811,9 @@ impl ShapeBuffer {
     fn sys_upload_block_frame_data(
         shapes: Res<ShapeBuffer>,
         gpu: Res<Gpu>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             for block in shapes.blocks.values() {
                 block.make_upload_buffer(&gpu, encoder);
             }
@@ -842,9 +843,9 @@ impl ShapeBuffer {
         globals: Res<GlobalParametersBuffer>,
         atmosphere: Res<AtmosphereBuffer>,
         world: Res<WorldRenderPass>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             let (color_attachments, depth_stencil_attachment) = world.offscreen_target_preserved();
             let render_pass_desc_ref = wgpu::RenderPassDescriptor {
                 label: Some("shape-draw"),
@@ -891,10 +892,11 @@ mod test {
     use animate::TimeStep;
     use camera::{CameraSystem, ScreenCameraController};
     use fullscreen::FullscreenBuffer;
+    use gpu::{CpuDetailLevel, GpuDetailLevel};
     use lib::Libs;
     use orrery::Orrery;
     use stars::StarsBuffer;
-    use terrain::TerrainBuffer;
+    use terrain::{TerrainBuffer, TerrainOpts};
 
     #[test]
     fn test_find_damage() -> Result<()> {
@@ -908,7 +910,10 @@ mod test {
             .load_extension::<AtmosphereBuffer>()?
             .load_extension::<ShapeBuffer>()?
             .load_extension::<StarsBuffer>()?
-            .load_extension::<TerrainBuffer>()?
+            .load_extension_with::<TerrainBuffer>(TerrainOpts::from_detail(
+                CpuDetailLevel::Low,
+                GpuDetailLevel::Low,
+            ))?
             .load_extension::<WorldRenderPass>()?
             .load_extension::<Orrery>()?;
         let libs = Libs::for_testing()?;
@@ -942,7 +947,10 @@ mod test {
             .load_extension::<AtmosphereBuffer>()?
             .load_extension::<ShapeBuffer>()?
             .load_extension::<StarsBuffer>()?
-            .load_extension::<TerrainBuffer>()?
+            .load_extension_with::<TerrainBuffer>(TerrainOpts::from_detail(
+                CpuDetailLevel::Low,
+                GpuDetailLevel::Low,
+            ))?
             .load_extension::<WorldRenderPass>()?
             .load_extension::<Orrery>()?;
 

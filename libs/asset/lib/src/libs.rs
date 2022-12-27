@@ -69,15 +69,14 @@ pub struct Libs {
 }
 
 impl Extension for Libs {
-    fn init(runtime: &mut Runtime) -> Result<()> {
-        let empty = LibsOpts::default();
-        let opts = runtime.maybe_resource::<LibsOpts>().unwrap_or(&empty);
+    type Opts = LibsOpts;
+
+    fn init(runtime: &mut Runtime, opts: LibsOpts) -> Result<()> {
         let extra_paths = opts.lib_paths.clone();
-        let libs = Libs::bootstrap(opts)?;
+        let libs = Libs::bootstrap(&opts)?;
         runtime.insert_named_resource("libs", libs);
 
-        runtime.insert_resource(CatalogOpts::from_extra_paths(extra_paths));
-        runtime.load_extension::<Catalog>()?;
+        runtime.load_extension_with::<Catalog>(CatalogOpts::from_extra_paths(extra_paths))?;
 
         Ok(())
     }

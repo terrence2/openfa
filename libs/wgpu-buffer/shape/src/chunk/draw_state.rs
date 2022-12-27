@@ -43,7 +43,7 @@ bitflags! {
     }
 }
 
-#[derive(Component, NitrousComponent, Clone, Copy, Debug, PartialEq)]
+#[derive(NitrousComponent, Clone, Copy, Debug, PartialEq)]
 #[Name = "draw_state"]
 pub struct DrawState {
     gear_position: f32,

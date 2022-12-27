@@ -14,6 +14,7 @@ license.workspace = true
 benchmark = []
 
 [dependencies]
+bevy_ecs.workspace = true
 byteorder.workspace = true
 codepage-437.workspace = true
 anyhow.workspace = true
