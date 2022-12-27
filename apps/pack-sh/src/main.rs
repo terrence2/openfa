@@ -28,7 +28,7 @@ use structopt::StructOpt;
 struct Opt {
     /// The DXF file to pull from
     #[structopt(short = "d", long = "dxf")]
-    dxf_input: PathBuf,
+    gltf_input: PathBuf,
 
     /// The SH file to pull from (destructive unless using --output !!!)
     #[structopt(short = "s", long = "sh")]
@@ -61,6 +61,7 @@ fn main() -> Result<()> {
         .truncate(false)
         .open(target_path)?;
 
+    /*
     let drawing = Drawing::load_file(opt.dxf_input)?;
 
     for e in drawing.entities() {
@@ -77,6 +78,7 @@ fn main() -> Result<()> {
             _ => (),
         }
     }
+     */
 
     Ok(())
 }

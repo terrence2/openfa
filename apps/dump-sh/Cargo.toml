@@ -12,8 +12,8 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-gltf = { version = "^ 1", features = ["extras", "names"] }
 env_logger.workspace = true
+gltf.workspace = true
 structopt.workspace = true
 # libs
 catalog.workspace = true
