@@ -67,8 +67,7 @@ members = [
 # nitrogen transitive deps
 anyhow = { version = "^ 1", features = ["backtrace"] }
 approx = "^ 0.5"
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-bevy_tasks = "^ 0.8"
+bevy_ecs = { version = "^ 0.9", features = ["trace"] }
 bitflags = "^ 1"
 bzip2 = "^ 0.4"
 chrono = "^ 0.4"
@@ -253,7 +252,6 @@ log.workspace = true
 nalgebra.workspace = true
 once_cell.workspace = true
 ordered-float.workspace = true
-platform-dirs.workspace = true
 structopt.workspace = true
 terminal_size.workspace = true
 # libs

@@ -16,7 +16,6 @@ bevy_ecs.workspace = true
 csscolorparser.workspace = true
 env_logger.workspace = true
 once_cell.workspace = true
-platform-dirs.workspace = true
 structopt.workspace = true
 terminal_size.workspace = true
 winit.workspace = true

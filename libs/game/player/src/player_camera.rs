@@ -88,14 +88,15 @@ pub enum PlayerCameraStep {
     ApplyInput,
 }
 
-#[derive(Component, NitrousComponent, Debug)]
+#[derive(NitrousComponent, Debug)]
 #[Name = "controller"]
 pub struct PlayerCameraController {
     mode: CameraMode,
 }
 
 impl Extension for PlayerCameraController {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         runtime
             .spawn_named("camera")?
             .insert_named(PlayerCameraController::new())?

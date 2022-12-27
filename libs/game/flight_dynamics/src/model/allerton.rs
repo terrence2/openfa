@@ -43,7 +43,7 @@ pub enum FlightStep {
     Simulate,
 }
 
-#[derive(Debug, Component, NitrousComponent)]
+#[derive(Debug, NitrousComponent)]
 #[Name = "dynamics"]
 pub struct FlightDynamics {
     // self pointer for updating markers

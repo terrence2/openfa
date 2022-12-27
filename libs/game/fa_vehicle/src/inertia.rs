@@ -31,7 +31,7 @@ pub struct InertiaTensor {
 // Each FlightDynamics gets its own Inertia reference. The base plane
 // bits are shared between all instances of that plane, but are must created
 // and used here directly as they are small.
-#[derive(Component, NitrousComponent, Debug, Clone)]
+#[derive(NitrousComponent, Debug, Clone)]
 #[Name = "inertia"]
 pub struct Inertia {
     // The following shape impostors act as our inertia model.

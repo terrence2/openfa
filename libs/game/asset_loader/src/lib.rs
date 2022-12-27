@@ -72,7 +72,8 @@ pub struct MissionMarker;
 pub struct AssetLoader;
 
 impl Extension for AssetLoader {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         let asset_loader = Self::new();
         runtime.insert_named_resource("game", asset_loader);
         Ok(())
@@ -579,8 +580,9 @@ mod tests {
     use atmosphere::AtmosphereBuffer;
     use camera::CameraSystem;
     use global_data::GlobalParametersBuffer;
+    use gpu::{CpuDetailLevel, GpuDetailLevel};
     use player::PlayerCameraController;
-    use terrain::TerrainBuffer;
+    use terrain::{TerrainBuffer, TerrainOpts};
 
     #[test]
     fn it_works() -> Result<()> {
@@ -591,7 +593,10 @@ mod tests {
             .load_extension::<TypeManager>()?
             .load_extension::<GlobalParametersBuffer>()?
             .load_extension::<AtmosphereBuffer>()?
-            .load_extension::<TerrainBuffer>()?
+            .load_extension_with::<TerrainBuffer>(TerrainOpts::from_detail(
+                CpuDetailLevel::Low,
+                GpuDetailLevel::Low,
+            ))?
             .load_extension::<T2TerrainBuffer>()?
             .load_extension::<ShapeBuffer>()?
             .load_extension::<CameraSystem>()?
