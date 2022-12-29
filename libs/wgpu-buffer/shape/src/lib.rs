@@ -641,7 +641,7 @@ impl ShapeBuffer {
         step: Res<TimeStep>,
         mut query: Query<(&DrawState, &mut ShapeFlagBuffer)>,
     ) {
-        let start = step.sim_start_time();
+        let start = step.start_time();
         query.par_for_each_mut(1024, |(draw_state, mut flag_buffer)| {
             draw_state
                 .build_mask_into(start, &mut flag_buffer.buffer)
@@ -654,7 +654,7 @@ impl ShapeBuffer {
         step: Res<TimeStep>,
         mut query: Query<(&ShapeId, &DrawState, &mut ShapeXformBuffer)>,
     ) {
-        let start = step.sim_start_time();
+        let start = step.start_time();
         let now = step.sim_time();
         assert!(now >= start);
         query.par_for_each_mut(1024, |(shape_id, draw_state, mut xform_buffer)| {

@@ -12,55 +12,119 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::Result;
-use gltf_json as json;
+use anyhow::{Context, Result};
+use gltf::{json, json::validation::Checked::Valid};
 use sh::{RawShape, VertexBuf};
-use std::mem;
+use std::{fs, mem, path::PathBuf};
+use zerocopy::{AsBytes, FromBytes};
 
 pub fn export_gltf(sh: &RawShape, output_filename: &str) -> Result<()> {
+    let path = PathBuf::from(output_filename);
+    let name = path.file_name().unwrap().to_str().unwrap();
+    fs::create_dir_all(path.clone())?;
+
+    let mut root = json::Root {
+        accessors: vec![],    // positions, colors
+        buffers: vec![],      // buffer
+        buffer_views: vec![], // buffer_view
+        meshes: vec![],       // mesh
+        nodes: vec![],        // node
+        scenes: vec![json::Scene {
+            extensions: Default::default(),
+            extras: Default::default(),
+            name: None,
+            nodes: vec![], //json::Index::new(0)
+        }],
+        ..Default::default()
+    };
+
     let mut vxbuf_num = 0;
     for instr in sh.instrs.iter() {
         if let sh::Instr::VertexBuf(buf) = instr {
-            let name = format!("vxbuf-{}", vxbuf_num);
-            let foo = export_mesh(&name, buf);
+            let vxbuf_name = format!("vxbuf-{}-{:08X}", vxbuf_num, buf.at_offset());
 
-            // Bytecode is 2 bytes, position is 4 bytes, so 6 off from instruction start
-            let base_offset = buf.at_offset() + 6;
-            assert!(base_offset < 0xFF_FFFF);
-            let base_offset = base_offset as i32;
-            for (i, v) in buf.verts.iter().enumerate() {
-                /*
-                // 2 bytes for 3 positions per vert
-                let vert_offset = base_offset + (i as i32) * 6;
-                let mut vert = Vertex::new(Point::new(v[0] as f64, v[1] as f64, v[2] as f64));
-                vert.identifier = vert_offset;
-                let mut ent = Entity::new(EntityType::Vertex(vert));
-                ent.common.layer = name.clone();
-                println!("Vertex: {} on {}", vert_offset, ent.common.layer);
-                let _ref = drawing.add_entity(ent);
-                 */
-            }
+            let (accessor, buffer, buffer_view, mesh, node, data) =
+                export_mesh(&vxbuf_name, vxbuf_num, buf);
+            root.accessors.push(accessor);
+            root.buffers.push(buffer);
+            root.buffer_views.push(buffer_view);
+            root.meshes.push(mesh);
+            root.nodes.push(node);
+            root.scenes[0].nodes.push(json::Index::new(vxbuf_num));
+
+            let data = data.as_bytes();
+            assert_eq!(data.len() % 4, 0, "buffer must be 4-byte aligned");
+            let data_out = format!("{}/{}.bin", path.to_string_lossy(), vxbuf_name);
+            fs::write(data_out, data)?;
+
             vxbuf_num += 1;
         }
     }
 
+    let gltf_out = format!("{}/{}.gltf", path.to_string_lossy(), name);
+    let writer = fs::File::create(&gltf_out).with_context(|| format!("i/o error in {gltf_out}"))?;
+    json::serialize::to_writer_pretty(writer, &root).expect("Serialization error");
+
     Ok(())
 }
 
-fn export_mesh(name: &str, buf: &VertexBuf) {
-    // let (min, max) = bounding_coords(&triangle_vertices);
+#[repr(C)]
+#[derive(AsBytes, FromBytes, Copy, Clone, Debug)]
+struct Vertex {
+    position: [f32; 3],
+}
 
-    let buffer_length = (buf.verts.len() * mem::size_of::<f32>() * 3) as u32;
+impl Vertex {
+    pub fn from_vxbuf(buf: &VertexBuf) -> Vec<Self> {
+        buf.verts
+            .iter()
+            .map(|v| Vertex {
+                position: [v[0] as f32, v[1] as f32, v[2] as f32],
+            })
+            .collect()
+    }
+}
+
+fn bounding_coords(points: &[Vertex]) -> ([f32; 3], [f32; 3]) {
+    let mut min = [f32::MAX, f32::MAX, f32::MAX];
+    let mut max = [f32::MIN, f32::MIN, f32::MIN];
+
+    for point in points {
+        let p = point.position;
+        for i in 0..3 {
+            min[i] = f32::min(min[i], p[i]);
+            max[i] = f32::max(max[i], p[i]);
+        }
+    }
+    (min, max)
+}
+
+fn export_mesh(
+    name: &str,
+    offset: u32,
+    buf: &VertexBuf,
+) -> (
+    json::Accessor,
+    json::Buffer,
+    json::buffer::View,
+    json::Mesh,
+    json::Node,
+    Vec<Vertex>,
+) {
+    let points = Vertex::from_vxbuf(buf);
+    println!("At {}, exporting {} verts", buf.at_offset(), points.len());
+    let (min, max) = bounding_coords(&points);
+
+    let buffer_length = (points.len() * mem::size_of::<Vertex>()) as u32;
     let buffer = json::Buffer {
         byte_length: buffer_length,
         extensions: Default::default(),
         extras: Default::default(),
-        name: None,
+        name: Some(name.to_owned()),
         uri: Some(format!("{}.bin", name)),
     };
-    /*
     let buffer_view = json::buffer::View {
-        buffer: json::Index::new(0),
+        buffer: json::Index::new(offset),
         byte_length: buffer.byte_length,
         byte_offset: None,
         byte_stride: Some(mem::size_of::<Vertex>() as u32),
@@ -70,9 +134,9 @@ fn export_mesh(name: &str, buf: &VertexBuf) {
         target: Some(Valid(json::buffer::Target::ArrayBuffer)),
     };
     let positions = json::Accessor {
-        buffer_view: Some(json::Index::new(0)),
+        buffer_view: Some(json::Index::new(offset)),
         byte_offset: 0,
-        count: triangle_vertices.len() as u32,
+        count: points.len() as u32,
         component_type: Valid(json::accessor::GenericComponentType(
             json::accessor::ComponentType::F32,
         )),
@@ -85,53 +149,36 @@ fn export_mesh(name: &str, buf: &VertexBuf) {
         normalized: false,
         sparse: None,
     };
-    let colors = json::Accessor {
-        buffer_view: Some(json::Index::new(0)),
-        byte_offset: (3 * mem::size_of::<f32>()) as u32,
-        count: triangle_vertices.len() as u32,
-        component_type: Valid(json::accessor::GenericComponentType(
-            json::accessor::ComponentType::F32,
-        )),
-        extensions: Default::default(),
-        extras: Default::default(),
-        type_: Valid(json::accessor::Type::Vec3),
-        min: None,
-        max: None,
-        name: None,
-        normalized: false,
-        sparse: None,
-    };
-
     let primitive = json::mesh::Primitive {
         attributes: {
             let mut map = std::collections::HashMap::new();
-            map.insert(Valid(json::mesh::Semantic::Positions), json::Index::new(0));
-            map.insert(Valid(json::mesh::Semantic::Colors(0)), json::Index::new(1));
+            map.insert(
+                Valid(json::mesh::Semantic::Positions),
+                json::Index::new(offset),
+            );
             map
         },
         extensions: Default::default(),
         extras: Default::default(),
         indices: None,
         material: None,
-        mode: Valid(json::mesh::Mode::Triangles),
+        mode: Valid(json::mesh::Mode::Points),
         targets: None,
     };
-
     let mesh = json::Mesh {
         extensions: Default::default(),
         extras: Default::default(),
-        name: None,
+        name: Some(name.to_owned()),
         primitives: vec![primitive],
         weights: None,
     };
-
     let node = json::Node {
         camera: None,
         children: None,
         extensions: Default::default(),
         extras: Default::default(),
         matrix: None,
-        mesh: Some(json::Index::new(0)),
+        mesh: Some(json::Index::new(offset)),
         name: None,
         rotation: None,
         scale: None,
@@ -139,5 +186,8 @@ fn export_mesh(name: &str, buf: &VertexBuf) {
         skin: None,
         weights: None,
     };
-     */
+
+    // Note: needs to be 4-byte aligned
+
+    (positions, buffer, buffer_view, mesh, node, points)
 }

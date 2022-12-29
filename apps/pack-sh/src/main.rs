@@ -13,11 +13,17 @@
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 use anyhow::Result;
-use dxf::{entities::*, Drawing};
+use gltf::{
+    buffer::Source,
+    mesh::{Mode, Semantic},
+    Gltf,
+};
+use packed_struct::packed_struct;
 use peff::PortableExecutable;
 use std::{
     fs,
-    fs::OpenOptions,
+    fs::{File, OpenOptions},
+    io,
     io::{Seek, SeekFrom, Write},
     path::PathBuf,
 };
@@ -26,8 +32,8 @@ use structopt::StructOpt;
 /// Inject a DXF exported by dump-sh back into a SH
 #[derive(Debug, StructOpt)]
 struct Opt {
-    /// The DXF file to pull from
-    #[structopt(short = "d", long = "dxf")]
+    /// The GLTF to pull points from
+    #[structopt(short = "g", long = "gltf")]
     gltf_input: PathBuf,
 
     /// The SH file to pull from (destructive unless using --output !!!)
@@ -37,6 +43,11 @@ struct Opt {
     /// The SH file to write to (write into --sh if not specified)
     #[structopt(short = "o", long = "output")]
     output: Option<PathBuf>,
+}
+
+#[packed_struct]
+struct Vertex {
+    position: [f32; 3],
 }
 
 fn main() -> Result<()> {
@@ -61,24 +72,49 @@ fn main() -> Result<()> {
         .truncate(false)
         .open(target_path)?;
 
-    /*
-    let drawing = Drawing::load_file(opt.dxf_input)?;
-
-    for e in drawing.entities() {
-        #[allow(clippy::single_match)]
-        match e.specific {
-            EntityType::Vertex(ref vert) => {
-                let vert_offset = code_offset + vert.identifier as u32;
-                update.seek(SeekFrom::Start(vert_offset as u64))?;
-                update.write_all(&(vert.location.x as i16).to_le_bytes())?;
-                update.write_all(&(vert.location.y as i16).to_le_bytes())?;
-                update.write_all(&(vert.location.z as i16).to_le_bytes())?;
-                //println!("Vertex {} on {}", vert.identifier, e.common.layer);
+    let gltf_path = opt.gltf_input;
+    let gltf_dir = gltf_path.parent().expect("gltf in subdir").to_owned();
+    let gltf = Gltf::from_reader(io::BufReader::new(File::open(&gltf_path)?))?;
+    for scene in gltf.scenes() {
+        for node in scene.nodes() {
+            let name = node.name().expect("name");
+            let parts = name.split('-').collect::<Vec<_>>();
+            assert_eq!(parts[0], "vxbuf");
+            let mesh = node.mesh().expect("mesh");
+            let prim = mesh.primitives().next().expect("primitives");
+            assert_eq!(prim.mode(), Mode::Points);
+            let (kind, accessor) = prim.attributes().next().expect("primitive");
+            assert_eq!(kind, Semantic::Positions);
+            let view = accessor.view().expect("view");
+            assert_eq!(parts[1].parse::<usize>()?, view.index());
+            let vxbuf_code_address = usize::from_str_radix(parts[2], 16)?;
+            let vxbuf_file_address = code_offset as usize + vxbuf_code_address;
+            update.seek(SeekFrom::Start(vxbuf_file_address as u64 + 6))?;
+            let buffer = view.buffer();
+            let bin_name = match buffer.source() {
+                Source::Uri(filename) => filename,
+                Source::Bin => panic!("expected separated bin files!"),
+            };
+            let mut bin_path = gltf_dir.clone();
+            bin_path.push(bin_name);
+            let data = fs::read(bin_path)?;
+            let data = &data[view.offset()..view.offset() + view.length()];
+            let verts = Vertex::overlay_slice(data)?;
+            println!(
+                "patching: {} - {:?} @ 0x{:08X}",
+                node.index(),
+                node.name(),
+                vxbuf_file_address
+            );
+            for (i, vert) in verts.iter().enumerate() {
+                let address = vxbuf_file_address + (i + 1) * 6;
+                update.seek(SeekFrom::Start(address as u64))?;
+                update.write_all(&(vert.position[0] as i16).to_le_bytes())?;
+                update.write_all(&(vert.position[1] as i16).to_le_bytes())?;
+                update.write_all(&(vert.position[2] as i16).to_le_bytes())?;
             }
-            _ => (),
         }
     }
-     */
 
     Ok(())
 }

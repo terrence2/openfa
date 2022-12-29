@@ -280,6 +280,7 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
             offset += 1;
         }
     } else {
+        println!("Showing all instructions...");
         for (i, instr) in shape.instrs.iter().enumerate() {
             println!("{:3}: {}", i, instr.show());
         }
