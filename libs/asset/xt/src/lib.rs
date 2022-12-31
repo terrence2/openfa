@@ -125,14 +125,15 @@ impl TypeRef {
 // Knows how to load a type from a game library. Keeps a cached copy and hands
 // out a pointer to the type, since we frequently need to load the same item
 // repeatedly.
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct TypeManager {
     // Cache immutable resources. Use interior mutability for ease of use.
     cache: Mutex<HashMap<String, TypeRef>>,
 }
 
 impl Extension for TypeManager {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         runtime.insert_resource(TypeManager::empty());
         Ok(())
     }

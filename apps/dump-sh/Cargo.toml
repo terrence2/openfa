@@ -12,9 +12,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-dxf.workspace = true
 env_logger.workspace = true
+gltf.workspace = true
 structopt.workspace = true
+zerocopy.workspace = true
 # libs
 catalog.workspace = true
 i386.workspace = true

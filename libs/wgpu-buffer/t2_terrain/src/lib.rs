@@ -22,8 +22,7 @@ use bevy_ecs::prelude::*;
 use catalog::Catalog;
 use geodesy::{GeoSurface, Graticule};
 use global_data::{GlobalParametersBuffer, GlobalsStep};
-use gpu::wgpu::CommandEncoder;
-use gpu::{texture_format_size, Gpu, GpuStep};
+use gpu::{texture_format_size, CurrentEncoder, Gpu, GpuStep};
 use image::Rgba;
 use lay::Layer;
 use mmm::{MissionMap, TLoc};
@@ -175,7 +174,8 @@ pub struct T2TerrainBuffer {
 }
 
 impl Extension for T2TerrainBuffer {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         let terrain2 = T2TerrainBuffer::new(
             runtime.resource::<TerrainBuffer>(),
             runtime.resource::<GlobalParametersBuffer>(),
@@ -387,9 +387,9 @@ impl T2TerrainBuffer {
     fn sys_finish_uploads(
         mut t2_terrain: ResMut<T2TerrainBuffer>,
         gpu: Res<Gpu>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             for mut upload in t2_terrain.uploads.drain(..) {
                 // do atlas management
                 upload.pic_uploader.expand_pics(encoder);
@@ -422,9 +422,9 @@ impl T2TerrainBuffer {
     fn sys_encode_uploads(
         mut query: Query<&mut T2TileSet>,
         gpu: Res<Gpu>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             for mut tile_set in query.iter_mut() {
                 tile_set.encode_uploads(&gpu, encoder);
             }
@@ -435,9 +435,9 @@ impl T2TerrainBuffer {
         t2_terrain: Res<T2TerrainBuffer>,
         query: Query<&T2TileSet>,
         terrain: ResMut<TerrainBuffer>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             for tile_set in query.iter() {
                 tile_set.displace_height(
                     &t2_terrain,
@@ -454,9 +454,9 @@ impl T2TerrainBuffer {
         query: Query<&T2TileSet>,
         terrain: Res<TerrainBuffer>,
         globals: Res<GlobalParametersBuffer>,
-        maybe_encoder: ResMut<Option<wgpu::CommandEncoder>>,
+        mut maybe_encoder: ResMut<CurrentEncoder>,
     ) {
-        if let Some(encoder) = maybe_encoder.into_inner() {
+        if let Some(encoder) = maybe_encoder.get_encoder_mut() {
             for tile_set in query.iter() {
                 tile_set.accumulate_colors(
                     &t2_terrain,
@@ -907,7 +907,7 @@ impl T2TerrainBuffer {
     }
 }
 
-#[derive(Component, NitrousComponent, Debug)]
+#[derive(NitrousComponent, Debug)]
 #[Name = "t2_tile_set"]
 pub struct T2TileSet {
     t2: T2,
@@ -938,7 +938,7 @@ impl T2TileSet {
         }
     }
 
-    fn encode_uploads(&mut self, gpu: &Gpu, encoder: &mut CommandEncoder) {
+    fn encode_uploads(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
         if self.tile_adjustment.dirty {
             self.tile_adjustment.dirty = false;
             let mapper_p = T2Mapper::new(&self.t2, &self.tile_adjustment);
@@ -1021,7 +1021,9 @@ impl T2TileSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpu::{CpuDetailLevel, GpuDetailLevel};
     use lib::{from_dos_string, Libs};
+    use terrain::TerrainOpts;
     use xt::TypeManager;
 
     #[test]
@@ -1032,7 +1034,10 @@ mod tests {
         runtime
             .load_extension::<Libs>()?
             .load_extension::<GlobalParametersBuffer>()?
-            .load_extension::<TerrainBuffer>()?;
+            .load_extension_with::<TerrainBuffer>(TerrainOpts::from_detail(
+                CpuDetailLevel::Low,
+                GpuDetailLevel::Low,
+            ))?;
 
         let libs = Libs::for_testing()?;
         for (game, palette, catalog) in libs.selected() {

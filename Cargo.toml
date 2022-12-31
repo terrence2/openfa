@@ -67,14 +67,17 @@ members = [
 # nitrogen transitive deps
 anyhow = { version = "^ 1", features = ["backtrace"] }
 approx = "^ 0.5"
-bevy_ecs = { version = "^ 0.8", features = ["trace"] }
-bevy_tasks = "^ 0.8"
+arboard = "^ 3.2"
+bevy_ecs = { version = "^ 0.9", features = ["trace"] }
 bitflags = "^ 1"
 bzip2 = "^ 0.4"
 chrono = "^ 0.4"
 console_error_panic_hook = "^ 0.1"
 crossbeam = "^ 0.8"
 csscolorparser = "^ 0.6"
+egui = { version = "^ 0.20", features = ["color-hex"] }
+egui_extras = { version = "^ 0.20", features = ["datepicker"] }
+egui-wgpu = "^ 0.20"
 ellipse = "^ 0.2"
 env_logger = "^ 0.9"
 float-ord = "^ 0.3"
@@ -110,6 +113,7 @@ rand = "^ 0.8"
 raw-window-handle = "^ 0.5"
 rayon = "^ 1.5"
 regex = "^ 1"
+ringbuffer = "^ 0.11"
 rusttype = "^ 0.9"
 shaderc = "^ 0.8"
 simba = { version = "^ 0.7", default-features = false }
@@ -165,6 +169,7 @@ font_common = { path = "libs/nitrogen/wgpu-buffer/font_common" }
 font_ttf = { path = "libs/nitrogen/wgpu-buffer/font_ttf" }
 fullscreen = { path = "libs/nitrogen/wgpu-buffer/fullscreen" }
 global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
+gui = { path = "libs/nitrogen/wgpu-buffer/gui" }
 marker = { path = "libs/nitrogen/wgpu-buffer/marker" }
 shader_shared = { path = "libs/nitrogen/wgpu-buffer/shader_shared" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
@@ -175,7 +180,7 @@ world = { path = "libs/nitrogen/wgpu-buffer/world" }
 # openfa deps
 byteorder = "^ 1"
 codepage-437 = "^ 0.1"
-dxf = "^ 0.5"
+gltf = { version = "^ 1", features = ["extras", "names"] }
 humansize = "^ 2"
 md5 = "^ 0.3"
 thiserror = "^ 1"
@@ -253,7 +258,6 @@ log.workspace = true
 nalgebra.workspace = true
 once_cell.workspace = true
 ordered-float.workspace = true
-platform-dirs.workspace = true
 structopt.workspace = true
 terminal_size.workspace = true
 # libs

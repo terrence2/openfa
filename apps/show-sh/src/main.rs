@@ -38,16 +38,17 @@ use measure::WorldSpaceFrame;
 use nitrous::{inject_nitrous_resource, method, HeapMut, NitrousResource};
 use once_cell::sync::Lazy;
 use orrery::Orrery;
-use platform_dirs::AppDirs;
 use player::PlayerCameraController;
-use runtime::{report, ExitRequest, Extension, PlayerMarker, Runtime};
+use runtime::{
+    report, ExitRequest, Extension, PlayerMarker, Runtime, WellKnownPaths, WellKnownPathsOpts,
+};
 use shape::{ShapeBuffer, ShapeId, ShapeScale};
 use stars::StarsBuffer;
-use std::{fs::create_dir_all, time::Duration};
+use std::time::Duration;
 use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
-use terrain::TerrainBuffer;
+use terrain::{TerrainBuffer, TerrainOpts};
 use tracelog::{TraceLog, TraceLogOpts};
 use ui::UiRenderPass;
 use vehicle::{
@@ -191,7 +192,8 @@ struct System {
 }
 
 impl Extension for System {
-    fn init(runtime: &mut Runtime) -> Result<()> {
+    type Opts = ();
+    fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
         let system = System::new(runtime.heap_mut())?;
         runtime.insert_named_resource("system", system);
         runtime
@@ -499,32 +501,23 @@ fn main() -> Result<()> {
     )
 }
 
-fn simulation_main(mut runtime: Runtime) -> Result<()> {
-    let opt = runtime.resource::<Opt>().to_owned();
-
-    let app_dirs = AppDirs::new(Some("openfa"), true)
-        .ok_or_else(|| anyhow!("unable to find app directories"))?;
-    create_dir_all(&app_dirs.config_dir)?;
-    create_dir_all(&app_dirs.state_dir)?;
-
+fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
     runtime
-        .insert_resource(opt.libs_opts)
-        .insert_resource(opt.display_opts)
-        .insert_resource(opt.tracelog_opts)
-        .insert_resource(opt.detail_opts.cpu_detail())
-        .insert_resource(opt.detail_opts.gpu_detail())
-        .insert_resource(app_dirs)
-        .load_extension::<TraceLog>()?
-        .load_extension::<Libs>()?
+        .load_extension_with::<WellKnownPaths>(WellKnownPathsOpts::new("openfa"))?
+        .load_extension_with::<TraceLog>(opt.tracelog_opts)?
+        .load_extension_with::<Libs>(opt.libs_opts)?
         .load_extension::<InputTarget>()?
         .load_extension::<EventMapper>()?
-        .load_extension::<Window>()?
+        .load_extension_with::<Window>(opt.display_opts)?
         .load_extension::<Gpu>()?
         .load_extension::<AtmosphereBuffer>()?
         .load_extension::<FullscreenBuffer>()?
         .load_extension::<GlobalParametersBuffer>()?
         .load_extension::<StarsBuffer>()?
-        .load_extension::<TerrainBuffer>()?
+        .load_extension_with::<TerrainBuffer>(TerrainOpts::from_detail(
+            opt.detail_opts.cpu_detail(),
+            opt.detail_opts.gpu_detail(),
+        ))?
         .load_extension::<T2TerrainBuffer>()?
         .load_extension::<WorldRenderPass>()?
         .load_extension::<WidgetBuffer>()?
@@ -604,14 +597,14 @@ fn simulation_main(mut runtime: Runtime) -> Result<()> {
         ),
     );
     let fuel = FuelSystem::default()
-        .with_internal_tank(FuelTank::new(FuelTankKind::Center, kilograms!(0.)))?;
+        .with_internal_tank(FuelTank::new(FuelTankKind::Center, kilograms!(0_f64)))?;
     let power = PowerSystem::default().with_engine(GliderEngine::default());
     let shape_ent = runtime
         .spawn_named("Player")?
         .insert(PlayerMarker)
         .insert(ShapeScale::new(1.))
         .insert_named(frame)?
-        .insert_named(Airframe::new(kilograms!(10.)))?
+        .insert_named(Airframe::new(kilograms!(10_f64)))?
         .insert_named(fuel)?
         .insert_named(power)?
         .insert_named(PitchInceptor::default())?
