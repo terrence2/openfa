@@ -72,6 +72,7 @@ bevy_ecs = { version = "^ 0.9", features = ["trace"] }
 bitflags = "^ 1"
 bzip2 = "^ 0.4"
 chrono = "^ 0.4"
+color-hex = "^ 0.2"
 console_error_panic_hook = "^ 0.1"
 crossbeam = "^ 0.8"
 csscolorparser = "^ 0.6"
@@ -172,6 +173,7 @@ global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gui = { path = "libs/nitrogen/wgpu-buffer/gui" }
 marker = { path = "libs/nitrogen/wgpu-buffer/marker" }
 shader_shared = { path = "libs/nitrogen/wgpu-buffer/shader_shared" }
+spog = { path = "libs/nitrogen/wgpu-buffer/spog" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
 ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
@@ -291,6 +293,7 @@ physical_constants.workspace = true
 player.workspace = true
 runtime.workspace = true
 shape.workspace = true
+spog.workspace = true
 stars.workspace = true
 t2_terrain.workspace = true
 terrain.workspace = true
