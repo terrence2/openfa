@@ -23,6 +23,5 @@ gpu.workspace = true
 measure.workspace = true
 nitrous.workspace = true
 runtime.workspace = true
-widget.workspace = true
 window.workspace = true
 xt.workspace = true

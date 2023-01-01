@@ -22,7 +22,6 @@ use flight_dynamics::ClassicFlightModel;
 use measure::{BodyMotion, WorldSpaceFrame};
 use std::str::FromStr;
 use triangulate::{builders, Triangulate, Vertex};
-use widget::Border;
 use xt::TypeRef;
 
 // TODO: move this somewhere common
@@ -132,17 +131,11 @@ impl EnvelopeInstrument {
         let extent = Vec2::new(self.display_width(), self.display_height());
         let (_response, painter) = ui.allocate_painter(extent, egui::Sense::hover());
         let clip = painter.clip_rect();
-        let border = Border {
-            top: 10. * self.scale,
-            bottom: 12. * self.scale,
-            left: 6. * self.scale,
-            right: 6. * self.scale,
-        };
         let mut screen = clip;
-        screen.min.x += border.left;
-        screen.max.x -= border.right;
-        screen.min.y += border.top;
-        screen.max.y -= border.bottom;
+        screen.min.x += 6. * self.scale;
+        screen.max.x -= 6. * self.scale;
+        screen.min.y += 10. * self.scale;
+        screen.max.y -= 12. * self.scale;
 
         // Convert our representation into what the triangulator needs and compute
         // various min/max locations so we can paint the background.

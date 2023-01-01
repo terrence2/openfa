@@ -176,8 +176,6 @@ shader_shared = { path = "libs/nitrogen/wgpu-buffer/shader_shared" }
 spog = { path = "libs/nitrogen/wgpu-buffer/spog" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
-ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
-widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
 # openfa deps
 byteorder = "^ 1"
@@ -301,9 +299,7 @@ stars.workspace = true
 t2_terrain.workspace = true
 terrain.workspace = true
 tracelog.workspace = true
-ui.workspace = true
 vehicle.workspace = true
-widget.workspace = true
 window.workspace = true
 world.workspace = true
 xt.workspace = true

@@ -49,14 +49,12 @@ use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
 use terrain::{TerrainBuffer, TerrainOpts};
 use tracelog::{TraceLog, TraceLogOpts};
-use ui::UiRenderPass;
 use vehicle::{
     AirbrakeControl, AirbrakeEffector, Airframe, BayControl, BayEffector, FlapsControl,
     FlapsEffector, FuelSystem, FuelTank, FuelTankKind, GearControl, GearEffector, GliderEngine,
     HookControl, HookEffector, PitchInceptor, PowerSystem, RollInceptor, ThrottleInceptor,
     YawInceptor,
 };
-use widget::WidgetBuffer;
 use window::{DisplayOpts, Window, WindowBuilder};
 use world::WorldRenderPass;
 use xt::TypeManager;
@@ -560,8 +558,6 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         ))?
         .load_extension::<T2TerrainBuffer>()?
         .load_extension::<WorldRenderPass>()?
-        .load_extension::<WidgetBuffer>()?
-        .load_extension::<UiRenderPass>()?
         .load_extension::<Markers>()?
         .load_extension::<CompositeRenderPass>()?
         .load_extension::<System>()?
