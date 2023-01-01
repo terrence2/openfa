@@ -14,13 +14,17 @@
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+mod csv;
 mod instr;
 
-pub use crate::instr::{
-    read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
-    JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
-    Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, XformUnmask, XformUnmask4,
-    DATA_RELOCATIONS,
+pub use crate::{
+    csv::Record,
+    instr::{
+        read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
+        JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,
+        Unmask4, VertexBuf, VertexNormal, X86Code, X86Message, XformUnmask, XformUnmask4,
+        DATA_RELOCATIONS,
+    },
 };
 use ansi::{ansi, Color};
 use anyhow::{anyhow, bail, ensure, Result};

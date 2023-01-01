@@ -16,6 +16,7 @@ bitflags.workspace = true
 byteorder.workspace = true
 once_cell.workspace = true
 log.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 zerocopy.workspace = true
 # libs
