@@ -180,9 +180,11 @@ world = { path = "libs/nitrogen/wgpu-buffer/world" }
 # openfa deps
 byteorder = "^ 1"
 codepage-437 = "^ 0.1"
+csv = "^ 1.1"
 gltf = { version = "^ 1", features = ["extras", "names"] }
 humansize = "^ 2"
 md5 = "^ 0.3"
+serde = { version = "^ 1", features = ["derive"] }
 thiserror = "^ 1"
 triangulate = "^ 0.1"
 # openfa libs

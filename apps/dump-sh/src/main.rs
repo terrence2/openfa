@@ -12,6 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+mod export_csv;
 mod export_gltf;
 
 use anyhow::Result;
@@ -72,9 +73,13 @@ struct Opt {
     #[structopt(short, long)]
     dump_code: bool,
 
-    /// Write to the given glTF 2.0 file
+    /// Write vertices to the given glTF 2.0 file
     #[structopt(long)]
     gltf: Option<String>,
+
+    /// Write instructions to a CSV file
+    #[structopt(long)]
+    csv: Option<String>,
 
     /// Run a custom action
     #[structopt(long)]
@@ -121,6 +126,8 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
     let shape = RawShape::from_bytes(name, data)?;
     if let Some(filename) = opt.gltf.as_ref() {
         export_gltf::export_gltf(&shape, filename)?;
+    } else if let Some(filename) = opt.csv.as_ref() {
+        export_csv::export_csv(&shape, filename)?;
     } else if opt.show_all {
         for (i, instr) in shape.instrs.iter().enumerate() {
             println!("{:3}: {}", i, instr.show());

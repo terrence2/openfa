@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::Result;
+use anyhow::{ensure, Result};
 use gltf::{
     buffer::Source,
     mesh::{Mode, Semantic},
@@ -20,12 +20,13 @@ use gltf::{
 };
 use packed_struct::packed_struct;
 use peff::PortableExecutable;
+use sh::Record;
 use std::{
     fs,
     fs::{File, OpenOptions},
     io,
     io::{Seek, SeekFrom, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use structopt::StructOpt;
 
@@ -34,7 +35,11 @@ use structopt::StructOpt;
 struct Opt {
     /// The GLTF to pull points from
     #[structopt(short = "g", long = "gltf")]
-    gltf_input: PathBuf,
+    gltf_input: Option<PathBuf>,
+
+    /// The CSV to pull writes from
+    #[structopt(short = "c", long = "csv")]
+    csv_input: Option<PathBuf>,
 
     /// The SH file to pull from (destructive unless using --output !!!)
     #[structopt(short = "s", long = "sh")]
@@ -63,7 +68,7 @@ fn main() -> Result<()> {
     } else {
         opt.sh_input
     };
-    let mut update = OpenOptions::new()
+    let update = OpenOptions::new()
         .write(true)
         .read(false)
         .create(false)
@@ -72,9 +77,50 @@ fn main() -> Result<()> {
         .truncate(false)
         .open(target_path)?;
 
-    let gltf_path = opt.gltf_input;
+    if let Some(path) = &opt.gltf_input {
+        update_from_gltf(update, code_offset, path)?;
+    } else if let Some(path) = &opt.csv_input {
+        update_from_csv(update, code_offset, path)?;
+    }
+
+    Ok(())
+}
+
+fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Result<()> {
+    let mut cnt = 0;
+    let mut rdr = csv::Reader::from_reader(File::open(csv_path)?);
+    for (i, result) in rdr.deserialize().enumerate() {
+        let record: Record = result?;
+        cnt += 1;
+
+        ensure!(record.instr_number == i, "mismatched instruction number!");
+        ensure!(
+            record.file_offset == record.code_offset + code_offset as usize,
+            "CSV code offset does nto match shape code offset"
+        );
+        let content = record
+            .raw_content
+            .split(' ')
+            .filter(|s| !s.is_empty())
+            .map(|s| u8::from_str_radix(s, 16).expect("Non-byte in content"))
+            .collect::<Vec<u8>>();
+        ensure!(
+            content.len() == record.instr_size,
+            "content length does not mach instruction size"
+        );
+        update.seek(SeekFrom::Start(record.file_offset as u64))?;
+        update.write_all(&content)?;
+
+        print!(".");
+        std::io::stdout().flush()?;
+    }
+    println!("\nWrote {} records!", cnt);
+    Ok(())
+}
+
+fn update_from_gltf(mut update: File, code_offset: u32, gltf_path: &Path) -> Result<()> {
     let gltf_dir = gltf_path.parent().expect("gltf in subdir").to_owned();
-    let gltf = Gltf::from_reader(io::BufReader::new(File::open(&gltf_path)?))?;
+    let gltf = Gltf::from_reader(io::BufReader::new(File::open(gltf_path)?))?;
     for scene in gltf.scenes() {
         for node in scene.nodes() {
             let name = node.name().expect("name");

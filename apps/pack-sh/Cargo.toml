@@ -12,10 +12,13 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-gltf.workspace = true
+csv.workspace = true
 env_logger.workspace = true
+serde.workspace = true
+gltf.workspace = true
 structopt.workspace = true
 # openfa deps
 packed_struct.workspace = true
 peff.workspace = true
+sh.workspace = true
 zerocopy.workspace = true
