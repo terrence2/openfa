@@ -1,6 +1,6 @@
 [workspace.package]
 description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
-version = "0.1.0"
+version = "0.1.2"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2021"
 rust-version = "1.64"
