@@ -47,7 +47,6 @@ game.load_mission("~V02.M");
 //game.load_map("APA.MM");
 //bindings.bind("space", "game.boresight(pressed)");
 
-@envelope_instrument.envelope.set_scale(8.);
 @Player.flight.show_velocity_vector();
 
 //bindings.bind("f", "@test.draw_state.toggle_flaps()");
