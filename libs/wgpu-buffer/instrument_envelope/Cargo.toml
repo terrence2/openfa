@@ -12,9 +12,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-bevy_ecs.workspace = true
-csscolorparser.workspace = true
+egui.workspace = true
 triangulate.workspace = true
+# todo: do we need this?
+bevy_ecs.workspace = true
 # libs
 absolute_unit.workspace = true
 flight_dynamics.workspace = true
@@ -22,6 +23,5 @@ gpu.workspace = true
 measure.workspace = true
 nitrous.workspace = true
 runtime.workspace = true
-widget.workspace = true
 window.workspace = true
 xt.workspace = true

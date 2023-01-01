@@ -72,6 +72,7 @@ bevy_ecs = { version = "^ 0.9", features = ["trace"] }
 bitflags = "^ 1"
 bzip2 = "^ 0.4"
 chrono = "^ 0.4"
+color-hex = "^ 0.2"
 console_error_panic_hook = "^ 0.1"
 crossbeam = "^ 0.8"
 csscolorparser = "^ 0.6"
@@ -172,10 +173,9 @@ global_data = { path = "libs/nitrogen/wgpu-buffer/global_data" }
 gui = { path = "libs/nitrogen/wgpu-buffer/gui" }
 marker = { path = "libs/nitrogen/wgpu-buffer/marker" }
 shader_shared = { path = "libs/nitrogen/wgpu-buffer/shader_shared" }
+spog = { path = "libs/nitrogen/wgpu-buffer/spog" }
 stars = { path = "libs/nitrogen/wgpu-buffer/stars" }
 terrain = { path = "libs/nitrogen/wgpu-buffer/terrain" }
-ui = { path = "libs/nitrogen/wgpu-buffer/ui" }
-widget = { path = "libs/nitrogen/wgpu-buffer/widget" }
 world = { path = "libs/nitrogen/wgpu-buffer/world" }
 # openfa deps
 byteorder = "^ 1"
@@ -251,7 +251,9 @@ categories = ["aerospace", "emulation", "simulation"]
 anyhow.workspace = true
 bevy_ecs.workspace = true
 chrono.workspace = true
-csscolorparser.workspace = true
+color-hex.workspace = true
+egui.workspace = true
+egui_extras.workspace = true
 env_logger.workspace = true
 image.workspace = true
 log.workspace = true
@@ -278,6 +280,7 @@ geodesy.workspace = true
 geometry.workspace = true
 global_data.workspace = true
 gpu.workspace = true
+gui.workspace = true
 input.workspace = true
 instrument_envelope.workspace = true
 lib.workspace = true
@@ -291,13 +294,12 @@ physical_constants.workspace = true
 player.workspace = true
 runtime.workspace = true
 shape.workspace = true
+spog.workspace = true
 stars.workspace = true
 t2_terrain.workspace = true
 terrain.workspace = true
 tracelog.workspace = true
-ui.workspace = true
 vehicle.workspace = true
-widget.workspace = true
 window.workspace = true
 world.workspace = true
 xt.workspace = true

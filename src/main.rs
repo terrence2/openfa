@@ -18,53 +18,49 @@ use anyhow::Result;
 use asset_loader::AssetLoader;
 use atmosphere::AtmosphereBuffer;
 use bevy_ecs::prelude::*;
-use camera::{ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera};
+use camera::{
+    ArcBallController, ArcBallSystem, CameraSystem, ScreenCamera, ScreenCameraController,
+};
 use composite::CompositeRenderPass;
-use csscolorparser::Color;
 use event_mapper::EventMapper;
 use flight_dynamics::ClassicFlightModel;
-use fnt::Fnt;
-use font_fnt::FntFont;
 use fullscreen::FullscreenBuffer;
 use global_data::GlobalParametersBuffer;
-use gpu::{DetailLevelOpts, Gpu, GpuStep};
+use gpu::{DetailLevelOpts, Gpu};
+use gui::{Gui, GuiStep};
 use input::{InputSystem, InputTarget};
 use instrument_envelope::EnvelopeInstrument;
 use lib::{Libs, LibsOpts};
 use marker::Markers;
 use measure::{BodyMotion, WorldSpaceFrame};
-use nitrous::{inject_nitrous_resource, HeapMut, NitrousResource};
+use nitrous::{inject_nitrous_resource, NitrousResource};
 use orrery::Orrery;
-use physical_constants::StandardAtmosphere;
 use player::PlayerCameraController;
 use runtime::{
-    report, ExitRequest, Extension, PlayerMarker, Runtime, StartupOpts, WellKnownPaths,
-    WellKnownPathsOpts,
+    ExitRequest, Extension, PlayerMarker, Runtime, StartupOpts, WellKnownPaths, WellKnownPathsOpts,
 };
 use shape::ShapeBuffer;
+use spog::{Dashboard, Terminal};
 use stars::StarsBuffer;
 use structopt::StructOpt;
 use t2_terrain::T2TerrainBuffer;
 use terminal_size::{terminal_size, Width};
 use terrain::{TerrainBuffer, TerrainOpts};
 use tracelog::{TraceLog, TraceLogOpts};
-use ui::UiRenderPass;
 use vehicle::{
-    AirbrakeEffector, BayEffector, FlapsEffector, FuelSystem, GearEffector, HookEffector,
-    PitchInceptor, PowerSystem, RollInceptor, YawInceptor,
+    AirbrakeEffector, BayEffector, FlapsEffector, GearEffector, HookEffector, PitchInceptor,
+    PowerSystem, RollInceptor, YawInceptor,
 };
-use widget::{
-    FontId, Label, Labeled, LayoutNode, LayoutPacking, PaintContext, Terminal, WidgetBuffer,
-};
-use window::{size::Size, DisplayOpts, Window, WindowBuilder};
+use window::{DisplayOpts, Window, WindowBuilder};
 use world::WorldRenderPass;
-use xt::TypeManager;
+use xt::{TypeManager, TypeRef};
 
 const PRELUDE: &str = r#"
 // System controls
 bindings.bind("Escape", "exit()");
 bindings.bind("q", "exit()");
 bindings.bind("c", "time.next_time_compression()");
+bindings.bind("Control+F3", "dashboard.toggle()");
 
 // Camera Controls
 bindings.bind("F1", "@camera.controller.set_mode('Forward')");
@@ -146,261 +142,149 @@ struct Opt {
     tracelog_opts: TraceLogOpts,
 }
 
-#[derive(Debug)]
-struct VisibleWidgets {
-    _demo_label: Entity,
-    sim_time: Entity,
-    camera_direction: Entity,
-    camera_position: Entity,
-    camera_fov: Entity,
-    fps_label: Entity,
-
-    weight_label: Entity,
-    engine_label: Entity,
-    accel_label: Entity,
-    alpha_label: Entity,
-}
-
-#[derive(Debug, NitrousResource)]
-struct System {
-    visible_widgets: VisibleWidgets,
-}
+#[derive(Debug, Default, NitrousResource)]
+struct System {}
 
 impl Extension for System {
     type Opts = ();
     fn init(runtime: &mut Runtime, _: ()) -> Result<()> {
-        let system = System::new(runtime.heap_mut())?;
-        runtime.insert_named_resource("system", system);
-        runtime
-            .add_frame_system(Self::sys_track_visible_state.after(GpuStep::PresentTargetSurface));
+        runtime.insert_named_resource("system", System::default());
+        runtime.add_frame_system(
+            Self::sys_draw_overlay
+                .after(GuiStep::StartFrame)
+                .before(GuiStep::EndFrame),
+        );
         Ok(())
     }
 }
 
 #[inject_nitrous_resource]
 impl System {
-    pub fn new(heap: HeapMut) -> Result<Self> {
-        let visible_widgets = Self::build_gui(heap)?;
-        let system = Self { visible_widgets };
-        Ok(system)
-    }
-
-    pub fn build_gui(mut heap: HeapMut) -> Result<VisibleWidgets> {
-        let fnt = Fnt::from_bytes(
-            "HUD11.FNT",
-            heap.resource::<Libs>().read_name("HUD11.FNT")?.as_ref(),
-        )?;
-        let font = FntFont::from_fnt(&fnt)?;
-        heap.resource_mut::<PaintContext>().add_font("HUD11", font);
-        let font_id = heap
-            .resource::<PaintContext>()
-            .font_context
-            .font_id_for_name("HUD11");
-
-        let sim_time = Label::new("")
-            .with_color(&Color::from([255, 255, 255]))
-            .wrapped("sim_time", heap.as_mut())?;
-        let camera_direction = Label::new("")
-            .with_color(&Color::from([255, 255, 255]))
-            .wrapped("camera_direction", heap.as_mut())?;
-        let camera_position = Label::new("")
-            .with_color(&Color::from([255, 255, 255]))
-            .wrapped("camera_position", heap.as_mut())?;
-        let camera_fov = Label::new("")
-            .with_color(&Color::from([255, 255, 255]))
-            .wrapped("camera_fov", heap.as_mut())?;
-        let mut controls_box = LayoutNode::new_vbox("controls_box", heap.as_mut())?;
-        let controls_id = controls_box.id();
-        controls_box.push_widget(sim_time)?;
-        controls_box.push_widget(camera_direction)?;
-        controls_box.push_widget(camera_position)?;
-        controls_box.push_widget(camera_fov)?;
-        heap.resource_mut::<WidgetBuffer>()
-            .root_mut()
-            .push_layout(controls_box)?;
-        let controls_packing = LayoutPacking::default()
-            .float_end()
-            .float_top()
-            .set_background("#222a")?
-            .set_padding_left("10px", heap.as_mut())?
-            .set_padding_bottom("6px", heap.as_mut())?
-            .set_padding_top("4px", heap.as_mut())?
-            .set_padding_right("4px", heap.as_mut())?
-            .set_border_color("#000")?
-            .set_border_left("2px", heap.as_mut())?
-            .set_border_bottom("2px", heap.as_mut())?
-            .to_owned();
-        *heap.get_mut::<LayoutPacking>(controls_id) = controls_packing;
-
-        fn make_label(name: &str, font_id: FontId, heap: HeapMut) -> Result<Entity> {
-            Label::new("empty")
-                .with_font(font_id)
-                .with_color(&Color::from([0, 255, 0]))
-                .with_size(Size::from_pts(12.0))
-                .wrapped(name, heap)
-        }
-
-        let weight_label = make_label("weight", font_id, heap.as_mut())?;
-        let engine_label = make_label("engine", font_id, heap.as_mut())?;
-        let accel_label = make_label("accel", font_id, heap.as_mut())?;
-        let alpha_label = make_label("alpha", font_id, heap.as_mut())?;
-
-        let mut player_box = LayoutNode::new_vbox("player_box", heap.as_mut())?;
-        let player_box_id = player_box.id();
-        player_box.push_widget(weight_label)?;
-        player_box.push_widget(engine_label)?;
-        player_box.push_widget(accel_label)?;
-        player_box.push_widget(alpha_label)?;
-        heap.resource_mut::<WidgetBuffer>()
-            .root_mut()
-            .push_layout(player_box)?;
-        let player_box_packing = LayoutPacking::default()
-            .float_start()
-            .float_top()
-            .set_background("#222a")?
-            .set_padding_right("10px", heap.as_mut())?
-            .set_padding_bottom("6px", heap.as_mut())?
-            .set_padding_top("4px", heap.as_mut())?
-            .set_padding_left("4px", heap.as_mut())?
-            .set_border_color("#000")?
-            .set_border_right("2px", heap.as_mut())?
-            .set_border_bottom("2px", heap.as_mut())?
-            .to_owned();
-        *heap.get_mut::<LayoutPacking>(player_box_id) = player_box_packing;
-
-        let fps_label = Label::new("")
-            .with_font(
-                heap.resource::<PaintContext>()
-                    .font_context
-                    .font_id_for_name("sans"),
-            )
-            .with_color(&Color::from([255, 0, 0]))
-            .with_size(Size::from_pts(13.0))
-            .with_pre_blended_text()
-            .wrapped("fps_label", heap.as_mut())?;
-        heap.resource_mut::<WidgetBuffer>()
-            .root_mut()
-            .push_widget(fps_label)?;
-        heap.get_mut::<LayoutPacking>(fps_label).float_bottom();
-
-        let demo_label = Label::new("").wrapped("demo_label", heap.as_mut())?;
-
-        let mut envelope = EnvelopeInstrument::new(heap.resource::<PaintContext>());
-        envelope.set_scale(2.).set_mode("all")?;
-        let envelope_id = envelope.wrapped("envelope_instrument", heap.as_mut())?;
-        let envelope_packing = LayoutPacking::default()
-            .float_end()
-            .float_bottom()
-            .set_margin_right("20px", heap.as_mut())?
-            .set_margin_bottom("20px", heap.as_mut())?
-            .to_owned();
-        *heap.get_mut::<LayoutPacking>(envelope_id) = envelope_packing;
-        heap.resource_mut::<WidgetBuffer>()
-            .root_mut()
-            .push_widget(envelope_id)?;
-
-        Ok(VisibleWidgets {
-            _demo_label: demo_label,
-            sim_time,
-            camera_direction,
-            camera_position,
-            camera_fov,
-            fps_label,
-            weight_label,
-            engine_label,
-            accel_label,
-            alpha_label,
-        })
-    }
-
-    fn sys_track_visible_state(
-        camera: Res<ScreenCamera>,
-        timestep: Res<TimeStep>,
-        orrery: Res<Orrery>,
-        system: Res<System>,
-        mut labels: Query<&mut Label>,
-        query: Query<
-            (
-                &WorldSpaceFrame,
-                &BodyMotion,
-                &ClassicFlightModel,
-                &PowerSystem,
-                &FuelSystem,
-            ),
+    fn sys_draw_overlay(
+        gui: Res<Gui>,
+        player_query: Query<
+            (&TypeRef, &BodyMotion, &WorldSpaceFrame, &ClassicFlightModel),
             With<PlayerMarker>,
         >,
+        mut query: Query<(&mut ArcBallController, &ScreenCameraController)>,
+        mut camera: ResMut<ScreenCamera>,
+        mut orrery: ResMut<Orrery>,
     ) {
-        report!(system.track_visible_state(&camera, &timestep, &orrery, &mut labels, &query));
+        if let Ok((xt, motion, frame, flight)) = player_query.get_single() {
+            Self::draw_envelope(&gui, xt, motion, frame, flight);
+        }
+        if let Ok((mut arcball, _)) = query.get_single_mut() {
+            Self::draw_info_area(&gui, &mut orrery, &mut arcball, &mut camera);
+        }
     }
 
-    fn track_visible_state(
-        &self,
-        _camera: &ScreenCamera,
-        timestep: &TimeStep,
-        orrery: &Orrery,
-        labels: &mut Query<&mut Label>,
-        query: &Query<
-            (
-                &WorldSpaceFrame,
-                &BodyMotion,
-                &ClassicFlightModel,
-                &PowerSystem,
-                &FuelSystem,
-            ),
-            With<PlayerMarker>,
-        >,
-    ) -> Result<()> {
-        labels
-            .get_mut(self.visible_widgets.sim_time)?
-            .set_text(format!("Date: {}", orrery.get_time()));
-        labels
-            .get_mut(self.visible_widgets.camera_fov)?
-            .set_text(format!("Time Comp: {}", timestep.time_compression()));
+    fn draw_envelope(
+        gui: &Gui,
+        xt: &TypeRef,
+        motion: &BodyMotion,
+        frame: &WorldSpaceFrame,
+        flight: &ClassicFlightModel,
+    ) {
+        let instrument = EnvelopeInstrument::default();
+        egui::Area::new("plane_envelope")
+            .fixed_pos([
+                gui.screen().width() - instrument.display_width(),
+                gui.screen().height() - instrument.display_height(),
+            ])
+            .show(gui.screen().ctx(), |ui| {
+                instrument.ui(ui, xt, motion, frame, flight);
+            });
+    }
 
-        if let Ok((frame, motion, flight, power, fuel)) = query.get_single() {
-            labels
-                .get_mut(self.visible_widgets.weight_label)?
-                .set_text(format!("Fuel: {:0.1}", pounds_mass!(fuel.fuel_mass())));
-            let altitude = frame.position_graticule().distance;
-            let atmosphere = StandardAtmosphere::at_altitude(altitude);
-            labels
-                .get_mut(self.visible_widgets.engine_label)?
-                .set_text(format!(
-                    "Engine: {} ({:0.0})",
-                    power.engine(0).current_power(),
-                    pounds_force!(
-                        power.current_thrust(&atmosphere, motion.vehicle_forward_velocity())
-                    )
-                ));
-            labels
-                .get_mut(self.visible_widgets.accel_label)?
-                .set_text(format!(
-                    "Accel: {:0.4}",
-                    motion.vehicle_forward_acceleration()
-                ));
-            labels
-                .get_mut(self.visible_widgets.alpha_label)?
-                .set_text(format!(
-                    "Drag: {:0.2} : {:0.2}",
-                    flight.coef_of_drag(),
-                    pounds_force!(newtons!(flight.force_of_drag()))
-                ));
-            // .set_text(format!("MaxG: {:0.2}", flight.max_g_load()));
-            labels
-                .get_mut(self.visible_widgets.camera_direction)?
-                .set_text(format!("V: {:0.4}", miles_per_hour!(motion.cg_velocity())));
-            labels
-                .get_mut(self.visible_widgets.camera_position)?
-                .set_text(format!("Position: {:0.4}", frame.position(),));
+    fn draw_info_area(
+        gui: &Gui,
+        orrery: &mut Orrery,
+        arcball: &mut ArcBallController,
+        camera: &mut ScreenCamera,
+    ) {
+        egui::Area::new("info")
+            .pivot(egui::Align2::RIGHT_TOP)
+            .fixed_pos([gui.screen().width(), 0.])
+            .show(gui.screen().ctx(), |ui| {
+                egui::Frame::none()
+                    .fill(egui::hex_color!("#202020a0"))
+                    .stroke(egui::Stroke::new(2., egui::Color32::BLACK))
+                    .inner_margin(egui::style::Margin {
+                        left: 10.,
+                        bottom: 6.,
+                        top: 4.,
+                        right: 4.,
+                    })
+                    .rounding(egui::Rounding {
+                        sw: 10.,
+                        ..Default::default()
+                    })
+                    .show(ui, |ui| {
+                        egui::CollapsingHeader::new("OpenFA")
+                            .show_background(false)
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                egui::Grid::new("controls_grid")
+                                    .num_columns(2)
+                                    .spacing([4.0, 2.0])
+                                    .striped(false)
+                                    .show(ui, |ui| {
+                                        Self::fill_info_grid(ui, orrery, arcball, camera);
+                                    });
+                            });
+                    });
+            });
+    }
+
+    fn fill_info_grid(
+        ui: &mut egui::Ui,
+        orrery: &mut Orrery,
+        arcball: &mut ArcBallController,
+        camera: &mut ScreenCamera,
+    ) {
+        ui.label("Date");
+        let datetime = orrery.get_time().naive_utc();
+        let mut date = datetime.date();
+        ui.add(egui_extras::DatePickerButton::new(&mut date));
+        if date != datetime.date() {
+            orrery.set_date_naive_utc(date);
         }
-        let frame_time = timestep.sim_time().elapsed();
-        let ts = format!(
-            "frame: {}.{}ms",
-            frame_time.as_secs() * 1000 + u64::from(frame_time.subsec_millis()),
-            frame_time.subsec_micros(),
-        );
-        labels.get_mut(self.visible_widgets.fps_label)?.set_text(ts);
-        Ok(())
+        ui.end_row();
+
+        ui.label("Time");
+        let t = datetime.time();
+
+        ui.label(t.format("%H:%M:%S").to_string())
+            .on_hover_text("Middle mouse + drag to change time");
+        ui.end_row();
+
+        ui.label("Latitude");
+        let mut lat = arcball.target().lat::<Degrees>().f32();
+        ui.add(egui::Slider::new(&mut lat, -90.0..=90.0).suffix("°"))
+            .on_hover_text("Right click + drag for fine control");
+        arcball.target_mut().latitude = radians!(degrees!(lat));
+        ui.end_row();
+
+        ui.label("Longitude");
+        let mut lon = arcball.target().lon::<Degrees>().f32();
+        ui.add(egui::Slider::new(&mut lon, -180.0..=180.0).suffix("°"))
+            .on_hover_text("Right click + drag for fine control");
+        arcball.target_mut().longitude = radians!(degrees!(lon));
+        ui.end_row();
+
+        ui.label("Altitude");
+        let mut altitude = feet!(arcball.target().distance).f32();
+        ui.add(egui::Slider::new(&mut altitude, 0.0..=40_000.0).suffix("'"))
+            .on_hover_text("Up + Down arrows for fine control");
+        arcball.target_mut().distance = meters!(feet!(altitude));
+        ui.end_row();
+
+        ui.label("FoV").on_hover_text("Field of View");
+        let mut fov = degrees!(camera.fov_y()).f32();
+        ui.add(egui::Slider::new(&mut fov, 5.0..=120.0).suffix("°"))
+            .on_hover_text("Change the field of view");
+        camera.set_fov_y(radians!(degrees!(fov)));
+        ui.end_row();
     }
 }
 
@@ -416,6 +300,7 @@ fn main() -> Result<()> {
 
 fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
     runtime
+        .load_extension::<TimeStep>()?
         .load_extension_with::<WellKnownPaths>(WellKnownPathsOpts::new("openfa"))?
         .load_extension_with::<TraceLog>(opt.tracelog_opts)?
         .load_extension_with::<StartupOpts>(opt.startup_opts.with_prelude(PRELUDE))?
@@ -424,6 +309,9 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         .load_extension::<EventMapper>()?
         .load_extension_with::<Window>(opt.display_opts)?
         .load_extension::<Gpu>()?
+        .load_extension::<Gui>()?
+        .load_extension::<Dashboard>()?
+        .load_extension::<Terminal>()?
         .load_extension::<AtmosphereBuffer>()?
         .load_extension::<FullscreenBuffer>()?
         .load_extension::<GlobalParametersBuffer>()?
@@ -434,16 +322,11 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         ))?
         .load_extension::<T2TerrainBuffer>()?
         .load_extension::<WorldRenderPass>()?
-        .load_extension::<WidgetBuffer>()?
-        .load_extension::<UiRenderPass>()?
         .load_extension::<Markers>()?
         .load_extension::<CompositeRenderPass>()?
         .load_extension::<System>()?
-        .load_extension::<Label>()?
-        .load_extension::<Terminal>()?
         .load_extension::<Orrery>()?
         .load_extension::<Timeline>()?
-        .load_extension::<TimeStep>()?
         .load_extension::<CameraSystem>()?
         .load_extension::<PlayerCameraController>()?
         .load_extension::<ArcBallSystem>()?
@@ -451,7 +334,6 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         .load_extension::<ShapeBuffer>()?
         .load_extension::<AssetLoader>()?
         .load_extension::<ClassicFlightModel>()?
-        .load_extension::<EnvelopeInstrument>()?
         .load_extension::<PowerSystem>()?
         .load_extension::<PitchInceptor>()?
         .load_extension::<RollInceptor>()?
@@ -467,6 +349,7 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         .spawn_named("fallback_camera")?
         .insert(WorldSpaceFrame::default())
         .insert_named(ArcBallController::default())?
+        .insert(ScreenCameraController::default())
         .id();
 
     runtime.run_startup();
