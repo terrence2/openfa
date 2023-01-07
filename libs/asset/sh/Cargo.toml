@@ -14,6 +14,7 @@ license.workspace = true
 anyhow.workspace = true
 bitflags.workspace = true
 byteorder.workspace = true
+csv.workspace = true
 once_cell.workspace = true
 log.workspace = true
 serde.workspace = true

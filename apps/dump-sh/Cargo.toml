@@ -12,7 +12,6 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-csv.workspace = true
 env_logger.workspace = true
 gltf.workspace = true
 serde.workspace = true

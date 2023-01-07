@@ -22,3 +22,8 @@ packed_struct.workspace = true
 peff.workspace = true
 sh.workspace = true
 zerocopy.workspace = true
+
+[dev-dependencies]
+md5.workspace = true
+# internal
+lib.workspace = true

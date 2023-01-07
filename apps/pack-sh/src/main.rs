@@ -58,16 +58,22 @@ struct Vertex {
 fn main() -> Result<()> {
     env_logger::init();
     let opt = Opt::from_args();
+    pack_sh(&opt)
+}
 
+fn pack_sh(opt: &Opt) -> Result<()> {
     let source = fs::read(&opt.sh_input)?;
     let container = PortableExecutable::from_bytes(&source)
         .with_context(|| format!("reading shape {}", opt.sh_input.display()))?;
-    let code_offset = container.section_info["CODE"].file_offset();
-    let target_path = if let Some(output_path) = opt.output {
+    let code_offset = container
+        .code_section()
+        .expect("code section")
+        .file_offset();
+    let target_path = if let Some(output_path) = &opt.output {
         fs::copy(&opt.sh_input, &output_path)?;
-        output_path
+        output_path.to_owned()
     } else {
-        opt.sh_input
+        opt.sh_input.clone()
     };
     let update = OpenOptions::new()
         .write(true)
@@ -98,7 +104,7 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
         let record: Record = result?;
         cnt += 1;
 
-        if record.magic == "F0" || record.magic == "Tramp" {
+        if record.magic == "F0" || record.magic == "Tramp" || record.magic == "D2" {
             continue;
         }
 
@@ -117,6 +123,19 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
             content.len() == record.instr_size,
             "content length does not mach instruction size"
         );
+
+        // Round-trip debugging:
+        // {
+        //     update.seek(SeekFrom::Start(record.file_offset as u64))?;
+        //     let mut buffer = Vec::with_capacity(content.len());
+        //     buffer.resize(content.len(), 0u8);
+        //     update.read_exact(&mut buffer)?;
+        //     assert_eq!(
+        //         buffer, content,
+        //         "magic values of instr must not be changed (yet):\n{:#?}",
+        //         record
+        //     );
+        // }
 
         // Read the magic to double-check that our instruction has not moved around by accident
         update.seek(SeekFrom::Start(record.file_offset as u64))?;
@@ -182,4 +201,91 @@ fn update_from_gltf(mut update: File, code_offset: u32, gltf_path: &Path) -> Res
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use lib::Libs;
+    use md5;
+    use sh::RawShape;
+    use std::env;
+
+    #[ignore]
+    #[test]
+    fn test_round_trip() -> Result<()> {
+        let skipped = vec![
+            "CATGUY.SH",  // 640
+            "MOON.SH",    // 41
+            "SOLDIER.SH", // 320
+            "CHAFF.SH",
+            "CRATER.SH",
+            "DEBRIS.SH",
+            "EXP.SH",
+            "FIRE.SH",
+            "FLARE.SH",
+            "MOTHB.SH",
+            "SMOKE.SH",
+            "WAVE1.SH",
+            "WAVE2.SH",
+        ];
+
+        let libs = Libs::for_testing()?;
+
+        for (game, _palette, catalog) in libs.selected() {
+            for fid in catalog.find_with_extension("SH")? {
+                let meta = catalog.stat(fid)?;
+
+                // FIXME: re-try all of these
+                if skipped.contains(&meta.name()) {
+                    println!(
+                        "SKIP: {}:{:13} @ {}",
+                        game.test_dir,
+                        meta.name(),
+                        meta.path()
+                    );
+                    continue;
+                } else {
+                    println!("At: {}:{:13} @ {}", game.test_dir, meta.name(), meta.path());
+                }
+
+                // CSV file name
+                let mut csv_filename = env::temp_dir().clone();
+                csv_filename.push(&format!("{}.csv", meta.name()));
+
+                // Input shape name: we need to write it to disk uncompressed
+                let mut sh1_filename = env::temp_dir().clone();
+                sh1_filename.push(&format!("orig-{}", meta.name()));
+
+                // Output shape name
+                let mut sh2_filename = env::temp_dir().clone();
+                sh2_filename.push(&format!("copy-{}", meta.name()));
+
+                // Dump the shape into the CSV temp file and to an input shape
+                let data = catalog.read(fid)?;
+                fs::write(&sh1_filename, &data)?;
+                let shape = RawShape::from_bytes(meta.name(), &data)?;
+                sh::export_csv(&shape, &csv_filename.to_string_lossy())?;
+
+                // Re-pack the shape into a new tempfile
+                pack_sh(&Opt {
+                    gltf_input: None,
+                    csv_input: Some(csv_filename),
+                    sh_input: sh1_filename.clone(),
+                    output: Some(sh2_filename.clone()),
+                })?;
+
+                // Compare the two files
+                let sh1_data = fs::read(sh1_filename)?;
+                let sh2_data = fs::read(sh2_filename)?;
+                assert_eq!(
+                    md5::compute(&sh1_data),
+                    md5::compute(&sh2_data),
+                    "failed to round-trip"
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
