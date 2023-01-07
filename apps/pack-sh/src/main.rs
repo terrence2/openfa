@@ -25,7 +25,7 @@ use std::{
     fs,
     fs::{File, OpenOptions},
     io,
-    io::{Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 use structopt::StructOpt;
@@ -71,7 +71,7 @@ fn main() -> Result<()> {
     };
     let update = OpenOptions::new()
         .write(true)
-        .read(false)
+        .read(true) // for assertions
         .create(false)
         .create_new(false)
         .append(false)
@@ -98,10 +98,14 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
         let record: Record = result?;
         cnt += 1;
 
+        if record.magic == "F0" || record.magic == "Tramp" {
+            continue;
+        }
+
         ensure!(record.instr_number == i, "mismatched instruction number!");
         ensure!(
             record.file_offset == record.code_offset + code_offset as usize,
-            "CSV code offset does nto match shape code offset"
+            "CSV code offset does not match shape code offset"
         );
         let content = record
             .raw_content
@@ -113,6 +117,16 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
             content.len() == record.instr_size,
             "content length does not mach instruction size"
         );
+
+        // Read the magic to double-check that our instruction has not moved around by accident
+        update.seek(SeekFrom::Start(record.file_offset as u64))?;
+        let mut buffer = [0u8; 1];
+        update.read_exact(&mut buffer)?;
+        assert_eq!(
+            buffer[0], content[0],
+            "magic values of instr must not be changed (yet)"
+        );
+
         update.seek(SeekFrom::Start(record.file_offset as u64))?;
         update.write_all(&content)?;
 
