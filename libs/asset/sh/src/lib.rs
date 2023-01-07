@@ -18,7 +18,7 @@ mod csv;
 mod instr;
 
 pub use crate::{
-    csv::Record,
+    csv::{export_csv, Record},
     instr::{
         read_name, EndOfObject, EndOfShape, Facet, FacetFlags, Jump, JumpToDamage, JumpToDetail,
         JumpToFrame, JumpToLOD, Pad1E, PtrToObjEnd, SourceRef, TextureIndex, TextureRef, Unmask,

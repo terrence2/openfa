@@ -12,7 +12,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
+use crate::RawShape;
+use anyhow::Result;
+use csv::WriterBuilder;
+use reverse::bs2s;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// A record suitable for use in CSV processing
 #[derive(Debug, Serialize, Deserialize)]
@@ -37,4 +42,33 @@ pub struct Record {
 
     // Comment - Our interpretation of the instruction content (varies)
     pub comment: String,
+}
+
+pub fn export_csv(sh: &RawShape, output_filename: &str) -> Result<()> {
+    let path = PathBuf::from(output_filename);
+
+    let code_offset = sh.pe.code_section().expect("code section").file_offset() as usize;
+    let mut records = Vec::with_capacity(sh.instrs.len());
+    for (i, instr) in sh.instrs.iter().enumerate() {
+        let content = &sh.pe.code[instr.at_offset()..instr.at_offset() + instr.size()];
+        records.push(Record {
+            instr_number: i,
+            code_offset: instr.at_offset(),
+            file_offset: instr.at_offset() + code_offset,
+            instr_size: instr.size(),
+            magic: instr.magic().to_owned(),
+            raw_content: bs2s(content),
+            comment: format!("{:?}", instr),
+        });
+    }
+
+    let mut writer = WriterBuilder::new()
+        .has_headers(true)
+        .flexible(false)
+        .from_path(path)?;
+    for record in records {
+        writer.serialize(record)?;
+    }
+
+    Ok(())
 }

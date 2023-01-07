@@ -661,6 +661,12 @@ impl PortableExecutable {
         0
     }
 
+    pub fn code_section(&self) -> Option<&SectionInfo> {
+        self.section_info
+            .get("CODE")
+            .or_else(|| self.section_info.get(".text"))
+    }
+
     fn parse_trampolines(
         thunks: &[Thunk],
         image_vbase: u32,

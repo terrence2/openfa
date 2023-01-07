@@ -1,9 +1,9 @@
 [workspace.package]
 description = "An open source, black box re-implementation of the Jane's Fighters Anthology engine."
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 edition = "2021"
-rust-version = "1.64"
+rust-version = "1.66"
 readme = "https://gitlab.com/terrence_too/openfa/-/blob/main/README.md"
 homepage = "https://gitlab.com/terrence_too/openfa"
 documentation = "https://gitlab.com/terrence_too/openfa"
@@ -183,7 +183,7 @@ codepage-437 = "^ 0.1"
 csv = "^ 1.1"
 gltf = { version = "^ 1", features = ["extras", "names"] }
 humansize = "^ 2"
-md5 = "^ 0.3"
+md5 = "^ 0.7"
 serde = { version = "^ 1", features = ["derive"] }
 thiserror = "^ 1"
 triangulate = "^ 0.1"
@@ -219,9 +219,10 @@ peff = { path = "libs/util/peff" }
 pkware = { path = "libs/util/pkware" }
 reverse = { path = "libs/util/reverse" }
 
-# Emit debugging symbols for tracing
+# Change to emit debugging symbols when tracing is required
 [profile.release]
-debug = true
+#debug = true
+debug = false
 
 # Turn on a small amount of optimisation while developing, mostly targetted
 # at triangulate, image, nalgebra and other packages that are artificially
