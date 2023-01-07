@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use gltf::{
     buffer::Source,
     mesh::{Mode, Semantic},
@@ -60,7 +60,8 @@ fn main() -> Result<()> {
     let opt = Opt::from_args();
 
     let source = fs::read(&opt.sh_input)?;
-    let container = PortableExecutable::from_bytes(&source)?;
+    let container = PortableExecutable::from_bytes(&source)
+        .with_context(|| format!("reading shape {}", opt.sh_input.display()))?;
     let code_offset = container.section_info["CODE"].file_offset();
     let target_path = if let Some(output_path) = opt.output {
         fs::copy(&opt.sh_input, &output_path)?;
@@ -75,7 +76,8 @@ fn main() -> Result<()> {
         .create_new(false)
         .append(false)
         .truncate(false)
-        .open(target_path)?;
+        .open(&target_path)
+        .with_context(|| format!("opening {} for update", target_path.display()))?;
 
     if let Some(path) = &opt.gltf_input {
         update_from_gltf(update, code_offset, path)?;
@@ -88,7 +90,10 @@ fn main() -> Result<()> {
 
 fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Result<()> {
     let mut cnt = 0;
-    let mut rdr = csv::Reader::from_reader(File::open(csv_path)?);
+    let mut rdr = csv::Reader::from_reader(
+        File::open(csv_path)
+            .with_context(|| format!("opening CSV file at {}", csv_path.display()))?,
+    );
     for (i, result) in rdr.deserialize().enumerate() {
         let record: Record = result?;
         cnt += 1;

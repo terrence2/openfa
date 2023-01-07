@@ -78,7 +78,7 @@ struct Opt {
     gltf: Option<String>,
 
     /// Write instructions to a CSV file
-    #[structopt(long)]
+    #[structopt(long, name = "out.csv")]
     csv: Option<String>,
 
     /// Run a custom action
