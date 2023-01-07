@@ -70,7 +70,7 @@ fn pack_sh(opt: &Opt) -> Result<()> {
         .expect("code section")
         .file_offset();
     let target_path = if let Some(output_path) = &opt.output {
-        fs::copy(&opt.sh_input, &output_path)?;
+        fs::copy(&opt.sh_input, output_path)?;
         output_path.to_owned()
     } else {
         opt.sh_input.clone()
@@ -207,7 +207,6 @@ fn update_from_gltf(mut update: File, code_offset: u32, gltf_path: &Path) -> Res
 mod test {
     use super::*;
     use lib::Libs;
-    use md5;
     use sh::RawShape;
     use std::env;
 
@@ -279,8 +278,8 @@ mod test {
                 let sh1_data = fs::read(sh1_filename)?;
                 let sh2_data = fs::read(sh2_filename)?;
                 assert_eq!(
-                    md5::compute(&sh1_data),
-                    md5::compute(&sh2_data),
+                    md5::compute(sh1_data),
+                    md5::compute(sh2_data),
                     "failed to round-trip"
                 );
             }
