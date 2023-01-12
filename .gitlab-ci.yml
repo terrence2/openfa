@@ -34,6 +34,6 @@ check_test:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
-    - nix shell github:oxalica/rust-overlay -c nix-shell --run "cargo nextest run --workspace --all-targets --config-file nitrogen/nextest.toml"
+    - nix shell github:oxalica/rust-overlay -c nix-shell --run "cargo nextest run -j3 --workspace --all-targets --config-file nitrogen/nextest.toml"
   retry: 2 # Sometimes X clients just crash
 
