@@ -20,7 +20,7 @@ use gltf::{
 };
 use packed_struct::packed_struct;
 use peff::PortableExecutable;
-use sh::Record;
+use sh::{Facet, FacetFlags, Record};
 use std::{
     fs,
     fs::{File, OpenOptions},
@@ -29,6 +29,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use structopt::StructOpt;
+use zerocopy::AsBytes;
 
 /// Inject a DXF exported by dump-sh back into a SH
 #[derive(Debug, StructOpt)]
@@ -113,29 +114,83 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
             record.file_offset == record.code_offset + code_offset as usize,
             "CSV code offset does not match shape code offset"
         );
-        let content = record
+        let mut content = record
             .raw_content
             .split(' ')
             .filter(|s| !s.is_empty())
             .map(|s| u8::from_str_radix(s, 16).expect("Non-byte in content"))
             .collect::<Vec<u8>>();
+        if record.magic == "82" {
+            let vert_data = record
+                .processed_content
+                .replace('\n', " ")
+                .split(' ')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse::<i16>().expect("did not fit an i16"))
+                .collect::<Vec<i16>>()
+                .as_bytes()
+                .to_owned();
+            ensure!(
+                vert_data.len() + 6 == content.len(),
+                "wrong number of vertices at {}",
+                record.instr_number
+            );
+            content[6..].copy_from_slice(&vert_data);
+        } else if record.magic == "Facet(FC)" {
+            for line in record.processed_content.lines() {
+                let tokens = line
+                    .split(':')
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.trim())
+                    .collect::<Vec<_>>();
+                let facet = Facet::from_bytes_after(0, &content)?;
+                match tokens[0] {
+                    "color" => {
+                        content[facet.color_offset()] = u8::from_str_radix(tokens[1], 16)?;
+                    }
+                    "tex_coords" => {
+                        let parts = tokens[1]
+                            .split(',')
+                            .filter(|s| !s.is_empty())
+                            .flat_map(|s| s.trim().split(' '))
+                            .collect::<Vec<_>>();
+                        let d = if facet.flags.contains(FacetFlags::USE_BYTE_TEXCOORDS) {
+                            parts
+                                .iter()
+                                .map(|s| s.parse::<u8>().unwrap())
+                                .collect::<Vec<u8>>()
+                        } else {
+                            parts
+                                .iter()
+                                .map(|s| s.parse::<u16>().unwrap())
+                                .collect::<Vec<u16>>()
+                                .as_bytes()
+                                .to_owned()
+                        };
+                        content[facet.texcoord_offset()..facet.texcoord_offset() + d.len()]
+                            .copy_from_slice(&d);
+                        // println!("tex_COORDS!: {:?} -> {:?}", parts, d);
+                    }
+                    _ => {}
+                }
+            }
+        }
         ensure!(
             content.len() == record.instr_size,
             "content length does not mach instruction size"
         );
 
         // Round-trip debugging:
-        // {
-        //     update.seek(SeekFrom::Start(record.file_offset as u64))?;
-        //     let mut buffer = Vec::with_capacity(content.len());
-        //     buffer.resize(content.len(), 0u8);
-        //     update.read_exact(&mut buffer)?;
-        //     assert_eq!(
-        //         buffer, content,
-        //         "magic values of instr must not be changed (yet):\n{:#?}",
-        //         record
-        //     );
-        // }
+        {
+            update.seek(SeekFrom::Start(record.file_offset as u64))?;
+            let mut buffer = vec![0u8; content.len()];
+            update.read_exact(&mut buffer)?;
+            assert_eq!(
+                buffer, content,
+                "magic values of instr must not be changed (yet):\n{:#?}",
+                record
+            );
+        }
 
         // Read the magic to double-check that our instruction has not moved around by accident
         update.seek(SeekFrom::Start(record.file_offset as u64))?;
