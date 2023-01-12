@@ -12,7 +12,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
-use crate::RawShape;
+use crate::{Instr, RawShape};
 use anyhow::Result;
 use csv::WriterBuilder;
 use reverse::bs2s;
@@ -40,6 +40,11 @@ pub struct Record {
     // Raw Content - Raw content of the instruction (including prefix), formatted as hex bytes.
     pub raw_content: String,
 
+    // Processed Content - On export, raw_content for certain instructions is processed into
+    //                     parts for easier editing and on import parsed back into raw_content
+    //                     before writing.
+    pub processed_content: String,
+
     // Comment - Our interpretation of the instruction content (varies)
     pub comment: String,
 }
@@ -50,14 +55,38 @@ pub fn export_csv(sh: &RawShape, output_filename: &str) -> Result<()> {
     let code_offset = sh.pe.code_section().expect("code section").file_offset() as usize;
     let mut records = Vec::with_capacity(sh.instrs.len());
     for (i, instr) in sh.instrs.iter().enumerate() {
-        let content = &sh.pe.code[instr.at_offset()..instr.at_offset() + instr.size()];
+        let raw_content = bs2s(&sh.pe.code[instr.at_offset()..instr.at_offset() + instr.size()]);
+        let processed_content = match instr {
+            Instr::VertexBuf(vxbuf) => vxbuf
+                .verts
+                .iter()
+                .map(|[a, b, c]| format!("{a} {b} {c}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Instr::Facet(facet) => [
+                format!("color: {:X}", facet.color),
+                format!(
+                    "tex_coords: {}",
+                    facet
+                        .tex_coords
+                        .iter()
+                        .map(|[s, t]| format!("{s} {t}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ]
+            .to_vec()
+            .join("\n"),
+            _ => "".to_owned(),
+        };
         records.push(Record {
             instr_number: i,
             code_offset: instr.at_offset(),
             file_offset: instr.at_offset() + code_offset,
             instr_size: instr.size(),
             magic: instr.magic().to_owned(),
-            raw_content: bs2s(content),
+            raw_content,
+            processed_content,
             comment: format!("{:?}", instr),
         });
     }

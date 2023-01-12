@@ -450,6 +450,14 @@ impl Facet {
         })
     }
 
+    pub fn color_offset(&self) -> usize {
+        self.color_pointer as usize - self.data as usize
+    }
+
+    pub fn texcoord_offset(&self) -> usize {
+        self.tc_pointer as usize - self.data as usize
+    }
+
     pub fn size(&self) -> usize {
         self.length
     }

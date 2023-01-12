@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with OpenFA.  If not, see <http://www.gnu.org/licenses/>.
 
-V := 0.1.3
+V := 0.1.4
 TMP := ofa-$(V)
 PROJECT_ID := 42109949
 OFA_BUCKET_URL := https://openfa.s3.us-west-1.amazonaws.com
