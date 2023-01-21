@@ -40,8 +40,8 @@
  Mark Adler    madler@alumni.caltech.edu
 */
 use anyhow::{ensure, Result};
-use lazy_static::lazy_static;
 use log::trace;
+use once_cell::sync::Lazy;
 
 /// Simple interface: uncompress all of data at once from memory to memory.
 pub fn explode(data: &[u8], expect_output_size: Option<usize>) -> Result<Vec<u8>> {
@@ -126,11 +126,9 @@ const LENGTH_LENGTHS: [u8; 6] = [2, 35, 36, 53, 38, 23];
 /* bit lengths of distance codes 0..63 */
 const DISTANCE_LENGTHS: [u8; 7] = [2, 20, 53, 230, 247, 151, 248];
 
-lazy_static! {
-    pub static ref LITERAL_CODES: Huffman = construct(&LITERAL_LENGTHS).unwrap();
-    pub static ref LENGTH_CODES: Huffman = construct(&LENGTH_LENGTHS).unwrap();
-    pub static ref DISTANCE_CODES: Huffman = construct(&DISTANCE_LENGTHS).unwrap();
-}
+pub static LITERAL_CODES: Lazy<Huffman> = Lazy::new(|| construct(&LITERAL_LENGTHS).unwrap());
+pub static LENGTH_CODES: Lazy<Huffman> = Lazy::new(|| construct(&LENGTH_LENGTHS).unwrap());
+pub static DISTANCE_CODES: Lazy<Huffman> = Lazy::new(|| construct(&DISTANCE_LENGTHS).unwrap());
 
 /*
  * Given a list of repeated code lengths rep[0..n-1], where each byte is a

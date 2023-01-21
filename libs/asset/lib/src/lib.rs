@@ -29,9 +29,9 @@ use anyhow::{anyhow, ensure, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use catalog::{DrawerFileId, DrawerFileMetadata, DrawerInterface};
 use codepage_437::{BorrowFromCp437, FromCp437, CP437_CONTROL};
-use lazy_static::lazy_static;
 use log::trace;
 use memmap::{Mmap, MmapOptions};
+use once_cell::sync::Lazy;
 use packed_struct::packed_struct;
 use regex::Regex;
 use std::{
@@ -86,10 +86,8 @@ pub struct Priority {
 
 impl Priority {
     fn from_path(path: &Path, adjust: i64) -> Result<Self> {
-        lazy_static! {
-            static ref PRIO_RE: Regex =
-                Regex::new(r"(\d+)([a-zA-Z]?)").expect("failed to create regex");
-        }
+        static PRIO_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"(\d+)([a-zA-Z]?)").expect("failed to create regex"));
         let filename = path
             .file_stem()
             .ok_or_else(|| anyhow!("priority: name must not start with a '.'"))?

@@ -15,5 +15,5 @@ benchmark = []
 
 [dependencies]
 anyhow.workspace = true
-lazy_static.workspace = true
 log.workspace = true
+once_cell.workspace = true
