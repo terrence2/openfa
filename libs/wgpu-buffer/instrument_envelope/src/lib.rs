@@ -257,7 +257,7 @@ impl EnvelopeInstrument {
             painter.text(
                 screen.right_top(),
                 Align2::RIGHT_TOP,
-                format!("{}", flight.max_g_load()),
+                format!("{:0.01}", flight.max_g_load()),
                 FontId::monospace(6. * self.scale),
                 Color32::DARK_GRAY,
             );
