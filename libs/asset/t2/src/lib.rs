@@ -109,35 +109,33 @@ Ukraine            {0, 1}
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use anyhow::{bail, ensure, Result};
-use lazy_static::lazy_static;
 use log::{trace, warn};
+use once_cell::sync::Lazy;
 use packed_struct::packed_struct;
 use std::{collections::HashMap, mem, str};
 
 // Lat/Lon of lower left corner of every map that is shipped with FA.
 // TODO: 3rd party maps will need a way to specify. For now we will use a default.
-lazy_static! {
-    static ref MAP_POSITIONS: HashMap<&'static str, [f32; 2]> = {
-        let mut table = HashMap::new();
-        table.insert("Cuba", [25.11, -85.63]);
-        table.insert("Egypt", [32.96, 30.35]);
-        table.insert("Falkland Islands", [-48.96, -64.75]);
-        table.insert("France", [51.57, -0.56]);
-        table.insert("Greece", [40.58, 21.24]);
-        table.insert("Iraq", [32.44, 44.05]);
-        table.insert("Kuril Islands", [52.53, 146.82]);
-        table.insert("North Vietnam", [22.35, 105.17]);
-        table.insert("North/South Korea", [41.21, 123.98]);
-        table.insert("Pakistan", [29.74, 66.46]);
-        table.insert("Panama", [11.75, -83.31]);
-        table.insert("Persian Gulf", [29.41, 52.72]);
-        table.insert("Taiwan", [26.83, 116.7]);
-        table.insert("The Baltics", [59.60, 20.80]);
-        table.insert("Ukraine", [48.30, 26.70]);
-        table.insert("Vladivostok", [45.21, 128.83]);
-        table
-    };
-}
+static MAP_POSITIONS: Lazy<HashMap<&'static str, [f32; 2]>> = Lazy::new(|| {
+    let mut table = HashMap::new();
+    table.insert("Cuba", [25.11, -85.63]);
+    table.insert("Egypt", [32.96, 30.35]);
+    table.insert("Falkland Islands", [-48.96, -64.75]);
+    table.insert("France", [51.57, -0.56]);
+    table.insert("Greece", [40.58, 21.24]);
+    table.insert("Iraq", [32.44, 44.05]);
+    table.insert("Kuril Islands", [52.53, 146.82]);
+    table.insert("North Vietnam", [22.35, 105.17]);
+    table.insert("North/South Korea", [41.21, 123.98]);
+    table.insert("Pakistan", [29.74, 66.46]);
+    table.insert("Panama", [11.75, -83.31]);
+    table.insert("Persian Gulf", [29.41, 52.72]);
+    table.insert("Taiwan", [26.83, 116.7]);
+    table.insert("The Baltics", [59.60, 20.80]);
+    table.insert("Ukraine", [48.30, 26.70]);
+    table.insert("Vladivostok", [45.21, 128.83]);
+    table
+});
 
 #[derive(Copy, Clone, Debug)]
 pub struct Sample {

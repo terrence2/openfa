@@ -148,7 +148,7 @@ pub static DISTANCE_CODES: Lazy<Huffman> = Lazy::new(|| construct(&DISTANCE_LENG
  * codes past the end of the incomplete lengths.
  */
 // Note: constructing all 3 vectors takes ~1us; not really worth optimizating
-// further as they are cached by lazy_static!.
+// further as they are cached by once_cell!.
 fn construct(rep: &[u8]) -> Result<Huffman> {
     trace!("constructing huffman tables");
 

@@ -92,7 +92,6 @@ itertools = "^ 0.10"
 json = "^ 0.12"
 lalrpop = "0.19.4"
 lalrpop-util = { version = "^ 0.19", features = ["lexer"] }
-lazy_static = "^ 1"
 libc = "0.2"
 log = "^ 0.4"
 lyon_geom = "^ 0.17"

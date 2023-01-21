@@ -23,8 +23,8 @@ use bevy_ecs::prelude::*;
 use catalog::Catalog;
 use gpu::Gpu;
 use image::Rgba;
-use lazy_static::lazy_static;
 use log::info;
+use once_cell::sync::Lazy;
 use pal::Palette;
 use parking_lot::RwLock;
 use pic_uploader::PicUploader;
@@ -87,9 +87,7 @@ impl ShapeIds {
     }
 }
 
-lazy_static! {
-    static ref GLOBAL_CHUNK_ID: Mutex<u32> = Mutex::new(0);
-}
+static GLOBAL_CHUNK_ID: Lazy<Mutex<u32>> = Lazy::new(|| Mutex::new(0));
 
 fn allocate_chunk_id() -> ChunkId {
     let mut global = GLOBAL_CHUNK_ID.lock().unwrap();

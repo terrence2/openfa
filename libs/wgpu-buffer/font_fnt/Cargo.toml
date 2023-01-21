@@ -14,8 +14,8 @@ license.workspace = true
 codepage-437.workspace = true
 anyhow.workspace = true
 image.workspace = true
-lazy_static.workspace = true
 log.workspace = true
+once_cell.workspace = true
 wgpu.workspace = true
 # libs
 fnt.workspace = true

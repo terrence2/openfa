@@ -19,8 +19,8 @@ use font_common::{Font, FontAdvance, FontInterface};
 use gpu::Gpu;
 use i386::{Interpreter, Reg};
 use image::{GenericImageView, GrayImage, Luma};
-use lazy_static::lazy_static;
 use log::trace;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use window::size::{AbsSize, LeftBound};
 
@@ -28,13 +28,11 @@ use window::size::{AbsSize, LeftBound};
 //        we target at a scaling of 1.0 below.
 //const SCREEN_SCALE: [f32; 2] = [320f32, 240f32];
 
-lazy_static! {
-    static ref CP437_TO_CHAR: HashMap<u8, char> = {
-        let dos: Vec<u8> = (1..255).collect();
-        let utf = String::from_cp437(dos, &CP437_CONTROL);
-        (1..255).zip(utf.chars()).collect()
-    };
-}
+static CP437_TO_CHAR: Lazy<HashMap<u8, char>> = Lazy::new(|| {
+    let dos: Vec<u8> = (1..255).collect();
+    let utf = String::from_cp437(dos, &CP437_CONTROL);
+    (1..255).zip(utf.chars()).collect()
+});
 
 #[derive(Debug)]
 struct GlyphFrame {
