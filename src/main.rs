@@ -301,9 +301,8 @@ fn main() -> Result<()> {
 fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
     runtime
         .load_extension::<TimeStep>()?
-        .load_extension_with::<WellKnownPaths>(WellKnownPathsOpts::new("openfa"))?
         .load_extension_with::<TraceLog>(opt.tracelog_opts)?
-        .load_extension_with::<StartupOpts>(opt.startup_opts.with_prelude(PRELUDE))?
+        .load_extension_with::<WellKnownPaths>(WellKnownPathsOpts::new("openfa"))?
         .load_extension_with::<Libs>(opt.libs_opts)?
         .load_extension::<InputTarget>()?
         .load_extension::<EventMapper>()?
@@ -342,7 +341,8 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         .load_extension::<BayEffector>()?
         .load_extension::<FlapsEffector>()?
         .load_extension::<GearEffector>()?
-        .load_extension::<HookEffector>()?;
+        .load_extension::<HookEffector>()?
+        .load_extension_with::<StartupOpts>(opt.startup_opts.with_prelude(PRELUDE))?;
 
     // Have an arcball camera controller sitting around that we can fall back to for debugging.
     let _fallback_camera_ent = runtime

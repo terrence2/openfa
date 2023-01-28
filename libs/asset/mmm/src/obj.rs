@@ -138,7 +138,11 @@ pub struct EulerAngles {
 
 impl EulerAngles {
     pub fn facing(&self) -> Graticule<Target> {
-        Graticule::new(degrees!(self.pitch), degrees!(self.yaw), meters!(1))
+        Graticule::new(
+            degrees!(self.pitch),
+            degrees!(180) - degrees!(self.yaw),
+            meters!(1),
+        )
     }
 
     pub fn yaw(&self) -> Angle<Degrees> {
