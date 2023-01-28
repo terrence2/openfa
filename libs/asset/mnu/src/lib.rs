@@ -152,7 +152,7 @@ impl Menu {
             offset += 1;
         }
 
-        println!("{} - {}", out, name);
+        println!("{out} - {name}");
 
         Ok(Menu {})
     }

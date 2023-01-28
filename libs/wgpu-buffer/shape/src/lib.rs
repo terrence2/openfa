@@ -413,7 +413,7 @@ impl ShapeBuffer {
             );
             let (base_name, _sh) = shape_file_name.rsplit_once('.').unwrap();
             for suffix in ["_A", "_B", "_C", "_D"] {
-                let assoc_name = format!("{}{}.SH", base_name, suffix);
+                let assoc_name = format!("{base_name}{suffix}.SH");
                 if let Ok(data) = catalog.read_name(&assoc_name) {
                     shapes.insert(
                         assoc_name.clone(),
@@ -456,7 +456,7 @@ impl ShapeBuffer {
 
             let (base_name, _sh) = shape_file_name.rsplit_once('.').unwrap();
             for suffix in ["_A", "_B", "_C", "_D"] {
-                let assoc_name = format!("{}{}.SH", base_name, suffix);
+                let assoc_name = format!("{base_name}{suffix}.SH");
                 if let Some(damage_models) = upload_results.get(&assoc_name) {
                     let damage_shape_id = damage_models
                         .get(&DrawSelection::NormalModel)

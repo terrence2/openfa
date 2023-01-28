@@ -103,8 +103,7 @@ impl VertexFlags {
     pub fn displacement(self, offset: usize) -> Result<Self> {
         VertexFlags::from_bits(self.bits() << offset).ok_or_else(|| {
             anyhow!(format!(
-                "offset {} from {:?} did not yield a valid vertex flags",
-                offset, self
+                "offset {offset} from {self:?} did not yield a valid vertex flags"
             ))
         })
     }

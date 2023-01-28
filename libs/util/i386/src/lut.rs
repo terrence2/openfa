@@ -418,7 +418,7 @@ pub static OPCODES: Lazy<HashMap<(u16, u8), OpCodeDef>> = Lazy::new(|| {
         (0x0FB6, 0, make_op!(MoveZX: G/v, E/b)), // move byte to word or doubleword with zero extension
         (0x0FB7, 0, make_op!(MoveZX: G/v, E/w)), // move word to doubleword with zero extension
     ];
-    for &(ref op, ref ext, ref def) in ops.iter() {
+    for (op, ext, def) in ops.iter() {
         out.insert((*op, *ext), (*def).clone());
     }
     out

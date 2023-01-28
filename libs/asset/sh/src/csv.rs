@@ -87,7 +87,7 @@ pub fn export_csv(sh: &RawShape, output_filename: &str) -> Result<()> {
             magic: instr.magic().to_owned(),
             raw_content,
             processed_content,
-            comment: format!("{:?}", instr),
+            comment: format!("{instr:?}"),
         });
     }
 

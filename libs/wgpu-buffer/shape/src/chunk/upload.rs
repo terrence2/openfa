@@ -1042,7 +1042,7 @@ impl<'a> ShapeUploader<'a> {
                 )],
             )
         } else {
-            println!("UNKNOWN XFORM: {:?} + {:?} in {}", reads, calls, name);
+            println!("UNKNOWN XFORM: {reads:?} + {calls:?} in {name}");
             return Ok(());
         };
 

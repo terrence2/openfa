@@ -77,7 +77,7 @@ fn show_lay(fid: FileId, game: &GameInfo, palette: &Palette, catalog: &Catalog) 
         // palette.override_one(0xFF, [0, 0, 0]);
 
         let output = format!("__dump__/lay-pal/{}-{}/{}", game.test_dir, name, i);
-        println!("Writing: {}.png", output);
+        println!("Writing: {output}.png");
         palette.dump_png(&output)?
     }
 

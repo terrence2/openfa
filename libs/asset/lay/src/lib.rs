@@ -107,7 +107,7 @@ impl Layer {
 
         if dump_stuff {
             fs::create_dir("dump").unwrap_or(());
-            fs::create_dir(format!("dump/{}", prefix)).unwrap_or(());
+            fs::create_dir(format!("dump/{prefix}")).unwrap_or(());
         }
 
         let data = &pe.code;
@@ -128,7 +128,7 @@ impl Layer {
         let ramp_data = &data[ramp_addr as usize..ramp_addr as usize + 0x100];
         let ramp_digest = md5::compute(ramp_data);
         assert_eq!(
-            &format!("{:x}", ramp_digest),
+            &format!("{ramp_digest:x}"),
             "e2c865db4162bed963bfaa9ef6ac18f0"
         );
 
@@ -141,7 +141,7 @@ impl Layer {
             let _first_pal = Palette::from_bytes(&first_pal_data[0..(16 * 3 + 13) * 3])?;
 
             // Seems to be correct for CLOUD and FOG, but really dark for DAY.
-            let name = format!("dump/{}/first_data", prefix);
+            let name = format!("dump/{prefix}/first_data");
             Palette::dump_partial(first_pal_data, 4, &(name + "2"))?;
         }
 
@@ -196,16 +196,16 @@ impl Layer {
             md5::compute(&data[offset..offset + 0x300]).0
         );
         if dump_stuff {
-            let name = format!("dump/{}/second-0", prefix);
-            println!("dumping {}", name);
+            let name = format!("dump/{prefix}/second-0");
+            println!("dumping {name}");
             Palette::dump_partial(&data[offset..offset + 0x300], 4, &name)?;
         }
         offset += 0x300;
         for i in 0..18 {
             //let pal_data = &data[offset..offset + 0x100];
             if dump_stuff {
-                let name = format!("dump/{}/second-{}", prefix, i + 1);
-                println!("dumping {}", name);
+                let name = format!("dump/{prefix}/second-{}", i + 1);
+                println!("dumping {name}");
                 Palette::dump_partial(&data[offset..offset + 0x100], 1, &name)?;
             }
             offset += 0x100;

@@ -165,7 +165,7 @@ impl ChunkManager {
             if let Ok(mut path) = env::current_dir() {
                 path.push("__dump__");
                 path.push("shape_chunk");
-                path.push(&format!("chunk-{}.png", chunk_id));
+                path.push(&format!("chunk-{chunk_id}.png"));
                 Some(path)
             } else {
                 None

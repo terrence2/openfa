@@ -66,7 +66,7 @@ mod tests {
     fn find_expect_data(path: &str) -> Result<Option<Vec<u8>>> {
         // strip ./test_data/inputs/ and .lzss.zip
         let path_stem = &path.to_owned()[19..path.len() - 9];
-        let expect_path = format!("../../test_data/lzss/expect/{}", path_stem);
+        let expect_path = format!("../../test_data/lzss/expect/{path_stem}");
         if !Path::new(&expect_path).exists() {
             return Ok(None);
         }
@@ -83,7 +83,7 @@ mod tests {
                 let entry = i?;
                 let path = format!("{}", entry.path().display());
                 let expect = find_expect_data(&path)?;
-                // println!("At: {}", path);
+                // println!("At: {path}");
                 let mut fp = fs::File::open(&path)?;
                 let mut contents = Vec::new();
                 fp.read_to_end(&mut contents)?;

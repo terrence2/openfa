@@ -123,8 +123,8 @@ bindings.bind("+Down", "@fallback_camera.arcball.target_down(pressed)");
 // Load at Mt Everest if nothing else is loaded
 game.detach_camera();
 game.load_map("BAL.MM");
-@fallback_camera.arcball.set_target_latitude_degrees({});
-@fallback_camera.arcball.set_target_longitude_degrees({});
+@fallback_camera.arcball.set_target_latitude_degrees({LATITUDE});
+@fallback_camera.arcball.set_target_longitude_degrees({LONGITUDE});
 @fallback_camera.arcball.set_target_height_meters(6096.0);
 @fallback_camera.arcball.set_eye_latitude_degrees(14.94270422048709);
 @fallback_camera.arcball.set_eye_longitude_degrees(260.0);
@@ -138,8 +138,7 @@ bindings.bind("Shift+RBracket", "camera.increase_exposure()");
 
 // Let there be light
 orrery.set_unix_ms(13459754321.0);
-"#,
-        LATITUDE, LONGITUDE
+"#
     )
 });
 
@@ -205,7 +204,7 @@ impl System {
             .read_back_vertices(shape_id, heap.resource::<Gpu>())?;
         for (i, vert) in verts.iter().enumerate() {
             heap.get_mut::<EntityMarkers>(id).add_body_arrow(
-                &format!("n-{}", i),
+                &format!("n-{i}"),
                 vert.point().map(|v| meters!(v)),
                 vert.normal().map(|v| meters!(v * 10f32)),
                 meters!(0.25_f64),
@@ -596,7 +595,7 @@ fn simulation_main(mut runtime: Runtime, opt: Opt) -> Result<()> {
         .ok_or_else(|| anyhow!("Must be run with a shape input"))?;
     let shape_file = shape_file.canonicalize()?;
     let shape_name = shape_file.file_name().unwrap().to_string_lossy();
-    println!("Loading Shape: {:?}", shape_file);
+    println!("Loading Shape: {shape_file:?}");
     runtime
         .resource_mut::<Catalog>()
         .add_drawer(DirectoryDrawer::from_directory(

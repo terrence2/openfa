@@ -115,7 +115,7 @@ pub enum TLoc {
 impl TLoc {
     pub fn pic_file(&self, base: &str) -> Cow<str> {
         match self {
-            TLoc::Index(ref i) => Cow::from(format!("{}{}.PIC", base, i)),
+            TLoc::Index(ref i) => Cow::from(format!("{base}{i}.PIC")),
             TLoc::Name(ref s) => Cow::from(s),
         }
     }
@@ -677,7 +677,7 @@ impl MValue {
         let (layer_prefix, layer_ext) = layer_name
             .rsplit_once('.')
             .ok_or_else(|| anyhow!("layer must have extension"))?;
-        let alt_layer_name = format!("{}{}.{}", layer_prefix, layer_token, layer_ext);
+        let alt_layer_name = format!("{layer_prefix}{layer_token}.{layer_ext}");
         if catalog.exists(&alt_layer_name) {
             debug!("B: using lay: {}", alt_layer_name);
             return Ok(alt_layer_name);

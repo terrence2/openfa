@@ -410,7 +410,7 @@ mod tests {
             for i in paths {
                 let entry = i.unwrap();
                 let path = format!("{}", entry.path().display());
-                println!("At: {}", path);
+                println!("At: {path}");
                 let mut fp = fs::File::open(path).unwrap();
                 let mut contents = Vec::new();
                 fp.read_to_end(&mut contents).unwrap();

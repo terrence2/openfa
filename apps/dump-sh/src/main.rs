@@ -160,13 +160,13 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
                 }
             }
         }
-        println!("MIN: {:?}", min);
-        println!("MAX: {:?}", max);
+        println!("MIN: {min:?}");
+        println!("MAX: {max:?}");
         let mut span = [0i16; 3];
         for i in 0..3 {
             span[i] = max[i] - min[i];
         }
-        println!("SPAN: {:?}", span);
+        println!("SPAN: {span:?}");
     } else if let Some(ref target) = opt.show_matching {
         for (i, instr) in shape.instrs.iter().enumerate() {
             if instr.magic() == target {
@@ -179,9 +179,9 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
                 let out = frags.join("; ");
 
                 if opt.quiet {
-                    println!("{}", out);
+                    println!("{out}");
                 } else {
-                    println!("{:13}: {}", name, out);
+                    println!("{name:13}: {out}");
                 }
             }
         }
@@ -219,7 +219,7 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
             .map(sh::Instr::show)
             .ok_or("NO INSTRUCTIONS")
             .unwrap();
-        println!("{:20}: {}", name, fmt);
+        println!("{name:20}: {fmt}");
     } else if opt.show_unknown {
         for i in shape.instrs.iter() {
             if let sh::Instr::UnknownUnknown(unk) = i {
@@ -234,7 +234,7 @@ fn show_sh(name: &str, data: &[u8], game: &GameInfo, opt: &Opt) -> Result<()> {
                 for instr in x86.bytecode.instrs() {
                     for operand in &instr.operands {
                         if let i386::Operand::Memory(memref) = operand {
-                            let key = format!("{}", memref);
+                            let key = format!("{memref}");
                             *dedup.entry(key).or_insert(0) += 1;
                         }
                     }

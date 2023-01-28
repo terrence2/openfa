@@ -113,7 +113,7 @@ impl AssetLoader {
                 }
                 intersects.sort_by_key(|(_, d)| -*d);
                 for (name, d) in intersects {
-                    println!("{}: at {:?}", name, d);
+                    println!("{name}: at {d:?}");
                 }
             })
         });
@@ -490,7 +490,7 @@ impl AssetLoader {
         let game_name = heap.resource::<Libs>().catalog().label().to_owned();
 
         // FIXME: can we print this in a useful way?
-        println!("Loading {}:{}...", game_name, name);
+        println!("Loading {game_name}:{name}...");
 
         let mission = {
             let libs = heap.resource::<Libs>();

@@ -244,8 +244,7 @@ impl X86Code {
                             assert_eq!(
                                 expect_offset,
                                 instr.at_offset(),
-                                "instr size and offset misaligned at 0x{:08X}",
-                                expect_offset
+                                "instr size and offset misaligned at 0x{expect_offset:08X}"
                             );
                             expect_offset += instr.size();
                         }

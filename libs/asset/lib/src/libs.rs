@@ -402,7 +402,7 @@ impl Libs {
     fn detect_cd_path(sentinel: &str) -> Option<PathBuf> {
         for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
             let mut buf = PathBuf::new();
-            buf.push(format!("{}:\\{}", letter, sentinel));
+            buf.push(format!("{letter}:\\{sentinel}"));
             trace!("Checking for CD at {:?}", buf);
             if buf.exists() {
                 return Some(buf.parent().unwrap().to_owned());

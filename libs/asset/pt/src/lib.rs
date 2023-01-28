@@ -309,16 +309,16 @@ impl fmt::Debug for SystemDamage {
         let s = self
             .damage_limit
             .iter()
-            .map(|&v| format!("{}", v))
+            .map(|&v| format!("{v}"))
             .collect::<Vec<String>>()
             .join(", ");
-        write!(f, "SystemDamage {{ limits: {:?} }}", s)
+        write!(f, "SystemDamage {{ limits: {s:?} }}")
     }
 }
 
 impl fmt::Display for SystemDamage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
