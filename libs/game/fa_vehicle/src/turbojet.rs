@@ -78,7 +78,8 @@ impl Engine for Turbojet {
         // Lerp to get a max speed at current altitude.
         let altitude_ft = feet!(atmosphere.geopotential_altitude());
         let max_speed_at_altitude: Velocity<NauticalMiles, Hours> = max_sea_speed
-            + (max_36a_speed - max_sea_speed) * scalar!((altitude_ft / feet!(36_000f64)).min(1.));
+            + (max_36a_speed - max_sea_speed)
+                * scalar!((altitude_ft / feet!(36_000f64)).f64().min(1.));
         let max_speed_at_power = power * max_speed_at_altitude;
 
         // What force would allow us to meet this speed, given a nominal drag.

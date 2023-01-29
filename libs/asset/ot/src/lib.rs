@@ -21,6 +21,7 @@ use bitflags::bitflags;
 use nalgebra::Point3;
 use std::{collections::HashMap, fmt, mem};
 
+// FIXME: this should be a bitflag
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum TypeTag {
@@ -48,7 +49,7 @@ impl FromRow for TypeTag {
 
 impl fmt::Display for TypeTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -81,14 +82,14 @@ impl ObjectKind {
             0b0000_0000_0100_0000 => Ok(ObjectKind::Structure2),
             // There is a mistaken 0 entry in $BLDR.JT when it was first introduced in ATF Nato Fighters.
             0b0000_0000_0000_0000 => Ok(ObjectKind::Projectile),
-            _ => bail!("unknown ObjectKind {}", x),
+            _ => bail!("unknown ObjectKind {x}"),
         }
     }
 }
 
 impl fmt::Display for ObjectKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -130,7 +131,7 @@ impl ProcKind {
 
 impl fmt::Display for ProcKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     }
     for path in &files {
         let name = path.file_name().unwrap().to_string_lossy();
-        println!("{}", name);
+        println!("{name}");
         println!("{}", "=".repeat(name.len()));
         let data = fs::read(path)?;
         show_pe(&data, opt.disassemble)?;
@@ -73,7 +73,7 @@ fn show_pe(content: &[u8], disassemble: bool) -> Result<()> {
     println!("image base: 0x{:08X}", pe.image_base);
 
     for (name, section) in &pe.section_info {
-        println!("{} @", name);
+        println!("{name} @");
         println!("\tvfile: 0x{:04X}", section.file_offset());
         println!("\tvaddr: 0x{:04X}", section.virtual_address());
         println!("\tvsize: 0x{:04X}", section.virtual_size);
@@ -104,7 +104,7 @@ fn show_pe(content: &[u8], disassemble: bool) -> Result<()> {
         relocs.insert(*reloc + 1);
         relocs.insert(*reloc + 2);
         relocs.insert(*reloc + 3);
-        print!("0x{:04X} ", reloc);
+        print!("0x{reloc:04X} ");
         offset += 1;
     }
     println!("\n");
@@ -114,13 +114,13 @@ fn show_pe(content: &[u8], disassemble: bool) -> Result<()> {
         let out = disasm.disassemble_at(0, &pe);
         if let Err(ref e) = out {
             if !DisassemblyError::maybe_show(e, &pe.code) {
-                println!("ERROR: {}", e);
+                println!("ERROR: {e}");
             }
         }
 
         println!("i386 -");
         for bc in disasm.build_memory_view(&pe) {
-            println!("{}", bc);
+            println!("{bc}");
         }
     } else {
         println!("code -");
@@ -135,7 +135,7 @@ fn show_pe(content: &[u8], disassemble: bool) -> Result<()> {
             if relocs.contains(&(i as u32)) {
                 print!("{}{:02X}{} ", ansi().green(), b, ansi());
             } else {
-                print!("{:02X} ", b);
+                print!("{b:02X} ");
             }
             offset += 1;
         }

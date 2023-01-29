@@ -144,7 +144,7 @@ impl FieldValue {
             }
             return Ok(FieldValue::Ptr(
                 ":unknown".to_owned(),
-                vec![format!("string \"{}\"", ptr)],
+                vec![format!("string \"{ptr}\"")],
             ));
         }
 
@@ -275,8 +275,8 @@ pub fn find_pointers<'a>(lines: &[&'a str]) -> Result<HashMap<&'a str, Vec<&'a s
 }
 
 pub fn find_section<'a>(lines: &[&'a str], section_tag: &str) -> Result<Vec<&'a str>> {
-    let start_pattern = format!("START OF {}", section_tag);
-    let end_pattern = format!("END OF {}", section_tag);
+    let start_pattern = format!("START OF {section_tag}");
+    let end_pattern = format!("END OF {section_tag}");
     let out = lines
         .iter()
         .skip_while(|&l| !l.contains(&start_pattern))

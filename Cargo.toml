@@ -81,24 +81,23 @@ egui_extras = { version = "^ 0.20", features = ["datepicker"] }
 egui-wgpu = "^ 0.20"
 ellipse = "^ 0.2"
 env_logger = "^ 0.9"
-float-ord = "^ 0.3"
+fastrand = "^ 1.8"
 futures = { version = "^ 0.3", default-features = false, features = ["executor"] }
 fxhash = "^ 0.2"
 gilrs = "^ 0.9"
 glob = "^ 0.3"
 hashbag = "^ 0.1"
-image = "^ 0.24"
+image = { version = "^ 0.24", default-features = false, features = ["jpeg_rayon", "png"] }
 itertools = "^ 0.10"
 json = "^ 0.12"
 lalrpop = "0.19.4"
 lalrpop-util = { version = "^ 0.19", features = ["lexer"] }
-lazy_static = "^ 1"
 libc = "0.2"
 log = "^ 0.4"
 lyon_geom = "^ 0.17"
 memmap = "^ 0.7"
 memoffset = "^ 0.6"
-naga = { version = "^ 0.10", features = ["spv-in", "spv-out", "dot-out", "glsl-in", "glsl-out", ] }
+naga = { version = "^ 0.10", features = ["spv-in", "spv-out", "dot-out", "glsl-in"] }
 nalgebra = "^ 0.31"
 num = "^ 0.4"
 num-traits = "^ 0.2"
@@ -110,9 +109,8 @@ platform-dirs = "^ 0.3"
 pretty-type-name = "1.0"
 proc-macro2 = "^ 1"
 quote = "^ 1"
-rand = "^ 0.8"
 raw-window-handle = "^ 0.5"
-rayon = "^ 1.5"
+rayon = "^ 1.6"
 regex = "^ 1"
 ringbuffer = "^ 0.11"
 rusttype = "^ 0.9"
@@ -138,6 +136,7 @@ web-sys = { version = "=0.3.60", features = ["console"] }
 wgpu = { version = "^ 0.14", features = ["spirv"] }
 winit = "^ 0.27"
 zerocopy = "^ 0.6"
+
 # nitrogen libs
 absolute_unit = { path = "libs/nitrogen/util/absolute_unit" }
 ansi = { path = "libs/nitrogen/util/ansi" }
@@ -162,6 +161,7 @@ camera = { path = "libs/nitrogen/sim/camera" }
 event_mapper = { path = "libs/nitrogen/sim/event_mapper" }
 measure = { path = "libs/nitrogen/sim/measure" }
 orrery = { path = "libs/nitrogen/sim/orrery" }
+geodb = { path = "libs/nitrogen/sim/geodb" }
 vehicle = { path = "libs/nitrogen/sim/vehicle" }
 atlas = { path = "libs/nitrogen/wgpu-buffer/atlas" }
 atmosphere = { path = "libs/nitrogen/wgpu-buffer/atmosphere" }

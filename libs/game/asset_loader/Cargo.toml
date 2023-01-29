@@ -13,10 +13,10 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 bevy_ecs.workspace = true
+fastrand.workspace = true
 once_cell.workspace = true
 ordered-float.workspace = true
 parking_lot.workspace = true
-rand.workspace = true
 # libs
 absolute_unit.workspace = true
 camera.workspace = true

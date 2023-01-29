@@ -187,8 +187,7 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
             update.read_exact(&mut buffer)?;
             assert_eq!(
                 buffer, content,
-                "magic values of instr must not be changed (yet):\n{:#?}",
-                record
+                "magic values of instr must not be changed (yet):\n{record:#?}",
             );
         }
 
@@ -207,7 +206,7 @@ fn update_from_csv(mut update: File, code_offset: u32, csv_path: &Path) -> Resul
         print!(".");
         std::io::stdout().flush()?;
     }
-    println!("\nWrote {} records!", cnt);
+    println!("\nWrote {cnt} records!");
     Ok(())
 }
 

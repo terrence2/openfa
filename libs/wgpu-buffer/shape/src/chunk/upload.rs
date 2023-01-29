@@ -25,9 +25,9 @@ use geometry::{intersect::sphere_vs_ray, Aabb3, Ray, Sphere};
 use gpu::Gpu;
 use i386::Interpreter;
 use image::Rgba;
-use lazy_static::lazy_static;
 use log::trace;
 use nalgebra::{Point3, Vector3};
+use once_cell::sync::Lazy;
 use pal::Palette;
 use parking_lot::RwLock;
 use peff::Trampoline;
@@ -144,131 +144,125 @@ impl AnalysisResults {
     }
 }
 
-lazy_static! {
-    static ref TOGGLE_TABLE: HashMap<&'static str, Vec<(u32, VertexFlags)>> = {
-        let mut table = HashMap::new();
-        table.insert(
-            "_PLrightFlap",
-            vec![
-                (0xFFFF_FFFF, VertexFlags::RIGHT_FLAP_DOWN),
-                (0,           VertexFlags::RIGHT_FLAP_UP),
-            ],
-        );
-        table.insert(
-            "_PLleftFlap",
-            vec![
-                (0xFFFF_FFFF, VertexFlags::LEFT_FLAP_DOWN),
-                (0,           VertexFlags::LEFT_FLAP_UP),
-            ],
-        );
-        table.insert(
-            "_PLslats",
-            vec![(0, VertexFlags::SLATS_UP), (1, VertexFlags::SLATS_DOWN)],
-        );
-        table.insert(
-            "_PLgearDown",
-            vec![(0, VertexFlags::GEAR_UP), (1, VertexFlags::GEAR_DOWN)],
-        );
-        table.insert(
-            "_PLbayOpen",
-            vec![
-                (0, VertexFlags::BAY_CLOSED),
-                (1, VertexFlags::BAY_OPEN),
-            ],
-        );
-        table.insert(
-            "_PLbrake",
-            vec![
-                (0, VertexFlags::BRAKE_RETRACTED),
-                (1, VertexFlags::BRAKE_EXTENDED),
-            ],
-        );
-        table.insert(
-            "_PLhook",
-            vec![
-                (0, VertexFlags::HOOK_RETRACTED),
-                (1, VertexFlags::HOOK_EXTENDED),
-            ],
-        );
-        table.insert(
-            "_PLrudder",
-            vec![
-                // FIXME: this doesn't line up with our left/right above?
-                (0, VertexFlags::RUDDER_CENTER),
-                (1, VertexFlags::RUDDER_RIGHT),
-                (0xFFFF_FFFF, VertexFlags::RUDDER_LEFT),
-            ],
-        );
-        table.insert(
-            "_PLrightAln",
-            vec![
-                (0, VertexFlags::RIGHT_AILERON_CENTER),
-                (1, VertexFlags::RIGHT_AILERON_UP),
-                (0xFFFF_FFFF, VertexFlags::RIGHT_AILERON_DOWN),
-            ],
-        );
-        table.insert(
-            "_PLleftAln",
-            vec![
-                (0, VertexFlags::LEFT_AILERON_CENTER),
-                (1, VertexFlags::LEFT_AILERON_UP),
-                (0xFFFF_FFFF, VertexFlags::LEFT_AILERON_DOWN),
-            ],
-        );
-        table.insert(
-            "_PLafterBurner",
-            vec![
-                (0, VertexFlags::AFTERBURNER_OFF),
-                (1, VertexFlags::AFTERBURNER_ON),
-            ],
-        );
-        table.insert(
-            "_SAMcount",
-            vec![
-                (0, VertexFlags::SAM_COUNT_0),
-                (1, VertexFlags::SAM_COUNT_1),
-                (2, VertexFlags::SAM_COUNT_2),
-                (3, VertexFlags::SAM_COUNT_3),
-            ],
-        );
-        table.insert(
-            "_PLstate",
-            vec![
-                (0x11, VertexFlags::EJECT_STATE_0),
-                (0x12, VertexFlags::EJECT_STATE_1),
-                (0x13, VertexFlags::EJECT_STATE_2),
-                (0x14, VertexFlags::EJECT_STATE_3),
-                (0x15, VertexFlags::EJECT_STATE_4),
+static TOGGLE_TABLE: Lazy<HashMap<&'static str, Vec<(u32, VertexFlags)>>> = Lazy::new(|| {
+    let mut table = HashMap::new();
+    table.insert(
+        "_PLrightFlap",
+        vec![
+            (0xFFFF_FFFF, VertexFlags::RIGHT_FLAP_DOWN),
+            (0, VertexFlags::RIGHT_FLAP_UP),
+        ],
+    );
+    table.insert(
+        "_PLleftFlap",
+        vec![
+            (0xFFFF_FFFF, VertexFlags::LEFT_FLAP_DOWN),
+            (0, VertexFlags::LEFT_FLAP_UP),
+        ],
+    );
+    table.insert(
+        "_PLslats",
+        vec![(0, VertexFlags::SLATS_UP), (1, VertexFlags::SLATS_DOWN)],
+    );
+    table.insert(
+        "_PLgearDown",
+        vec![(0, VertexFlags::GEAR_UP), (1, VertexFlags::GEAR_DOWN)],
+    );
+    table.insert(
+        "_PLbayOpen",
+        vec![(0, VertexFlags::BAY_CLOSED), (1, VertexFlags::BAY_OPEN)],
+    );
+    table.insert(
+        "_PLbrake",
+        vec![
+            (0, VertexFlags::BRAKE_RETRACTED),
+            (1, VertexFlags::BRAKE_EXTENDED),
+        ],
+    );
+    table.insert(
+        "_PLhook",
+        vec![
+            (0, VertexFlags::HOOK_RETRACTED),
+            (1, VertexFlags::HOOK_EXTENDED),
+        ],
+    );
+    table.insert(
+        "_PLrudder",
+        vec![
+            // FIXME: this doesn't line up with our left/right above?
+            (0, VertexFlags::RUDDER_CENTER),
+            (1, VertexFlags::RUDDER_RIGHT),
+            (0xFFFF_FFFF, VertexFlags::RUDDER_LEFT),
+        ],
+    );
+    table.insert(
+        "_PLrightAln",
+        vec![
+            (0, VertexFlags::RIGHT_AILERON_CENTER),
+            (1, VertexFlags::RIGHT_AILERON_UP),
+            (0xFFFF_FFFF, VertexFlags::RIGHT_AILERON_DOWN),
+        ],
+    );
+    table.insert(
+        "_PLleftAln",
+        vec![
+            (0, VertexFlags::LEFT_AILERON_CENTER),
+            (1, VertexFlags::LEFT_AILERON_UP),
+            (0xFFFF_FFFF, VertexFlags::LEFT_AILERON_DOWN),
+        ],
+    );
+    table.insert(
+        "_PLafterBurner",
+        vec![
+            (0, VertexFlags::AFTERBURNER_OFF),
+            (1, VertexFlags::AFTERBURNER_ON),
+        ],
+    );
+    table.insert(
+        "_SAMcount",
+        vec![
+            (0, VertexFlags::SAM_COUNT_0),
+            (1, VertexFlags::SAM_COUNT_1),
+            (2, VertexFlags::SAM_COUNT_2),
+            (3, VertexFlags::SAM_COUNT_3),
+        ],
+    );
+    table.insert(
+        "_PLstate",
+        vec![
+            (0x11, VertexFlags::EJECT_STATE_0),
+            (0x12, VertexFlags::EJECT_STATE_1),
+            (0x13, VertexFlags::EJECT_STATE_2),
+            (0x14, VertexFlags::EJECT_STATE_3),
+            (0x15, VertexFlags::EJECT_STATE_4),
+            (0x1A, VertexFlags::EJECT_STATE_0),
+            (0x1B, VertexFlags::EJECT_STATE_1),
+            (0x1C, VertexFlags::EJECT_STATE_2),
+            (0x1D, VertexFlags::EJECT_STATE_3),
+            (0x1E, VertexFlags::EJECT_STATE_4),
+            (0x22, VertexFlags::EJECT_STATE_0),
+            (0x23, VertexFlags::EJECT_STATE_1),
+            (0x24, VertexFlags::EJECT_STATE_2),
+            (0x25, VertexFlags::EJECT_STATE_3),
+            (0x26, VertexFlags::EJECT_STATE_4),
+        ],
+    );
+    table.insert(
+        "_PLdead",
+        vec![
+            (0, VertexFlags::PLAYER_ALIVE),
+            (1, VertexFlags::PLAYER_DEAD),
+        ],
+    );
+    table
+});
 
-                (0x1A, VertexFlags::EJECT_STATE_0),
-                (0x1B, VertexFlags::EJECT_STATE_1),
-                (0x1C, VertexFlags::EJECT_STATE_2),
-                (0x1D, VertexFlags::EJECT_STATE_3),
-                (0x1E, VertexFlags::EJECT_STATE_4),
-
-                (0x22, VertexFlags::EJECT_STATE_0),
-                (0x23, VertexFlags::EJECT_STATE_1),
-                (0x24, VertexFlags::EJECT_STATE_2),
-                (0x25, VertexFlags::EJECT_STATE_3),
-                (0x26, VertexFlags::EJECT_STATE_4),
-            ],
-        );
-        table.insert(
-            "_PLdead",
-            vec![
-                (0, VertexFlags::PLAYER_ALIVE),
-                (1, VertexFlags::PLAYER_DEAD),
-            ],
-        );
-        table
-    };
-
-    static ref SKIP_TABLE: HashSet<&'static str> = {
-        let mut table = HashSet::new();
-        table.insert("lighteningAllowed");
-        table
-    };
-}
+#[allow(unused)]
+static SKIP_TABLE: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    let mut table = HashSet::new();
+    table.insert("lighteningAllowed");
+    table
+});
 
 #[derive(Debug)]
 struct ProgramCounter {
@@ -1048,7 +1042,7 @@ impl<'a> ShapeUploader<'a> {
                 )],
             )
         } else {
-            println!("UNKNOWN XFORM: {:?} + {:?} in {}", reads, calls, name);
+            println!("UNKNOWN XFORM: {reads:?} + {calls:?} in {name}");
             return Ok(());
         };
 

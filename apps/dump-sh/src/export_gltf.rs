@@ -121,7 +121,7 @@ fn export_mesh(
         extensions: Default::default(),
         extras: Default::default(),
         name: Some(name.to_owned()),
-        uri: Some(format!("{}.bin", name)),
+        uri: Some(format!("{name}.bin")),
     };
     let buffer_view = json::buffer::View {
         buffer: json::Index::new(offset),

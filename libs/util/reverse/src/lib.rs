@@ -35,7 +35,7 @@ pub fn n2h(n: u8) -> char {
         13 => 'D',
         14 => 'E',
         15 => 'F',
-        _ => panic!("expected a nibble, got: {}", n),
+        _ => panic!("expected a nibble, got: {n}"),
     }
 }
 
@@ -319,7 +319,7 @@ pub fn accumulate_section(code: &[u8], section: &Section, tags: &[Tag], v: &mut 
         return;
     }
     if section.offset + section.length > code.len() {
-        println!("OVERFLOW at section: {:?}", section);
+        println!("OVERFLOW at section: {section:?}");
         return;
     }
 
@@ -401,7 +401,7 @@ fn tgt<'a>(x: &'a mut Vec<char>, y: &'a mut Vec<char>) -> &'a mut Vec<char> {
 
 fn accumulate_facet_section(code: &[u8], section: &Section, line: &mut Vec<char>) {
     if section.offset + section.length >= code.len() {
-        println!("OVERFLOW at section: {:?}", section);
+        println!("OVERFLOW at section: {section:?}");
         return;
     }
     let mut nul = Vec::new();

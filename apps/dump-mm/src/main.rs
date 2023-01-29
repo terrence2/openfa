@@ -84,7 +84,7 @@ fn show_mm(fid: FileId, type_manager: &TypeManager, catalog: &Catalog, opt: &Opt
             println!("obj count:   {}", mm.objects().count());
             println!();
         }
-        Err(e) => println!("Load failed: {}\n", e),
+        Err(e) => println!("Load failed: {e}\n"),
     }
 
     Ok(())

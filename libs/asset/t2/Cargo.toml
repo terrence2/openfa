@@ -12,8 +12,8 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-lazy_static.workspace = true
 log.workspace = true
+once_cell.workspace = true
 zerocopy.workspace = true
 # libs
 packed_struct.workspace = true

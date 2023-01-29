@@ -1271,8 +1271,7 @@ impl RawShape {
         // FIXME: we need to handle ERRATA here?
         Ok(*self.offset_map.get(&absolute_byte_offset).ok_or_else(|| {
             anyhow!(format!(
-                "absolute byte offset {:04X} does not point to an instruction",
-                absolute_byte_offset
+                "absolute byte offset {absolute_byte_offset:04X} does not point to an instruction"
             ))
         })?)
     }
@@ -1402,12 +1401,11 @@ impl RawShape {
             Unk38::MAGIC => consume_instr!(Unk38, pe, offset, end_offset, instrs),
 
             X86Code::MAGIC => {
-                let name =
-                    if let Some(&Instr::SourceRef(ref source)) = find_first_instr(0x42, instrs) {
-                        source.source.clone()
-                    } else {
-                        "unknown_source".to_owned()
-                    };
+                let name = if let Some(Instr::SourceRef(source)) = find_first_instr(0x42, instrs) {
+                    source.source.clone()
+                } else {
+                    "unknown_source".to_owned()
+                };
                 X86Code::from_bytes(&name, offset, pe, trailer, instrs)?;
             }
             // Zero is the magic for the trailer (sans trampolines).
@@ -1417,9 +1415,7 @@ impl RawShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::PtrToObjEnd(ref end_ptr)) =
-                            find_first_instr(0xF2, instrs)
-                        {
+                        if let Some(Instr::PtrToObjEnd(end_ptr)) = find_first_instr(0xF2, instrs) {
                             target = Some(end_ptr.end_byte_offset());
                         }
                     }
@@ -1441,9 +1437,7 @@ impl RawShape {
                 if pe.code[*offset + 1] == 0x00 {
                     let mut target = None;
                     {
-                        if let Some(&Instr::PtrToObjEnd(ref end_ptr)) =
-                            find_first_instr(0xF2, instrs)
-                        {
+                        if let Some(Instr::PtrToObjEnd(end_ptr)) = find_first_instr(0xF2, instrs) {
                             target = Some(end_ptr.end_byte_offset());
                         }
                     }
@@ -1559,7 +1553,7 @@ impl RawShape {
 }
 
 fn find_first_instr(kind: u8, instrs: &[Instr]) -> Option<&Instr> {
-    let expect = format!("{:02X}", kind);
+    let expect = format!("{kind:02X}");
     instrs.iter().find(|&instr| expect == instr.magic())
 }
 
@@ -1609,7 +1603,7 @@ mod tests {
             .collect::<Vec<(&'static str, usize)>>();
         freqs.sort_by_key(|(_, f)| *f);
         for (k, v) in freqs {
-            println!("{}: {}", k, v);
+            println!("{k}: {v}");
         }
     }
 
@@ -1680,8 +1674,7 @@ mod tests {
                     assert_eq!(
                         expect_offset,
                         instr.at_offset(),
-                        "instr size and offset misaligned at 0x{:08X}",
-                        expect_offset
+                        "instr size and offset misaligned at 0x{expect_offset:08X}"
                     );
                     expect_offset += instr.size();
                 }

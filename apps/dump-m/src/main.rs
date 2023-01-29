@@ -87,7 +87,7 @@ fn show_mission(
             println!("obj count:   {}", mm.mission_objects().len());
             println!();
         }
-        Err(e) => println!("Load failed: {}\n", e),
+        Err(e) => println!("Load failed: {e}\n"),
     }
 
     Ok(())

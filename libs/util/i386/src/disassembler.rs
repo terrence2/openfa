@@ -188,7 +188,7 @@ impl Reg {
 
 impl fmt::Display for Reg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -285,7 +285,7 @@ impl MemRef {
                 }
             }
             OperandType::w => 2,
-            _ => bail!("size_for_type for handled operand type: {:?}", ty),
+            _ => bail!("size_for_type for handled operand type: {ty:?}"),
         })
     }
 }
@@ -293,7 +293,7 @@ impl MemRef {
 impl fmt::Display for MemRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let seg = if let Some(ref r) = self.segment {
-            format!("{:?}:", r)
+            format!("{r:?}:")
         } else {
             "".to_owned()
         };
@@ -303,15 +303,15 @@ impl fmt::Display for MemRef {
             _ => "DWORD PTR ",
         };
         match (&self.base, &self.index) {
-            (&Some(ref base), &Some(ref index)) => write!(
+            (Some(base), Some(index)) => write!(
                 f,
                 "{}{}[{:?}+{:?}*{}+0x{:X}]",
                 seg, size, base, index, self.scale, self.displacement
             ),
-            (&Some(ref base), &None) => {
+            (Some(base), &None) => {
                 write!(f, "{}{}[{:?}+0x{:X}]", seg, size, base, self.displacement)
             }
-            (&None, &Some(ref index)) => write!(
+            (&None, Some(index)) => write!(
                 f,
                 "{}{}[{:?}*{}+0x{:X}]",
                 seg, size, index, self.scale, self.displacement
@@ -776,22 +776,22 @@ impl Operand {
 
     fn show_relative(&self, base: usize, show_target: bool) -> String {
         match self {
-            Operand::Register(ref r) => format!("{:?}", r),
+            Operand::Register(ref r) => format!("{r:?}"),
             Operand::Imm32(ref x) => {
                 if show_target {
                     format!("0x{:X} -> 0x{:X}", x, *x as usize + base)
                 } else {
-                    format!("0x{:X}", x)
+                    format!("0x{x:X}")
                 }
             }
             Operand::Imm32s(ref x) => {
                 if show_target {
                     format!("0x{:X} -> 0x{:X}", x, i64::from(*x) + base as i64)
                 } else {
-                    format!("0x{:X}", x)
+                    format!("0x{x:X}")
                 }
             }
-            Operand::Memory(ref mr) => format!("{}", mr),
+            Operand::Memory(ref mr) => format!("{mr}"),
         }
     }
 }
@@ -800,10 +800,10 @@ impl fmt::Display for Operand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         //write!(f, "{}", self.show_relative(0, false))
         match self {
-            Operand::Register(ref r) => write!(f, "{:?}", r),
-            Operand::Imm32(x) => write!(f, "0x{:X}", x),
-            Operand::Imm32s(x) => write!(f, "0x{:X}", x),
-            Operand::Memory(ref mr) => write!(f, "{}", mr),
+            Operand::Register(ref r) => write!(f, "{r:?}"),
+            Operand::Imm32(x) => write!(f, "0x{x:X}"),
+            Operand::Imm32s(x) => write!(f, "0x{x:X}"),
+            Operand::Memory(ref mr) => write!(f, "{mr}"),
         }
     }
 }
@@ -975,11 +975,11 @@ impl fmt::Display for Instr {
             if i != 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", op)?;
+            write!(f, "{op}")?;
         }
         write!(f, ")")?;
         if let Some(ctx) = &self.context {
-            write!(f, " {}", ctx)?;
+            write!(f, " {ctx}")?;
         }
         Ok(())
     }
@@ -998,7 +998,7 @@ pub enum MemBlock {
 impl fmt::Display for MemBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Code(block) => write!(f, "{}", block),
+            Self::Code(block) => write!(f, "{block}"),
             Self::Data {
                 start_offset, data, ..
             } => {
@@ -1378,7 +1378,7 @@ impl fmt::Display for ByteCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut pos = self.start_offset;
         for instr in self.instrs.iter() {
-            writeln!(f, "  @{:04X}: {}", pos, instr)?;
+            writeln!(f, "  @{pos:04X}: {instr}")?;
             pos += instr.size();
         }
         Ok(())

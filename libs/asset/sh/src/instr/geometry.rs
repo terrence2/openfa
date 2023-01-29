@@ -487,7 +487,7 @@ impl Facet {
         let ind = self
             .indices
             .iter()
-            .map(|i| format!("{:X}", i))
+            .map(|i| format!("{i:X}"))
             .collect::<Vec<String>>()
             .join(",");
 

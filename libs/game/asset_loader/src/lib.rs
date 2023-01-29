@@ -31,12 +31,12 @@ use nitrous::{
 use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 use parking_lot::RwLock;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use runtime::{Extension, PlayerMarker, Runtime};
 use shape::{ShapeBuffer, ShapeId, ShapeMetadata, ShapeScale, SlotId};
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
+    iter,
     sync::Arc,
     time::Duration,
 };
@@ -113,7 +113,7 @@ impl AssetLoader {
                 }
                 intersects.sort_by_key(|(_, d)| -*d);
                 for (name, d) in intersects {
-                    println!("{}: at {:?}", name, d);
+                    println!("{name}: at {d:?}");
                 }
             })
         });
@@ -230,11 +230,7 @@ impl AssetLoader {
     /// Spawn with a temp name, then game.take_control of the new entity.
     #[method]
     fn spawn_in(&self, filename: &str, mut heap: HeapMut) -> Result<Value> {
-        let name: String = thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(6)
-            .map(char::from)
-            .collect();
+        let name: String = iter::repeat_with(fastrand::alphanumeric).take(6).collect();
         self.spawn(&name, filename, heap.as_mut())?;
         self.take_control(&name, heap);
         Ok(Value::True())
@@ -494,7 +490,7 @@ impl AssetLoader {
         let game_name = heap.resource::<Libs>().catalog().label().to_owned();
 
         // FIXME: can we print this in a useful way?
-        println!("Loading {}:{}...", game_name, name);
+        println!("Loading {game_name}:{name}...");
 
         let mission = {
             let libs = heap.resource::<Libs>();
