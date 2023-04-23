@@ -1,9 +1,0 @@
-[package]
-name = "pal"
-version = "0.1.0"
-edition = "2018"
-authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
-
-[dependencies]
-failure = "^ 0.1.2"
-image = "^ 0.21"
